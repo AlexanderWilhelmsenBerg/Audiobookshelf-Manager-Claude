@@ -78,12 +78,12 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Check formatting
-        run: ./gradlew ktlintCheck --stacktrace
+        run: ./gradlew ktlintCheck
 
       # PRODUCT_SPEC 16.5 — ktlintCheck, detekt with type resolution, Android Lint, unit tests,
       # Room schema verification and the debug assembly, in one command.
       - name: Verify debug
-        run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true --stacktrace
+        run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true
 
       # PRODUCT_SPEC 18.6 — a schema change that was not committed is a failure, not a surprise on
       # a user's device.
@@ -103,13 +103,9 @@ jobs:
             exit 1
           fi
 
-      # Printed and uploaded unconditionally. The schema check above only runs when `verifyDebug`
-      # succeeded, so on a failing build the exported schema would otherwise be invisible — and it is
-      # exactly what a first run needs to produce before it can be committed.
-      - name: Show exported Room schema
-        if: always()
-        run: find core/database/schemas -name '*.json' -print -exec cat {} \; || true
-
+      # Uploaded unconditionally: the schema check above only runs when `verifyDebug` succeeded, so
+      # on a failing build the exported schema would otherwise be unreachable — and that is exactly
+      # when a first run needs to produce it.
       - name: Upload Room schemas
         if: always()
         uses: actions/upload-artifact@v4

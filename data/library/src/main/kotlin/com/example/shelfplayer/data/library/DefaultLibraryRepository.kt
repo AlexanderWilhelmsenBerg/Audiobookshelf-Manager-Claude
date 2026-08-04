@@ -8,14 +8,13 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.common.time.AppClock
-import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.DatabaseTransactionRunner
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.dao.SyncStateDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
-import com.example.shelfplayer.core.database.runInTransaction
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
@@ -53,7 +52,7 @@ import javax.inject.Singleton
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class DefaultLibraryRepository @Inject constructor(
-    private val database: ShelfPlayerDatabase,
+    private val transaction: DatabaseTransactionRunner,
     private val libraryDao: LibraryDao,
     private val profileDao: ProfileDao,
     private val progressDao: ProgressDao,
@@ -180,7 +179,7 @@ class DefaultLibraryRepository @Inject constructor(
 
     private suspend fun persist(libraries: List<Library>, snapshots: Map<LibraryId, List<BookSnapshot>>): Int {
         var written = 0
-        database.runInTransaction {
+        transaction {
             libraryDao.upsertLibraries(libraries.map(EntityMappers::toEntity))
             libraries.forEach { library ->
                 val rows = snapshots[library.id].orEmpty().map(EntityMappers::toEntities)

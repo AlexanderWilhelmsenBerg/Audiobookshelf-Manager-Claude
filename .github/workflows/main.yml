@@ -45,16 +45,16 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Verify debug
-        run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true --stacktrace
+        run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true
 
       # PRODUCT_SPEC 16.5 — the release verification additionally runs release lint.
       - name: Release lint
-        run: ./gradlew :app:lintRelease -Pshelfplayer.warningsAsErrors=true --stacktrace
+        run: ./gradlew :app:lintRelease -Pshelfplayer.warningsAsErrors=true
 
       # PRODUCT_SPEC 18 — the release build is unsigned here on purpose. Signing happens only in a
       # protected environment with the key material, never in a workflow triggered by a push.
       - name: Assemble release (unsigned)
-        run: ./gradlew :app:assembleRelease -Pshelfplayer.warningsAsErrors=true --stacktrace
+        run: ./gradlew :app:assembleRelease -Pshelfplayer.warningsAsErrors=true
 
       - name: Upload reports
         if: always()

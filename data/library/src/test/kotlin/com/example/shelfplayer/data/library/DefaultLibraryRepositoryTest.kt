@@ -7,6 +7,7 @@ import app.cash.turbine.test
 import com.example.shelfplayer.core.common.log.DefaultRedactor
 import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
+import com.example.shelfplayer.core.database.RoomDatabaseTransactionRunner
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
@@ -60,7 +61,7 @@ class DefaultLibraryRepositoryTest {
         val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
 
         repository = DefaultLibraryRepository(
-            database = database,
+            transaction = RoomDatabaseTransactionRunner(database),
             libraryDao = database.libraryDao(),
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
