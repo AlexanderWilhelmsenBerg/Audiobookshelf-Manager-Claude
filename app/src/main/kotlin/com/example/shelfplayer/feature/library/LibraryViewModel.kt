@@ -48,6 +48,10 @@ class LibraryViewModel @Inject constructor(
     /**
      * Only the query is debounced. Changing the sort order re-queries immediately, because there is
      * nothing to settle: the user made one discrete choice, not a stream of keystrokes.
+     *
+     * The two inputs are combined into a named [LibraryQuery] rather than a `Pair`. A `Pair` here
+     * left the compiler unable to resolve `component1`/`component2` against the many array and
+     * collection overloads, and a request that names its fields reads better than `first`/`second`.
      */
     private val books = combine(
         controls
@@ -55,10 +59,14 @@ class LibraryViewModel @Inject constructor(
             .distinctUntilChanged()
             .debounce { query -> if (query.isEmpty()) 0L else SEARCH_DEBOUNCE_MILLIS },
         controls.map(LibraryControls::order).distinctUntilChanged(),
-        ::Pair,
-    ).flatMapLatest { (query, order) ->
-        observeLibraryBooks(libraryId = libraryId, query = query, order = order)
-    }
+    ) { query, order -> LibraryQuery(query, order) }
+        .flatMapLatest { request ->
+            observeLibraryBooks(
+                libraryId = libraryId,
+                query = request.query,
+                order = request.order,
+            )
+        }
 
     val uiState: StateFlow<LibraryUiState> = combine(
         controls,
@@ -83,6 +91,9 @@ class LibraryViewModel @Inject constructor(
     fun onOrderChanged(order: BookSortOrder) {
         controls.update { it.copy(order = order) }
     }
+
+    /** One resolved request: what to search for and how to order the result. */
+    private data class LibraryQuery(val query: String, val order: BookSortOrder)
 
     private data class LibraryControls(val query: String = "", val order: BookSortOrder = BookSortOrder.Default)
 
