@@ -28,9 +28,15 @@ Configure both mechanisms fully; bootstrap their generated data in one explicit 
   either. `scripts/update-dependency-locks.sh` writes them via the root `resolveAndLockAll` task.
 - **Verification.** `gradle/verification-metadata.xml` ships with the policy
   (`verify-metadata=true`, `verify-signatures=false`) and an empty `<components>`.
-  `gradle.properties` sets `org.gradle.dependency.verification=lenient`, so unverified artifacts are
-  **reported** rather than fatal. `scripts/bootstrap-dependency-verification.sh` generates the
-  checksums; the same commit flips the property to `strict`.
+  `gradle.properties` sets `org.gradle.dependency.verification=off` until the checksums exist.
+  `scripts/bootstrap-dependency-verification.sh` generates them; the same commit flips the property
+  to `strict`.
+
+  `lenient` was tried first and rejected on evidence: with an empty `<components>`, every build
+  prints every resolved artifact as an unverified-artifact report — around two thousand lines on a
+  cold CI run — which buries the errors a developer needs to see. It enforces exactly as much as
+  `off` does (nothing, because there is nothing to check against) while making every log unreadable.
+  `off` is the honest name for the current state.
 
 `verify-signatures` stays `false`. Several AndroidX and Google artifacts are unsigned, so enabling it
 today would produce a wall of failures that says nothing about supply-chain risk. SHA-256 checksums
@@ -38,8 +44,9 @@ pinned against the resolved version set are the guarantee that actually holds he
 
 ## Consequences
 
-- Between now and the bootstrap run, verification reports but does not enforce. `gradle.properties`
-  and this ADR both say so; the gap is visible rather than assumed away.
+- Between now and the bootstrap run, verification does not run at all. `gradle.properties`, this
+  ADR, `docs/architecture/build.md` and the README all say so; the gap is stated rather than
+  disguised as a partial guarantee.
 - Every version-catalog change needs a lockfile refresh, and the lockfile diff becomes part of code
   review — which is the point.
 - The bootstrap must run somewhere with unrestricted access to Maven Central and Google's Maven. A

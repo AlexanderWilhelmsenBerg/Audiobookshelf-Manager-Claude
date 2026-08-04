@@ -1,7 +1,6 @@
 package com.example.shelfplayer.buildlogic
 
 import org.gradle.api.Project
-import org.gradle.api.artifacts.dsl.DependencyHandler
 import org.gradle.kotlin.dsl.dependencies
 import org.jetbrains.kotlin.compose.compiler.gradle.ComposeCompilerGradlePluginExtension
 
@@ -13,9 +12,18 @@ import org.jetbrains.kotlin.compose.compiler.gradle.ComposeCompilerGradlePluginE
 internal fun Project.configureCompose() {
     pluginManager.apply("org.jetbrains.kotlin.plugin.compose")
 
-    val bom = libs.findLibrary("androidx-compose-bom").get()
+    // `platform()` takes a dependency *notation*, not a Provider, so the catalog entry is flattened
+    // to its `group:name:version` coordinate here. Passing the Provider straight through fails at
+    // plugin-application time with "Cannot convert the provided notation to an object of type
+    // Dependency".
+    val composeBom = libs.findLibrary("androidx-compose-bom").get().get().let { dependency ->
+        "${dependency.module.group}:${dependency.module.name}:${dependency.versionConstraint.requiredVersion}"
+    }
+
     dependencies {
-        addComposePlatform(bom)
+        add("implementation", platform(composeBom))
+        add("testImplementation", platform(composeBom))
+        add("androidTestImplementation", platform(composeBom))
     }
 
     extensions.configure(ComposeCompilerGradlePluginExtension::class.java) {
@@ -27,10 +35,4 @@ internal fun Project.configureCompose() {
             metricsDestination.set(root.map { it.dir("metrics") })
         }
     }
-}
-
-private fun DependencyHandler.addComposePlatform(bom: Any) {
-    add("implementation", platform(bom))
-    add("androidTestImplementation", platform(bom))
-    add("testImplementation", platform(bom))
 }

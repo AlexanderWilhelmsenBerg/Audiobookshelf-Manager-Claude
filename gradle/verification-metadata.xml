@@ -6,9 +6,10 @@
   scripts/bootstrap-dependency-verification.sh, which must run in an environment that can reach every
   configured repository.
 
-  Until that bootstrap has run, gradle.properties sets `org.gradle.dependency.verification=lenient`:
-  Gradle reports every artifact it could not verify but does not fail the build. Flip it to `strict`
-  in the same commit that adds the generated `<components>` block. See docs/adr/0006.
+  Until that bootstrap has run, gradle.properties sets `org.gradle.dependency.verification=off`:
+  with no checksums there is nothing to check against, and `lenient` would only print every resolved
+  artifact as an unverified-artifact report on every build. Flip it to `strict` in the same commit
+  that adds the generated `<components>` block. See docs/adr/0006.
 
   `verify-signatures` stays false: several AndroidX and Google artifacts are unsigned, so enabling it
   today would produce a wall of failures that says nothing about supply-chain risk. SHA-256 checksums

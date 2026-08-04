@@ -72,9 +72,10 @@ Both are configured; both need one bootstrap run in an environment with full rep
   mode resolves normally when no lock state exists, so this is inert until
   `scripts/update-dependency-locks.sh` writes the `gradle.lockfile` files.
 - **Verification** ships `gradle/verification-metadata.xml` with the policy
-  (`verify-metadata=true`, `verify-signatures=false`) and no checksums yet.
-  `gradle.properties` sets `org.gradle.dependency.verification=lenient`, so unverified artifacts are
-  reported rather than fatal. `scripts/bootstrap-dependency-verification.sh` generates the checksums;
+  (`verify-metadata=true`, `verify-signatures=false`) and no checksums yet, and
+  `gradle.properties` sets `org.gradle.dependency.verification=off` — there is nothing to verify
+  against until the bootstrap runs, and `lenient` only adds a two-thousand-line report per build
+  without enforcing anything. `scripts/bootstrap-dependency-verification.sh` generates the checksums;
   flip to `strict` in the same commit. See [ADR-0006](../adr/0006-dependency-locking-and-verification.md).
 
 ## Room schemas
