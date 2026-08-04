@@ -67,8 +67,18 @@ class UserAgentInterceptor @Inject constructor(private val userAgent: UserAgent)
     }
 }
 
-@JvmInline
-value class UserAgent(val value: String)
+/**
+ * Deliberately a `data class` and not a `@JvmInline value class`.
+ *
+ * A Kotlin value class in a constructor parameter mangles that constructor's JVM signature, and
+ * Dagger's generated **Java** factory then cannot call it:
+ * `error: UserAgentInterceptor(String) has private access`. The wrapper exists for type safety at
+ * the injection boundary, where one allocation per process is irrelevant.
+ *
+ * The identifier value classes in `:core:model` are unaffected: they are constructed inside Kotlin,
+ * never injected.
+ */
+data class UserAgent(val value: String)
 
 /**
  * PRODUCT_SPEC 10.3 / 14.5 — the HTTP logger, redacting by construction.
