@@ -33,7 +33,7 @@ import javax.inject.Singleton
 class DefaultProfileRepository @Inject constructor(
     private val profileDao: ProfileDao,
     private val settings: AppSettingsDataSource,
-    @Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
+    @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : ProfileRepository {
 
     override fun observeProfiles(): Flow<List<Profile>> =

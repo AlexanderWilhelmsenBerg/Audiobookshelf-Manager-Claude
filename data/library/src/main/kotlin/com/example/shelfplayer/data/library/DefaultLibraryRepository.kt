@@ -61,7 +61,7 @@ class DefaultLibraryRepository @Inject constructor(
     private val gateway: AudiobookshelfGateway,
     private val clock: AppClock,
     private val logger: Logger,
-    @Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
+    @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : LibraryRepository {
 
     override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> =

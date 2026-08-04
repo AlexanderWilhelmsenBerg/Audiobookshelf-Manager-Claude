@@ -48,7 +48,7 @@ class FakeAudiobookshelfGateway @Inject constructor(
     private val loader: FixtureLibraryLoader,
     private val clock: AppClock,
     private val logger: Logger,
-    @Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
+    @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : AudiobookshelfGateway,
     AccountApi,
     CapabilityResolver,

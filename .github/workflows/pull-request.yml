@@ -98,6 +98,8 @@ jobs:
             echo "::error::Room exported a schema that is not committed, or differs from the committed one."
             echo "$changes"
             echo "Run ./gradlew :core:database:kspDebugKotlin and commit core/database/schemas."
+            echo "--- exported schema ---"
+            find core/database/schemas -name '*.json' -print -exec cat {} \;
             exit 1
           fi
 

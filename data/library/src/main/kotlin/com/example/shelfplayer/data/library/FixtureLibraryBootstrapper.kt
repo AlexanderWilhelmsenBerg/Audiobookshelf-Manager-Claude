@@ -39,7 +39,7 @@ class FixtureLibraryBootstrapper @Inject constructor(
     private val settings: AppSettingsDataSource,
     private val clock: AppClock,
     private val logger: Logger,
-    @Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
+    @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) {
     suspend fun seedIfNeeded(): AppResult<SeedOutcome> = withContext(ioDispatcher) {
         if (settings.settings.first().fixtureLibrarySeeded) {

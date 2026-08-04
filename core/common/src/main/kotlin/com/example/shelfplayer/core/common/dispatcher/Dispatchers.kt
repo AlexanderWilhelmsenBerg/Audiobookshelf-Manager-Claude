@@ -8,6 +8,18 @@ import javax.inject.Qualifier
  * Every class that needs a dispatcher takes one through a constructor parameter annotated with
  * [Dispatcher]. Tests replace it with a `TestDispatcher`, which is what makes scheduling behavior
  * (progress journalling cadence, debounce windows, retry backoff) deterministic instead of flaky.
+ *
+ * Apply it with an explicit `@param:` use-site target on a constructor `val`:
+ *
+ * ```kotlin
+ * class Example @Inject constructor(
+ *     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
+ * )
+ * ```
+ *
+ * Dagger reads a qualifier from the constructor *parameter*, and Kotlin 2.2 warns (KT-73255) that
+ * an un-targeted annotation on a constructor property will change meaning in a future release.
+ * Naming the target keeps today's behavior and survives that change.
  */
 @Qualifier
 @Retention(AnnotationRetention.RUNTIME)
