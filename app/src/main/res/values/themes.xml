@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A Compose-only app still needs a platform theme for the window before the first frame. There is no
+  AppCompat dependency, so this is a platform theme; the dark variant lives in `values-night`, which
+  is what stops a launch in dark mode from flashing a white window.
+-->
+<resources>
+    <style name="Theme.ShelfPlayer" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

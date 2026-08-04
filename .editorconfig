@@ -1,0 +1,42 @@
+# PRODUCT_SPEC 16.2 — ktlint is the single Kotlin formatter and reads its rules from this file.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 4
+indent_style = space
+insert_final_newline = true
+max_line_length = 120
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+ktlint_code_style = intellij_idea
+ktlint_standard_no-wildcard-imports = enabled
+ktlint_standard_trailing-comma-on-call-site = enabled
+ktlint_standard_trailing-comma-on-declaration-site = enabled
+ktlint_standard_filename = enabled
+ktlint_standard_package-name = enabled
+# PRODUCT_SPEC 16.4 — route-level composables are PascalCase by Compose convention. detekt's
+# FunctionNaming rule carries the matching exemption.
+ktlint_function_naming_ignore_when_annotated_with = Composable, Test
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+ij_kotlin_name_count_to_use_star_import = 2147483647
+ij_kotlin_name_count_to_use_star_import_for_members = 2147483647
+ij_kotlin_packages_to_use_import_on_demand = unset
+
+[*.{yml,yaml,json,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{pro,proto}]
+indent_size = 2
+
+[gradlew.bat]
+end_of_line = crlf
+
+[*.bat]
+end_of_line = crlf

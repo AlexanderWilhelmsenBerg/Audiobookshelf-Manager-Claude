@@ -1,0 +1,33 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+local.properties
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+.cxx/
+captures/
+release/
+*.keystore
+*.jks
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.kotlin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reports produced by the quality gate
+**/reports/
+**/lint-results*.xml
+**/lint-results*.html
+**/lint-results*.sarif

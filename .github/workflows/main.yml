@@ -1,0 +1,69 @@
+name: Main
+
+# PRODUCT_SPEC 18 — the main-branch gate.
+#
+# Everything the pull-request workflow runs, plus the release-side checks that are too slow to run on
+# every pull request. Managed-device and Audiobookshelf container integration tests join this
+# workflow in the phase that introduces the behavior they cover (PRODUCT_SPEC 17.1); adding an empty
+# job for them now would report a green check for tests that do not exist.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, so a dependency that breaks the build is found before the next change lands on it.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false
+
+jobs:
+  release-checks:
+    name: Release lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify debug
+        run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true --stacktrace
+
+      # PRODUCT_SPEC 16.5 — the release verification additionally runs release lint.
+      - name: Release lint
+        run: ./gradlew :app:lintRelease -Pshelfplayer.warningsAsErrors=true --stacktrace
+
+      # PRODUCT_SPEC 18 — the release build is unsigned here on purpose. Signing happens only in a
+      # protected environment with the key material, never in a workflow triggered by a push.
+      - name: Assemble release (unsigned)
+        run: ./gradlew :app:assembleRelease -Pshelfplayer.warningsAsErrors=true --stacktrace
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-quality-reports
+          path: |
+            **/build/reports/detekt/**
+            **/build/reports/lint-results-*.html
+            **/build/reports/tests/**
+          if-no-files-found: ignore
+          retention-days: 14

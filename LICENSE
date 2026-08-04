@@ -1,0 +1,21 @@
+Licence not yet chosen.
+
+PRODUCT_SPEC section 24 lists the licence as an open decision that must be resolved before public
+release. Until an ADR records that decision, no licence is granted and all rights are reserved by the
+copyright holders.
+
+This blocks distribution, not development.
+
+Two constraints will shape the choice, and both are recorded here so the decision is made with them
+in view:
+
+  1. PRODUCT_SPEC 3.4 and 22.13 forbid copying code from the official Audiobookshelf application
+     unless this project deliberately adopts a compatible licence and records the provenance. No code
+     has been copied from it. If that ever changes, the licence decision must come first, not after.
+
+  2. The working title is deliberately unofficial. Whatever licence is chosen, the final branding must
+     not imply endorsement by the Audiobookshelf project, and the Audiobookshelf logo and official
+     branding must not be used without explicit permission (PRODUCT_SPEC 1).
+
+Third-party dependencies keep their own licences. A Software Bill of Materials is required before
+release (PRODUCT_SPEC 18).

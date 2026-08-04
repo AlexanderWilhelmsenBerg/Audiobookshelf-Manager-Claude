@@ -1,0 +1,212 @@
+# PRODUCT_SPEC 16.3 — detekt configuration.
+#
+# `buildUponDefaultConfig = true`, so this file only records ShelfPlayer's deltas from the detekt
+# defaults. There is deliberately no baseline file: PRODUCT_SPEC 16.3 forbids a baseline for new
+# code, and one created now would absorb every defect the later phases introduce.
+
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+config:
+  validation: true
+  # Config-schema warnings are reported but do not fail the build; rule *findings* still do
+  # (`build.maxIssues: 0`). A detekt upgrade that renames a property should show up as a warning to
+  # fix, not as a red build on an unrelated pull request.
+  warningsAsErrors: false
+  checkExhaustiveness: false
+
+processors:
+  active: true
+
+console-reports:
+  active: true
+
+comments:
+  active: true
+  UndocumentedPublicClass:
+    active: false
+  UndocumentedPublicFunction:
+    active: false
+  UndocumentedPublicProperty:
+    active: false
+
+complexity:
+  active: true
+  LongParameterList:
+    active: true
+    functionThreshold: 8
+    constructorThreshold: 10
+    ignoreDefaultParameters: true
+    ignoreDataClasses: true
+    ignoreAnnotatedParameter:
+      - 'javax.inject.Inject'
+  TooManyFunctions:
+    active: true
+    thresholdInFiles: 20
+    thresholdInClasses: 20
+    thresholdInInterfaces: 20
+    ignorePrivate: true
+    ignoreOverridden: true
+    ignoreAnnotatedFunctions:
+      - 'androidx.compose.runtime.Composable'
+  LongMethod:
+    active: true
+    threshold: 60
+    ignoreAnnotated:
+      - 'androidx.compose.runtime.Composable'
+
+coroutines:
+  active: true
+  # PRODUCT_SPEC 16.3 / 22.10: `GlobalScope` is banned outright.
+  GlobalCoroutineUsage:
+    active: true
+  InjectDispatcher:
+    active: true
+    dispatcherNames:
+      - 'IO'
+      - 'Default'
+      - 'Unconfined'
+      - 'Main'
+  RedundantSuspendModifier:
+    active: true
+  SleepInsteadOfDelay:
+    active: true
+  SuspendFunSwallowedCancellation:
+    active: true
+  SuspendFunWithCoroutineScopeReceiver:
+    active: true
+  SuspendFunWithFlowReturnType:
+    active: true
+
+empty-blocks:
+  active: true
+  # PRODUCT_SPEC 16.3: no empty catch blocks.
+  EmptyCatchBlock:
+    active: true
+    allowedExceptionNameRegex: '_|(ignore|expected).*'
+
+exceptions:
+  active: true
+  # PRODUCT_SPEC 14.1: no generic exceptions across layer boundaries.
+  SwallowedException:
+    active: true
+    ignoredExceptionTypes:
+      - 'InterruptedException'
+      - 'MalformedURLException'
+      - 'NumberFormatException'
+      - 'ParseException'
+    allowedExceptionNameRegex: '_|(ignore|expected).*'
+  TooGenericExceptionCaught:
+    active: true
+    exceptionNames:
+      - 'ArrayIndexOutOfBoundsException'
+      - 'Error'
+      - 'Exception'
+      - 'IndexOutOfBoundsException'
+      - 'NullPointerException'
+      - 'RuntimeException'
+      - 'Throwable'
+  TooGenericExceptionThrown:
+    active: true
+  ThrowingExceptionsWithoutMessageOrCause:
+    active: true
+  ReturnFromFinally:
+    active: true
+  PrintStackTrace:
+    active: true
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+    functionPattern: '[a-z][a-zA-Z0-9]*'
+    # Composables are PascalCase by convention.
+    ignoreAnnotated:
+      - 'androidx.compose.runtime.Composable'
+  TopLevelPropertyNaming:
+    active: true
+    constantPattern: '[A-Z][_A-Z0-9]*'
+
+performance:
+  active: true
+  SpreadOperator:
+    active: true
+
+potential-bugs:
+  active: true
+  # PRODUCT_SPEC 16.3: exhaustive `when` on sealed domain types.
+  ElseCaseInsteadOfExhaustiveWhen:
+    active: true
+  ExitOutsideMain:
+    active: true
+  ImplicitDefaultLocale:
+    active: true
+  UnsafeCallOnNullableType:
+    active: true
+  UnsafeCast:
+    active: true
+  CastToNullableType:
+    active: true
+  NullableToStringCall:
+    active: true
+
+style:
+  active: true
+  ForbiddenComment:
+    active: true
+    # PRODUCT_SPEC 21: no TODO without an issue reference.
+    comments:
+      - reason: 'A TODO must reference a tracked issue, e.g. `TODO(#123): ...` (PRODUCT_SPEC 21).'
+        value: 'TODO:'
+      - reason: 'Use TODO(#issue) instead of FIXME so the follow-up is tracked.'
+        value: 'FIXME:'
+      - reason: 'STOPSHIP must never be committed.'
+        value: 'STOPSHIP'
+  ForbiddenMethodCall:
+    # Type resolution required (PRODUCT_SPEC 16.3).
+    active: true
+    methods:
+      - reason: 'PRODUCT_SPEC 16.3: use the injected AppClock, never the system clock directly.'
+        value: 'java.lang.System.currentTimeMillis'
+      - reason: 'PRODUCT_SPEC 16.3: use the injected AppClock, never the system clock directly.'
+        value: 'java.lang.System.nanoTime'
+      - reason: 'PRODUCT_SPEC 14.5: printing bypasses redacted structured logging.'
+        value: 'kotlin.io.print'
+      - reason: 'PRODUCT_SPEC 14.5: printing bypasses redacted structured logging.'
+        value: 'kotlin.io.println'
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+    excludeCommentStatements: false
+  MagicNumber:
+    active: true
+    ignoreNumbers:
+      - '-1'
+      - '0'
+      - '1'
+      - '2'
+    ignoreHashCodeFunction: true
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotation: true
+    ignoreEnums: true
+    ignoreAnnotated:
+      - 'androidx.compose.runtime.Composable'
+  ReturnCount:
+    active: true
+    max: 4
+  ThrowsCount:
+    active: true
+    max: 2
+  UnusedPrivateMember:
+    active: true
+    ignoreAnnotated:
+      - 'androidx.compose.ui.tooling.preview.Preview'
+  # PRODUCT_SPEC 16.3: suppressions require a reason.
+  UnnecessaryAbstractClass:
+    active: true
+  WildcardImport:
+    active: true
+    excludeImports:
+      - 'java.util.*'
