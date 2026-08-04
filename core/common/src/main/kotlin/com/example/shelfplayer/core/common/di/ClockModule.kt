@@ -10,8 +10,8 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class ClockModule {
+interface ClockModule {
     @Binds
     @Singleton
-    abstract fun bindsAppClock(impl: SystemAppClock): AppClock
+    fun bindsAppClock(impl: SystemAppClock): AppClock
 }

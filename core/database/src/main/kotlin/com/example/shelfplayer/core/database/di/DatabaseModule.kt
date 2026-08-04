@@ -21,13 +21,13 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class DatabaseModule {
+interface DatabaseModule {
     /**
      * PRODUCT_SPEC 9.3 — data modules get transactions without Room on their compile classpath.
      */
     @Binds
     @Singleton
-    abstract fun bindsTransactionRunner(impl: RoomDatabaseTransactionRunner): DatabaseTransactionRunner
+    fun bindsTransactionRunner(impl: RoomDatabaseTransactionRunner): DatabaseTransactionRunner
 
     companion object {
         /**

@@ -38,7 +38,7 @@ fun sortBooks(books: List<Book>, order: BookSortOrder): List<Book> {
         BookSortOrder.TitleDescending ->
             compareByDescending<Book> { it.title.lowercase() }.then(compareBy { it.id.value })
         BookSortOrder.AuthorAscending ->
-            compareBy<Book> { it.authors.firstOrNull()?.name?.lowercase() ?: "" }.then(tieBreak)
+            compareBy<Book> { it.authors.firstOrNull()?.name?.lowercase().orEmpty() }.then(tieBreak)
         BookSortOrder.RecentlyUpdated ->
             compareByDescending<Book> { it.remoteUpdatedAt ?: it.lastFetchedAt }.then(tieBreak)
         BookSortOrder.SeriesSequenceAscending ->

@@ -22,7 +22,7 @@ import javax.inject.Singleton
  */
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class AppModule {
+interface AppModule {
     /**
      * PRODUCT_SPEC 20, Phase 0 — the fake gateway is bound in the application module, not inside
      * `:core:network`, so swapping it for the real one in Phase 1 touches one file and no library
@@ -30,11 +30,11 @@ abstract class AppModule {
      */
     @Binds
     @Singleton
-    abstract fun bindsGateway(impl: FakeAudiobookshelfGateway): AudiobookshelfGateway
+    fun bindsGateway(impl: FakeAudiobookshelfGateway): AudiobookshelfGateway
 
     @Binds
     @Singleton
-    abstract fun bindsLogSink(impl: AndroidLogSink): LogSink
+    fun bindsLogSink(impl: AndroidLogSink): LogSink
 
     companion object {
         /**

@@ -16,18 +16,18 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class LoggingModule {
+interface LoggingModule {
     @Binds
     @Singleton
-    abstract fun bindsLogger(impl: RedactingLogger): Logger
+    fun bindsLogger(impl: RedactingLogger): Logger
 
     @Binds
     @Singleton
-    abstract fun bindsRedactor(impl: DefaultRedactor): Redactor
+    fun bindsRedactor(impl: DefaultRedactor): Redactor
 
     @Binds
     @Singleton
-    abstract fun bindsCorrelationIdGenerator(impl: UuidCorrelationIdGenerator): CorrelationIdGenerator
+    fun bindsCorrelationIdGenerator(impl: UuidCorrelationIdGenerator): CorrelationIdGenerator
 
     companion object {
         /**

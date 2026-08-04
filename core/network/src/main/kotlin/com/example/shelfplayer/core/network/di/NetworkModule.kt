@@ -29,10 +29,10 @@ annotation class AuthenticatedClient
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class NetworkModule {
+interface NetworkModule {
     @Binds
     @Singleton
-    abstract fun bindsTokenProvider(impl: NoTokenProvider): TokenProvider
+    fun bindsTokenProvider(impl: NoTokenProvider): TokenProvider
 
     companion object {
         private const val CONNECT_TIMEOUT_SECONDS = 15L
