@@ -51,7 +51,7 @@ class AbsAuthContractTest {
         server = MockWebServer()
         server.start()
         api = AbsAuthApi(
-            services = AudiobookshelfServiceFactory(OkHttpClient(), json),
+            services = AudiobookshelfServiceFactory(OkHttpClient(), OkHttpClient(), json),
             errors = NetworkErrorMapper(),
         )
     }
@@ -117,7 +117,7 @@ class AbsAuthContractTest {
         assertEquals("contractroot", session.username)
         assertEquals("<redacted-secret>", session.accessToken.value)
         assertTrue(session.isRenewable)
-        assertTrue(session.hasAllLibraryAccess)
+        assertTrue(session.access.hasAllLibraryAccess)
 
         val request = server.takeRequest()
         assertEquals("/login", request.path)
@@ -216,7 +216,7 @@ class AbsAuthContractTest {
     fun `the capability handshake confirms nothing and reports what status does carry`() = runTest {
         server.enqueue(ContractFixtures.response("status-initialized"))
         val resolver = AbsCapabilityResolver(
-            services = AudiobookshelfServiceFactory(OkHttpClient(), json),
+            services = AudiobookshelfServiceFactory(OkHttpClient(), OkHttpClient(), json),
             errors = NetworkErrorMapper(),
         )
 
@@ -233,7 +233,7 @@ class AbsAuthContractTest {
     fun `a handshake against a host that is not Audiobookshelf is a compatibility failure`() = runTest {
         server.enqueue(MockResponse().setBody("""{"hello":"world"}"""))
         val resolver = AbsCapabilityResolver(
-            services = AudiobookshelfServiceFactory(OkHttpClient(), json),
+            services = AudiobookshelfServiceFactory(OkHttpClient(), OkHttpClient(), json),
             errors = NetworkErrorMapper(),
         )
 
@@ -246,7 +246,7 @@ class AbsAuthContractTest {
     fun `a server error during the handshake is reported as retryable`() = runTest {
         server.enqueue(MockResponse().setResponseCode(503))
         val resolver = AbsCapabilityResolver(
-            services = AudiobookshelfServiceFactory(OkHttpClient(), json),
+            services = AudiobookshelfServiceFactory(OkHttpClient(), OkHttpClient(), json),
             errors = NetworkErrorMapper(),
         )
 

@@ -50,8 +50,13 @@ data class AuthSession(
     val userId: String?,
     val username: String,
     val role: ProfileRole,
-    val accessibleLibraryIds: List<LibraryId>,
-    val hasAllLibraryAccess: Boolean,
+    /**
+     * PRODUCT_SPEC 5.2 — the server's library grant.
+     *
+     * A [LibraryAccess] rather than two loose fields, because the sync layer has to apply the same rule
+     * while holding a profile id and no token. One type, one implementation of the rule.
+     */
+    val access: LibraryAccess,
 ) {
     /** PRODUCT_SPEC AUTH-004 — a session with no refresh token dies at expiry and cannot be renewed. */
     val isRenewable: Boolean get() = refreshToken != null
@@ -60,5 +65,5 @@ data class AuthSession(
      * PRODUCT_SPEC 5.2 — permission checks are answered from the server's grant, never inferred from
      * the role. An account can be an `admin` with every library, or a `user` restricted to two.
      */
-    fun canAccess(libraryId: LibraryId): Boolean = hasAllLibraryAccess || libraryId in accessibleLibraryIds
+    fun canAccess(libraryId: LibraryId): Boolean = access.allows(libraryId)
 }

@@ -3,11 +3,13 @@ package com.example.shelfplayer.data.auth
 import com.example.shelfplayer.core.database.converter.StringListConverters
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
+import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import java.time.Instant
 
 /**
@@ -75,7 +77,7 @@ internal object AuthEntityMappers {
 
     fun authMethodsJson(authMethods: List<String>): String = StringListConverters.fromStringList(authMethods)
 
-    fun toEntity(profile: Profile, remoteUserId: String?) = ProfileEntity(
+    fun toEntity(profile: Profile, remoteUserId: String?, access: LibraryAccess) = ProfileEntity(
         profileId = profile.id.value,
         serverId = profile.serverId.value,
         remoteUserId = remoteUserId,
@@ -85,5 +87,23 @@ internal object AuthEntityMappers {
         requiresReauthentication = profile.requiresReauthentication,
         lastUsedAt = profile.lastUsedAt?.toEpochMilli(),
         isFixture = profile.isFixture,
+        accessibleLibrariesJson = accessibleLibrariesJson(access),
+        hasAllLibraryAccess = access.hasAllLibraryAccess,
     )
+
+    /**
+     * PRODUCT_SPEC 5.2 — the stored grant, read back.
+     *
+     * A blank id in the stored list is dropped rather than turned into a `LibraryId`, whose constructor
+     * rejects one. A corrupt row must degrade to a narrower grant, never to a crash on every sync.
+     */
+    fun toLibraryAccess(entity: ProfileEntity) = LibraryAccess(
+        hasAllLibraryAccess = entity.hasAllLibraryAccess,
+        accessibleLibraryIds = StringListConverters.toStringList(entity.accessibleLibrariesJson)
+            .filter(String::isNotBlank)
+            .map(::LibraryId),
+    )
+
+    fun accessibleLibrariesJson(access: LibraryAccess): String =
+        StringListConverters.fromStringList(access.accessibleLibraryIds.map(LibraryId::value))
 }

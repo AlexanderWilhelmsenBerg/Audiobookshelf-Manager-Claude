@@ -161,7 +161,10 @@ class DefaultAuthRepository @Inject constructor(
                     fetchedAt = now.toEpochMilli(),
                 )
             }
-            profileDao.upsertProfile(AuthEntityMappers.toEntity(profile, session.userId))
+            // The grant is written with the profile, not after it: PRODUCT_SPEC 5.2 has the sync apply it,
+            // and a profile that exists for even a moment without one would sync with `LibraryAccess.None`
+            // and soft-delete every cached book in the process.
+            profileDao.upsertProfile(AuthEntityMappers.toEntity(profile, session.userId, session.access))
         }
 
         sessionTokens.adopt(profileId, session)
@@ -239,6 +242,14 @@ class DefaultAuthRepository @Inject constructor(
             is AppResult.Success -> {
                 sessionTokens.adopt(profileId, renewed.value)
                 profileDao.setRequiresReauthentication(profileId.value, required = false)
+                // A renewal is also a fresh statement of the account's permissions, so the stored grant is
+                // updated from it. PRODUCT_SPEC 5.2 wants the grant refreshed rather than assumed
+                // unchanged: a library revoked while the session was expired must not come back with it.
+                profileDao.setLibraryAccess(
+                    profileId = profileId.value,
+                    accessibleLibrariesJson = AuthEntityMappers.accessibleLibrariesJson(renewed.value.access),
+                    hasAllLibraryAccess = renewed.value.access.hasAllLibraryAccess,
+                )
                 logger.info(
                     LogCategory.Auth,
                     "Renewed a session without re-prompting",

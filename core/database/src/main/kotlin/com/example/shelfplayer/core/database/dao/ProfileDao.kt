@@ -91,6 +91,23 @@ interface ProfileDao {
     suspend fun setLastUsedAt(profileId: String, usedAt: Long)
 
     /**
+     * PRODUCT_SPEC 5.2 — records the grant the server most recently reported.
+     *
+     * Separate from the profile upsert because a grant can change without anything else about the profile
+     * changing: a `403` triggers a permission refresh, and re-writing the whole row from a stale copy
+     * would undo whatever else had moved on.
+     */
+    @Query(
+        """
+        UPDATE profiles
+        SET accessibleLibrariesJson = :accessibleLibrariesJson,
+            hasAllLibraryAccess = :hasAllLibraryAccess
+        WHERE profileId = :profileId
+        """,
+    )
+    suspend fun setLibraryAccess(profileId: String, accessibleLibrariesJson: String, hasAllLibraryAccess: Boolean)
+
+    /**
      * PRODUCT_SPEC AUTH-002 — removing one profile must not remove another profile's data.
      *
      * The cascade deletes only rows keyed by this `profileId` (progress, sync state). Books and

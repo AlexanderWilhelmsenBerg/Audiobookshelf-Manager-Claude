@@ -72,17 +72,10 @@ class AppSettingsDataSource @Inject constructor(
         dataStore.updateData { current -> current.toBuilder().setDynamicColor(enabled).build() }
     }
 
-    /**
-     * PRODUCT_SPEC 20, Phase 0 — records that the bundled demo library has been written to Room.
-     *
-     * Persisting the flag rather than checking whether the database happens to be empty means a user
-     * who deletes the demo content does not silently get it back on the next launch.
-     */
-    suspend fun markFixtureLibrarySeeded() {
-        dataStore.updateData { current ->
-            current.toBuilder().setFixtureLibrarySeeded(true).build()
-        }
-    }
+    // `fixture_library_seeded` is no longer written. The demo-library bootstrapper it guarded is gone —
+    // the app talks to a real server — and the proto field stays reserved rather than removed, because a
+    // field number that comes back with a new meaning would be reinterpreted from old bytes on an
+    // upgrading device (see the note in app_settings.proto).
 
     suspend fun current(): AppSettings = dataStore.updateData { it }
 }

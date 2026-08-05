@@ -206,6 +206,8 @@ class DefaultCapabilityRepositoryTest {
                 requiresReauthentication = false,
                 lastUsedAt = null,
                 isFixture = false,
+                accessibleLibrariesJson = "[]",
+                hasAllLibraryAccess = true,
             ),
         )
     }

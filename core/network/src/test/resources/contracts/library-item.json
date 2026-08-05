@@ -9,7 +9,7 @@
     "isFile": false,
     "isInvalid": false,
     "isMissing": false,
-    "lastScan": 1785938116933,
+    "lastScan": 0,
     "libraryFiles": [
       {
         "addedAt": 0,
@@ -166,7 +166,7 @@
             }
           ],
           "codec": "mp3",
-          "contentUrl": "/api/items/<volatile>/file/1892359",
+          "contentUrl": "/api/items/<volatile>/file/<volatile>",
           "discNumFromFilename": null,
           "discNumFromMeta": null,
           "duration": 8,

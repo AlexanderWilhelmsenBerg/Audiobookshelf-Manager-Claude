@@ -24,7 +24,6 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.map
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.network.fixture.FixtureMapper
-import com.example.shelfplayer.core.network.gateway.AccountApi
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
@@ -56,13 +55,22 @@ class FakeAudiobookshelfGateway @Inject constructor(
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : AudiobookshelfGateway,
     AuthApi,
-    AccountApi,
     CapabilityResolver,
     LibraryApi {
     override val auth: AuthApi get() = this
     override val capabilities: CapabilityResolver get() = this
-    override val account: AccountApi get() = this
     override val library: LibraryApi get() = this
+
+    /**
+     * The fixture server and profile, for a test that needs the identities the demo document declares.
+     *
+     * These were `AccountApi` in Phase 0. That interface is gone — its parameterless shape could not
+     * serve a multi-profile client — and the two values remain as plain accessors because the fixture
+     * document is still the source for the repository tests.
+     */
+    suspend fun fixtureServer(): AppResult<Server> = withMapper { mapper -> mapper.server() }
+
+    suspend fun fixtureProfile(): AppResult<Profile> = withMapper { mapper -> mapper.profile(clock.now()) }
 
     /**
      * PRODUCT_SPEC 20 Phase 0 — the demo library needs no credentials, so the fake reports a server
@@ -107,10 +115,6 @@ class FakeAudiobookshelfGateway @Inject constructor(
      */
     override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> =
         withMapper { mapper -> mapper.capabilities() }
-
-    override suspend fun currentServer(): AppResult<Server> = withMapper { mapper -> mapper.server() }
-
-    override suspend fun currentProfile(): AppResult<Profile> = withMapper { mapper -> mapper.profile(clock.now()) }
 
     override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> =
         requireProfile(profileId).flatMap {

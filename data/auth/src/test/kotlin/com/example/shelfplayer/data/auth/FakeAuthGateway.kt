@@ -3,19 +3,17 @@ package com.example.shelfplayer.data.auth
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
-import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
-import com.example.shelfplayer.core.network.gateway.AccountApi
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
@@ -95,12 +93,6 @@ internal class FakeAuthGateway :
         }
     }
 
-    override val account: AccountApi = object : AccountApi {
-        override suspend fun currentServer(): AppResult<Server> = unsupported()
-
-        override suspend fun currentProfile(): AppResult<Profile> = unsupported()
-    }
-
     override val library: LibraryApi = object : LibraryApi {
         override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> = unsupported()
 
@@ -131,8 +123,10 @@ internal class FakeAuthGateway :
             userId = userId,
             username = username,
             role = role,
-            accessibleLibraryIds = accessibleLibraryIds,
-            hasAllLibraryAccess = hasAllLibraryAccess,
+            access = LibraryAccess(
+                hasAllLibraryAccess = hasAllLibraryAccess,
+                accessibleLibraryIds = accessibleLibraryIds,
+            ),
         )
 
         private fun <T> unsupported(): AppResult<T> =

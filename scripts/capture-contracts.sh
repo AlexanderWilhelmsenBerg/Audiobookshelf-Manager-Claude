@@ -52,12 +52,22 @@ SECRET_KEYS = {
     "password", "pash", "authToken", "apiKey", "cookie", "set-cookie",
 }
 # Values that are real but vary per capture; kept structurally, not literally.
+#
+# `lastScan` is here because the drift check compares two captures byte for byte, and a scan timestamp
+# differs by definition between them. Leaving it in made the committed fixtures fail against a fresh
+# capture of the *same* server version — a false drift report, which is worse than no report because it
+# trains a reader to ignore the check.
 VOLATILE_KEYS = {
     "id", "userId", "libraryId", "folderId", "oldUserId", "seriesId", "authorId",
-    "createdAt", "updatedAt", "lastSeen", "lastUpdate", "addedAt", "birthtimeMs",
+    "createdAt", "updatedAt", "lastSeen", "lastUpdate", "lastScan", "addedAt", "birthtimeMs",
     "mtimeMs", "ctimeMs", "inode", "size", "ino",
 }
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+
+# `contentUrl` embeds the audio file's inode: `/api/items/<id>/file/1892359`. The inode is already
+# scrubbed where it appears as its own `ino` field, but a value spliced into a path needs its own rule —
+# the shape of the URL is the contract, the number in it is not.
+FILE_ID_PATH = re.compile(r"(/file/)\d+")
 
 def scrub(node, key=None):
     if isinstance(node, dict):
@@ -71,7 +81,7 @@ def scrub(node, key=None):
     if key in VOLATILE_KEYS and isinstance(node, (int, float)) and not isinstance(node, bool):
         return 0
     if isinstance(node, str):
-        return UUID.sub("<volatile>", node)
+        return FILE_ID_PATH.sub(r"\1<volatile>", UUID.sub("<volatile>", node))
     return node
 
 body_path, out_path, status, content_type = sys.argv[1:5]

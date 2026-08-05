@@ -101,6 +101,8 @@ class DefaultLibraryRepositoryTest {
                 requiresReauthentication = false,
                 lastUsedAt = null,
                 isFixture = true,
+                accessibleLibrariesJson = "[]",
+                hasAllLibraryAccess = true,
             ),
         )
     }
@@ -158,6 +160,8 @@ class DefaultLibraryRepositoryTest {
                 requiresReauthentication = false,
                 lastUsedAt = null,
                 isFixture = true,
+                accessibleLibrariesJson = "[]",
+                hasAllLibraryAccess = true,
             ),
         )
         val forOther = repository
@@ -211,6 +215,8 @@ class DefaultLibraryRepositoryTest {
                 requiresReauthentication = false,
                 lastUsedAt = null,
                 isFixture = false,
+                accessibleLibrariesJson = "[]",
+                hasAllLibraryAccess = true,
             ),
         )
 

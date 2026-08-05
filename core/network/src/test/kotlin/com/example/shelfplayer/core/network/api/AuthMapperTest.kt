@@ -81,7 +81,7 @@ class AuthMapperTest {
     fun `accessAllLibraries grants libraries the list does not name`() {
         val admin = (AuthMapper.toSession(parse(LOGIN_WITH_HEADER).user) as AppResult.Success).value
 
-        assertTrue(admin.hasAllLibraryAccess)
+        assertTrue(admin.access.hasAllLibraryAccess)
         assertTrue(admin.canAccess(LibraryId("a-library-never-listed")))
         assertEquals(ProfileRole.Admin, admin.role)
     }
@@ -91,7 +91,7 @@ class AuthMapperTest {
         val user = (AuthMapper.toSession(parse(LOGIN_RESTRICTED).user) as AppResult.Success).value
 
         assertEquals(ProfileRole.Listener, user.role)
-        assertFalse(user.hasAllLibraryAccess)
+        assertFalse(user.access.hasAllLibraryAccess)
         assertTrue(user.canAccess(LibraryId("lib-allowed")))
         assertFalse(user.canAccess(LibraryId("lib-forbidden")))
     }

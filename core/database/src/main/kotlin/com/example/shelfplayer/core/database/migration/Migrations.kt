@@ -42,5 +42,33 @@ object Migrations {
         }
     }
 
-    val ALL: List<Migration> = listOf(MIGRATION_1_2)
+    /**
+     * Version 3 — the server's library grant, persisted (PRODUCT_SPEC 5.2).
+     *
+     * The grant lived only in the transient `AuthSession`, and a sync that has to honour it runs later,
+     * after a process restart. Storing it is what lets the gateway drop an unauthorized library before a
+     * row reaches Room, rather than the UI hiding one that is already there.
+     *
+     * ### Why existing rows are granted everything and new ones nothing
+     *
+     * `hasAllLibraryAccess` defaults to `0` for a **new** row: a profile whose grant has not been
+     * recorded must not see a library, the same reason an unprobed capability is unsupported.
+     *
+     * An **existing** row is a different case, and the `UPDATE` below is deliberate. Such a profile was
+     * created before the app recorded grants, and whatever it can see is already cached in Room and
+     * browsable offline. Applying the restrictive default to it would blank a library the user is
+     * currently reading — a schema change destroying access to their content, which is what
+     * PRODUCT_SPEC 2.2 and AUTH-004 ("existing downloaded playback continues") forbid. The permissive
+     * value survives only until that profile's next sign-in, which overwrites it with the server's
+     * actual grant.
+     */
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE profiles ADD COLUMN accessibleLibrariesJson TEXT NOT NULL DEFAULT '[]'")
+            db.execSQL("ALTER TABLE profiles ADD COLUMN hasAllLibraryAccess INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE profiles SET hasAllLibraryAccess = 1")
+        }
+    }
+
+    val ALL: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3)
 }

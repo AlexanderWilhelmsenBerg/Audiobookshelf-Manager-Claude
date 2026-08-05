@@ -46,12 +46,12 @@ class FakeAudiobookshelfGatewayTest {
 
     @Test
     fun `exposes the fixture server and profile`() = runTest {
-        val server = gateway.account.currentServer()
+        val server = gateway.fixtureServer()
         assertIs<AppResult.Success<Server>>(server)
         assertEquals("fixture-server", server.value.id.value)
         assertTrue(server.value.isFixture)
 
-        val profile = gateway.account.currentProfile()
+        val profile = gateway.fixtureProfile()
         assertIs<AppResult.Success<Profile>>(profile)
         assertEquals(fixtureProfile, profile.value.id)
         assertTrue(profile.value.isFixture)

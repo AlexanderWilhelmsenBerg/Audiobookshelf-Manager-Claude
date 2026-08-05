@@ -1,5 +1,6 @@
 package com.example.shelfplayer.core.network.api
 
+import com.example.shelfplayer.core.network.di.AuthenticatedClient
 import com.example.shelfplayer.core.network.di.UnauthenticatedClient
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
@@ -26,11 +27,24 @@ import javax.inject.Singleton
  */
 @Singleton
 class AudiobookshelfServiceFactory @Inject constructor(
+    @param:AuthenticatedClient private val authenticatedClient: OkHttpClient,
     @param:UnauthenticatedClient private val unauthenticatedClient: OkHttpClient,
     private val json: Json,
 ) {
     internal fun authService(baseUrl: String): AuthService =
         retrofitFor(baseUrl, unauthenticatedClient).create(AuthService::class.java)
+
+    /**
+     * The library reads, on the authenticated client.
+     *
+     * Every call still passes its own `Authorization` header, and `AuthorizationInterceptor` yields to
+     * one, so the ambient token is not what authenticates a sync. The authenticated client is used
+     * anyway because it is the stack that cover-art loading and media streaming will share — same
+     * connection pool, same host — and because a request that somehow arrives without an explicit
+     * credential should be signed as the active profile rather than sent bare.
+     */
+    internal fun libraryService(baseUrl: String): LibraryService =
+        retrofitFor(baseUrl, authenticatedClient).create(LibraryService::class.java)
 
     /**
      * Retrofit rejects a base URL that does not end in `/`, and — worse — silently discards the last

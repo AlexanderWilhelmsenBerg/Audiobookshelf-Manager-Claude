@@ -216,6 +216,8 @@ class ShelfPlayerDatabaseTest {
         requiresReauthentication = false,
         lastUsedAt = null,
         isFixture = true,
+        accessibleLibrariesJson = "[]",
+        hasAllLibraryAccess = true,
     )
 
     private fun bookEntity(remoteId: String = "book-1", title: String = "The Salt Harbour") = BookEntity(

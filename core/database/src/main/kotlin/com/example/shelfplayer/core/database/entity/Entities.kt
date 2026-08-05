@@ -85,6 +85,19 @@ data class ProfileEntity(
     val requiresReauthentication: Boolean,
     val lastUsedAt: Long?,
     val isFixture: Boolean,
+    /**
+     * PRODUCT_SPEC 5.2 — the server's library grant, persisted rather than kept in the session.
+     *
+     * A sync has to apply the grant while holding nothing but a profile id: the session object that
+     * carried it lives only for the duration of a sign-in, and the sync that must honour it runs later,
+     * possibly after a process restart. Storing it is what makes the Phase 1 exit criterion —
+     * "unauthorized libraries never appear" — enforceable at the moment rows would be written.
+     *
+     * The two fields are not redundant. `accessAllLibraries` with an **empty** `librariesAccessible`
+     * means *all libraries* on Audiobookshelf 2.36.0, so an empty list cannot be read as "none".
+     */
+    @ColumnInfo(defaultValue = EMPTY_JSON_ARRAY) val accessibleLibrariesJson: String,
+    @ColumnInfo(defaultValue = "0") val hasAllLibraryAccess: Boolean,
 )
 
 @Entity(
