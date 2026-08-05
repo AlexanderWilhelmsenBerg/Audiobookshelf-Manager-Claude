@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC 15 — release builds reject cleartext traffic.
+
+  `cleartextTrafficPermitted="false"` with no domain exceptions is the release default. A per-server
+  local-network exception is PRODUCT_SPEC 15's explicit opt-in and is an open decision (24.13); when
+  it lands it must be an explicit user action with a visible warning, not a manifest-wide relaxation.
+
+  There is intentionally no `<trust-anchors>` override anywhere in this file. PRODUCT_SPEC AUTH-001
+  forbids a "trust all certificates" mode, and a debug-only trust anchor is the usual way one gets
+  added by accident.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

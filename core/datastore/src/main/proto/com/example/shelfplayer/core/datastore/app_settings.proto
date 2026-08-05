@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package shelfplayer.settings;
+
+option java_package = "com.example.shelfplayer.core.datastore";
+option java_multiple_files = true;
+
+// PRODUCT_SPEC SET-001 / SET-002 — global application settings.
+//
+// Only non-sensitive values belong here. Tokens and passwords are stored by the Keystore-backed
+// secret store added in Phase 1 (PRODUCT_SPEC AUTH-003, SET-001).
+//
+// Field numbers are never reused. Removing a field means reserving its number, so that a device
+// upgrading from an older build cannot reinterpret old bytes as a new meaning.
+message AppSettings {
+  // Bumped whenever a field's *meaning* changes, so a settings migration can be written and tested
+  // (PRODUCT_SPEC SET-001). Adding a new field with a safe default does not need a bump.
+  int32 schema_version = 1;
+
+  // PRODUCT_SPEC AUTH-002 — survives app restart. Empty means "no profile selected yet".
+  string active_profile_id = 2;
+
+  ThemeMode theme_mode = 3;
+
+  // PRODUCT_SPEC SET-002 — Material You. Off by default so the app looks the same on every device
+  // until the user opts in.
+  bool dynamic_color = 4;
+
+  // PRODUCT_SPEC SET-002 (Privacy/diagnostics). Both default to false and must stay that way.
+  bool diagnostics_include_server_host = 5;
+  bool diagnostics_include_media_titles = 6;
+
+  // PRODUCT_SPEC 20, Phase 0 — set once the bundled demo library has been written to Room, so the
+  // seed runs on first launch only and a user who deletes demo content does not get it back.
+  bool fixture_library_seeded = 7;
+}
+
+enum ThemeMode {
+  THEME_MODE_UNSPECIFIED = 0;
+  THEME_MODE_SYSTEM = 1;
+  THEME_MODE_LIGHT = 2;
+  THEME_MODE_DARK = 3;
+}

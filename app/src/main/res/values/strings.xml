@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC 3.1 — English is the first complete locale; the Norwegian structure is `values-nb`.
+  Every user-visible string lives here so a translation is a resource change, not a code change.
+-->
+<resources>
+    <string name="app_name">ShelfPlayer</string>
+
+    <string name="home_title">ShelfPlayer</string>
+    <string name="home_loading">Loading your libraries</string>
+    <string name="home_empty_title">No libraries yet</string>
+    <string name="home_empty_body">The bundled demo library has not been loaded. Pull to refresh to try again.</string>
+    <string name="home_error_title">Could not load your libraries</string>
+    <string name="home_refresh">Refresh</string>
+    <string name="home_demo_banner">Demo library — no server is connected. Sign-in arrives in the next phase.</string>
+    <string name="home_sync_never">Not synchronized yet</string>
+    <string name="home_sync_failed">Showing cached content. The last refresh failed.</string>
+    <string name="home_sync_running">Refreshing…</string>
+
+    <string name="library_loading">Loading books</string>
+    <string name="library_empty_title">No books here</string>
+    <string name="library_empty_body">This library has no items that match your search.</string>
+    <string name="library_search_hint">Search this library</string>
+    <string name="library_sort_title">Title (A–Z)</string>
+    <string name="library_sort_title_desc">Title (Z–A)</string>
+    <string name="library_sort_author">Author</string>
+    <string name="library_sort_recent">Recently updated</string>
+    <string name="library_sort_series">Series order</string>
+
+    <string name="book_loading">Loading book</string>
+    <string name="book_missing_title">Book not available</string>
+    <string name="book_missing_body">This book is no longer in the cached library.</string>
+    <string name="book_narrated_by">Narrated by %1$s</string>
+    <string name="book_duration">%1$s long</string>
+    <string name="book_progress">%1$d%% listened</string>
+    <string name="book_finished">Finished</string>
+    <string name="book_not_downloaded">Not downloaded</string>
+    <string name="book_download_partial">Download incomplete</string>
+    <string name="book_downloaded">Downloaded</string>
+    <string name="book_series_position">%1$s, book %2$s</string>
+    <string name="book_playback_unavailable">Playback arrives in the next phase</string>
+    <string name="navigate_back">Back</string>
+
+    <!--
+      PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.
+
+      English needs two forms, but the languages this will be translated into do not all agree on
+      which counts share a form. A `<plurals>` lets each locale supply the set it needs; `%1$d books`
+      forces every translator into English's two-way split.
+    -->
+    <plurals name="home_library_books">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+
+    <plurals name="book_tracks">
+        <item quantity="one">%1$d audio file</item>
+        <item quantity="other">%1$d audio files</item>
+    </plurals>
+</resources>

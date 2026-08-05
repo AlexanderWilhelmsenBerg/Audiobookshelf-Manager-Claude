@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC AUTH-003 / 15 — nothing is backed up.
+
+  Cloud backup and device-to-device transfer are both excluded. A restored token would either be
+  undecryptable (the Keystore key does not travel) or, worse, usable on another device. Downloads and
+  the local database are excluded for the same reason: they are large, they are re-derivable, and
+  they contain the user's listening history.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

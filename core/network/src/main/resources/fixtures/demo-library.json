@@ -1,0 +1,240 @@
+{
+  "_comment": [
+    "ShelfPlayer fixture library — PRODUCT_SPEC Phase 0.",
+    "This is a ShelfPlayer-owned format. It is NOT an Audiobookshelf API response and must not be",
+    "read as documentation of one (PRODUCT_SPEC 22.4). Contract fixtures captured from a real",
+    "server live under core/network/src/test/resources/contract/ and arrive in Phase 1.",
+    "Every title, author and narrator below is invented for this repository."
+  ],
+  "schemaVersion": 1,
+  "server": {
+    "id": "fixture-server",
+    "displayName": "Demo library (offline fixture)",
+    "baseUrl": "https://fixture.invalid",
+    "version": "fixture-0"
+  },
+  "profile": {
+    "id": "fixture-profile",
+    "username": "demo",
+    "displayName": "Demo listener",
+    "role": "Listener"
+  },
+  "capabilities": [
+    "PlaybackSession",
+    "RangeDownload"
+  ],
+  "libraries": [
+    { "id": "lib-fiction", "name": "Fiction", "kind": "book", "displayOrder": 0 },
+    { "id": "lib-nonfiction", "name": "Non-fiction", "kind": "book", "displayOrder": 1 }
+  ],
+  "authors": [
+    { "id": "author-holt", "name": "Marisol Holt" },
+    { "id": "author-adeyemi", "name": "Tobias Adeyemi" },
+    { "id": "author-lindqvist", "name": "Ingrid Lindqvist" }
+  ],
+  "series": [
+    { "id": "series-voyage", "name": "The Long Voyage" },
+    { "id": "series-quiet", "name": "Quiet Machines" }
+  ],
+  "books": [
+    {
+      "id": "book-voyage-1",
+      "libraryId": "lib-fiction",
+      "title": "The Salt Harbour",
+      "subtitle": "The Long Voyage, Book One",
+      "authorIds": ["author-holt"],
+      "narrators": ["Ada Fenwick"],
+      "series": [{ "seriesId": "series-voyage", "sequence": "1", "primary": true }],
+      "durationSeconds": 39600,
+      "description": "<p>A cartographer signs on to a survey ship and discovers the coastline has been redrawn.</p>",
+      "genres": ["Fantasy", "Adventure"],
+      "tags": ["favourites"],
+      "publishedYear": 2019,
+      "publisher": "Harbourlight Audio",
+      "language": "en",
+      "explicit": false,
+      "abridged": false,
+      "coverPath": null,
+      "sizeBytes": 318767104,
+      "tracks": [
+        { "index": 0, "fileId": "voyage-1-a", "startOffsetSeconds": 0, "durationSeconds": 19800, "mimeType": "audio/mpeg", "sizeBytes": 159383552, "excluded": false },
+        { "index": 1, "fileId": "voyage-1-b", "startOffsetSeconds": 19800, "durationSeconds": 19800, "mimeType": "audio/mpeg", "sizeBytes": 159383552, "excluded": false }
+      ],
+      "chapters": [
+        { "index": 0, "title": "Departure", "startSeconds": 0, "endSeconds": 9000 },
+        { "index": 1, "title": "The Survey", "startSeconds": 9000, "endSeconds": 22000 },
+        { "index": 2, "title": "Soundings", "startSeconds": 22000, "endSeconds": 39600 }
+      ],
+      "progress": { "positionSeconds": 12480, "finished": false, "updatedAtEpochSeconds": 1767225600 }
+    },
+    {
+      "id": "book-voyage-2",
+      "libraryId": "lib-fiction",
+      "title": "The Weather Glass",
+      "subtitle": "The Long Voyage, Book Two",
+      "authorIds": ["author-holt"],
+      "narrators": ["Ada Fenwick"],
+      "series": [{ "seriesId": "series-voyage", "sequence": "2", "primary": true }],
+      "durationSeconds": 43200,
+      "description": "<p>The survey continues north, and the instruments begin to disagree with each other.</p>",
+      "genres": ["Fantasy"],
+      "tags": [],
+      "publishedYear": 2020,
+      "publisher": "Harbourlight Audio",
+      "language": "en",
+      "explicit": false,
+      "abridged": false,
+      "coverPath": null,
+      "sizeBytes": 347078656,
+      "tracks": [
+        { "index": 0, "fileId": "voyage-2-a", "startOffsetSeconds": 0, "durationSeconds": 43200, "mimeType": "audio/mp4", "sizeBytes": 347078656, "excluded": false }
+      ],
+      "chapters": [
+        { "index": 0, "title": "Northing", "startSeconds": 0, "endSeconds": 21600 },
+        { "index": 1, "title": "The Glass Falls", "startSeconds": 21600, "endSeconds": 43200 }
+      ],
+      "progress": null
+    },
+    {
+      "id": "book-voyage-2-5",
+      "libraryId": "lib-fiction",
+      "title": "A Chart of Small Islands",
+      "subtitle": "The Long Voyage, Book Two and a Half",
+      "authorIds": ["author-holt"],
+      "narrators": ["Ada Fenwick", "Peter Nkemelu"],
+      "series": [{ "seriesId": "series-voyage", "sequence": "2.5", "primary": true }],
+      "durationSeconds": 12600,
+      "description": "<p>Three novellas set between the second and third voyages.</p>",
+      "genres": ["Fantasy", "Short stories"],
+      "tags": [],
+      "publishedYear": 2021,
+      "publisher": "Harbourlight Audio",
+      "language": "en",
+      "explicit": false,
+      "abridged": false,
+      "coverPath": null,
+      "sizeBytes": 101187584,
+      "tracks": [
+        { "index": 0, "fileId": "voyage-2-5-a", "startOffsetSeconds": 0, "durationSeconds": 12600, "mimeType": "audio/mpeg", "sizeBytes": 101187584, "excluded": false }
+      ],
+      "chapters": [
+        { "index": 0, "title": "The First Island", "startSeconds": 0, "endSeconds": 4200 },
+        { "index": 1, "title": "The Second Island", "startSeconds": 4200, "endSeconds": 8400 },
+        { "index": 2, "title": "The Third Island", "startSeconds": 8400, "endSeconds": 12600 }
+      ],
+      "progress": null
+    },
+    {
+      "id": "book-voyage-10",
+      "libraryId": "lib-fiction",
+      "title": "The Last Sounding",
+      "subtitle": "The Long Voyage, Book Ten",
+      "authorIds": ["author-holt"],
+      "narrators": ["Ada Fenwick"],
+      "series": [{ "seriesId": "series-voyage", "sequence": "10", "primary": true }],
+      "durationSeconds": 50400,
+      "description": "<p>The final voyage. Sorting this after book two is the whole point of the fixture.</p>",
+      "genres": ["Fantasy"],
+      "tags": [],
+      "publishedYear": 2026,
+      "publisher": "Harbourlight Audio",
+      "language": "en",
+      "explicit": false,
+      "abridged": false,
+      "coverPath": null,
+      "sizeBytes": 404750336,
+      "tracks": [
+        { "index": 0, "fileId": "voyage-10-a", "startOffsetSeconds": 0, "durationSeconds": 25200, "mimeType": "audio/mpeg", "sizeBytes": 202375168, "excluded": false },
+        { "index": 1, "fileId": "voyage-10-b", "startOffsetSeconds": 25200, "durationSeconds": 25200, "mimeType": "audio/mpeg", "sizeBytes": 202375168, "excluded": false },
+        { "index": 2, "fileId": "voyage-10-sample", "startOffsetSeconds": 0, "durationSeconds": 120, "mimeType": "audio/mpeg", "sizeBytes": 1048576, "excluded": true }
+      ],
+      "chapters": [
+        { "index": 0, "title": "Making Way", "startSeconds": 0, "endSeconds": 25200 },
+        { "index": 1, "title": "The Last Sounding", "startSeconds": 25200, "endSeconds": 50400 }
+      ],
+      "progress": null
+    },
+    {
+      "id": "book-voyage-prequel",
+      "libraryId": "lib-fiction",
+      "title": "Before the Harbour",
+      "subtitle": "The Long Voyage, a prequel",
+      "authorIds": ["author-holt"],
+      "narrators": ["Peter Nkemelu"],
+      "series": [{ "seriesId": "series-voyage", "sequence": "Prequel", "primary": true }],
+      "durationSeconds": 21600,
+      "description": "<p>A non-numeric sequence value, which must sort after every numbered book.</p>",
+      "genres": ["Fantasy"],
+      "tags": [],
+      "publishedYear": 2018,
+      "publisher": "Harbourlight Audio",
+      "language": "en",
+      "explicit": false,
+      "abridged": false,
+      "coverPath": null,
+      "sizeBytes": 173539328,
+      "tracks": [
+        { "index": 0, "fileId": "voyage-prequel-a", "startOffsetSeconds": 0, "durationSeconds": 21600, "mimeType": "audio/mpeg", "sizeBytes": 173539328, "excluded": false }
+      ],
+      "chapters": [
+        { "index": 0, "title": "Before", "startSeconds": 0, "endSeconds": 21600 }
+      ],
+      "progress": { "positionSeconds": 21600, "finished": true, "updatedAtEpochSeconds": 1764547200 }
+    },
+    {
+      "id": "book-quiet-1",
+      "libraryId": "lib-nonfiction",
+      "title": "Quiet Machines",
+      "subtitle": "How self-hosting changed the shape of software",
+      "authorIds": ["author-adeyemi", "author-lindqvist"],
+      "narrators": ["Tobias Adeyemi"],
+      "series": [{ "seriesId": "series-quiet", "sequence": "1", "primary": true }],
+      "durationSeconds": 28800,
+      "description": "<p>An essay collection about running your own infrastructure.</p>",
+      "genres": ["Technology", "Essays"],
+      "tags": ["reference"],
+      "publishedYear": 2024,
+      "publisher": "Northlight Press",
+      "language": "en",
+      "explicit": false,
+      "abridged": false,
+      "coverPath": null,
+      "sizeBytes": 231735296,
+      "tracks": [
+        { "index": 0, "fileId": "quiet-1-a", "startOffsetSeconds": 0, "durationSeconds": 14400, "mimeType": "audio/mpeg", "sizeBytes": 115867648, "excluded": false },
+        { "index": 1, "fileId": "quiet-1-b", "startOffsetSeconds": 14400, "durationSeconds": 14400, "mimeType": "audio/mpeg", "sizeBytes": 115867648, "excluded": false }
+      ],
+      "chapters": [
+        { "index": 0, "title": "The Rack in the Cupboard", "startSeconds": 0, "endSeconds": 9600 },
+        { "index": 1, "title": "Backups Are a Feeling", "startSeconds": 9600, "endSeconds": 19200 },
+        { "index": 2, "title": "Quiet Machines", "startSeconds": 19200, "endSeconds": 28800 }
+      ],
+      "progress": { "positionSeconds": 5400, "finished": false, "updatedAtEpochSeconds": 1767398400 }
+    },
+    {
+      "id": "book-tide-tables",
+      "libraryId": "lib-nonfiction",
+      "title": "Tide Tables and Other Poems",
+      "subtitle": null,
+      "authorIds": ["author-lindqvist"],
+      "narrators": ["Ingrid Lindqvist"],
+      "series": [],
+      "durationSeconds": 7200,
+      "description": null,
+      "genres": ["Poetry"],
+      "tags": [],
+      "publishedYear": 2022,
+      "publisher": "Northlight Press",
+      "language": "en",
+      "explicit": false,
+      "abridged": false,
+      "coverPath": null,
+      "sizeBytes": 57933824,
+      "tracks": [
+        { "index": 0, "fileId": "tide-a", "startOffsetSeconds": 0, "durationSeconds": 7200, "mimeType": "audio/flac", "sizeBytes": 57933824, "excluded": false }
+      ],
+      "chapters": [],
+      "progress": null
+    }
+  ]
+}
