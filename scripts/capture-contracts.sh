@@ -23,13 +23,28 @@ ROOT_PASS="contract-fixture-password"
 
 mkdir -p "$OUT_DIR"
 
+# Raw bodies are kept outside the output directory: they still hold live tokens, and only the
+# redacted envelopes may reach a committed path.
+RAW_DIR="$(mktemp -d)"
+trap 'rm -rf "$RAW_DIR"' EXIT
+
 log() { printf '  %s\n' "$*" >&2; }
 
-# Replaces every value the server generates that is either secret or non-deterministic. Ids are
-# stabilised too, otherwise the committed fixture would differ on every capture and the drift check
-# below would be noise rather than signal.
-redact() {
-  python3 - "$1" <<'PY'
+# Writes one fixture as a self-describing envelope: status, content type, and the body.
+#
+# The status code is part of the contract — `NetworkErrorMapper` turns it into an `AppError`, so a
+# fixture that records only the body would leave half the behaviour unverified.
+#
+# The body is stored parsed when it is JSON and as text when it is not. Not every endpoint answers
+# with JSON: `POST /init` returns an empty body, which is exactly the case that broke the first
+# version of this script. An endpoint that returns nothing is a fact about the contract, not an
+# error to crash on.
+#
+# Values the server generates that are secret or non-deterministic are replaced. Ids and timestamps
+# are stabilised too, otherwise every capture would differ from the last and the drift check would
+# produce noise instead of signal.
+record() {
+  python3 - "$1" "$2" "$3" "$4" <<'PY'
 import json, re, sys
 
 SECRET_KEYS = {
@@ -59,24 +74,37 @@ def scrub(node, key=None):
         return UUID.sub("<volatile>", node)
     return node
 
-path = sys.argv[1]
-with open(path) as handle:
-    data = json.load(handle)
-with open(path, "w") as handle:
-    json.dump(scrub(data), handle, indent=2, sort_keys=True)
+body_path, out_path, status, content_type = sys.argv[1:5]
+raw = open(body_path, "rb").read().decode("utf-8", "replace")
+
+envelope = {"status": int(status), "contentType": content_type.split(";")[0] or None}
+try:
+    envelope["body"] = scrub(json.loads(raw)) if raw.strip() else None
+    envelope["bodyKind"] = "json" if raw.strip() else "empty"
+except json.JSONDecodeError:
+    # Recorded verbatim rather than discarded: "this endpoint does not answer JSON" is part of the
+    # contract, and a reader needs to see what it does answer.
+    envelope["bodyKind"] = "text"
+    envelope["bodyText"] = UUID.sub("<volatile>", raw.strip())[:2000]
+
+with open(out_path, "w") as handle:
+    json.dump(envelope, handle, indent=2, sort_keys=True)
     handle.write("\n")
 PY
 }
 
-# `--fail-with-body` so an unexpected status is a captured, visible failure rather than an empty file.
+# Deliberately not `--fail`: a 4xx is a contract too. `AppError` mapping depends on knowing what an
+# unauthorized or rate-limited response actually looks like, and aborting here would throw that away.
 capture() {
   local name="$1" method="$2" path="$3"
   shift 3
-  local target="$OUT_DIR/$name.json"
+  local raw="$RAW_DIR/$name.raw"
+  local meta
   log "$method $path -> $name.json"
-  curl -sS --fail-with-body -X "$method" "$BASE_URL$path" \
-    -H 'Content-Type: application/json' "$@" -o "$target"
-  redact "$target"
+  meta="$(curl -sS -X "$method" "$BASE_URL$path" \
+    -H 'Content-Type: application/json' "$@" \
+    -o "$raw" -w '%{http_code} %{content_type}')"
+  record "$raw" "$OUT_DIR/$name.json" "${meta%% *}" "${meta#* }"
 }
 
 log "waiting for $BASE_URL"
@@ -99,32 +127,35 @@ capture status-initialized GET /status
 # `x-return-tokens: true` is what makes the server return the refresh token in the *body* instead of
 # setting a cookie. A mobile client has no cookie jar tied to a browser session, so this header —
 # not the cookie path — is the one this app depends on.
-log "POST /login -> login.json"
-LOGIN_RAW="$(mktemp)"
-curl -sS --fail-with-body -X POST "$BASE_URL/login" \
-  -H 'Content-Type: application/json' \
+capture login POST /login \
   -H 'x-return-tokens: true' \
-  -d "{\"username\":\"$ROOT_USER\",\"password\":\"$ROOT_PASS\"}" \
-  -o "$LOGIN_RAW"
+  -d "{\"username\":\"$ROOT_USER\",\"password\":\"$ROOT_PASS\"}"
 
-ACCESS_TOKEN="$(python3 -c '
-import json,sys
-d=json.load(open(sys.argv[1]))
-u=d.get("user") or {}
-print(d.get("accessToken") or u.get("accessToken") or u.get("token") or "")
-' "$LOGIN_RAW")"
-REFRESH_TOKEN="$(python3 -c '
-import json,sys
-d=json.load(open(sys.argv[1]))
-print(d.get("refreshToken") or (d.get("user") or {}).get("refreshToken") or "")
-' "$LOGIN_RAW")"
+# Read the tokens from the raw body, which `capture` left behind unredacted. The committed fixture
+# has them replaced; this is the only place the live values are used.
+read_token() {
+  python3 - "$RAW_DIR/login.raw" "$1" <<'PY'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except (json.JSONDecodeError, OSError):
+    sys.exit(0)
+user = data.get("user") if isinstance(data.get("user"), dict) else {}
+for key in sys.argv[2].split(","):
+    for source in (data, user):
+        value = source.get(key)
+        if isinstance(value, str) and value:
+            print(value)
+            sys.exit(0)
+PY
+}
 
-cp "$LOGIN_RAW" "$OUT_DIR/login.json"
-redact "$OUT_DIR/login.json"
-rm -f "$LOGIN_RAW"
+ACCESS_TOKEN="$(read_token accessToken,token)"
+REFRESH_TOKEN="$(read_token refreshToken)"
 
 if [ -z "$ACCESS_TOKEN" ]; then
-  echo "::error::/login returned no access token; the captured shape is in login.json" >&2
+  echo "::error::/login returned no access token. The captured shape is in login.json — read it" >&2
+  echo "::error::before changing this script: the token field may simply have been renamed." >&2
   exit 1
 fi
 AUTH_HEADER="Authorization: Bearer $ACCESS_TOKEN"
