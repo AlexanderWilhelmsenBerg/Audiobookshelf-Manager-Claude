@@ -21,6 +21,7 @@ import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
+import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -46,9 +47,77 @@ class HomeViewModelTest {
 
     private fun viewModel() = HomeViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
+        observeSyncState = ObserveSyncStateUseCase(profiles, libraries),
         profileRepository = profiles,
         refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),
     )
+
+    /**
+     * The bug a real device found: signing in ran a sync, it failed, and home showed a generic empty
+     * library. The failure was recorded in `sync_state` and never read.
+     */
+    @Test
+    fun `a failed sync the user did not start is still shown`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.setSyncState(
+            SyncState(
+                serverId = ServerId("fixture-server"),
+                profileId = demoProfile.id,
+                status = SyncStatus.Failed,
+                lastSuccessfulSyncAt = null,
+                lastAttemptedAt = Instant.EPOCH,
+                lastError = AppError.Timeout(),
+            ),
+        )
+
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertEquals(SyncStatus.Failed, state.syncStatus)
+            assertEquals("timeout", state.error?.code)
+        }
+    }
+
+    /** PRODUCT_SPEC LIB-001 — a profile that has never synced gets one attempt without being asked. */
+    @Test
+    fun `a profile that has never synced is synced once on arrival`() = runTest {
+        profiles.setActive(demoProfile)
+        val viewModel = viewModel()
+
+        viewModel.uiState.test {
+            awaitItem()
+            viewModel.onVisible()
+            viewModel.onVisible()
+
+            assertEquals(1, libraries.refreshCount, "the initial sync must not be retried in a loop")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /** A library that already synced is not re-synced behind the user's back on every visit. */
+    @Test
+    fun `a profile that has already synced is left alone`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.emit(listOf(demoLibrary))
+        libraries.setSyncState(
+            SyncState(
+                serverId = ServerId("fixture-server"),
+                profileId = demoProfile.id,
+                status = SyncStatus.Succeeded,
+                lastSuccessfulSyncAt = Instant.EPOCH,
+                lastAttemptedAt = Instant.EPOCH,
+                lastError = null,
+            ),
+        )
+        val viewModel = viewModel()
+
+        viewModel.uiState.test {
+            awaitItem()
+            viewModel.onVisible()
+
+            assertEquals(0, libraries.refreshCount)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 
     /**
      * PRODUCT_SPEC 21 — with no profile there is nothing loading, so the screen must not claim there is.
@@ -248,8 +317,14 @@ class HomeViewModelTest {
 
         override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = MutableStateFlow(null)
 
+        private val syncState = MutableStateFlow<SyncState?>(null)
+
+        fun setSyncState(state: SyncState) {
+            syncState.value = state
+        }
+
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
-            MutableStateFlow(SyncState.idle(ServerId("fixture-server"), profileId))
+            syncState.map { it ?: SyncState.idle(ServerId("fixture-server"), profileId) }
 
         override suspend fun refresh(profileId: ProfileId): AppResult<Int> {
             refreshCount++

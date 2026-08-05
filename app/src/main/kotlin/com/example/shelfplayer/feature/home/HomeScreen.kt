@@ -20,6 +20,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -48,6 +49,11 @@ fun HomeRoute(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // PRODUCT_SPEC LIB-001 — a profile that has never synced gets one attempt without being asked. Keyed
+    // on the profile so switching accounts gives the new one its chance too.
+    LaunchedEffect(uiState.profile?.id) { viewModel.onVisible() }
+
     HomeScreen(
         uiState = uiState,
         onLibrarySelected = onLibrarySelected,

@@ -19,7 +19,7 @@
     <string name="home_sync_running">Refreshing…</string>
     <string name="home_profiles">Profiles</string>
     <string name="home_sign_in">Sign in</string>
-    <string name="home_needs_sign_in">This profile needs to sign in again. Downloaded books still play.</string>
+    <string name="home_needs_sign_in">This profile needs to sign in again. Your library is shown from the last sync.</string>
 
     <!-- PRODUCT_SPEC AUTH-001 / 6.1 — adding a server, in the order the journey prescribes. -->
     <string name="sign_in_title">Connect a server</string>
