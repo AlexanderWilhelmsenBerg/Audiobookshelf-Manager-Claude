@@ -2,8 +2,10 @@ package com.example.shelfplayer.data.auth.di
 
 import com.example.shelfplayer.core.network.http.TokenProvider
 import com.example.shelfplayer.data.auth.DefaultAuthRepository
+import com.example.shelfplayer.data.auth.DefaultCapabilityRepository
 import com.example.shelfplayer.data.auth.SessionTokenProvider
 import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.CapabilityRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -27,6 +29,10 @@ interface AuthDataModule {
     @Binds
     @Singleton
     fun bindsAuthRepository(impl: DefaultAuthRepository): AuthRepository
+
+    @Binds
+    @Singleton
+    fun bindsCapabilityRepository(impl: DefaultCapabilityRepository): CapabilityRepository
 
     @Binds
     @Singleton

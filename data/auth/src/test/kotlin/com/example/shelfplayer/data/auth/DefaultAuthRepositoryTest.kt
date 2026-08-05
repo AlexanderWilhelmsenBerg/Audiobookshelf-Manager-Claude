@@ -262,6 +262,7 @@ class DefaultAuthRepositoryTest {
         database.profileDao().updateServerCapabilities(
             serverId = ada.serverId.value,
             capabilitiesJson = """["Websocket"]""",
+            authMethodsJson = """["local"]""",
             serverVersion = "2.36.0",
             detectedAt = 1_234,
         )

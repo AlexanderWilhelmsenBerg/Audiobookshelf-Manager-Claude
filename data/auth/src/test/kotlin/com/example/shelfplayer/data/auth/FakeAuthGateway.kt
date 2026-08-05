@@ -77,9 +77,22 @@ internal class FakeAuthGateway :
 
     // The remaining sub-APIs are not part of what these tests exercise. They fail loudly rather than
     // returning empty values, so a test that starts depending on them cannot pass by accident.
+    var capabilitiesResult: AppResult<ServerCapabilities>? = null
+    val handshakes = mutableListOf<Handshake>()
+
     override val capabilities: CapabilityResolver = object : CapabilityResolver {
-        override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> =
-            unsupported()
+        override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> {
+            handshakes += Handshake(serverId, serverUrl)
+            return capabilitiesResult
+                ?: AppResult.Success(
+                    ServerCapabilities(
+                        serverId = serverId,
+                        serverVersion = "2.36.0",
+                        supported = emptySet(),
+                        authMethods = listOf("local"),
+                    ),
+                )
+        }
     }
 
     override val account: AccountApi = object : AccountApi {
@@ -100,6 +113,8 @@ internal class FakeAuthGateway :
     internal data class SignOut(val serverUrl: String, val accessToken: String)
 
     internal data class Refresh(val serverUrl: String, val refreshToken: String)
+
+    internal data class Handshake(val serverId: ServerId, val serverUrl: String)
 
     internal companion object {
         fun session(
