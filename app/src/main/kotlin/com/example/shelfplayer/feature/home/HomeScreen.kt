@@ -91,6 +91,16 @@ fun HomeScreen(
                     modifier = content,
                 )
 
+            // Checked before the error branch: with no profile there is nothing to refresh, and
+            // "add a server" is a more useful thing to read than whatever the last attempt reported.
+            // No action button, because the screen that would handle one does not exist yet.
+            uiState.profile == null ->
+                ShelfEmptyState(
+                    title = stringResource(R.string.home_no_profile_title),
+                    body = stringResource(R.string.home_no_profile_body),
+                    modifier = content,
+                )
+
             uiState.libraries.isEmpty() && uiState.error != null ->
                 ShelfErrorState(
                     title = stringResource(R.string.home_error_title),
@@ -127,12 +137,10 @@ private fun LibraryList(uiState: HomeUiState, onLibrarySelected: (LibraryId) -> 
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
+            // The demo banner that used to sit here is gone with the demo library. Leaving it would have
+            // labelled a user's real, server-synced content as sample data — the app describing its own
+            // contents wrongly, which is worse than saying nothing.
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = stringResource(R.string.home_demo_banner),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Text(
                     text = uiState.syncStatusLabel(),
                     style = MaterialTheme.typography.labelMedium,

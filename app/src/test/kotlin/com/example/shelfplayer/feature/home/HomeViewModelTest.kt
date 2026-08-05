@@ -50,13 +50,37 @@ class HomeViewModelTest {
         refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),
     )
 
+    /**
+     * PRODUCT_SPEC 21 — with no profile there is nothing loading, so the screen must not claim there is.
+     *
+     * This asserted the opposite while the demo-library bootstrapper guaranteed a profile would appear
+     * shortly. Nothing produces one now without a sign-in, so a spinner here would never resolve.
+     */
     @Test
-    fun `starts in the initial-load state before a profile exists`() = runTest {
+    fun `no profile is an empty state, not a permanent spinner`() = runTest {
         val state = viewModel().uiState.value
 
-        assertEquals(true, state.isInitialLoad)
+        assertFalse(state.isInitialLoad)
+        assertNull(state.profile)
         assertEquals(emptyList(), state.libraries)
         assertNull(state.error)
+    }
+
+    /** Loading means work is in flight, which is the only state that can resolve on its own. */
+    @Test
+    fun `a refresh with nothing cached is the loading state`() = runTest {
+        profiles.setActive(demoProfile)
+        val gate = CompletableDeferred<Unit>()
+        libraries.gate = gate
+
+        val viewModel = viewModel()
+        viewModel.uiState.test {
+            awaitItem()
+            viewModel.refresh()
+            assertEquals(true, awaitItem().isInitialLoad)
+            gate.complete(Unit)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
