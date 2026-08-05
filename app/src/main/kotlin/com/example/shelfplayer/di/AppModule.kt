@@ -2,7 +2,7 @@ package com.example.shelfplayer.di
 
 import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.common.log.LogSink
-import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
+import com.example.shelfplayer.core.network.di.RemoteGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.http.UserAgent
 import com.example.shelfplayer.log.AndroidLogSink
@@ -24,17 +24,26 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 interface AppModule {
     /**
-     * PRODUCT_SPEC 20, Phase 0 — the fake gateway is bound in the application module, not inside
-     * `:core:network`, so swapping it for the real one in Phase 1 touches one file and no library
-     * module has to know a fixture ever existed.
+     * PRODUCT_SPEC 9.3 — `:app` chooses which gateway the app talks to, and it now chooses the real one.
+     *
+     * This is the binding Phase 0 existed to make swappable, and swapping it took one line. What changed
+     * with it is not one line: the app no longer has a bundled library, so a build with no saved profile
+     * has nothing to show until sign-in lands. `FakeAudiobookshelfGateway` is deliberately left in the
+     * graph-less state — reachable from tests, bound nowhere — rather than deleted, because it still backs
+     * the repository tests and PRODUCT_SPEC 17.1 prefers a hand-written fake to a mock.
      */
     @Binds
     @Singleton
-    fun bindsGateway(impl: FakeAudiobookshelfGateway): AudiobookshelfGateway
+    fun bindsGateway(@RemoteGateway impl: AudiobookshelfGateway): AudiobookshelfGateway
 
     @Binds
     @Singleton
     fun bindsLogSink(impl: AndroidLogSink): LogSink
+
+    // PRODUCT_SPEC AUTH-003: the TokenProvider binding moved to `:data:auth`. It is not final wiring —
+    // it is the credential store answering the HTTP layer, and both ends of that seam are inside that
+    // module. Keeping it here also required `:app` to be able to name the class holding a decrypted
+    // token, which nothing outside `:data:auth` should be able to do.
 
     companion object {
         /**

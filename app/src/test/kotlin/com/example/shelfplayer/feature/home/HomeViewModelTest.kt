@@ -8,13 +8,16 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.testing.MainDispatcherRule
+import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
@@ -44,16 +47,40 @@ class HomeViewModelTest {
     private fun viewModel() = HomeViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         profileRepository = profiles,
-        refreshLibrary = RefreshLibraryUseCase(profiles, libraries),
+        refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),
     )
 
+    /**
+     * PRODUCT_SPEC 21 — with no profile there is nothing loading, so the screen must not claim there is.
+     *
+     * This asserted the opposite while the demo-library bootstrapper guaranteed a profile would appear
+     * shortly. Nothing produces one now without a sign-in, so a spinner here would never resolve.
+     */
     @Test
-    fun `starts in the initial-load state before a profile exists`() = runTest {
+    fun `no profile is an empty state, not a permanent spinner`() = runTest {
         val state = viewModel().uiState.value
 
-        assertEquals(true, state.isInitialLoad)
+        assertFalse(state.isInitialLoad)
+        assertNull(state.profile)
         assertEquals(emptyList(), state.libraries)
         assertNull(state.error)
+    }
+
+    /** Loading means work is in flight, which is the only state that can resolve on its own. */
+    @Test
+    fun `a refresh with nothing cached is the loading state`() = runTest {
+        profiles.setActive(demoProfile)
+        val gate = CompletableDeferred<Unit>()
+        libraries.gate = gate
+
+        val viewModel = viewModel()
+        viewModel.uiState.test {
+            awaitItem()
+            viewModel.refresh()
+            assertEquals(true, awaitItem().isInitialLoad)
+            gate.complete(Unit)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
@@ -156,6 +183,30 @@ class HomeViewModelTest {
         remoteUpdatedAt = null,
         lastFetchedAt = Instant.EPOCH,
     )
+
+    /**
+     * PRODUCT_SPEC AUTH-004 — home's refresh path can renew a session, and none of these tests are
+     * about that. Renewal reports "sign in again" so the use case takes its no-retry branch, keeping
+     * every refresh here a single call.
+     */
+    private class NeverRenewingAuth : AuthRepository {
+        override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
+            AppResult.Success(SessionStatus.ReauthenticationRequired)
+
+        override suspend fun probeServer(serverUrl: String): AppResult<ServerCandidate> = notUsed()
+
+        override suspend fun signIn(serverUrl: String, username: String, password: String): AppResult<Profile> =
+            notUsed()
+
+        override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> = notUsed()
+
+        override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = notUsed()
+
+        override suspend fun removeProfile(profileId: ProfileId): AppResult<Unit> = notUsed()
+
+        private fun <T> notUsed(): AppResult<T> =
+            AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this fake"))
+    }
 
     private class FakeProfiles : ProfileRepository {
         private val active = MutableStateFlow<Profile?>(null)

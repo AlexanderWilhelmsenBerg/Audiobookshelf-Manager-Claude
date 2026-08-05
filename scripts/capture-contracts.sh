@@ -52,12 +52,22 @@ SECRET_KEYS = {
     "password", "pash", "authToken", "apiKey", "cookie", "set-cookie",
 }
 # Values that are real but vary per capture; kept structurally, not literally.
+#
+# `lastScan` is here because the drift check compares two captures byte for byte, and a scan timestamp
+# differs by definition between them. Leaving it in made the committed fixtures fail against a fresh
+# capture of the *same* server version — a false drift report, which is worse than no report because it
+# trains a reader to ignore the check.
 VOLATILE_KEYS = {
     "id", "userId", "libraryId", "folderId", "oldUserId", "seriesId", "authorId",
-    "createdAt", "updatedAt", "lastSeen", "lastUpdate", "addedAt", "birthtimeMs",
+    "createdAt", "updatedAt", "lastSeen", "lastUpdate", "lastScan", "addedAt", "birthtimeMs",
     "mtimeMs", "ctimeMs", "inode", "size", "ino",
 }
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+
+# `contentUrl` embeds the audio file's inode: `/api/items/<id>/file/1892359`. The inode is already
+# scrubbed where it appears as its own `ino` field, but a value spliced into a path needs its own rule —
+# the shape of the URL is the contract, the number in it is not.
+FILE_ID_PATH = re.compile(r"(/file/)\d+")
 
 def scrub(node, key=None):
     if isinstance(node, dict):
@@ -71,7 +81,7 @@ def scrub(node, key=None):
     if key in VOLATILE_KEYS and isinstance(node, (int, float)) and not isinstance(node, bool):
         return 0
     if isinstance(node, str):
-        return UUID.sub("<volatile>", node)
+        return FILE_ID_PATH.sub(r"\1<volatile>", UUID.sub("<volatile>", node))
     return node
 
 body_path, out_path, status, content_type = sys.argv[1:5]
@@ -170,18 +180,66 @@ else
   log "no refresh token returned; skipping /auth/refresh"
 fi
 
+# A library, so the captured shapes are the populated ones the adapter has to read.
+#
+# An empty `{"libraries": []}` was what the first capture produced, and it is nearly useless: it proves
+# the envelope key and nothing about a library object, a library item, its audio files or its chapters.
+# `LIB-001` maps every one of those, and PRODUCT_SPEC 22.5 forbids relying on a shape no fixture covers.
+#
+# `MEDIA_DIR` must already contain an audiobook. `scripts/seed-contract-media.sh` produces one with
+# the container's own ffmpeg; CI runs it before this script.
+MEDIA_PATH="${CONTRACT_MEDIA_PATH:-/audiobooks}"
+
+existing_library_id() {
+  curl -sS "$BASE_URL/api/libraries" -H "$AUTH_HEADER" |
+    python3 -c 'import json,sys; libs=json.load(sys.stdin).get("libraries") or []; print(libs[0]["id"] if libs else "")'
+}
+
+LIBRARY_ID="$(existing_library_id)"
+if [ -z "$LIBRARY_ID" ]; then
+  log "creating a library at $MEDIA_PATH"
+  # Not captured: creating a library is not an operation this app performs, and recording a response
+  # the adapter never reads would imply coverage it does not have.
+  curl -sS -X POST "$BASE_URL/api/libraries" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d "{\"name\":\"Contract Fiction\",\"folders\":[{\"fullPath\":\"$MEDIA_PATH\"}],\"mediaType\":\"book\"}" \
+    >/dev/null
+  LIBRARY_ID="$(existing_library_id)"
+fi
+
+if [ -z "$LIBRARY_ID" ]; then
+  echo "::error::the server accepted no library. /api/libraries is in libraries.json — read it before" >&2
+  echo "::error::changing this script: the request shape may have changed." >&2
+  exit 1
+fi
+
+# The scan is asynchronous. Waiting for an item to appear rather than sleeping a fixed interval keeps
+# the capture deterministic on a slow runner.
+curl -sS -X POST "$BASE_URL/api/libraries/$LIBRARY_ID/scan" -H "$AUTH_HEADER" >/dev/null || true
+for _ in $(seq 1 60); do
+  ITEM_COUNT="$(curl -sS "$BASE_URL/api/libraries/$LIBRARY_ID/items" -H "$AUTH_HEADER" |
+    python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("results") or []))' 2>/dev/null || echo 0)"
+  [ "$ITEM_COUNT" != "0" ] && break
+  sleep 2
+done
+log "library $LIBRARY_ID has $ITEM_COUNT item(s)"
+
 capture libraries GET /api/libraries -H "$AUTH_HEADER"
+capture library-items GET "/api/libraries/$LIBRARY_ID/items" -H "$AUTH_HEADER"
+capture library-series GET "/api/libraries/$LIBRARY_ID/series" -H "$AUTH_HEADER"
+capture library-authors GET "/api/libraries/$LIBRARY_ID/authors" -H "$AUTH_HEADER"
 
-LIBRARY_ID="$(curl -sS "$BASE_URL/api/libraries" -H "$AUTH_HEADER" |
-  python3 -c 'import json,sys; libs=json.load(sys.stdin).get("libraries") or []; print(libs[0]["id"] if libs else "")')"
+# The expanded single item: `LIB-004` and `PLAY-003` need the audio files and chapters, and the list
+# endpoint does not include them.
+ITEM_ID="$(curl -sS "$BASE_URL/api/libraries/$LIBRARY_ID/items" -H "$AUTH_HEADER" |
+  python3 -c 'import json,sys; r=json.load(sys.stdin).get("results") or []; print(r[0]["id"] if r else "")')"
 
-if [ -n "$LIBRARY_ID" ]; then
-  capture library-items GET "/api/libraries/$LIBRARY_ID/items" -H "$AUTH_HEADER"
-  capture library-series GET "/api/libraries/$LIBRARY_ID/series" -H "$AUTH_HEADER"
+if [ -n "$ITEM_ID" ]; then
+  capture library-item GET "/api/items/$ITEM_ID?expanded=1&include=progress" -H "$AUTH_HEADER"
 else
-  # A fresh container has no libraries. Recorded rather than silently skipped, because "the list is
-  # empty" is itself a shape the app has to render (PRODUCT_SPEC 21 distinguishes empty from loading).
-  log "no libraries on a fresh server; library-items not captured"
+  echo "::error::the library has no items, so the item shape LIB-001 depends on was not captured." >&2
+  echo "::error::Check that the media directory contains an audio file the scanner accepts." >&2
+  exit 1
 fi
 
 capture logout POST /logout -H "$AUTH_HEADER"

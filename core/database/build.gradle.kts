@@ -23,6 +23,9 @@ dependencies {
     testImplementation(projects.core.testing)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    // PRODUCT_SPEC 18 — a migration test per version bump. MigrationTestHelper opens the exported
+    // schema for the old version, so the committed `schemas/` files are what the test runs against.
+    testImplementation(libs.androidx.room.testing)
 }
 
 /**
@@ -39,7 +42,7 @@ dependencies {
 val databaseClassName = "com.example.shelfplayer.core.database.ShelfPlayerDatabase"
 
 // Must match ShelfPlayerDatabase's @Database(version = ...).
-val databaseVersion = 1
+val databaseVersion = 3
 
 val verifyRoomSchemas by tasks.registering {
     group = "verification"

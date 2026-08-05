@@ -152,6 +152,9 @@ class ShelfPlayerDatabaseTest {
                 detectedVersion = null,
                 isFixture = true,
                 lastFetchedAt = 0,
+                authMethodsJson = "[]",
+                capabilitiesJson = "[]",
+                capabilitiesDetectedAt = null,
             ),
         )
         database.profileDao().upsertProfile(profileEntity(PROFILE_ID))
@@ -206,12 +209,15 @@ class ShelfPlayerDatabaseTest {
     private fun profileEntity(profileId: String) = ProfileEntity(
         profileId = profileId,
         serverId = SERVER_ID,
+        remoteUserId = null,
         username = profileId,
         displayName = profileId,
         role = "Listener",
         requiresReauthentication = false,
         lastUsedAt = null,
         isFixture = true,
+        accessibleLibrariesJson = "[]",
+        hasAllLibraryAccess = true,
     )
 
     private fun bookEntity(remoteId: String = "book-1", title: String = "The Salt Harbour") = BookEntity(

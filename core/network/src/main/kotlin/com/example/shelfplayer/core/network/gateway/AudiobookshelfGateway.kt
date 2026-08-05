@@ -2,10 +2,10 @@ package com.example.shelfplayer.core.network.gateway
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.library.BookSnapshot
@@ -17,11 +17,11 @@ import com.example.shelfplayer.core.model.library.Library
  * The gateway returns `:core:model` types and [AppResult], never a raw response body, so that a
  * change in the server's wire format is contained here (PRODUCT_SPEC 2.8).
  *
- * ### What exists in Phase 0 and what does not
+ * ### What exists and what does not
  *
  * PRODUCT_SPEC 22.4 forbids inventing endpoints, and PRODUCT_SPEC 22.5 requires a contract fixture
- * before relying on a response shape. Phase 0 has no server to contract-test against, so it declares
- * only the sub-APIs the fake gateway genuinely implements: [capabilities], [account] and [library].
+ * before relying on a response shape. Only the three sub-APIs whose contracts are captured are declared:
+ * [auth], [capabilities] and [library].
  *
  * The remaining sub-APIs listed in PRODUCT_SPEC 10.4 — `PlaybackApi`, `ProgressApi`, `DownloadApi`,
  * `ManagementApi`, `UsersApi`, `EventApi` — are added in the phase that implements them, together
@@ -32,8 +32,6 @@ interface AudiobookshelfGateway {
     val auth: AuthApi
 
     val capabilities: CapabilityResolver
-
-    val account: AccountApi
 
     val library: LibraryApi
 }
@@ -70,35 +68,34 @@ interface AuthApi {
     suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit>
 }
 
-/** What `GET /status` reports before authentication. */
-data class ServerProbe(
-    val isAudiobookshelf: Boolean,
-    val serverVersion: String?,
-    val isInitialized: Boolean,
-    val authMethods: List<String>,
-)
-
 /**
  * PRODUCT_SPEC SYNC-001 — the capability handshake.
  *
  * Implementations must treat an unreadable or unrecognized probe result as *unsupported*.
+ *
+ * The server is named explicitly for the same reason every [AuthApi] call names it: a client that
+ * holds several profiles on several servers has no single ambient "current server", and resolving one
+ * implicitly is how a handshake gets attributed to the wrong connection.
  */
 interface CapabilityResolver {
-    suspend fun resolve(): AppResult<ServerCapabilities>
+    suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities>
 }
 
 /**
- * PRODUCT_SPEC 23 — "Get current user and permissions".
+ * PRODUCT_SPEC 23 — "Get current user and permissions" is *not* declared here, on purpose.
  *
- * Signing in is AUTH-001 and lands in Phase 1; this interface only reads the account a connection is
- * already established for, which is why Phase 0 can implement it against fixtures without touching
- * credentials.
+ * Phase 0 had an `AccountApi` with parameterless `currentServer()` and `currentProfile()`. That suited a
+ * gateway serving one fixture profile and cannot serve a real client: there is no ambient "current"
+ * account when several profiles on several servers coexist, and a permission refresh attributed to the
+ * wrong one would write one account's grant over another's (PRODUCT_SPEC 5.2). Its only consumer was the
+ * demo-library bootstrapper, which real sign-in replaces.
+ *
+ * `POST /api/authorize` is the endpoint a permission refresh will use — PRODUCT_SPEC 5.2 requires one
+ * after a `403` — and its response is already captured in `contracts/authorize.json`. It is added when
+ * that refresh is implemented, taking an explicit profile. Note for whoever does: the captured response
+ * carries `user.token` only, with no `accessToken` and no `refreshToken`, so `AuthMapper.toSession` is the
+ * wrong mapping for it — using it would store the legacy, non-refreshable token as the access token.
  */
-interface AccountApi {
-    suspend fun currentServer(): AppResult<Server>
-
-    suspend fun currentProfile(): AppResult<Profile>
-}
 
 /** PRODUCT_SPEC 23 — "Get accessible libraries" and "Get library items". */
 interface LibraryApi {

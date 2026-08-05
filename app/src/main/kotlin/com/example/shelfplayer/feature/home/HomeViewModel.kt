@@ -51,8 +51,14 @@ class HomeViewModel @Inject constructor(
                 else -> SyncStatus.NeverSynced
             },
             error = refresh.lastError,
-            // PRODUCT_SPEC LIB-001: loading and empty are distinct. "Still seeding" is not "empty".
-            isInitialLoad = profile == null && libraries.isEmpty() && refresh.lastError == null,
+            // PRODUCT_SPEC LIB-001 / 21: loading and empty are distinct, and *loading* means work is in
+            // flight — not merely that there is nothing to show.
+            //
+            // It used to mean "no profile and nothing cached", which was true for as long as the
+            // demo-library bootstrapper took to run and false forever after. With the bootstrapper gone
+            // that condition never resolves: a device with no profile would show a spinner permanently,
+            // because nothing is coming. An empty screen that explains itself is the honest state.
+            isInitialLoad = refresh.inFlight && libraries.isEmpty(),
         )
     }.stateIn(
         scope = viewModelScope,
@@ -92,5 +98,13 @@ data class HomeUiState(
     val isRefreshing: Boolean = false,
     val syncStatus: SyncStatus = SyncStatus.NeverSynced,
     val error: AppError? = null,
-    val isInitialLoad: Boolean = true,
+    /**
+     * Whether a first load is actually running.
+     *
+     * Defaults to `false`, and that default is the state the screen shows for the instant before Room
+     * answers. It used to default to `true`, which was right while a bootstrapper was guaranteed to be
+     * producing data and is wrong now that nothing is: a default of "loading" is a claim, and the app
+     * should not make one it cannot keep.
+     */
+    val isInitialLoad: Boolean = false,
 )

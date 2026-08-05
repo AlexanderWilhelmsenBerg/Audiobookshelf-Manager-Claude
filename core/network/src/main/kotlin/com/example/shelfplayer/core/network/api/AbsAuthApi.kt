@@ -2,11 +2,11 @@ package com.example.shelfplayer.core.network.api
 
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.core.network.gateway.AuthApi
-import com.example.shelfplayer.core.network.gateway.ServerProbe
 import com.example.shelfplayer.core.network.http.NetworkErrorMapper
 import retrofit2.Response
 import javax.inject.Inject
@@ -56,10 +56,11 @@ internal class AbsAuthApi @Inject constructor(
 
     override suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit> =
         call(serverUrl) { service ->
-            // The token is not passed here: the shared client's AuthorizationInterceptor carries it.
+            // The token is passed explicitly rather than inherited from an interceptor: signing out
+            // profile B must invalidate B's session, never whichever session happens to be active.
             // Sign-out failing must not strand the user in a signed-in state, so a failed call is
             // still reported and the caller drops the local session either way.
-            service.logout().toResult { AppResult.Success(Unit) }
+            service.logout(bearerOf(accessToken.value)).toResult { AppResult.Success(Unit) }
         }
 
     private inline fun <T, R> Response<T>.toResult(onSuccess: (T?) -> AppResult<R>): AppResult<R> = if (isSuccessful) {

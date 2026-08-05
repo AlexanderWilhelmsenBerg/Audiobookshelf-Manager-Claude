@@ -9,10 +9,11 @@
     <string name="home_title">ShelfPlayer</string>
     <string name="home_loading">Loading your libraries</string>
     <string name="home_empty_title">No libraries yet</string>
-    <string name="home_empty_body">The bundled demo library has not been loaded. Pull to refresh to try again.</string>
+    <string name="home_empty_body">This account has no libraries yet, or they have not been synced. Refresh to try again.</string>
+    <string name="home_no_profile_title">No server connected</string>
+    <string name="home_no_profile_body">Sign in to an Audiobookshelf server to see your libraries.</string>
     <string name="home_error_title">Could not load your libraries</string>
     <string name="home_refresh">Refresh</string>
-    <string name="home_demo_banner">Demo library — no server is connected. Sign-in arrives in the next phase.</string>
     <string name="home_sync_never">Not synchronized yet</string>
     <string name="home_sync_failed">Showing cached content. The last refresh failed.</string>
     <string name="home_sync_running">Refreshing…</string>

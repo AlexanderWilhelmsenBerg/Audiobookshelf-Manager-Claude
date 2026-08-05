@@ -6,14 +6,18 @@ rule a build cannot check is a rule that erodes.
 ## The dependency graph
 
 ```text
-:app ──────────► :data:library ──► :domain ──► :core:model
-  │                   │  │  │                      ▲
-  │                   │  │  └──► :core:network ────┤
-  │                   │  └─────► :core:database    │
-  │                   └────────► :core:datastore   │
-  ├──► :core:designsystem                          │
-  └──► :core:common ────────────────────────────────┘
+:app ─┬────────► :data:library ──► :domain ──► :core:model
+      │              │  │  │                       ▲
+      ├────────► :data:auth ──┐                    │
+      │              │  │  │  └──► :core:network ──┤
+      │              │  │  └─────► :core:database  │
+      │              │  └────────► :core:datastore │
+      ├──► :core:designsystem                      │
+      └──► :core:common ────────────────────────────┘
 ```
+
+`:data:auth` and `:data:library` have the same shape and the same dependencies. They are separate
+modules because their contents are separate concerns, not because their graphs differ.
 
 `:core:testing` is a `testImplementation` dependency only.
 
@@ -23,11 +27,42 @@ rule a build cannot check is a rule that erodes.
 | --- | --- |
 | Domain depends only on core model/common | `:domain` uses the Kotlin/JVM plugin. An Android import does not compile. |
 | Network DTOs stay inside data/network | The gateway signature uses `:core:model` types. `:core:network` exposes no wire type, so nothing else can name one. |
-| Room entities stay inside database/data | `:core:database` is an `implementation` dependency of `:data:library` only. `*Entity` is off the classpath of `:domain` and `:app`. |
-| Room itself stays inside `:core:database` | `DatabaseTransactionRunner` names no Room type, so `:data:library` can be transactional with `androidx.room` off its compile classpath. See below. |
-| Data modules implement domain interfaces | `LibraryDataModule` binds `Default*Repository` to the `:domain` interface. `:app` injects the interface. |
+| Room entities stay inside database/data | `:core:database` is an `implementation` dependency of `:data:library` and `:data:auth` only. `*Entity` is off the classpath of `:domain` and `:app`. |
+| Room itself stays inside `:core:database` | `DatabaseTransactionRunner` names no Room type, so a data module can be transactional with `androidx.room` off its compile classpath. See below. |
+| Data modules implement domain interfaces | `LibraryDataModule` and `AuthDataModule` bind `Default*Repository` to the `:domain` interface. `:app` injects the interface. |
 | No cyclic module dependencies | The graph above is acyclic; Gradle rejects a cycle. |
 | `:app` performs final wiring | `AppModule` in `:app` binds the gateway and the log sink — the two seams a later phase replaces. |
+
+## Why the token provider is *not* final wiring
+
+`TokenProvider` is declared in `:core:network` and implemented by `SessionTokenProvider` in
+`:data:auth`, which binds it in its own `AuthDataModule`. It lived in `:app` first, on the reasoning
+that `:app` was the only module seeing both `:core:network` and `:core:datastore`. That reasoning was
+incomplete: `:data:auth` sees both as well, and it owns the sign-out that has to invalidate the
+credential.
+
+The distinction is not bookkeeping. `SessionTokenProvider` caches a **decrypted token** in memory,
+because `TokenProvider.currentToken()` is synchronous (an OkHttp interceptor is) while the store
+suspends and does a Keystore decryption. That cache has to be cleared at the same moment the stored
+copy is, or the process keeps authenticating after the user believes it stopped. Keeping the class in
+`:app` put the cache and the code responsible for clearing it in different modules, and made the
+credential holder nameable from the UI layer. It is now `:data:auth`-local, and no module outside it
+can reach the object holding a token.
+
+`NoTokenProvider` in `:core:network` remains for a graph with no credential store at all.
+
+## Two clients, not one
+
+`PRODUCT_SPEC 9.4` asks for "qualifiers for authenticated vs unauthenticated clients", and the reason
+is concrete. `GET /status` and `POST /login` are addressed at a server the user is **not** signed in to
+— often one they have just typed the address of. The ambient token belongs to whichever profile is
+active, possibly on a different host, so a single client would hand one server's credential to
+another. `@UnauthenticatedClient` has no `AuthorizationInterceptor`; the auth endpoints use it and pass
+their credential explicitly.
+
+`AuthorizationInterceptor` also leaves an existing `Authorization` header alone. That is what lets a
+call name the profile it is acting for instead of inheriting the active one — a library sync for
+profile B must not be signed with profile A's token because A is on screen.
 
 ## The transaction seam
 
@@ -68,8 +103,7 @@ Named here so nobody invents a parallel abstraction for them:
 
 | Module | Phase | Requirements |
 | --- | --- | --- |
-| `:core:security` | 1 | AUTH-003 — Keystore-backed token storage |
-| `:data:auth` | 1 | AUTH-001…AUTH-004 |
+| `:core:security` | — | **Not created.** AUTH-003 landed in `:core:datastore` instead: `KeystoreTokenCipher` and `SessionTokenStore` are twenty lines of platform API next to the store they encrypt for, and a module whose only content is one cipher buys a boundary nothing was crossing. |
 | `:playback:service` | 2 | PLAY-001…PLAY-008, ROUTE-001 |
 | `:data:playback` | 2 | PLAY-004, PLAY-005 |
 | `:data:downloads` | 3 | DL-001…DL-006 |

@@ -13,7 +13,6 @@ import com.example.shelfplayer.core.database.entity.LibraryEntity
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.SeriesEntity
-import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.database.entity.SyncStateEntity
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AuthorId
@@ -51,25 +50,10 @@ import kotlin.time.Duration.Companion.milliseconds
 internal object EntityMappers {
     // --- Server / profile -------------------------------------------------------------------------
 
-    fun toEntity(server: Server, fetchedAt: Instant) = ServerEntity(
-        serverId = server.id.value,
-        displayName = server.displayName,
-        baseUrl = server.baseUrl,
-        detectedVersion = server.detectedVersion,
-        isFixture = server.isFixture,
-        lastFetchedAt = fetchedAt.toEpochMilli(),
-    )
-
-    fun toEntity(profile: Profile) = ProfileEntity(
-        profileId = profile.id.value,
-        serverId = profile.serverId.value,
-        username = profile.username,
-        displayName = profile.displayName,
-        role = profile.role.name,
-        requiresReauthentication = profile.requiresReauthentication,
-        lastUsedAt = profile.lastUsedAt?.toEpochMilli(),
-        isFixture = profile.isFixture,
-    )
+    // The write side of the server and profile mapping lived here for the demo-library bootstrapper,
+    // which real sign-in replaced. `:data:auth` owns those writes now — it is the module that knows the
+    // grant and the remote account id that go with them — and this module keeps only the read side it
+    // needs for browsing.
 
     fun toDomain(entity: ProfileEntity) = Profile(
         id = ProfileId(entity.profileId),

@@ -12,6 +12,7 @@ import com.example.shelfplayer.core.model.SeriesSequence
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerCapability
+import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
@@ -45,12 +46,12 @@ class FakeAudiobookshelfGatewayTest {
 
     @Test
     fun `exposes the fixture server and profile`() = runTest {
-        val server = gateway.account.currentServer()
+        val server = gateway.fixtureServer()
         assertIs<AppResult.Success<Server>>(server)
         assertEquals("fixture-server", server.value.id.value)
         assertTrue(server.value.isFixture)
 
-        val profile = gateway.account.currentProfile()
+        val profile = gateway.fixtureProfile()
         assertIs<AppResult.Success<Profile>>(profile)
         assertEquals(fixtureProfile, profile.value.id)
         assertTrue(profile.value.isFixture)
@@ -59,7 +60,8 @@ class FakeAudiobookshelfGatewayTest {
     /** PRODUCT_SPEC SYNC-001 — an unknown capability is unsupported, never assumed. */
     @Test
     fun `resolves only the capabilities the fixture declares`() = runTest {
-        val result = gateway.capabilities.resolve()
+        // The fixture gateway answers from the bundled document, so the server it is handed is ignored.
+        val result = gateway.capabilities.resolve(ServerId("srv_ignored"), "https://fixture.invalid")
         assertIs<AppResult.Success<ServerCapabilities>>(result)
 
         assertTrue(result.value.supports(ServerCapability.PlaybackSession))

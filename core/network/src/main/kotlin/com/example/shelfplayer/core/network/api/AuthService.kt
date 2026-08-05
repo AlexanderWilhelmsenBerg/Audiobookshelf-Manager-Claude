@@ -45,8 +45,19 @@ internal interface AuthService {
      * profile is marked as requiring reauthentication rather than being silently signed out.
      */
     @POST("api/authorize")
-    suspend fun authorize(): Response<LoginResponseDto>
+    suspend fun authorize(@Header(AUTHORIZATION) bearer: String): Response<LoginResponseDto>
 
     @POST("logout")
-    suspend fun logout(): Response<Unit>
+    suspend fun logout(@Header(AUTHORIZATION) bearer: String): Response<Unit>
 }
+
+/**
+ * The credential travels as an explicit parameter, not as an ambient interceptor header.
+ *
+ * These services run on the unauthenticated client (PRODUCT_SPEC 9.4), so the token a call uses is
+ * the token its caller chose. That is what makes it impossible for a sign-out or an authorize on
+ * profile B to be signed with profile A's credential (PRODUCT_SPEC 5.2).
+ */
+internal const val AUTHORIZATION = "Authorization"
+
+internal fun bearerOf(token: String): String = "Bearer $token"

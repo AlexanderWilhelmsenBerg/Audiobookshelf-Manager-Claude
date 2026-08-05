@@ -16,8 +16,38 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
   `accessToken` and is not accepted by `/auth/refresh`.
 - `docs/api-compatibility.md` records the authentication endpoints, none of which appear in the
   project's published `openapi.json`.
-- **Not wired**: the contract layer is referenced by nothing but its own tests. No Retrofit client,
-  no gateway `auth` sub-API, no secure token storage, no profile switch.
+- Retrofit client (`AudiobookshelfServiceFactory`) and the gateway `auth` sub-API (`AuthApi`,
+  `AbsAuthApi`), contract-tested against the committed fixtures with MockWebServer.
+- Keystore-backed token storage (AUTH-003): `TokenCipher` as an interface with `KeystoreTokenCipher`
+  behind it, `SessionTokenStore` holding one encrypted file per profile and token kind, and
+  `SessionTokenProvider` supplying the HTTP layer. Making the cipher an interface is what made the
+  requirement about a lost key testable — Robolectric cannot invalidate a real Keystore key.
+- **Server profiles from a real sign-in** (AUTH-001, AUTH-002): the `:data:auth` module,
+  `DefaultAuthRepository`, and `SessionIdentity` deriving a stable `ServerId`/`ProfileId` so that
+  reauthenticating returns to the same profile instead of orphaning its downloads and progress.
+- **Session renewal** (AUTH-004): `POST /auth/refresh` with `x-refresh-token`; a session that cannot
+  be renewed marks the profile and never signs it out. Exactly one renewal attempt, one retry.
+- **Capability handshake** (SYNC-001): `AbsCapabilityResolver` and `DefaultCapabilityRepository`. It
+  confirms no capability, because nothing `GET /status` reports is one — an unconfirmed capability is
+  unsupported, never assumed.
+- Two credential-safety changes: the authentication endpoints moved to a new `@UnauthenticatedClient`
+  so a `GET /status` or `POST /login` aimed at a newly typed host cannot carry the active profile's
+  token, and `AuthorizationInterceptor` now yields to an explicit `Authorization` header so a call can
+  name the profile it acts for.
+- Database version 2 with an additive migration and a migration test that builds a real version-1
+  database from the committed exported schema.
+- Contract fixtures now cover the library shapes: `scripts/seed-contract-media.sh` generates an
+  audiobook with the server image's own ffmpeg so the scan produces an item. The item **list** turns
+  out to be minified — counts, not contents — so only the expanded single item carries tracks,
+  chapters, authors, series and `startOffset`.
+- **Libraries and items sync from the server** (LIB-001): `AbsLibraryApi`, `LibraryMapper`, the real
+  gateway bound in `AppModule`, and the demo-library bootstrapper removed. An unauthorized library is
+  dropped at the gateway, so it is never written to Room rather than hidden by the UI; the grant is
+  persisted on the profile in database version 3.
+- Sign-in and profile-switch policy (`SignInUseCase`, `SwitchProfileUseCase`), so the remaining UI work is
+  screens rather than screens making decisions.
+- **Not wired**: there is no sign-in screen and no profile switcher, so a fresh install has no way to add
+  a profile. That is the whole of the remaining Phase 1 work.
 
 ### Phase 0 — Repository foundation
 

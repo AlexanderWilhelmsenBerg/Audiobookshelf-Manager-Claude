@@ -85,18 +85,24 @@ class DefaultLibraryRepositoryTest {
                 detectedVersion = "fixture-0",
                 isFixture = true,
                 lastFetchedAt = 0,
+                authMethodsJson = "[]",
+                capabilitiesJson = "[]",
+                capabilitiesDetectedAt = null,
             ),
         )
         database.profileDao().upsertProfile(
             ProfileEntity(
                 profileId = fixtureProfile.value,
                 serverId = "fixture-server",
+                remoteUserId = null,
                 username = "demo",
                 displayName = "Demo listener",
                 role = "Listener",
                 requiresReauthentication = false,
                 lastUsedAt = null,
                 isFixture = true,
+                accessibleLibrariesJson = "[]",
+                hasAllLibraryAccess = true,
             ),
         )
     }
@@ -147,12 +153,15 @@ class DefaultLibraryRepositoryTest {
             ProfileEntity(
                 profileId = "other-profile",
                 serverId = "fixture-server",
+                remoteUserId = null,
                 username = "other",
                 displayName = "Other",
                 role = "Listener",
                 requiresReauthentication = false,
                 lastUsedAt = null,
                 isFixture = true,
+                accessibleLibrariesJson = "[]",
+                hasAllLibraryAccess = true,
             ),
         )
         val forOther = repository
@@ -199,12 +208,15 @@ class DefaultLibraryRepositoryTest {
             ProfileEntity(
                 profileId = "stranger",
                 serverId = "fixture-server",
+                remoteUserId = null,
                 username = "stranger",
                 displayName = "Stranger",
                 role = "Listener",
                 requiresReauthentication = false,
                 lastUsedAt = null,
                 isFixture = false,
+                accessibleLibrariesJson = "[]",
+                hasAllLibraryAccess = true,
             ),
         )
 

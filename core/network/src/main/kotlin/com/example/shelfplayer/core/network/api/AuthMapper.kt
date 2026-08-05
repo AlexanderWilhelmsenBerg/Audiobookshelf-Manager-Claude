@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 
 /**
  * Turns the `/login` envelope into [AuthSession].
@@ -32,10 +33,16 @@ internal object AuthMapper {
                 // Absent means "not renewable", which is a real state rather than an error: the
                 // caller decides whether to re-prompt. See AuthSession.isRenewable.
                 refreshToken = user.refreshToken?.takeIf(String::isNotBlank)?.let(::AuthToken),
+                userId = user.id?.takeIf(String::isNotBlank),
                 username = username,
                 role = toRole(user.type),
-                accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
-                hasAllLibraryAccess = user.permissions?.accessAllLibraries ?: false,
+                access = LibraryAccess(
+                    // Absent permissions mean no grant, not a full one: PRODUCT_SPEC 5.2's safe default
+                    // is the restrictive one, and a server that sent no permissions block has told us
+                    // nothing about what this account may see.
+                    hasAllLibraryAccess = user.permissions?.accessAllLibraries ?: false,
+                    accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
+                ),
             ),
         )
     }

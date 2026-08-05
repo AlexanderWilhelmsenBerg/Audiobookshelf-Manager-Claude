@@ -39,10 +39,24 @@ value class AuthToken(val value: String) {
 data class AuthSession(
     val accessToken: AuthToken,
     val refreshToken: AuthToken?,
+    /**
+     * The server's own id for this account, when it sent one.
+     *
+     * PRODUCT_SPEC AUTH-002 requires a local profile id that is stable and independent of the
+     * username, and this is what [SessionIdentity] derives it from. It is nullable because a field
+     * the server did not send is never invented (PRODUCT_SPEC 22.4); [SessionIdentity] documents the
+     * fallback.
+     */
+    val userId: String?,
     val username: String,
     val role: ProfileRole,
-    val accessibleLibraryIds: List<LibraryId>,
-    val hasAllLibraryAccess: Boolean,
+    /**
+     * PRODUCT_SPEC 5.2 — the server's library grant.
+     *
+     * A [LibraryAccess] rather than two loose fields, because the sync layer has to apply the same rule
+     * while holding a profile id and no token. One type, one implementation of the rule.
+     */
+    val access: LibraryAccess,
 ) {
     /** PRODUCT_SPEC AUTH-004 — a session with no refresh token dies at expiry and cannot be renewed. */
     val isRenewable: Boolean get() = refreshToken != null
@@ -51,5 +65,5 @@ data class AuthSession(
      * PRODUCT_SPEC 5.2 — permission checks are answered from the server's grant, never inferred from
      * the role. An account can be an `admin` with every library, or a `user` restricted to two.
      */
-    fun canAccess(libraryId: LibraryId): Boolean = hasAllLibraryAccess || libraryId in accessibleLibraryIds
+    fun canAccess(libraryId: LibraryId): Boolean = access.allows(libraryId)
 }

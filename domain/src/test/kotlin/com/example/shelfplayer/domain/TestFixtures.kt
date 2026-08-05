@@ -1,5 +1,6 @@
 package com.example.shelfplayer.domain
 
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryId
@@ -9,8 +10,10 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.SeriesSequence
+import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
+import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
@@ -18,6 +21,7 @@ import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.flow.Flow
@@ -112,9 +116,19 @@ internal class FakeProfileRepository(active: Profile? = profile()) : ProfileRepo
 
     override suspend fun activeProfileId(): ProfileId? = activeProfile.first()?.id
 
+    private var refuseSwitch = false
+
     override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
+        if (refuseSwitch) {
+            return AppResult.Failure(AppError.Validation(summary = "That profile is no longer saved."))
+        }
         activeProfile.value = profile(profileId)
         return AppResult.Success(Unit)
+    }
+
+    /** What the real repository does for a profile id that no longer resolves to a saved row. */
+    fun refuseSwitches() {
+        refuseSwitch = true
     }
 
     fun signOut() {
@@ -144,8 +158,80 @@ internal class FakeLibraryRepository(books: List<Book> = emptyList(), libraries:
     override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
         MutableStateFlow(SyncState.idle(TEST_SERVER, profileId))
 
+    /**
+     * Answers are queued so a test can make the first refresh fail and the second succeed, which is the
+     * only way to observe the AUTH-004 renew-and-retry policy rather than just its outcome.
+     */
+    private val queuedResults = ArrayDeque<AppResult<Int>>()
+
     override suspend fun refresh(profileId: ProfileId): AppResult<Int> {
         refreshedProfiles += profileId
-        return refreshResult
+        return queuedResults.removeFirstOrNull() ?: refreshResult
     }
+
+    fun queueRefreshResults(vararg results: AppResult<Int>) {
+        queuedResults.clear()
+        queuedResults.addAll(results)
+    }
+}
+
+/**
+ * PRODUCT_SPEC AUTH-004 — a session layer whose renewal outcome the test dictates.
+ *
+ * It counts renewal attempts, because the requirement "the app never loops login requests" is a
+ * statement about how many times this is called, not about what it returns.
+ */
+internal class FakeAuthRepository(
+    private var renewal: AppResult<SessionStatus> = AppResult.Success(SessionStatus.Active),
+) : AuthRepository {
+    val renewedProfiles = mutableListOf<ProfileId>()
+
+    fun willRenewInto(status: SessionStatus) {
+        renewal = AppResult.Success(status)
+    }
+
+    fun willFailToRenew(error: AppError) {
+        renewal = AppResult.Failure(error)
+    }
+
+    override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> {
+        renewedProfiles += profileId
+        return renewal
+    }
+
+    private var signIn: AppResult<Profile> = AppResult.Success(profile())
+
+    val signInCalls = mutableListOf<String>()
+
+    fun willFailToSignIn(error: AppError) {
+        signIn = AppResult.Failure(error)
+    }
+
+    override suspend fun probeServer(serverUrl: String): AppResult<ServerCandidate> = notUsed()
+
+    override suspend fun signIn(serverUrl: String, username: String, password: String): AppResult<Profile> {
+        signInCalls += username
+        return signIn
+    }
+
+    private var restore: AppResult<SessionStatus> = AppResult.Success(SessionStatus.Active)
+
+    val restoredProfiles = mutableListOf<ProfileId>()
+
+    fun willRestoreInto(status: SessionStatus) {
+        restore = AppResult.Success(status)
+    }
+
+    override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> {
+        restoredProfiles += profileId
+        return restore
+    }
+
+    override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = notUsed()
+
+    override suspend fun removeProfile(profileId: ProfileId): AppResult<Unit> = notUsed()
+
+    /** Fails loudly rather than returning an empty value, so a test cannot pass by accident. */
+    private fun <T> notUsed(): AppResult<T> =
+        AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this fake"))
 }
