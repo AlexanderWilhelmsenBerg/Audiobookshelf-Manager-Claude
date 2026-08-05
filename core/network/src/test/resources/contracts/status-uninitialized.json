@@ -1,0 +1,19 @@
+{
+  "body": {
+    "ConfigPath": "/config",
+    "MetadataPath": "/metadata",
+    "app": "audiobookshelf",
+    "authFormData": {
+      "authLoginCustomMessage": ""
+    },
+    "authMethods": [
+      "local"
+    ],
+    "isInit": false,
+    "language": "en-us",
+    "serverVersion": "2.36.0"
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}
