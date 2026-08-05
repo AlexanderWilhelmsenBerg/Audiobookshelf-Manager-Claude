@@ -78,7 +78,16 @@ class HomeViewModelTest {
         val viewModel = viewModel()
         viewModel.uiState.test {
             awaitItem()
+
             viewModel.refresh()
+
+            // PRODUCT_SPEC 21 — a refresh in flight is its own observable state, so one refresh
+            // emits twice: syncing, then the outcome. Asserted rather than skipped, because the
+            // spinner appearing at all is a requirement and this is the only test that can see it.
+            val syncing = awaitItem()
+            assertEquals(SyncStatus.Syncing, syncing.syncStatus)
+            assertNull(syncing.error)
+
             val failed = awaitItem()
             assertEquals("network", failed.error?.code)
             assertEquals(SyncStatus.Failed, failed.syncStatus)
@@ -97,8 +106,11 @@ class HomeViewModelTest {
         val viewModel = viewModel()
         viewModel.uiState.test {
             awaitItem()
+
             viewModel.refresh()
-            awaitItem()
+            assertEquals(SyncStatus.Syncing, awaitItem().syncStatus)
+            assertEquals("network", awaitItem().error?.code)
+
             viewModel.dismissError()
             assertNull(awaitItem().error)
             cancelAndIgnoreRemainingEvents()

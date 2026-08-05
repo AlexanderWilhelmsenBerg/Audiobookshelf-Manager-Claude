@@ -89,6 +89,20 @@ jobs:
       - name: Verify debug
         run: ./gradlew verifyDebug --continue -Pshelfplayer.warningsAsErrors=true
 
+      # Gradle only prints lint's first finding on the console. The full text report is what makes a
+      # lint failure diagnosable from the log alone, without downloading an artifact.
+      - name: Print lint reports
+        if: failure()
+        run: |
+          found=0
+          while IFS= read -r report; do
+            found=1
+            echo "::group::$report"
+            cat "$report"
+            echo "::endgroup::"
+          done < <(find . -path '*/build/reports/lint-results-*.txt' -print)
+          [ "$found" -eq 1 ] || echo "No lint text reports were produced."
+
       # PRODUCT_SPEC 18.6 — a schema change that was not committed is a failure, not a surprise on
       # a user's device.
       #
@@ -128,6 +142,7 @@ jobs:
             **/build/reports/detekt/**
             **/build/reports/lint-results-*.html
             **/build/reports/lint-results-*.sarif
+            **/build/reports/lint-results-*.txt
             **/build/reports/tests/**
           if-no-files-found: ignore
           retention-days: 7

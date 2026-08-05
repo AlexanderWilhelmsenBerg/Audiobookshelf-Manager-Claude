@@ -19,6 +19,11 @@ internal fun Lint.applyShelfPlayerLintRules() {
     xmlReport = true
     sarifReport = true
 
+    // Gradle prints only "Lint found N errors. First failure: ..." on the console, so a CI log shows
+    // one of six problems and the rest live in an HTML report nobody downloads. The text report goes
+    // to build/reports/lint-results-<variant>.txt, which the workflow prints when lint fails.
+    textReport = true
+
     // PRODUCT_SPEC 15: cleartext traffic and TLS bypasses must never reach a release build.
     fatal += listOf(
         "AllowBackup",
@@ -37,6 +42,11 @@ internal fun Lint.applyShelfPlayerLintRules() {
         "NewerVersionAvailable",
         "AndroidGradlePluginVersion",
         "ObsoleteLintCustomCheck",
+        // Fires whenever a newer API level exists than the pinned targetSdk, so it turns a Google
+        // release into a red build with no change on our side — the same failure mode as the
+        // dependency-freshness checks above. The SDK levels are pinned in the version catalog and
+        // moved deliberately, with the compatibility testing that a targetSdk bump requires.
+        "OldTargetApi",
         // minSdk is 26, so the adaptive icon in `mipmap-anydpi-v26` is the only icon that can be
         // used. Density-specific PNG fallbacks would be dead weight.
         "IconMissingDensityFolder",
