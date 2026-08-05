@@ -1,6 +1,48 @@
 {
   "body": {
-    "libraries": []
+    "libraries": [
+      {
+        "createdAt": 0,
+        "displayOrder": 1,
+        "folders": [
+          {
+            "addedAt": 0,
+            "fullPath": "/audiobooks",
+            "id": "<volatile>",
+            "libraryId": "<volatile>"
+          }
+        ],
+        "icon": "database",
+        "id": "<volatile>",
+        "lastScan": 1785938116978,
+        "lastScanVersion": "2.36.0",
+        "lastUpdate": 0,
+        "mediaType": "book",
+        "name": "Contract Fiction",
+        "provider": "google",
+        "settings": {
+          "audiobooksOnly": false,
+          "autoScanCronExpression": null,
+          "coverAspectRatio": 1,
+          "disableWatcher": false,
+          "epubsAllowScriptedContent": false,
+          "hideSingleBookSeries": false,
+          "markAsFinishedPercentComplete": null,
+          "markAsFinishedTimeRemaining": 10,
+          "metadataPrecedence": [
+            "folderStructure",
+            "audioMetatags",
+            "nfoFile",
+            "txtFiles",
+            "opfFile",
+            "absMetadata"
+          ],
+          "onlyShowLaterBooksInContinueSeries": false,
+          "skipMatchingMediaWithAsin": false,
+          "skipMatchingMediaWithIsbn": false
+        }
+      }
+    ]
   },
   "bodyKind": "json",
   "contentType": "application/json",

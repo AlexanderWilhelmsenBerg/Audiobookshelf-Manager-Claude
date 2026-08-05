@@ -1,0 +1,21 @@
+{
+  "body": {
+    "authors": [
+      {
+        "addedAt": 0,
+        "asin": null,
+        "description": null,
+        "id": "<volatile>",
+        "imagePath": null,
+        "lastFirst": "Holt, Marisol",
+        "libraryId": "<volatile>",
+        "name": "Marisol Holt",
+        "numBooks": 1,
+        "updatedAt": 0
+      }
+    ]
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

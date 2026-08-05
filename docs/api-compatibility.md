@@ -46,7 +46,7 @@ something the adapter may assume:
 
 | Operation | Path | Why it matters |
 | --- | --- | --- |
-| Server probe | `GET /status` | Reports `serverVersion`, `isInit` and `authMethods`. `AUTH-001` uses it to decide whether a pasted URL is an Audiobookshelf server; `SYNC-001` reads the version from it. |
+| Server probe | `GET /status` | Reports `serverVersion`, `isInit` and `authMethods`. `AUTH-001` uses it to decide whether a pasted URL is an Audiobookshelf server; `SYNC-001` reads the version and the authentication mode from it. |
 | Health | `GET /healthcheck`, `GET /ping` | Readiness only. |
 | First-run setup | `POST /init` | Creates the root user. Used by the contract fixture container, never by the app. |
 | Login | `POST /login` | See the token note below. |
@@ -67,6 +67,37 @@ only possible if the server hands it to us rather than setting it as a cookie.
 This is exactly the kind of detail that cannot be guessed, and it is absent from the published
 specification. It is recorded here because `PRODUCT_SPEC 22.19` requires the compatibility matrix to
 be updated for every endpoint the app relies on.
+
+### The library read shapes, and why the list endpoint is not enough
+
+Captured on 2026-08-05 against 2.36.0, from a library the capture itself creates and scans.
+
+| Endpoint | Envelope | What it carries |
+| --- | --- | --- |
+| `GET /api/libraries` | `{"libraries": [...]}` | `id`, `name`, `mediaType`, `displayOrder`, `folders`, `lastScan`, `lastUpdate`, `settings` |
+| `GET /api/libraries/{id}/items` | `{"results": [...], "total", "page", "limit", ...}` | **minified** items |
+| `GET /api/items/{id}?expanded=1&include=progress` | the item | the full item |
+| `GET /api/libraries/{id}/authors` | `{"authors": [...]}` | `id`, `name`, `numBooks` |
+| `GET /api/libraries/{id}/series` | `{"results": [...], "total", ...}` | same envelope as items |
+
+The distinction that decides how `LIB-001` has to be built: **the item list is minified.** Each result
+carries `media.numTracks`, `media.numChapters` and `media.numAudioFiles` — counts, not contents — and
+`media.metadata.authorName` and `media.metadata.seriesName` as *strings*. There is no `tracks` array, no
+`chapters` array, no `authors` array and no `series` array.
+
+The expanded single item has all four, plus `media.metadata.narrators`, `media.metadata.descriptionPlain`
+and `userMediaProgress`. Notably `media.tracks[].startOffset` is present and is exactly what
+`PRODUCT_SPEC 11.3`'s global timeline needs, so the offsets do not have to be derived by summing
+durations.
+
+The consequence is that a sync which stores playable books cannot be one request per library: the list
+gives the catalogue, and each item needs its own expanded fetch before it can be persisted as a
+`BookSnapshot`. `PRODUCT_SPEC 2.3` ("offline means genuinely offline") is what makes that non-optional —
+a book stored without its track offsets cannot be resumed.
+
+Two artefacts of the capture, so a reader does not mistake them for server behaviour: `size` and `ino`
+are scrubbed to `0` and `<volatile>` by `scripts/capture-contracts.sh`, and the fixture library has no
+series, so `library-series.json` records an empty `results`.
 
 ## Capabilities
 
@@ -111,13 +142,14 @@ No code in this repository may present one as the other.
 | Fixture | Kind | Purpose |
 | --- | --- | --- |
 | `core/network/src/main/resources/fixtures/demo-library.json` | **ShelfPlayer-owned format** | The Phase 0 demo library. Not an Audiobookshelf response; see [ADR-0005](adr/0005-fake-gateway-and-fixtures.md). |
-| `core/network/src/test/resources/contracts/` | Captured server responses | **Empty.** `contract-capture.yml` produces them as an artifact; until they are committed the workflow's drift check is inert. |
+| `core/network/src/test/resources/contracts/` | Captured server responses | **Twelve fixtures**, committed. `contract-capture.yml` re-captures on every `:core:network` change and fails on drift. |
 
 ## Known endpoint differences
 
 None recorded. This section fills in as contract tests run against real server versions, and every
 new privileged endpoint must add a row (`PRODUCT_SPEC 22.19`).
 
-**Last verified:** 2026-08-05 against Audiobookshelf 2.36.0 — authentication endpoints and
-API-key bearer auth only. Playback, progress, downloads, management, users and websocket are
-unverified, and every capability in the table above still reads "No".
+**Last verified:** 2026-08-05 against Audiobookshelf 2.36.0 — the authentication endpoints, API-key
+bearer auth, and the library/item read shapes. Playback, progress, downloads, management, users and
+websocket are unverified, and every capability in the table above still reads "No" because nothing in
+`GET /status` reports one.

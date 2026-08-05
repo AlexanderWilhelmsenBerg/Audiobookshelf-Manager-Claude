@@ -4,6 +4,8 @@ import com.example.shelfplayer.core.database.converter.StringListConverters
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.model.Profile
+import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
 import java.time.Instant
@@ -50,6 +52,28 @@ internal object AuthEntityMappers {
         .substringBefore('/')
         .substringBefore(':')
         .ifBlank { baseUrl }
+
+    /**
+     * PRODUCT_SPEC SYNC-001 — a stored capability name this build does not recognise is dropped.
+     *
+     * The same rule as on the wire, applied on the way out of the database, and it matters for the same
+     * reason: a downgrade — an app update rolled back, a name removed from the enum — must not turn an
+     * unreadable name into an enabled feature.
+     */
+    fun toCapabilities(entity: ServerEntity) = ServerCapabilities(
+        serverId = ServerId(entity.serverId),
+        serverVersion = entity.detectedVersion,
+        supported = StringListConverters.toStringList(entity.capabilitiesJson)
+            .mapNotNull { name -> ServerCapability.entries.firstOrNull { it.name == name } }
+            .toSet(),
+        authMethods = StringListConverters.toStringList(entity.authMethodsJson),
+    )
+
+    /** Sorted, so two handshakes that found the same capabilities produce the same stored bytes. */
+    fun capabilitiesJson(capabilities: Set<ServerCapability>): String =
+        StringListConverters.fromStringList(capabilities.map(ServerCapability::name).sorted())
+
+    fun authMethodsJson(authMethods: List<String>): String = StringListConverters.fromStringList(authMethods)
 
     fun toEntity(profile: Profile, remoteUserId: String?) = ProfileEntity(
         profileId = profile.id.value,

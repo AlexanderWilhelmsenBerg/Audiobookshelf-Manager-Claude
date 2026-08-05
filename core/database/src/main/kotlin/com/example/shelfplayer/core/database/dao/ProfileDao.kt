@@ -64,6 +64,7 @@ interface ProfileDao {
         """
         UPDATE servers
         SET capabilitiesJson = :capabilitiesJson,
+            authMethodsJson = :authMethodsJson,
             capabilitiesDetectedAt = :detectedAt,
             detectedVersion = :serverVersion
         WHERE serverId = :serverId
@@ -72,6 +73,7 @@ interface ProfileDao {
     suspend fun updateServerCapabilities(
         serverId: String,
         capabilitiesJson: String,
+        authMethodsJson: String,
         serverVersion: String?,
         detectedAt: Long,
     )
