@@ -40,8 +40,14 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
   audiobook with the server image's own ffmpeg so the scan produces an item. The item **list** turns
   out to be minified — counts, not contents — so only the expanded single item carries tracks,
   chapters, authors, series and `startOffset`.
-- **Not wired**: `AppModule` still binds the fixture gateway, so the running app cannot sign in. No
-  library adapter (LIB-001) and no sign-in or profile-switch UI.
+- **Libraries and items sync from the server** (LIB-001): `AbsLibraryApi`, `LibraryMapper`, the real
+  gateway bound in `AppModule`, and the demo-library bootstrapper removed. An unauthorized library is
+  dropped at the gateway, so it is never written to Room rather than hidden by the UI; the grant is
+  persisted on the profile in database version 3.
+- Sign-in and profile-switch policy (`SignInUseCase`, `SwitchProfileUseCase`), so the remaining UI work is
+  screens rather than screens making decisions.
+- **Not wired**: there is no sign-in screen and no profile switcher, so a fresh install has no way to add
+  a profile. That is the whole of the remaining Phase 1 work.
 
 ### Phase 0 — Repository foundation
 

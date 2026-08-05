@@ -17,35 +17,38 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 | Server profile | **done at the repository layer** | `:data:auth`, `DefaultAuthRepository.signIn` writes the server and profile rows, stores the token, selects the profile. No screen calls it. |
 | Login | **done at the repository layer** | `AbsAuthApi` + `AbsAuthContractTest` against the committed fixtures. No screen calls it. |
 | Secure token storage | **done** | `KeystoreTokenCipher`, `SessionTokenStore`, `SessionTokenProvider` in `:data:auth`. |
-| Capability handshake | **done, not yet reachable** | `AbsCapabilityResolver`, `DefaultCapabilityRepository`. Reaches `/status` only once the real gateway is bound. |
-| Libraries/items sync | **not started** | Contracts are captured; no adapter written. See below. |
-| Room-backed home/library/search/details | **done in Phase 0** | Against fixture data, not server data. |
-| Profile switch | **not started** | `ProfileRepository.setActiveProfile` exists; nothing calls it, and no switcher UI. |
+| Capability handshake | **done** | `AbsCapabilityResolver`, `DefaultCapabilityRepository`. Runs against the bound real gateway; confirms no capability, correctly. |
+| Libraries/items sync | **done** | `AbsLibraryApi`, `LibraryMapper`, `AbsLibraryContractTest`. The real gateway is bound; the demo bootstrapper is gone. |
+| Room-backed home/library/search/details | **done** | Now reads server data. Never rendered on a device. |
+| Profile switch | **policy done, no UI** | `SwitchProfileUseCase` is written and tested. Nothing calls it. |
 
-### Exit criteria: 0 of 3 met
+### Exit criteria: 0 of 3 met, and all three now blocked on the same thing
 
-- Two accounts on one server can switch — **no**. The repository can create both profiles
-  (`DefaultAuthRepositoryTest` proves two accounts on one server become two profiles sharing one
-  server row), but nothing switches between them and no screen exists.
-- Offline cached browse works — **not against real data**; works against the fixture.
-- Unauthorized libraries never appear — **unproven**. `AuthSession.canAccess` is unit-tested, and the
-  accessible-library grant is not yet persisted or applied to a sync.
+- Two accounts on one server can switch — **no UI**. `DefaultAuthRepositoryTest` proves two accounts on
+  one server become two profiles sharing one server row, and `SwitchProfileUseCaseTest` proves the switch
+  behaves. Nothing calls either.
+- Offline cached browse works — **untested against real data**. The sync writes server data into Room and
+  the UI reads Room, so the pieces are in place, but no one has signed in and pulled the network.
+- Unauthorized libraries never appear — **enforced and unit-tested, not demonstrated**. `AbsLibraryApi`
+  drops an ungranted library before it can reach Room, and the grant is persisted on the profile
+  (database version 3). `AbsLibraryContractTest` covers it against a MockWebServer. What has not happened
+  is a real account with a restricted grant signing in.
 
 ### The gap that matters, restated
 
-**The running app still cannot sign in.** `AppModule` binds `FakeAudiobookshelfGateway`, whose
-`signIn` deliberately returns `AppError.ApiCompatibility` — a sign-in screen that appeared to succeed
-against fixture data is the false confidence `PRODUCT_SPEC 22.4` exists to prevent. Two things are
-missing before that binding can flip:
+**Everything below the UI is done. There is no UI.**
 
-1. the library adapter, because the real gateway has to implement `LibraryApi`;
-2. a sign-in screen, because with the fixture gateway gone there is no other way to get a profile.
+The real gateway is bound, the demo library is gone, and `ShelfPlayerApplication` restores the active
+profile's session on start. On a device that means: a fresh install shows an empty home and has no way to
+add a profile, because the only path to one is a screen that does not exist. That is a worse *user*
+state than the demo library it replaced, and a better *project* state — nothing in the app now pretends
+to have data it did not get from a server.
 
-Everything below the UI now exists and is tested.
+Step 9 is the whole remaining gap.
 
 ## What was added in this session
 
-Four commits, each with `verifyDebug` green. 171 unit tests pass; 84 of them are new.
+Six commits, each with `verifyDebug` green. **196 unit tests pass, 0 failures**; 109 of them are new.
 
 ### `:data:auth` (AUTH-001, AUTH-002)
 
@@ -89,9 +92,19 @@ non-extractable key, `setUserAuthenticationRequired(false)` — and the real
 ### Database version 2
 
 `profiles.remoteUserId`, plus `servers.authMethodsJson`, `servers.capabilitiesJson` and
-`servers.capabilitiesDetectedAt`. Every statement is additive; no table is recreated. `MigrationTo2Test`
-builds a real version-1 database **from the committed exported `1.json`** rather than from a
-transcribed `CREATE TABLE`, so it cannot pass against a schema that drifted from the export.
+`servers.capabilitiesDetectedAt`. Every statement is additive; no table is recreated.
+
+### Database version 3
+
+`profiles.accessibleLibrariesJson` and `profiles.hasAllLibraryAccess` — the server's library grant, which
+previously lived only in the transient `AuthSession` and so was unavailable to the sync that has to honour
+it. The migration grants **existing** rows everything and defaults **new** rows to nothing: a profile
+created before grants were recorded already has a library cached and browsable offline, and applying the
+restrictive default retroactively would blank content the user is reading.
+
+`MigrationTest` builds each starting version **from its committed exported schema** rather than from a
+transcribed `CREATE TABLE`, so it cannot pass against a schema that drifted from the export, and it
+migrates every version all the way to the current one — which is what a device two versions behind does.
 
 `PRODUCT_SPEC 13` names a conceptual `ServerCapabilityEntity`; the handshake is stored as two JSON
 columns instead, which `PRODUCT_SPEC 13` permits ("exact normalization may vary"). Nothing queries a
@@ -162,42 +175,49 @@ In dependency order.
 5. ~~Server profile creation and session repository (AUTH-001, AUTH-002).~~ **Done.**
 6. ~~Session expiry and refresh (AUTH-004).~~ **Done.**
 7. ~~Capability handshake against `GET /status` (SYNC-001).~~ **Done.**
-8. **Libraries/items sync (LIB-001).** Contracts are captured, so nothing is blocked. What it needs:
+8. ~~**Libraries/items sync (LIB-001).**~~ **Done.** `AbsLibraryApi` filters by the persisted grant
+   before anything reaches Room, fetches the catalogue and then one expanded item each, and fails a
+   library's sync on any per-item error that is not a `404`. `AccountApi` was removed rather than
+   reimplemented — its parameterless shape cannot serve a multi-profile client — and the note about
+   `authorize.json` returning `user.token` only now lives on the gateway interface, where the next person
+   to add a permission refresh will read it.
 
-   - DTOs for `libraries`, the minified item list, the expanded item and `authors`. Every field
-     nullable or defaulted, as in `AuthDtos` — `ignoreUnknownKeys` protects against added fields, not
-     removed ones.
-   - `LibraryService` with `GET api/libraries`, `GET api/libraries/{id}/items` and
-     `GET api/items/{id}?expanded=1&include=progress`.
-   - A mapper to `Library` and `BookSnapshot`. `media.tracks[].startOffset` and `media.chapters` are
-     in *seconds* in the fixture; the entities store milliseconds.
-   - **A connection seam.** `LibraryApi.listLibraries(profileId)` has to resolve that profile to a base
-     URL *and* a credential. `TokenProvider` cannot supply the URL, so an interface in `:core:network`
-     implemented in `:data:auth` is the precedent to follow (`DatabaseTransactionRunner` and
-     `SessionTokenProvider` are the two existing ones). Pass the credential as an explicit
-     `Authorization` header — `AuthorizationInterceptor` already yields to one.
-   - **`AuthSession.canAccess` filtering.** The requirement is that an unauthorized library is never
-     written to Room at all, not hidden in the UI. That needs the accessible-library grant persisted
-     on the profile — it currently lives only in the transient `AuthSession`. That is a database
-     version 3 (`profiles.accessibleLibrariesJson`, `profiles.hasAllLibraryAccess`), with a migration
-     and a migration test.
-   - `AbsAudiobookshelfGateway` assembling `auth`, `capabilities` and `library`, then flipping the
-     `AppModule` binding away from the fake.
-   - `AccountApi` needs a decision. Its `currentServer()`/`currentProfile()` take no parameters, which
-     suited one fixture profile and does not suit a multi-profile client. `POST /api/authorize` is
-     captured and is the natural replacement (`currentProfile(profileId)`), which `PRODUCT_SPEC 5.2`
-     needs anyway for the permission refresh after a `403`. **Note that `authorize.json` returns
-     `user.token` only — no `accessToken`, no `refreshToken`** — so `AuthMapper.toSession` is the wrong
-     mapping for it; it needs a permissions-only mapping, or it will store the legacy non-refreshable
-     token as the access token.
-   - Removing `FixtureLibraryBootstrapper` and the `fixtureLibrarySeeded` flag's use. The fixture
-     gateway and `demo-library.json` can stay for tests.
+9. **Sign-in UI and profile switch.** The only remaining Phase 1 work, and the whole gap.
 
-9. **Sign-in UI and profile switch.** Then the exit criteria become testable. Screens needed:
-   onboarding (server URL → probe result showing version and connection security → credentials) and a
-   profile switcher. `ShelfPlayerNavHost` needs a start-destination decision based on whether any
-   profile exists, and `ShelfPlayerApplication` should call `AuthRepository.restoreSession` for the
-   active profile on start instead of seeding a fixture.
+   Ready for it:
+
+   - `SignInUseCase` — probe-free entry point taking URL, username and password; runs the handshake and
+     the first sync; returns the profile plus an optional warning. Tested.
+   - `SwitchProfileUseCase` — selection then credential, in that order, for the reason recorded on it.
+     Tested.
+   - `AuthRepository.probeServer` returns a `ServerCandidate` carrying the normalized URL, the detected
+     version, whether HTTPS was assumed and whether the connection is cleartext — which is exactly the
+     four things PRODUCT_SPEC 6.1 steps 3-4 want on screen before the password field.
+   - `SessionRestorer.restoreActiveSession()` returns `null` when no profile is selected, which is the
+     signal for "show onboarding rather than an empty library".
+
+   What step 9 has to build:
+
+   - `feature/onboarding`: a server-address screen (submit → `probeServer`, show version and a cleartext
+     warning), then a credentials screen (submit → `SignInUseCase`). PRODUCT_SPEC AUTH-001 wants the
+     certificate error distinguishable from a wrong password — `AppError.Security` versus
+     `AppError.Authentication`, both already produced by `NetworkErrorMapper`.
+   - `feature/profiles`: a switcher listing `ProfileRepository.observeProfiles()` with server name,
+     username and role (AUTH-002 wants all three), calling `SwitchProfileUseCase`, plus sign-out and
+     remove-profile actions calling `AuthRepository`. Removing a profile is destructive and
+     PRODUCT_SPEC 21 requires its wording reviewed: it deletes that profile's progress and downloads and
+     nothing else, and the confirmation should say so.
+   - `ShelfPlayerNavHost`: a start-destination decision. There is no profile on first launch, so the
+     graph cannot start at `home`. The decision needs to be made from state, not from a one-shot check,
+     because removing the last profile has to return the user to onboarding.
+   - A `requiresReauthentication` banner. AUTH-004's "pauses new network actions and marks the profile"
+     is enforced in the data layer already; the profile carries the flag and nothing displays it.
+   - ViewModel tests for each, and `PRODUCT_SPEC 21`'s full state list per screen: error, loading, empty,
+     offline and permission.
+
+   Only after that do the exit criteria become demonstrable, and demonstrating them needs a device or an
+   emulator — neither exists in this environment. Building an APK and having a human sign in to a real
+   server is the honest way to close them.
 
 ## Environment notes for the next session
 
@@ -223,6 +243,14 @@ session runs as root). Then `docker pull ghcr.io/advplyr/audiobookshelf:2.36.0` 
 container command that needs output has to be run detached and its result read from a bind mount or
 `docker logs` — that is why `seed-contract-media.sh` uses `docker run --rm` (which works when the
 caller is a script CI runs, but had to be run detached interactively here).
+
+**Two captures against one server should be byte-identical.** That is what CI's drift check asserts, and
+the first version of the library fixtures failed it: `lastScan` and the file id inside `contentUrl` vary
+per capture and were not scrubbed. Both are now in the scrubber. Before committing a re-captured fixture,
+capture twice against the same container and `diff -ru` the two output directories — a false drift report
+is worse than none, because it trains a reader to ignore the check. Note that a *second* capture against
+an already-initialized server legitimately differs in `init.json`, `status-uninitialized.json` and
+`userDefaultLibraryId`: those come from the fresh-server sequence and CI always starts a new container.
 
 ## Phase 2 preparation
 
@@ -257,6 +285,11 @@ Stated plainly because several of these look done from the code.
 - **The `servers`/`profiles` migration has never run on a device**, only on Robolectric's SQLite.
 - **Every capability in `docs/api-compatibility.md` reads "No"** and that is accurate — the handshake
   confirms none.
+- **No library has ever been synced from a server by the app.** `AbsLibraryContractTest` drives the real
+  adapter against MockWebServer serving the captured fixtures, and `DefaultLibraryRepositoryTest` drives
+  the repository against the fake gateway. The two have never met a live server through the app.
+- **The grant filter has never been exercised by a genuinely restricted account.** It is enforced at the
+  gateway and covered by tests that fabricate the grant.
 - **Websocket, playback, progress, downloads, management and users are entirely unimplemented** and
   their endpoints uncaptured.
 
