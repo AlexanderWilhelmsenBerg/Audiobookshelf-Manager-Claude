@@ -16,7 +16,7 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 | --- | --- | --- |
 | Server profile | **not started** | No sign-in-driven profile creation exists. `ProfileRepository.setActiveProfile` is Phase 0 fixture plumbing. |
 | Login | **wired at the gateway; not reachable from the UI** | `AuthService`, `AuthDtos`, `AuthMapper`, `AbsAuthApi`, `AudiobookshelfServiceFactory`, `AuthApi` on the gateway, fake updated. No DI binding selects the real gateway, and no screen calls it. |
-| Secure token storage | **not started** | No `EncryptedSharedPreferences`, `MasterKey` or Keystore use anywhere. |
+| Secure token storage | **built, not bound** | `TokenCipher` (AES-256/GCM, non-extractable `AndroidKeyStore` key) and `SessionTokenStore` (per-profile ciphertext, atomic write). `TokenProvider` still resolves to `NoTokenProvider`, so nothing calls either. |
 | Capability handshake | **not started** | `CapabilityResolver` is declared and implemented only by the fake. |
 | Libraries/items sync | **not started** | No Retrofit service for libraries; sync still reads the fixture. |
 | Room-backed home/library/search/details | **done in Phase 0** | Against fixture data, not server data. |
@@ -69,8 +69,11 @@ In dependency order. Each is a vertical slice with tests.
    `core/network/src/test/resources/contracts/`; the workflow's compare step is now real drift detection.
 2. ~~Build the Retrofit client.~~ **Done** — `AudiobookshelfServiceFactory`.
 3. ~~Add `auth` to `AudiobookshelfGateway`.~~ **Done** — `AuthApi`, `AbsAuthApi`, fake updated.
-4. **Secure token storage (AUTH-003).** Keystore-backed. Tokens must never reach DataStore or Room in
-   plaintext, and never a log line.
+4. ~~**Secure token storage (AUTH-003).**~~ **Done except the binding.** `TokenCipher` and
+   `SessionTokenStore` exist and `:core:datastore:verifyDebug` is green. What remains is one small
+   change: a real `TokenProvider` in `:core:network` that reads the active profile's token from
+   `SessionTokenStore`, replacing the `NoTokenProvider` binding. Until that lands, OkHttp sends no
+   `Authorization` header and the storage is unreachable.
 
    **Decided (2026-08-05, by the project owner): use the Android Keystore API directly. Do not add
    `androidx.security:security-crypto`.** Its only releases are alphas, and an alpha is not an
