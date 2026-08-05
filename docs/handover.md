@@ -71,6 +71,14 @@ In dependency order. Each is a vertical slice with tests.
 3. ~~Add `auth` to `AudiobookshelfGateway`.~~ **Done** — `AuthApi`, `AbsAuthApi`, fake updated.
 4. **Secure token storage (AUTH-003).** Keystore-backed. Tokens must never reach DataStore or Room in
    plaintext, and never a log line.
+
+   **Prerequisite:** `androidx.security:security-crypto` is *not* in `gradle/libs.versions.toml`. It
+   must be added with an explicit pinned version — `PRODUCT_SPEC 16.1` forbids dynamic versions, and
+   the artifact's only current releases are alphas, which is a decision to make consciously rather
+   than by taking `latest`. The alternative is using the Keystore API directly and encrypting the
+   token before it reaches DataStore, which avoids an alpha dependency at the cost of writing the
+   crypto wiring by hand. Either way `TokenProvider`/`NoTokenProvider` in
+   `core/network/http/Interceptors.kt` is the seam the real store plugs into.
 5. **Server profile creation and session repository (AUTH-001, AUTH-002).**
 6. **Session expiry and refresh (AUTH-004).** `/auth/refresh` with `x-refresh-token`; a non-renewable
    session must mark the profile as requiring reauthentication rather than silently signing out.
@@ -110,10 +118,16 @@ once login lands, and `PRODUCT_SPEC 22.2` asks for one vertical slice at a time.
 
 ## Environment constraints that shaped the work
 
-- `dl.google.com` is blocked, so Gradle cannot resolve locally and `verifyDebug` runs only in CI.
-  A local toolchain (Kotlin 2.2.0 CLI, JUnit, Turbine, coroutines-test, Dagger, Hilt-core, all from
-  Maven Central) compiles and runs the JVM-module suites before pushing.
-- Container registry blob hosts are blocked, so contract capture runs in CI rather than locally.
+- `dl.google.com` **was** blocked for most of this work, so Gradle could not resolve locally and
+  `verifyDebug` ran only in CI. It is reachable as of 2026-08-05, which means `./gradlew verifyDebug`
+  should now work locally — **verify that first**, because it turns a four-minute CI round trip into a
+  local run and every remaining Phase 1 item benefits.
+  The fallback toolchain that made the CI-only period workable (Kotlin 2.2.0 CLI, JUnit, Turbine,
+  coroutines-test, Dagger, Hilt-core, Retrofit, OkHttp, all from Maven Central) compiles and runs the
+  JVM-module suites without Gradle, and is still useful for fast single-file checks.
+- Container registry blob hosts were blocked too; they are reachable now, so
+  `scripts/capture-contracts.sh` can be run against a local container as well as in CI. The committed
+  fixtures were captured that way.
 - Dependency verification is `off` and no lockfiles are committed; both need one bootstrap run with
   unrestricted repository access (ADR-0006).
 
