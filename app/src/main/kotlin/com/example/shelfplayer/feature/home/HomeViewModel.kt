@@ -66,14 +66,15 @@ class HomeViewModel @Inject constructor(
             // A live error from the user's own refresh wins: it is the newer fact, and it is the one they
             // are waiting for an answer to.
             error = refresh.lastError ?: syncState?.lastError,
-            // PRODUCT_SPEC LIB-001 / 21: loading and empty are distinct, and *loading* means work is in
-            // flight — not merely that there is nothing to show.
+            // PRODUCT_SPEC LIB-001 — "the home screen can render partial cached content while sync
+            // continues", and sync status is "visible but non-blocking".
             //
-            // It used to mean "no profile and nothing cached", which was true for as long as the
-            // demo-library bootstrapper took to run and false forever after. With the bootstrapper gone
-            // that condition never resolves: a device with no profile would show a spinner permanently,
-            // because nothing is coming. An empty screen that explains itself is the honest state.
-            isInitialLoad = refresh.inFlight && libraries.isEmpty(),
+            // This is the only thing that blocks, and it blocks on Room rather than on the network: the
+            // instant between the screen appearing and the first database emission. Blocking on the
+            // *sync* was the previous behaviour and was reported from a device as having to wait for the
+            // library to update before seeing it. A sync of a real library is an N+1 over every item; the
+            // cached content is right there, and there is no reason to hide it meanwhile.
+            isLoaded = true,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -138,12 +139,12 @@ data class HomeUiState(
     val syncStatus: SyncStatus = SyncStatus.NeverSynced,
     val error: AppError? = null,
     /**
-     * Whether a first load is actually running.
+     * Whether Room has answered yet.
      *
-     * Defaults to `false`, and that default is the state the screen shows for the instant before Room
-     * answers. It used to default to `true`, which was right while a bootstrapper was guaranteed to be
-     * producing data and is wrong now that nothing is: a default of "loading" is a claim, and the app
-     * should not make one it cannot keep.
+     * `false` only for the instant between this screen appearing and its first database emission, and the
+     * screen waits on it — otherwise a cold start with a saved profile flashes "No server connected"
+     * before the profile arrives. It is deliberately *not* about the sync: a refresh in flight is
+     * [isRefreshing], which the screen shows without hiding anything (PRODUCT_SPEC LIB-001).
      */
-    val isInitialLoad: Boolean = false,
+    val isLoaded: Boolean = false,
 )

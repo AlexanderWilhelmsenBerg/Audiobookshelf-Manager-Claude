@@ -49,6 +49,27 @@ Two defects came out of it and are fixed:
 2. **The reauthentication banner said "Downloaded books still play."** There are no downloads (Phase 3) and
    no player (Phase 2). Reworded.
 
+### Second device run — the same day
+
+The auto-sync fix worked: the library populated on opening. Two further points, one fixed and one
+deferred by the owner.
+
+3. **Home blocked on the sync.** Fixed. `LIB-001` says the home screen "can render partial cached content
+   while sync continues" and that sync status is "visible but non-blocking", and it was doing neither: a
+   refresh in flight replaced the whole screen with a spinner. Since a sync of a real library is an N+1
+   over every item, that is a long wait in front of content the app already had. The cached library now
+   renders immediately under a progress bar. The one remaining blocking state waits on *Room*, not the
+   network — without it a cold start flashes "No server connected" before the profile row arrives.
+
+4. **No cover art, and thin metadata on screen.** Deferred by the owner to a later phase, and recorded
+   here because the *data* is not the problem: `LibraryMapper` maps and stores `coverPath`, `description`
+   (preferring the server's `descriptionPlain`, already sanitized), narrators, genres, publisher, language
+   and published year, and the device run confirmed progress and history render from that same expanded
+   fetch. What is missing is the UI, plus one piece of plumbing for covers specifically — a cover URL is a
+   server path that needs an authenticated image loader, so Coil has to be given the profile's credential.
+   That is the `@AuthenticatedClient` OkHttp stack, which exists and is currently unused; wiring Coil to it
+   is the natural next step and the reason that client was kept.
+
 ### Exit criteria: 0 of 3 *demonstrated*, all 3 now reachable
 
 Every deliverable is built, and the device run above verified a good deal of the machinery underneath

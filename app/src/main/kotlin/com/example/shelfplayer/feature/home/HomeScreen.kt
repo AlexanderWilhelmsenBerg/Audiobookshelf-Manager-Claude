@@ -15,6 +15,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -25,6 +26,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -99,54 +104,89 @@ fun HomeScreen(
             )
         },
     ) { innerPadding ->
-        val content = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-
-        when {
-            uiState.isInitialLoad ->
-                ShelfLoadingState(
-                    label = stringResource(R.string.home_loading),
-                    modifier = content,
+        val refreshingLabel = stringResource(R.string.home_sync_running)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+        ) {
+            // PRODUCT_SPEC LIB-001 — sync status is "visible but non-blocking". A bar above the content
+            // rather than a spinner in place of it: the cached library is what the user came for, and a
+            // sync of a real library is an N+1 over every item.
+            if (uiState.isRefreshing) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            contentDescription = refreshingLabel
+                            liveRegion = LiveRegionMode.Polite
+                        },
                 )
-
-            // Checked before the error branch: with no profile there is nothing to refresh, and
-            // "add a server" is a more useful thing to read than whatever the last attempt reported.
-            // No action button, because the screen that would handle one does not exist yet.
-            uiState.profile == null ->
-                ShelfEmptyState(
-                    title = stringResource(R.string.home_no_profile_title),
-                    body = stringResource(R.string.home_no_profile_body),
-                    actionLabel = stringResource(R.string.home_sign_in),
-                    onAction = onSignInSelected,
-                    modifier = content,
-                )
-
-            uiState.libraries.isEmpty() && uiState.error != null ->
-                ShelfErrorState(
-                    title = stringResource(R.string.home_error_title),
-                    body = uiState.error.summary,
-                    technicalCode = uiState.error.code,
-                    actionLabel = stringResource(R.string.home_refresh),
-                    onAction = onRefresh,
-                    modifier = content,
-                )
-
-            uiState.libraries.isEmpty() ->
-                ShelfEmptyState(
-                    title = stringResource(R.string.home_empty_title),
-                    body = stringResource(R.string.home_empty_body),
-                    actionLabel = stringResource(R.string.home_refresh),
-                    onAction = onRefresh,
-                    modifier = content,
-                )
-
-            else -> LibraryList(
+            }
+            HomeContent(
                 uiState = uiState,
                 onLibrarySelected = onLibrarySelected,
-                modifier = content,
+                onRefresh = onRefresh,
+                onSignInSelected = onSignInSelected,
             )
         }
+    }
+}
+
+@Composable
+private fun HomeContent(
+    uiState: HomeUiState,
+    onLibrarySelected: (LibraryId) -> Unit,
+    onRefresh: () -> Unit,
+    onSignInSelected: () -> Unit,
+) {
+    val content = Modifier.fillMaxSize()
+
+    when {
+        // The only blocking state, and it blocks on Room rather than on the network: without it a cold
+        // start with a saved profile flashes "No server connected" before the profile arrives.
+        !uiState.isLoaded ->
+            ShelfLoadingState(
+                label = stringResource(R.string.home_loading),
+                modifier = content,
+            )
+
+        // Checked before the error branch: with no profile there is nothing to refresh, and
+        // "add a server" is a more useful thing to read than whatever the last attempt reported.
+        // No action button, because the screen that would handle one does not exist yet.
+        uiState.profile == null ->
+            ShelfEmptyState(
+                title = stringResource(R.string.home_no_profile_title),
+                body = stringResource(R.string.home_no_profile_body),
+                actionLabel = stringResource(R.string.home_sign_in),
+                onAction = onSignInSelected,
+                modifier = content,
+            )
+
+        uiState.libraries.isEmpty() && uiState.error != null ->
+            ShelfErrorState(
+                title = stringResource(R.string.home_error_title),
+                body = uiState.error.summary,
+                technicalCode = uiState.error.code,
+                actionLabel = stringResource(R.string.home_refresh),
+                onAction = onRefresh,
+                modifier = content,
+            )
+
+        uiState.libraries.isEmpty() ->
+            ShelfEmptyState(
+                title = stringResource(R.string.home_empty_title),
+                body = stringResource(R.string.home_empty_body),
+                actionLabel = stringResource(R.string.home_refresh),
+                onAction = onRefresh,
+                modifier = content,
+            )
+
+        else -> LibraryList(
+            uiState = uiState,
+            onLibrarySelected = onLibrarySelected,
+            modifier = content,
+        )
     }
 }
 

@@ -129,16 +129,22 @@ class HomeViewModelTest {
     fun `no profile is an empty state, not a permanent spinner`() = runTest {
         val state = viewModel().uiState.value
 
-        assertFalse(state.isInitialLoad)
         assertNull(state.profile)
         assertEquals(emptyList(), state.libraries)
         assertNull(state.error)
     }
 
-    /** Loading means work is in flight, which is the only state that can resolve on its own. */
+    /**
+     * PRODUCT_SPEC LIB-001 — reported from a device: the app made the user wait for the sync before
+     * showing the library it already had.
+     *
+     * A refresh in flight is reported as refreshing, and the cached content stays in the state. The screen
+     * renders it under a progress bar rather than replacing it with a spinner.
+     */
     @Test
-    fun `a refresh with nothing cached is the loading state`() = runTest {
+    fun `a sync in flight does not hide the cached library`() = runTest {
         profiles.setActive(demoProfile)
+        libraries.emit(listOf(demoLibrary))
         val gate = CompletableDeferred<Unit>()
         libraries.gate = gate
 
@@ -146,9 +152,27 @@ class HomeViewModelTest {
         viewModel.uiState.test {
             awaitItem()
             viewModel.refresh()
-            assertEquals(true, awaitItem().isInitialLoad)
+
+            val syncing = awaitItem()
+            assertEquals(true, syncing.isRefreshing)
+            assertEquals(listOf("Fiction"), syncing.libraries.map { it.name })
+            assertEquals(true, syncing.isLoaded, "the screen must not fall back to its blocking state")
+
             gate.complete(Unit)
             cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /** The one blocking state is Room answering, not the network. */
+    @Test
+    fun `the blocking state ends as soon as the database answers`() = runTest {
+        profiles.setActive(demoProfile)
+        val viewModel = viewModel()
+
+        assertFalse(viewModel.uiState.value.isLoaded, "the initial value is the pre-database frame")
+
+        viewModel.uiState.test {
+            assertEquals(true, awaitItem().isLoaded)
         }
     }
 
@@ -161,7 +185,6 @@ class HomeViewModelTest {
             val state = awaitItem()
             assertEquals(listOf("Fiction"), state.libraries.map { it.name })
             assertEquals(SyncStatus.Succeeded, state.syncStatus)
-            assertFalse(state.isInitialLoad)
         }
     }
 
