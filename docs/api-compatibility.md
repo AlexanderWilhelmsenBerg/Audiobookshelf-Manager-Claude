@@ -5,11 +5,12 @@ known endpoint differences, the fixtures used, and the date last verified.
 
 ## Server versions tested
 
-**None.** Phase 0 makes no network requests and defines no Audiobookshelf endpoints.
-
 | Server version | Date verified | Auth mode | Websocket | Notes |
 | --- | --- | --- | --- | --- |
-| — | — | — | — | No server has been contacted by this repository. |
+| 2.36.0 | 2026-08-05 | local (`authMethods: ["local"]`) | not verified | Login, refresh-token behaviour and API-key bearer auth observed directly. Contract capture in CI runs against the same version. |
+
+Verified by observation, not by a released build: the app does not yet make these calls (see
+`docs/handover.md`). What is confirmed is the *contract*, not an end-to-end sign-in.
 
 This table is a release blocker for anything that talks to a server (`PRODUCT_SPEC 17.1`: contract
 tests against the selected server versions are release blockers). It must have at least one row
@@ -110,11 +111,13 @@ No code in this repository may present one as the other.
 | Fixture | Kind | Purpose |
 | --- | --- | --- |
 | `core/network/src/main/resources/fixtures/demo-library.json` | **ShelfPlayer-owned format** | The Phase 0 demo library. Not an Audiobookshelf response; see [ADR-0005](adr/0005-fake-gateway-and-fixtures.md). |
-| `core/network/src/test/resources/contract/` | Captured server responses | Does not exist yet. Arrives in Phase 1 with the endpoints it describes. |
+| `core/network/src/test/resources/contracts/` | Captured server responses | **Empty.** `contract-capture.yml` produces them as an artifact; until they are committed the workflow's drift check is inert. |
 
 ## Known endpoint differences
 
 None recorded. This section fills in as contract tests run against real server versions, and every
 new privileged endpoint must add a row (`PRODUCT_SPEC 22.19`).
 
-**Last verified:** never — Phase 0 has contacted no server.
+**Last verified:** 2026-08-05 against Audiobookshelf 2.36.0 — authentication endpoints and
+API-key bearer auth only. Playback, progress, downloads, management, users and websocket are
+unverified, and every capability in the table above still reads "No".
