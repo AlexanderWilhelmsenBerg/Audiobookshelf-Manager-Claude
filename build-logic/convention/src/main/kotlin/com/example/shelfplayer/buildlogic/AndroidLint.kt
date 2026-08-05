@@ -47,8 +47,8 @@ internal fun Lint.applyShelfPlayerLintRules() {
         // dependency-freshness checks above. The SDK levels are pinned in the version catalog and
         // moved deliberately, with the compatibility testing that a targetSdk bump requires.
         "OldTargetApi",
-        // minSdk is 26, so the adaptive icon in `mipmap-anydpi-v26` is the only icon that can be
-        // used. Density-specific PNG fallbacks would be dead weight.
+        // minSdk is 26, so the adaptive icon in `mipmap-anydpi` is the only icon that can be used.
+        // Density-specific PNG fallbacks would be dead weight.
         "IconMissingDensityFolder",
         "IconLauncherShape",
     )

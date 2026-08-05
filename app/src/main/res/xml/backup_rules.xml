@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC AUTH-003 / 15 — the pre-Android-12 half of "nothing is backed up".
+
+  `data_extraction_rules.xml` only applies from API 31. This file is the equivalent for API 26–30,
+  where `android:fullBackupContent` is the attribute the platform reads.
+
+  It is deliberately kept even though `android:allowBackup="false"` already disables backup on those
+  versions. The two settings answer different questions: `allowBackup` is whether backup happens at
+  all, this file is what would be included if it did. Someone enabling backup later for one
+  legitimate reason — restoring UI preferences, say — would otherwise silently start shipping the
+  token store and the listening history off the device, on exactly the API levels where the modern
+  rules file does not apply.
+-->
+<full-backup-content>
+    <exclude domain="root" />
+    <exclude domain="file" />
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+    <exclude domain="external" />
+</full-backup-content>

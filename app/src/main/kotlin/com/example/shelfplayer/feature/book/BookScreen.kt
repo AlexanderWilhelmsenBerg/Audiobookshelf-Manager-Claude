@@ -22,6 +22,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -128,7 +129,7 @@ private fun BookDetails(book: Book, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            text = stringResource(R.string.book_tracks, book.trackCount),
+            text = pluralStringResource(R.plurals.book_tracks, book.trackCount, book.trackCount),
             style = MaterialTheme.typography.bodyMedium,
         )
 

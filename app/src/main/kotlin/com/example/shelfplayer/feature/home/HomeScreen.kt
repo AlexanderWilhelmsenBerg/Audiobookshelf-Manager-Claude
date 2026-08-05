@@ -21,6 +21,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -147,7 +148,7 @@ private fun LibraryList(uiState: HomeUiState, onLibrarySelected: (LibraryId) -> 
 
 @Composable
 private fun LibraryCard(library: Library, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val openLabel = stringResource(R.string.home_library_books, library.bookCount)
+    val openLabel = pluralStringResource(R.plurals.home_library_books, library.bookCount, library.bookCount)
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
@@ -173,5 +174,8 @@ private fun HomeUiState.syncStatusLabel(): String = when (syncStatus) {
     SyncStatus.NeverSynced -> stringResource(R.string.home_sync_never)
     SyncStatus.Succeeded,
     SyncStatus.PartiallySucceeded,
-    -> stringResource(R.string.home_library_books, libraries.sumOf(Library::bookCount))
+    -> {
+        val total = libraries.sumOf(Library::bookCount)
+        pluralStringResource(R.plurals.home_library_books, total, total)
+    }
 }
