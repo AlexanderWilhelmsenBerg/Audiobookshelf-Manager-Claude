@@ -11,6 +11,7 @@ import com.example.shelfplayer.navigation.ShelfDestinations
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,33 +50,41 @@ class LibraryViewModel @Inject constructor(
      * Only the query is debounced. Changing the sort order re-queries immediately, because there is
      * nothing to settle: the user made one discrete choice, not a stream of keystrokes.
      *
-     * The two inputs are combined into a named [LibraryQuery] rather than a `Pair`. A `Pair` here
-     * left the compiler unable to resolve `component1`/`component2` against the many array and
-     * collection overloads, and a request that names its fields reads better than `first`/`second`.
+     * `map { it.query }` rather than `map(LibraryControls::query)`: `Flow.map` takes a
+     * `suspend (T) -> R`, and a property reference is not convertible to a suspending function type,
+     * so the reference form fails to resolve and every downstream inference collapses with it.
      */
-    private val books = combine(
-        controls
-            .map(LibraryControls::query)
-            .distinctUntilChanged()
-            .debounce { query -> if (query.isEmpty()) 0L else SEARCH_DEBOUNCE_MILLIS },
-        controls.map(LibraryControls::order).distinctUntilChanged(),
-    ) { query, order -> LibraryQuery(query, order) }
-        .flatMapLatest { request ->
-            observeLibraryBooks(
-                libraryId = libraryId,
-                query = request.query,
-                order = request.order,
-            )
-        }
+    private val debouncedQuery: Flow<String> = controls
+        .map { it.query }
+        .distinctUntilChanged()
+        .debounce { query -> if (query.isEmpty()) 0L else SEARCH_DEBOUNCE_MILLIS }
+
+    private val order: Flow<BookSortOrder> = controls
+        .map { it.order }
+        .distinctUntilChanged()
+
+    /**
+     * The two inputs are combined into a named [LibraryQuery] rather than a `Pair`, so the
+     * downstream lambda reads `request.query` instead of `first`.
+     */
+    private val books: Flow<List<Book>> =
+        combine(debouncedQuery, order) { query, order -> LibraryQuery(query, order) }
+            .flatMapLatest { request ->
+                observeLibraryBooks(
+                    libraryId = libraryId,
+                    query = request.query,
+                    order = request.order,
+                )
+            }
 
     val uiState: StateFlow<LibraryUiState> = combine(
         controls,
         books,
-    ) { current, books ->
+    ) { current, items ->
         LibraryUiState(
             query = current.query,
             order = current.order,
-            books = books,
+            books = items,
             isLoading = false,
         )
     }.stateIn(
