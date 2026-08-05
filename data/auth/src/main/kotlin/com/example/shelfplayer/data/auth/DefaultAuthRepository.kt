@@ -198,6 +198,58 @@ class DefaultAuthRepository @Inject constructor(
         }
     }
 
+    /**
+     * PRODUCT_SPEC AUTH-004 — one renewal attempt, and never a silent sign-out.
+     *
+     * Three different failures land in the same place, and collapsing them is the point: no stored
+     * refresh token, a server that refused it, and a refreshed session that came back unusable all mean
+     * "the user has to sign in again", and all three keep the profile, its downloads and its local
+     * progress exactly where they are.
+     *
+     * The renewed session replaces both tokens. Audiobookshelf issues a new refresh token with each
+     * renewal, so keeping the old one would work once and then fail at the following renewal — hours
+     * later, on a device, in a way that looks like a random sign-out.
+     */
+    override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> = withContext(ioDispatcher) {
+        val baseUrl = serverBaseUrlFor(profileId)
+            ?: return@withContext AppError.Validation(
+                summary = "That profile is no longer saved on this device.",
+            ).asFailure()
+
+        val refreshToken = sessionTokens.refreshTokenFor(profileId)
+        if (refreshToken == null) {
+            // The session was never renewable: the server withheld the refresh token, which it does
+            // unless the login carried `x-return-tokens: true`. See AuthSession.isRenewable.
+            markReauthenticationRequired(profileId, reason = "session is not renewable")
+            return@withContext AppResult.Success(SessionStatus.ReauthenticationRequired)
+        }
+
+        when (val renewed = gateway.auth.refresh(baseUrl, refreshToken)) {
+            is AppResult.Failure -> {
+                logger.info(
+                    LogCategory.Auth,
+                    "Session renewal was refused",
+                    LogField.Identifier("profile", profileId.value),
+                    LogField.Public("errorCode", renewed.error.code),
+                )
+                markReauthenticationRequired(profileId, reason = "renewal refused")
+                AppResult.Success(SessionStatus.ReauthenticationRequired)
+            }
+
+            is AppResult.Success -> {
+                sessionTokens.adopt(profileId, renewed.value)
+                profileDao.setRequiresReauthentication(profileId.value, required = false)
+                logger.info(
+                    LogCategory.Auth,
+                    "Renewed a session without re-prompting",
+                    LogField.Identifier("profile", profileId.value),
+                    LogField.Public("renewable", renewed.value.isRenewable),
+                )
+                AppResult.Success(SessionStatus.Active)
+            }
+        }
+    }
+
     override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = withContext(ioDispatcher) {
         // Told to the server first, while the credential still exists to authenticate the request. A
         // failure is logged and ignored: the local session goes either way, because a user who asked to

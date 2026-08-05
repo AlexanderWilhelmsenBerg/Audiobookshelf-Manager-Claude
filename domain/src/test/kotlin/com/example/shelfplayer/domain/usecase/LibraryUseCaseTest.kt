@@ -4,6 +4,8 @@ import app.cash.turbine.test
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.auth.SessionStatus
+import com.example.shelfplayer.domain.FakeAuthRepository
 import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.FakeProfileRepository
 import com.example.shelfplayer.domain.TEST_LIBRARY
@@ -114,7 +116,7 @@ class LibraryUseCaseTest {
     @Test
     fun `refresh delegates to the repository for the active profile`() = runTest {
         val libraries = FakeLibraryRepository().apply { refreshResult = AppResult.Success(7) }
-        val useCase = RefreshLibraryUseCase(FakeProfileRepository(), libraries)
+        val useCase = refreshUseCase(libraries)
 
         val result = useCase()
 
@@ -126,12 +128,103 @@ class LibraryUseCaseTest {
     @Test
     fun `refresh without an active profile fails instead of guessing`() = runTest {
         val libraries = FakeLibraryRepository()
-        val useCase = RefreshLibraryUseCase(FakeProfileRepository(active = null), libraries)
+        val auth = FakeAuthRepository()
+        val useCase = RefreshLibraryUseCase(FakeProfileRepository(active = null), libraries, auth)
 
         val result = useCase()
 
         assertIs<AppResult.Failure>(result)
         assertIs<AppError.Authentication>(result.error)
         assertTrue(libraries.refreshedProfiles.isEmpty())
+        assertTrue(auth.renewedProfiles.isEmpty(), "there is no session to renew without a profile")
     }
+
+    // --- PRODUCT_SPEC AUTH-004 -------------------------------------------------------------------
+
+    /** An expired session is renewed and the refresh retried, without the user seeing anything. */
+    @Test
+    fun `an expired session is renewed once and the refresh retried`() = runTest {
+        val libraries = FakeLibraryRepository().apply {
+            queueRefreshResults(AppResult.Failure(AppError.Authentication()), AppResult.Success(4))
+        }
+        val auth = FakeAuthRepository()
+
+        val result = refreshUseCase(libraries, auth)()
+
+        assertEquals(AppResult.Success(4), result)
+        assertEquals(listOf(TEST_PROFILE), auth.renewedProfiles)
+        assertEquals(2, libraries.refreshedProfiles.size)
+    }
+
+    /**
+     * PRODUCT_SPEC AUTH-004 — "the app never loops login requests".
+     *
+     * A session that cannot be renewed is reported as the original authentication failure after exactly
+     * one attempt. The profile has already been marked by the session layer, so the next step belongs to
+     * the user, not to another retry.
+     */
+    @Test
+    fun `a session that cannot be renewed is reported once, not retried`() = runTest {
+        val libraries = FakeLibraryRepository().apply {
+            refreshResult = AppResult.Failure(AppError.Authentication())
+        }
+        val auth = FakeAuthRepository().apply { willRenewInto(SessionStatus.ReauthenticationRequired) }
+
+        val result = refreshUseCase(libraries, auth)()
+
+        assertIs<AppResult.Failure>(result)
+        assertIs<AppError.Authentication>(result.error)
+        assertEquals(1, auth.renewedProfiles.size, "renewal must be attempted exactly once")
+        assertEquals(1, libraries.refreshedProfiles.size, "the refresh must not be retried")
+    }
+
+    /** A renewal that could not even be attempted must not turn into a retry loop either. */
+    @Test
+    fun `a renewal that fails outright reports the original failure`() = runTest {
+        val libraries = FakeLibraryRepository().apply {
+            refreshResult = AppResult.Failure(AppError.Authentication())
+        }
+        val auth = FakeAuthRepository().apply {
+            willFailToRenew(AppError.Validation(summary = "That profile is no longer saved."))
+        }
+
+        val result = refreshUseCase(libraries, auth)()
+
+        assertIs<AppError.Authentication>(assertIs<AppResult.Failure>(result).error)
+        assertEquals(1, libraries.refreshedProfiles.size)
+    }
+
+    /**
+     * The retry is not itself retried: a `401` on the second attempt — a token revoked between the two
+     * calls — is returned as it is rather than starting the cycle again.
+     */
+    @Test
+    fun `a second authentication failure after a successful renewal is not renewed again`() = runTest {
+        val libraries = FakeLibraryRepository().apply {
+            refreshResult = AppResult.Failure(AppError.Authentication())
+        }
+        val auth = FakeAuthRepository()
+
+        val result = refreshUseCase(libraries, auth)()
+
+        assertIs<AppResult.Failure>(result)
+        assertEquals(1, auth.renewedProfiles.size)
+        assertEquals(2, libraries.refreshedProfiles.size)
+    }
+
+    /** Only a `401` triggers a renewal. A network failure is not a session problem. */
+    @Test
+    fun `a failure that is not an authentication failure never renews the session`() = runTest {
+        val libraries = FakeLibraryRepository().apply { refreshResult = AppResult.Failure(AppError.Network()) }
+        val auth = FakeAuthRepository()
+
+        val result = refreshUseCase(libraries, auth)()
+
+        assertIs<AppError.Network>(assertIs<AppResult.Failure>(result).error)
+        assertTrue(auth.renewedProfiles.isEmpty())
+        assertEquals(1, libraries.refreshedProfiles.size)
+    }
+
+    private fun refreshUseCase(libraries: FakeLibraryRepository, auth: FakeAuthRepository = FakeAuthRepository()) =
+        RefreshLibraryUseCase(FakeProfileRepository(), libraries, auth)
 }

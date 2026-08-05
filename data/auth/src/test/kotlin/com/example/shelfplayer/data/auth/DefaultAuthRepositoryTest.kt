@@ -352,6 +352,86 @@ class DefaultAuthRepositoryTest {
         assertFalse(assertNotNull(database.profileDao().findProfile(profile.id.value)).requiresReauthentication)
     }
 
+    // --- AUTH-004: renewing a session -------------------------------------------------------------
+
+    @Test
+    fun `a renewable session is renewed with the stored refresh token and replaces both tokens`() = runTest {
+        val profile = successfulSignIn()
+        gateway.refreshResult = AppResult.Success(
+            FakeAuthGateway.session(accessToken = "access-2", refreshToken = "refresh-2"),
+        )
+
+        val status = repository.renewSession(profile.id)
+
+        assertEquals(AppResult.Success(SessionStatus.Active), status)
+        assertEquals(
+            listOf(FakeAuthGateway.Refresh("https://books.example", "refresh-1")),
+            gateway.refreshCalls,
+        )
+        assertEquals("access-2", tokens.currentToken())
+        // The server issues a new refresh token each time; keeping the old one would work once and then
+        // fail at the following renewal.
+        assertEquals("refresh-2", tokens.refreshTokenFor(profile.id)?.value)
+    }
+
+    @Test
+    fun `renewing clears an earlier reauthentication mark`() = runTest {
+        val profile = successfulSignIn()
+        database.profileDao().setRequiresReauthentication(profile.id.value, required = true)
+
+        repository.renewSession(profile.id)
+
+        assertFalse(assertNotNull(database.profileDao().findProfile(profile.id.value)).requiresReauthentication)
+    }
+
+    /**
+     * PRODUCT_SPEC AUTH-004 — the case the whole `isRenewable` flag exists for. A session the server
+     * never issued a refresh token for is marked for reauthentication and never silently signed out.
+     */
+    @Test
+    fun `a session with no refresh token is marked rather than renewed`() = runTest {
+        gateway.signInResult = AppResult.Success(FakeAuthGateway.session(refreshToken = null))
+        val profile = successfulSignIn()
+
+        val status = repository.renewSession(profile.id)
+
+        assertEquals(AppResult.Success(SessionStatus.ReauthenticationRequired), status)
+        assertTrue(gateway.refreshCalls.isEmpty(), "there is no token to attempt a renewal with")
+        assertTrue(assertNotNull(database.profileDao().findProfile(profile.id.value)).requiresReauthentication)
+    }
+
+    @Test
+    fun `a refused renewal marks the profile and keeps everything else`() = runTest {
+        val profile = successfulSignIn()
+        gateway.refreshResult = AppError.Authentication().asFailure()
+
+        val status = repository.renewSession(profile.id)
+
+        assertEquals(AppResult.Success(SessionStatus.ReauthenticationRequired), status)
+        val stored = assertNotNull(database.profileDao().findProfile(profile.id.value))
+        assertTrue(stored.requiresReauthentication)
+        assertEquals("ada", stored.username)
+    }
+
+    /** PRODUCT_SPEC AUTH-004 — "the app never loops login requests": one attempt per call, no retry. */
+    @Test
+    fun `a refused renewal is attempted exactly once`() = runTest {
+        val profile = successfulSignIn()
+        gateway.refreshResult = AppError.Authentication().asFailure()
+
+        repository.renewSession(profile.id)
+
+        assertEquals(1, gateway.refreshCalls.size)
+    }
+
+    @Test
+    fun `renewing a profile that is not saved is a validation failure`() = runTest {
+        val error = assertIs<AppResult.Failure>(repository.renewSession(ProfileId("prf_missing"))).error
+
+        assertIs<AppError.Validation>(error)
+        assertTrue(gateway.refreshCalls.isEmpty())
+    }
+
     /** The trap AUTH-003 exists to avoid: clearing storage but leaving the process authenticated. */
     @Test
     fun `signing out clears the token in memory as well as on disk`() = runTest {

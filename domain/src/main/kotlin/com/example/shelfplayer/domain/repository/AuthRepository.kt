@@ -52,6 +52,19 @@ interface AuthRepository {
     suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus>
 
     /**
+     * PRODUCT_SPEC AUTH-004 — extends the session without asking the user.
+     *
+     * Attempts exactly one renewal. [SessionStatus.ReauthenticationRequired] is returned — and the
+     * profile marked — when the stored session had no refresh token, when the server refused the one it
+     * had, or when the refreshed session came back unusable. There is no retry and no second attempt:
+     * "the app never loops login requests" is a requirement, and a renewal that failed once will fail
+     * again for the same reason.
+     *
+     * A failed renewal never removes the profile and never touches its downloads or local progress.
+     */
+    suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus>
+
+    /**
      * PRODUCT_SPEC AUTH-004 — ends the session but keeps the profile.
      *
      * The stored token is dropped both on disk and in memory, and the profile is marked as requiring
