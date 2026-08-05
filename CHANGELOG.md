@@ -46,8 +46,15 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
   persisted on the profile in database version 3.
 - Sign-in and profile-switch policy (`SignInUseCase`, `SwitchProfileUseCase`), so the remaining UI work is
   screens rather than screens making decisions.
-- **Not wired**: there is no sign-in screen and no profile switcher, so a fresh install has no way to add
-  a profile. That is the whole of the remaining Phase 1 work.
+- **Sign-in screen and profile switcher** (AUTH-001, AUTH-002, PRODUCT_SPEC 6.1, 6.5): a two-stage sign-in
+  that confirms the server — showing its version and whether the connection is encrypted — before asking
+  for a password, and a switcher that lists saved profiles with sign-out and remove. Removal states its
+  actual effect: it deletes that profile's local session, progress and downloads, and nothing on the
+  server.
+- The navigation graph's start destination is decided from observed state, so removing the last profile
+  returns to onboarding rather than leaving an unusable home.
+- **Not demonstrated**: every Phase 1 exit criterion is now built and unit-tested, and none has been
+  performed on a device. No screen in this app has been rendered on hardware.
 
 ### Phase 0 — Repository foundation
 

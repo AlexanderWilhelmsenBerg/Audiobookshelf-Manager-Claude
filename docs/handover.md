@@ -20,31 +20,39 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 | Capability handshake | **done** | `AbsCapabilityResolver`, `DefaultCapabilityRepository`. Runs against the bound real gateway; confirms no capability, correctly. |
 | Libraries/items sync | **done** | `AbsLibraryApi`, `LibraryMapper`, `AbsLibraryContractTest`. The real gateway is bound; the demo bootstrapper is gone. |
 | Room-backed home/library/search/details | **done** | Now reads server data. Never rendered on a device. |
-| Profile switch | **policy done, no UI** | `SwitchProfileUseCase` is written and tested. Nothing calls it. |
+| Profile switch | **done** | `ProfileSwitcherScreen` + `ProfileSwitcherViewModel`, driving `SwitchProfileUseCase`. |
+| Sign-in UI | **done** | `SignInScreen` + `SignInViewModel`, two stages, address confirmed before the password. |
 
-### Exit criteria: 0 of 3 met, and all three now blocked on the same thing
+### Exit criteria: 0 of 3 *demonstrated*, all 3 now reachable
 
-- Two accounts on one server can switch — **no UI**. `DefaultAuthRepositoryTest` proves two accounts on
-  one server become two profiles sharing one server row, and `SwitchProfileUseCaseTest` proves the switch
-  behaves. Nothing calls either.
-- Offline cached browse works — **untested against real data**. The sync writes server data into Room and
-  the UI reads Room, so the pieces are in place, but no one has signed in and pulled the network.
-- Unauthorized libraries never appear — **enforced and unit-tested, not demonstrated**. `AbsLibraryApi`
-  drops an ungranted library before it can reach Room, and the grant is persisted on the profile
-  (database version 3). `AbsLibraryContractTest` covers it against a MockWebServer. What has not happened
-  is a real account with a restricted grant signing in.
+Every deliverable is built. What is missing is a device, not code.
 
-### The gap that matters, restated
+- Two accounts on one server can switch — **built, never run**. The repository creates both profiles
+  sharing one server row, the switcher lists them, and `SwitchProfileUseCase` swaps between them. Proven
+  by unit tests at every layer; never performed by a human on hardware.
+- Offline cached browse works — **built, never run**. The sync writes server data to Room and the UI reads
+  Room, so pulling the network cable should leave the library on screen. Nobody has tried it.
+- Unauthorized libraries never appear — **enforced, never demonstrated against a real restricted account**.
+  `AbsLibraryApi` drops an ungranted library before it can reach Room; `AbsLibraryContractTest` covers it
+  against a MockWebServer with a fabricated grant.
 
-**Everything below the UI is done. There is no UI.**
+### What closing them takes
 
-The real gateway is bound, the demo library is gone, and `ShelfPlayerApplication` restores the active
-profile's session on start. On a device that means: a fresh install shows an empty home and has no way to
-add a profile, because the only path to one is a screen that does not exist. That is a worse *user*
-state than the demo library it replaced, and a better *project* state — nothing in the app now pretends
-to have data it did not get from a server.
+An APK, a real Audiobookshelf server, and a human. Specifically:
 
-Step 9 is the whole remaining gap.
+1. Sign in. Confirm the version and the encryption line appear before the password field, and that a
+   deliberately wrong host is rejected there rather than at the password.
+2. Sign in a **second** account on the same server, switch between them, and confirm each sees its own
+   library and its own progress.
+3. Give one account access to a subset of libraries on the server, sign it in, and confirm the others do
+   not appear. Then check the database — the requirement is that they were never *written*, which the UI
+   cannot show.
+4. Turn off the network and confirm the library is still browsable.
+5. Let a session expire, or revoke it server-side, and confirm the profile is marked rather than signed
+   out, and that the reauthentication banner appears.
+
+Nothing in this environment can do any of that: `verifyDebug` compiles and unit-tests, and there is no
+device or emulator.
 
 ## What was added in this session
 
@@ -182,7 +190,22 @@ In dependency order.
    `authorize.json` returning `user.token` only now lives on the gateway interface, where the next person
    to add a permission refresh will read it.
 
-9. **Sign-in UI and profile switch.** The only remaining Phase 1 work, and the whole gap.
+9. ~~**Sign-in UI and profile switch.**~~ **Done.** Two-stage sign-in, a profile switcher with sign-out and
+   remove, a start destination decided from observed state, and AUTH-004's mark shown in both places.
+
+   What step 9 deliberately did *not* build, so nobody looks for it:
+
+   - **The switcher shows no server name.** It shows display name and role. `Profile` carries a `serverId`
+     but not the server's own name, and joining the two needs a repository read the domain layer does not
+     expose. A switcher that showed the wrong server would be worse than one that shows none
+     (PRODUCT_SPEC AUTH-002 does ask for it, so this is an open item rather than a decision).
+   - **No avatar or colour.** AUTH-002 lists them as optional.
+   - **No biometric lock on profile selection.** AUTH-003 lists it as optional and explicitly not an
+     authentication mechanism.
+   - **No settings screen**, so cleartext cannot be opted into per server. The sign-in screen warns about
+     it; PRODUCT_SPEC 15's per-server exception is a SET-002 item.
+
+   The old text, for whoever compares: this was written as the only remaining Phase 1 work, and it was.
 
    Ready for it:
 
