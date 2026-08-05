@@ -23,9 +23,37 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 | Profile switch | **done** | `ProfileSwitcherScreen` + `ProfileSwitcherViewModel`, driving `SwitchProfileUseCase`. |
 | Sign-in UI | **done** | `SignInScreen` + `SignInViewModel`, two stages, address confirmed before the password. |
 
+### First run on a real device — 2026-08-05
+
+A debug APK was installed on hardware and pointed at a real Audiobookshelf server. **This is the first
+time any of this code has run outside a test.** What was observed:
+
+| Behaviour | Result |
+| --- | --- |
+| Install and sign in against a real server | **Works.** First end-to-end sign-in this project has had. |
+| Detected server version on the sign-in screen | **Correct.** |
+| Library after sign-in | **Empty** — a manual refresh then populated it. A defect; see below. |
+| Library sync from a real server | **Works** once refreshed: real libraries and items in Room. |
+| Book details: history and progress | **Correct.** The `userMediaProgress` mapping is right on real data. |
+| Sign-out | Library stays browsable, profile stays saved — AUTH-004's intent, confirmed on hardware. |
+
+Two defects came out of it and are fixed:
+
+1. **The empty library after sign-in had no explanation.** `SignInUseCase` runs an initial sync and
+   `DefaultLibraryRepository` records its outcome in `sync_state`; home never read that table, deriving its
+   status from an in-memory flag only a user-started refresh sets. A failed initial sync was therefore
+   indistinguishable from an empty library. `ObserveSyncStateUseCase` now surfaces it, and home runs the
+   initial sync itself once when a profile has never synced — so the case self-corrects whatever caused it.
+   **The underlying cause of that first sync failing is still unknown**, because nothing recorded it where
+   anyone could see. The next device run will show it.
+2. **The reauthentication banner said "Downloaded books still play."** There are no downloads (Phase 3) and
+   no player (Phase 2). Reworded.
+
 ### Exit criteria: 0 of 3 *demonstrated*, all 3 now reachable
 
-Every deliverable is built. What is missing is a device, not code.
+Every deliverable is built, and the device run above verified a good deal of the machinery underneath
+them. What is missing for the criteria themselves is a second account, a restricted account, and an
+offline test — not code.
 
 - Two accounts on one server can switch — **built, never run**. The repository creates both profiles
   sharing one server row, the switcher lists them, and `SwitchProfileUseCase` swaps between them. Proven
