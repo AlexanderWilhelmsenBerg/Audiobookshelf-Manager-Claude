@@ -24,9 +24,32 @@ rule a build cannot check is a rule that erodes.
 | Domain depends only on core model/common | `:domain` uses the Kotlin/JVM plugin. An Android import does not compile. |
 | Network DTOs stay inside data/network | The gateway signature uses `:core:model` types. `:core:network` exposes no wire type, so nothing else can name one. |
 | Room entities stay inside database/data | `:core:database` is an `implementation` dependency of `:data:library` only. `*Entity` is off the classpath of `:domain` and `:app`. |
+| Room itself stays inside `:core:database` | `DatabaseTransactionRunner` names no Room type, so `:data:library` can be transactional with `androidx.room` off its compile classpath. See below. |
 | Data modules implement domain interfaces | `LibraryDataModule` binds `Default*Repository` to the `:domain` interface. `:app` injects the interface. |
 | No cyclic module dependencies | The graph above is acyclic; Gradle rejects a cycle. |
 | `:app` performs final wiring | `AppModule` in `:app` binds the gateway and the log sink — the two seams a later phase replaces. |
+
+## The transaction seam
+
+`PRODUCT_SPEC LIB-001` needs a sync to apply completely or not at all, so `:data:library` needs
+transactions — but `PRODUCT_SPEC 9.3` keeps Room inside `:core:database`.
+
+The first attempt was an extension function on `ShelfPlayerDatabase`. That does not hold the
+boundary: calling any member of `ShelfPlayerDatabase` makes the caller resolve its supertype, and
+`:data:library` failed to compile with *"Cannot access 'RoomDatabase' which is a supertype of
+'ShelfPlayerDatabase'"*. The boundary was right; the seam was in the wrong place.
+
+`DatabaseTransactionRunner` fixes that by naming no Room type in its signature:
+
+```kotlin
+interface DatabaseTransactionRunner {
+    suspend operator fun <R> invoke(block: suspend () -> R): R
+}
+```
+
+`:data:library` gets Room on its **test** classpath only, where a real in-memory database backs the
+repository tests. It is a plain `interface`, not a `fun interface`: SAM conversion cannot carry a
+generic method.
 
 ## Why `feature:*` are packages, not modules
 

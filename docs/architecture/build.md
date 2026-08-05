@@ -59,10 +59,45 @@ classpath; the bare `detekt` task does not. Only the former can evaluate `Forbid
 is what enforces "no direct `System.currentTimeMillis()`" and "no `println`" from
 `PRODUCT_SPEC 16.3`. `verifyDebug` therefore depends on the type-resolving tasks, never on `detekt`.
 
+Two consequences for anyone running detekt outside Gradle: the standalone CLI cannot report the
+type-resolution-only rules at all, and it must be given `--build-upon-default-config`. Without that
+flag it drops the default per-rule exemptions and reports every backtick test name as
+`FunctionNaming` and every HTTP status code as `MagicNumber`.
+
+### Reading a failed run
+
+`verifyDebug` runs with `--continue` in CI. The gate is unchanged — the build still fails — but every
+independent failure is reported in one run, instead of a reviewer discovering the next lint error
+only after fixing the previous one.
+
+Gradle prints only lint's *first* finding on the console, so `applyShelfPlayerLintRules` enables the
+text report and the workflow prints `build/reports/lint-results-*.txt` when the build fails. A lint
+failure is then diagnosable from the log alone, with no artifact download.
+
 ### Warnings as errors
 
 `allWarningsAsErrors` is bound to `-Pshelfplayer.warningsAsErrors`, which CI passes and local builds
 do not. A work-in-progress slice stays runnable; nothing merges with a warning.
+
+## Android Lint
+
+`abortOnError`, `warningsAsErrors`, `checkDependencies` and `checkTestSources` are all on, and there
+is deliberately **no baseline** — `PRODUCT_SPEC 16.3` forbids one for new code, and a baseline written
+today would silently absorb everything Phase 1 introduces.
+
+Checks are disabled only when they report on the *environment* rather than on this code:
+
+- `GradleDependency`, `NewerVersionAvailable`, `AndroidGradlePluginVersion` — dependency freshness is
+  governed by the version catalog and dependency locking (`PRODUCT_SPEC 16.1`).
+- `OldTargetApi` — fires whenever a newer API level exists than the pinned `targetSdk`, so a Google
+  release turns the build red with no change on our side. SDK levels move deliberately, with the
+  compatibility testing a `targetSdk` bump requires.
+- `IconMissingDensityFolder`, `IconLauncherShape` — minSdk 26 means the adaptive icon is the only
+  icon that can be used.
+
+Everything else is fixed at the source. Where a finding is intentional, it is suppressed at the
+declaration with the reason next to it — `ServerUrlNormalizerTest` suppresses `AuthLeak` on the
+credential-bearing URL that the test exists to reject — never disabled project-wide.
 
 ## Dependency locking and verification
 
@@ -82,9 +117,12 @@ Both are configured; both need one bootstrap run in an environment with full rep
 
 KSP exports each schema version to `core/database/schemas`, which is committed.
 `:core:database:verifyRoomSchemas` fails if the file for the current `@Database(version = ...)` is
-missing, and CI additionally runs `git diff --exit-code` over that directory so an uncommitted schema
-change cannot merge. This is what makes `PRODUCT_SPEC 13.1`'s ban on destructive migration
+missing, and CI additionally checks `git status --porcelain` over that directory so an uncommitted
+schema change cannot merge. This is what makes `PRODUCT_SPEC 13.1`'s ban on destructive migration
 enforceable: without the exported schema, a column change is invisible in a diff.
+
+`git status`, not `git diff`: the schema for a brand-new database version is an *untracked* file,
+which `git diff` reports as clean — precisely the case the check exists to catch.
 
 ## Configuration cache
 
