@@ -4,10 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.ThemeMode
+import com.example.shelfplayer.domain.repository.ProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -18,14 +19,21 @@ import javax.inject.Inject
  * configuration changes without re-reading DataStore on every recomposition.
  */
 @HiltViewModel
-class AppViewModel @Inject constructor(settings: AppSettingsDataSource) : ViewModel() {
-    val state: StateFlow<AppUiState> = settings.settings
-        .map { stored ->
-            AppUiState(
-                themeMode = stored.themeMode,
-                dynamicColor = stored.dynamicColor,
-            )
-        }
+class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileRepository: ProfileRepository) :
+    ViewModel() {
+    val state: StateFlow<AppUiState> = combine(
+        settings.settings,
+        profileRepository.observeProfiles(),
+    ) { stored, profiles ->
+        AppUiState(
+            themeMode = stored.themeMode,
+            dynamicColor = stored.dynamicColor,
+            // PRODUCT_SPEC 6.1 / AUTH-002 — observed rather than read once, so that removing the last
+            // profile sends the user back to onboarding instead of leaving them on an unusable home.
+            hasAnyProfile = profiles.isNotEmpty(),
+            isResolved = true,
+        )
+    }
         .stateIn(
             scope = viewModelScope,
             // PRODUCT_SPEC 16.3: no unbounded collection in a lifecycle owner. The upstream is
@@ -40,7 +48,19 @@ class AppViewModel @Inject constructor(settings: AppSettingsDataSource) : ViewMo
     }
 }
 
-data class AppUiState(val themeMode: ThemeMode = ThemeMode.THEME_MODE_SYSTEM, val dynamicColor: Boolean = false) {
+/**
+ * @property hasAnyProfile whether the app has a saved profile to show. Decides the start destination.
+ * @property isResolved whether [hasAnyProfile] has been read from storage yet. The default is `false`
+ *   because the two answers lead to different screens: composing the navigation graph before the answer is
+ *   known would start it at sign-in and then have to correct itself, which a user sees as a flash of the
+ *   wrong screen on every cold start.
+ */
+data class AppUiState(
+    val themeMode: ThemeMode = ThemeMode.THEME_MODE_SYSTEM,
+    val dynamicColor: Boolean = false,
+    val hasAnyProfile: Boolean = false,
+    val isResolved: Boolean = false,
+) {
     /**
      * `THEME_MODE_UNSPECIFIED` is the protobuf zero value, which a device that has never written a
      * setting will read. It is treated as "follow the system", the product default.

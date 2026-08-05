@@ -4,15 +4,17 @@ import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 
 /**
- * PRODUCT_SPEC 9.1 — the routes of the Phase 0 shell.
+ * PRODUCT_SPEC 9.1 — the routes of the app shell.
  *
- * PRODUCT_SPEC 15 requires deep links to validate server/profile/item access. Phase 0 registers no
- * `<intent-filter>` deep links at all: a route that cannot be reached from outside the app cannot be
- * used to bypass a permission check, and writing that validation before there are permissions to
- * validate would produce an untestable stub.
+ * PRODUCT_SPEC 15 requires deep links to validate server/profile/item access. No `<intent-filter>` deep
+ * links are registered: a route that cannot be reached from outside the app cannot be used to bypass a
+ * permission check. When they are registered, the check they need already exists —
+ * `AbsLibraryApi.listBooks` refuses a library the active profile is not granted, whatever asked for it.
  */
 object ShelfDestinations {
+    const val SIGN_IN = "sign-in"
     const val HOME = "home"
+    const val PROFILES = "profiles"
     const val LIBRARY = "library/{libraryId}"
     const val BOOK = "book/{bookId}"
 

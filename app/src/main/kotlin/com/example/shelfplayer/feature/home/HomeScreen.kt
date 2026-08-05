@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +42,8 @@ import com.example.shelfplayer.core.model.library.Library
 @Composable
 fun HomeRoute(
     onLibrarySelected: (LibraryId) -> Unit,
+    onProfilesSelected: () -> Unit,
+    onSignInSelected: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -49,6 +52,8 @@ fun HomeRoute(
         uiState = uiState,
         onLibrarySelected = onLibrarySelected,
         onRefresh = viewModel::refresh,
+        onProfilesSelected = onProfilesSelected,
+        onSignInSelected = onSignInSelected,
         modifier = modifier,
     )
 }
@@ -59,6 +64,8 @@ fun HomeScreen(
     uiState: HomeUiState,
     onLibrarySelected: (LibraryId) -> Unit,
     onRefresh: () -> Unit,
+    onProfilesSelected: () -> Unit,
+    onSignInSelected: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -74,6 +81,12 @@ fun HomeScreen(
                         Icon(
                             imageVector = Icons.Filled.Refresh,
                             contentDescription = stringResource(R.string.home_refresh),
+                        )
+                    }
+                    IconButton(onClick = onProfilesSelected) {
+                        Icon(
+                            imageVector = Icons.Filled.AccountCircle,
+                            contentDescription = stringResource(R.string.home_profiles),
                         )
                     }
                 },
@@ -98,6 +111,8 @@ fun HomeScreen(
                 ShelfEmptyState(
                     title = stringResource(R.string.home_no_profile_title),
                     body = stringResource(R.string.home_no_profile_body),
+                    actionLabel = stringResource(R.string.home_sign_in),
+                    onAction = onSignInSelected,
                     modifier = content,
                 )
 
@@ -141,6 +156,16 @@ private fun LibraryList(uiState: HomeUiState, onLibrarySelected: (LibraryId) -> 
             // labelled a user's real, server-synced content as sample data — the app describing its own
             // contents wrongly, which is worse than saying nothing.
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // PRODUCT_SPEC AUTH-004 — the mark is shown, not just enforced. It sits above the library
+                // rather than replacing it, because the cached content is still there and still playable;
+                // what has stopped is new network work.
+                if (uiState.profile?.requiresReauthentication == true) {
+                    Text(
+                        text = stringResource(R.string.home_needs_sign_in),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 Text(
                     text = uiState.syncStatusLabel(),
                     style = MaterialTheme.typography.labelMedium,

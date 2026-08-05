@@ -17,6 +17,42 @@
     <string name="home_sync_never">Not synchronized yet</string>
     <string name="home_sync_failed">Showing cached content. The last refresh failed.</string>
     <string name="home_sync_running">Refreshing…</string>
+    <string name="home_profiles">Profiles</string>
+    <string name="home_sign_in">Sign in</string>
+    <string name="home_needs_sign_in">This profile needs to sign in again. Downloaded books still play.</string>
+
+    <!-- PRODUCT_SPEC AUTH-001 / 6.1 — adding a server, in the order the journey prescribes. -->
+    <string name="sign_in_title">Connect a server</string>
+    <string name="sign_in_address_prompt">Enter the address of your Audiobookshelf server.</string>
+    <string name="sign_in_server_label">Server address</string>
+    <string name="sign_in_server_hint">For example books.example.com. HTTPS is used unless you type http://</string>
+    <string name="sign_in_continue">Continue</string>
+    <string name="sign_in_detected_version">Audiobookshelf %1$s</string>
+    <string name="sign_in_version_unknown">This server did not report its version.</string>
+    <string name="sign_in_https_assumed">No scheme was typed, so HTTPS was used.</string>
+    <string name="sign_in_encrypted">The connection is encrypted.</string>
+    <string name="sign_in_cleartext_warning">This connection is not encrypted. Your password and your listening data would cross the network in the clear.</string>
+    <string name="sign_in_username_label">Username</string>
+    <string name="sign_in_password_label">Password</string>
+    <string name="sign_in_submit">Sign in</string>
+    <string name="sign_in_change_server">Use a different server</string>
+
+    <!-- PRODUCT_SPEC AUTH-002 / 6.5 — the profile switcher. -->
+    <string name="profiles_title">Profiles</string>
+    <string name="profiles_empty_title">No profiles yet</string>
+    <string name="profiles_empty_body">Connect an Audiobookshelf server to add one.</string>
+    <string name="profiles_add">Add a server</string>
+    <string name="profiles_active">In use</string>
+    <string name="profiles_use">Use</string>
+    <string name="profiles_sign_out">Sign out</string>
+    <string name="profiles_remove">Remove</string>
+    <string name="profiles_dismiss">Dismiss</string>
+    <string name="profiles_role">Role: %1$s</string>
+    <string name="profiles_needs_sign_in">Needs to sign in again</string>
+    <string name="profiles_remove_title">Remove %1$s?</string>
+    <string name="profiles_remove_body">This deletes this profile\'s saved session, listening progress and downloads from this device. Nothing is deleted from the server, and other profiles are not affected.</string>
+    <string name="profiles_remove_confirm">Remove profile</string>
+    <string name="profiles_remove_cancel">Cancel</string>
 
     <string name="library_loading">Loading books</string>
     <string name="library_empty_title">No books here</string>

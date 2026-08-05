@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
+import com.example.shelfplayer.navigation.ShelfDestinations
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -31,7 +32,18 @@ class MainActivity : ComponentActivity() {
                 darkTheme = appState.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme()),
                 dynamicColor = appState.dynamicColor,
             ) {
-                ShelfPlayerNavHost()
+                // The graph is not composed until the start destination is known. Composing it early and
+                // correcting it would show a flash of the wrong screen on every cold start, and would put
+                // a spurious entry in the back stack.
+                if (appState.isResolved) {
+                    ShelfPlayerNavHost(
+                        startDestination = if (appState.hasAnyProfile) {
+                            ShelfDestinations.HOME
+                        } else {
+                            ShelfDestinations.SIGN_IN
+                        },
+                    )
+                }
             }
         }
     }
