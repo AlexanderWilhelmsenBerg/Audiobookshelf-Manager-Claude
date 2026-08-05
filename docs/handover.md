@@ -15,7 +15,7 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 | Deliverable | Status | Evidence |
 | --- | --- | --- |
 | Server profile | **not started** | No sign-in-driven profile creation exists. `ProfileRepository.setActiveProfile` is Phase 0 fixture plumbing. |
-| Login | **contract layer only** | `AuthService`, `AuthDtos`, `AuthMapper`, `AuthMapperTest` (9 tests). Referenced by nothing but its own test. |
+| Login | **wired at the gateway; not reachable from the UI** | `AuthService`, `AuthDtos`, `AuthMapper`, `AbsAuthApi`, `AudiobookshelfServiceFactory`, `AuthApi` on the gateway, fake updated. No DI binding selects the real gateway, and no screen calls it. |
 | Secure token storage | **not started** | No `EncryptedSharedPreferences`, `MasterKey` or Keystore use anywhere. |
 | Capability handshake | **not started** | `CapabilityResolver` is declared and implemented only by the fake. |
 | Libraries/items sync | **not started** | No Retrofit service for libraries; sync still reads the fixture. |
@@ -31,9 +31,15 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 
 ### The gap that matters
 
-`AuthService` is an **orphan**. There is no Retrofit instance in the project that builds it, no
-`auth` property on `AudiobookshelfGateway`, and no DI binding. The contract is verified and encoded;
-it is not connected to anything. Do not read the passing tests as a working login.
+The auth path now exists end to end *inside* `:core:network` — `AudiobookshelfServiceFactory` builds
+`AuthService`, `AbsAuthApi` implements the gateway's `AuthApi`, and the fake implements it too, so the
+module compiles.
+
+What is still missing is everything outside that module. `AppModule` in `:app` binds
+`FakeAudiobookshelfGateway`, so the running app still cannot sign in — by design: the fake's `signIn`
+returns `ApiCompatibility` rather than a fabricated session, because a sign-in screen that appeared
+to succeed against fixture data is the false confidence `PRODUCT_SPEC 22.4` exists to prevent.
+There is no token storage, no session repository, and no sign-in screen.
 
 ## What *is* verified, and how
 
@@ -59,13 +65,10 @@ library reads.
 
 In dependency order. Each is a vertical slice with tests.
 
-1. **Commit the captured contract fixtures.** `.github/workflows/contract-capture.yml` produces them
-   as the `captured-contracts` artifact; `core/network/src/test/resources/contracts/` is still empty,
-   so the workflow's compare step is inert. Until they land there is no drift detection.
-2. **Build the Retrofit client.** Base URL from `ServerUrlNormalizer`, `AuthInterceptor` adding
-   `Authorization: Bearer`, JSON with `ignoreUnknownKeys`. Nothing constructs a Retrofit instance today.
-3. **Add `auth` to `AudiobookshelfGateway`**, implement it for real and in `FakeAudiobookshelfGateway`
-   — the fake must be updated in the same change or `:core:network` will not compile.
+1. ~~Commit the captured contract fixtures.~~ **Done** — eight fixtures under
+   `core/network/src/test/resources/contracts/`; the workflow's compare step is now real drift detection.
+2. ~~Build the Retrofit client.~~ **Done** — `AudiobookshelfServiceFactory`.
+3. ~~Add `auth` to `AudiobookshelfGateway`.~~ **Done** — `AuthApi`, `AbsAuthApi`, fake updated.
 4. **Secure token storage (AUTH-003).** Keystore-backed. Tokens must never reach DataStore or Room in
    plaintext, and never a log line.
 5. **Server profile creation and session repository (AUTH-001, AUTH-002).**

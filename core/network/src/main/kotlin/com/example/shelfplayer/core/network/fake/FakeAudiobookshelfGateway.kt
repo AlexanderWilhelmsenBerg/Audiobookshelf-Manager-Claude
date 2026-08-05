@@ -14,6 +14,8 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.auth.AuthSession
+import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
@@ -22,8 +24,10 @@ import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.network.fixture.FixtureMapper
 import com.example.shelfplayer.core.network.gateway.AccountApi
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
+import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.ServerProbe
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -50,12 +54,49 @@ class FakeAudiobookshelfGateway @Inject constructor(
     private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : AudiobookshelfGateway,
+    AuthApi,
     AccountApi,
     CapabilityResolver,
     LibraryApi {
+    override val auth: AuthApi get() = this
     override val capabilities: CapabilityResolver get() = this
     override val account: AccountApi get() = this
     override val library: LibraryApi get() = this
+
+    /**
+     * PRODUCT_SPEC 20 Phase 0 — the demo library needs no credentials, so the fake reports a server
+     * that is reachable and already initialized.
+     */
+    override suspend fun probe(serverUrl: String): AppResult<ServerProbe> = AppResult.Success(
+        ServerProbe(
+            isAudiobookshelf = true,
+            // Deliberately not a real version string: nothing may mistake the fake for a server.
+            serverVersion = null,
+            isInitialized = true,
+            authMethods = listOf("local"),
+        ),
+    )
+
+    /**
+     * The fake has no credential store and must never look like one.
+     *
+     * Returning a working session here would make a sign-in screen appear to succeed against fixture
+     * data, which is exactly the false confidence PRODUCT_SPEC 22.4 is guarding against. Sign-in is
+     * answered by the Retrofit-backed gateway or not at all.
+     */
+    override suspend fun signIn(serverUrl: String, username: String, password: String): AppResult<AuthSession> =
+        unsupported()
+
+    override suspend fun refresh(serverUrl: String, refreshToken: AuthToken): AppResult<AuthSession> = unsupported()
+
+    override suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit> = AppResult.Success(Unit)
+
+    private fun <T> unsupported(): AppResult<T> = AppResult.Failure(
+        AppError.ApiCompatibility(
+            summary = "This build is showing the bundled demo library and cannot sign in to a server.",
+            missingCapability = "authentication",
+        ),
+    )
 
     override suspend fun resolve(): AppResult<ServerCapabilities> = withMapper { mapper -> mapper.capabilities() }
 

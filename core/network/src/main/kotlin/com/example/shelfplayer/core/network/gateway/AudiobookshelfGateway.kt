@@ -6,6 +6,8 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.auth.AuthSession
+import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 
@@ -27,12 +29,54 @@ import com.example.shelfplayer.core.model.library.Library
  * now as empty interfaces would look like coverage the repository does not have.
  */
 interface AudiobookshelfGateway {
+    val auth: AuthApi
+
     val capabilities: CapabilityResolver
 
     val account: AccountApi
 
     val library: LibraryApi
 }
+
+/**
+ * PRODUCT_SPEC AUTH-001 / AUTH-004 — establishing and renewing a session.
+ *
+ * Every call takes the server URL explicitly rather than reading it from injected state, because a
+ * profile switch must not be able to send one server's credentials to another (PRODUCT_SPEC 5.2).
+ * The caller holds the server a credential belongs to; the gateway never guesses.
+ *
+ * Tokens cross this boundary as [AuthToken], never as `String`, so a credential cannot be logged by
+ * a stray interpolation (PRODUCT_SPEC 14.5).
+ */
+interface AuthApi {
+    /**
+     * Confirms a URL is an Audiobookshelf server and reports its version.
+     *
+     * `AUTH-001` needs this before asking for a password: an arbitrary host that answers 200 is not
+     * a server, and the user should learn that before typing a credential into it.
+     */
+    suspend fun probe(serverUrl: String): AppResult<ServerProbe>
+
+    suspend fun signIn(serverUrl: String, username: String, password: String): AppResult<AuthSession>
+
+    /**
+     * PRODUCT_SPEC AUTH-004 — renews a session without re-prompting.
+     *
+     * Only callable with a session whose `isRenewable` is true; a session whose refresh token the
+     * server withheld cannot be renewed and the caller must sign in again.
+     */
+    suspend fun refresh(serverUrl: String, refreshToken: AuthToken): AppResult<AuthSession>
+
+    suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit>
+}
+
+/** What `GET /status` reports before authentication. */
+data class ServerProbe(
+    val isAudiobookshelf: Boolean,
+    val serverVersion: String?,
+    val isInitialized: Boolean,
+    val authMethods: List<String>,
+)
 
 /**
  * PRODUCT_SPEC SYNC-001 — the capability handshake.
