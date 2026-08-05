@@ -16,7 +16,7 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 | --- | --- | --- |
 | Server profile | **not started** | No sign-in-driven profile creation exists. `ProfileRepository.setActiveProfile` is Phase 0 fixture plumbing. |
 | Login | **wired at the gateway; not reachable from the UI** | `AuthService`, `AuthDtos`, `AuthMapper`, `AbsAuthApi`, `AudiobookshelfServiceFactory`, `AuthApi` on the gateway, fake updated. No DI binding selects the real gateway, and no screen calls it. |
-| Secure token storage | **built, not bound** | `TokenCipher` (AES-256/GCM, non-extractable `AndroidKeyStore` key) and `SessionTokenStore` (per-profile ciphertext, atomic write). `TokenProvider` still resolves to `NoTokenProvider`, so nothing calls either. |
+| Secure token storage | **done** | `TokenCipher` (AES-256/GCM, non-extractable `AndroidKeyStore` key), `SessionTokenStore` (per-profile ciphertext, atomic write), and `SessionTokenProvider` in `:app` bound as `TokenProvider`. OkHttp now sends `Authorization` whenever a token is loaded. |
 | Capability handshake | **not started** | `CapabilityResolver` is declared and implemented only by the fake. |
 | Libraries/items sync | **not started** | No Retrofit service for libraries; sync still reads the fixture. |
 | Room-backed home/library/search/details | **done in Phase 0** | Against fixture data, not server data. |
@@ -69,11 +69,19 @@ In dependency order. Each is a vertical slice with tests.
    `core/network/src/test/resources/contracts/`; the workflow's compare step is now real drift detection.
 2. ~~Build the Retrofit client.~~ **Done** — `AudiobookshelfServiceFactory`.
 3. ~~Add `auth` to `AudiobookshelfGateway`.~~ **Done** — `AuthApi`, `AbsAuthApi`, fake updated.
-4. ~~**Secure token storage (AUTH-003).**~~ **Done except the binding.** `TokenCipher` and
-   `SessionTokenStore` exist and `:core:datastore:verifyDebug` is green. What remains is one small
-   change: a real `TokenProvider` in `:core:network` that reads the active profile's token from
-   `SessionTokenStore`, replacing the `NoTokenProvider` binding. Until that lands, OkHttp sends no
-   `Authorization` header and the storage is unreachable.
+4. ~~**Secure token storage (AUTH-003).**~~ **Done.** `SessionTokenProvider` lives in `:app` — the
+   only module seeing both `:core:network` (which declares `TokenProvider`) and `:core:datastore`
+   (which stores the token), so no core module gained a dependency for a wiring concern. The binding
+   moved out of `NetworkModule` into `AppModule`; `NoTokenProvider` remains for any graph without a
+   credential store.
+
+   The token is cached in memory because `TokenProvider.currentToken()` is synchronous (an OkHttp
+   interceptor is) while `SessionTokenStore.load()` suspends and does a Keystore decryption. Bridging
+   those with `runBlocking` inside an interceptor would put a blocking decrypt on every request. The
+   consequence is that **sign-out must call `SessionTokenProvider.clear()`** — clearing only the
+   stored copy would leave the process authenticating after the user believes it stopped.
+
+   Nothing calls `load`/`adopt` yet; task 5's session repository is what drives them.
 
    **Decided (2026-08-05, by the project owner): use the Android Keystore API directly. Do not add
    `androidx.security:security-crypto`.** Its only releases are alphas, and an alpha is not an

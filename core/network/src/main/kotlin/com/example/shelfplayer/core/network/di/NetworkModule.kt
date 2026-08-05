@@ -1,11 +1,8 @@
 package com.example.shelfplayer.core.network.di
 
 import com.example.shelfplayer.core.network.http.AuthorizationInterceptor
-import com.example.shelfplayer.core.network.http.NoTokenProvider
 import com.example.shelfplayer.core.network.http.RedactingHttpLoggingInterceptor
-import com.example.shelfplayer.core.network.http.TokenProvider
 import com.example.shelfplayer.core.network.http.UserAgentInterceptor
-import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -30,9 +27,10 @@ annotation class AuthenticatedClient
 @Module
 @InstallIn(SingletonComponent::class)
 interface NetworkModule {
-    @Binds
-    @Singleton
-    fun bindsTokenProvider(impl: NoTokenProvider): TokenProvider
+    // TokenProvider is deliberately not bound here. It needs the credential store, which lives in
+    // `:core:datastore`, and binding it in this module would force `:core:network` to depend on it —
+    // widening a boundary for a wiring concern. `:app` binds it (PRODUCT_SPEC 9.3), and
+    // `NoTokenProvider` remains available for any graph that has no credential store.
 
     companion object {
         private const val CONNECT_TIMEOUT_SECONDS = 15L
