@@ -4,7 +4,6 @@ import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.common.log.LogSink
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
-import com.example.shelfplayer.core.network.http.TokenProvider
 import com.example.shelfplayer.core.network.http.UserAgent
 import com.example.shelfplayer.log.AndroidLogSink
 import dagger.Binds
@@ -37,16 +36,10 @@ interface AppModule {
     @Singleton
     fun bindsLogSink(impl: AndroidLogSink): LogSink
 
-    /**
-     * PRODUCT_SPEC AUTH-003 — the HTTP layer reads the active profile's token from here.
-     *
-     * Bound in `:app` rather than `:core:network` because the implementation needs the credential
-     * store in `:core:datastore`, and binding it in the network module would make that module depend
-     * on the store for a wiring reason alone.
-     */
-    @Binds
-    @Singleton
-    fun bindsTokenProvider(impl: SessionTokenProvider): TokenProvider
+    // PRODUCT_SPEC AUTH-003: the TokenProvider binding moved to `:data:auth`. It is not final wiring —
+    // it is the credential store answering the HTTP layer, and both ends of that seam are inside that
+    // module. Keeping it here also required `:app` to be able to name the class holding a decrypted
+    // token, which nothing outside `:data:auth` should be able to do.
 
     companion object {
         /**

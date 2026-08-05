@@ -35,12 +35,21 @@ class NoTokenProvider @Inject constructor() : TokenProvider {
 
 /**
  * PRODUCT_SPEC 10.3 — authorization is sent as a header, never as a query parameter.
+ *
+ * A request that already carries its own `Authorization` is left alone. That is what lets a call name
+ * the profile it is acting for instead of inheriting whichever profile happens to be active: a library
+ * sync for profile B must not be signed with profile A's token just because A is on screen
+ * (PRODUCT_SPEC 5.2, product priority 4). Overwriting an explicit header with the ambient one is
+ * exactly that bug, and `.header()` overwrites by default — hence the check rather than an ordering
+ * assumption about where this interceptor sits in the chain.
  */
 class AuthorizationInterceptor @Inject constructor(private val tokenProvider: TokenProvider) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (request.header(HEADER) != null) return chain.proceed(request)
         val token = tokenProvider.currentToken()
-            ?: return chain.proceed(chain.request())
-        val authorized = chain.request().newBuilder()
+            ?: return chain.proceed(request)
+        val authorized = request.newBuilder()
             .header(HEADER, "$SCHEME $token")
             .build()
         return chain.proceed(authorized)

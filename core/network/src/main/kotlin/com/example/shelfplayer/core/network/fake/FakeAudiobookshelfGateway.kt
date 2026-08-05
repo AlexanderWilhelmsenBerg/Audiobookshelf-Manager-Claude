@@ -14,6 +14,8 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
@@ -27,7 +29,6 @@ import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
-import com.example.shelfplayer.core.network.gateway.ServerProbe
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -98,7 +99,14 @@ class FakeAudiobookshelfGateway @Inject constructor(
         ),
     )
 
-    override suspend fun resolve(): AppResult<ServerCapabilities> = withMapper { mapper -> mapper.capabilities() }
+    /**
+     * The fixture document names its own capabilities, so the requested server is ignored.
+     *
+     * Ignoring it is safe here for the reason the whole class is safe: there is exactly one fixture
+     * server, and it is not a real one. A real resolver must probe the server it was given.
+     */
+    override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> =
+        withMapper { mapper -> mapper.capabilities() }
 
     override suspend fun currentServer(): AppResult<Server> = withMapper { mapper -> mapper.server() }
 

@@ -1,5 +1,6 @@
 package com.example.shelfplayer.core.database.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -18,6 +19,26 @@ import androidx.room.PrimaryKey
  * with no type converter, so the exported schema is readable and a migration never has to guess how
  * a converter used to behave.
  */
+/**
+ * `[]` rather than `''`, even though `StringListConverters` reads both as an empty list.
+ *
+ * A schema default is read by a human comparing `1.json` with `2.json`, and `[]` says "an empty JSON
+ * array" where `''` says "we are not sure what this column holds".
+ */
+private const val EMPTY_JSON_ARRAY = "[]"
+
+/**
+ * PRODUCT_SPEC SYNC-001 — the capability handshake is persisted here rather than in its own table.
+ *
+ * PRODUCT_SPEC 13 names a conceptual `ServerCapabilityEntity` and allows normalization to vary. A row
+ * per capability would buy per-capability queries, and nothing needs them: a handshake is written as
+ * one set and read as one set, always for a single server. Two JSON columns and a timestamp carry the
+ * same information with one fewer table, one fewer DAO and no join.
+ *
+ * The stored set is only the *supported* capabilities. A capability the handshake did not confirm is
+ * simply absent, which is what makes "unknown means unsupported" a property of the storage shape
+ * rather than a rule the reading code has to remember (PRODUCT_SPEC SYNC-001).
+ */
 @Entity(tableName = "servers")
 data class ServerEntity(
     @PrimaryKey val serverId: String,
@@ -26,6 +47,12 @@ data class ServerEntity(
     val detectedVersion: String?,
     val isFixture: Boolean,
     val lastFetchedAt: Long,
+    /** The authentication modes `GET /status` reported, e.g. `["local"]`. JSON array. */
+    @ColumnInfo(defaultValue = EMPTY_JSON_ARRAY) val authMethodsJson: String,
+    /** Names of the confirmed [com.example.shelfplayer.core.model.ServerCapability] values. JSON array. */
+    @ColumnInfo(defaultValue = EMPTY_JSON_ARRAY) val capabilitiesJson: String,
+    /** `null` until a handshake has run, which the UI must distinguish from "nothing is supported". */
+    val capabilitiesDetectedAt: Long?,
 )
 
 @Entity(
@@ -43,6 +70,15 @@ data class ServerEntity(
 data class ProfileEntity(
     @PrimaryKey val profileId: String,
     val serverId: String,
+    /**
+     * The server's own id for this account, when it sent one (PRODUCT_SPEC 13.1).
+     *
+     * Stored even though [profileId] is derived from it, because PRODUCT_SPEC 5.2 refreshes
+     * permissions from `POST /api/authorize` after a `403`: comparing the account that responds with
+     * the account this profile was created for is what catches a stored token that now belongs to
+     * someone else. Nullable, because a server that did not send one is not given a made-up value.
+     */
+    val remoteUserId: String?,
     val username: String,
     val displayName: String,
     val role: String,

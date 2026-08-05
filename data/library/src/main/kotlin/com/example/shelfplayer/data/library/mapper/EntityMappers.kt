@@ -58,11 +58,19 @@ internal object EntityMappers {
         detectedVersion = server.detectedVersion,
         isFixture = server.isFixture,
         lastFetchedAt = fetchedAt.toEpochMilli(),
+        // The fixture server reports no authentication modes and no capability handshake. Empty is
+        // correct rather than a placeholder: PRODUCT_SPEC SYNC-001 requires an unprobed capability to
+        // read as unsupported, and the demo library has no server to probe.
+        authMethodsJson = EMPTY_JSON_ARRAY,
+        capabilitiesJson = EMPTY_JSON_ARRAY,
+        capabilitiesDetectedAt = null,
     )
 
     fun toEntity(profile: Profile) = ProfileEntity(
         profileId = profile.id.value,
         serverId = profile.serverId.value,
+        // The fixture profile has no server-side account behind it, so there is no remote id to record.
+        remoteUserId = null,
         username = profile.username,
         displayName = profile.displayName,
         role = profile.role.name,
@@ -304,6 +312,8 @@ internal object EntityMappers {
     private fun encode(values: List<String>): String = StringListConverters.fromStringList(values)
 
     private fun decode(encoded: String): List<String> = StringListConverters.toStringList(encoded)
+
+    private const val EMPTY_JSON_ARRAY = "[]"
 }
 
 /** The rows one [BookSnapshot] expands into. */

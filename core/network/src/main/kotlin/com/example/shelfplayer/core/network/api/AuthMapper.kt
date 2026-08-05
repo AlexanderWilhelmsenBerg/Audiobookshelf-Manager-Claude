@@ -32,6 +32,7 @@ internal object AuthMapper {
                 // Absent means "not renewable", which is a real state rather than an error: the
                 // caller decides whether to re-prompt. See AuthSession.isRenewable.
                 refreshToken = user.refreshToken?.takeIf(String::isNotBlank)?.let(::AuthToken),
+                userId = user.id?.takeIf(String::isNotBlank),
                 username = username,
                 role = toRole(user.type),
                 accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),

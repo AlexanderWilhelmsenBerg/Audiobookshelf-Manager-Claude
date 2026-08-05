@@ -26,8 +26,16 @@ import javax.inject.Singleton
  * that would decrypt to nothing and log the user out (priority 2: do not lose progress — a lost
  * session means a lost sync).
  *
- * One token per profile: the file name is derived from the profile id, so signing a second account in
- * cannot overwrite the first (`PRODUCT_SPEC AUTH-002`).
+ * One file per profile *and per token kind*: the file name is derived from both, so signing a second
+ * account in cannot overwrite the first (`PRODUCT_SPEC AUTH-002`) and a refresh token cannot overwrite
+ * the access token it renews (`PRODUCT_SPEC AUTH-004`).
+ *
+ * ### Why two files rather than one record
+ *
+ * A single encrypted blob holding both tokens would need a format, and a format needs a version, a
+ * parser and a decision about what to do with a record it cannot read. Two files need none of that:
+ * each holds one opaque string, either decrypts or does not, and the failure mode of a missing refresh
+ * token is already a state the app models (`AuthSession.isRenewable`).
  */
 @Singleton
 class SessionTokenStore @Inject constructor(
@@ -44,8 +52,8 @@ class SessionTokenStore @Inject constructor(
      * file is cleaned up on the way out, which is the only thing this layer actually knows how to do
      * about it.
      */
-    suspend fun save(profileId: String, token: String): Unit = withContext(ioDispatcher) {
-        val target = fileFor(profileId)
+    suspend fun save(profileId: String, kind: SessionTokenKind, token: String): Unit = withContext(ioDispatcher) {
+        val target = fileFor(profileId, kind)
         val staging = File(target.parentFile, "${target.name}.tmp")
         target.parentFile?.mkdirs()
         try {
@@ -70,16 +78,28 @@ class SessionTokenStore @Inject constructor(
      * new device. The unreadable file is removed rather than left to fail on every future read, and
      * the caller treats this as "sign in again" (`AUTH-004`).
      */
-    suspend fun load(profileId: String): String? = withContext(ioDispatcher) {
-        val file = fileFor(profileId)
+    suspend fun load(profileId: String, kind: SessionTokenKind): String? = withContext(ioDispatcher) {
+        val file = fileFor(profileId, kind)
         if (!file.exists()) return@withContext null
         val decrypted = cipher.decrypt(file.readBytes())
         if (decrypted == null) file.delete()
         decrypted
     }
 
+    /** Removes every token kind for one profile: signing out must not leave a renewable half-session. */
     suspend fun clear(profileId: String): Unit = withContext(ioDispatcher) {
-        fileFor(profileId).delete()
+        SessionTokenKind.entries.forEach { kind -> fileFor(profileId, kind).delete() }
+    }
+
+    /**
+     * Removes a single token kind.
+     *
+     * Used when a new session is non-renewable: the access token is replaced while the refresh token
+     * from a previous session has to go, or `AUTH-004` would try to renew with a credential this
+     * session never issued.
+     */
+    suspend fun clear(profileId: String, kind: SessionTokenKind): Unit = withContext(ioDispatcher) {
+        fileFor(profileId, kind).delete()
         Unit
     }
 
@@ -102,14 +122,25 @@ class SessionTokenStore @Inject constructor(
      * A file name is not a secret store: it appears in logcat on an I/O error, in `adb shell ls`, and
      * in crash reports. Hashing keeps a server-derived identifier out of all of them.
      */
-    private fun fileFor(profileId: String): File {
+    private fun fileFor(profileId: String, kind: SessionTokenKind): File {
         require(profileId.isNotBlank()) { "profileId must not be blank" }
         val name = profileId.hashCode().toUInt().toString(RADIX)
-        return File(directory(), "$name.bin")
+        return File(directory(), "$name.${kind.suffix}.bin")
     }
 
     private companion object {
         const val DIRECTORY = "sessions"
         const val RADIX = 16
     }
+}
+
+/**
+ * The two credentials a session consists of (`PRODUCT_SPEC AUTH-004`).
+ *
+ * [suffix] is short and opaque on purpose: a file name is visible in `adb shell ls` and in an I/O
+ * error message, and "this file holds a refresh token" is more than a bystander needs to know.
+ */
+enum class SessionTokenKind(val suffix: String) {
+    Access("a"),
+    Refresh("r"),
 }

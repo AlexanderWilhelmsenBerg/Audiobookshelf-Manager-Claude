@@ -9,6 +9,9 @@ import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.datastore.AppSettings
 import com.example.shelfplayer.core.datastore.AppSettingsSerializer
+import com.example.shelfplayer.core.datastore.security.KeystoreTokenCipher
+import com.example.shelfplayer.core.datastore.security.TokenCipher
+import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,6 +21,21 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.plus
 import javax.inject.Singleton
+
+/**
+ * PRODUCT_SPEC AUTH-003 — the only sanctioned [TokenCipher] binding.
+ *
+ * A separate module from [DataStoreModule] so that "what encrypts the credential" is one line in one
+ * file. Anything other than [KeystoreTokenCipher] bound here would move user credentials out of
+ * Keystore-backed key material, which PRODUCT_SPEC 15 does not permit.
+ */
+@Module
+@InstallIn(SingletonComponent::class)
+interface SecurityModule {
+    @Binds
+    @Singleton
+    fun bindsTokenCipher(impl: KeystoreTokenCipher): TokenCipher
+}
 
 @Module
 @InstallIn(SingletonComponent::class)

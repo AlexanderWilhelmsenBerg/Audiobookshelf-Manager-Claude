@@ -6,6 +6,8 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.library.BookSnapshot
@@ -70,29 +72,25 @@ interface AuthApi {
     suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit>
 }
 
-/** What `GET /status` reports before authentication. */
-data class ServerProbe(
-    val isAudiobookshelf: Boolean,
-    val serverVersion: String?,
-    val isInitialized: Boolean,
-    val authMethods: List<String>,
-)
-
 /**
  * PRODUCT_SPEC SYNC-001 — the capability handshake.
  *
  * Implementations must treat an unreadable or unrecognized probe result as *unsupported*.
+ *
+ * The server is named explicitly for the same reason every [AuthApi] call names it: a client that
+ * holds several profiles on several servers has no single ambient "current server", and resolving one
+ * implicitly is how a handshake gets attributed to the wrong connection.
  */
 interface CapabilityResolver {
-    suspend fun resolve(): AppResult<ServerCapabilities>
+    suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities>
 }
 
 /**
  * PRODUCT_SPEC 23 — "Get current user and permissions".
  *
- * Signing in is AUTH-001 and lands in Phase 1; this interface only reads the account a connection is
- * already established for, which is why Phase 0 can implement it against fixtures without touching
- * credentials.
+ * This reads the account a connection is already established for, which is why the fake gateway can
+ * implement it against fixtures without touching credentials. It is the fixture bootstrapper's entry
+ * point and is replaced when real library sync lands (LIB-001).
  */
 interface AccountApi {
     suspend fun currentServer(): AppResult<Server>

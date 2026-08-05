@@ -54,6 +54,16 @@ class AppSettingsDataSource @Inject constructor(
         }
     }
 
+    /**
+     * PRODUCT_SPEC AUTH-002 — leaves no selection at all.
+     *
+     * Called when the active profile is removed. Pointing the selection at some other saved profile
+     * would switch accounts without the user asking, so the app shows the profile picker instead.
+     */
+    suspend fun clearActiveProfile() {
+        dataStore.updateData { current -> current.toBuilder().clearActiveProfileId().build() }
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.updateData { current -> current.toBuilder().setThemeMode(mode).build() }
     }

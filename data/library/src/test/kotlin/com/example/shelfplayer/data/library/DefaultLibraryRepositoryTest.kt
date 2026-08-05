@@ -85,12 +85,16 @@ class DefaultLibraryRepositoryTest {
                 detectedVersion = "fixture-0",
                 isFixture = true,
                 lastFetchedAt = 0,
+                authMethodsJson = "[]",
+                capabilitiesJson = "[]",
+                capabilitiesDetectedAt = null,
             ),
         )
         database.profileDao().upsertProfile(
             ProfileEntity(
                 profileId = fixtureProfile.value,
                 serverId = "fixture-server",
+                remoteUserId = null,
                 username = "demo",
                 displayName = "Demo listener",
                 role = "Listener",
@@ -147,6 +151,7 @@ class DefaultLibraryRepositoryTest {
             ProfileEntity(
                 profileId = "other-profile",
                 serverId = "fixture-server",
+                remoteUserId = null,
                 username = "other",
                 displayName = "Other",
                 role = "Listener",
@@ -199,6 +204,7 @@ class DefaultLibraryRepositoryTest {
             ProfileEntity(
                 profileId = "stranger",
                 serverId = "fixture-server",
+                remoteUserId = null,
                 username = "stranger",
                 displayName = "Stranger",
                 role = "Listener",

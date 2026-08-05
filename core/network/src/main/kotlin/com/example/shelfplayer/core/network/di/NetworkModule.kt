@@ -24,6 +24,19 @@ import javax.inject.Singleton
 @Retention(AnnotationRetention.BINARY)
 annotation class AuthenticatedClient
 
+/**
+ * PRODUCT_SPEC 9.4 — "qualifiers for authenticated vs unauthenticated clients".
+ *
+ * This client has no [AuthorizationInterceptor] at all, and the authentication endpoints use it. The
+ * distinction is not cosmetic: `GET /status` and `POST /login` are addressed at a server the user is
+ * *not* signed in to, and the ambient token belongs to whichever profile is currently active — on a
+ * different server. Sending it would hand one server's credential to another host that merely
+ * received a URL the user typed (PRODUCT_SPEC 14.5, product priority 4).
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class UnauthenticatedClient
+
 @Module
 @InstallIn(SingletonComponent::class)
 interface NetworkModule {
@@ -72,15 +85,39 @@ interface NetworkModule {
             authorization: AuthorizationInterceptor,
             userAgent: UserAgentInterceptor,
             logging: RedactingHttpLoggingInterceptor,
-        ): OkHttpClient = OkHttpClient.Builder()
+        ): OkHttpClient = baseClient()
+            .addInterceptor(userAgent)
+            .addInterceptor(authorization)
+            .addInterceptor(logging)
+            .build()
+
+        /**
+         * PRODUCT_SPEC 9.4 / AUTH-001 — the client the authentication endpoints use.
+         *
+         * Every credential those endpoints need is passed explicitly by the caller: the password in
+         * the login body, the refresh token in `x-refresh-token`, the access token in an explicit
+         * `Authorization` on sign-out. Nothing here should be able to attach an ambient one.
+         *
+         * The connection pool is not shared with the authenticated client, which is the cost of the
+         * separation. It is a small one — sign-in happens once per profile — and the alternative is a
+         * single client whose behaviour depends on which interceptor ran first.
+         */
+        @Provides
+        @Singleton
+        @UnauthenticatedClient
+        fun providesUnauthenticatedClient(
+            userAgent: UserAgentInterceptor,
+            logging: RedactingHttpLoggingInterceptor,
+        ): OkHttpClient = baseClient()
+            .addInterceptor(userAgent)
+            .addInterceptor(logging)
+            .build()
+
+        private fun baseClient(): OkHttpClient.Builder = OkHttpClient.Builder()
             .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
-            .addInterceptor(userAgent)
-            .addInterceptor(authorization)
-            .addInterceptor(logging)
-            .build()
     }
 }

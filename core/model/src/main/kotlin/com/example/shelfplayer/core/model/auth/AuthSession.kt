@@ -39,6 +39,15 @@ value class AuthToken(val value: String) {
 data class AuthSession(
     val accessToken: AuthToken,
     val refreshToken: AuthToken?,
+    /**
+     * The server's own id for this account, when it sent one.
+     *
+     * PRODUCT_SPEC AUTH-002 requires a local profile id that is stable and independent of the
+     * username, and this is what [SessionIdentity] derives it from. It is nullable because a field
+     * the server did not send is never invented (PRODUCT_SPEC 22.4); [SessionIdentity] documents the
+     * fallback.
+     */
+    val userId: String?,
     val username: String,
     val role: ProfileRole,
     val accessibleLibraryIds: List<LibraryId>,
