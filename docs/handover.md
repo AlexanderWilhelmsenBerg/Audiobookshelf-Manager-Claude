@@ -72,13 +72,30 @@ In dependency order. Each is a vertical slice with tests.
 4. **Secure token storage (AUTH-003).** Keystore-backed. Tokens must never reach DataStore or Room in
    plaintext, and never a log line.
 
-   **Prerequisite:** `androidx.security:security-crypto` is *not* in `gradle/libs.versions.toml`. It
-   must be added with an explicit pinned version — `PRODUCT_SPEC 16.1` forbids dynamic versions, and
-   the artifact's only current releases are alphas, which is a decision to make consciously rather
-   than by taking `latest`. The alternative is using the Keystore API directly and encrypting the
-   token before it reaches DataStore, which avoids an alpha dependency at the cost of writing the
-   crypto wiring by hand. Either way `TokenProvider`/`NoTokenProvider` in
-   `core/network/http/Interceptors.kt` is the seam the real store plugs into.
+   **Decided (2026-08-05, by the project owner): use the Android Keystore API directly. Do not add
+   `androidx.security:security-crypto`.** Its only releases are alphas, and an alpha is not an
+   acceptable dependency for the component holding user credentials.
+
+   That means writing the crypto wiring by hand, so the shape matters:
+
+   - Generate an `AES/GCM/NoPadding` key in the `AndroidKeyStore` provider, per profile or one
+     app-wide key with the profile id as associated data. GCM, not CBC — an authenticated mode means
+     a tampered ciphertext fails to decrypt instead of yielding garbage that looks like a token.
+   - Store the IV alongside the ciphertext; GCM IVs must never be reused with the same key. Let the
+     platform generate the IV rather than supplying one.
+   - `setUserAuthenticationRequired(false)`: the app refreshes sessions in the background, and a key
+     that needs device unlock would break `AUTH-004` renewal and, later, background downloads.
+   - Persist ciphertext in DataStore. Plaintext must never reach DataStore, Room or a log.
+   - Handle `KeyPermanentlyInvalidatedException` and `UnrecoverableKeyException`: a key can be
+     destroyed by a lock-screen change or a restore to a new device. The correct response is to drop
+     the stored session and require reauthentication — never to crash, and never to silently continue
+     as signed out without marking the profile.
+   - `TokenProvider`/`NoTokenProvider` in `core/network/http/Interceptors.kt` is the seam it plugs
+     into. `NoTokenProvider` stays as the fake-gateway binding.
+
+   Tests: Robolectric can exercise the round trip, but Keystore behaviour under key invalidation is
+   only observable on a device — so unit-test the storage contract and the invalidation *handling*
+   against a fake, and note the device gap rather than claiming it is covered.
 5. **Server profile creation and session repository (AUTH-001, AUTH-002).**
 6. **Session expiry and refresh (AUTH-004).** `/auth/refresh` with `x-refresh-token`; a non-renewable
    session must mark the profile as requiring reauthentication rather than silently signing out.
