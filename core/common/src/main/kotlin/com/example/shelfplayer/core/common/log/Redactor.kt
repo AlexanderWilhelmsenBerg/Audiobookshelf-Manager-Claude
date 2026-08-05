@@ -33,8 +33,16 @@ interface Redactor {
     fun renderThrowable(throwable: Throwable): String
 }
 
+/**
+ * The policy is a required constructor argument with no default.
+ *
+ * A default value here would make Kotlin emit a second, synthetic no-arg constructor carrying the
+ * same `@Inject` annotation, and Dagger rejects a type with two injected constructors. It would also
+ * be a second source of truth for a value `LoggingModule` already provides — and the wrong one to
+ * fall back on silently, since it decides what a log line is allowed to contain.
+ */
 @Singleton
-class DefaultRedactor @Inject constructor(private val policy: RedactionPolicy = RedactionPolicy.Default) : Redactor {
+class DefaultRedactor @Inject constructor(private val policy: RedactionPolicy) : Redactor {
     override fun render(field: LogField): String = when (field) {
         is LogField.Public -> field.value
         is LogField.Millis -> "${field.value}ms"

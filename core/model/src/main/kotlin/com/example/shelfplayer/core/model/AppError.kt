@@ -1,5 +1,6 @@
 package com.example.shelfplayer.core.model
 
+private const val HTTP_TOO_MANY_REQUESTS = 429
 private const val HTTP_SERVER_ERROR = 500
 
 /**
@@ -72,7 +73,16 @@ sealed interface AppError {
         val retryAfterSeconds: Long? = null,
     ) : AppError {
         override val code: String = "server"
-        override val isRetryable: Boolean = statusCode == null || statusCode >= HTTP_SERVER_ERROR
+
+        /**
+         * PRODUCT_SPEC 14.3 — 5xx, an unknown status, and `429` are the retryable cases.
+         *
+         * `429` is the status that most explicitly invites a retry: the server is not refusing the
+         * request, it is asking for it later, and [retryAfterSeconds] carries when. Treating it as a
+         * non-retryable 4xx would turn transient rate limiting into a permanent-looking failure.
+         */
+        override val isRetryable: Boolean =
+            statusCode == null || statusCode >= HTTP_SERVER_ERROR || statusCode == HTTP_TOO_MANY_REQUESTS
     }
 
     /**
