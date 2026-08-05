@@ -28,6 +28,7 @@ dependencies {
     implementation(projects.core.network)
     implementation(projects.data.auth)
     implementation(projects.data.library)
+    implementation(projects.data.settings)
     implementation(projects.domain)
 
     implementation(libs.androidx.activity.compose)

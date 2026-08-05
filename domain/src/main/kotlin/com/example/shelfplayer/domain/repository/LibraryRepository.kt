@@ -24,6 +24,17 @@ interface LibraryRepository {
 
     fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>>
 
+    /**
+     * PRODUCT_SPEC LIB-002 / 5.2 — every book this profile is granted, across all of its libraries.
+     *
+     * The grant is applied on read as well as on write. Writes already refuse an unauthorized library,
+     * but a grant can *shrink* after rows have been stored, and nothing enumerates a library the server
+     * has stopped offering — so its books would otherwise stay in this list for as long as the cache
+     * lives. Filtering here is what makes "unauthorized libraries never appear" hold across that change
+     * rather than only at the moment of the sync.
+     */
+    fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>>
+
     fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?>
 
     fun observeSyncState(profileId: ProfileId): Flow<SyncState>

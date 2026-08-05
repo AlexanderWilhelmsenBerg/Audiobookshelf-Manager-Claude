@@ -53,8 +53,24 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
   server.
 - The navigation graph's start destination is decided from observed state, so removing the last profile
   returns to onboarding rather than leaving an unusable home.
-- **Not demonstrated**: every Phase 1 exit criterion is now built and unit-tested, and none has been
-  performed on a device. No screen in this app has been rendered on hardware.
+- **The app opens on the books, not on a list of libraries** (LIB-002): the home screen is now every book
+  the active profile is granted, across all of its libraries, ordered by what was played last, with the
+  300 ms debounced search and the sort chips LIB-002 asks for. Reported from a device: with one library,
+  the old home was a single card standing between the user and their shelf.
+- Browsing by library is still available, and is now a setting (SET-001, SET-002): a first settings screen
+  with **Open on libraries**, stored in Proto DataStore behind a new `:data:settings` module and a
+  `SettingsRepository`, so no screen names the settings store directly.
+- **The library grant is now enforced on read as well as on write** (PRODUCT_SPEC 5.2): a grant that
+  *shrinks* after a sync used to leave the revoked library's rows in the cache, where nothing enumerated
+  them again. Every read path — libraries, one library, the shelf, and a single book — now filters by the
+  grant stored on the profile.
+- `LibraryDao` split into read and write halves, and the sync's write path extracted into
+  `LibrarySnapshotWriter`. Both were prompted by the quality gate rather than by taste, and both make the
+  boundary real: a screen cannot reach an `upsert` from the DAO it reads through.
+- **Not demonstrated**: the app has now been installed and signed in on hardware against a real server,
+  but none of Phase 1's three exit criteria has been performed there — two accounts switching, a
+  library-restricted account, and offline browse are all still only unit-tested. Cover art (LIB-001,
+  LIB-004) is deferred by the owner and remains unbuilt.
 
 ### Phase 0 — Repository foundation
 
@@ -82,7 +98,7 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
 
 - Ten modules: `:app`, `:core:model`, `:core:common`, `:core:designsystem`, `:core:database`,
   `:core:datastore`, `:core:network`, `:core:testing`, `:data:library`, `:domain`. `feature:*` are
-  packages inside `:app` (ADR-0002).
+  packages inside `:app` (ADR-0002). Phase 1 added `:data:auth` and `:data:settings`.
 - Typed `AppResult` / `AppError` with the full `PRODUCT_SPEC 14.1` taxonomy, `isRetryable` encoding
   the `14.3` retry policy, and `resultOf` as the single exception boundary that rethrows cancellation
   (ADR-0003).

@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.database.DatabaseTransactionRunner
 import com.example.shelfplayer.core.database.RoomDatabaseTransactionRunner
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.dao.LibraryDao
+import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.dao.SyncStateDao
@@ -51,6 +52,9 @@ interface DatabaseModule {
 
         @Provides
         fun providesLibraryDao(database: ShelfPlayerDatabase): LibraryDao = database.libraryDao()
+
+        @Provides
+        fun providesLibraryWriteDao(database: ShelfPlayerDatabase): LibraryWriteDao = database.libraryWriteDao()
 
         @Provides
         fun providesProfileDao(database: ShelfPlayerDatabase): ProfileDao = database.profileDao()

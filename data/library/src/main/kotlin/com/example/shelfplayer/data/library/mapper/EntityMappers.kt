@@ -27,6 +27,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.AudioTrack
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
@@ -64,6 +65,21 @@ internal object EntityMappers {
         requiresReauthentication = entity.requiresReauthentication,
         lastUsedAt = entity.lastUsedAt?.let(Instant::ofEpochMilli),
         isFixture = entity.isFixture,
+    )
+
+    /**
+     * PRODUCT_SPEC 5.2 — the stored library grant, read back for the browse path.
+     *
+     * `:data:auth` writes this pair and reads it back for the sync path; this module reads it for the
+     * screens. The two readers must agree, so both drop a blank id rather than handing
+     * [LibraryId] a value its constructor rejects: a corrupt row must degrade to a narrower grant,
+     * never to a crash on every query.
+     */
+    fun toLibraryAccess(entity: ProfileEntity) = LibraryAccess(
+        hasAllLibraryAccess = entity.hasAllLibraryAccess,
+        accessibleLibraryIds = StringListConverters.toStringList(entity.accessibleLibrariesJson)
+            .filter(String::isNotBlank)
+            .map(::LibraryId),
     )
 
     // --- Library ----------------------------------------------------------------------------------

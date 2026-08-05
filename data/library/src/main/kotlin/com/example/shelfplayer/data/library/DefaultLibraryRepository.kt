@@ -8,11 +8,11 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.common.time.AppClock
-import com.example.shelfplayer.core.database.DatabaseTransactionRunner
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.dao.SyncStateDao
+import com.example.shelfplayer.core.database.entity.BookWithRelations
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.model.AppError
@@ -23,6 +23,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
@@ -52,36 +53,38 @@ import javax.inject.Singleton
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class DefaultLibraryRepository @Inject constructor(
-    private val transaction: DatabaseTransactionRunner,
     private val libraryDao: LibraryDao,
     private val profileDao: ProfileDao,
     private val progressDao: ProgressDao,
     private val syncStateDao: SyncStateDao,
     private val gateway: AudiobookshelfGateway,
+    private val writer: LibrarySnapshotWriter,
     private val clock: AppClock,
     private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : LibraryRepository {
 
     override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> =
-        serverIdFlow(profileId).flatMapLatest { serverId ->
-            if (serverId == null) {
+        scopeFlow(profileId).flatMapLatest { scope ->
+            if (scope == null) {
                 flowOf(emptyList())
             } else {
-                libraryDao.observeLibraries(serverId.value).map { entities ->
-                    entities.map { entity ->
-                        EntityMappers.toDomain(entity, bookCount = libraryDao.countBooks(entity.libraryKey))
-                    }
+                libraryDao.observeLibraries(scope.serverId.value).map { entities ->
+                    entities
+                        .filter { scope.access.allows(LibraryId(it.remoteId)) }
+                        .map { entity ->
+                            EntityMappers.toDomain(entity, bookCount = libraryDao.countBooks(entity.libraryKey))
+                        }
                 }
             }
         }
 
     override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> =
-        serverIdFlow(profileId).flatMapLatest { serverId ->
-            if (serverId == null) {
+        scopeFlow(profileId).flatMapLatest { scope ->
+            if (scope == null || !scope.access.allows(libraryId)) {
                 flowOf(null)
             } else {
-                val key = EntityKey.of(serverId.value, libraryId.value)
+                val key = EntityKey.of(scope.serverId.value, libraryId.value)
                 libraryDao.observeLibrary(key).map { entity ->
                     entity?.let { EntityMappers.toDomain(it, libraryDao.countBooks(key)) }
                 }
@@ -89,36 +92,59 @@ class DefaultLibraryRepository @Inject constructor(
         }
 
     override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
-        serverIdFlow(profileId).flatMapLatest { serverId ->
-            if (serverId == null) {
+        scopeFlow(profileId).flatMapLatest { scope ->
+            if (scope == null || !scope.access.allows(libraryId)) {
                 flowOf(emptyList())
             } else {
-                val libraryKey = EntityKey.of(serverId.value, libraryId.value)
-                combine(
-                    libraryDao.observeBooks(libraryKey),
-                    progressDao.observeProgressFor(profileId.value),
-                ) { books, progress ->
-                    val byBookKey = progress.associateBy(MediaProgressEntity::bookKey)
-                    books.map { relations ->
-                        EntityMappers.toDomain(relations, byBookKey[relations.book.bookKey])
-                    }
-                }
+                val libraryKey = EntityKey.of(scope.serverId.value, libraryId.value)
+                withProgress(profileId, libraryDao.observeBooksIn(listOf(libraryKey)))
+            }
+        }
+
+    /**
+     * PRODUCT_SPEC LIB-002 / 5.2 — the whole shelf, minus anything the grant does not cover.
+     *
+     * A grant of *all* libraries is one query on the server id. A narrower grant is a query on the
+     * library keys it names, and an empty set short-circuits before reaching SQL: `IN ()` is a shape
+     * this codebase already avoids (see `markMissingBooksDeleted`), and there is nothing to ask for.
+     */
+    override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> =
+        scopeFlow(profileId).flatMapLatest { scope ->
+            val keys = scope?.allowedLibraryKeys()
+            when {
+                scope == null -> flowOf(emptyList())
+                keys == null -> withProgress(profileId, libraryDao.observeBooksOnServer(scope.serverId.value))
+                keys.isEmpty() -> flowOf(emptyList())
+                else -> withProgress(profileId, libraryDao.observeBooksIn(keys))
             }
         }
 
     override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
-        serverIdFlow(profileId).flatMapLatest { serverId ->
-            if (serverId == null) {
+        scopeFlow(profileId).flatMapLatest { scope ->
+            if (scope == null) {
                 flowOf(null)
             } else {
-                val bookKey = EntityKey.of(serverId.value, bookId.value)
+                val bookKey = EntityKey.of(scope.serverId.value, bookId.value)
+                val allowedKeys = scope.allowedLibraryKeys()
                 combine(
                     libraryDao.observeBook(bookKey),
                     progressDao.observeProgress(profileId.value, bookKey),
                 ) { relations, progress ->
-                    relations?.let { EntityMappers.toDomain(it, progress) }
+                    relations
+                        // A book is reachable only through a library the profile is granted. Without this
+                        // the detail screen would still open a book whose library has been revoked, which
+                        // is the same leak the list path closes.
+                        ?.takeIf { allowedKeys == null || it.book.libraryKey in allowedKeys }
+                        ?.let { EntityMappers.toDomain(it, progress) }
                 }
             }
+        }
+
+    /** Attaches the active profile's progress to a stream of book rows, and nobody else's. */
+    private fun withProgress(profileId: ProfileId, books: Flow<List<BookWithRelations>>): Flow<List<Book>> =
+        combine(books, progressDao.observeProgressFor(profileId.value)) { rows, progress ->
+            val byBookKey = progress.associateBy(MediaProgressEntity::bookKey)
+            rows.map { relations -> EntityMappers.toDomain(relations, byBookKey[relations.book.bookKey]) }
         }
 
     override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
@@ -164,7 +190,7 @@ class DefaultLibraryRepository @Inject constructor(
                     }
                 }
 
-                val written = persist(libraries.value, snapshots)
+                val written = writer.write(libraries.value, snapshots)
                 recordSuccess(profileId, libraries.value.firstOrNull()?.serverId)
                 logger.info(
                     LogCategory.Sync,
@@ -177,42 +203,32 @@ class DefaultLibraryRepository @Inject constructor(
         }
     }
 
-    private suspend fun persist(libraries: List<Library>, snapshots: Map<LibraryId, List<BookSnapshot>>): Int {
-        var written = 0
-        transaction {
-            libraryDao.upsertLibraries(libraries.map(EntityMappers::toEntity))
-            libraries.forEach { library ->
-                val rows = snapshots[library.id].orEmpty().map(EntityMappers::toEntities)
-                libraryDao.upsertAuthors(rows.flatMap { it.authors }.distinctBy { it.authorKey })
-                libraryDao.upsertSeries(rows.flatMap { it.series }.distinctBy { it.seriesKey })
-                libraryDao.upsertBooks(rows.map { it.book })
-                rows.forEach { row ->
-                    libraryDao.deleteAuthorLinksFor(row.book.bookKey)
-                    libraryDao.deleteSeriesLinksFor(row.book.bookKey)
-                    libraryDao.deleteTracksFor(row.book.bookKey)
-                    libraryDao.deleteChaptersFor(row.book.bookKey)
-                }
-                libraryDao.upsertBookAuthors(rows.flatMap { it.authorLinks })
-                libraryDao.upsertBookSeries(rows.flatMap { it.seriesLinks })
-                libraryDao.upsertTracks(rows.flatMap { it.tracks })
-                libraryDao.upsertChapters(rows.flatMap { it.chapters })
-                progressDao.upsertProgress(rows.mapNotNull { it.progress })
-                val libraryKey = EntityKey.of(library.serverId.value, library.id.value)
-                if (rows.isEmpty()) {
-                    libraryDao.markAllBooksDeleted(libraryKey)
-                } else {
-                    libraryDao.markMissingBooksDeleted(libraryKey, rows.map { it.book.bookKey })
-                }
-                written += rows.size
-            }
-        }
-        return written
-    }
-
     private fun serverIdFlow(profileId: ProfileId): Flow<ServerId?> =
         profileDao.observeProfile(profileId.value).map { entity ->
             entity?.serverId?.let(::ServerId)
         }
+
+    /**
+     * The server a profile belongs to and what it is allowed to see, observed together.
+     *
+     * Read as one row so the two can never disagree: resolving the server from one emission and the
+     * grant from another is how a switch of profiles ends up showing one account's libraries under the
+     * other account's permissions.
+     */
+    private fun scopeFlow(profileId: ProfileId): Flow<ProfileScope?> =
+        profileDao.observeProfile(profileId.value).map { entity ->
+            entity?.let {
+                ProfileScope(serverId = ServerId(it.serverId), access = EntityMappers.toLibraryAccess(it))
+            }
+        }
+
+    private data class ProfileScope(val serverId: ServerId, val access: LibraryAccess) {
+        /** The library keys this profile may read, or `null` when the grant covers every library. */
+        fun allowedLibraryKeys(): List<String>? = when {
+            access.hasAllLibraryAccess -> null
+            else -> access.accessibleLibraryIds.map { EntityKey.of(serverId.value, it.value) }
+        }
+    }
 
     private suspend fun markSyncing(profileId: ProfileId) {
         val serverId = profileDao.findProfile(profileId.value)?.serverId?.let(::ServerId)

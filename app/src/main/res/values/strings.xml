@@ -7,13 +7,17 @@
     <string name="app_name">ShelfPlayer</string>
 
     <string name="home_title">ShelfPlayer</string>
-    <string name="home_loading">Loading your libraries</string>
-    <string name="home_empty_title">No libraries yet</string>
-    <string name="home_empty_body">This account has no libraries yet, or they have not been synced. Refresh to try again.</string>
+    <string name="home_loading">Loading your books</string>
+    <string name="home_empty_title">No books yet</string>
+    <string name="home_empty_body">This account has nothing in its libraries yet, or they have not been synced. Refresh to try again.</string>
     <string name="home_no_profile_title">No server connected</string>
-    <string name="home_no_profile_body">Sign in to an Audiobookshelf server to see your libraries.</string>
-    <string name="home_error_title">Could not load your libraries</string>
+    <string name="home_no_profile_body">Sign in to an Audiobookshelf server to see your books.</string>
+    <string name="home_error_title">Could not load your books</string>
     <string name="home_refresh">Refresh</string>
+    <string name="home_settings">Settings</string>
+    <string name="home_search_hint">Search your books</string>
+    <string name="home_no_matches_title">No matches</string>
+    <string name="home_no_matches_body">No book in your libraries matches that search.</string>
     <string name="home_sync_never">Not synchronized yet</string>
     <string name="home_sync_failed">Showing cached content. The last refresh failed.</string>
     <string name="home_sync_running">Refreshing…</string>
@@ -58,6 +62,7 @@
     <string name="library_empty_title">No books here</string>
     <string name="library_empty_body">This library has no items that match your search.</string>
     <string name="library_search_hint">Search this library</string>
+    <string name="library_sort_last_played">Last played</string>
     <string name="library_sort_title">Title (A–Z)</string>
     <string name="library_sort_title_desc">Title (Z–A)</string>
     <string name="library_sort_author">Author</string>
@@ -77,6 +82,12 @@
     <string name="book_series_position">%1$s, book %2$s</string>
     <string name="book_playback_unavailable">Playback arrives in the next phase</string>
     <string name="navigate_back">Back</string>
+
+    <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings the app can actually honour today. -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_browsing">Browsing</string>
+    <string name="settings_home_shows_libraries_title">Open on libraries</string>
+    <string name="settings_home_shows_libraries_body">Start on the list of libraries instead of your books. Your books stay one tap away inside each library.</string>
 
     <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.

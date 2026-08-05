@@ -19,7 +19,7 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 | Secure token storage | **done** | `KeystoreTokenCipher`, `SessionTokenStore`, `SessionTokenProvider` in `:data:auth`. |
 | Capability handshake | **done** | `AbsCapabilityResolver`, `DefaultCapabilityRepository`. Runs against the bound real gateway; confirms no capability, correctly. |
 | Libraries/items sync | **done** | `AbsLibraryApi`, `LibraryMapper`, `AbsLibraryContractTest`. The real gateway is bound; the demo bootstrapper is gone. |
-| Room-backed home/library/search/details | **done** | Now reads server data. Never rendered on a device. |
+| Room-backed home/library/search/details | **partly done** | Reads server data, rendered on a device. Home is the shelf of all accessible books with LIB-002 search and sort; per-library browse and book details exist. **Covers are not built** (LIB-001, LIB-004), deferred by the owner. |
 | Profile switch | **done** | `ProfileSwitcherScreen` + `ProfileSwitcherViewModel`, driving `SwitchProfileUseCase`. |
 | Sign-in UI | **done** | `SignInScreen` + `SignInViewModel`, two stages, address confirmed before the password. |
 
@@ -70,6 +70,36 @@ deferred by the owner.
    That is the `@AuthenticatedClient` OkHttp stack, which exists and is currently unused; wiring Coil to it
    is the natural next step and the reason that client was kept.
 
+   **Correction to the deferral, for the record:** covers are *not* later-phase work in the spec. LIB-001
+   lists them among what initial sync stores, LIB-004 lists them among what a book shows, and Phase 1
+   delivers "Room-backed home/library/search/details". Deferring them is a scope decision the owner is
+   entitled to make; calling Phase 1 complete without them is not the same thing, and this note exists so
+   the two do not get confused later.
+
+### Third device run — the shelf
+
+The screenshot showed the home screen doing exactly what it was built to do and exactly what nobody
+wanted: one card reading "Audiobooks — 188 books" above an empty screen, with the books one tap further
+in.
+
+5. **The app now opens on the books** (LIB-002), across every library the profile is granted, ordered by
+   what was played last. `ObserveAccessibleBooksUseCase` + `LibraryRepository.observeAccessibleBooks`, with
+   `BookSortOrder.LastPlayed` and the search and sort controls LIB-002 already required. Browsing by
+   library did not go away — it moved behind **Settings → Open on libraries**, the first entry in the first
+   settings screen (SET-001, SET-002), stored in Proto DataStore behind the new `:data:settings` module.
+
+   Two things fell out of doing this that are worth more than the screen itself:
+
+   - **The library grant is now enforced on read, not only on write.** Showing every accessible book meant
+     asking "which libraries may this profile see?" at query time, and that exposed a real hole: the grant
+     is applied when rows are *written*, and a grant that shrinks afterwards leaves the revoked library's
+     rows in the cache with nothing to enumerate them again. All four read paths now filter by the grant
+     persisted on the profile, and `DefaultLibraryRepositoryTest` proves a narrowed grant hides the library
+     from every one of them — including the book detail route, which a deep link could otherwise reach.
+   - `LibraryDao` is split into a read half and a write half, and the sync's write path is now
+     `LibrarySnapshotWriter`. Both changes were forced by detekt rather than chosen, and both are right:
+     nothing that reads can now name an `upsert`.
+
 ### Exit criteria: 0 of 3 *demonstrated*, all 3 now reachable
 
 Every deliverable is built, and the device run above verified a good deal of the machinery underneath
@@ -83,7 +113,9 @@ offline test — not code.
   Room, so pulling the network cable should leave the library on screen. Nobody has tried it.
 - Unauthorized libraries never appear — **enforced, never demonstrated against a real restricted account**.
   `AbsLibraryApi` drops an ungranted library before it can reach Room; `AbsLibraryContractTest` covers it
-  against a MockWebServer with a fabricated grant.
+  against a MockWebServer with a fabricated grant. Since the third device run the grant is also applied on
+  every read, so a grant that shrinks after a sync hides the revoked library too — proven against a real
+  in-memory database, still not against a real restricted account.
 
 ### What closing them takes
 
@@ -105,7 +137,7 @@ device or emulator.
 
 ## What was added in this session
 
-Six commits, each with `verifyDebug` green. **196 unit tests pass, 0 failures**; 109 of them are new.
+Each commit with `verifyDebug` green. **248 unit tests pass, 0 failures.**
 
 ### `:data:auth` (AUTH-001, AUTH-002)
 

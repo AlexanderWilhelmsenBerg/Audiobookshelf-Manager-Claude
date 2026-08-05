@@ -64,6 +64,18 @@ class AppSettingsDataSource @Inject constructor(
         dataStore.updateData { current -> current.toBuilder().clearActiveProfileId().build() }
     }
 
+    /**
+     * PRODUCT_SPEC LIB-002 / SET-002 — whether the home screen lists libraries instead of books.
+     *
+     * Exposed as its own [Flow] rather than leaving callers to reach into [settings], so a screen that
+     * only cares about this one flag is not recomposed by an unrelated appearance change.
+     */
+    val homeShowsLibraries: Flow<Boolean> = settings.map(AppSettings::getHomeShowsLibraries)
+
+    suspend fun setHomeShowsLibraries(enabled: Boolean) {
+        dataStore.updateData { current -> current.toBuilder().setHomeShowsLibraries(enabled).build() }
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.updateData { current -> current.toBuilder().setThemeMode(mode).build() }
     }

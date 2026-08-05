@@ -19,6 +19,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.repository.AuthRepository
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Instant
+import kotlin.time.Duration.Companion.minutes
 
 internal val TEST_SERVER = ServerId("server-1")
 internal val TEST_PROFILE = ProfileId("profile-1")
@@ -66,10 +68,14 @@ internal fun book(
     sequence: String? = null,
     tags: List<String> = emptyList(),
     updatedAt: Instant? = null,
+    libraryId: LibraryId = TEST_LIBRARY,
+    /** When this profile last listened. `null` is a book with no progress row at all. */
+    playedAt: Instant? = null,
+    isFinished: Boolean = false,
 ) = Book(
     serverId = TEST_SERVER,
     id = LibraryItemId(id),
-    libraryId = TEST_LIBRARY,
+    libraryId = libraryId,
     title = title,
     subtitle = null,
     authors = listOf(Author(TEST_SERVER, AuthorId("author-1"), authorName)),
@@ -97,7 +103,18 @@ internal fun book(
     sizeBytes = 0,
     remoteUpdatedAt = updatedAt,
     lastFetchedAt = TEST_INSTANT,
-    progress = null,
+    progress = playedAt?.let {
+        MediaProgress(
+            serverId = TEST_SERVER,
+            profileId = TEST_PROFILE,
+            bookId = LibraryItemId(id),
+            position = 1.minutes,
+            duration = 10.minutes,
+            isFinished = isFinished,
+            updatedAt = it,
+            hasUnsyncedChanges = false,
+        )
+    },
     localAvailability = LocalAvailability.NotDownloaded,
 )
 
@@ -151,6 +168,8 @@ internal class FakeLibraryRepository(books: List<Book> = emptyList(), libraries:
 
     override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
         storedBooks.map { all -> all.filter { it.libraryId == libraryId } }
+
+    override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = storedBooks
 
     override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
         storedBooks.map { all -> all.firstOrNull { it.id == bookId } }

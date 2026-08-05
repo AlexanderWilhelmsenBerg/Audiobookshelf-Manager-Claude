@@ -7,16 +7,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -32,7 +28,6 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryItemId
-import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookSortOrder
 
 @Composable
@@ -90,7 +85,7 @@ fun LibraryScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
-            SortRow(selected = uiState.order, onOrderChanged = onOrderChanged)
+            BookSortRow(selected = uiState.order, onOrderChanged = onOrderChanged)
 
             when {
                 uiState.isLoading -> ShelfLoadingState(
@@ -110,62 +105,6 @@ fun LibraryScreen(
                         BookCard(book = book, onClick = { onBookSelected(book.id) })
                     }
                 }
-            }
-        }
-    }
-}
-
-/** PRODUCT_SPEC LIB-002 — sort order is a visible, one-tap choice, not a buried menu. */
-@Composable
-private fun SortRow(selected: BookSortOrder, onOrderChanged: (BookSortOrder) -> Unit, modifier: Modifier = Modifier) {
-    LazyRow(
-        modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(items = BookSortOrder.entries, key = { it.name }) { order ->
-            FilterChip(
-                selected = order == selected,
-                onClick = { onOrderChanged(order) },
-                label = { Text(text = stringResource(order.labelRes())) },
-            )
-        }
-    }
-}
-
-private fun BookSortOrder.labelRes(): Int = when (this) {
-    BookSortOrder.TitleAscending -> R.string.library_sort_title
-    BookSortOrder.TitleDescending -> R.string.library_sort_title_desc
-    BookSortOrder.AuthorAscending -> R.string.library_sort_author
-    BookSortOrder.RecentlyUpdated -> R.string.library_sort_recent
-    BookSortOrder.SeriesSequenceAscending -> R.string.library_sort_series
-}
-
-@Composable
-private fun BookCard(book: Book, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(text = book.title, style = MaterialTheme.typography.titleMedium)
-            book.authors.firstOrNull()?.let { author ->
-                Text(
-                    text = author.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            book.seriesMemberships.firstOrNull()?.let { membership ->
-                Text(
-                    text = stringResource(
-                        R.string.book_series_position,
-                        membership.series.name,
-                        membership.sequence.raw.ifEmpty { "—" },
-                    ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }

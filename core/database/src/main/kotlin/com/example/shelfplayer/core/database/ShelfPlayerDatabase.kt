@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.example.shelfplayer.core.database.converter.StringListConverters
 import com.example.shelfplayer.core.database.dao.LibraryDao
+import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.dao.SyncStateDao
@@ -53,6 +54,8 @@ import com.example.shelfplayer.core.database.entity.SyncStateEntity
 @TypeConverters(StringListConverters::class)
 abstract class ShelfPlayerDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
+
+    abstract fun libraryWriteDao(): LibraryWriteDao
 
     abstract fun profileDao(): ProfileDao
 

@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.library
 
 import com.example.shelfplayer.core.model.SeriesSequence
 import com.example.shelfplayer.core.model.library.Book
+import java.time.Instant
 
 /**
  * PRODUCT_SPEC LIB-002 / LIB-003 — the orders a library grid can be shown in.
@@ -11,6 +12,18 @@ import com.example.shelfplayer.core.model.library.Book
  * durations and books that belong to more than one series.
  */
 enum class BookSortOrder {
+    /**
+     * PRODUCT_SPEC LIB-002 — the order the shelf opens in: whatever was played most recently, first.
+     *
+     * Books with no progress at all sort after every book that has some, in title order, so the list
+     * reads as "carry on with these, and here is the rest of the shelf" rather than interleaving the
+     * two.
+     *
+     * A *finished* book is not demoted. Its progress timestamp is as recent as any other, and "last
+     * played" is what this order claims to be. Hiding finished books is the separate
+     * *continue listening* shelf LIB-002 also asks for, and a filter is not a sort.
+     */
+    LastPlayed,
     TitleAscending,
     TitleDescending,
     AuthorAscending,
@@ -34,6 +47,11 @@ enum class BookSortOrder {
 fun sortBooks(books: List<Book>, order: BookSortOrder): List<Book> {
     val tieBreak = compareBy<Book>({ it.title.lowercase() }, { it.id.value })
     val comparator = when (order) {
+        // `Instant.MIN` rather than "no progress last" as a separate branch: descending on a value that
+        // is smaller than every real timestamp puts the unplayed books after the played ones, and the
+        // tie-break then orders them among themselves by title.
+        BookSortOrder.LastPlayed ->
+            compareByDescending<Book> { it.progress?.updatedAt ?: Instant.MIN }.then(tieBreak)
         BookSortOrder.TitleAscending -> tieBreak
         BookSortOrder.TitleDescending ->
             compareByDescending<Book> { it.title.lowercase() }.then(compareBy { it.id.value })

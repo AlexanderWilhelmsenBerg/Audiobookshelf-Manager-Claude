@@ -318,6 +318,8 @@ class SignInViewModelTest {
         override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
             MutableStateFlow(emptyList())
 
+        override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = MutableStateFlow(emptyList())
+
         override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = MutableStateFlow(null)
 
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =

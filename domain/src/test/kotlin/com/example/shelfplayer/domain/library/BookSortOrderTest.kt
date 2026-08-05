@@ -66,6 +66,47 @@ class BookSortOrderTest {
         )
     }
 
+    /**
+     * PRODUCT_SPEC LIB-002 — the order the app opens on.
+     *
+     * The unplayed books are not dropped and not interleaved: they follow everything with progress, in
+     * title order. The shelf has to show the whole library, not only what has been started.
+     */
+    @Test
+    fun `last played puts the newest listening first and the untouched books after`() {
+        val books = listOf(
+            book(id = "cold", title = "Never opened"),
+            book(id = "yesterday", title = "Yesterday", playedAt = TEST_INSTANT.minusSeconds(86_400)),
+            book(id = "just-now", title = "Just now", playedAt = TEST_INSTANT),
+            book(id = "also-cold", title = "Another unopened"),
+            book(id = "last-week", title = "Last week", playedAt = TEST_INSTANT.minusSeconds(604_800)),
+        )
+
+        assertEquals(
+            listOf("just-now", "yesterday", "last-week", "also-cold", "cold"),
+            sortBooks(books, BookSortOrder.LastPlayed).map { it.id.value },
+        )
+    }
+
+    /**
+     * A finished book keeps its place by timestamp.
+     *
+     * "Last played" is a claim about when, not about whether the user is still going. Demoting finished
+     * books is the *continue listening* shelf LIB-002 also asks for, and that is a filter.
+     */
+    @Test
+    fun `last played does not demote a finished book`() {
+        val books = listOf(
+            book(id = "in-progress", playedAt = TEST_INSTANT.minusSeconds(60)),
+            book(id = "finished", playedAt = TEST_INSTANT, isFinished = true),
+        )
+
+        assertEquals(
+            listOf("finished", "in-progress"),
+            sortBooks(books, BookSortOrder.LastPlayed).map { it.id.value },
+        )
+    }
+
     /** Sorting must be total: equal keys still produce one deterministic order. */
     @Test
     fun `books without a sequence keep a deterministic order`() {

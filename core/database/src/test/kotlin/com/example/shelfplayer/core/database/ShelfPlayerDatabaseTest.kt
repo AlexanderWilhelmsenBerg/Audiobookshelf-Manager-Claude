@@ -54,7 +54,7 @@ class ShelfPlayerDatabaseTest {
     fun `books are readable with their authors, series, tracks and chapters`() = runTest {
         seed()
 
-        val books = database.libraryDao().observeBooks(LIBRARY_KEY).first()
+        val books = database.libraryDao().observeBooksIn(listOf(LIBRARY_KEY)).first()
         val book = books.single()
 
         assertEquals("The Salt Harbour", book.book.title)
@@ -104,7 +104,7 @@ class ShelfPlayerDatabaseTest {
         assertTrue(database.progressDao().observeProgressFor(PROFILE_ID).first().isEmpty())
         assertEquals(1, database.progressDao().observeProgressFor(OTHER_PROFILE_ID).first().size)
         // The library and its books belong to the server, not to the profile that synced them.
-        assertEquals(1, database.libraryDao().observeBooks(LIBRARY_KEY).first().size)
+        assertEquals(1, database.libraryDao().observeBooksIn(listOf(LIBRARY_KEY)).first().size)
     }
 
     /** PRODUCT_SPEC 13.2 — a book that vanished from a sync is soft-deleted, not dropped. */
@@ -112,9 +112,9 @@ class ShelfPlayerDatabaseTest {
     fun `soft-deleted books disappear from reads but keep their row`() = runTest {
         seed()
 
-        database.libraryDao().markAllBooksDeleted(LIBRARY_KEY)
+        database.libraryWriteDao().markAllBooksDeleted(LIBRARY_KEY)
 
-        assertTrue(database.libraryDao().observeBooks(LIBRARY_KEY).first().isEmpty())
+        assertTrue(database.libraryDao().observeBooksIn(listOf(LIBRARY_KEY)).first().isEmpty())
         assertNull(database.libraryDao().observeBook(BOOK_KEY).first())
         assertEquals(0, database.libraryDao().countBooks(LIBRARY_KEY))
     }
@@ -122,13 +122,13 @@ class ShelfPlayerDatabaseTest {
     @Test
     fun `markMissingBooksDeleted keeps the books that are still present`() = runTest {
         seed()
-        database.libraryDao().upsertBooks(listOf(bookEntity(remoteId = "book-2", title = "Second")))
+        database.libraryWriteDao().upsertBooks(listOf(bookEntity(remoteId = "book-2", title = "Second")))
 
-        database.libraryDao().markMissingBooksDeleted(LIBRARY_KEY, listOf(BOOK_KEY))
+        database.libraryWriteDao().markMissingBooksDeleted(LIBRARY_KEY, listOf(BOOK_KEY))
 
         assertEquals(
             listOf("book-1"),
-            database.libraryDao().observeBooks(LIBRARY_KEY).first().map { it.book.remoteId },
+            database.libraryDao().observeBooksIn(listOf(LIBRARY_KEY)).first().map { it.book.remoteId },
         )
     }
 
@@ -158,7 +158,7 @@ class ShelfPlayerDatabaseTest {
             ),
         )
         database.profileDao().upsertProfile(profileEntity(PROFILE_ID))
-        database.libraryDao().upsertLibraries(
+        database.libraryWriteDao().upsertLibraries(
             listOf(
                 LibraryEntity(
                     libraryKey = LIBRARY_KEY,
@@ -173,7 +173,7 @@ class ShelfPlayerDatabaseTest {
                 ),
             ),
         )
-        database.libraryDao().upsertAuthors(
+        database.libraryWriteDao().upsertAuthors(
             listOf(
                 AuthorEntity(
                     authorKey = AUTHOR_KEY,
@@ -183,7 +183,7 @@ class ShelfPlayerDatabaseTest {
                 ),
             ),
         )
-        database.libraryDao().upsertSeries(
+        database.libraryWriteDao().upsertSeries(
             listOf(
                 SeriesEntity(
                     seriesKey = SERIES_KEY,
@@ -193,11 +193,11 @@ class ShelfPlayerDatabaseTest {
                 ),
             ),
         )
-        database.libraryDao().upsertBooks(listOf(bookEntity()))
-        database.libraryDao().upsertBookAuthors(
+        database.libraryWriteDao().upsertBooks(listOf(bookEntity()))
+        database.libraryWriteDao().upsertBookAuthors(
             listOf(BookAuthorCrossRef(BOOK_KEY, AUTHOR_KEY, position = 0)),
         )
-        database.libraryDao().upsertBookSeries(
+        database.libraryWriteDao().upsertBookSeries(
             listOf(BookSeriesCrossRef(BOOK_KEY, SERIES_KEY, sequenceRaw = "1", isPrimary = true)),
         )
     }

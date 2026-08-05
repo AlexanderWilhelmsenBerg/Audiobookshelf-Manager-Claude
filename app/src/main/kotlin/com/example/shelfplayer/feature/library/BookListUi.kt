@@ -1,0 +1,123 @@
+package com.example.shelfplayer.feature.library
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.domain.library.BookSortOrder
+import kotlin.math.roundToInt
+
+/**
+ * The book row and the sort chips, shared by the shelf of every accessible book and by a single
+ * library.
+ *
+ * Both screens are the same list of the same model with the same affordances, so they are one
+ * composable. Two copies would drift, and the first thing to drift would be the progress line — the
+ * part a user checks against what they were actually listening to.
+ *
+ * Cover art is deliberately absent: PRODUCT_SPEC LIB-001 syncs covers and LIB-004 shows them, but a
+ * cover on an Audiobookshelf server is an authenticated request, and wiring the session token into the
+ * image loader is its own slice of work rather than a detail of this list.
+ */
+@Composable
+internal fun BookCard(book: Book, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(text = book.title, style = MaterialTheme.typography.titleMedium)
+            book.authors.firstOrNull()?.let { author ->
+                Text(
+                    text = author.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            book.seriesMemberships.firstOrNull()?.let { membership ->
+                Text(
+                    text = stringResource(
+                        R.string.book_series_position,
+                        membership.series.name,
+                        membership.sequence.raw.ifEmpty { "—" },
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            BookProgressLine(book)
+        }
+    }
+}
+
+/**
+ * PRODUCT_SPEC LIB-004 — progress is visible in the list, not only on the detail screen.
+ *
+ * The shelf opens ordered by what was played last, and an order the user cannot see the basis for
+ * reads as an arbitrary one. This is the visible basis.
+ */
+@Composable
+private fun BookProgressLine(book: Book, modifier: Modifier = Modifier) {
+    val progress = book.progress ?: return
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = when {
+                progress.isFinished -> stringResource(R.string.book_finished)
+                else -> stringResource(R.string.book_progress, (progress.fractionComplete * 100).roundToInt())
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (!progress.isFinished) {
+            LinearProgressIndicator(
+                progress = { progress.fractionComplete },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/** PRODUCT_SPEC LIB-002 — sort order is a visible, one-tap choice, not a buried menu. */
+@Composable
+internal fun BookSortRow(
+    selected: BookSortOrder,
+    onOrderChanged: (BookSortOrder) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(items = BookSortOrder.entries, key = { it.name }) { order ->
+            FilterChip(
+                selected = order == selected,
+                onClick = { onOrderChanged(order) },
+                label = { Text(text = stringResource(order.labelRes())) },
+            )
+        }
+    }
+}
+
+private fun BookSortOrder.labelRes(): Int = when (this) {
+    BookSortOrder.LastPlayed -> R.string.library_sort_last_played
+    BookSortOrder.TitleAscending -> R.string.library_sort_title
+    BookSortOrder.TitleDescending -> R.string.library_sort_title_desc
+    BookSortOrder.AuthorAscending -> R.string.library_sort_author
+    BookSortOrder.RecentlyUpdated -> R.string.library_sort_recent
+    BookSortOrder.SeriesSequenceAscending -> R.string.library_sort_series
+}

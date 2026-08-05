@@ -34,6 +34,7 @@ import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -61,7 +62,6 @@ class DefaultLibraryRepositoryTest {
         val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
 
         repository = DefaultLibraryRepository(
-            transaction = RoomDatabaseTransactionRunner(database),
             libraryDao = database.libraryDao(),
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
@@ -71,6 +71,11 @@ class DefaultLibraryRepositoryTest {
                 clock = TestAppClock(),
                 logger = logger,
                 ioDispatcher = dispatcher,
+            ),
+            writer = LibrarySnapshotWriter(
+                transaction = RoomDatabaseTransactionRunner(database),
+                libraryWriteDao = database.libraryWriteDao(),
+                progressDao = database.progressDao(),
             ),
             clock = TestAppClock(),
             logger = logger,
@@ -230,6 +235,101 @@ class DefaultLibraryRepositoryTest {
         repository.observeSyncState(ProfileId("stranger")).test {
             assertEquals(SyncStatus.Failed, awaitItem().status)
         }
+    }
+
+    /** PRODUCT_SPEC LIB-002 — the shelf spans every library the profile is granted. */
+    @Test
+    fun `the accessible shelf returns the books of every granted library`() = runTest {
+        repository.refresh(fixtureProfile)
+
+        val shelf = repository.observeAccessibleBooks(fixtureProfile).first()
+
+        assertEquals(7, shelf.size)
+        assertEquals(
+            setOf(LibraryId("lib-fiction"), LibraryId("lib-nonfiction")),
+            shelf.map { it.libraryId }.toSet(),
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 and the Phase 1 exit criterion — unauthorized libraries never appear.
+     *
+     * The grant is enforced on write, so an unauthorized library is never synced in the first place. It
+     * can also *shrink* afterwards, and nothing enumerates a library the server has stopped offering, so
+     * its rows stay in the cache. This is the read-side half: the same rows, a narrower grant, and the
+     * revoked library gone from every one of the four read paths.
+     */
+    @Test
+    fun `a narrowed grant hides the revoked library from every read`() = runTest {
+        repository.refresh(fixtureProfile)
+        assertEquals(2, repository.observeLibraries(fixtureProfile).first().size)
+
+        database.profileDao().setLibraryAccess(
+            profileId = fixtureProfile.value,
+            accessibleLibrariesJson = """["lib-nonfiction"]""",
+            hasAllLibraryAccess = false,
+        )
+
+        assertEquals(
+            listOf("Non-fiction"),
+            repository.observeLibraries(fixtureProfile).first().map { it.name },
+        )
+        assertEquals(
+            listOf(LibraryId("lib-nonfiction")),
+            repository.observeAccessibleBooks(fixtureProfile).first().map { it.libraryId }.distinct(),
+        )
+        assertTrue(repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().isEmpty())
+        assertNull(repository.observeLibrary(fixtureProfile, LibraryId("lib-fiction")).first())
+        // The detail screen is a read path too: a direct route to a revoked book must not open it.
+        assertNull(repository.observeBook(fixtureProfile, LibraryItemId("book-voyage-1")).first())
+    }
+
+    /**
+     * A grant of no libraries at all is a real state, not an oversight.
+     *
+     * PRODUCT_SPEC 5.2's trap is the other direction — `accessAllLibraries` with an empty list means
+     * *all* — so the empty-and-not-all case has to be proved to mean none.
+     */
+    @Test
+    fun `a profile granted nothing sees nothing`() = runTest {
+        repository.refresh(fixtureProfile)
+        database.profileDao().setLibraryAccess(
+            profileId = fixtureProfile.value,
+            accessibleLibrariesJson = "[]",
+            hasAllLibraryAccess = false,
+        )
+
+        assertEquals(emptyList(), repository.observeLibraries(fixtureProfile).first())
+        assertEquals(emptyList(), repository.observeAccessibleBooks(fixtureProfile).first())
+    }
+
+    /** PRODUCT_SPEC 5.2 — the shelf carries the reading profile's progress and nobody else's. */
+    @Test
+    fun `the accessible shelf attaches only the requested profile's progress`() = runTest {
+        repository.refresh(fixtureProfile)
+
+        val played = repository.observeAccessibleBooks(fixtureProfile).first()
+            .single { it.id.value == "book-voyage-1" }
+        assertEquals(12_480_000L, played.progress?.position?.inWholeMilliseconds)
+
+        database.profileDao().upsertProfile(
+            ProfileEntity(
+                profileId = "other-profile",
+                serverId = "fixture-server",
+                remoteUserId = null,
+                username = "other",
+                displayName = "Other",
+                role = "Listener",
+                requiresReauthentication = false,
+                lastUsedAt = null,
+                isFixture = true,
+                accessibleLibrariesJson = "[]",
+                hasAllLibraryAccess = true,
+            ),
+        )
+
+        val forOther = repository.observeAccessibleBooks(ProfileId("other-profile")).first()
+        assertTrue(forOther.all { it.progress == null })
     }
 
     /** PRODUCT_SPEC 14.5 — a sync log line never names a library or a book. */

@@ -11,12 +11,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -38,8 +40,11 @@ import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfErrorState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.feature.library.BookCard
+import com.example.shelfplayer.feature.library.BookSortRow
 
 /**
  * PRODUCT_SPEC 16.4 — `*Route` wires navigation and state; `*Screen` is a pure function of its
@@ -47,8 +52,10 @@ import com.example.shelfplayer.core.model.library.Library
  */
 @Composable
 fun HomeRoute(
+    onBookSelected: (LibraryItemId) -> Unit,
     onLibrarySelected: (LibraryId) -> Unit,
     onProfilesSelected: () -> Unit,
+    onSettingsSelected: () -> Unit,
     onSignInSelected: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
@@ -61,24 +68,23 @@ fun HomeRoute(
 
     HomeScreen(
         uiState = uiState,
-        onLibrarySelected = onLibrarySelected,
-        onRefresh = viewModel::refresh,
-        onProfilesSelected = onProfilesSelected,
-        onSignInSelected = onSignInSelected,
+        actions = HomeActions(
+            onBookSelected = onBookSelected,
+            onLibrarySelected = onLibrarySelected,
+            onQueryChanged = viewModel::onQueryChanged,
+            onOrderChanged = viewModel::onOrderChanged,
+            onRefresh = viewModel::refresh,
+            onProfilesSelected = onProfilesSelected,
+            onSettingsSelected = onSettingsSelected,
+            onSignInSelected = onSignInSelected,
+        ),
         modifier = modifier,
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(
-    uiState: HomeUiState,
-    onLibrarySelected: (LibraryId) -> Unit,
-    onRefresh: () -> Unit,
-    onProfilesSelected: () -> Unit,
-    onSignInSelected: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -86,7 +92,7 @@ fun HomeScreen(
                 title = { Text(text = stringResource(R.string.home_title)) },
                 actions = {
                     IconButton(
-                        onClick = onRefresh,
+                        onClick = actions.onRefresh,
                         enabled = !uiState.isRefreshing,
                     ) {
                         Icon(
@@ -94,10 +100,16 @@ fun HomeScreen(
                             contentDescription = stringResource(R.string.home_refresh),
                         )
                     }
-                    IconButton(onClick = onProfilesSelected) {
+                    IconButton(onClick = actions.onProfilesSelected) {
                         Icon(
                             imageVector = Icons.Filled.AccountCircle,
                             contentDescription = stringResource(R.string.home_profiles),
+                        )
+                    }
+                    IconButton(onClick = actions.onSettingsSelected) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.home_settings),
                         )
                     }
                 },
@@ -123,23 +135,13 @@ fun HomeScreen(
                         },
                 )
             }
-            HomeContent(
-                uiState = uiState,
-                onLibrarySelected = onLibrarySelected,
-                onRefresh = onRefresh,
-                onSignInSelected = onSignInSelected,
-            )
+            HomeContent(uiState = uiState, actions = actions)
         }
     }
 }
 
 @Composable
-private fun HomeContent(
-    uiState: HomeUiState,
-    onLibrarySelected: (LibraryId) -> Unit,
-    onRefresh: () -> Unit,
-    onSignInSelected: () -> Unit,
-) {
+private fun HomeContent(uiState: HomeUiState, actions: HomeActions) {
     val content = Modifier.fillMaxSize()
 
     when {
@@ -153,75 +155,130 @@ private fun HomeContent(
 
         // Checked before the error branch: with no profile there is nothing to refresh, and
         // "add a server" is a more useful thing to read than whatever the last attempt reported.
-        // No action button, because the screen that would handle one does not exist yet.
         uiState.profile == null ->
             ShelfEmptyState(
                 title = stringResource(R.string.home_no_profile_title),
                 body = stringResource(R.string.home_no_profile_body),
                 actionLabel = stringResource(R.string.home_sign_in),
-                onAction = onSignInSelected,
+                onAction = actions.onSignInSelected,
                 modifier = content,
             )
 
-        uiState.libraries.isEmpty() && uiState.error != null ->
-            ShelfErrorState(
-                title = stringResource(R.string.home_error_title),
-                body = uiState.error.summary,
-                technicalCode = uiState.error.code,
-                actionLabel = stringResource(R.string.home_refresh),
-                onAction = onRefresh,
-                modifier = content,
-            )
+        uiState.showsLibraries -> LibraryList(uiState = uiState, actions = actions, modifier = content)
 
-        uiState.libraries.isEmpty() ->
-            ShelfEmptyState(
-                title = stringResource(R.string.home_empty_title),
-                body = stringResource(R.string.home_empty_body),
-                actionLabel = stringResource(R.string.home_refresh),
-                onAction = onRefresh,
-                modifier = content,
-            )
+        else -> BookShelf(uiState = uiState, actions = actions, modifier = content)
+    }
+}
 
-        else -> LibraryList(
-            uiState = uiState,
-            onLibrarySelected = onLibrarySelected,
+/**
+ * PRODUCT_SPEC LIB-002 — the shelf: every accessible book, most recently played first.
+ *
+ * Search and sort appear once there is something to search. A search field above "No books yet" offers
+ * the user a way to narrow nothing down.
+ */
+@Composable
+private fun BookShelf(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        if (uiState.books.isNotEmpty() || uiState.query.isNotEmpty()) {
+            OutlinedTextField(
+                value = uiState.query,
+                onValueChange = actions.onQueryChanged,
+                singleLine = true,
+                label = { Text(text = stringResource(R.string.home_search_hint)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            BookSortRow(selected = uiState.order, onOrderChanged = actions.onOrderChanged)
+        }
+
+        when {
+            uiState.books.isEmpty() && uiState.query.isNotEmpty() ->
+                ShelfEmptyState(
+                    title = stringResource(R.string.home_no_matches_title),
+                    body = stringResource(R.string.home_no_matches_body),
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+            uiState.books.isEmpty() -> EmptyOrFailed(uiState = uiState, onRefresh = actions.onRefresh)
+
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item { ShelfHeader(uiState) }
+                items(items = uiState.books, key = { it.id.value }) { book ->
+                    BookCard(book = book, onClick = { actions.onBookSelected(book.id) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibraryList(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
+    if (uiState.libraries.isEmpty()) {
+        EmptyOrFailed(uiState = uiState, onRefresh = actions.onRefresh, modifier = modifier)
+        return
+    }
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item { ShelfHeader(uiState) }
+        items(items = uiState.libraries, key = { it.id.value }) { library ->
+            LibraryCard(library = library, onClick = { actions.onLibrarySelected(library.id) })
+        }
+    }
+}
+
+/**
+ * The empty and error states share a branch because they answer the same question — why is the shelf
+ * bare — and the recorded error is the better answer whenever there is one.
+ */
+@Composable
+private fun EmptyOrFailed(uiState: HomeUiState, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
+    val content = modifier.fillMaxSize()
+    if (uiState.error != null) {
+        ShelfErrorState(
+            title = stringResource(R.string.home_error_title),
+            body = uiState.error.summary,
+            technicalCode = uiState.error.code,
+            actionLabel = stringResource(R.string.home_refresh),
+            onAction = onRefresh,
+            modifier = content,
+        )
+    } else {
+        ShelfEmptyState(
+            title = stringResource(R.string.home_empty_title),
+            body = stringResource(R.string.home_empty_body),
+            actionLabel = stringResource(R.string.home_refresh),
+            onAction = onRefresh,
             modifier = content,
         )
     }
 }
 
 @Composable
-private fun LibraryList(uiState: HomeUiState, onLibrarySelected: (LibraryId) -> Unit, modifier: Modifier = Modifier) {
-    LazyColumn(
-        modifier = modifier,
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            // The demo banner that used to sit here is gone with the demo library. Leaving it would have
-            // labelled a user's real, server-synced content as sample data — the app describing its own
-            // contents wrongly, which is worse than saying nothing.
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                // PRODUCT_SPEC AUTH-004 — the mark is shown, not just enforced. It sits above the library
-                // rather than replacing it, because the cached content is still there and still playable;
-                // what has stopped is new network work.
-                if (uiState.profile?.requiresReauthentication == true) {
-                    Text(
-                        text = stringResource(R.string.home_needs_sign_in),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                Text(
-                    text = uiState.syncStatusLabel(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+private fun ShelfHeader(uiState: HomeUiState, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // PRODUCT_SPEC AUTH-004 — the mark is shown, not just enforced. It sits above the shelf rather
+        // than replacing it, because the cached content is still there and still playable; what has
+        // stopped is new network work.
+        if (uiState.profile?.requiresReauthentication == true) {
+            Text(
+                text = stringResource(R.string.home_needs_sign_in),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
-        items(items = uiState.libraries, key = { it.id.value }) { library ->
-            LibraryCard(library = library, onClick = { onLibrarySelected(library.id) })
-        }
+        Text(
+            text = uiState.syncStatusLabel(),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -254,7 +311,9 @@ private fun HomeUiState.syncStatusLabel(): String = when (syncStatus) {
     SyncStatus.Succeeded,
     SyncStatus.PartiallySucceeded,
     -> {
-        val total = libraries.sumOf(Library::bookCount)
+        // The count follows what is on screen. In library mode that is the libraries' totals; on the
+        // shelf it is the rows the user can actually see, which a search narrows.
+        val total = if (showsLibraries) libraries.sumOf(Library::bookCount) else books.size
         pluralStringResource(R.plurals.home_library_books, total, total)
     }
 }

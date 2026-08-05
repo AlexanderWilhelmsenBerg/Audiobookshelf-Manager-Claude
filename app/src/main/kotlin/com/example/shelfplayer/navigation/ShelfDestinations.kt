@@ -15,6 +15,7 @@ object ShelfDestinations {
     const val SIGN_IN = "sign-in"
     const val HOME = "home"
     const val PROFILES = "profiles"
+    const val SETTINGS = "settings"
     const val LIBRARY = "library/{libraryId}"
     const val BOOK = "book/{bookId}"
 

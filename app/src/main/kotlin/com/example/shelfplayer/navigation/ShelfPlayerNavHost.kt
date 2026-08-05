@@ -12,6 +12,7 @@ import com.example.shelfplayer.feature.home.HomeRoute
 import com.example.shelfplayer.feature.library.LibraryRoute
 import com.example.shelfplayer.feature.onboarding.SignInRoute
 import com.example.shelfplayer.feature.profiles.ProfileSwitcherRoute
+import com.example.shelfplayer.feature.settings.SettingsRoute
 
 /**
  * PRODUCT_SPEC 6.1 / AUTH-002 — where the app opens, and how it gets back to sign-in.
@@ -36,10 +37,14 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
         }
         composable(ShelfDestinations.HOME) {
             HomeRoute(
+                onBookSelected = { bookId ->
+                    navController.navigate(ShelfDestinations.book(bookId))
+                },
                 onLibrarySelected = { libraryId ->
                     navController.navigate(ShelfDestinations.library(libraryId))
                 },
                 onProfilesSelected = { navController.navigate(ShelfDestinations.PROFILES) },
+                onSettingsSelected = { navController.navigate(ShelfDestinations.SETTINGS) },
                 onSignInSelected = { navController.navigate(ShelfDestinations.SIGN_IN) },
             )
         }
@@ -48,6 +53,9 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
                 onNavigateUp = navController::navigateUp,
                 onAddProfile = { navController.navigate(ShelfDestinations.SIGN_IN) },
             )
+        }
+        composable(ShelfDestinations.SETTINGS) {
+            SettingsRoute(onNavigateUp = navController::navigateUp)
         }
         composable(
             route = ShelfDestinations.LIBRARY,

@@ -3,11 +3,13 @@ package com.example.shelfplayer.domain.usecase
 import app.cash.turbine.test
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.domain.FakeAuthRepository
 import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.FakeProfileRepository
+import com.example.shelfplayer.domain.TEST_INSTANT
 import com.example.shelfplayer.domain.TEST_LIBRARY
 import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.book
@@ -50,6 +52,59 @@ class LibraryUseCaseTest {
             assertEquals(3, awaitItem().single().bookCount)
             profiles.signOut()
             assertEquals(emptyList(), awaitItem())
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — the shelf spans every library the profile can see.
+     *
+     * A book from a second library appears without the user having chosen a library first: that is the
+     * whole point of the screen the app opens on.
+     */
+    @Test
+    fun `the shelf spans libraries and opens on what was played last`() = runTest {
+        val shelf = listOf(
+            book(id = "fiction-cold", title = "Untouched"),
+            book(id = "fiction-old", title = "Older", playedAt = TEST_INSTANT.minusSeconds(600)),
+            book(
+                id = "other-library",
+                title = "From another library",
+                libraryId = LibraryId("library-2"),
+                playedAt = TEST_INSTANT,
+            ),
+        )
+        val useCase = ObserveAccessibleBooksUseCase(FakeProfileRepository(), FakeLibraryRepository(books = shelf))
+
+        useCase().test {
+            assertEquals(
+                listOf("other-library", "fiction-old", "fiction-cold"),
+                awaitItem().map { it.id.value },
+            )
+        }
+    }
+
+    @Test
+    fun `the shelf is empty while no profile is active`() = runTest {
+        val useCase = ObserveAccessibleBooksUseCase(
+            FakeProfileRepository(active = null),
+            FakeLibraryRepository(books = books),
+        )
+
+        useCase().test {
+            assertEquals(emptyList(), awaitItem())
+        }
+    }
+
+    /** The shelf and a single library share one search predicate, so they cannot answer differently. */
+    @Test
+    fun `the shelf searches the same fields a library does`() = runTest {
+        val repository = FakeLibraryRepository(books = books)
+
+        ObserveAccessibleBooksUseCase(FakeProfileRepository(), repository)("Nkemelu").test {
+            assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
+        }
+        ObserveLibraryBooksUseCase(FakeProfileRepository(), repository)(TEST_LIBRARY, query = "Nkemelu").test {
+            assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
         }
     }
 

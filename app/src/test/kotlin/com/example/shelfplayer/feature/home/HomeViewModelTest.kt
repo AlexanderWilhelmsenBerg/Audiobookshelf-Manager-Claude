@@ -16,18 +16,26 @@ import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
+import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.SettingsRepository
+import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
@@ -35,8 +43,12 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 
 /** PRODUCT_SPEC LIB-001 / 21 — home distinguishes loading, empty, content and error. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
 
     @get:Rule
@@ -44,11 +56,14 @@ class HomeViewModelTest {
 
     private val profiles = FakeProfiles()
     private val libraries = FakeLibraries()
+    private val settings = FakeSettings()
 
     private fun viewModel() = HomeViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
+        observeAccessibleBooks = ObserveAccessibleBooksUseCase(profiles, libraries),
         observeSyncState = ObserveSyncStateUseCase(profiles, libraries),
         profileRepository = profiles,
+        settings = settings,
         refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),
     )
 
@@ -188,6 +203,77 @@ class HomeViewModelTest {
         }
     }
 
+    /**
+     * PRODUCT_SPEC LIB-002 — reported from a device: the app opened on a single library card with the
+     * rest of the screen empty, and the books were one tap further in.
+     *
+     * The shelf is what the app opens on, ordered by what was played last.
+     */
+    @Test
+    fun `the shelf opens on the books, most recently played first`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.emit(listOf(demoLibrary))
+        libraries.emitBooks(
+            listOf(
+                book("cold", "Never opened"),
+                book("older", "Older", playedAt = Instant.EPOCH.plusSeconds(10)),
+                book("newest", "Newest", playedAt = Instant.EPOCH.plusSeconds(20)),
+            ),
+        )
+
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertFalse(state.showsLibraries, "the shelf is the default, not the library list")
+            assertEquals(listOf("Newest", "Older", "Never opened"), state.books.map { it.title })
+        }
+    }
+
+    /** PRODUCT_SPEC SET-002 — browsing by library stays available, as a setting. */
+    @Test
+    fun `the setting swaps the shelf for the list of libraries`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.emit(listOf(demoLibrary))
+        libraries.emitBooks(listOf(book("b-1", "A book")))
+        settings.setHomeShowsLibraries(true)
+
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertTrue(state.showsLibraries)
+            // Both are still in the state — the screen chooses, so flipping the setting back does not
+            // have to wait for a database round trip.
+            assertEquals(listOf("Fiction"), state.libraries.map { it.name })
+            assertEquals(listOf("A book"), state.books.map { it.title })
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — search narrows the shelf, and the 300 ms debounce applies to the *results*
+     * rather than to the text field.
+     *
+     * The typed text has to appear at once — a field that lags behind the keyboard feels broken — while
+     * the list settles before it re-queries. Both halves are asserted here because a naive fix to either
+     * one breaks the other.
+     */
+    @Test
+    fun `searching narrows the shelf without the text field lagging`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.emitBooks(listOf(book("salt", "The Salt Harbour"), book("glass", "The Weather Glass")))
+
+        val viewModel = viewModel()
+        backgroundScope.launch(mainDispatcherRule.testDispatcher) { viewModel.uiState.collect { } }
+        assertEquals(2, viewModel.uiState.value.books.size)
+
+        viewModel.onQueryChanged("weather")
+
+        assertEquals("weather", viewModel.uiState.value.query, "the field must not wait for the debounce")
+
+        // Comfortably past LIB-002's 300 ms debounce, so the assertion is not about the exact boundary.
+        advanceTimeBy(400)
+        runCurrent()
+
+        assertEquals(listOf("The Weather Glass"), viewModel.uiState.value.books.map { it.title })
+    }
+
     @Test
     fun `a refresh failure surfaces the typed error without clearing content`() = runTest {
         profiles.setActive(demoProfile)
@@ -265,6 +351,44 @@ class HomeViewModelTest {
         isFixture = true,
     )
 
+    private fun book(id: String, title: String, playedAt: Instant? = null) = Book(
+        serverId = ServerId("fixture-server"),
+        id = LibraryItemId(id),
+        libraryId = LibraryId("lib-fiction"),
+        title = title,
+        subtitle = null,
+        authors = emptyList(),
+        narrators = emptyList(),
+        seriesMemberships = emptyList(),
+        duration = Duration.ZERO,
+        description = null,
+        genres = emptyList(),
+        tags = emptyList(),
+        publishedYear = null,
+        publisher = null,
+        language = null,
+        isExplicit = false,
+        isAbridged = false,
+        coverPath = null,
+        trackCount = 1,
+        sizeBytes = 0,
+        remoteUpdatedAt = null,
+        lastFetchedAt = Instant.EPOCH,
+        progress = playedAt?.let {
+            MediaProgress(
+                serverId = ServerId("fixture-server"),
+                profileId = ProfileId("fixture-profile"),
+                bookId = LibraryItemId(id),
+                position = 1.minutes,
+                duration = 10.minutes,
+                isFinished = false,
+                updatedAt = it,
+                hasUnsyncedChanges = false,
+            )
+        },
+        localAvailability = LocalAvailability.NotDownloaded,
+    )
+
     private val demoLibrary = Library(
         serverId = ServerId("fixture-server"),
         id = LibraryId("lib-fiction"),
@@ -298,6 +422,16 @@ class HomeViewModelTest {
 
         private fun <T> notUsed(): AppResult<T> =
             AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this fake"))
+    }
+
+    private class FakeSettings : SettingsRepository {
+        private val libraries = MutableStateFlow(false)
+
+        override val homeShowsLibraries: Flow<Boolean> = libraries
+
+        override suspend fun setHomeShowsLibraries(enabled: Boolean) {
+            libraries.value = enabled
+        }
     }
 
     private class FakeProfiles : ProfileRepository {
@@ -335,8 +469,16 @@ class HomeViewModelTest {
         override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> =
             stored.map { libraries -> libraries.firstOrNull { it.id == libraryId } }
 
+        private val storedBooks = MutableStateFlow<List<Book>>(emptyList())
+
+        fun emitBooks(books: List<Book>) {
+            storedBooks.value = books
+        }
+
         override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
-            MutableStateFlow(emptyList())
+            storedBooks.map { all -> all.filter { it.libraryId == libraryId } }
+
+        override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = storedBooks
 
         override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = MutableStateFlow(null)
 
