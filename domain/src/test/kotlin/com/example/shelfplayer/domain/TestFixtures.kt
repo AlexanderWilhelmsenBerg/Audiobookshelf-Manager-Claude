@@ -116,9 +116,19 @@ internal class FakeProfileRepository(active: Profile? = profile()) : ProfileRepo
 
     override suspend fun activeProfileId(): ProfileId? = activeProfile.first()?.id
 
+    private var refuseSwitch = false
+
     override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
+        if (refuseSwitch) {
+            return AppResult.Failure(AppError.Validation(summary = "That profile is no longer saved."))
+        }
         activeProfile.value = profile(profileId)
         return AppResult.Success(Unit)
+    }
+
+    /** What the real repository does for a profile id that no longer resolves to a saved row. */
+    fun refuseSwitches() {
+        refuseSwitch = true
     }
 
     fun signOut() {
@@ -189,11 +199,33 @@ internal class FakeAuthRepository(
         return renewal
     }
 
+    private var signIn: AppResult<Profile> = AppResult.Success(profile())
+
+    val signInCalls = mutableListOf<String>()
+
+    fun willFailToSignIn(error: AppError) {
+        signIn = AppResult.Failure(error)
+    }
+
     override suspend fun probeServer(serverUrl: String): AppResult<ServerCandidate> = notUsed()
 
-    override suspend fun signIn(serverUrl: String, username: String, password: String): AppResult<Profile> = notUsed()
+    override suspend fun signIn(serverUrl: String, username: String, password: String): AppResult<Profile> {
+        signInCalls += username
+        return signIn
+    }
 
-    override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> = notUsed()
+    private var restore: AppResult<SessionStatus> = AppResult.Success(SessionStatus.Active)
+
+    val restoredProfiles = mutableListOf<ProfileId>()
+
+    fun willRestoreInto(status: SessionStatus) {
+        restore = AppResult.Success(status)
+    }
+
+    override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> {
+        restoredProfiles += profileId
+        return restore
+    }
 
     override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = notUsed()
 
