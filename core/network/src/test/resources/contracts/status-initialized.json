@@ -1,0 +1,17 @@
+{
+  "body": {
+    "app": "audiobookshelf",
+    "authFormData": {
+      "authLoginCustomMessage": ""
+    },
+    "authMethods": [
+      "local"
+    ],
+    "isInit": true,
+    "language": "en-us",
+    "serverVersion": "2.36.0"
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

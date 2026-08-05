@@ -1,0 +1,8 @@
+{
+  "body": {
+    "redirect_url": null
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

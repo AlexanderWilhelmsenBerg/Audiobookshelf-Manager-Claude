@@ -3,6 +3,36 @@
 Read [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) first. Its requirement identifiers (`LIB-003`,
 `PLAY-004`, …) are contractual and are referenced from code, tests, commits and pull requests.
 
+## Prerequisites
+
+`./gradlew verifyDebug` needs a JDK and an Android SDK. CI installs both through its setup actions,
+so a fresh clone can fail with errors that look like a broken build rather than a missing toolchain.
+
+- **JDK 17 or newer.** The build targets JVM 17.
+- **Android SDK** with `platforms;android-36` and `build-tools;36.0.0` — the levels pinned in
+  `gradle/libs.versions.toml`. Bumping those pins means installing the matching packages.
+- **`local.properties`** in the repository root pointing at the SDK. It is gitignored, because the
+  path is specific to your machine:
+
+  ```properties
+  sdk.dir=/path/to/android-sdk
+  ```
+
+  Setting `ANDROID_HOME` works instead, if you prefer not to have the file.
+
+From nothing, on Linux:
+
+```bash
+# Command-line tools, then the packages the build needs.
+sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+echo "sdk.dir=$ANDROID_HOME" > local.properties
+```
+
+A cold first build resolves the whole dependency graph and takes several minutes; subsequent runs are
+around five. If Gradle cannot reach `dl.google.com` — the host serving both Google's Maven repository
+and the SDK — nothing will resolve, and the failure will not name the network as the cause.
+
 ## The loop
 
 1. **Identify the requirement IDs** your change implements.

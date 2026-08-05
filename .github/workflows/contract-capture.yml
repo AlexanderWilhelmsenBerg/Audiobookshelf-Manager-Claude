@@ -1,0 +1,135 @@
+name: Contract capture
+
+# PRODUCT_SPEC 18 ("server contract tests when fixture container is available") and 22.5.
+#
+# Runs a real Audiobookshelf server and records what it actually answers. The committed fixtures in
+# `core/network/src/test/resources/contracts/` are the output of this job, which makes them evidence
+# rather than assumption — PRODUCT_SPEC 23 warns that the public API reference is out of date, and
+# PRODUCT_SPEC 22.4 forbids inventing an endpoint to cover the gap.
+#
+# On a pull request this job *verifies*: it re-captures and fails if the committed fixtures no longer
+# match what the server sends, which is how an upstream response change becomes a red build here
+# instead of a parse failure on someone's phone.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'core/network/**'
+      - 'scripts/capture-contracts.sh'
+      - '.github/workflows/contract-capture.yml'
+  workflow_dispatch:
+    inputs:
+      server_image:
+        description: Audiobookshelf image to capture against
+        required: false
+        default: ghcr.io/advplyr/audiobookshelf:latest
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture Audiobookshelf contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Not a `services:` block: the server needs its config and metadata directories to exist before
+      # it starts, and a plain `docker run` keeps the setup visible in the log rather than hidden in
+      # runner configuration.
+      - name: Start Audiobookshelf
+        env:
+          SERVER_IMAGE: ${{ inputs.server_image || 'ghcr.io/advplyr/audiobookshelf:latest' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/abs/config" "$RUNNER_TEMP/abs/metadata" "$RUNNER_TEMP/abs/audiobooks"
+          docker run -d --name audiobookshelf \
+            -p 13378:80 \
+            -v "$RUNNER_TEMP/abs/config:/config" \
+            -v "$RUNNER_TEMP/abs/metadata:/metadata" \
+            -v "$RUNNER_TEMP/abs/audiobooks:/audiobooks" \
+            "$SERVER_IMAGE"
+          echo "SERVER_IMAGE=$SERVER_IMAGE" >> "$GITHUB_ENV"
+
+      - name: Record the server version under test
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sSf --max-time 3 http://localhost:13378/healthcheck >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -sS http://localhost:13378/status | tee /tmp/status.json
+          echo
+          docker image inspect "$SERVER_IMAGE" --format 'digest={{index .RepoDigests 0}}' || true
+
+      - name: Capture contracts
+        run: |
+          chmod +x scripts/capture-contracts.sh
+          ./scripts/capture-contracts.sh http://localhost:13378 "$RUNNER_TEMP/captured"
+
+      # The captured fixtures must contain no credential. This is a hard gate rather than a review
+      # note, because the files are committed and a leaked token in git history is not retractable.
+      - name: Fixtures carry no credentials
+        run: |
+          python3 - "$RUNNER_TEMP/captured" <<'PY'
+          import json, pathlib, re, sys
+
+          SECRET_KEYS = {"token", "accessToken", "refreshToken", "refresh_token",
+                         "access_token", "password", "pash", "authToken", "apiKey"}
+          JWT = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.")
+          problems = []
+
+          def walk(node, key, where):
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      walk(v, k, where)
+              elif isinstance(node, list):
+                  for v in node:
+                      walk(v, key, where)
+              elif isinstance(node, str):
+                  if key in SECRET_KEYS and not node.startswith("<redacted"):
+                      problems.append(f"{where}: {key!r} still holds a value")
+                  if JWT.search(node):
+                      problems.append(f"{where}: {key!r} looks like a JWT")
+
+          files = sorted(pathlib.Path(sys.argv[1]).rglob("*.json"))
+          if not files:
+              sys.exit("::error::No fixtures were captured.")
+          for path in files:
+              walk(json.loads(path.read_text()), None, path.name)
+
+          if problems:
+              for problem in problems:
+                  print(f"::error::{problem}")
+              sys.exit(1)
+          print(f"No credential-shaped values in {len(files)} captured fixtures.")
+          PY
+
+      - name: Compare against the committed fixtures
+        id: compare
+        run: |
+          committed=core/network/src/test/resources/contracts
+          if [ ! -d "$committed" ]; then
+            echo "::notice::No committed contracts yet — download the artifact and commit it."
+            exit 0
+          fi
+          if diff -ru "$committed" "$RUNNER_TEMP/captured"; then
+            echo "Committed contracts match the server."
+          else
+            echo "::error::The server's responses no longer match the committed contracts."
+            echo "Download the captured-contracts artifact, review the diff, and commit the update."
+            exit 1
+          fi
+
+      - name: Upload captured contracts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: captured-contracts
+          path: ${{ runner.temp }}/captured/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Server log on failure
+        if: failure()
+        run: docker logs audiobookshelf 2>&1 | tail -100

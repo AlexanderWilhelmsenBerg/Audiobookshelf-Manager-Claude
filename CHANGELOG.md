@@ -4,6 +4,21 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
 
 ## Unreleased
 
+### Phase 1 — Authentication and cached browsing (in progress)
+
+**Not complete.** See `docs/handover.md` for a deliverable-by-deliverable status.
+
+- Audiobookshelf contract capture: `.github/workflows/contract-capture.yml` runs the real server
+  image and records what it answers, failing if committed fixtures drift (ADR-0007).
+- Verified login contract against Audiobookshelf 2.36.0 and encoded it: `AuthService`, `AuthDtos`,
+  `AuthMapper`, `AuthSession`. Tokens nest under `user`; `refreshToken` is returned in the body only
+  for requests carrying `x-return-tokens: true`; the pre-2.26 `token` is still returned beside
+  `accessToken` and is not accepted by `/auth/refresh`.
+- `docs/api-compatibility.md` records the authentication endpoints, none of which appear in the
+  project's published `openapi.json`.
+- **Not wired**: the contract layer is referenced by nothing but its own tests. No Retrofit client,
+  no gateway `auth` sub-API, no secure token storage, no profile switch.
+
 ### Phase 0 — Repository foundation
 
 **Build and quality gates** (PRODUCT_SPEC 16)

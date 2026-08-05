@@ -5,25 +5,68 @@ known endpoint differences, the fixtures used, and the date last verified.
 
 ## Server versions tested
 
-**None.** Phase 0 makes no network requests and defines no Audiobookshelf endpoints.
-
 | Server version | Date verified | Auth mode | Websocket | Notes |
 | --- | --- | --- | --- | --- |
-| — | — | — | — | No server has been contacted by this repository. |
+| 2.36.0 | 2026-08-05 | local (`authMethods: ["local"]`) | not verified | Login, refresh-token behaviour and API-key bearer auth observed directly. Contract capture in CI runs against the same version. |
+
+Verified by observation, not by a released build: the app does not yet make these calls (see
+`docs/handover.md`). What is confirmed is the *contract*, not an end-to-end sign-in.
 
 This table is a release blocker for anything that talks to a server (`PRODUCT_SPEC 17.1`: contract
 tests against the selected server versions are release blockers). It must have at least one row
 before Phase 1 is complete.
 
-## Why Phase 0 defines no endpoints
+## Why Phase 0 defined no endpoints
 
 `PRODUCT_SPEC 22.4` forbids inventing endpoints or response fields, `22.5` requires a captured
 contract fixture before relying on a response shape, and `23` records that the published API
 reference states it is out of date.
 
-There is no server to capture from yet, so `AudiobookshelfGateway` declares domain-level operations
-and Phase 0 ships only a fake implementation. No Retrofit service interface and no wire DTO exists in
-this repository.
+There was no server to capture from in Phase 0, so `AudiobookshelfGateway` declares domain-level
+operations and Phase 0 shipped only a fake implementation.
+
+## Where the Phase 1 contracts come from
+
+Two sources, and the difference between them matters when reading anything below.
+
+1. **`docs/openapi.json`, published by the Audiobookshelf project.** Covers libraries, library items,
+   series, authors, podcasts, notifications and email, and declares `BearerAuth`. It documents
+   **31 paths** and contains **no authentication endpoint at all** — no login, no `/api/me`, no
+   playback session, no media progress.
+2. **Responses captured from a running server** by `.github/workflows/contract-capture.yml`. This is
+   the authority wherever the two disagree, and the only source for anything in the first list's gap.
+
+Nothing here is derived by reading the server's source for its own sake, and no Audiobookshelf code
+is copied into this repository (`PRODUCT_SPEC 22.13`; see ADR-0007).
+
+### Endpoints outside the published specification
+
+These exist on the server but not in `openapi.json`, so each one is a capture target rather than
+something the adapter may assume:
+
+| Operation | Path | Why it matters |
+| --- | --- | --- |
+| Server probe | `GET /status` | Reports `serverVersion`, `isInit` and `authMethods`. `AUTH-001` uses it to decide whether a pasted URL is an Audiobookshelf server; `SYNC-001` reads the version from it. |
+| Health | `GET /healthcheck`, `GET /ping` | Readiness only. |
+| First-run setup | `POST /init` | Creates the root user. Used by the contract fixture container, never by the app. |
+| Login | `POST /login` | See the token note below. |
+| Token refresh | `POST /auth/refresh` | What `AUTH-004` needs to extend a session without re-prompting. |
+| Logout | `POST /logout` | |
+| Token → user | `POST /api/authorize` | The cold-start exchange that turns a stored token into a user and permissions. |
+
+### The mobile token model
+
+`POST /login` sets a refresh-token **cookie** by default. It returns the tokens in the response
+**body** instead when the request carries `x-return-tokens: true`, and `POST /auth/refresh` accepts
+the refresh token in an `x-refresh-token` header rather than a cookie.
+
+This app depends on the header form. A native client has no browser cookie jar, and
+`PRODUCT_SPEC AUTH-003` requires the token to live in encrypted storage under our control — which is
+only possible if the server hands it to us rather than setting it as a cookie.
+
+This is exactly the kind of detail that cannot be guessed, and it is absent from the published
+specification. It is recorded here because `PRODUCT_SPEC 22.19` requires the compatibility matrix to
+be updated for every endpoint the app relies on.
 
 ## Capabilities
 
@@ -68,11 +111,13 @@ No code in this repository may present one as the other.
 | Fixture | Kind | Purpose |
 | --- | --- | --- |
 | `core/network/src/main/resources/fixtures/demo-library.json` | **ShelfPlayer-owned format** | The Phase 0 demo library. Not an Audiobookshelf response; see [ADR-0005](adr/0005-fake-gateway-and-fixtures.md). |
-| `core/network/src/test/resources/contract/` | Captured server responses | Does not exist yet. Arrives in Phase 1 with the endpoints it describes. |
+| `core/network/src/test/resources/contracts/` | Captured server responses | **Empty.** `contract-capture.yml` produces them as an artifact; until they are committed the workflow's drift check is inert. |
 
 ## Known endpoint differences
 
 None recorded. This section fills in as contract tests run against real server versions, and every
 new privileged endpoint must add a row (`PRODUCT_SPEC 22.19`).
 
-**Last verified:** never — Phase 0 has contacted no server.
+**Last verified:** 2026-08-05 against Audiobookshelf 2.36.0 — authentication endpoints and
+API-key bearer auth only. Playback, progress, downloads, management, users and websocket are
+unverified, and every capability in the table above still reads "No".
