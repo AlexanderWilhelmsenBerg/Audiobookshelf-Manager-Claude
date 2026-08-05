@@ -77,7 +77,18 @@ class ServerUrlNormalizerTest {
         assertEquals("unexpected_query", error.fieldErrors["serverUrl"])
     }
 
+    /**
+     * PRODUCT_SPEC 15 — credentials must never travel in a URL.
+     *
+     * The literal below is the input this test exists to reject, so Android Lint's `AuthLeak` check
+     * firing on it is the check working, not a defect. Suppressed here rather than disabled in the
+     * lint configuration: `AuthLeak` stays a blocking error for every other string in the project,
+     * and the exemption is one greppable line next to the reason for it. The literal is deliberately
+     * left readable instead of assembled at runtime — hiding it from the linter would also hide it
+     * from the next reader.
+     */
     @Test
+    @Suppress("AuthLeak")
     fun `credentials embedded in the url are rejected`() {
         val result = normalize("https://user:hunter2@example.org")
         assertIs<AppResult.Failure>(result)

@@ -82,8 +82,12 @@ jobs:
 
       # PRODUCT_SPEC 16.5 — ktlintCheck, detekt with type resolution, Android Lint, unit tests,
       # Room schema verification and the debug assembly, in one command.
+      #
+      # `--continue` reports every independent failure instead of stopping at the first. The gate is
+      # unchanged — the build still fails — but a reviewer sees the whole list in one run rather than
+      # discovering the next lint error only after fixing the previous one.
       - name: Verify debug
-        run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true
+        run: ./gradlew verifyDebug --continue -Pshelfplayer.warningsAsErrors=true
 
       # PRODUCT_SPEC 18.6 — a schema change that was not committed is a failure, not a surprise on
       # a user's device.
