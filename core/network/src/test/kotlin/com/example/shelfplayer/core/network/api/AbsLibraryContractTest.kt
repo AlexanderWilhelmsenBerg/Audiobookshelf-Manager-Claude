@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
 import com.example.shelfplayer.core.network.http.NetworkErrorMapper
+import com.example.shelfplayer.core.network.http.RetryPolicy
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.test.runTest
@@ -25,6 +26,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -70,6 +72,13 @@ class AbsLibraryContractTest {
             services = AudiobookshelfServiceFactory(OkHttpClient(), OkHttpClient(), json),
             connections = connections,
             errors = NetworkErrorMapper(),
+            // Seeded rather than disabled: these tests run on virtual time, so the backoff costs them
+            // nothing, and a retry that only exists in RetryPolicyTest is a retry the sync path has
+            // never actually run through.
+            retries = RetryPolicy(
+                RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default)),
+                Random(seed = 1),
+            ),
             clock = TestAppClock(),
             logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default)),
         )
@@ -249,13 +258,46 @@ class AbsLibraryContractTest {
     fun `one failed item keeps the rest of the library and reports it as incomplete`() = runTest {
         server.enqueue(MockResponse().setBody("""{"results":[{"id":"item-1"},{"id":"item-2"}],"total":2}"""))
         server.enqueue(ContractFixtures.response("library-item"))
-        server.enqueue(MockResponse().setResponseCode(503))
+        // PRODUCT_SPEC 14.3 — four responses for one item, because a 503 is retried three times before
+        // it counts as unreachable. Enqueuing one would make this test pass for the wrong reason: the
+        // second attempt would hang rather than fail.
+        repeat(RETRY_ATTEMPTS) { server.enqueue(MockResponse().setResponseCode(503)) }
 
         val snapshot = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value
 
         assertEquals(1, snapshot.books.size)
         assertEquals(1, snapshot.unreachableCount)
         assertFalse(snapshot.isComplete, "an incomplete fetch must not be read as a complete one")
+        assertEquals(
+            2 + RETRY_ATTEMPTS,
+            server.requestCount,
+            "the catalogue, the good item, and four attempts at the bad one",
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC 14.3 versus the N+1 — the circuit breaker.
+     *
+     * Retrying every item of a 490-book library against a server that has fallen over is 1,960 requests
+     * and an hour of backoff to learn what the first one already said. After five consecutive failures
+     * the sweep stops and marks the rest unreachable — which is the state that already forbids
+     * deletions, so nothing is lost by stopping.
+     */
+    @Test
+    fun `a server failing every item stops the sweep instead of retrying all of them`() = runTest {
+        val ids = (1..20).joinToString(",") { """{"id":"item-$it"}""" }
+        server.enqueue(MockResponse().setBody("""{"results":[$ids],"total":20}"""))
+        server.enqueue(ContractFixtures.response("library-item"))
+        repeat(100) { server.enqueue(MockResponse().setResponseCode(503)) }
+
+        val snapshot = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value
+
+        assertEquals(1, snapshot.books.size)
+        assertEquals(19, snapshot.unreachableCount, "every item that was not fetched is accounted for")
+        assertFalse(snapshot.isComplete)
+        // The catalogue, the one good item, then five failing items at four attempts each. The
+        // fourteen items after that are never requested at all.
+        assertEquals(2 + 5 * RETRY_ATTEMPTS, server.requestCount)
     }
 
     /**
@@ -353,6 +395,9 @@ class AbsLibraryContractTest {
     }
 
     private companion object {
+        /** PRODUCT_SPEC 14.3 — one attempt plus three retries. */
+        const val RETRY_ATTEMPTS = 4
+
         val SERVER = ServerId("srv_books")
         val PROFILE = ProfileId("prf_ada")
         val LIBRARY = LibraryId("lib-1")

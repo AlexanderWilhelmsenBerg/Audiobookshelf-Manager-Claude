@@ -245,7 +245,7 @@ playback steps belong to Phase 2.
 
 ### Connectivity and sync completeness
 
-- **P1-10 — Retry executor.** Three retries for transient GET failures, exponential backoff with jitter,
+- **P1-10 — Retry executor.** ✅ Done. Three retries for transient GET failures, exponential backoff with jitter,
   `Retry-After` honoured, no blind retry on auth (`PRODUCT_SPEC 14.3`).
 - **P1-11 — Reachability indicator.** Green/red on the shelf top bar and on each known-server row at
   sign-in (TC-05b).

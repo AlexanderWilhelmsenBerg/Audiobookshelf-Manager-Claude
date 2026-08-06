@@ -19,6 +19,7 @@ import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
 import com.example.shelfplayer.core.network.http.NetworkErrorMapper
+import com.example.shelfplayer.core.network.http.RetryPolicy
 import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,14 +45,17 @@ internal class AbsLibraryApi @Inject constructor(
     private val services: AudiobookshelfServiceFactory,
     private val connections: ProfileConnectionResolver,
     private val errors: NetworkErrorMapper,
+    private val retries: RetryPolicy,
     private val clock: AppClock,
     private val logger: Logger,
 ) : LibraryApi {
 
     override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> =
         withConnection(profileId) { connection, service ->
-            service.libraries(bearerOf(connection.accessToken.value)).toResult { body ->
-                LibraryMapper.toLibraries(connection.serverId, body ?: LibrariesResponseDto(), clock.now())
+            retries.readOnly("listLibraries") {
+                service.libraries(bearerOf(connection.accessToken.value)).toResult { body ->
+                    LibraryMapper.toLibraries(connection.serverId, body ?: LibrariesResponseDto(), clock.now())
+                }
             }.map { libraries -> accessible(connection, libraries) }
         }
 
@@ -97,8 +101,10 @@ internal class AbsLibraryApi @Inject constructor(
                 )
             }
             val bearer = bearerOf(connection.accessToken.value)
-            val catalogue = service.items(bearer, libraryId.value)
-                .toResult { body -> LibraryMapper.toItemIds(body ?: LibraryItemsResponseDto()) }
+            val catalogue = retries.readOnly("listItems") {
+                service.items(bearer, libraryId.value)
+                    .toResult { body -> LibraryMapper.toItemIds(body ?: LibraryItemsResponseDto()) }
+            }
             when (catalogue) {
                 is AppResult.Failure -> catalogue
                 is AppResult.Success -> snapshots(connection, libraryId, service, bearer, catalogue.value)
@@ -125,49 +131,31 @@ internal class AbsLibraryApi @Inject constructor(
         ids: List<LibraryItemId>,
     ): AppResult<LibrarySnapshot> {
         val fetchedAt = clock.now()
-        val snapshots = mutableListOf<BookSnapshot>()
-        var removed = 0
-        var firstFailure: AppError? = null
-        var unreachable = 0
+        val sweep = Sweep()
         for (id in ids) {
-            val response = service.item(bearer, id.value)
-            if (response.code() == HTTP_NOT_FOUND) {
-                // The item was removed between the listing and this fetch. It is genuinely gone, so
-                // omitting it is correct and the repository will soft-delete it — unlike a network
-                // failure, which says nothing about whether the item still exists.
-                removed++
-                continue
-            }
-            val mapped = response.toResult { body ->
-                if (body == null) {
-                    AppResult.Failure(
-                        AppError.ApiCompatibility(
-                            summary = "This server returned an empty response for a library item.",
-                            missingField = "item",
-                        ),
-                    )
-                } else {
-                    LibraryMapper.toSnapshot(connection.serverId, libraryId, connection.profileId, body, fetchedAt)
-                }
-            }
-            when (mapped) {
-                is AppResult.Failure -> {
-                    unreachable++
-                    if (firstFailure == null) firstFailure = mapped.error
-                }
-
-                is AppResult.Success -> snapshots += mapped.value
+            if (sweep.giveUp) {
+                sweep.skip()
+            } else {
+                sweep.record(fetchItem(connection, libraryId, service, bearer, id, fetchedAt))
             }
         }
-        logCounts(removed, unreachable, ids.size)
-        val failure = firstFailure
+        if (sweep.giveUp) {
+            logger.warn(
+                LogCategory.Sync,
+                "Stopped fetching items after consecutive failures; the rest are marked unreachable",
+                LogField.Count("limit", CONSECUTIVE_FAILURE_LIMIT),
+                LogField.Count("unreachable", sweep.unreachable),
+            )
+        }
+        logCounts(sweep.removed, sweep.unreachable, ids.size)
+        val failure = sweep.firstFailure
         // Nothing came back and something went wrong: that is a failed sync, not an empty library.
-        if (snapshots.isEmpty() && failure != null) return AppResult.Failure(failure)
+        if (sweep.books.isEmpty() && failure != null) return AppResult.Failure(failure)
         return AppResult.Success(
             LibrarySnapshot(
-                books = snapshots,
-                removedCount = removed,
-                unreachableCount = unreachable,
+                books = sweep.books,
+                removedCount = sweep.removed,
+                unreachableCount = sweep.unreachable,
                 // PRODUCT_SPEC 5.2 — the catalogue, not the successfully-fetched subset. These are the ids
                 // the server was willing to list *for this profile*, which is the only place item-level
                 // visibility is observable: an account restricted by tag inside a shared library gets a
@@ -175,6 +163,113 @@ internal class AbsLibraryApi @Inject constructor(
                 visibleIds = ids,
             ),
         )
+    }
+
+    /**
+     * One item, with PRODUCT_SPEC 14.3's retry budget around it.
+     *
+     * The three outcomes are deliberately distinct rather than "worked or did not": a `404` is a fact
+     * about the item that the repository may act on, and a failure is a fact about this attempt that it
+     * must not.
+     */
+    private suspend fun fetchItem(
+        connection: ProfileConnection,
+        libraryId: LibraryId,
+        service: LibraryService,
+        bearer: String,
+        id: LibraryItemId,
+        fetchedAt: java.time.Instant,
+    ): ItemOutcome {
+        val response = retries.readOnly("getItem") {
+            val attempt = service.item(bearer, id.value)
+            // A 404 leaves the retry loop by counting as a success here: the item is gone, and asking
+            // three more times will not bring it back.
+            if (attempt.code() == HTTP_NOT_FOUND) AppResult.Success(attempt) else attempt.asRetryable()
+        }
+        if (response is AppResult.Failure) return ItemOutcome.Unreachable(response.error)
+
+        val body = (response as AppResult.Success).value
+        // Removed between the listing and this fetch. Genuinely gone, so omitting it is correct and the
+        // repository will soft-delete it — unlike a network failure, which says nothing about whether the
+        // item still exists.
+        if (body.code() == HTTP_NOT_FOUND) return ItemOutcome.Removed
+
+        val mapped = body.toResult { item ->
+            if (item == null) {
+                AppResult.Failure(
+                    AppError.ApiCompatibility(
+                        summary = "This server returned an empty response for a library item.",
+                        missingField = "item",
+                    ),
+                )
+            } else {
+                LibraryMapper.toSnapshot(connection.serverId, libraryId, connection.profileId, item, fetchedAt)
+            }
+        }
+        return when (mapped) {
+            is AppResult.Failure -> ItemOutcome.Unreachable(mapped.error)
+            is AppResult.Success -> ItemOutcome.Fetched(mapped.value)
+        }
+    }
+
+    private sealed interface ItemOutcome {
+        data class Fetched(val snapshot: BookSnapshot) : ItemOutcome
+
+        data object Removed : ItemOutcome
+
+        data class Unreachable(val error: AppError) : ItemOutcome
+    }
+
+    /**
+     * The running tally of one library's sweep, including when to stop.
+     *
+     * PRODUCT_SPEC 14.3 versus the N+1: a retry budget per item is right for a library where one request
+     * in five hundred hiccups, and catastrophic for a server that has fallen over — 490 items times four
+     * attempts, each with its own backoff, is a sync that runs for an hour to learn what the first
+     * request already said.
+     *
+     * [giveUp] resolves it. Consecutive failures mean the server, not the item, and the remaining items
+     * are counted unreachable — the state that already forbids deletions, so stopping early costs no
+     * data and no correctness. Any success resets the count, because a library with a few scattered bad
+     * items is a different situation from a library behind a dead server.
+     */
+    private class Sweep {
+        val books = mutableListOf<BookSnapshot>()
+        var removed = 0
+            private set
+        var unreachable = 0
+            private set
+        var firstFailure: AppError? = null
+            private set
+
+        private var consecutiveFailures = 0
+
+        val giveUp: Boolean get() = consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT
+
+        /** An item never attempted, because the sweep had already given up. */
+        fun skip() {
+            unreachable++
+        }
+
+        fun record(outcome: ItemOutcome) {
+            when (outcome) {
+                is ItemOutcome.Fetched -> {
+                    books += outcome.snapshot
+                    consecutiveFailures = 0
+                }
+
+                ItemOutcome.Removed -> {
+                    removed++
+                    consecutiveFailures = 0
+                }
+
+                is ItemOutcome.Unreachable -> {
+                    unreachable++
+                    consecutiveFailures++
+                    if (firstFailure == null) firstFailure = outcome.error
+                }
+            }
+        }
     }
 
     /** PRODUCT_SPEC 14.5 — counts, never titles or ids. */
@@ -232,7 +327,29 @@ internal class AbsLibraryApi @Inject constructor(
         }
     }
 
+    /**
+     * A transport response as an [AppResult] the retry policy can read, keeping the body for the caller.
+     *
+     * The existing [toResult] collapses the response into a mapped value, which is the wrong shape here:
+     * the retry decision needs the status, and the mapping needs the body, so this keeps the response
+     * whole and lets the caller map it once the retries are settled.
+     */
+    private fun <T> Response<T>.asRetryable(): AppResult<Response<T>> = if (isSuccessful) {
+        AppResult.Success(this)
+    } else {
+        AppResult.Failure(errors.fromStatus(code(), retryAfterSeconds = retryAfterSeconds()))
+    }
+
     private companion object {
         const val HTTP_NOT_FOUND = 404
+
+        /**
+         * How many items in a row may fail before the sweep gives up on the library.
+         *
+         * Five rather than one: a library can genuinely contain a few unreadable items, and abandoning
+         * the whole sync over the first is the over-correction this class was already fixed for once.
+         * Five in a row is not an item problem.
+         */
+        const val CONSECUTIVE_FAILURE_LIMIT = 5
     }
 }
