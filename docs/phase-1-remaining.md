@@ -213,19 +213,35 @@ playback steps belong to Phase 2.
 
 ### Step 10 — websocket (LIB-001, SYNC-002)
 
-- **P1-05 — Capture the contract.** ✅ Harness done, awaiting a run. socket.io handshake, auth frame and event payloads, plus the
-  `user.mediaProgress` element shape, which the committed `authorize.json` fixture leaves as an empty
-  array. **Everything below is blocked on this** — `PRODUCT_SPEC 22.4` and `22.5` forbid building on an
-  unobserved shape. Deliverable: a capture harness the owner runs against a server that has played
-  something.
-- **P1-06 — Probe websocket availability** and record it in the capability handshake (SYNC-001).
-- **P1-07 — `RealtimeConnection`:** bounded exponential backoff with jitter, reconnect on lifecycle and
-  network change, foreground-scoped, token passed by the supported mechanism and never logged,
-  reverse-proxy failures diagnosable (SYNC-002).
-- **P1-08 — Apply events to Room** through repositories, with an `EventDedupEntity` for idempotency.
-  Events mark entities stale and trigger a refresh rather than being trusted wholesale (`PRODUCT_SPEC 13.2`).
-- **P1-09 — REST fallback**, including a cheap progress-only sync from `POST /api/authorize` so TC-10
-  is fixed even where a proxy breaks the socket.
+- **P1-05 — Capture the contract.** ✅ **Done and committed.** Six fixtures from Audiobookshelf 2.36.0,
+  pinned by `RealtimeContractTest`. See `docs/api-compatibility.md` for the sequence. Three things it
+  settled, one of which changes the tasks below:
+  - The handshake offers `upgrades: ["websocket"]` with a 25 s ping interval and a 20 s timeout.
+  - `42["auth","<token>"]` was a guess and the server accepted it, answering `user_online` then `init`.
+  - **`user_updated` carries the entire user object**, not a progress delta — `mediaProgress`,
+    `permissions`, `librariesAccessible`, `itemTagsSelected`, `isActive`, `isLocked`. So TC-10, TC-37
+    and TC-45 are served by one handler rather than three, and the permission refresh built in P1-02
+    becomes event-driven rather than only firing on a profile switch.
+
+  Still unobserved, and therefore still unassumable: every other event name (item changes, library
+  scans, session events), the behaviour of the real websocket upgrade as opposed to polling, and what
+  the server does with an invalid token in the `auth` frame.
+- **P1-06 — Probe websocket availability** into the capability set (SYNC-001), from the handshake's
+  `upgrades` rather than from the server version — it is a property of the deployment, and a reverse
+  proxy that strips the upgrade will not list it.
+- **P1-07 — `RealtimeConnection`:** the engine.io sequence (handshake → `40` → `42["auth", token]`),
+  bounded exponential backoff with jitter, reconnect on lifecycle and network change, foreground-scoped,
+  the 25 s / 20 s heartbeat the server states, the token inside the frame and never in a query string or
+  a log, reverse-proxy failures diagnosable (SYNC-002).
+- **P1-08 — Apply `user_updated` to Room** through the existing repositories, with an `EventDedupEntity`
+  for idempotency. One handler, three outcomes, because the frame carries all three: progress (TC-10),
+  the grant (TC-37 — reuses P1-02's write path), and account state (TC-45 — reuses the reauthentication
+  mark). Bound to the profile whose socket received it: the frame carries no server identity, so the
+  binding comes from the connection, never from the payload.
+- **P1-09 — REST fallback:** a progress-only sync reading `user.mediaProgress` from the cold-start
+  `POST /api/authorize` the app already performs, so TC-10 is fixed even where a proxy breaks the socket
+  entirely. The element shape is now captured, so this is unblocked and is the cheaper half of step 10 —
+  worth building first, since it works everywhere the socket does not.
 
 ### Connectivity and sync completeness
 
