@@ -1,6 +1,7 @@
 package com.example.shelfplayer.feature.home
 
 import app.cash.turbine.test
+import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
@@ -55,6 +56,12 @@ class HomeViewModelTest {
     private val profiles = FakeProfiles()
     private val libraries = FakeLibraries()
 
+    /**
+     * PRODUCT_SPEC LIB-002 — a monitor the test drives, because "offline" is a state the UI has to be
+     * shown in and a device is the one thing a unit test cannot have.
+     */
+    private val network = MutableStateFlow(true)
+
     private fun viewModel() = HomeViewModel(
         observeAccessibleBooks = ObserveAccessibleBooksUseCase(
             profiles,
@@ -63,8 +70,105 @@ class HomeViewModelTest {
         ),
         observeSyncState = ObserveSyncStateUseCase(profiles, libraries),
         profileRepository = profiles,
+        networkMonitor = object : NetworkMonitor {
+            override val isOnline: Flow<Boolean> = network
+        },
         refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),
     )
+
+    /**
+     * PRODUCT_SPEC LIB-002 — "empty, loading, error, and offline states are distinct".
+     *
+     * Distinct in the state, not only on the screen: a composable that inferred offline from the error
+     * code would be guessing, and there is no error code for "the user walked into a lift".
+     */
+    @Test
+    fun `losing the network is visible as offline rather than as an error`() = runTest {
+        profiles.setActive(demoProfile)
+        val viewModel = viewModel()
+
+        viewModel.uiState.test {
+            assertFalse(awaitItem().isOffline)
+
+            network.value = false
+
+            assertEquals(true, awaitItem().isOffline)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 / 6.3 — the network came back, so the failed attempt is retried.
+     *
+     * Asked for from a device in as many words: "when getting connectability when the server goes online
+     * after being off". Without it the user is left holding an error until they think to pull down.
+     */
+    @Test
+    fun `a failed profile refreshes itself when the network returns`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.setSyncState(
+            SyncState(
+                serverId = ServerId("fixture-server"),
+                profileId = demoProfile.id,
+                status = SyncStatus.Failed,
+                lastSuccessfulSyncAt = null,
+                lastAttemptedAt = Instant.EPOCH,
+                lastError = AppError.Network(),
+            ),
+        )
+        network.value = false
+        val viewModel = viewModel()
+
+        viewModel.uiState.test {
+            awaitItem()
+            runCurrent()
+            val before = libraries.refreshCount
+
+            network.value = true
+            runCurrent()
+
+            assertEquals(before + 1, libraries.refreshCount)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /**
+     * …and a profile that is up to date is left alone.
+     *
+     * A phone hopping between Wi-Fi and mobile would otherwise re-sync the whole library on every hop,
+     * which on the 490-book library a device run used is 491 requests for nothing. The radio changing is
+     * not news about the library.
+     */
+    @Test
+    fun `a healthy profile does not resync every time the radio changes`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.emitBooks(listOf(book("cached", "A cached book")))
+        libraries.setSyncState(
+            SyncState(
+                serverId = ServerId("fixture-server"),
+                profileId = demoProfile.id,
+                status = SyncStatus.Succeeded,
+                lastSuccessfulSyncAt = Instant.EPOCH,
+                lastAttemptedAt = Instant.EPOCH,
+                lastError = null,
+            ),
+        )
+        val viewModel = viewModel()
+
+        viewModel.uiState.test {
+            awaitItem()
+            runCurrent()
+            val before = libraries.refreshCount
+
+            network.value = false
+            runCurrent()
+            network.value = true
+            runCurrent()
+
+            assertEquals(before, libraries.refreshCount)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 
     /**
      * The bug a real device found: signing in ran a sync, it failed, and home showed a generic empty

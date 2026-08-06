@@ -1,6 +1,8 @@
 package com.example.shelfplayer.di
 
 import com.example.shelfplayer.BuildConfig
+import com.example.shelfplayer.connectivity.AndroidNetworkMonitor
+import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
 import com.example.shelfplayer.core.common.log.LogSink
 import com.example.shelfplayer.core.network.di.RemoteGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -39,6 +41,15 @@ interface AppModule {
     @Binds
     @Singleton
     fun bindsLogSink(impl: AndroidLogSink): LogSink
+
+    /**
+     * PRODUCT_SPEC LIB-002 — the same seam shape as the log sink: a `:core:common` interface so that
+     * domain and presentation code stays testable off-device, with the one class that touches
+     * `ConnectivityManager` living here.
+     */
+    @Binds
+    @Singleton
+    fun bindsNetworkMonitor(impl: AndroidNetworkMonitor): NetworkMonitor
 
     // PRODUCT_SPEC AUTH-003: the TokenProvider binding moved to `:data:auth`. It is not final wiring —
     // it is the credential store answering the HTTP layer, and both ends of that seam are inside that

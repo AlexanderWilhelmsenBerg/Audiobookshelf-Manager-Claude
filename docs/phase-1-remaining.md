@@ -207,7 +207,7 @@ playback steps belong to Phase 2.
   `POST /api/authorize`; refresh the stored grant on sign-in, on profile switch, on app resume and after
   any 403. Closes TC-37 and `PRODUCT_SPEC 5.2`.
 - **P1-03 — Refresh on profile switch.** ✅ Done. Closes TC-08b and exit criterion 1.
-- **P1-04 — Connectivity observation and a distinct offline state.** `ConnectivityManager` behind a
+- **P1-04 — Connectivity observation and a distinct offline state.** ✅ Done. `ConnectivityManager` behind a
   domain-level seam; offline rendered as its own state; refresh on regained connectivity. Closes exit
   criterion 2's second half and LIB-002's state criterion.
 

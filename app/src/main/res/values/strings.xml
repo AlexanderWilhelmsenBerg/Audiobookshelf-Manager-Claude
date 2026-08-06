@@ -10,6 +10,14 @@
     <string name="home_loading">Loading your books</string>
     <string name="home_empty_title">No books yet</string>
     <string name="home_empty_body">This account has nothing in its libraries yet, or they have not been synced. Refresh to try again.</string>
+    <!--
+      PRODUCT_SPEC LIB-002 / 14.4 — offline says what happened, what it means, and what will happen
+      next, and deliberately offers no Refresh button: there is nothing to refresh over, and a button
+      that can only fail is worse than none. The app retries by itself when the network returns.
+    -->
+    <string name="home_offline_title">No connection</string>
+    <string name="home_offline_body">This device is offline and nothing has been downloaded for this account yet. Your library will appear once the connection returns.</string>
+    <string name="home_offline_caption">Offline — showing your cached library</string>
     <string name="home_no_profile_title">No server connected</string>
     <string name="home_no_profile_body">Sign in to an Audiobookshelf server to see your books.</string>
     <string name="home_error_title">Could not load your books</string>

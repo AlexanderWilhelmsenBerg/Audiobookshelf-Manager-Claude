@@ -227,11 +227,20 @@ private fun BookShelf(uiState: HomeUiState, actions: HomeActions, modifier: Modi
 /**
  * The empty and error states share a branch because they answer the same question — why is the shelf
  * bare — and the recorded error is the better answer whenever there is one.
+ *
+ * PRODUCT_SPEC LIB-002 puts offline ahead of both. A failure that happened with no network is not the
+ * server refusing anything, and saying so sends the user to check a server that is fine.
  */
 @Composable
 private fun EmptyOrFailed(uiState: HomeUiState, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
     val content = modifier.fillMaxSize()
-    if (uiState.error != null) {
+    if (uiState.isOffline) {
+        ShelfEmptyState(
+            title = stringResource(R.string.home_offline_title),
+            body = stringResource(R.string.home_offline_body),
+            modifier = content,
+        )
+    } else if (uiState.error != null) {
         ShelfErrorState(
             title = stringResource(R.string.home_error_title),
             body = uiState.error.summary,
@@ -264,8 +273,15 @@ private fun ShelfHeader(uiState: HomeUiState, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.error,
             )
         }
+        // PRODUCT_SPEC LIB-002 / 6.3 — the shelf stays; only the caveat is added. The cached library is
+        // complete as far as it goes, and hiding it because the radio is off would be the opposite of
+        // "offline playback must be complete and reliable".
         Text(
-            text = uiState.syncStatusLabel(),
+            text = if (uiState.isOffline) {
+                stringResource(R.string.home_offline_caption)
+            } else {
+                uiState.syncStatusLabel()
+            },
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

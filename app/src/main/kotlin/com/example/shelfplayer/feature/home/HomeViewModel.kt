@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -48,6 +50,7 @@ class HomeViewModel @Inject constructor(
     observeAccessibleBooks: ObserveAccessibleBooksUseCase,
     observeSyncState: ObserveSyncStateUseCase,
     profileRepository: ProfileRepository,
+    private val networkMonitor: NetworkMonitor,
     private val refreshLibrary: RefreshLibraryUseCase,
 ) : ViewModel() {
 
@@ -67,14 +70,25 @@ class HomeViewModel @Inject constructor(
     ) { query, order -> ShelfQuery(query, order) }
         .flatMapLatest { request -> observeAccessibleBooks(query = request.query, order = request.order) }
 
+    /**
+     * PRODUCT_SPEC LIB-002 — the refresh's own state and the device's, read together.
+     *
+     * Paired rather than added as a sixth source because `combine` stops at five typed flows, and
+     * because the two are read together anyway: a failed refresh means something different depending on
+     * whether there was a network to fail on.
+     */
+    private val attempt: Flow<Attempt> =
+        combine(refreshState, networkMonitor.isOnline) { refresh, online -> Attempt(refresh, online) }
+
     val uiState: StateFlow<HomeUiState> = combine(
         profileRepository.observeActiveProfile(),
         books,
         observeSyncState(),
-        refreshState,
+        attempt,
         controls,
-    ) { profile, shelf, syncState, refresh, current ->
+    ) { profile, shelf, syncState, (refresh, isOnline), current ->
         HomeUiState(
+            isOffline = !isOnline,
             profile = profile,
             books = shelf,
             query = current.query,
@@ -148,6 +162,31 @@ class HomeViewModel @Inject constructor(
      */
     private val syncAttemptedFor = mutableSetOf<ProfileId>()
 
+    /**
+     * PRODUCT_SPEC LIB-002 / 6.3 — the network came back, so try again.
+     *
+     * A device run asked for this in as many words: "when getting connectability when the server goes
+     * online after being off". Without it a user who refreshed in a lift is left holding the error until
+     * they think to pull down again.
+     *
+     * Only a transition *into* online triggers anything, and only when the last attempt actually failed.
+     * Refreshing on every connectivity change would re-sync the whole library each time a phone hops
+     * between Wi-Fi and mobile, which on a 490-book library is 491 requests for nothing. A profile that
+     * is up to date has no reason to care that the radio changed.
+     */
+    init {
+        viewModelScope.launch {
+            networkMonitor.isOnline
+                .distinctUntilChanged()
+                .filter { it }
+                .collect {
+                    val state = uiState.value
+                    val failed = state.error != null || state.syncStatus == SyncStatus.Failed
+                    if (failed && !state.isRefreshing && state.profile != null) refresh()
+                }
+        }
+    }
+
     fun onVisible() {
         val state = uiState.value
         val profileId = state.profile?.id ?: return
@@ -190,6 +229,9 @@ class HomeViewModel @Inject constructor(
     /** One resolved request: what to search for and how to order the result. */
     private data class ShelfQuery(val query: String, val order: BookSortOrder)
 
+    /** A refresh's own state alongside the device's, so the UI can tell "no network" from "server said no". */
+    private data class Attempt(val refresh: RefreshState, val isOnline: Boolean)
+
     private companion object {
         /** PRODUCT_SPEC LIB-002: search debounce is 300 ms. */
         const val SEARCH_DEBOUNCE_MILLIS = 300L
@@ -206,6 +248,17 @@ data class HomeUiState(
     val isRefreshing: Boolean = false,
     val syncStatus: SyncStatus = SyncStatus.NeverSynced,
     val error: AppError? = null,
+    /**
+     * PRODUCT_SPEC LIB-002 — "empty, loading, error, and offline states are distinct".
+     *
+     * Distinct because they call for different sentences. An offline shelf is complete and correct as
+     * far as it goes; a failed one may be missing something. Telling a user on a train that the server
+     * refused their request sends them to check a server that is fine.
+     *
+     * It says nothing about the *server* being reachable — a LAN-only server is unreachable over a
+     * mobile connection that reports online. See `NetworkMonitor`.
+     */
+    val isOffline: Boolean = false,
     /**
      * Whether Room has answered yet.
      *
