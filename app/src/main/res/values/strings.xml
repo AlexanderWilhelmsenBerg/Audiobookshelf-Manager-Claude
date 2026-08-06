@@ -40,6 +40,12 @@
     <string name="sign_in_password_label">Password</string>
     <string name="sign_in_submit">Sign in</string>
     <string name="sign_in_change_server">Use a different server</string>
+    <!-- PRODUCT_SPEC AUTH-001 — servers this device already knows, so a second account is not a retyped URL. -->
+    <string name="sign_in_known_servers">Servers you have used</string>
+    <string name="sign_in_known_encrypted">Encrypted</string>
+    <string name="sign_in_known_cleartext">Not encrypted</string>
+    <string name="sign_in_known_version_unknown">Version not recorded</string>
+    <string name="sign_in_known_checked_again">Each address is checked again when you pick it.</string>
 
     <!-- PRODUCT_SPEC AUTH-002 / 6.5 — the profile switcher. -->
     <string name="profiles_title">Profiles</string>
@@ -86,11 +92,35 @@
     <string name="book_playback_unavailable">Playback arrives in the next phase</string>
     <string name="navigate_back">Back</string>
 
-    <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings the app can actually honour today. -->
+    <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->
     <string name="settings_title">Settings</string>
-    <string name="settings_section_browsing">Browsing</string>
-    <string name="settings_home_shows_libraries_title">Open on libraries</string>
-    <string name="settings_home_shows_libraries_body">Start on the list of libraries instead of your books. Your books stay one tap away inside each library.</string>
+    <string name="settings_section_libraries">Libraries</string>
+    <string name="settings_libraries_empty">No libraries yet. They appear after the first sync.</string>
+
+    <!--
+      PRODUCT_SPEC SET-002 (Privacy/diagnostics) — the on-device answers to what is actually stored.
+
+      Counts, never names, for anything outside what the active profile may see: the numbers exist to show
+      that unauthorized rows were never written, and listing them would defeat the point.
+    -->
+    <string name="settings_section_storage">Storage on this device</string>
+    <string name="settings_storage_body">What this app has saved. Two accounts share a server\'s books, so a number can be larger than what you can see.</string>
+    <string name="settings_storage_loading">Reading…</string>
+    <string name="settings_storage_servers">Servers</string>
+    <string name="settings_storage_servers_hint">Two accounts on one server count once.</string>
+    <string name="settings_storage_profiles">Profiles</string>
+    <string name="settings_storage_credentials">Saved sign-ins</string>
+    <string name="settings_storage_credentials_hint">Encrypted files. Signing a profile out removes its own.</string>
+    <string name="settings_storage_libraries">Libraries stored</string>
+    <string name="settings_storage_libraries_hint">Everything saved for this server, including libraries this profile cannot open.</string>
+    <string name="settings_storage_libraries_visible">Visible to this profile</string>
+    <string name="settings_storage_books">Books stored</string>
+    <string name="settings_storage_books_visible">Visible to this profile</string>
+    <string name="settings_storage_books_deleted">Removed on the server</string>
+    <string name="settings_storage_books_deleted_hint">Kept until nothing local still needs them.</string>
+    <string name="settings_storage_progress">Progress records</string>
+    <string name="settings_storage_progress_unsynced">Not sent to the server</string>
+    <string name="settings_storage_progress_unsynced_hint">Always 0 until playback exists.</string>
 
     <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.
@@ -102,6 +132,12 @@
     <plurals name="home_library_books">
         <item quantity="one">%1$d book</item>
         <item quantity="other">%1$d books</item>
+    </plurals>
+
+    <!-- PRODUCT_SPEC LIB-001 — a sync that could not reach every item says so instead of claiming a clean run. -->
+    <plurals name="home_sync_partial">
+        <item quantity="one">%1$d book. The last refresh could not reach all of them.</item>
+        <item quantity="other">%1$d books. The last refresh could not reach all of them.</item>
     </plurals>
 
     <plurals name="book_tracks">

@@ -32,8 +32,11 @@ three are the ones that decide whether Phase 1 closes.
 adb install -r app-debug.apk
 ```
 
-The debug build's application id is **`com.example.shelfplayer.debug`**, which is what every `adb` command
-below uses. Debug builds allow `run-as`, so the on-device database and files can be inspected without root.
+The debug build's application id is **`com.example.shelfplayer.debug`**.
+
+**You should not need `adb` for anything but the install.** The checks that used to require
+`adb shell run-as … sqlite3` are now in the app, under **Settings → Storage on this device**. The `adb`
+commands are still listed at the end for anyone who wants to confirm the screen is telling the truth.
 
 ### Recording results
 
@@ -52,6 +55,8 @@ worth nothing later.
 | **TC-03** | AUTH-001 | Now type a host that does not exist (e.g. `not-a-real-host.invalid`) and continue. | A clear network/DNS error **on the address stage**. No password field appears. Nothing was sent. | |
 | **TC-04** | AUTH-001 | Point at a server with a self-signed or otherwise untrusted certificate, if you have one. | The error identifies a **certificate/security** problem, not "wrong password" and not a generic failure. *If you have no such server, mark Not run — do not guess.* | |
 | **TC-05** | 6.1, 15 | Enter the real server address and continue. | Before any password field is usable you can see: the **detected Audiobookshelf version**, and a line saying the connection **is encrypted**. | |
+| **TC-05b** | AUTH-001 | Sign out or go back to the address stage after at least one successful connection. | Under the address field, **Servers you have used** lists it with its address, version and whether it was encrypted. | |
+| **TC-05c** | AUTH-001, 15 | Tap one of those entries. | The address fills in and the server is **checked again** — you see the version and encryption line from this moment, not from last time. A server that has since gone down reports an error here rather than accepting a password. | |
 | **TC-06** | 15 | If (and only if) you have an `http://` server, enter it. | An explicit warning that the connection is **not encrypted** and that the password would cross the network in the clear. | |
 | **TC-07** | AUTH-001 | Enter account A's username with a **wrong** password. | Rejected with an error naming the **credentials** — *"That username and password were not accepted by this server"*, not "this profile needs to sign in again". The **username is still filled in**; the password field is cleared. | |
 | **TC-07b** | AUTH-001 | Enter a username that **does not exist** on the server. | The same credential message. It must not name a profile, because there is no profile — and it must not distinguish an unknown username from a wrong password, which would tell an attacker which usernames exist. | |
@@ -79,10 +84,10 @@ worth nothing later.
 
 | ID | Requirement | Steps | Expected | Result |
 | --- | --- | --- | --- | --- |
-| **TC-21** | SET-002 | Open Settings from the top bar. Turn on **Open on libraries**. | Going back, the main screen now lists **libraries**, with a book count on each. | |
+| **TC-21** | SET-002 | Open Settings from the top bar. | A **Libraries** section lists every library this account can open, with a book count on each. There is no toggle: the app always opens on the books. | |
 | **TC-22** | SET-002 | Tap a library. | Its books open, with their own search and sort. | |
-| **TC-23** | SET-001 | Force-stop the app and reopen it. | It still opens on libraries. The setting survived the process dying. | |
-| **TC-24** | SET-002 | Turn the setting back off. | The main screen is the shelf of books again. | |
+| **TC-23** | SET-002 | Go back twice. | You are on the shelf of books. Nothing about the home screen changed as a result of visiting Settings. | |
+| **TC-24** | SET-002 | Scroll to **Storage on this device**. | Numbers, not a spinner: servers, profiles, saved sign-ins, libraries stored *and* visible, books stored *and* visible, removed-on-server, progress records. | |
 
 ## 4. Two accounts, one server — **Exit criterion 1** (AUTH-002, PRODUCT_SPEC 6.5)
 
@@ -93,11 +98,11 @@ worth nothing later.
 | **TC-26b** | AUTH-002 | Tap anywhere on A's card. | It switches to A. The whole card is the target, not just a small *Use* button. | |
 | **TC-26c** | AUTH-002 | Sign in a **third** account, then check the profile list against the database (TC-28). | Adding an account must not disturb the ones already there. Signing a second account into a known server used to delete the first — `REPLACE` cascading — so this is the case worth checking deliberately. | |
 | **TC-27** | **Exit 1** | Switch back to A, then to B, then to A again. | Each switch lands on that account's own library and its own progress. **A's progress never shows under B**, and vice versa. | |
-| **TC-28** | 6.5 | Confirm the server was not duplicated: `adb shell run-as com.example.shelfplayer.debug sqlite3 databases/shelfplayer.db "select count(*) from servers; select profileId, username from profiles;"` | **One** server row, **two** profile rows. | |
+| **TC-28** | 6.5 | Open **Settings → Storage on this device**. | **Servers: 1** and **Profiles: 2**. Two accounts on one server must not produce two server rows. | |
 | **TC-29** | AUTH-002 | Sign **out** of B (not remove). | B stays in the list, marked as needing to sign in again. **Its card now offers *Sign in*, not *Sign out*.** Its cached library is still browsable when selected. | |
 | **TC-29b** | AUTH-004 | Tap **Sign in** on B's card. | The sign-in screen opens with B's **server address and username already filled in**. Only the password is asked for. Confirming the address still shows the version and the encryption line before the password field is usable. | |
 | **TC-29c** | AUTH-004 | Complete that sign-in. | B returns to the **same profile** — not a duplicate — with its progress intact, and the reauthentication mark is gone. | |
-| **TC-30** | AUTH-003 | With B signed out, check its stored credential is gone: `adb shell run-as com.example.shelfplayer.debug ls files/sessions/` | Fewer files than before — B's `.bin` files are gone. A's remain. | |
+| **TC-30** | AUTH-003 | Note **Saved sign-ins** in Settings before signing B out, then check it after. | The number goes **down**. Signing out deletes that profile's stored credential and leaves A's alone. | |
 | **TC-31** | AUTH-002 | Sign B back in from the switcher. | It returns to the **same profile** — B is not duplicated in the list, and its progress is still there. | |
 | **TC-32** | AUTH-002, 21 | Tap *Remove* on B and read the dialog **before** confirming. | It says removal deletes B's session, progress and downloads **from this device**, deletes nothing on the server, and does not affect other profiles. | |
 | **TC-33** | AUTH-002 | Confirm the removal. | B is gone from the list. **A is untouched** — still signed in, still has its library and its progress. | |
@@ -113,7 +118,8 @@ the sanity check.
 | ID | Requirement | Steps | Expected | Result |
 | --- | --- | --- | --- | --- |
 | **TC-34** | 5.2 | Switch to account **B** (restricted) and let it sync. | Only B's granted libraries and their books appear. | |
-| **TC-35** | **Exit 2** | With B active, dump what is on disk: `adb shell run-as com.example.shelfplayer.debug sqlite3 databases/shelfplayer.db "select remoteId, name from libraries;"` | Rows exist for A's libraries (A synced them) but **no row was added for a library only A can see as a result of B's sync**. Compare against the count from before TC-34 — B's sync must not have added any. | |
+| **TC-35** | **Exit 2** | Open **Settings → Storage on this device** as A and write down **Libraries stored** and **Books stored**. Switch to B, let it sync, and look again. | **Libraries stored** and **Books stored** are unchanged by B's sync — B added nothing A had not already synced — while **Visible to this profile** is *lower* for B than for A. That pair is the criterion: rows outside B's grant were never written by B, and the ones that exist are hidden from it. | |
+| **TC-35b** | 5.2 | Sign in B on a device that has **never** had A on it (or clear the app first), let it sync, and look at Settings. | **Libraries stored** equals **Visible to this profile**. Nothing outside B's grant was written at all. This is the strongest form of the check, and the one worth doing if you only do one. | |
 | **TC-36** | 5.2 | Turn on **Open on libraries** while B is active. | The library list shows **only** B's granted libraries. | |
 | **TC-37** | 5.2 | On the server, **revoke** one of B's libraries. Back in the app, refresh as B. | The revoked library and its books disappear from B's shelf, its library list, and search. | |
 | **TC-38** | 5.2 | Switch to A and refresh. | A still sees everything. Revoking B's access changed nothing for A. | |
@@ -139,7 +145,7 @@ worth trying, and worth watching for.
 | --- | --- | --- | --- | --- |
 | **TC-44a** | LIB-001 | Start a refresh on a large library and let it run to completion **several times**. | It completes every time. If one item fails, the sync keeps the rest — it must never end with fewer books than it started with. | |
 | **TC-44b** | LIB-001 | If you can, interrupt one item mid-sync (briefly drop Wi-Fi during a refresh, then restore it). | The refresh finishes with **most** of the library rather than failing outright, and **no book already on screen disappears**. An item that could not be fetched is not a deleted item. | |
-| **TC-44c** | 13.2 | After any interrupted refresh, count the books before and after: `adb shell run-as com.example.shelfplayer.debug sqlite3 databases/shelfplayer.db "select count(*) from books where isDeleted = 0;"` | The count never drops because of a network failure. It drops only when books were genuinely removed on the server. | |
+| **TC-44c** | 13.2 | After any interrupted refresh, compare **Books stored** in Settings against what it was before. | It never drops because of a network failure. It drops only when books were genuinely removed on the server — and those appear under **Removed on the server** rather than vanishing. | |
 
 ## 7. Session expiry (AUTH-004)
 
@@ -175,8 +181,7 @@ nobody reads a clean run of the table above as "Phase 1 is complete".
 | Thin book metadata | LIB-004 | Genres, tags, publisher, language, publication data and file count are stored but not all shown. |
 | No playback of any kind | PLAY-* | Phase 2. Book details say so. |
 | No downloads, no offline media | DL-* | Phase 3. "Offline" in TC-39…TC-44 means **browsing cached metadata**, which is all Phase 1 promises. |
-| No server name in the switcher | AUTH-002 | `Profile` carries a server id but not the server's name. Showing the wrong one would be worse than showing none. Open item. |
-| Settings has one switch | SET-002 | Only the setting something honours is offered. |
+| Settings has no preferences yet | SET-002 | It has the libraries list and the storage counts. A real preference arrives with the behaviour that honours it; a screen of switches that change nothing is worse than a short one. |
 | Per-server cleartext opt-in | 15 | The sign-in screen warns; the opt-in is a SET-002 item that does not exist. |
 | **Progress does not update until you refresh** | LIB-001 | Playing in the Audiobookshelf web player does not reach the app on its own. LIB-001 wants websocket events with a REST refresh as the fallback, and only the fallback exists. A full refresh is one request per book, far too expensive to run on every foreground. The cheap fix — a progress-only sync from `POST /api/authorize`, which already returns `user.mediaProgress` — is blocked on one contract capture: the committed fixture's `mediaProgress` array is empty, so the element shape has never been seen. |
 | Search does not match ISBN or ASIN | LIB-002 | Those fields are not synced yet, so matching them would be a promise with nothing behind it. |
@@ -199,6 +204,10 @@ are sequential for the reason that a playback layer built on a broken profile bo
 playback layer.
 
 ## Useful commands
+
+Everything below is optional now — **Settings → Storage on this device** answers the same questions
+without a cable. Keep them for confirming the screen is honest, or for a device where something looks
+wrong.
 
 ```bash
 # Install

@@ -12,7 +12,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,10 +38,8 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfErrorState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
-import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SyncStatus
-import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.feature.library.BookCard
 import com.example.shelfplayer.feature.library.BookSortRow
 
@@ -53,7 +50,6 @@ import com.example.shelfplayer.feature.library.BookSortRow
 @Composable
 fun HomeRoute(
     onBookSelected: (LibraryItemId) -> Unit,
-    onLibrarySelected: (LibraryId) -> Unit,
     onProfilesSelected: () -> Unit,
     onSettingsSelected: () -> Unit,
     onSignInSelected: () -> Unit,
@@ -70,7 +66,6 @@ fun HomeRoute(
         uiState = uiState,
         actions = HomeActions(
             onBookSelected = onBookSelected,
-            onLibrarySelected = onLibrarySelected,
             onQueryChanged = viewModel::onQueryChanged,
             onOrderChanged = viewModel::onOrderChanged,
             onRefresh = viewModel::refresh,
@@ -168,8 +163,6 @@ private fun HomeContent(uiState: HomeUiState, actions: HomeActions) {
                 modifier = content,
             )
 
-        uiState.showsLibraries -> LibraryList(uiState = uiState, actions = actions, modifier = content)
-
         else -> BookShelf(uiState = uiState, actions = actions, modifier = content)
     }
 }
@@ -216,24 +209,6 @@ private fun BookShelf(uiState: HomeUiState, actions: HomeActions, modifier: Modi
                     BookCard(book = book, onClick = { actions.onBookSelected(book.id) })
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun LibraryList(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
-    if (uiState.libraries.isEmpty()) {
-        EmptyOrFailed(uiState = uiState, onRefresh = actions.onRefresh, modifier = modifier)
-        return
-    }
-    LazyColumn(
-        modifier = modifier,
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item { ShelfHeader(uiState) }
-        items(items = uiState.libraries, key = { it.id.value }) { library ->
-            LibraryCard(library = library, onClick = { actions.onLibrarySelected(library.id) })
         }
     }
 }
@@ -287,37 +262,13 @@ private fun ShelfHeader(uiState: HomeUiState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun LibraryCard(library: Library, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val openLabel = pluralStringResource(R.plurals.home_library_books, library.bookCount, library.bookCount)
-    Card(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(text = library.name, style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = openLabel,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
 private fun HomeUiState.syncStatusLabel(): String = when (syncStatus) {
     SyncStatus.Syncing -> stringResource(R.string.home_sync_running)
     SyncStatus.Failed -> stringResource(R.string.home_sync_failed)
     SyncStatus.NeverSynced -> stringResource(R.string.home_sync_never)
-    SyncStatus.Succeeded,
-    SyncStatus.PartiallySucceeded,
-    -> {
-        // The count follows what is on screen. In library mode that is the libraries' totals; on the
-        // shelf it is the rows the user can actually see, which a search narrows.
-        val total = if (showsLibraries) libraries.sumOf(Library::bookCount) else books.size
-        pluralStringResource(R.plurals.home_library_books, total, total)
-    }
+    // The count follows what is on screen: the rows the user can actually see, which a search narrows.
+    SyncStatus.Succeeded -> pluralStringResource(R.plurals.home_library_books, books.size, books.size)
+    // PRODUCT_SPEC LIB-001 — a sync that could not reach some items says so rather than claiming a clean
+    // run. The count is still what is on screen; the caveat is that it is not all of it.
+    SyncStatus.PartiallySucceeded -> pluralStringResource(R.plurals.home_sync_partial, books.size, books.size)
 }

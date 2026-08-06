@@ -75,4 +75,21 @@ interface LibraryDao {
 
     @Query("SELECT COUNT(*) FROM books WHERE libraryKey = :libraryKey AND isDeleted = 0")
     suspend fun countBooks(libraryKey: String): Int
+
+    /**
+     * PRODUCT_SPEC SET-002 (Privacy/diagnostics) — what is stored, regardless of who may see it.
+     *
+     * Deliberately *unfiltered* by any profile's grant, which is the whole point: the acceptance check is
+     * that an unauthorized library was never **written**, and a query that already applied the grant could
+     * not tell that apart from one that hid it. The result is a count, never a name, so nothing crosses
+     * the boundary it is measuring (PRODUCT_SPEC 5.2).
+     */
+    @Query("SELECT COUNT(*) FROM libraries WHERE serverId = :serverId AND isDeleted = 0")
+    fun observeLibraryCount(serverId: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM books WHERE serverId = :serverId AND isDeleted = :deleted")
+    fun observeBookCount(serverId: String, deleted: Boolean): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM books WHERE libraryKey IN (:libraryKeys) AND isDeleted = 0")
+    fun observeBookCountIn(libraryKeys: List<String>): Flow<Int>
 }

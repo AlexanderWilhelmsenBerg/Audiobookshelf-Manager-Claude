@@ -16,16 +16,13 @@ import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
-import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
-import com.example.shelfplayer.domain.repository.SettingsRepository
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
-import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
 import kotlinx.coroutines.CompletableDeferred
@@ -44,7 +41,6 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -57,14 +53,11 @@ class HomeViewModelTest {
 
     private val profiles = FakeProfiles()
     private val libraries = FakeLibraries()
-    private val settings = FakeSettings()
 
     private fun viewModel() = HomeViewModel(
-        observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         observeAccessibleBooks = ObserveAccessibleBooksUseCase(profiles, libraries),
         observeSyncState = ObserveSyncStateUseCase(profiles, libraries),
         profileRepository = profiles,
-        settings = settings,
         refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),
     )
 
@@ -146,7 +139,7 @@ class HomeViewModelTest {
     @Test
     fun `a profile that has already synced is left alone`() = runTest {
         profiles.setActive(demoProfile)
-        libraries.emit(listOf(demoLibrary))
+        libraries.emitBooks(listOf(book("cached", "A cached book")))
         libraries.setSyncState(
             SyncState(
                 serverId = ServerId("fixture-server"),
@@ -179,7 +172,7 @@ class HomeViewModelTest {
         val state = viewModel().uiState.value
 
         assertNull(state.profile)
-        assertEquals(emptyList(), state.libraries)
+        assertEquals(emptyList(), state.books)
         assertNull(state.error)
     }
 
@@ -193,7 +186,7 @@ class HomeViewModelTest {
     @Test
     fun `a sync in flight does not hide the cached library`() = runTest {
         profiles.setActive(demoProfile)
-        libraries.emit(listOf(demoLibrary))
+        libraries.emitBooks(listOf(book("cached", "A cached book")))
         val gate = CompletableDeferred<Unit>()
         libraries.gate = gate
 
@@ -204,7 +197,7 @@ class HomeViewModelTest {
 
             val syncing = awaitItem()
             assertEquals(true, syncing.isRefreshing)
-            assertEquals(listOf("Fiction"), syncing.libraries.map { it.name })
+            assertEquals(listOf("A cached book"), syncing.books.map { it.title })
             assertEquals(true, syncing.isLoaded, "the screen must not fall back to its blocking state")
 
             gate.complete(Unit)
@@ -226,13 +219,13 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `shows cached libraries once they arrive`() = runTest {
+    fun `shows cached books once they arrive`() = runTest {
         profiles.setActive(demoProfile)
-        libraries.emit(listOf(demoLibrary))
+        libraries.emitBooks(listOf(book("cached", "A cached book")))
 
         viewModel().uiState.test {
             val state = awaitItem()
-            assertEquals(listOf("Fiction"), state.libraries.map { it.name })
+            assertEquals(listOf("A cached book"), state.books.map { it.title })
             assertEquals(SyncStatus.Succeeded, state.syncStatus)
         }
     }
@@ -246,7 +239,6 @@ class HomeViewModelTest {
     @Test
     fun `the shelf opens on the books, most recently played first`() = runTest {
         profiles.setActive(demoProfile)
-        libraries.emit(listOf(demoLibrary))
         libraries.emitBooks(
             listOf(
                 book("cold", "Never opened"),
@@ -256,27 +248,7 @@ class HomeViewModelTest {
         )
 
         viewModel().uiState.test {
-            val state = awaitItem()
-            assertFalse(state.showsLibraries, "the shelf is the default, not the library list")
-            assertEquals(listOf("Newest", "Older", "Never opened"), state.books.map { it.title })
-        }
-    }
-
-    /** PRODUCT_SPEC SET-002 — browsing by library stays available, as a setting. */
-    @Test
-    fun `the setting swaps the shelf for the list of libraries`() = runTest {
-        profiles.setActive(demoProfile)
-        libraries.emit(listOf(demoLibrary))
-        libraries.emitBooks(listOf(book("b-1", "A book")))
-        settings.setHomeShowsLibraries(true)
-
-        viewModel().uiState.test {
-            val state = awaitItem()
-            assertTrue(state.showsLibraries)
-            // Both are still in the state — the screen chooses, so flipping the setting back does not
-            // have to wait for a database round trip.
-            assertEquals(listOf("Fiction"), state.libraries.map { it.name })
-            assertEquals(listOf("A book"), state.books.map { it.title })
+            assertEquals(listOf("Newest", "Older", "Never opened"), awaitItem().books.map { it.title })
         }
     }
 
@@ -311,7 +283,7 @@ class HomeViewModelTest {
     @Test
     fun `a refresh failure surfaces the typed error without clearing content`() = runTest {
         profiles.setActive(demoProfile)
-        libraries.emit(listOf(demoLibrary))
+        libraries.emitBooks(listOf(book("cached", "A cached book")))
         libraries.refreshResult = AppResult.Failure(AppError.Network())
 
         val viewModel = viewModel()
@@ -331,7 +303,7 @@ class HomeViewModelTest {
             assertEquals("network", failed.error?.code)
             assertEquals(SyncStatus.Failed, failed.syncStatus)
             // PRODUCT_SPEC LIB-001: cached content stays on screen.
-            assertEquals(listOf("Fiction"), failed.libraries.map { it.name })
+            assertEquals(listOf("A cached book"), failed.books.map { it.title })
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -339,7 +311,7 @@ class HomeViewModelTest {
     @Test
     fun `dismissing an error clears it`() = runTest {
         profiles.setActive(demoProfile)
-        libraries.emit(listOf(demoLibrary))
+        libraries.emitBooks(listOf(book("cached", "A cached book")))
         libraries.refreshResult = AppResult.Failure(AppError.Network())
 
         val viewModel = viewModel()
@@ -423,17 +395,6 @@ class HomeViewModelTest {
         localAvailability = LocalAvailability.NotDownloaded,
     )
 
-    private val demoLibrary = Library(
-        serverId = ServerId("fixture-server"),
-        id = LibraryId("lib-fiction"),
-        name = "Fiction",
-        kind = LibraryKind.Book,
-        displayOrder = 0,
-        bookCount = 5,
-        remoteUpdatedAt = null,
-        lastFetchedAt = Instant.EPOCH,
-    )
-
     /**
      * PRODUCT_SPEC AUTH-004 — home's refresh path can renew a session, and none of these tests are
      * about that. Renewal reports "sign in again" so the use case takes its no-retry branch, keeping
@@ -456,16 +417,6 @@ class HomeViewModelTest {
 
         private fun <T> notUsed(): AppResult<T> =
             AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this fake"))
-    }
-
-    private class FakeSettings : SettingsRepository {
-        private val libraries = MutableStateFlow(false)
-
-        override val homeShowsLibraries: Flow<Boolean> = libraries
-
-        override suspend fun setHomeShowsLibraries(enabled: Boolean) {
-            libraries.value = enabled
-        }
     }
 
     private class FakeProfiles : ProfileRepository {

@@ -163,6 +163,36 @@ is empty, because the seeded contract server had never played anything. Building
 guessing at a response shape, which PRODUCT_SPEC 22.4 forbids. The next contract capture should play or seek
 an item before capturing so the array has contents; the sync is small work once it does.
 
+### Fifth device run — the acceptance plan, in the app
+
+Three requests came out of running the plan, and all three were about the plan being hard to run.
+
+1. **The libraries toggle was the wrong shape.** "Libraries should just be displayed in the settings, not
+   an *open on libraries* toggle." Correct, and it is the usual failing of a modal setting: it cost the user
+   a trip to Settings, a flip, and a trip back to discover what it did. Settings now *lists* the libraries
+   and opens one when tapped; the home screen is always the books. The proto field is reserved rather than
+   removed, because a device that wrote it still has the bytes on disk.
+
+2. **The `adb` cases were the hard ones.** They were also the important ones — the checks that ask what was
+   *stored* rather than what is shown. **Settings → Storage on this device** now reports them: servers,
+   profiles, saved sign-ins, libraries and books *stored* against *visible to this profile*, soft-deleted
+   rows, and progress records.
+
+   The stored-against-visible pair is the whole point. "Unauthorized libraries never appear" is really
+   "unauthorized rows were never written", and a screen that hides a row looks identical to one that never
+   had it — so a single number cannot answer it and two can. Counts only, never names: listing the libraries
+   a profile may not see, in order to show that they are hidden, would be its own small breach
+   (PRODUCT_SPEC 5.2).
+
+3. **Known server addresses on the sign-in screen.** The address stage now lists the servers this device has
+   used, each with the version detected and whether the connection was encrypted. Picking one fills the
+   field and **re-probes**: what the user reads before typing a password describes the server now. A
+   remembered "encrypted" would be a claim the app had stopped checking, and certificates expire.
+
+**The results table did not survive the round trip.** The uploaded copy of `phase-1-acceptance.md` had
+sections 1–8 replaced by a single `## c`, so no result was recorded here. The plan below is the current one;
+the run needs repeating against this build, which is no loss, since three of its cases changed.
+
 ### Exit criteria: 0 of 3 *demonstrated*, all 3 now reachable
 
 Every deliverable is built, and the device run above verified a good deal of the machinery underneath

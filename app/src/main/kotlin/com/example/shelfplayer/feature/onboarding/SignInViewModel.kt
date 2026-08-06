@@ -5,13 +5,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.SignInUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -34,6 +38,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SignInViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    profileRepository: ProfileRepository,
     private val authRepository: AuthRepository,
     private val signIn: SignInUseCase,
 ) : ViewModel() {
@@ -55,7 +60,30 @@ class SignInViewModel @Inject constructor(
             username = savedStateHandle.get<String>(ARG_USERNAME).orEmpty(),
         ),
     )
-    val uiState: StateFlow<SignInUiState> = state.asStateFlow()
+
+    /**
+     * PRODUCT_SPEC AUTH-001 / 6.1 — the servers this device already knows.
+     *
+     * Typing a host on a phone keyboard is the worst part of adding a second account, and the app already
+     * has the address, the version it detected and whether the connection was encrypted. Offering them is
+     * a shortcut into the *same* flow, not around it: picking one fills the field, and the probe still runs
+     * before any password field appears, so what is shown was confirmed just now rather than remembered
+     * from last time.
+     */
+    val uiState: StateFlow<SignInUiState> = combine(
+        state,
+        profileRepository.observeServers(),
+    ) { current, servers ->
+        current.copy(knownServers = servers.map(::KnownServer))
+    }.stateIn(
+        scope = viewModelScope,
+        // `Eagerly`, not `WhileSubscribed`, and this is the one screen where that is right. The typed
+        // address, the confirmed probe and the half-entered username live in `state`; a stop-and-restart
+        // would replay `initialValue` — an empty address stage — as the screen came back, in front of a
+        // user who had already got past it. Nothing here is expensive to keep: one Room query.
+        started = SharingStarted.Eagerly,
+        initialValue = SignInUiState(),
+    )
 
     fun onServerUrlChanged(value: String) = state.update {
         // Clearing the error as the user edits is what stops a stale "that is not a server" sitting under
@@ -128,6 +156,19 @@ class SignInViewModel @Inject constructor(
     /** Acknowledges the completed sign-in so navigation happens once rather than on every recomposition. */
     fun onSignedInHandled() = state.update { it.copy(signedIn = null) }
 
+    /**
+     * Fills the address field from a known server and probes it.
+     *
+     * The probe is not skipped. What the app remembers about a server is what it was *last* time; the
+     * version can have changed and the certificate can have expired, and PRODUCT_SPEC 6.1 wants the user
+     * to see the current answer before typing a password.
+     */
+    fun onKnownServerSelected(serverUrl: String) {
+        if (state.value.isBusy) return
+        state.update { it.copy(serverUrl = serverUrl, error = null) }
+        onServerSubmitted()
+    }
+
     companion object {
         const val ARG_SERVER_URL = "serverUrl"
         const val ARG_USERNAME = "username"
@@ -135,10 +176,24 @@ class SignInViewModel @Inject constructor(
 }
 
 /**
+ * A server this device has connected to before, as the address stage offers it.
+ *
+ * [isEncrypted] is derived from the stored address rather than remembered separately: the scheme *is* the
+ * answer, and a second copy of it could disagree with the address next to it.
+ */
+data class KnownServer(val url: String, val detectedVersion: String?) {
+    constructor(server: Server) : this(url = server.baseUrl, detectedVersion = server.detectedVersion)
+
+    val isEncrypted: Boolean get() = url.startsWith("https://", ignoreCase = true)
+}
+
+/**
  * PRODUCT_SPEC 21 — every state the screen can be in, and they are distinguishable.
  *
  * @property candidate the probe result: normalized address, detected version, whether HTTPS was assumed
  *   and whether the connection is cleartext. `null` until the address is accepted.
+ * @property knownServers servers this device has connected to before, offered under the address field.
+ *   Picking one fills the field and re-probes; nothing about it is trusted without that.
  * @property error the reason the last action failed. A wrong password, an unreachable host and an invalid
  *   certificate are different `AppError` cases and read differently, which is what PRODUCT_SPEC AUTH-001
  *   means by "a clear certificate error".
@@ -151,6 +206,7 @@ data class SignInUiState(
     val password: String = "",
     val stage: SignInStage = SignInStage.Address,
     val candidate: ServerCandidate? = null,
+    val knownServers: List<KnownServer> = emptyList(),
     val isBusy: Boolean = false,
     val error: AppError? = null,
     val signedIn: SignedIn? = null,

@@ -1,89 +1,172 @@
 package com.example.shelfplayer.feature.settings
 
+import app.cash.turbine.test
+import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.Profile
+import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.StorageDiagnostics
+import com.example.shelfplayer.core.model.SyncState
+import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.testing.MainDispatcherRule
-import com.example.shelfplayer.domain.repository.SettingsRepository
+import com.example.shelfplayer.domain.repository.DiagnosticsRepository
+import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
+import java.time.Instant
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** PRODUCT_SPEC SET-001 / LIB-002 — the settings the app can honour today. */
+/** PRODUCT_SPEC SET-001 / SET-002 — the two things the settings screen shows. */
 class SettingsViewModelTest {
 
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    private val settings = FakeSettings()
+    private val profiles = FakeProfiles()
+    private val libraries = FakeLibraries()
+    private val diagnostics = FakeDiagnostics()
 
+    private fun viewModel() = SettingsViewModel(ObserveLibrariesUseCase(profiles, libraries), diagnostics)
+
+    /**
+     * PRODUCT_SPEC SET-002 — browsing by library lives here, as a list rather than a switch.
+     *
+     * The switch it replaced turned the home screen into something else, which meant going to Settings,
+     * flipping it, and navigating back to find out what it did.
+     */
     @Test
-    fun `the stored choice is what the switch shows`() = runTest {
-        settings.setHomeShowsLibraries(true)
+    fun `the libraries this profile may open are listed`() = runTest {
+        libraries.emit(listOf(library("lib-fiction", "Fiction", 12), library("lib-nonfiction", "Non-fiction", 3)))
 
-        val state = observed(SettingsViewModel(settings))
-
-        assertTrue(state.value.homeShowsLibraries)
-        assertTrue(state.value.isLoaded)
-    }
-
-    /** PRODUCT_SPEC LIB-002 — the product default is the books, so the toggle starts off. */
-    @Test
-    fun `the default is the shelf of books`() = runTest {
-        val state = observed(SettingsViewModel(settings))
-
-        assertFalse(state.value.homeShowsLibraries)
-    }
-
-    @Test
-    fun `toggling writes through and comes back`() = runTest {
-        val viewModel = SettingsViewModel(settings)
-        val state = observed(viewModel)
-
-        viewModel.onHomeShowsLibrariesChanged(true)
-
-        assertTrue(state.value.homeShowsLibraries)
-        assertTrue(settings.stored.value)
-
-        viewModel.onHomeShowsLibrariesChanged(false)
-
-        assertFalse(state.value.homeShowsLibraries)
-        assertFalse(settings.stored.value)
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertEquals(listOf("Fiction", "Non-fiction"), state.libraries.map { it.name })
+            assertEquals(listOf(12, 3), state.libraries.map { it.bookCount })
+        }
     }
 
     /**
-     * The switch is disabled until the stored value has been read.
+     * PRODUCT_SPEC SET-002 (Privacy/diagnostics) — the counts that used to need `adb … sqlite3`.
      *
-     * Otherwise the first frame shows the default, and a tap in that instant writes the default back
-     * over whatever is on disk.
+     * The pair that matters is stored-against-visible. "Unauthorized libraries never appear" is really
+     * "unauthorized rows were never written", and a screen that hides a row looks exactly like one that
+     * never had it — so the difference between the two numbers is the only thing that can tell them apart.
      */
     @Test
-    fun `the switch is inert until the store has answered`() {
+    fun `storage counts distinguish what is stored from what this profile can see`() = runTest {
+        diagnostics.emit(
+            StorageDiagnostics(
+                serversStored = 1,
+                profilesStored = 2,
+                storedCredentials = 2,
+                librariesStored = 2,
+                librariesAccessible = 1,
+                booksStored = 490,
+                booksAccessible = 188,
+                booksSoftDeleted = 3,
+            ),
+        )
+
+        viewModel().uiState.test {
+            val storage = awaitItem().storage
+            assertEquals(1, storage.serversStored, "two accounts on one server count once")
+            assertEquals(2, storage.librariesStored)
+            assertEquals(1, storage.librariesAccessible)
+            assertEquals(490, storage.booksStored)
+            assertEquals(188, storage.booksAccessible)
+        }
+    }
+
+    /** Zeroes before the first read would look like facts, so the screen says it is still reading. */
+    @Test
+    fun `the counts are not shown until they have been read`() = runTest {
         assertFalse(SettingsUiState().isLoaded)
+
+        viewModel().uiState.test {
+            assertTrue(awaitItem().isLoaded)
+        }
     }
 
-    /**
-     * Keeps the `WhileSubscribed` state flow hot and returns it.
-     *
-     * Without a collector the flow never leaves its initial value, and counting emissions instead makes
-     * the test depend on how many intermediate states the pipeline happens to produce.
-     */
-    private fun TestScope.observed(viewModel: SettingsViewModel): StateFlow<SettingsUiState> =
-        viewModel.uiState.also { flow ->
-            backgroundScope.launch(mainDispatcherRule.testDispatcher) { flow.collect { } }
+    private fun library(id: String, name: String, bookCount: Int) = Library(
+        serverId = ServerId("srv_books"),
+        id = LibraryId(id),
+        name = name,
+        kind = LibraryKind.Book,
+        displayOrder = 0,
+        bookCount = bookCount,
+        remoteUpdatedAt = null,
+        lastFetchedAt = Instant.EPOCH,
+    )
+
+    private class FakeDiagnostics : DiagnosticsRepository {
+        private val storage = MutableStateFlow(StorageDiagnostics())
+
+        fun emit(value: StorageDiagnostics) {
+            storage.value = value
         }
 
-    private class FakeSettings : SettingsRepository {
-        val stored = MutableStateFlow(false)
+        override fun observeStorage(): Flow<StorageDiagnostics> = storage
+    }
 
-        override val homeShowsLibraries: Flow<Boolean> = stored
+    private class FakeProfiles : ProfileRepository {
+        private val active = MutableStateFlow<Profile?>(
+            Profile(
+                id = ProfileId("prf_ada"),
+                serverId = ServerId("srv_books"),
+                username = "ada",
+                displayName = "ada",
+                role = ProfileRole.Listener,
+                requiresReauthentication = false,
+                lastUsedAt = Instant.EPOCH,
+                isFixture = false,
+            ),
+        )
 
-        override suspend fun setHomeShowsLibraries(enabled: Boolean) {
-            stored.value = enabled
+        override fun observeProfiles(): Flow<List<Profile>> = MutableStateFlow(emptyList())
+
+        override fun observeServers(): Flow<List<Server>> = MutableStateFlow(emptyList())
+
+        override fun observeActiveProfile(): Flow<Profile?> = active
+
+        override suspend fun activeProfileId(): ProfileId? = active.value?.id
+
+        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+    }
+
+    private class FakeLibraries : LibraryRepository {
+        private val stored = MutableStateFlow<List<Library>>(emptyList())
+
+        fun emit(libraries: List<Library>) {
+            stored.value = libraries
         }
+
+        override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = stored
+
+        override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> = MutableStateFlow(null)
+
+        override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
+            MutableStateFlow(emptyList())
+
+        override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = MutableStateFlow(emptyList())
+
+        override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = MutableStateFlow(null)
+
+        override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
+            MutableStateFlow(SyncState.idle(ServerId("srv_books"), profileId))
+
+        override suspend fun refresh(profileId: ProfileId): AppResult<Int> = AppResult.Success(0)
     }
 }

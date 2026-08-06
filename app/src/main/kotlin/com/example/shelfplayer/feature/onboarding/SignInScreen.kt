@@ -58,28 +58,22 @@ fun SignInRoute(onSignedIn: () -> Unit, modifier: Modifier = Modifier, viewModel
 
     SignInScreen(
         uiState = uiState,
-        onServerUrlChanged = viewModel::onServerUrlChanged,
-        onServerSubmitted = viewModel::onServerSubmitted,
-        onBackToServer = viewModel::onBackToServer,
-        onUsernameChanged = viewModel::onUsernameChanged,
-        onPasswordChanged = viewModel::onPasswordChanged,
-        onCredentialsSubmitted = viewModel::onCredentialsSubmitted,
+        actions = SignInActions(
+            onServerUrlChanged = viewModel::onServerUrlChanged,
+            onServerSubmitted = viewModel::onServerSubmitted,
+            onKnownServerSelected = viewModel::onKnownServerSelected,
+            onBackToServer = viewModel::onBackToServer,
+            onUsernameChanged = viewModel::onUsernameChanged,
+            onPasswordChanged = viewModel::onPasswordChanged,
+            onCredentialsSubmitted = viewModel::onCredentialsSubmitted,
+        ),
         modifier = modifier,
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SignInScreen(
-    uiState: SignInUiState,
-    onServerUrlChanged: (String) -> Unit,
-    onServerSubmitted: () -> Unit,
-    onBackToServer: () -> Unit,
-    onUsernameChanged: (String) -> Unit,
-    onPasswordChanged: (String) -> Unit,
-    onCredentialsSubmitted: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+fun SignInScreen(uiState: SignInUiState, actions: SignInActions, modifier: Modifier = Modifier) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { TopAppBar(title = { Text(text = stringResource(R.string.sign_in_title)) }) },
@@ -93,19 +87,9 @@ fun SignInScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             when (uiState.stage) {
-                SignInStage.Address -> AddressStage(
-                    uiState = uiState,
-                    onServerUrlChanged = onServerUrlChanged,
-                    onServerSubmitted = onServerSubmitted,
-                )
+                SignInStage.Address -> AddressStage(uiState = uiState, actions = actions)
 
-                SignInStage.Credentials -> CredentialsStage(
-                    uiState = uiState,
-                    onUsernameChanged = onUsernameChanged,
-                    onPasswordChanged = onPasswordChanged,
-                    onCredentialsSubmitted = onCredentialsSubmitted,
-                    onBackToServer = onBackToServer,
-                )
+                SignInStage.Credentials -> CredentialsStage(uiState = uiState, actions = actions)
             }
 
             uiState.error?.let { error ->
@@ -132,41 +116,99 @@ fun SignInScreen(
 }
 
 @Composable
-private fun AddressStage(uiState: SignInUiState, onServerUrlChanged: (String) -> Unit, onServerSubmitted: () -> Unit) {
+private fun AddressStage(uiState: SignInUiState, actions: SignInActions) {
     Text(text = stringResource(R.string.sign_in_address_prompt), style = MaterialTheme.typography.bodyMedium)
     OutlinedTextField(
         value = uiState.serverUrl,
-        onValueChange = onServerUrlChanged,
+        onValueChange = actions.onServerUrlChanged,
         label = { Text(text = stringResource(R.string.sign_in_server_label)) },
         supportingText = { Text(text = stringResource(R.string.sign_in_server_hint)) },
         singleLine = true,
         enabled = !uiState.isBusy,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-        keyboardActions = KeyboardActions(onGo = { if (uiState.canSubmitServer) onServerSubmitted() }),
+        keyboardActions = KeyboardActions(onGo = { if (uiState.canSubmitServer) actions.onServerSubmitted() }),
         modifier = Modifier.fillMaxWidth(),
     )
     Button(
-        onClick = onServerSubmitted,
+        onClick = actions.onServerSubmitted,
         enabled = uiState.canSubmitServer,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(text = stringResource(R.string.sign_in_continue))
     }
+    KnownServers(uiState = uiState, onSelected = actions.onKnownServerSelected)
+}
+
+/**
+ * PRODUCT_SPEC AUTH-001 / 6.1 — the servers this device already knows.
+ *
+ * Adding a second account to a server is the common case, and until now it meant typing a host on a phone
+ * keyboard. Each entry shows what the app recorded last time: the address, the version it detected, and
+ * whether the connection was encrypted.
+ *
+ * What it emphatically does **not** do is trust any of that. Picking one fills the field and runs the same
+ * probe a typed address gets, so the version and the encryption line the user reads before entering a
+ * password describe the server *now* — a certificate expires, a server is upgraded, and a remembered
+ * "encrypted" would be a claim the app had stopped checking (PRODUCT_SPEC 15).
+ */
+@Composable
+private fun KnownServers(uiState: SignInUiState, onSelected: (String) -> Unit, modifier: Modifier = Modifier) {
+    if (uiState.knownServers.isEmpty()) return
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.sign_in_known_servers),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        uiState.knownServers.forEach { server ->
+            Card(
+                onClick = { onSelected(server.url) },
+                enabled = !uiState.isBusy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(text = server.url, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = server.detectedVersion
+                            ?.let { stringResource(R.string.sign_in_detected_version, it) }
+                            ?: stringResource(R.string.sign_in_known_version_unknown),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val encryption = when {
+                        server.isEncrypted -> R.string.sign_in_known_encrypted
+                        else -> R.string.sign_in_known_cleartext
+                    }
+                    Text(
+                        text = stringResource(encryption),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (server.isEncrypted) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                    )
+                }
+            }
+        }
+        Text(
+            text = stringResource(R.string.sign_in_known_checked_again),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
-private fun CredentialsStage(
-    uiState: SignInUiState,
-    onUsernameChanged: (String) -> Unit,
-    onPasswordChanged: (String) -> Unit,
-    onCredentialsSubmitted: () -> Unit,
-    onBackToServer: () -> Unit,
-) {
+private fun CredentialsStage(uiState: SignInUiState, actions: SignInActions) {
     uiState.candidate?.let { ServerSummary(candidate = it) }
 
     OutlinedTextField(
         value = uiState.username,
-        onValueChange = onUsernameChanged,
+        onValueChange = actions.onUsernameChanged,
         label = { Text(text = stringResource(R.string.sign_in_username_label)) },
         singleLine = true,
         enabled = !uiState.isBusy,
@@ -175,23 +217,25 @@ private fun CredentialsStage(
     )
     OutlinedTextField(
         value = uiState.password,
-        onValueChange = onPasswordChanged,
+        onValueChange = actions.onPasswordChanged,
         label = { Text(text = stringResource(R.string.sign_in_password_label)) },
         singleLine = true,
         enabled = !uiState.isBusy,
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
-        keyboardActions = KeyboardActions(onGo = { if (uiState.canSubmitCredentials) onCredentialsSubmitted() }),
+        keyboardActions = KeyboardActions(onGo = {
+            if (uiState.canSubmitCredentials) actions.onCredentialsSubmitted()
+        }),
         modifier = Modifier.fillMaxWidth(),
     )
     Button(
-        onClick = onCredentialsSubmitted,
+        onClick = actions.onCredentialsSubmitted,
         enabled = uiState.canSubmitCredentials,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(text = stringResource(R.string.sign_in_submit))
     }
-    TextButton(onClick = onBackToServer, enabled = !uiState.isBusy, modifier = Modifier.fillMaxWidth()) {
+    TextButton(onClick = actions.onBackToServer, enabled = !uiState.isBusy, modifier = Modifier.fillMaxWidth()) {
         Text(text = stringResource(R.string.sign_in_change_server))
     }
 }

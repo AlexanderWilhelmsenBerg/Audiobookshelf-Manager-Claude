@@ -34,11 +34,15 @@ message AppSettings {
   // seed runs on first launch only and a user who deletes demo content does not get it back.
   bool fixture_library_seeded = 7;
 
-  // PRODUCT_SPEC LIB-002 / SET-002 (Profiles) — what the app opens on.
+  // Field 8 held `home_shows_libraries`, a toggle that swapped the home screen for a list of libraries.
+  // It is gone: the app always opens on the books, and browsing by library is an entry in Settings rather
+  // than a mode the home screen can be in. A setting that changes what a screen *is* costs a user a trip
+  // to Settings and back to find out what it does.
   //
-  // Default false, which is "the books". The list of libraries is a hop between the user and their
-  // shelf, so it is the opt-in and not the other way round.
-  bool home_shows_libraries = 8;
+  // Reserved, not reused. A device upgrading from a build that wrote this field still has the bytes on
+  // disk, and a new field with number 8 would read them as its own.
+  reserved 8;
+  reserved "home_shows_libraries";
 }
 
 enum ThemeMode {

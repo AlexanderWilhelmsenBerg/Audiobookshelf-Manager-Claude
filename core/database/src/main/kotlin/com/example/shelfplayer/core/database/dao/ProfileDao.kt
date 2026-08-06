@@ -27,6 +27,10 @@ interface ProfileDao {
     @Query("SELECT * FROM servers ORDER BY displayName COLLATE NOCASE ASC")
     fun observeServers(): Flow<List<ServerEntity>>
 
+    /** PRODUCT_SPEC AUTH-002 — two accounts on one server must produce one row here, not two. */
+    @Query("SELECT COUNT(*) FROM servers")
+    fun observeServerCount(): Flow<Int>
+
     /**
      * `@Upsert`, not `@Insert(REPLACE)`: `servers` is the parent of `profiles` and `libraries`, and a
      * `REPLACE` conflict is a delete plus an insert, which runs `ON DELETE CASCADE`. Signing a second

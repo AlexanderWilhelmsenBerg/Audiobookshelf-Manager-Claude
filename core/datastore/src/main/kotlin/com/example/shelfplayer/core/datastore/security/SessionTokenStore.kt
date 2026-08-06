@@ -114,6 +114,17 @@ class SessionTokenStore @Inject constructor(
         cipher.clear()
     }
 
+    /**
+     * PRODUCT_SPEC SET-002 (Privacy/diagnostics) — how many credentials are on disk.
+     *
+     * A count and nothing else. It exists so that signing out can be *seen* to have deleted something,
+     * which is otherwise invisible; a store that could describe its contents to a screen would be a worse
+     * store, and the file names are hashed for the same reason (PRODUCT_SPEC AUTH-003).
+     */
+    suspend fun storedCredentialCount(): Int = withContext(ioDispatcher) {
+        directory().listFiles()?.size ?: 0
+    }
+
     private fun directory(): File = File(context.filesDir, DIRECTORY)
 
     /**

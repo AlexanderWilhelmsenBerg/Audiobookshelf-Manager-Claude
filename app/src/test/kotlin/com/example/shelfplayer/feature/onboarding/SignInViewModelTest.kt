@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
@@ -21,6 +22,7 @@ import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.SignInUseCase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,9 +59,36 @@ class SignInViewModelTest {
                 SignInViewModel.ARG_USERNAME to username,
             ),
         ),
+        profileRepository = FakeProfiles(),
         authRepository = auth,
         signIn = SignInUseCase(auth, capabilities),
     )
+
+    /** PRODUCT_SPEC AUTH-001 — the address stage offers the servers this device already knows. */
+    @Test
+    fun `known servers are offered with their version and whether they were encrypted`() = runTest {
+        val known = viewModel().uiState.value.knownServers.single()
+
+        assertEquals("https://books.example", known.url)
+        assertEquals("2.36.0", known.detectedVersion)
+        assertTrue(known.isEncrypted)
+    }
+
+    /**
+     * Picking one is a shortcut into the flow, not around it.
+     *
+     * The probe still runs, so the version and the encryption line the user reads before typing a password
+     * describe the server now — not what it looked like the last time (PRODUCT_SPEC 6.1, 15).
+     */
+    @Test
+    fun `picking a known server still probes it`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onKnownServerSelected("https://books.example")
+
+        assertEquals(SignInStage.Credentials, viewModel.uiState.value.stage)
+        assertNotNull(viewModel.uiState.value.candidate)
+    }
 
     /**
      * PRODUCT_SPEC AUTH-004 — a profile sent here to sign in again arrives with what the app already knows.
@@ -350,6 +379,29 @@ class SignInViewModelTest {
         override suspend fun capabilities(serverId: ServerId): ServerCapabilities? = null
 
         override suspend fun handshake(profileId: ProfileId): AppResult<ServerCapabilities> = result
+    }
+
+    /** One saved server, so the address stage has something to offer. */
+    private class FakeProfiles : ProfileRepository {
+        override fun observeProfiles(): Flow<List<Profile>> = MutableStateFlow(emptyList())
+
+        override fun observeServers(): Flow<List<Server>> = MutableStateFlow(
+            listOf(
+                Server(
+                    id = ServerId("srv_books"),
+                    displayName = "Books",
+                    baseUrl = "https://books.example",
+                    detectedVersion = "2.36.0",
+                    isFixture = false,
+                ),
+            ),
+        )
+
+        override fun observeActiveProfile(): Flow<Profile?> = MutableStateFlow(null)
+
+        override suspend fun activeProfileId(): ProfileId? = null
+
+        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
     }
 
     private class StubLibraryRepository : LibraryRepository {

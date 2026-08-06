@@ -35,4 +35,11 @@ interface ProgressDao {
         """,
     )
     suspend fun countUnsynced(profileId: String): Int
+
+    /** PRODUCT_SPEC SET-002 (Privacy/diagnostics) — how much of this profile's listening is on device. */
+    @Query("SELECT COUNT(*) FROM media_progress WHERE profileId = :profileId")
+    fun observeProgressCount(profileId: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM media_progress WHERE profileId = :profileId AND hasUnsyncedChanges = 1")
+    fun observeUnsyncedCount(profileId: String): Flow<Int>
 }

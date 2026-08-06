@@ -7,12 +7,9 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.library.Book
-import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.domain.library.BookSortOrder
 import com.example.shelfplayer.domain.repository.ProfileRepository
-import com.example.shelfplayer.domain.repository.SettingsRepository
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
-import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,9 +33,10 @@ import javax.inject.Inject
  * PRODUCT_SPEC LIB-001 / LIB-002 — the shelf the app opens on.
  *
  * It lists **books**, not libraries: every book the active profile is granted, most recently played
- * first. A list of libraries is still available and is a setting (PRODUCT_SPEC SET-002, Profiles),
- * because with one library it is a single card between the user and their shelf, and with several it is
- * a menu rather than a shelf.
+ * first. With one library, a list of libraries is a single card between the user and their shelf; with
+ * several it is a menu rather than a shelf. Browsing *by* library is still possible and lives in Settings
+ * (PRODUCT_SPEC SET-002) — as a list of libraries to open, not as a switch that changes what this screen
+ * is.
  *
  * The ViewModel never touches the gateway (PRODUCT_SPEC 22.8): it observes Room through use cases
  * and asks a use case to refresh.
@@ -46,11 +44,9 @@ import javax.inject.Inject
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    observeLibraries: ObserveLibrariesUseCase,
     observeAccessibleBooks: ObserveAccessibleBooksUseCase,
     observeSyncState: ObserveSyncStateUseCase,
     profileRepository: ProfileRepository,
-    settings: SettingsRepository,
     private val refreshLibrary: RefreshLibraryUseCase,
 ) : ViewModel() {
 
@@ -70,38 +66,24 @@ class HomeViewModel @Inject constructor(
     ) { query, order -> ShelfQuery(query, order) }
         .flatMapLatest { request -> observeAccessibleBooks(query = request.query, order = request.order) }
 
-    /**
-     * Grouped into one upstream so the whole state still fits the five-argument [combine].
-     *
-     * The alternative is the array-typed overload, which would give up the parameter names that make
-     * the state builder below readable.
-     */
-    private val presentation: Flow<Presentation> = combine(
-        refreshState,
-        controls,
-        settings.homeShowsLibraries,
-    ) { refresh, current, showsLibraries -> Presentation(refresh, current, showsLibraries) }
-
     val uiState: StateFlow<HomeUiState> = combine(
         profileRepository.observeActiveProfile(),
-        observeLibraries(),
         books,
         observeSyncState(),
-        presentation,
-    ) { profile, libraries, shelf, syncState, presentation ->
+        refreshState,
+        controls,
+    ) { profile, shelf, syncState, refresh, current ->
         HomeUiState(
             profile = profile,
-            libraries = libraries,
             books = shelf,
-            query = presentation.controls.query,
-            order = presentation.controls.order,
-            showsLibraries = presentation.showsLibraries,
-            isRefreshing = presentation.refresh.inFlight,
+            query = current.query,
+            order = current.order,
+            isRefreshing = refresh.inFlight,
             syncStatus = when {
-                presentation.refresh.inFlight -> SyncStatus.Syncing
+                refresh.inFlight -> SyncStatus.Syncing
                 // A failure from the user's own refresh outranks the persisted state, the same way the
                 // error field does: it is the newer fact and the one they are waiting on.
-                presentation.refresh.lastError != null -> SyncStatus.Failed
+                refresh.lastError != null -> SyncStatus.Failed
                 // The persisted state comes next, because it is the only record of a sync this process
                 // did not start — one abandoned by an earlier launch, or one another screen began.
                 //
@@ -110,12 +92,12 @@ class HomeViewModel @Inject constructor(
                 // Labelling a populated library "not synchronized yet" would be the app contradicting
                 // what the user is looking at.
                 syncState != null && syncState.status != SyncStatus.NeverSynced -> syncState.status
-                libraries.isNotEmpty() -> SyncStatus.Succeeded
+                shelf.isNotEmpty() -> SyncStatus.Succeeded
                 else -> SyncStatus.NeverSynced
             },
             // A live error from the user's own refresh wins: it is the newer fact, and it is the one they
             // are waiting for an answer to.
-            error = presentation.refresh.lastError ?: syncState?.lastError,
+            error = refresh.lastError ?: syncState?.lastError,
             // PRODUCT_SPEC LIB-001 — "the home screen can render partial cached content while sync
             // continues", and sync status is "visible but non-blocking".
             //
@@ -198,12 +180,6 @@ class HomeViewModel @Inject constructor(
     /** One resolved request: what to search for and how to order the result. */
     private data class ShelfQuery(val query: String, val order: BookSortOrder)
 
-    private data class Presentation(
-        val refresh: RefreshState,
-        val controls: ShelfControls,
-        val showsLibraries: Boolean,
-    )
-
     private companion object {
         /** PRODUCT_SPEC LIB-002: search debounce is 300 ms. */
         const val SEARCH_DEBOUNCE_MILLIS = 300L
@@ -214,17 +190,9 @@ class HomeViewModel @Inject constructor(
 /** PRODUCT_SPEC 21 — loading, empty, error and content are separate, observable states. */
 data class HomeUiState(
     val profile: Profile? = null,
-    val libraries: List<Library> = emptyList(),
     val books: List<Book> = emptyList(),
     val query: String = "",
     val order: BookSortOrder = BookSortOrder.LastPlayed,
-    /**
-     * PRODUCT_SPEC SET-002 — whether this screen lists libraries instead of books.
-     *
-     * A setting rather than a mode toggle in the app bar: it changes what the app opens on, which is a
-     * preference, and a preference that resets when the process dies is not one.
-     */
-    val showsLibraries: Boolean = false,
     val isRefreshing: Boolean = false,
     val syncStatus: SyncStatus = SyncStatus.NeverSynced,
     val error: AppError? = null,

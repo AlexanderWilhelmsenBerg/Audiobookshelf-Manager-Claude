@@ -57,9 +57,21 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
   the active profile is granted, across all of its libraries, ordered by what was played last, with the
   300 ms debounced search and the sort chips LIB-002 asks for. Reported from a device: with one library,
   the old home was a single card standing between the user and their shelf.
-- Browsing by library is still available, and is now a setting (SET-001, SET-002): a first settings screen
-  with **Open on libraries**, stored in Proto DataStore behind a new `:data:settings` module and a
-  `SettingsRepository`, so no screen names the settings store directly.
+- Browsing by library is still available and lives in **Settings** (SET-002) — as a list of libraries to
+  open, not as a toggle that turns the home screen into something else. The toggle shipped for one build
+  and was wrong in the way modal settings usually are: it cost a trip to Settings and back to find out what
+  it did. Its proto field is reserved rather than removed, because a device that wrote it still has the
+  bytes.
+- **The `adb` checks are in the app** (SET-002, Privacy/diagnostics): **Settings → Storage on this device**
+  reports servers, profiles, saved sign-ins, libraries and books *stored* against *visible to this profile*,
+  soft-deleted rows and progress records. The pair is what makes "unauthorized libraries never appear"
+  checkable without a cable — the requirement is that unauthorized rows were never **written**, and a screen
+  that hides a row looks identical to one that never had it. Counts only, never names: listing libraries a
+  profile may not see would be a strange way to prove they are hidden.
+- **Known servers on the sign-in screen** (AUTH-001): the address stage lists the servers this device has
+  used, with the version detected and whether the connection was encrypted. Picking one fills the field and
+  **re-probes** — what is shown before a password is typed describes the server now, not what it looked like
+  last time.
 - **The library grant is now enforced on read as well as on write** (PRODUCT_SPEC 5.2): a grant that
   *shrinks* after a sync used to leave the revoked library's rows in the cache, where nothing enumerated
   them again. Every read path — libraries, one library, the shelf, and a single book — now filters by the

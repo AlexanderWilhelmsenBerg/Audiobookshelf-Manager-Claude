@@ -56,9 +56,6 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
                 onBookSelected = { bookId ->
                     navController.navigate(ShelfDestinations.book(bookId))
                 },
-                onLibrarySelected = { libraryId ->
-                    navController.navigate(ShelfDestinations.library(libraryId))
-                },
                 onProfilesSelected = { navController.navigate(ShelfDestinations.PROFILES) },
                 onSettingsSelected = { navController.navigate(ShelfDestinations.SETTINGS) },
                 onSignInSelected = { navController.navigate(ShelfDestinations.signIn()) },
@@ -76,7 +73,14 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
             )
         }
         composable(ShelfDestinations.SETTINGS) {
-            SettingsRoute(onNavigateUp = navController::navigateUp)
+            // PRODUCT_SPEC SET-002 — browsing by library lives here now, as a list rather than a switch
+            // that turns the home screen into something else.
+            SettingsRoute(
+                onLibrarySelected = { libraryId ->
+                    navController.navigate(ShelfDestinations.library(libraryId))
+                },
+                onNavigateUp = navController::navigateUp,
+            )
         }
         composable(
             route = ShelfDestinations.LIBRARY,
