@@ -10,6 +10,13 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 
 ## Phase 1 — **not complete**
 
+> **Read `docs/phase-1-remaining.md` first.** The table below tracks `PRODUCT_SPEC 20`'s *deliverables*,
+> and every one of them exists. That is not the same as Phase 1 being close to done: `PRODUCT_SPEC 21`
+> makes a requirement complete only when its **acceptance criteria** are met, and an audit of Phase 0 and
+> Phase 1 against those criteria found 30 open tasks — including LIB-001's websocket criterion, which
+> this plan lost entirely, and a permission refresh that `PRODUCT_SPEC 5.2` requires and no code performs.
+> Marking a deliverable done here says a screen or a repository exists, nothing more.
+
 `PRODUCT_SPEC 20` lists seven deliverables.
 
 | Deliverable | Status | Evidence |
@@ -416,6 +423,11 @@ Two capture artefacts, so they are not mistaken for server behaviour: `size` and
 `results`.
 
 ## Remaining Phase 1 work
+
+Steps 1–9 below are the *deliverable* plan and are all complete. **They were never the whole of Phase 1.**
+The acceptance-criteria audit in `docs/phase-1-remaining.md` supersedes this list: steps 10 onward
+(P1-01 … P1-30 there) are what actually remains, starting with per-profile item visibility, permission
+refresh, and the websocket criterion this list omitted.
 
 In dependency order.
 
