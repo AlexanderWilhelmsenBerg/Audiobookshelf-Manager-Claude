@@ -42,6 +42,13 @@ internal data class UserDto(
     val librariesAccessible: List<String> = emptyList(),
     val isActive: Boolean = true,
     val isLocked: Boolean = false,
+    /**
+     * PRODUCT_SPEC LIB-001 — the positions this account has, as the server has them.
+     *
+     * Empty in every capture until one was taken against a server that had actually played something;
+     * the element shape below is `contracts/media-progress.json`, observed 2026-08-06.
+     */
+    val mediaProgress: List<MediaProgressDto> = emptyList(),
 )
 
 /**

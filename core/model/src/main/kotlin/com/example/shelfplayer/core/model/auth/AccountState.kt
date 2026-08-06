@@ -1,6 +1,9 @@
 package com.example.shelfplayer.core.model.auth
 
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileRole
+import java.time.Instant
+import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC 5.2 — what the server currently says about an account, asked again later.
@@ -33,4 +36,32 @@ data class AccountState(
     /** Re-read every time: an account promoted or demoted on the server changes which actions are offered. */
     val role: ProfileRole,
     val access: LibraryAccess,
+    /**
+     * PRODUCT_SPEC LIB-001 — every position this account has, as the server has them.
+     *
+     * It rides along because it is already in the response. `POST /api/authorize` is the cold-start
+     * exchange the app performs anyway, and `user.mediaProgress` is part of it — so reading progress
+     * costs nothing beyond a call that was already being made. That is the whole of the fix for the
+     * acceptance case where a book played on another device needed a manual refresh of the entire
+     * library to show up: 491 requests replaced by zero extra ones.
+     *
+     * Empty means the account has no recorded positions, which is a real state. It does **not** mean
+     * "unknown" — a server that answered has told us everything it has.
+     */
+    val progress: List<AccountProgress> = emptyList(),
+)
+
+/**
+ * One position, as the server reports it (`contracts/media-progress.json`).
+ *
+ * Deliberately not `MediaProgress`: that type carries a `ProfileId` and a `hasUnsyncedChanges` flag,
+ * which are local facts the network layer has no business inventing. The repository owns turning this
+ * into the stored form, because only it knows which profile asked and what is already pending upload.
+ */
+data class AccountProgress(
+    val bookId: LibraryItemId,
+    val position: Duration,
+    val duration: Duration,
+    val isFinished: Boolean,
+    val updatedAt: Instant,
 )

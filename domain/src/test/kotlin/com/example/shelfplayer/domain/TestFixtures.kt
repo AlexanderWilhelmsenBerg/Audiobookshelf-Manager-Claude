@@ -14,6 +14,8 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
+import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Author
@@ -173,6 +175,14 @@ internal class FakeLibraryRepository(books: List<Book> = emptyList(), libraries:
     var refreshResult: AppResult<Int> = AppResult.Success(0)
     val refreshedProfiles = mutableListOf<ProfileId>()
 
+    /** What a progress-only sync handed over, so a test can assert it happened without a library sweep. */
+    val progressWritten = mutableListOf<List<AccountProgress>>()
+
+    override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> {
+        progressWritten += progress
+        return AppResult.Success(progress.size)
+    }
+
     override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = storedLibraries
 
     override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> =
@@ -237,15 +247,27 @@ internal class FakeAuthRepository(
      */
     val permissionRefreshes = mutableListOf<ProfileId>()
 
-    private var permissions: AppResult<LibraryAccess> = AppResult.Success(LibraryAccess.None)
+    private var permissions: AppResult<AccountState> = AppResult.Success(account(emptyList()))
+
+    private fun account(progress: List<AccountProgress>) = AccountState(
+        userId = null,
+        username = "ada",
+        role = ProfileRole.Listener,
+        access = LibraryAccess.None,
+        progress = progress,
+    )
 
     fun willFailToRefreshPermissions(error: AppError) {
         permissions = AppResult.Failure(error)
     }
 
-    override suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess> {
+    override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> {
         permissionRefreshes += profileId
         return permissions
+    }
+
+    fun willReportProgress(progress: List<AccountProgress>) {
+        permissions = AppResult.Success(account(progress))
     }
 
     private var signIn: AppResult<Profile> = AppResult.Success(profile())

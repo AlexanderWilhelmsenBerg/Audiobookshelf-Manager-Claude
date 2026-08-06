@@ -142,4 +142,14 @@ interface LibraryDao {
         """,
     )
     fun observeVisibleBookCount(profileId: String, serverId: String): Flow<Int>
+
+    /**
+     * PRODUCT_SPEC 5.2 — the book keys this profile may see, for a caller that has to filter a list it
+     * did not get from a query.
+     *
+     * The progress sync is that caller: the server sends every position the *account* has, including
+     * positions in libraries it has since lost, and those must not become rows nothing can display.
+     */
+    @Query("SELECT bookKey FROM profile_visible_books WHERE profileId = :profileId")
+    suspend fun visibleBookKeys(profileId: String): List<String>
 }

@@ -7,6 +7,8 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ServerStatus
+import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookSortOrder
@@ -14,6 +16,7 @@ import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
+import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -51,6 +54,7 @@ class HomeViewModel @Inject constructor(
     observeSyncState: ObserveSyncStateUseCase,
     profileRepository: ProfileRepository,
     private val networkMonitor: NetworkMonitor,
+    private val syncAccount: SyncAccountUseCase,
     private val refreshLibrary: RefreshLibraryUseCase,
 ) : ViewModel() {
 
@@ -113,6 +117,7 @@ class HomeViewModel @Inject constructor(
             // A live error from the user's own refresh wins: it is the newer fact, and it is the one they
             // are waiting for an answer to.
             error = refresh.lastError ?: syncState?.lastError,
+            serverStatus = serverStatusOf(isOnline, refresh, syncState),
             // PRODUCT_SPEC LIB-001 — "the home screen can render partial cached content while sync
             // continues", and sync status is "visible but non-blocking".
             //
@@ -190,6 +195,15 @@ class HomeViewModel @Inject constructor(
     fun onVisible() {
         val state = uiState.value
         val profileId = state.profile?.id ?: return
+
+        // PRODUCT_SPEC LIB-001 / AUTH-004 — the cheap half, every time the screen appears.
+        //
+        // One request that brings back positions played elsewhere, a grant changed on the server, and
+        // whether the account is still enabled. It is not bounded by `syncAttemptedFor` because it is
+        // not the expensive one: the library sweep below is 491 requests, this is one, and the whole
+        // reason it exists is so that coming back to the app does not have to cost the former.
+        viewModelScope.launch { syncAccount(profileId) }
+
         if (profileId in syncAttemptedFor || state.isRefreshing) return
         syncAttemptedFor += profileId
         refresh()
@@ -204,6 +218,7 @@ class HomeViewModel @Inject constructor(
                 it.copy(
                     inFlight = false,
                     lastError = (result as? AppResult.Failure)?.error,
+                    lastAttemptSucceeded = result is AppResult.Success,
                 )
             }
         }
@@ -221,7 +236,12 @@ class HomeViewModel @Inject constructor(
         refreshState.update { it.copy(lastError = null) }
     }
 
-    private data class RefreshState(val inFlight: Boolean = false, val lastError: AppError? = null)
+    private data class RefreshState(
+        val inFlight: Boolean = false,
+        val lastError: AppError? = null,
+        /** Distinct from `lastError == null`, which is also true before anything has been attempted. */
+        val lastAttemptSucceeded: Boolean = false,
+    )
 
     /** What the user has asked the shelf to show: the default order is what was played last. */
     private data class ShelfControls(val query: String = "", val order: BookSortOrder = BookSortOrder.LastPlayed)
@@ -231,6 +251,38 @@ class HomeViewModel @Inject constructor(
 
     /** A refresh's own state alongside the device's, so the UI can tell "no network" from "server said no". */
     private data class Attempt(val refresh: RefreshState, val isOnline: Boolean)
+
+    /**
+     * PRODUCT_SPEC LIB-002 / SYNC-001 — the reachability indicator, inferred from calls already made.
+     *
+     * There is deliberately no separate ping. A dedicated probe would answer a slightly different
+     * question than the one the user cares about — "does the health endpoint respond" rather than "is my
+     * library working" — and would cost a request per interval to do it. The outcome of the sync the app
+     * just performed is both free and more truthful.
+     *
+     * Offline outranks everything: with no network there is nothing to say about the server, and showing
+     * it as unreachable would blame the wrong thing. That is why this is three states rather than a
+     * boolean — "unknown" is a real answer and the honest one before anything has been attempted.
+     */
+    private fun serverStatusOf(isOnline: Boolean, refresh: RefreshState, syncState: SyncState?): ServerStatus = when {
+        !isOnline -> ServerStatus.Unknown
+        refresh.lastError != null -> if (refresh.lastError.isReachability()) {
+            ServerStatus.Unreachable
+        } else {
+            // A `401` or a `403` is a server that answered — clearly reachable, and saying otherwise
+            // would send the user to check their network over a permissions problem.
+            ServerStatus.Reachable
+        }
+
+        refresh.lastAttemptSucceeded -> ServerStatus.Reachable
+        syncState?.status == SyncStatus.Failed ->
+            if (syncState.lastError?.isReachability() == true) ServerStatus.Unreachable else ServerStatus.Reachable
+
+        syncState?.lastSuccessfulSyncAt != null -> ServerStatus.Reachable
+        else -> ServerStatus.Unknown
+    }
+
+    private fun AppError.isReachability(): Boolean = this is AppError.Network || this is AppError.Timeout
 
     private companion object {
         /** PRODUCT_SPEC LIB-002: search debounce is 300 ms. */
@@ -248,6 +300,16 @@ data class HomeUiState(
     val isRefreshing: Boolean = false,
     val syncStatus: SyncStatus = SyncStatus.NeverSynced,
     val error: AppError? = null,
+    /**
+     * PRODUCT_SPEC LIB-002 / SYNC-001 — whether the *server* is answering, as opposed to whether the
+     * device has a network.
+     *
+     * Asked for from a device: "an icon on top to show that the server is reachable or not". The two
+     * are genuinely different questions and both are shown — a LAN-only server is unreachable over a
+     * perfectly good mobile connection, and reporting that as "offline" would send the user to check
+     * their phone instead of their VPN.
+     */
+    val serverStatus: ServerStatus = ServerStatus.Unknown,
     /**
      * PRODUCT_SPEC LIB-002 — "empty, loading, error, and offline states are distinct".
      *

@@ -15,6 +15,8 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.asFailure
+import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
@@ -375,8 +377,14 @@ class SignInViewModelTest {
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
             AppResult.Success(SessionStatus.Active)
 
-        override suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess> =
-            AppResult.Success(LibraryAccess.None)
+        override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> = AppResult.Success(
+            AccountState(
+                userId = null,
+                username = "test",
+                role = ProfileRole.Listener,
+                access = LibraryAccess.None,
+            ),
+        )
 
         override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
 
@@ -433,6 +441,9 @@ class SignInViewModelTest {
 
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
             MutableStateFlow(SyncState.idle(ServerId("srv_books"), profileId))
+
+        override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> =
+            AppResult.Success(0)
 
         override suspend fun refresh(profileId: ProfileId): AppResult<Int> {
             refreshedProfiles += profileId

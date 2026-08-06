@@ -226,7 +226,7 @@ playback steps belong to Phase 2.
   Still unobserved, and therefore still unassumable: every other event name (item changes, library
   scans, session events), the behaviour of the real websocket upgrade as opposed to polling, and what
   the server does with an invalid token in the `auth` frame.
-- **P1-06 — Probe websocket availability** into the capability set (SYNC-001), from the handshake's
+- ✅ **P1-06 — Probe websocket availability** into the capability set (SYNC-001), from the handshake's
   `upgrades` rather than from the server version — it is a property of the deployment, and a reverse
   proxy that strips the upgrade will not list it.
 - **P1-07 — `RealtimeConnection`:** the engine.io sequence (handshake → `40` → `42["auth", token]`),
@@ -238,7 +238,7 @@ playback steps belong to Phase 2.
   the grant (TC-37 — reuses P1-02's write path), and account state (TC-45 — reuses the reauthentication
   mark). Bound to the profile whose socket received it: the frame carries no server identity, so the
   binding comes from the connection, never from the payload.
-- **P1-09 — REST fallback:** a progress-only sync reading `user.mediaProgress` from the cold-start
+- ✅ **P1-09 — REST fallback:** a progress-only sync reading `user.mediaProgress` from the cold-start
   `POST /api/authorize` the app already performs, so TC-10 is fixed even where a proxy breaks the socket
   entirely. The element shape is now captured, so this is unblocked and is the cheaper half of step 10 —
   worth building first, since it works everywhere the socket does not.
@@ -247,9 +247,9 @@ playback steps belong to Phase 2.
 
 - **P1-10 — Retry executor.** ✅ Done. Three retries for transient GET failures, exponential backoff with jitter,
   `Retry-After` honoured, no blind retry on auth (`PRODUCT_SPEC 14.3`).
-- **P1-11 — Reachability indicator.** Green/red on the shelf top bar and on each known-server row at
+- ✅ **P1-11 — Reachability indicator.** Green/red on the shelf top bar and on each known-server row at
   sign-in (TC-05b).
-- **P1-12 — Foreground refresh policy.** Staleness-driven refresh on resume, a cancellable in-flight
+- ✅ **P1-12 — Foreground refresh policy.** Staleness-driven refresh on resume, a cancellable in-flight
   refresh, a single-flight guard so pull-to-refresh, reconnect, profile switch and socket events cannot
   stampede the same N+1 sweep, and a session probe on resume (TC-45).
 - **P1-13 — WorkManager background refresh.** Uniquely named per profile, cancelled on profile removal,

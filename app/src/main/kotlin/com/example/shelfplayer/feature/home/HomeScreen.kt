@@ -1,13 +1,18 @@
 package com.example.shelfplayer.feature.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Refresh
@@ -25,6 +30,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -40,6 +46,7 @@ import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfErrorState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ServerStatus
 import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.feature.library.BookCard
 import com.example.shelfplayer.feature.library.BookSortRow
@@ -85,7 +92,16 @@ fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = 
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = stringResource(R.string.home_title)) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = stringResource(R.string.home_title))
+                        ServerStatusDot(
+                            status = uiState.serverStatus,
+                            isOffline = uiState.isOffline,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = actions.onRefresh,
@@ -258,6 +274,40 @@ private fun EmptyOrFailed(uiState: HomeUiState, onRefresh: () -> Unit, modifier:
             modifier = content,
         )
     }
+}
+
+/**
+ * PRODUCT_SPEC LIB-002 / 14.4 — the reachability indicator, asked for from a device run.
+ *
+ * A dot rather than a word because it sits beside a title, and a `contentDescription` rather than only
+ * a colour because PRODUCT_SPEC 21 requires the state to be available to TalkBack and to a user who
+ * cannot distinguish red from green — a colour-only indicator says nothing to either.
+ *
+ * Offline outranks the server's own state: with no network the app has learned nothing about the
+ * server, and showing it red would blame the wrong thing.
+ */
+@Composable
+private fun ServerStatusDot(status: ServerStatus, isOffline: Boolean, modifier: Modifier = Modifier) {
+    val effective = if (isOffline) ServerStatus.Unknown else status
+    val colour = when (effective) {
+        ServerStatus.Reachable -> MaterialTheme.colorScheme.primary
+        ServerStatus.Unreachable -> MaterialTheme.colorScheme.error
+        ServerStatus.Unknown -> MaterialTheme.colorScheme.outlineVariant
+    }
+    val description = stringResource(
+        when {
+            isOffline -> R.string.home_server_offline
+            effective == ServerStatus.Reachable -> R.string.home_server_reachable
+            effective == ServerStatus.Unreachable -> R.string.home_server_unreachable
+            else -> R.string.home_server_unknown
+        },
+    )
+    Box(
+        modifier = modifier
+            .size(10.dp)
+            .background(color = colour, shape = CircleShape)
+            .semantics { contentDescription = description },
+    )
 }
 
 @Composable

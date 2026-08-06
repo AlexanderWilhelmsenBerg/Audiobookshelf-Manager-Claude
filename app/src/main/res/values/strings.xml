@@ -17,6 +17,11 @@
     -->
     <string name="home_offline_title">No connection</string>
     <string name="home_offline_body">This device is offline and nothing has been downloaded for this account yet. Your library will appear once the connection returns.</string>
+    <!-- PRODUCT_SPEC 21 — the dot's meaning in words, for TalkBack and for anyone who cannot tell red from green. -->
+    <string name="home_server_reachable">Server reachable</string>
+    <string name="home_server_unreachable">Server not reachable</string>
+    <string name="home_server_unknown">Server status unknown</string>
+    <string name="home_server_offline">Device offline, server status unknown</string>
     <string name="home_offline_caption">Offline — showing your cached library</string>
     <string name="home_no_profile_title">No server connected</string>
     <string name="home_no_profile_body">Sign in to an Audiobookshelf server to see your books.</string>

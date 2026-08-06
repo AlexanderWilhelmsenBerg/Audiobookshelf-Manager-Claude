@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.domain.FakeAuthRepository
+import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.FakeProfileRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -17,8 +18,9 @@ class SwitchProfileUseCaseTest {
 
     private val profiles = FakeProfileRepository()
     private val auth = FakeAuthRepository()
+    private val libraries = FakeLibraryRepository()
 
-    private fun useCase() = SwitchProfileUseCase(profiles, auth)
+    private fun useCase() = SwitchProfileUseCase(profiles, auth, SyncAccountUseCase(profiles, auth, libraries))
 
     @Test
     fun `switching selects the profile and loads its credential`() = runTest {

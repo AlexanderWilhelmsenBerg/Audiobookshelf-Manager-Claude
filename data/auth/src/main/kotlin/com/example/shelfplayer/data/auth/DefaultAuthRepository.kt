@@ -17,8 +17,8 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.asFailure
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
-import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionIdentity
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.flatMap
@@ -286,45 +286,44 @@ class DefaultAuthRepository @Inject constructor(
      * permission change, and treating it as one would revoke a user's library every time they walked into
      * a lift.
      */
-    override suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess> =
-        withContext(ioDispatcher) {
-            val baseUrl = serverBaseUrlFor(profileId)
-                ?: return@withContext AppError.Validation(
-                    summary = "That profile is no longer saved on this device.",
-                ).asFailure()
-            val token = sessionTokens.accessTokenFor(profileId)
-                ?: return@withContext AppError.Authentication().asFailure()
+    override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> = withContext(ioDispatcher) {
+        val baseUrl = serverBaseUrlFor(profileId)
+            ?: return@withContext AppError.Validation(
+                summary = "That profile is no longer saved on this device.",
+            ).asFailure()
+        val token = sessionTokens.accessTokenFor(profileId)
+            ?: return@withContext AppError.Authentication().asFailure()
 
-            when (val account = gateway.auth.currentAccount(baseUrl, token)) {
-                is AppResult.Failure -> {
-                    if (account.error is AppError.Authentication || account.error is AppError.Authorization) {
-                        markReauthenticationRequired(profileId, reason = "permission refresh was refused")
-                    }
-                    AppResult.Failure(account.error)
+        when (val account = gateway.auth.currentAccount(baseUrl, token)) {
+            is AppResult.Failure -> {
+                if (account.error is AppError.Authentication || account.error is AppError.Authorization) {
+                    markReauthenticationRequired(profileId, reason = "permission refresh was refused")
                 }
+                AppResult.Failure(account.error)
+            }
 
-                is AppResult.Success -> {
-                    val access = account.value.access
-                    profileDao.setAccountState(
-                        profileId = profileId.value,
-                        accessibleLibrariesJson = AuthEntityMappers.accessibleLibrariesJson(access),
-                        hasAllLibraryAccess = access.hasAllLibraryAccess,
-                        hasAllTagAccess = access.hasAllTagAccess,
-                        role = account.value.role.name,
-                    )
-                    profileDao.setRequiresReauthentication(profileId.value, required = false)
-                    logger.info(
-                        LogCategory.Auth,
-                        "Refreshed an account's permissions",
-                        LogField.Identifier("profile", profileId.value),
-                        LogField.Public("allLibraries", access.hasAllLibraryAccess),
-                        LogField.Public("allTags", access.hasAllTagAccess),
-                        LogField.Count("grantedLibraries", access.accessibleLibraryIds.size),
-                    )
-                    AppResult.Success(access)
-                }
+            is AppResult.Success -> {
+                val access = account.value.access
+                profileDao.setAccountState(
+                    profileId = profileId.value,
+                    accessibleLibrariesJson = AuthEntityMappers.accessibleLibrariesJson(access),
+                    hasAllLibraryAccess = access.hasAllLibraryAccess,
+                    hasAllTagAccess = access.hasAllTagAccess,
+                    role = account.value.role.name,
+                )
+                profileDao.setRequiresReauthentication(profileId.value, required = false)
+                logger.info(
+                    LogCategory.Auth,
+                    "Refreshed an account's permissions",
+                    LogField.Identifier("profile", profileId.value),
+                    LogField.Public("allLibraries", access.hasAllLibraryAccess),
+                    LogField.Public("allTags", access.hasAllTagAccess),
+                    LogField.Count("grantedLibraries", access.accessibleLibraryIds.size),
+                )
+                AppResult.Success(account.value)
             }
         }
+    }
 
     override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = withContext(ioDispatcher) {
         // Told to the server first, while the credential still exists to authenticate the request. A

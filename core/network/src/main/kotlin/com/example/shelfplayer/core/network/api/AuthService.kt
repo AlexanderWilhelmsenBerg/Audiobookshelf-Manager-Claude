@@ -1,11 +1,13 @@
 package com.example.shelfplayer.core.network.api
 
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Headers
 import retrofit2.http.POST
+import retrofit2.http.Query
 
 /**
  * The authentication endpoints, verified against Audiobookshelf 2.36.0 on 2026-08-05.
@@ -44,6 +46,23 @@ internal interface AuthService {
      * A `401` here is the signal that `AUTH-004` acts on: the stored token is no longer good, and the
      * profile is marked as requiring reauthentication rather than being silently signed out.
      */
+    /**
+     * PRODUCT_SPEC SYNC-001 — the websocket capability, probed rather than assumed.
+     *
+     * engine.io's opening handshake over the polling transport, which is plain HTTP. The response is a
+     * `0{...}` frame naming the transports it can upgrade to; `websocket` in that list is the capability.
+     *
+     * Deliberately unauthenticated and read-only: it establishes a session the app immediately abandons,
+     * which is the cheapest question that gets a truthful answer. Asking the *version* instead would be
+     * the guess PRODUCT_SPEC 10.4 warns about — a reverse proxy that strips the upgrade runs the same
+     * server version as one that does not.
+     */
+    @GET("socket.io/")
+    suspend fun socketHandshake(
+        @Query("EIO") engineIoVersion: String = "4",
+        @Query("transport") transport: String = "polling",
+    ): Response<ResponseBody>
+
     @POST("api/authorize")
     suspend fun authorize(@Header(AUTHORIZATION) bearer: String): Response<LoginResponseDto>
 

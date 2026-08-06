@@ -4,7 +4,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCandidate
-import com.example.shelfplayer.core.model.auth.LibraryAccess
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.SessionStatus
 
 /**
@@ -74,11 +74,15 @@ interface AuthRepository {
      * are over five minutes old — and a profile switch is a third, because the account whose view is about
      * to fill the screen is exactly the one whose grant should not be stale.
      *
-     * Returns the grant that was stored. A failure leaves the stored grant untouched unless the server
-     * actively rejected the session, which is marked instead; an unreachable server is not a permission
-     * change.
+     * Returns everything the server said about the account, which is more than the grant: the same
+     * response carries every listening position it has. The caller decides what to do with those — see
+     * `SyncAccountUseCase`, which is what makes a book played on another device appear without a
+     * 491-request library sync.
+     *
+     * A failure leaves the stored grant untouched unless the server actively rejected the session,
+     * which is marked instead; an unreachable server is not a permission change.
      */
-    suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess>
+    suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState>
 
     /**
      * PRODUCT_SPEC AUTH-004 — ends the session but keeps the profile.

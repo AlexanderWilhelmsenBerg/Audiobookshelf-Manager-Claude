@@ -23,12 +23,14 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.data.library.mapper.EntityMappers
+import com.example.shelfplayer.data.library.mapper.ProgressMappers
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -227,6 +229,55 @@ class DefaultLibraryRepository @Inject constructor(
             }
         }
     }
+
+    /**
+     * PRODUCT_SPEC LIB-001 — the positions, and only the positions.
+     *
+     * ### An unsynced local write always wins
+     *
+     * A row with `hasUnsyncedChanges` is a position this device recorded and has not managed to upload.
+     * Overwriting it with the server's older value would be losing progress, which is product
+     * priority 2. Those rows are skipped; the server learns about them when the outbox drains.
+     *
+     * ### And an older server value never wins either
+     *
+     * `updatedAt` decides the rest. Two devices playing the same book race, and this response may have
+     * been generated before the other device's write landed. Comparing timestamps rather than blindly
+     * overwriting is what stops a stale read rewinding a book the user just finished listening to.
+     *
+     * ### A position for a book this profile cannot see is dropped
+     *
+     * The server sends every position the *account* has, which for an account that lost access to a
+     * library still includes positions inside it. Writing those would put rows behind the visibility
+     * filter where nothing can show them and nothing will ever clean them up (PRODUCT_SPEC 5.2).
+     */
+    override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> =
+        withContext(ioDispatcher) {
+            val profile = profileDao.findProfile(profileId.value)
+                ?: return@withContext AppResult.Failure(AppError.Authentication())
+            val serverId = ServerId(profile.serverId)
+            val existing = progressDao.findProgressFor(profileId.value).associateBy { it.bookKey }
+            val visible = libraryDao.visibleBookKeys(profileId.value).toSet()
+
+            val rows = progress.mapNotNull { remote ->
+                val bookKey = EntityKey.of(serverId.value, remote.bookId.value)
+                val current = existing[bookKey]
+                when {
+                    bookKey !in visible -> null
+                    current?.hasUnsyncedChanges == true -> null
+                    current != null && current.updatedAt >= remote.updatedAt.toEpochMilli() -> null
+                    else -> ProgressMappers.toEntity(profileId, serverId, bookKey, remote)
+                }
+            }
+            progressDao.upsertProgress(rows)
+            logger.info(
+                LogCategory.Sync,
+                "Refreshed positions without re-reading the library",
+                LogField.Count("reported", progress.size),
+                LogField.Count("written", rows.size),
+            )
+            AppResult.Success(rows.size)
+        }
 
     private fun serverIdFlow(profileId: ProfileId): Flow<ServerId?> =
         profileDao.observeProfile(profileId.value).map { entity ->

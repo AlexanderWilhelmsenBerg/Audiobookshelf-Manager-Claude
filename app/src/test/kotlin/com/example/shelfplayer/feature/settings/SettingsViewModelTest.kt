@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.SyncState
+import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
@@ -168,5 +169,8 @@ class SettingsViewModelTest {
             MutableStateFlow(SyncState.idle(ServerId("srv_books"), profileId))
 
         override suspend fun refresh(profileId: ProfileId): AppResult<Int> = AppResult.Success(0)
+
+        override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> =
+            AppResult.Success(0)
     }
 }

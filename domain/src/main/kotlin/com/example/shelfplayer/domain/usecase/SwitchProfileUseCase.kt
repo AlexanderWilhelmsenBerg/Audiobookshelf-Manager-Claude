@@ -33,6 +33,7 @@ import javax.inject.Inject
 class SwitchProfileUseCase @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val authRepository: AuthRepository,
+    private val syncAccount: SyncAccountUseCase,
 ) {
     suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> =
         profileRepository.setActiveProfile(profileId).flatMap {
@@ -58,7 +59,7 @@ class SwitchProfileUseCase @Inject constructor(
      * follow it belongs to the screen that shows the result, not to this call.
      */
     private suspend fun refreshPermissions(profileId: ProfileId) {
-        authRepository.refreshPermissions(profileId)
+        syncAccount(profileId)
     }
 
     private fun AppResult<SessionStatus>.isActive(): Boolean =

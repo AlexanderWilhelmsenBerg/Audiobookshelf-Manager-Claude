@@ -3,11 +3,15 @@ package com.example.shelfplayer.core.network.api
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
+import java.time.Instant
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Turns the `/login` envelope into [AuthSession].
@@ -79,7 +83,27 @@ internal object AuthMapper {
                     accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
                     hasAllTagAccess = user.permissions?.accessAllTags ?: false,
                 ),
+                progress = user.mediaProgress.mapNotNull(::toProgress),
             ),
+        )
+    }
+
+    /**
+     * `null` for an entry with no item id: a position that names no book cannot be stored against one,
+     * and inventing a key for it would attach somebody's listening position to an arbitrary row.
+     *
+     * The unit conversion is the thing to be careful about. `currentTime` and `duration` are **seconds**
+     * — `42.5` is forty-two and a half — while `lastUpdate` is milliseconds. Reading either as the other
+     * silently misplaces every position in the library.
+     */
+    private fun toProgress(dto: MediaProgressDto): AccountProgress? {
+        val bookId = dto.libraryItemId?.takeIf(String::isNotBlank) ?: return null
+        return AccountProgress(
+            bookId = LibraryItemId(bookId),
+            position = dto.currentTime.seconds,
+            duration = dto.duration.seconds,
+            isFinished = dto.isFinished,
+            updatedAt = Instant.ofEpochMilli(dto.lastUpdate ?: 0L),
         )
     }
 

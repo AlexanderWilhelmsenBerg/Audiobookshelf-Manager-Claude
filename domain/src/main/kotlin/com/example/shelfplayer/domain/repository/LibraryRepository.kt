@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SyncState
+import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import kotlinx.coroutines.flow.Flow
@@ -46,4 +47,19 @@ interface LibraryRepository {
      * content (PRODUCT_SPEC LIB-001).
      */
     suspend fun refresh(profileId: ProfileId): AppResult<Int>
+
+    /**
+     * PRODUCT_SPEC LIB-001 — stores positions the server reported, without re-reading the library.
+     *
+     * The cheap half of keeping up to date. A full [refresh] is an N+1 over every item — 491 requests
+     * on the library a device run used — and a book played on another device changes one number. The
+     * positions arrive with the account state the app already fetches, so this costs no request at all.
+     *
+     * Takes them rather than fetching them: the credential lives in the auth layer and the rows live
+     * here, and a use case owning the composition is what keeps either from reaching into the other.
+     *
+     * Returns how many rows were written, which is not the number offered — see the implementation for
+     * which positions are declined and why.
+     */
+    suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int>
 }

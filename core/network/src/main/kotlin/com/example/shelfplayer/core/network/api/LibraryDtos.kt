@@ -172,10 +172,19 @@ internal data class ChapterDto(
 /**
  * PRODUCT_SPEC PLAY-004 — one profile's position in one book, as the server has it.
  *
- * Only present on an expanded item requested with `include=progress`.
+ * Reached two ways, which is why it lives here rather than beside either caller: nested on an expanded
+ * item requested with `include=progress`, and as an element of `user.mediaProgress` on
+ * `POST /api/authorize` and `GET /api/me` (`contracts/media-progress.json`, observed 2026-08-06).
+ *
+ * [libraryItemId] is absent in the first case — the item is already known from the request — and
+ * present in the second, where it is the only thing identifying which book the position belongs to.
+ *
+ * The units are the trap. [currentTime] and [duration] are **seconds**: `42.5` is forty-two and a half.
+ * [lastUpdate] is milliseconds. Reading either as the other silently misplaces every position stored.
  */
 @Serializable
 internal data class MediaProgressDto(
+    val libraryItemId: String? = null,
     val currentTime: Double = 0.0,
     val duration: Double = 0.0,
     val isFinished: Boolean = false,

@@ -2,19 +2,28 @@ package com.example.shelfplayer.feature.profiles
 
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.asFailure
+import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionStatus
+import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
+import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,8 +48,13 @@ class ProfileSwitcherViewModelTest {
 
     private val profiles = FakeProfiles()
     private val auth = FakeAuth()
+    private val libraries = StubLibraries()
 
-    private fun viewModel() = ProfileSwitcherViewModel(profiles, SwitchProfileUseCase(profiles, auth), auth)
+    private fun viewModel() = ProfileSwitcherViewModel(
+        profiles,
+        SwitchProfileUseCase(profiles, auth, SyncAccountUseCase(profiles, auth, libraries)),
+        auth,
+    )
 
     @Test
     fun `the switcher lists every saved profile and marks the active one`() = runTest {
@@ -241,8 +255,14 @@ class ProfileSwitcherViewModelTest {
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
             error("not part of this fake")
 
-        override suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess> =
-            AppResult.Success(LibraryAccess.None)
+        override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> = AppResult.Success(
+            AccountState(
+                userId = null,
+                username = "test",
+                role = ProfileRole.Listener,
+                access = LibraryAccess.None,
+            ),
+        )
 
         override suspend fun signOut(profileId: ProfileId): AppResult<Unit> {
             signedOutProfiles += profileId
@@ -254,6 +274,37 @@ class ProfileSwitcherViewModelTest {
             profiles.remove(profileId)
             return AppResult.Success(Unit)
         }
+    }
+
+    /**
+     * The switcher does not read the library; it only causes an account sync as a side effect of a
+     * switch. Everything here fails loudly rather than returning empty, so a test that starts depending
+     * on the library cannot pass by accident — [writeProgress] is the one call the switch really makes.
+     */
+    private class StubLibraries : LibraryRepository {
+        val writtenFor = mutableListOf<ProfileId>()
+
+        override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> {
+            writtenFor += profileId
+            return AppResult.Success(progress.size)
+        }
+
+        override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = error("not part of this fake")
+
+        override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> =
+            error("not part of this fake")
+
+        override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
+            error("not part of this fake")
+
+        override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = error("not part of this fake")
+
+        override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
+            error("not part of this fake")
+
+        override fun observeSyncState(profileId: ProfileId): Flow<SyncState> = error("not part of this fake")
+
+        override suspend fun refresh(profileId: ProfileId): AppResult<Int> = error("not part of this fake")
     }
 }
 

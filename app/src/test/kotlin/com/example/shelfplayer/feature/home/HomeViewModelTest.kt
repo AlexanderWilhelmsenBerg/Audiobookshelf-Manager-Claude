@@ -14,7 +14,8 @@ import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
-import com.example.shelfplayer.core.model.auth.LibraryAccess
+import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
@@ -27,6 +28,7 @@ import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
+import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -73,6 +75,7 @@ class HomeViewModelTest {
         networkMonitor = object : NetworkMonitor {
             override val isOnline: Flow<Boolean> = network
         },
+        syncAccount = SyncAccountUseCase(profiles, NeverRenewingAuth(), libraries),
         refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),
     )
 
@@ -525,7 +528,7 @@ class HomeViewModelTest {
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
             AppResult.Success(SessionStatus.ReauthenticationRequired)
 
-        override suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess> = notUsed()
+        override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> = notUsed()
 
         override suspend fun probeServer(serverUrl: String): AppResult<ServerCandidate> = notUsed()
 
@@ -600,6 +603,9 @@ class HomeViewModelTest {
 
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
             syncState.map { it ?: SyncState.idle(ServerId("fixture-server"), profileId) }
+
+        override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> =
+            AppResult.Success(0)
 
         override suspend fun refresh(profileId: ProfileId): AppResult<Int> {
             refreshCount++
