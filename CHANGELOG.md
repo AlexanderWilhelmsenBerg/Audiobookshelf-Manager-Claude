@@ -67,6 +67,10 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
 - `LibraryDao` split into read and write halves, and the sync's write path extracted into
   `LibrarySnapshotWriter`. Both were prompted by the quality gate rather than by taste, and both make the
   boundary real: a screen cannot reach an `upsert` from the DAO it reads through.
+- `docs/phase-1-acceptance.md`: the manual acceptance plan that closes Phase 1 — 53 cases covering
+  sign-in, the shelf, settings, two-account switching, a library-restricted account, offline browse,
+  session expiry and accessibility, with the database checks the UI cannot substitute for and an explicit
+  list of gaps that are expected to fail.
 - **Not demonstrated**: the app has now been installed and signed in on hardware against a real server,
   but none of Phase 1's three exit criteria has been performed there — two accounts switching, a
   library-restricted account, and offline browse are all still only unit-tested. Cover art (LIB-001,

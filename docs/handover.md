@@ -119,7 +119,9 @@ offline test — not code.
 
 ### What closing them takes
 
-An APK, a real Audiobookshelf server, and a human. Specifically:
+An APK, a real Audiobookshelf server, and a human. **`docs/phase-1-acceptance.md` is the executable
+version of this list** — 53 numbered cases with the exact `adb` commands, the accounts to prepare, and the
+gaps that are expected to fail so nobody raises them as defects. The short form:
 
 1. Sign in. Confirm the version and the encryption line appear before the password field, and that a
    deliberately wrong host is rejected there rather than at the password.
