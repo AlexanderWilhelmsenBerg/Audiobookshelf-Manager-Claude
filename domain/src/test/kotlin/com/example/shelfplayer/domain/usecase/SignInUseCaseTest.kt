@@ -25,8 +25,12 @@ import kotlin.test.assertTrue
  * PRODUCT_SPEC 6.1 — the first-launch sequence, and which parts of it are allowed to fail.
  *
  * The interesting assertions are the negative ones: a stored, valid session must survive a failed
- * handshake and a failed sync, because reporting either as a sign-in failure sends the user back to
- * re-enter a password that was correct — and discards a session that is stored and working.
+ * handshake, because reporting it as a sign-in failure sends the user back to re-enter a password that was
+ * correct — and discards a session that is stored and working.
+ *
+ * The initial sync is deliberately **not** here any more. It ran in the sign-in screen's scope, which a
+ * successful sign-in cancels by popping the screen; home owns it now. `does not start the initial sync`
+ * is the test that keeps it from drifting back.
  */
 class SignInUseCaseTest {
 
@@ -34,18 +38,30 @@ class SignInUseCaseTest {
     private val capabilities = FakeCapabilityRepository()
     private val libraries = FakeLibraryRepository()
 
-    private fun useCase() = SignInUseCase(auth, capabilities, libraries)
+    private fun useCase() = SignInUseCase(auth, capabilities)
 
     private suspend fun signIn() = useCase()("https://books.example", "ada", "pw")
 
     @Test
-    fun `a successful sign-in probes capabilities and syncs`() = runTest {
+    fun `a successful sign-in probes capabilities`() = runTest {
         val outcome = assertIs<AppResult.Success<SignInOutcome>>(signIn()).value
 
         assertEquals(TEST_PROFILE, outcome.profile.id)
         assertNull(outcome.warning)
         assertEquals(listOf(TEST_PROFILE), capabilities.handshakes)
-        assertEquals(listOf(TEST_PROFILE), libraries.refreshedProfiles)
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-001 — the first sync belongs to the screen that shows its result.
+     *
+     * Awaiting it here made the sign-in button spin for the length of an N+1 over every item in the
+     * library, and then had that work cancelled when the screen was popped. Home starts it instead.
+     */
+    @Test
+    fun `a successful sign-in does not start the initial sync`() = runTest {
+        signIn()
+
+        assertTrue(libraries.refreshedProfiles.isEmpty())
     }
 
     @Test
@@ -71,34 +87,8 @@ class SignInUseCaseTest {
 
         assertEquals(TEST_PROFILE, outcome.profile.id)
         assertIs<AppError.Network>(assertNotNull(outcome.warning))
-        // The sync still runs: a server whose capabilities are unknown can still be browsed.
-        assertEquals(listOf(TEST_PROFILE), libraries.refreshedProfiles)
-    }
-
-    /** LIB-001 already handles an empty cached library as a visible, retryable sync state. */
-    @Test
-    fun `a failed first sync still signs the user in and reports a warning`() = runTest {
-        libraries.refreshResult = AppError.Timeout().asFailure()
-
-        val outcome = assertIs<AppResult.Success<SignInOutcome>>(signIn()).value
-
-        assertEquals(TEST_PROFILE, outcome.profile.id)
-        assertIs<AppError.Timeout>(assertNotNull(outcome.warning))
-    }
-
-    /**
-     * The first failure is the one worth showing, and which one that is also pins the order down:
-     * PRODUCT_SPEC SYNC-001 puts the handshake "on login", before the sync, so its error is the one that
-     * surfaces when both fail.
-     */
-    @Test
-    fun `the warning names the handshake when both steps fail`() = runTest {
-        capabilities.result = AppError.Network().asFailure()
-        libraries.refreshResult = AppError.Timeout().asFailure()
-
-        val outcome = assertIs<AppResult.Success<SignInOutcome>>(signIn()).value
-
-        assertIs<AppError.Network>(assertNotNull(outcome.warning))
+        // A server whose capabilities are unknown is still signed in and still browsable.
+        assertEquals(false, outcome.profile.requiresReauthentication)
     }
 
     private class FakeCapabilityRepository : CapabilityRepository {

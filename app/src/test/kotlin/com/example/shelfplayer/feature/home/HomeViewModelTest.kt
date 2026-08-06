@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
@@ -104,6 +105,39 @@ class HomeViewModelTest {
             viewModel.onVisible()
 
             assertEquals(1, libraries.refreshCount, "the initial sync must not be retried in a loop")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-001 — an abandoned sync is picked up rather than waited on forever.
+     *
+     * A `sync_state` row saying `Syncing` while nothing here is running one means the process that started
+     * it is gone. Before this, home read that as "a sync is in progress", showed a progress bar for a sync
+     * that would never finish, and refused to start its own because the status was not `NeverSynced`. That
+     * is the "empty library until I pressed refresh" report.
+     */
+    @Test
+    fun `a sync recorded as running but abandoned is restarted`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.setSyncState(
+            SyncState(
+                serverId = ServerId("fixture-server"),
+                profileId = demoProfile.id,
+                status = SyncStatus.Syncing,
+                lastSuccessfulSyncAt = null,
+                lastAttemptedAt = Instant.EPOCH,
+                lastError = null,
+            ),
+        )
+        val viewModel = viewModel()
+
+        viewModel.uiState.test {
+            awaitItem()
+            viewModel.onVisible()
+            viewModel.onVisible()
+
+            assertEquals(1, libraries.refreshCount, "adopted once, not on a loop")
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -442,6 +476,8 @@ class HomeViewModelTest {
         }
 
         override fun observeProfiles(): Flow<List<Profile>> = active.map(::listOfNotNull)
+
+        override fun observeServers(): Flow<List<Server>> = MutableStateFlow(emptyList())
 
         override fun observeActiveProfile(): Flow<Profile?> = active
 

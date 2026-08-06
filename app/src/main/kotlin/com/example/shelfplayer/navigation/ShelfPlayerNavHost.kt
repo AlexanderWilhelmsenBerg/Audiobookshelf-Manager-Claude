@@ -11,6 +11,7 @@ import com.example.shelfplayer.feature.book.BookRoute
 import com.example.shelfplayer.feature.home.HomeRoute
 import com.example.shelfplayer.feature.library.LibraryRoute
 import com.example.shelfplayer.feature.onboarding.SignInRoute
+import com.example.shelfplayer.feature.onboarding.SignInViewModel
 import com.example.shelfplayer.feature.profiles.ProfileSwitcherRoute
 import com.example.shelfplayer.feature.settings.SettingsRoute
 
@@ -24,11 +25,26 @@ import com.example.shelfplayer.feature.settings.SettingsRoute
 @Composable
 fun ShelfPlayerNavHost(startDestination: String, navController: NavHostController = rememberNavController()) {
     NavHost(navController = navController, startDestination = startDestination) {
-        composable(ShelfDestinations.SIGN_IN) {
+        composable(
+            route = ShelfDestinations.SIGN_IN,
+            arguments = listOf(
+                // Defaulted rather than nullable, so `sign-in` with no query resolves and the ViewModel
+                // reads "" instead of having to distinguish absent from empty.
+                navArgument(SignInViewModel.ARG_SERVER_URL) {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+                navArgument(SignInViewModel.ARG_USERNAME) {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+            ),
+        ) {
             SignInRoute(
                 onSignedIn = {
                     // The sign-in screen is popped, not stacked under home: pressing back from a freshly
-                    // signed-in home must not return to a password field.
+                    // signed-in home must not return to a password field. `popUpTo` names the route
+                    // pattern, which matches the entry whatever arguments it carries.
                     navController.navigate(ShelfDestinations.HOME) {
                         popUpTo(ShelfDestinations.SIGN_IN) { inclusive = true }
                     }
@@ -45,13 +61,18 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
                 },
                 onProfilesSelected = { navController.navigate(ShelfDestinations.PROFILES) },
                 onSettingsSelected = { navController.navigate(ShelfDestinations.SETTINGS) },
-                onSignInSelected = { navController.navigate(ShelfDestinations.SIGN_IN) },
+                onSignInSelected = { navController.navigate(ShelfDestinations.signIn()) },
             )
         }
         composable(ShelfDestinations.PROFILES) {
             ProfileSwitcherRoute(
                 onNavigateUp = navController::navigateUp,
-                onAddProfile = { navController.navigate(ShelfDestinations.SIGN_IN) },
+                onAddProfile = { navController.navigate(ShelfDestinations.signIn()) },
+                // PRODUCT_SPEC AUTH-004 — reauthenticating carries the address and username the app
+                // already has, so only the password is asked for again.
+                onSignInAgain = { serverUrl, username ->
+                    navController.navigate(ShelfDestinations.signIn(serverUrl, username))
+                },
             )
         }
         composable(ShelfDestinations.SETTINGS) {

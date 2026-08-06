@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.example.shelfplayer.core.database.entity.AudioTrackEntity
 import com.example.shelfplayer.core.database.entity.AuthorEntity
 import com.example.shelfplayer.core.database.entity.BookAuthorCrossRef
@@ -22,16 +23,30 @@ import com.example.shelfplayer.core.database.entity.SeriesEntity
  */
 @Dao
 interface LibraryWriteDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /**
+     * `@Upsert`, **not** `@Insert(REPLACE)` — and the difference is data loss.
+     *
+     * `INSERT OR REPLACE` implements a conflict as *delete the old row, insert the new one*, and SQLite
+     * runs `ON DELETE CASCADE` for that delete. Every one of the four tables below is a parent: replacing
+     * a library row deletes its books, replacing a book row deletes its tracks, chapters, author and
+     * series links **and the profile's progress in it**. A test caught it here — a sync that re-wrote a
+     * library with one book left one book, not the five that were already stored.
+     *
+     * `@Upsert` issues an `UPDATE` on conflict instead. Nothing is deleted, so nothing cascades.
+     *
+     * The leaf tables further down keep `REPLACE`: no foreign key points at them, so there is nothing for
+     * a delete to cascade to, and the sync's explicit `delete*For` calls already own their lifetime.
+     */
+    @Upsert
     suspend fun upsertLibraries(libraries: List<LibraryEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertAuthors(authors: List<AuthorEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertSeries(series: List<SeriesEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertBooks(books: List<BookEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

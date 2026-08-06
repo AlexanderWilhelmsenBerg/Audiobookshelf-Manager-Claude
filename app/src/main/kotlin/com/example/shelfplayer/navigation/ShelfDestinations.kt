@@ -2,6 +2,7 @@ package com.example.shelfplayer.navigation
 
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
+import java.net.URLEncoder
 
 /**
  * PRODUCT_SPEC 9.1 — the routes of the app shell.
@@ -12,7 +13,15 @@ import com.example.shelfplayer.core.model.LibraryItemId
  * `AbsLibraryApi.listBooks` refuses a library the active profile is not granted, whatever asked for it.
  */
 object ShelfDestinations {
-    const val SIGN_IN = "sign-in"
+    /**
+     * PRODUCT_SPEC AUTH-001 / AUTH-004 — adding a server, and returning to one.
+     *
+     * Both arguments are optional and empty by default, so the plain `sign-in` route still resolves. They
+     * exist for reauthentication: a profile the server stopped accepting already told the app its address
+     * and its username, and making the user retype a host on a phone keyboard is how a reauthentication
+     * prompt turns into an abandoned account.
+     */
+    const val SIGN_IN = "sign-in?serverUrl={serverUrl}&username={username}"
     const val HOME = "home"
     const val PROFILES = "profiles"
     const val SETTINGS = "settings"
@@ -21,6 +30,15 @@ object ShelfDestinations {
 
     const val ARG_LIBRARY_ID = "libraryId"
     const val ARG_BOOK_ID = "bookId"
+
+    /**
+     * The arguments are URL-encoded: a server address contains `:` and `/`, which would otherwise end the
+     * query value and take the rest of the address with it.
+     */
+    fun signIn(serverUrl: String? = null, username: String? = null): String = "sign-in?serverUrl=" +
+        encode(serverUrl) + "&username=" + encode(username)
+
+    private fun encode(value: String?): String = URLEncoder.encode(value.orEmpty(), Charsets.UTF_8.name())
 
     fun library(libraryId: LibraryId): String = "library/${libraryId.value}"
 

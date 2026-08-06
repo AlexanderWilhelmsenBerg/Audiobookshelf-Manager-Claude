@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.onboarding
 
+import androidx.lifecycle.SavedStateHandle
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
@@ -49,7 +50,32 @@ class SignInViewModelTest {
     private val capabilities = StubCapabilityRepository()
     private val libraries = StubLibraryRepository()
 
-    private fun viewModel() = SignInViewModel(auth, SignInUseCase(auth, capabilities, libraries))
+    private fun viewModel(serverUrl: String = "", username: String = "") = SignInViewModel(
+        savedStateHandle = SavedStateHandle(
+            mapOf(
+                SignInViewModel.ARG_SERVER_URL to serverUrl,
+                SignInViewModel.ARG_USERNAME to username,
+            ),
+        ),
+        authRepository = auth,
+        signIn = SignInUseCase(auth, capabilities),
+    )
+
+    /**
+     * PRODUCT_SPEC AUTH-004 — a profile sent here to sign in again arrives with what the app already knows.
+     *
+     * It still starts on the address stage: PRODUCT_SPEC 6.1 wants the version and the encryption line seen
+     * before a password is typed, and skipping the probe would skip both.
+     */
+    @Test
+    fun `a reauthentication arrives with its address and username filled in`() {
+        val state = viewModel(serverUrl = "https://books.example", username = "ada").uiState.value
+
+        assertEquals("https://books.example", state.serverUrl)
+        assertEquals("ada", state.username)
+        assertEquals(SignInStage.Address, state.stage)
+        assertEquals("", state.password)
+    }
 
     // --- PRODUCT_SPEC 6.1 steps 3-4: the address, before the password -----------------------------
 
@@ -208,14 +234,14 @@ class SignInViewModelTest {
     }
 
     /**
-     * PRODUCT_SPEC 6.1 — a failed handshake or first sync is a caveat, not a failed sign-in.
+     * PRODUCT_SPEC 6.1 — a failed handshake is a caveat, not a failed sign-in.
      *
      * The profile exists and its session is stored, so the screen must navigate onward carrying the
      * warning rather than sending the user back to a password field.
      */
     @Test
     fun `a warning after a successful sign-in still signs the user in`() = runTest {
-        libraries.refreshResult = AppError.Timeout().asFailure()
+        capabilities.result = AppError.Timeout().asFailure()
         val viewModel = credentialsStage()
         viewModel.onUsernameChanged("ada")
         viewModel.onPasswordChanged("pw")
@@ -225,6 +251,24 @@ class SignInViewModelTest {
         val signedIn = assertNotNull(viewModel.uiState.value.signedIn)
         assertIs<AppError.Timeout>(assertNotNull(signedIn.warning))
         assertNull(viewModel.uiState.value.error, "a caveat is not an error on this screen")
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-001 — signing in does not wait for the library.
+     *
+     * The first sync of a real library is one request per item. Awaiting it here left the sign-in button
+     * spinning for minutes and then had the work cancelled when this screen was popped; home starts it.
+     */
+    @Test
+    fun `signing in does not start a library sync`() = runTest {
+        val viewModel = credentialsStage()
+        viewModel.onUsernameChanged("ada")
+        viewModel.onPasswordChanged("pw")
+
+        viewModel.onCredentialsSubmitted()
+
+        assertNotNull(viewModel.uiState.value.signedIn)
+        assertTrue(libraries.refreshedProfiles.isEmpty())
     }
 
     /** Going back to the address discards the probe result and the password with it. */
@@ -309,7 +353,7 @@ class SignInViewModelTest {
     }
 
     private class StubLibraryRepository : LibraryRepository {
-        var refreshResult: AppResult<Int> = AppResult.Success(0)
+        val refreshedProfiles = mutableListOf<ProfileId>()
 
         override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = MutableStateFlow(emptyList())
 
@@ -325,6 +369,9 @@ class SignInViewModelTest {
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
             MutableStateFlow(SyncState.idle(ServerId("srv_books"), profileId))
 
-        override suspend fun refresh(profileId: ProfileId): AppResult<Int> = refreshResult
+        override suspend fun refresh(profileId: ProfileId): AppResult<Int> {
+            refreshedProfiles += profileId
+            return AppResult.Success(0)
+        }
     }
 }

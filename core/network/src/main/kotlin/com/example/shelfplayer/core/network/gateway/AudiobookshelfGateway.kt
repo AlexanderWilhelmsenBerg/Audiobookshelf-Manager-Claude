@@ -8,8 +8,8 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
-import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
 
 /**
  * PRODUCT_SPEC 10.4 — every Audiobookshelf call goes through this adapter.
@@ -107,5 +107,5 @@ interface LibraryApi {
      */
     suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>>
 
-    suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<List<BookSnapshot>>
+    suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<LibrarySnapshot>
 }

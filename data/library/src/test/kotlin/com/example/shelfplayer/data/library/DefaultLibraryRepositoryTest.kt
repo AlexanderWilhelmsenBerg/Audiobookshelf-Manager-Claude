@@ -16,7 +16,12 @@ import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SeriesSequence
+import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.library.BookSnapshot
+import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibraryKind
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.testing.RecordingLogSink
@@ -31,6 +36,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -48,6 +54,7 @@ class DefaultLibraryRepositoryTest {
 
     private lateinit var database: ShelfPlayerDatabase
     private lateinit var repository: DefaultLibraryRepository
+    private lateinit var writer: LibrarySnapshotWriter
     private val sink = RecordingLogSink()
     private val fixtureProfile = ProfileId("fixture-profile")
 
@@ -60,6 +67,11 @@ class DefaultLibraryRepositoryTest {
 
         val dispatcher = UnconfinedTestDispatcher()
         val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
+        writer = LibrarySnapshotWriter(
+            transaction = RoomDatabaseTransactionRunner(database),
+            libraryWriteDao = database.libraryWriteDao(),
+            progressDao = database.progressDao(),
+        )
 
         repository = DefaultLibraryRepository(
             libraryDao = database.libraryDao(),
@@ -72,11 +84,7 @@ class DefaultLibraryRepositoryTest {
                 logger = logger,
                 ioDispatcher = dispatcher,
             ),
-            writer = LibrarySnapshotWriter(
-                transaction = RoomDatabaseTransactionRunner(database),
-                libraryWriteDao = database.libraryWriteDao(),
-                progressDao = database.progressDao(),
-            ),
+            writer = writer,
             clock = TestAppClock(),
             logger = logger,
             ioDispatcher = dispatcher,
@@ -331,6 +339,68 @@ class DefaultLibraryRepositoryTest {
         val forOther = repository.observeAccessibleBooks(ProfileId("other-profile")).first()
         assertTrue(forOther.all { it.progress == null })
     }
+
+    /**
+     * PRODUCT_SPEC LIB-001 / 13.2 — an incomplete sync writes, but never deletes.
+     *
+     * The reconciliation pass marks anything absent from a sync as deleted. That is correct when the sync
+     * saw everything and wrong when it did not: an item missing because its fetch timed out would be
+     * soft-deleted on the strength of a dropped connection, and the user would watch books disappear.
+     */
+    @Test
+    fun `an incomplete sync keeps books it could not fetch`() = runTest {
+        repository.refresh(fixtureProfile)
+        val before = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first()
+        assertEquals(5, before.size)
+
+        // One book came back; the other four were unreachable. Written directly, because the fake gateway
+        // has no way to make an individual item fail.
+        writer.write(
+            libraries = listOf(fictionLibrary(before.first().serverId)),
+            snapshots = mapOf(
+                LibraryId("lib-fiction") to LibrarySnapshot(
+                    books = listOf(BookSnapshot(before.first(), tracks = emptyList(), chapters = emptyList())),
+                    unreachableCount = 4,
+                ),
+            ),
+        )
+
+        assertEquals(
+            5,
+            repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().size,
+            "an unreachable item is not a deleted one",
+        )
+    }
+
+    /** The other half of the rule: a sync that saw everything *is* allowed to reconcile deletions. */
+    @Test
+    fun `a complete sync soft-deletes what the server no longer lists`() = runTest {
+        repository.refresh(fixtureProfile)
+        val before = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first()
+
+        writer.write(
+            libraries = listOf(fictionLibrary(before.first().serverId)),
+            snapshots = mapOf(
+                LibraryId("lib-fiction") to LibrarySnapshot(
+                    books = listOf(BookSnapshot(before.first(), tracks = emptyList(), chapters = emptyList())),
+                    removedCount = 4,
+                ),
+            ),
+        )
+
+        assertEquals(1, repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().size)
+    }
+
+    private fun fictionLibrary(serverId: ServerId) = Library(
+        serverId = serverId,
+        id = LibraryId("lib-fiction"),
+        name = "Fiction",
+        kind = LibraryKind.Book,
+        displayOrder = 0,
+        bookCount = 5,
+        remoteUpdatedAt = null,
+        lastFetchedAt = Instant.EPOCH,
+    )
 
     /** PRODUCT_SPEC 14.5 — a sync log line never names a library or a book. */
     @Test

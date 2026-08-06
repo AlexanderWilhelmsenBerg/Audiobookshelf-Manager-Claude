@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.profiles
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,11 +13,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -29,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -37,24 +41,27 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.model.Profile
-import com.example.shelfplayer.core.model.ProfileId
 
 @Composable
 fun ProfileSwitcherRoute(
     onNavigateUp: () -> Unit,
     onAddProfile: () -> Unit,
+    onSignInAgain: (serverUrl: String?, username: String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileSwitcherViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     ProfileSwitcherScreen(
         uiState = uiState,
-        onProfileSelected = viewModel::onProfileSelected,
-        onSignOut = viewModel::onSignOut,
-        onRemoveProfile = viewModel::onRemoveProfile,
-        onErrorDismissed = viewModel::onErrorDismissed,
-        onNavigateUp = onNavigateUp,
-        onAddProfile = onAddProfile,
+        actions = ProfileSwitcherActions(
+            onProfileSelected = viewModel::onProfileSelected,
+            onSignOut = viewModel::onSignOut,
+            onSignInAgain = onSignInAgain,
+            onRemoveProfile = viewModel::onRemoveProfile,
+            onErrorDismissed = viewModel::onErrorDismissed,
+            onNavigateUp = onNavigateUp,
+            onAddProfile = onAddProfile,
+        ),
         modifier = modifier,
     )
 }
@@ -63,12 +70,7 @@ fun ProfileSwitcherRoute(
 @Composable
 fun ProfileSwitcherScreen(
     uiState: ProfileSwitcherUiState,
-    onProfileSelected: (ProfileId) -> Unit,
-    onSignOut: (ProfileId) -> Unit,
-    onRemoveProfile: (ProfileId) -> Unit,
-    onErrorDismissed: () -> Unit,
-    onNavigateUp: () -> Unit,
-    onAddProfile: () -> Unit,
+    actions: ProfileSwitcherActions,
     modifier: Modifier = Modifier,
 ) {
     var pendingRemoval by remember { mutableStateOf<Profile?>(null) }
@@ -79,7 +81,7 @@ fun ProfileSwitcherScreen(
             TopAppBar(
                 title = { Text(text = stringResource(R.string.profiles_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateUp) {
+                    IconButton(onClick = actions.onNavigateUp) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.navigate_back),
@@ -98,7 +100,7 @@ fun ProfileSwitcherScreen(
                 title = stringResource(R.string.profiles_empty_title),
                 body = stringResource(R.string.profiles_empty_body),
                 actionLabel = stringResource(R.string.profiles_add),
-                onAction = onAddProfile,
+                onAction = actions.onAddProfile,
                 modifier = content,
             )
             return@Scaffold
@@ -118,25 +120,30 @@ fun ProfileSwitcherScreen(
                             .fillMaxWidth()
                             .semantics { liveRegion = LiveRegionMode.Assertive },
                     )
-                    TextButton(onClick = onErrorDismissed) {
+                    TextButton(onClick = actions.onErrorDismissed) {
                         Text(text = stringResource(R.string.profiles_dismiss))
                     }
                 }
             }
 
-            items(uiState.profiles, key = { it.id.value }) { profile ->
+            items(uiState.profiles, key = { it.profile.id.value }) { row ->
                 ProfileCard(
-                    profile = profile,
-                    isActive = profile.id == uiState.activeProfileId,
+                    row = row,
+                    isActive = row.profile.id == uiState.activeProfileId,
                     isBusy = uiState.isBusy,
-                    onSelected = { onProfileSelected(profile.id) },
-                    onSignOut = { onSignOut(profile.id) },
-                    onRemove = { pendingRemoval = profile },
+                    onSelected = { actions.onProfileSelected(row.profile.id) },
+                    onSignOut = { actions.onSignOut(row.profile.id) },
+                    onSignInAgain = { actions.onSignInAgain(row.serverUrl, row.profile.username) },
+                    onRemove = { pendingRemoval = row.profile },
                 )
             }
 
             item {
-                TextButton(onClick = onAddProfile, enabled = !uiState.isBusy, modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = actions.onAddProfile,
+                    enabled = !uiState.isBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Text(text = stringResource(R.string.profiles_add))
                 }
             }
@@ -147,7 +154,7 @@ fun ProfileSwitcherScreen(
         RemoveProfileDialog(
             profile = profile,
             onConfirm = {
-                onRemoveProfile(profile.id)
+                actions.onRemoveProfile(profile.id)
                 pendingRemoval = null
             },
             onDismiss = { pendingRemoval = null },
@@ -155,26 +162,86 @@ fun ProfileSwitcherScreen(
     }
 }
 
+/**
+ * PRODUCT_SPEC AUTH-002 / 6.5 — one saved account.
+ *
+ * Three things a device run said were unclear, fixed here:
+ *
+ * - **Which account is in use.** "In use" as plain text between two buttons read as a third, disabled
+ *   button. The active card now carries the theme's selected container colour and a filled badge, so the
+ *   answer is visible before anything is read.
+ * - **How to switch.** The whole card is the target, not a small text button. Tapping an inactive card
+ *   switches to it; the active card is not clickable, because switching to what is already active is not
+ *   an action.
+ * - **What to do with a signed-out profile.** It offered *Sign out* — an action already taken, and no way
+ *   back. A profile that needs to sign in again now offers exactly that, and carries its server address
+ *   and username with it so nothing has to be retyped.
+ */
 @Composable
 private fun ProfileCard(
-    profile: Profile,
+    row: ProfileRow,
     isActive: Boolean,
     isBusy: Boolean,
     onSelected: () -> Unit,
     onSignOut: () -> Unit,
+    onSignInAgain: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val profile = row.profile
+    val selectLabel = stringResource(R.string.profiles_use_named, profile.displayName)
+    val cardModifier = Modifier
+        .fillMaxWidth()
+        .then(
+            if (isActive || isBusy) {
+                Modifier
+            } else {
+                Modifier
+                    .clickable(onClick = onSelected)
+                    .semantics { contentDescription = selectLabel }
+            },
+        )
+
+    Card(
+        modifier = cardModifier,
+        colors = if (isActive) {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+        } else {
+            CardDefaults.cardColors()
+        },
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(text = profile.displayName, style = MaterialTheme.typography.titleMedium)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = profile.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                if (isActive) {
+                    ActiveBadge()
+                }
+            }
             Text(
                 text = stringResource(R.string.profiles_role, profile.role.name),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // PRODUCT_SPEC AUTH-002 — which server this account is on. Two profiles on one server look
+            // identical without it, and two accounts with the same username on different servers are the
+            // case where guessing wrong actually costs something.
+            row.server?.let { server ->
+                Text(
+                    text = server.baseUrl,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             // PRODUCT_SPEC AUTH-004 — the mark is visible rather than only enforced, so the user learns why
             // a refresh is refused before they try one.
             if (profile.requiresReauthentication) {
@@ -189,24 +256,42 @@ private fun ProfileCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (isActive) {
-                    Text(
-                        text = stringResource(R.string.profiles_active),
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                } else {
+                if (!isActive) {
                     TextButton(onClick = onSelected, enabled = !isBusy) {
                         Text(text = stringResource(R.string.profiles_use))
                     }
                 }
-                TextButton(onClick = onSignOut, enabled = !isBusy) {
-                    Text(text = stringResource(R.string.profiles_sign_out))
+                if (profile.requiresReauthentication) {
+                    TextButton(onClick = onSignInAgain, enabled = !isBusy) {
+                        Text(text = stringResource(R.string.profiles_sign_in_again))
+                    }
+                } else {
+                    TextButton(onClick = onSignOut, enabled = !isBusy) {
+                        Text(text = stringResource(R.string.profiles_sign_out))
+                    }
                 }
                 TextButton(onClick = onRemove, enabled = !isBusy) {
                     Text(text = stringResource(R.string.profiles_remove))
                 }
             }
         }
+    }
+}
+
+/** A filled badge rather than a line of text: the active account has to be findable at a glance. */
+@Composable
+private fun ActiveBadge(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Text(
+            text = stringResource(R.string.profiles_active),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
     }
 }
 

@@ -1,7 +1,7 @@
 # Phase 1 acceptance test plan
 
-What a human with an APK, a real Audiobookshelf server and about forty minutes has to do before Phase 1
-can be called closed.
+What a human with an APK, a real Audiobookshelf server and about an hour has to do before Phase 1 can be
+called closed.
 
 Every case here exists because **no automated test in this repository can perform it**. The unit and
 contract tests prove the code does what it was written to do; these prove it does what the requirement
@@ -53,15 +53,17 @@ worth nothing later.
 | **TC-04** | AUTH-001 | Point at a server with a self-signed or otherwise untrusted certificate, if you have one. | The error identifies a **certificate/security** problem, not "wrong password" and not a generic failure. *If you have no such server, mark Not run — do not guess.* | |
 | **TC-05** | 6.1, 15 | Enter the real server address and continue. | Before any password field is usable you can see: the **detected Audiobookshelf version**, and a line saying the connection **is encrypted**. | |
 | **TC-06** | 15 | If (and only if) you have an `http://` server, enter it. | An explicit warning that the connection is **not encrypted** and that the password would cross the network in the clear. | |
-| **TC-07** | AUTH-001 | Enter account A's username with a **wrong** password. | Rejected with an authentication error. The **username is still filled in**; the password field is cleared. | |
+| **TC-07** | AUTH-001 | Enter account A's username with a **wrong** password. | Rejected with an error naming the **credentials** — *"That username and password were not accepted by this server"*, not "this profile needs to sign in again". The **username is still filled in**; the password field is cleared. | |
+| **TC-07b** | AUTH-001 | Enter a username that **does not exist** on the server. | The same credential message. It must not name a profile, because there is no profile — and it must not distinguish an unknown username from a wrong password, which would tell an attacker which usernames exist. | |
 | **TC-08** | AUTH-001 | Enter the correct password. | Sign-in succeeds and you land on the app's main screen. | |
 
 ## 2. The shelf (LIB-001, LIB-002)
 
 | ID | Requirement | Steps | Expected | Result |
 | --- | --- | --- | --- | --- |
-| **TC-09** | LIB-001 | Watch the screen immediately after TC-08. | A sync starts **by itself** — a thin progress bar at the top. You are not asked to trigger it. | |
-| **TC-10** | LIB-001 | Wait for it to finish. | Books appear. The progress bar goes away. A line reports the number of books. | |
+| **TC-09** | LIB-001 | Watch the screen immediately after TC-08. | Sign-in returns **quickly** — it no longer waits for the library — and a sync then starts **by itself** on the shelf, shown as a thin progress bar at the top. You are not asked to trigger it. | |
+| **TC-10** | LIB-001 | Wait for it to finish. **A first sync of a large library is one request per book; several minutes is normal.** | Books appear. The progress bar goes away. A line reports the number of books. **No manual refresh should be needed** — this is the defect four device runs reported. | |
+| **TC-10b** | LIB-001 | Force-stop the app *while the first sync is running*, then reopen it. | The sync starts again by itself rather than showing a progress bar for a sync nothing is running. | |
 | **TC-11** | LIB-001 | Force-stop the app and reopen it. | Books are on screen **immediately**, before any sync completes. No full-screen spinner in front of them. | |
 | **TC-12** | LIB-001 | Pull down / tap refresh while books are on screen. | The progress bar appears **above** the list; the books stay visible and scrollable throughout. | |
 | **TC-13** | LIB-001 | Turn on aeroplane mode and tap refresh. | An error is reported **and the books stay on screen**. The library is never blanked by a failed refresh. | |
@@ -87,10 +89,14 @@ worth nothing later.
 | ID | Requirement | Steps | Expected | Result |
 | --- | --- | --- | --- | --- |
 | **TC-25** | AUTH-002 | Open the profile switcher, choose *Add a server*, and sign in as account **B** on the **same** server. | Sign-in succeeds. | |
-| **TC-26** | AUTH-002 | Open the switcher. | **Both** A and B are listed. B is marked as the one in use. | |
+| **TC-26** | AUTH-002 | Open the switcher. | **Both** A and B are listed, each showing its **role and server address**. B is unmistakably marked as the one in use — a filled badge on a highlighted card, not a word among buttons. | |
+| **TC-26b** | AUTH-002 | Tap anywhere on A's card. | It switches to A. The whole card is the target, not just a small *Use* button. | |
+| **TC-26c** | AUTH-002 | Sign in a **third** account, then check the profile list against the database (TC-28). | Adding an account must not disturb the ones already there. Signing a second account into a known server used to delete the first — `REPLACE` cascading — so this is the case worth checking deliberately. | |
 | **TC-27** | **Exit 1** | Switch back to A, then to B, then to A again. | Each switch lands on that account's own library and its own progress. **A's progress never shows under B**, and vice versa. | |
 | **TC-28** | 6.5 | Confirm the server was not duplicated: `adb shell run-as com.example.shelfplayer.debug sqlite3 databases/shelfplayer.db "select count(*) from servers; select profileId, username from profiles;"` | **One** server row, **two** profile rows. | |
-| **TC-29** | AUTH-002 | Sign **out** of B (not remove). | B stays in the list, marked as needing to sign in again. Its cached library is still browsable when selected. | |
+| **TC-29** | AUTH-002 | Sign **out** of B (not remove). | B stays in the list, marked as needing to sign in again. **Its card now offers *Sign in*, not *Sign out*.** Its cached library is still browsable when selected. | |
+| **TC-29b** | AUTH-004 | Tap **Sign in** on B's card. | The sign-in screen opens with B's **server address and username already filled in**. Only the password is asked for. Confirming the address still shows the version and the encryption line before the password field is usable. | |
+| **TC-29c** | AUTH-004 | Complete that sign-in. | B returns to the **same profile** — not a duplicate — with its progress intact, and the reauthentication mark is gone. | |
 | **TC-30** | AUTH-003 | With B signed out, check its stored credential is gone: `adb shell run-as com.example.shelfplayer.debug ls files/sessions/` | Fewer files than before — B's `.bin` files are gone. A's remain. | |
 | **TC-31** | AUTH-002 | Sign B back in from the switcher. | It returns to the **same profile** — B is not duplicated in the list, and its progress is still there. | |
 | **TC-32** | AUTH-002, 21 | Tap *Remove* on B and read the dialog **before** confirming. | It says removal deletes B's session, progress and downloads **from this device**, deletes nothing on the server, and does not affect other profiles. | |
@@ -111,6 +117,7 @@ the sanity check.
 | **TC-36** | 5.2 | Turn on **Open on libraries** while B is active. | The library list shows **only** B's granted libraries. | |
 | **TC-37** | 5.2 | On the server, **revoke** one of B's libraries. Back in the app, refresh as B. | The revoked library and its books disappear from B's shelf, its library list, and search. | |
 | **TC-38** | 5.2 | Switch to A and refresh. | A still sees everything. Revoking B's access changed nothing for A. | |
+| **TC-38b** | 5.2, AUTH-002 | With both accounts synced, check that each still has its own progress: open a book A has played and one B has played, under each account in turn. | Each account sees only its own position. A sync for one profile must not touch the other's progress rows. | |
 
 ## 6. Offline — **Exit criterion 3** (LIB-001)
 
@@ -122,6 +129,17 @@ the sanity check.
 | **TC-42** | Exit 3 | Still offline, tap refresh. | A clear network error. **The library stays on screen.** | |
 | **TC-43** | Exit 3 | Still offline, switch to profile B and back. | Both accounts' cached libraries are browsable offline, each with its own progress. | |
 | **TC-44** | LIB-001 | Turn the network back on and refresh. | The sync succeeds and the error clears without restarting the app. | |
+
+## 6b. Partial sync — the fix most worth confirming (LIB-001)
+
+The defect behind four device runs of "the library was empty until I refreshed". Hard to trigger on purpose;
+worth trying, and worth watching for.
+
+| ID | Requirement | Steps | Expected | Result |
+| --- | --- | --- | --- | --- |
+| **TC-44a** | LIB-001 | Start a refresh on a large library and let it run to completion **several times**. | It completes every time. If one item fails, the sync keeps the rest — it must never end with fewer books than it started with. | |
+| **TC-44b** | LIB-001 | If you can, interrupt one item mid-sync (briefly drop Wi-Fi during a refresh, then restore it). | The refresh finishes with **most** of the library rather than failing outright, and **no book already on screen disappears**. An item that could not be fetched is not a deleted item. | |
+| **TC-44c** | 13.2 | After any interrupted refresh, count the books before and after: `adb shell run-as com.example.shelfplayer.debug sqlite3 databases/shelfplayer.db "select count(*) from books where isDeleted = 0;"` | The count never drops because of a network failure. It drops only when books were genuinely removed on the server. | |
 
 ## 7. Session expiry (AUTH-004)
 
@@ -160,6 +178,7 @@ nobody reads a clean run of the table above as "Phase 1 is complete".
 | No server name in the switcher | AUTH-002 | `Profile` carries a server id but not the server's name. Showing the wrong one would be worse than showing none. Open item. |
 | Settings has one switch | SET-002 | Only the setting something honours is offered. |
 | Per-server cleartext opt-in | 15 | The sign-in screen warns; the opt-in is a SET-002 item that does not exist. |
+| **Progress does not update until you refresh** | LIB-001 | Playing in the Audiobookshelf web player does not reach the app on its own. LIB-001 wants websocket events with a REST refresh as the fallback, and only the fallback exists. A full refresh is one request per book, far too expensive to run on every foreground. The cheap fix — a progress-only sync from `POST /api/authorize`, which already returns `user.mediaProgress` — is blocked on one contract capture: the committed fixture's `mediaProgress` array is empty, so the element shape has never been seen. |
 | Search does not match ISBN or ASIN | LIB-002 | Those fields are not synced yet, so matching them would be a promise with nothing behind it. |
 | Sort order is not remembered per library | LIB-002 | Persisting it is the remainder of LIB-002. |
 

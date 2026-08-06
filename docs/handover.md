@@ -100,6 +100,69 @@ in.
      `LibrarySnapshotWriter`. Both changes were forced by detekt rather than chosen, and both are right:
      nothing that reads can now name an `upsert`.
 
+### Fourth device run — two accounts, and the root cause found
+
+The run that mattered. Two real accounts on one server, one of them library-restricted, and the reports
+from it identified the defect three earlier runs had only described.
+
+| Reported | Verdict |
+| --- | --- |
+| Signing in as a user that does not exist said **"This profile needs to sign in again."** | **Defect.** `AppError.Authentication`'s default summary is the AUTH-004 reauthentication wording, and `NetworkErrorMapper` maps every `401` to it — including the one that means "those credentials were refused". Fixed at the call site, which is the only place that knows what was asked. |
+| Signing in as root **needed a manual refresh before books appeared** | **Defect, root cause found.** See below. |
+| An added empty library appeared | Correct. |
+| Playing in the web interface **did not update the app** until a refresh | **Working as built, and a gap.** See *Progress freshness*. |
+| After signing out, the card still offered **Sign out**, and asked to sign in again | **Defect.** Fixed: a profile that needs to sign in again now offers **Sign in**, and carries its server address and username to the sign-in screen. |
+| Root saw everything; the restricted account saw only its own libraries | **Correct** — the first real-world evidence for exit criterion 2, though not the database check TC-35 asks for. |
+| "I should be able to press which user I want, and it should show clearly which is active" | **Defect.** "In use" was plain text between two buttons and read as a third, disabled one. The active card now has the theme's selected colour and a filled badge, the whole card switches profile, and each card shows its server address. |
+| Turning off the network and refreshing showed cached content with a failure | Correct — TC-42. TC-39 (force-stop and reopen offline) is still not done. |
+
+#### The root cause of "empty until I pressed refresh"
+
+Two bugs, both fixed, and neither was where the earlier runs suggested.
+
+1. **One failed item threw away the entire library sync.** `AbsLibraryApi` fetches each item expanded —
+   490 books is 490 requests — and it `return`ed on the first failure, discarding every snapshot already
+   collected. One timeout in 490 attempts is close to certain over a home connection. PRODUCT_SPEC LIB-001
+   says "failed optional sections do not fail the whole sync"; this did the opposite. It now keeps what it
+   fetched and reports how much it could not, and the sync is recorded as `PartiallySucceeded` — a status
+   the model has always had and nothing ever produced.
+
+   The counterpart matters as much: an **unreachable** item must not be treated as a **removed** one.
+   Reconciliation soft-deletes anything absent from a sync, so a partial sync that deleted what it could
+   not reach would turn one timeout into books visibly disappearing. `LibrarySnapshot.isComplete` gates
+   that, and only a fetch that saw everything is allowed to delete.
+
+2. **`INSERT OR REPLACE` was cascading deletes across the schema.** Found by the test written for (1),
+   which failed for the wrong reason. SQLite implements a `REPLACE` conflict as *delete the old row, then
+   insert* — and the delete runs `ON DELETE CASCADE`. Every parent table was written that way: re-writing
+   a library row deleted its books; re-writing a book row deleted its tracks, chapters, author and series
+   links **and the reading profile's progress in it**; re-writing a server row deleted its profiles.
+   Invisible while a sync always re-inserted everything it had just deleted, and data loss the moment one
+   did not. All four parent tables now use `@Upsert`, which updates instead of replacing.
+
+   This is the one worth remembering: the bug was not in the code the failing test was written for.
+
+3. **The initial sync ran in a scope that was cancelled.** `SignInUseCase` awaited it, in the sign-in
+   screen's `viewModelScope`, and a successful sign-in **pops** that screen. The sync died part-way and
+   left `sync_state` saying `Syncing` — for a sync nothing was running. Home then refused to start its own,
+   because its trigger was `NeverSynced`. The sync moved to home, which owns the screen the result appears
+   on and outlives the navigation that reaches it; home also adopts a sync recorded as running that nothing
+   is running.
+
+#### Progress freshness — the remaining gap
+
+Playing in the web interface does not reach the app until a refresh, and that is the current design rather
+than a bug: PRODUCT_SPEC LIB-001 wants websocket events to update Room with a REST refresh as the fallback,
+and only the fallback exists. A full refresh is an N+1 over every item, so it is far too expensive to run
+on every foreground.
+
+The cheap fix is a **progress-only sync**, and it is nearly reachable: `POST /api/authorize` already returns
+`user.mediaProgress` for the signed-in account in one request, and that endpoint is already captured and
+contract-tested. What is *not* captured is the shape of a `mediaProgress` **element** — the fixture's array
+is empty, because the seeded contract server had never played anything. Building on it now would be
+guessing at a response shape, which PRODUCT_SPEC 22.4 forbids. The next contract capture should play or seek
+an item before capturing so the array has contents; the sync is small work once it does.
+
 ### Exit criteria: 0 of 3 *demonstrated*, all 3 now reachable
 
 Every deliverable is built, and the device run above verified a good deal of the machinery underneath

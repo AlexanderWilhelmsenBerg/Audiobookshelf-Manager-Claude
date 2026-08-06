@@ -67,6 +67,26 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
 - `LibraryDao` split into read and write halves, and the sync's write path extracted into
   `LibrarySnapshotWriter`. Both were prompted by the quality gate rather than by taste, and both make the
   boundary real: a screen cannot reach an `upsert` from the DAO it reads through.
+- **One failed item no longer discards a whole library sync** (LIB-001): `AbsLibraryApi` fetches each item
+  expanded, so a 490-book library is 490 requests, and it used to abandon everything it had collected on the
+  first failure. It now keeps what it fetched, reports how much it could not, and records the sync as
+  `PartiallySucceeded`. Crucially an *unreachable* item is not treated as a *removed* one — only a complete
+  fetch is allowed to drive soft deletion, so a timeout can no longer make books disappear.
+- **`INSERT OR REPLACE` was cascading deletes across the schema.** SQLite implements a `REPLACE` conflict as
+  delete-then-insert, and the delete runs `ON DELETE CASCADE`: re-writing a library row deleted its books,
+  re-writing a book row deleted its tracks, chapters, links and the profile's progress, and re-writing a
+  server row deleted its profiles. Every parent table now uses `@Upsert`. Found by a test written for
+  something else.
+- **The initial sync no longer runs in a scope that gets cancelled.** It was awaited inside `SignInUseCase`,
+  in the sign-in screen's `viewModelScope`, which a successful sign-in pops — killing the sync part-way and
+  leaving `sync_state` stuck on `Syncing`. Home owns it now, and also adopts a sync recorded as running that
+  nothing is running.
+- A rejected sign-in says the credentials were refused, instead of reusing AUTH-004's "this profile needs to
+  sign in again" — which is what a `401` mapped to for every caller.
+- The profile switcher (AUTH-002): the active account is a filled badge on a highlighted card rather than a
+  word between two buttons, the whole card switches profile, each card shows its **server address** — the
+  open item from the previous PR — and a signed-out profile offers **Sign in** rather than *Sign out*,
+  carrying its address and username to the sign-in screen so only the password is retyped.
 - `docs/phase-1-acceptance.md`: the manual acceptance plan that closes Phase 1 — 53 cases covering
   sign-in, the shelf, settings, two-account switching, a library-restricted account, offline browse,
   session expiry and accessibility, with the database checks the UI cannot substitute for and an explicit

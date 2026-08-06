@@ -1,9 +1,8 @@
 package com.example.shelfplayer.core.database.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import kotlinx.coroutines.flow.Flow
@@ -25,10 +24,21 @@ interface ProfileDao {
     @Query("SELECT * FROM servers WHERE serverId = :serverId")
     fun observeServer(serverId: String): Flow<ServerEntity?>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT * FROM servers ORDER BY displayName COLLATE NOCASE ASC")
+    fun observeServers(): Flow<List<ServerEntity>>
+
+    /**
+     * `@Upsert`, not `@Insert(REPLACE)`: `servers` is the parent of `profiles` and `libraries`, and a
+     * `REPLACE` conflict is a delete plus an insert, which runs `ON DELETE CASCADE`. Signing a second
+     * account into a server would otherwise delete the first account's profile — and with it, its
+     * progress. PRODUCT_SPEC AUTH-002: removing one profile does not remove another profile's data, and
+     * *not* removing one certainly must not either.
+     */
+    @Upsert
     suspend fun upsertServer(server: ServerEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /** Same reason as [upsertServer]: `media_progress` cascades from `profiles`. */
+    @Upsert
     suspend fun upsertProfile(profile: ProfileEntity)
 
     /**

@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.onboarding
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppError
@@ -32,11 +33,28 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class SignInViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val authRepository: AuthRepository,
     private val signIn: SignInUseCase,
 ) : ViewModel() {
 
-    private val state = MutableStateFlow(SignInUiState())
+    /**
+     * PRODUCT_SPEC AUTH-004 — a profile that has to sign in again arrives with what it already knows.
+     *
+     * The switcher passes the server address and the username it has on file, so reauthenticating is a
+     * password and a tap rather than retyping a host on a phone keyboard.
+     *
+     * The **password** is deliberately not among them, and never could be: nothing stores one
+     * (PRODUCT_SPEC AUTH-003). The address still goes through the probe — the stage does not skip — so
+     * PRODUCT_SPEC 6.1's guarantee that the version and the encryption line are seen before a password is
+     * typed survives the shortcut.
+     */
+    private val state = MutableStateFlow(
+        SignInUiState(
+            serverUrl = savedStateHandle.get<String>(ARG_SERVER_URL).orEmpty(),
+            username = savedStateHandle.get<String>(ARG_USERNAME).orEmpty(),
+        ),
+    )
     val uiState: StateFlow<SignInUiState> = state.asStateFlow()
 
     fun onServerUrlChanged(value: String) = state.update {
@@ -75,7 +93,13 @@ class SignInViewModel @Inject constructor(
         }
     }
 
-    /** Returns to the address field, discarding the probe result and the password with it. */
+    /**
+     * Returns to the address field, discarding the probe result, the password and the username with it.
+     *
+     * The username goes too, deliberately: the reason to come back here is to point at a *different*
+     * server, and an account name carried across servers is more likely wrong than right. A prefilled
+     * username from a reauthentication survives only as long as the server it belongs to.
+     */
     fun onBackToServer() = state.update {
         SignInUiState(serverUrl = it.serverUrl)
     }
@@ -103,6 +127,11 @@ class SignInViewModel @Inject constructor(
 
     /** Acknowledges the completed sign-in so navigation happens once rather than on every recomposition. */
     fun onSignedInHandled() = state.update { it.copy(signedIn = null) }
+
+    companion object {
+        const val ARG_SERVER_URL = "serverUrl"
+        const val ARG_USERNAME = "username"
+    }
 }
 
 /**

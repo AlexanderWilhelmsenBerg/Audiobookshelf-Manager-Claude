@@ -102,8 +102,8 @@ class HomeViewModel @Inject constructor(
                 // A failure from the user's own refresh outranks the persisted state, the same way the
                 // error field does: it is the newer fact and the one they are waiting on.
                 presentation.refresh.lastError != null -> SyncStatus.Failed
-                // The persisted state comes next, because it is the only record of a sync the user did
-                // not start — the one `SignInUseCase` runs immediately after sign-in.
+                // The persisted state comes next, because it is the only record of a sync this process
+                // did not start — one abandoned by an earlier launch, or one another screen began.
                 //
                 // `NeverSynced` is the exception, and it has to be: the repository reports it both for
                 // "no sync has run" and for "there is no row", and content on screen proves a sync ran.
@@ -136,22 +136,30 @@ class HomeViewModel @Inject constructor(
     )
 
     /**
-     * PRODUCT_SPEC LIB-001 — "initial synchronization".
+     * PRODUCT_SPEC LIB-001 — "initial synchronization", and picking up an abandoned one.
      *
-     * A profile that has never synced gets one attempt without the user asking. This is the self-healing
-     * half of the bug reported from a device: signing in ran a sync, something went wrong with it, and the
-     * app then sat on an empty library waiting to be told to try again.
+     * This screen owns the first sync. `SignInUseCase` used to await it, in the sign-in screen's scope,
+     * which a successful sign-in then cancels by popping the screen — leaving a half-finished sync and a
+     * `sync_state` row stuck on [SyncStatus.Syncing]. That is the "empty library until I pressed refresh"
+     * report from three device runs.
      *
-     * Bounded to one attempt per ViewModel instance and only from [SyncStatus.NeverSynced], so a server
-     * that fails repeatedly is not retried in a loop — PRODUCT_SPEC LIB-001 wants sync status visible and
-     * non-blocking, not persistent. A failure leaves the recorded state on screen with a retry button.
+     * Two states start one:
+     *
+     * - [SyncStatus.NeverSynced] — no sync has run for this profile.
+     * - [SyncStatus.Syncing] — a sync is *recorded* as running while nothing here is running it. Either it
+     *   was abandoned, or another process is doing it; starting one is right in the first case and
+     *   harmless in the second, because the write is a single transaction over a fully materialised result.
+     *
+     * Bounded to one attempt per ViewModel instance, so a server that fails repeatedly is not retried in a
+     * loop — LIB-001 wants sync status visible and non-blocking, not persistent. A failure leaves the
+     * recorded state on screen with a retry button.
      */
     private var initialSyncAttempted = false
 
     fun onVisible() {
         val state = uiState.value
-        if (initialSyncAttempted || state.profile == null) return
-        if (state.syncStatus != SyncStatus.NeverSynced) return
+        if (initialSyncAttempted || state.profile == null || state.isRefreshing) return
+        if (state.syncStatus != SyncStatus.NeverSynced && state.syncStatus != SyncStatus.Syncing) return
         initialSyncAttempted = true
         refresh()
     }

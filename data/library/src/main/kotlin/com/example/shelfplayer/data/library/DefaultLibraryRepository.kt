@@ -25,8 +25,8 @@ import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.Book
-import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.data.library.mapper.EntityMappers
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -178,7 +178,7 @@ class DefaultLibraryRepository @Inject constructor(
             }
 
             is AppResult.Success -> {
-                val snapshots = mutableMapOf<LibraryId, List<BookSnapshot>>()
+                val snapshots = mutableMapOf<LibraryId, LibrarySnapshot>()
                 for (library in libraries.value) {
                     when (val books = gateway.library.listBooks(profileId, library.id)) {
                         is AppResult.Failure -> {
@@ -191,12 +191,21 @@ class DefaultLibraryRepository @Inject constructor(
                 }
 
                 val written = writer.write(libraries.value, snapshots)
-                recordSuccess(profileId, libraries.value.firstOrNull()?.serverId)
+                // PRODUCT_SPEC LIB-001 — a sync that could not reach some items succeeded *partly*, and
+                // says so. Recording it as a plain success would hide that the library on screen is
+                // missing books; recording it as a failure would hide that most of it is current.
+                val incomplete = snapshots.values.count { !it.isComplete }
+                recordOutcome(
+                    profileId = profileId,
+                    serverId = libraries.value.firstOrNull()?.serverId,
+                    status = if (incomplete == 0) SyncStatus.Succeeded else SyncStatus.PartiallySucceeded,
+                )
                 logger.info(
                     LogCategory.Sync,
                     "Library refresh completed",
                     LogField.Count("libraries", libraries.value.size),
                     LogField.Count("books", written),
+                    LogField.Count("incompleteLibraries", incomplete),
                 )
                 AppResult.Success(written)
             }
@@ -247,14 +256,20 @@ class DefaultLibraryRepository @Inject constructor(
         )
     }
 
-    private suspend fun recordSuccess(profileId: ProfileId, serverId: ServerId?) {
+    /**
+     * Records a sync that wrote something — completely or partly.
+     *
+     * Both count as a successful sync for the purposes of `lastSuccessfulSyncAt`: content was written and
+     * the staleness the UI reports is measured from here. The distinction lives in [status].
+     */
+    private suspend fun recordOutcome(profileId: ProfileId, serverId: ServerId?, status: SyncStatus) {
         val now = clock.now()
         syncStateDao.upsertSyncState(
             EntityMappers.toEntity(
                 SyncState(
                     serverId = serverId ?: UNKNOWN_SERVER,
                     profileId = profileId,
-                    status = SyncStatus.Succeeded,
+                    status = status,
                     lastSuccessfulSyncAt = now,
                     lastAttemptedAt = now,
                     lastError = null,

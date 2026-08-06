@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
+import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
@@ -12,6 +13,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
@@ -81,7 +83,7 @@ internal class AbsLibraryApi @Inject constructor(
      * `numTracks` rather than the tracks, and PRODUCT_SPEC 2.3 needs the track offsets stored alongside
      * the book or offline resume cannot work.
      */
-    override suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<List<BookSnapshot>> =
+    override suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<LibrarySnapshot> =
         withConnection(profileId) { connection, service ->
             // Checked again rather than trusted from listLibraries: a caller can ask for any library id,
             // including one it never saw in a listing (a deep link, a stale cached id). PRODUCT_SPEC 15
@@ -103,23 +105,37 @@ internal class AbsLibraryApi @Inject constructor(
             }
         }
 
+    /**
+     * PRODUCT_SPEC LIB-001 — "failed optional sections do not fail the whole sync".
+     *
+     * This used to `return` on the first item that failed, discarding every snapshot fetched before it. On
+     * a 490-book library that is 490 chances for one timeout to throw away the entire sync, and a device
+     * run duly produced an empty library that a manual retry then filled. The books that *were* fetched are
+     * real; keeping them is strictly better than keeping nothing.
+     *
+     * The count of unreachable items rides along, because the caller needs it to decide whether it may
+     * treat absence as deletion. A fetch where **everything** failed is still reported as a failure — a
+     * server that answered nothing must not read as a library with no books in it.
+     */
     private suspend fun snapshots(
         connection: ProfileConnection,
         libraryId: LibraryId,
         service: LibraryService,
         bearer: String,
         ids: List<LibraryItemId>,
-    ): AppResult<List<BookSnapshot>> {
+    ): AppResult<LibrarySnapshot> {
         val fetchedAt = clock.now()
         val snapshots = mutableListOf<BookSnapshot>()
-        var vanished = 0
+        var removed = 0
+        var firstFailure: AppError? = null
+        var unreachable = 0
         for (id in ids) {
             val response = service.item(bearer, id.value)
             if (response.code() == HTTP_NOT_FOUND) {
                 // The item was removed between the listing and this fetch. It is genuinely gone, so
                 // omitting it is correct and the repository will soft-delete it — unlike a network
                 // failure, which says nothing about whether the item still exists.
-                vanished++
+                removed++
                 continue
             }
             val mapped = response.toResult { body ->
@@ -135,18 +151,40 @@ internal class AbsLibraryApi @Inject constructor(
                 }
             }
             when (mapped) {
-                is AppResult.Failure -> return mapped
+                is AppResult.Failure -> {
+                    unreachable++
+                    if (firstFailure == null) firstFailure = mapped.error
+                }
+
                 is AppResult.Success -> snapshots += mapped.value
             }
         }
-        if (vanished > 0) {
+        logCounts(removed, unreachable, ids.size)
+        val failure = firstFailure
+        // Nothing came back and something went wrong: that is a failed sync, not an empty library.
+        if (snapshots.isEmpty() && failure != null) return AppResult.Failure(failure)
+        return AppResult.Success(
+            LibrarySnapshot(books = snapshots, removedCount = removed, unreachableCount = unreachable),
+        )
+    }
+
+    /** PRODUCT_SPEC 14.5 — counts, never titles or ids. */
+    private fun logCounts(removed: Int, unreachable: Int, total: Int) {
+        if (removed > 0) {
             logger.info(
                 LogCategory.Sync,
                 "Some items disappeared between the listing and their fetch",
-                LogField.Count("vanished", vanished),
+                LogField.Count("removed", removed),
             )
         }
-        return AppResult.Success(snapshots)
+        if (unreachable > 0) {
+            logger.warn(
+                LogCategory.Sync,
+                "Some items could not be fetched; the rest of the library was kept",
+                LogField.Count("unreachable", unreachable),
+                LogField.Count("total", total),
+            )
+        }
     }
 
     private inline fun <T, R> Response<T>.toResult(onSuccess: (T?) -> AppResult<R>): AppResult<R> = if (isSuccessful) {

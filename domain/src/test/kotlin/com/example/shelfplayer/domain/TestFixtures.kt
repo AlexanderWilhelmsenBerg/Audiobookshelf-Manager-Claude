@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.SeriesSequence
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
@@ -36,6 +37,14 @@ internal val TEST_SERVER = ServerId("server-1")
 internal val TEST_PROFILE = ProfileId("profile-1")
 internal val TEST_LIBRARY = LibraryId("library-1")
 internal val TEST_INSTANT: Instant = Instant.parse("2026-01-01T00:00:00Z")
+
+internal val TEST_SERVER_ROW = Server(
+    id = TEST_SERVER,
+    displayName = "Demo server",
+    baseUrl = "https://books.example",
+    detectedVersion = "2.36.0",
+    isFixture = true,
+)
 
 internal fun profile(id: ProfileId = TEST_PROFILE) = Profile(
     id = id,
@@ -128,6 +137,8 @@ internal class FakeProfileRepository(active: Profile? = profile()) : ProfileRepo
     private val activeProfile = MutableStateFlow(active)
 
     override fun observeProfiles(): Flow<List<Profile>> = activeProfile.map { listOfNotNull(it) }
+
+    override fun observeServers(): Flow<List<Server>> = MutableStateFlow(listOf(TEST_SERVER_ROW))
 
     override fun observeActiveProfile(): Flow<Profile?> = activeProfile
 

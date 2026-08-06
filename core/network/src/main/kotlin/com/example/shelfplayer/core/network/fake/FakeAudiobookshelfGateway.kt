@@ -19,8 +19,8 @@ import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
-import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.map
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.network.fixture.FixtureMapper
@@ -121,9 +121,10 @@ class FakeAudiobookshelfGateway @Inject constructor(
             withMapper { mapper -> mapper.libraries(clock.now()) }
         }
 
-    override suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<List<BookSnapshot>> =
+    override suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<LibrarySnapshot> =
         requireProfile(profileId).flatMap {
             withMapper { mapper -> mapper.books(libraryId, clock.now()) }
+                .map { books -> LibrarySnapshot(books = books) }
         }
 
     /**

@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
@@ -37,11 +38,15 @@ class ProfileSwitcherViewModel @Inject constructor(
 
     val uiState: StateFlow<ProfileSwitcherUiState> = combine(
         profileRepository.observeProfiles(),
+        profileRepository.observeServers(),
         profileRepository.observeActiveProfile(),
         action,
-    ) { profiles, active, current ->
+    ) { profiles, servers, active, current ->
+        val byId = servers.associateBy(Server::id)
         ProfileSwitcherUiState(
-            profiles = profiles,
+            // Joined here rather than in the screen: a composable reaching into a second list to find its
+            // row's server is how a list ends up rendering the wrong one during a recomposition.
+            profiles = profiles.map { profile -> ProfileRow(profile, byId[profile.serverId]) },
             activeProfileId = active?.id,
             isBusy = current.inFlight,
             error = current.error,
@@ -99,15 +104,25 @@ class ProfileSwitcherViewModel @Inject constructor(
 }
 
 /**
- * PRODUCT_SPEC AUTH-002 — the switcher shows server name, username and role.
+ * PRODUCT_SPEC AUTH-002 — one saved account, with the server it belongs to.
  *
- * The server name is not on [Profile]; the list renders `Profile.displayName` and `role`, and the server a
- * profile belongs to is identified by its `serverId`. Showing the server's own display name means joining
- * the two, which the repository does not expose yet — recorded here rather than faked, because a switcher
- * that showed the wrong server would be worse than one that shows none.
+ * [server] is nullable because the join can miss: a profile row outlives its server row for the moment
+ * between a cascade delete and the next emission. A card with no server line is right for that instant; a
+ * card showing *some other* server would not be.
  */
+data class ProfileRow(val profile: Profile, val server: Server?) {
+    /**
+     * The address a profile that has to sign in again should be sent back to.
+     *
+     * `null` when the server row is missing, in which case the user types it — the alternative is sending
+     * a password to a guessed host.
+     */
+    val serverUrl: String? get() = server?.baseUrl
+}
+
+/** PRODUCT_SPEC AUTH-002 — the switcher shows server, username and role. */
 data class ProfileSwitcherUiState(
-    val profiles: List<Profile> = emptyList(),
+    val profiles: List<ProfileRow> = emptyList(),
     val activeProfileId: ProfileId? = null,
     val isBusy: Boolean = false,
     val error: AppError? = null,

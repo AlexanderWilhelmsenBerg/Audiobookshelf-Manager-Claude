@@ -5,8 +5,8 @@ import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.data.library.mapper.EntityMappers
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,12 +32,13 @@ class LibrarySnapshotWriter @Inject constructor(
     private val progressDao: ProgressDao,
 ) {
     /** Returns the number of books written. */
-    suspend fun write(libraries: List<Library>, snapshots: Map<LibraryId, List<BookSnapshot>>): Int {
+    suspend fun write(libraries: List<Library>, snapshots: Map<LibraryId, LibrarySnapshot>): Int {
         var written = 0
         transaction {
             libraryWriteDao.upsertLibraries(libraries.map(EntityMappers::toEntity))
             libraries.forEach { library ->
-                val rows = snapshots[library.id].orEmpty().map(EntityMappers::toEntities)
+                val fetched = snapshots[library.id]
+                val rows = fetched?.books.orEmpty().map(EntityMappers::toEntities)
                 libraryWriteDao.upsertAuthors(rows.flatMap { it.authors }.distinctBy { it.authorKey })
                 libraryWriteDao.upsertSeries(rows.flatMap { it.series }.distinctBy { it.seriesKey })
                 libraryWriteDao.upsertBooks(rows.map { it.book })
@@ -53,10 +54,17 @@ class LibrarySnapshotWriter @Inject constructor(
                 libraryWriteDao.upsertChapters(rows.flatMap { it.chapters })
                 progressDao.upsertProgress(rows.mapNotNull { it.progress })
                 val libraryKey = EntityKey.of(library.serverId.value, library.id.value)
-                if (rows.isEmpty()) {
-                    libraryWriteDao.markAllBooksDeleted(libraryKey)
-                } else {
-                    libraryWriteDao.markMissingBooksDeleted(libraryKey, rows.map { it.book.bookKey })
+                // PRODUCT_SPEC 13.2 / LIB-001 — absence only means deletion when the fetch was complete.
+                //
+                // An incomplete fetch is missing items *because the network failed*, and soft-deleting
+                // them would turn one timeout into a library that visibly loses books. The rows it did
+                // bring back are still written; reconciliation waits for a sync that saw everything.
+                if (fetched?.isComplete == true) {
+                    if (rows.isEmpty()) {
+                        libraryWriteDao.markAllBooksDeleted(libraryKey)
+                    } else {
+                        libraryWriteDao.markMissingBooksDeleted(libraryKey, rows.map { it.book.bookKey })
+                    }
                 }
                 written += rows.size
             }

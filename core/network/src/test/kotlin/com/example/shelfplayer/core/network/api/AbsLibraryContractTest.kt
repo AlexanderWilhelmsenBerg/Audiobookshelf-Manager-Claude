@@ -10,8 +10,8 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
-import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
 import com.example.shelfplayer.core.network.http.NetworkErrorMapper
@@ -174,7 +174,7 @@ class AbsLibraryContractTest {
         server.enqueue(ContractFixtures.response("library-items"))
         server.enqueue(ContractFixtures.response("library-item"))
 
-        val books = assertIs<AppResult.Success<List<BookSnapshot>>>(api().listBooks(PROFILE, LIBRARY)).value
+        val books = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value.books
 
         val snapshot = books.single()
         assertEquals("The Salt Harbour", snapshot.book.title)
@@ -219,13 +219,13 @@ class AbsLibraryContractTest {
     }
 
     /**
-     * A transient failure on one item fails the library's sync.
+     * PRODUCT_SPEC LIB-001 — when *every* item fails, the sync failed.
      *
-     * Returning the items that did load would let the repository's missing-item pass soft-delete the ones
-     * that did not, turning a dropped connection into a downloaded book disappearing (product priority 2).
+     * The distinction matters: a library that returned nothing because the server stopped answering must
+     * not read as a library with no books in it, which is what a `Success(emptyList())` would render as.
      */
     @Test
-    fun `a failed item fetch fails the whole library rather than reporting a partial one`() = runTest {
+    fun `a library whose every item fails is a failure, not an empty library`() = runTest {
         server.enqueue(ContractFixtures.response("library-items"))
         server.enqueue(MockResponse().setResponseCode(503))
 
@@ -235,17 +235,44 @@ class AbsLibraryContractTest {
     }
 
     /**
+     * PRODUCT_SPEC LIB-001 — "failed optional sections do not fail the whole sync".
+     *
+     * This is the defect three device runs reported as "the library was empty until I pressed refresh". A
+     * first sync of a real library is one request per item, and this code used to abandon every snapshot it
+     * had already fetched the moment one of them failed. On a 490-book library that is 490 chances to throw
+     * the whole thing away.
+     *
+     * The unreachable count rides along because the caller must not treat those items as deleted: absence
+     * caused by a dropped connection says nothing about whether the book still exists (product priority 2).
+     */
+    @Test
+    fun `one failed item keeps the rest of the library and reports it as incomplete`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[{"id":"item-1"},{"id":"item-2"}],"total":2}"""))
+        server.enqueue(ContractFixtures.response("library-item"))
+        server.enqueue(MockResponse().setResponseCode(503))
+
+        val snapshot = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value
+
+        assertEquals(1, snapshot.books.size)
+        assertEquals(1, snapshot.unreachableCount)
+        assertFalse(snapshot.isComplete, "an incomplete fetch must not be read as a complete one")
+    }
+
+    /**
      * A `404` is different in kind: the item is gone, which is a fact rather than a failure. Omitting it
-     * lets the repository soft-delete it correctly.
+     * lets the repository soft-delete it correctly — and the fetch is still *complete*, which is what
+     * gives the repository permission to.
      */
     @Test
     fun `an item that vanished between the listing and its fetch is omitted, not fatal`() = runTest {
         server.enqueue(ContractFixtures.response("library-items"))
         server.enqueue(MockResponse().setResponseCode(404))
 
-        val books = assertIs<AppResult.Success<List<BookSnapshot>>>(api().listBooks(PROFILE, LIBRARY)).value
+        val snapshot = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value
 
-        assertTrue(books.isEmpty())
+        assertTrue(snapshot.books.isEmpty())
+        assertEquals(1, snapshot.removedCount)
+        assertTrue(snapshot.isComplete, "a removal is an answer, so the fetch saw everything")
     }
 
     /** PRODUCT_SPEC SYNC-001 — a minified item cannot be stored, and says which field is missing. */
@@ -267,7 +294,7 @@ class AbsLibraryContractTest {
     fun `an empty library is an empty list, not a failure`() = runTest {
         server.enqueue(MockResponse().setBody("""{"results":[],"total":0}"""))
 
-        val books = assertIs<AppResult.Success<List<BookSnapshot>>>(api().listBooks(PROFILE, LIBRARY)).value
+        val books = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value.books
 
         assertTrue(books.isEmpty())
     }
@@ -278,7 +305,7 @@ class AbsLibraryContractTest {
         server.enqueue(ContractFixtures.response("library-items"))
         server.enqueue(ContractFixtures.response("library-item"))
 
-        val books = assertIs<AppResult.Success<List<BookSnapshot>>>(api().listBooks(PROFILE, LIBRARY)).value
+        val books = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value.books
 
         assertNull(books.single().book.progress)
     }
@@ -298,7 +325,7 @@ class AbsLibraryContractTest {
             ),
         )
 
-        val books = assertIs<AppResult.Success<List<BookSnapshot>>>(api().listBooks(PROFILE, LIBRARY)).value
+        val books = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value.books
 
         val progress = books.single().book.progress
         assertEquals(PROFILE, progress?.profileId)

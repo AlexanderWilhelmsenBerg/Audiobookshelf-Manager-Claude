@@ -48,7 +48,10 @@
     <string name="profiles_add">Add a server</string>
     <string name="profiles_active">In use</string>
     <string name="profiles_use">Use</string>
+    <!-- The whole card switches profile, so its accessibility label has to say which one. -->
+    <string name="profiles_use_named">Use %1$s</string>
     <string name="profiles_sign_out">Sign out</string>
+    <string name="profiles_sign_in_again">Sign in</string>
     <string name="profiles_remove">Remove</string>
     <string name="profiles_dismiss">Dismiss</string>
     <string name="profiles_role">Role: %1$s</string>

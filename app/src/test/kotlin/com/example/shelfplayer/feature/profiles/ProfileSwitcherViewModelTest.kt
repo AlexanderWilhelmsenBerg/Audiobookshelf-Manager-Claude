@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.asFailure
@@ -47,7 +48,7 @@ class ProfileSwitcherViewModelTest {
 
         val state = observed(viewModel())
 
-        assertEquals(listOf("ada", "grace"), state.value.profiles.map { it.displayName })
+        assertEquals(listOf("ada", "grace"), state.value.profiles.map { it.profile.displayName })
         assertEquals(ada.id, state.value.activeProfileId)
     }
 
@@ -81,7 +82,7 @@ class ProfileSwitcherViewModelTest {
 
         assertEquals(listOf(ada.id), auth.signedOutProfiles)
         assertTrue(auth.removedProfiles.isEmpty(), "signing out must not remove the profile")
-        assertEquals(listOf("ada"), state.value.profiles.map { it.displayName })
+        assertEquals(listOf("ada"), state.value.profiles.map { it.profile.displayName })
     }
 
     @Test
@@ -94,7 +95,7 @@ class ProfileSwitcherViewModelTest {
         viewModel.onRemoveProfile(ada.id)
 
         assertEquals(listOf(ada.id), auth.removedProfiles)
-        assertEquals(listOf("grace"), state.value.profiles.map { it.displayName })
+        assertEquals(listOf("grace"), state.value.profiles.map { it.profile.displayName })
     }
 
     /** Removing the last profile is what sends the navigation graph back to onboarding. */
@@ -190,6 +191,8 @@ class ProfileSwitcherViewModelTest {
 
         override fun observeProfiles(): Flow<List<Profile>> = stored
 
+        override fun observeServers(): Flow<List<Server>> = MutableStateFlow(listOf(booksServer))
+
         override fun observeActiveProfile(): Flow<Profile?> =
             active.map { id -> stored.value.firstOrNull { it.id == id } }
 
@@ -249,3 +252,12 @@ class ProfileSwitcherViewModelTest {
         }
     }
 }
+
+/** The one server both test profiles live on — AUTH-002's "two accounts, one server" case. */
+private val booksServer = Server(
+    id = ServerId("srv_books"),
+    displayName = "Books",
+    baseUrl = "https://books.example",
+    detectedVersion = "2.36.0",
+    isFixture = false,
+)

@@ -125,7 +125,11 @@ fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = 
             // PRODUCT_SPEC LIB-001 — sync status is "visible but non-blocking". A bar above the content
             // rather than a spinner in place of it: the cached library is what the user came for, and a
             // sync of a real library is an N+1 over every item.
-            if (uiState.isRefreshing) {
+            //
+            // Driven by the *status* rather than by this screen's own in-flight flag, so a sync recorded by
+            // someone else is visible too. Without that, the first sync after sign-in ran for minutes with
+            // nothing on screen to say so.
+            if (uiState.syncStatus == SyncStatus.Syncing) {
                 LinearProgressIndicator(
                     modifier = Modifier
                         .fillMaxWidth()

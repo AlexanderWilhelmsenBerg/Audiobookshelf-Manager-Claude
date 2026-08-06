@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.data.library.mapper.EntityMappers
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -38,6 +39,9 @@ class DefaultProfileRepository @Inject constructor(
 
     override fun observeProfiles(): Flow<List<Profile>> =
         profileDao.observeProfiles().map { entities -> entities.map(EntityMappers::toDomain) }
+
+    override fun observeServers(): Flow<List<Server>> =
+        profileDao.observeServers().map { entities -> entities.map(EntityMappers::toDomain) }
 
     override fun observeActiveProfile(): Flow<Profile?> = settings.activeProfileId.flatMapLatest { profileId ->
         if (profileId == null) {

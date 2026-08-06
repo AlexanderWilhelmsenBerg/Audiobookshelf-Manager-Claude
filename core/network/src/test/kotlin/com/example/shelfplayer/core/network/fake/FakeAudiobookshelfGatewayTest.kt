@@ -13,8 +13,8 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
-import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
@@ -82,9 +82,9 @@ class FakeAudiobookshelfGatewayTest {
     @Test
     fun `returns books with tracks, chapters and parsed series sequences`() = runTest {
         val result = gateway.library.listBooks(fixtureProfile, LibraryId("lib-fiction"))
-        assertIs<AppResult.Success<List<BookSnapshot>>>(result)
+        assertIs<AppResult.Success<LibrarySnapshot>>(result)
 
-        val first = result.value.single { it.book.id.value == "book-voyage-1" }
+        val first = result.value.books.single { it.book.id.value == "book-voyage-1" }
         assertEquals(2, first.tracks.size)
         assertEquals(3, first.chapters.size)
         assertEquals(
@@ -93,7 +93,7 @@ class FakeAudiobookshelfGatewayTest {
         )
 
         // PRODUCT_SPEC PLAY-003: an excluded server track is stored but not counted as playable.
-        val tenth = result.value.single { it.book.id.value == "book-voyage-10" }
+        val tenth = result.value.books.single { it.book.id.value == "book-voyage-10" }
         assertEquals(3, tenth.tracks.size)
         assertEquals(2, tenth.book.trackCount)
         assertTrue(tenth.tracks.any { it.isExcluded })
@@ -103,9 +103,9 @@ class FakeAudiobookshelfGatewayTest {
     @Test
     fun `multi-file track offsets are contiguous`() = runTest {
         val result = gateway.library.listBooks(fixtureProfile, LibraryId("lib-fiction"))
-        assertIs<AppResult.Success<List<BookSnapshot>>>(result)
+        assertIs<AppResult.Success<LibrarySnapshot>>(result)
 
-        val playable = result.value
+        val playable = result.value.books
             .single { it.book.id.value == "book-voyage-1" }
             .tracks
             .filterNot { it.isExcluded }
@@ -117,7 +117,7 @@ class FakeAudiobookshelfGatewayTest {
             expectedOffset += track.duration
         }
         assertEquals(
-            result.value.single { it.book.id.value == "book-voyage-1" }.book.duration,
+            result.value.books.single { it.book.id.value == "book-voyage-1" }.book.duration,
             expectedOffset,
         )
     }
