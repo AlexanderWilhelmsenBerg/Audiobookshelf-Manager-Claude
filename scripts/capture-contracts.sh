@@ -61,6 +61,11 @@ VOLATILE_KEYS = {
     "id", "userId", "libraryId", "folderId", "oldUserId", "seriesId", "authorId",
     "createdAt", "updatedAt", "lastSeen", "lastUpdate", "lastScan", "addedAt", "birthtimeMs",
     "mtimeMs", "ctimeMs", "inode", "size", "ino",
+    # A media-progress element carries two of its own timestamps. They are the wall clock at capture
+    # time, so leaving them literal would report drift on every single run — the false-positive the
+    # `lastScan` note above already warns about, and the fastest way to teach a reader to ignore a
+    # red check.
+    "startedAt", "finishedAt",
     # engine.io's session id. Not secret in the credential sense — it is useless without the
     # connection — but it changes on every handshake, so leaving it in would report drift on every run.
     "sid", "libraryItemId", "episodeId",
@@ -314,15 +319,16 @@ curl -sS -X PATCH "$BASE_URL/api/me/progress/$ITEM_ID" \
   -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
   -d '{"currentTime":42.5,"isFinished":false}' >/dev/null || true
 
-# Both endpoints that carry it, because the app reads one on cold start and could poll the other.
+# `GET /api/me` returns the same `user` object that `POST /api/authorize` nests under `user`, and the
+# capture confirmed the two are field-for-field identical. One fixture for the object and one for a
+# single element is the whole contract; a third recording `authorize` again with progress filled in
+# would add no evidence and would have to be kept in step with both of the others.
 capture me GET /api/me -H "$AUTH_HEADER"
-capture authorize-with-progress POST /api/authorize -H "$AUTH_HEADER"
 capture media-progress GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
 
-python3 - "$OUT_DIR/authorize-with-progress.json" <<'PY' || true
+python3 - "$OUT_DIR/me.json" <<'PY' || true
 import json, sys
-body = (json.load(open(sys.argv[1])).get("body") or {})
-progress = ((body.get("user") or {}).get("mediaProgress")) or []
+progress = (json.load(open(sys.argv[1])).get("body") or {}).get("mediaProgress") or []
 if not progress:
     print("::warning::mediaProgress is still empty. The progress write was not accepted, so the "
           "element shape remains unobserved and LIB-001's progress sync stays blocked.", file=sys.stderr)

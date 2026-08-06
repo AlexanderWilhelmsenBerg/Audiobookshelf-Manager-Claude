@@ -144,26 +144,77 @@ No code in this repository may present one as the other.
 | `core/network/src/main/resources/fixtures/demo-library.json` | **ShelfPlayer-owned format** | The Phase 0 demo library. Not an Audiobookshelf response; see [ADR-0005](adr/0005-fake-gateway-and-fixtures.md). |
 | `core/network/src/test/resources/contracts/` | Captured server responses | **Twelve fixtures**, committed. `contract-capture.yml` re-captures on every `:core:network` change and fails on drift. |
 
-### Six capture targets added, none yet committed
+## The websocket contract — observed 2026-08-06, Audiobookshelf 2.36.0
 
-`scripts/capture-contracts.sh` now records six more responses. They exist as capture targets only: the
-job that produces them needs a real server, so the fixtures land when `contract-capture.yml` next runs
-and its artifact is committed. Until then nothing may be mapped from them (`PRODUCT_SPEC 22.5`).
+Nothing about the socket had ever been observed. It has now, over engine.io's **polling** transport,
+which is plain HTTP and therefore capturable without a socket.io client. The frames are identical on
+either transport; only the carriage differs.
 
-| Target | Why it was missing | What it unblocks |
+### The sequence
+
+| Step | Sent | Received |
 | --- | --- | --- |
-| `me.json`, `authorize-with-progress.json`, `media-progress.json` | Every earlier capture ran against a server that had never played anything, so `user.mediaProgress` was `[]` and the **element** shape has never been seen. The script now records a position before capturing. | P1-09 — a progress-only sync, which fixes acceptance case TC-10 without any websocket at all. |
-| `socket-handshake.json` | Never attempted. | P1-06 — a real `Websocket` capability probe instead of an assumption. |
-| `socket-connected.json` | Never attempted. Records what the server volunteers after a namespace connect, with no guess involved. | P1-07 — the connection lifecycle. |
-| `socket-auth.json`, `socket-event-after-progress.json` | Never attempted. The authentication frame's event name is **a guess** (`42["auth", token]`); the capture is how the guess is checked. | P1-08 — event payloads, if they turn out to exist in the shape the guess assumes. |
+| Handshake | `GET /socket.io/?EIO=4&transport=polling` | `0{"sid":…,"upgrades":["websocket"],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}` |
+| Namespace connect | `40` | `40{"sid":…}` — a **socket.io** sid, distinct from the engine.io one above |
+| Authenticate | `42["auth","<accessToken>"]` | `42["user_online",{…}]` then `42["init",{"userId","username","usersOnline":[…]}]` |
+| A progress change made over REST | — | `42["user_updated",{ the entire user object }]` |
 
-The socket frames are recorded parsed rather than as text: an engine.io polling response is `42["event",
-{…}]`, and storing it structured is both readable as a contract and reachable by the redaction pass. A
-token inside a frame is redacted; the frame's shape is kept.
+`upgrades: ["websocket"]` is the answer `SYNC-001`'s websocket capability needs, and it is a property of
+the *deployment*: a reverse proxy that strips the upgrade will not list it, which is exactly why the
+capability is probed rather than derived from a version.
 
-**If `socket-auth.json` comes back empty or with an error frame, that is a result, not a failure.** It
-means the event name is wrong, and the next step is to look at what `socket-connected.json` recorded
-rather than to guess again.
+`pingInterval: 25000` / `pingTimeout: 20000` are the server's heartbeat terms, so a client that has heard
+nothing for 45 s can consider the connection dead rather than guessing an interval.
+
+### The authentication event name was a guess, and it was right
+
+`42["auth", "<accessToken>"]` is not in `openapi.json` and is not documented. It was sent as a guess and
+the server accepted it, answering `user_online` and `init`. That is now an observation rather than an
+assumption, which is the whole point of capturing before implementing (`PRODUCT_SPEC 22.4`, `22.5`).
+
+The token travels inside the frame, not in the query string, which is what `PRODUCT_SPEC 22.6` requires.
+
+### `user_updated` is bigger than expected, and it changes the plan
+
+A progress change made through the REST API came back over the socket as `user_updated` carrying **the
+whole user object** — `mediaProgress`, `permissions`, `librariesAccessible`, `itemTagsSelected`,
+`isActive`, `isLocked`, `type`. Three separate problems collapse into one handler:
+
+- **TC-10** — progress played on another device. `mediaProgress` arrives unprompted.
+- **TC-37 / P1-02** — a grant changed on the server. `permissions` and `librariesAccessible` arrive in
+  the same frame, so the permission refresh becomes event-driven rather than switch-driven.
+- **TC-45** — an account disabled server-side. `isActive` and `isLocked` are in the frame.
+
+`PRODUCT_SPEC 13.2` says an event "may mark an entity stale and trigger refresh rather than carrying a
+complete trustworthy object". Here the object *is* complete for the user, so it can be applied directly —
+but only to the profile whose socket received it, and the frame contains no server identity, so the
+binding must come from the connection rather than from the payload.
+
+### `mediaProgress`, the element
+
+Empty in every previous capture, because no capture had ever played anything. Observed fields:
+
+```
+currentTime, duration, progress, isFinished, hideFromContinueListening,
+libraryItemId, mediaItemId, mediaItemType, episodeId, ebookLocation, ebookProgress,
+id, userId, startedAt, finishedAt, lastUpdate
+```
+
+`startedAt`, `finishedAt` and `lastUpdate` are wall-clock milliseconds and are stabilised by the capture;
+`duration` and `progress` read `0` against the synthetic fixture media, which has no real duration.
+
+### What is still unobserved
+
+- Every other event name. `user_updated` and `init` are the only ones this capture provoked; item
+  changes, library scans and session events have not been seen and must not be assumed.
+- Behaviour of the actual websocket upgrade, as opposed to the polling transport.
+- What the server does with an **invalid** token in the `auth` frame.
+
+### Fixtures
+
+`me.json`, `media-progress.json`, `socket-handshake.json`, `socket-connected.json`, `socket-auth.json`,
+`socket-event-after-progress.json`. Frames are stored parsed rather than as text, so the redaction pass
+can reach a token inside one: the shape is kept, the credential is not.
 
 ## Known endpoint differences
 
