@@ -87,29 +87,33 @@ internal class AbsLibraryApi @Inject constructor(
      * `numTracks` rather than the tracks, and PRODUCT_SPEC 2.3 needs the track offsets stored alongside
      * the book or offline resume cannot work.
      */
-    override suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<LibrarySnapshot> =
-        withConnection(profileId) { connection, service ->
-            // Checked again rather than trusted from listLibraries: a caller can ask for any library id,
-            // including one it never saw in a listing (a deep link, a stale cached id). PRODUCT_SPEC 15
-            // requires deep links to validate access, and this is where that validation has to hold.
-            if (!connection.access.allows(libraryId)) {
-                return@withConnection AppResult.Failure(
-                    AppError.Authorization(
-                        summary = "This account is not allowed to see that library.",
-                        missingPermission = "library.read",
-                    ),
-                )
-            }
-            val bearer = bearerOf(connection.accessToken.value)
-            val catalogue = retries.readOnly("listItems") {
-                service.items(bearer, libraryId.value)
-                    .toResult { body -> LibraryMapper.toItemIds(body ?: LibraryItemsResponseDto()) }
-            }
-            when (catalogue) {
-                is AppResult.Failure -> catalogue
-                is AppResult.Success -> snapshots(connection, libraryId, service, bearer, catalogue.value)
-            }
+    override suspend fun listBooks(
+        profileId: ProfileId,
+        libraryId: LibraryId,
+        onBatch: suspend (List<BookSnapshot>) -> Unit,
+    ): AppResult<LibrarySnapshot> = withConnection(profileId) { connection, service ->
+        // Checked again rather than trusted from listLibraries: a caller can ask for any library id,
+        // including one it never saw in a listing (a deep link, a stale cached id). PRODUCT_SPEC 15
+        // requires deep links to validate access, and this is where that validation has to hold.
+        if (!connection.access.allows(libraryId)) {
+            return@withConnection AppResult.Failure(
+                AppError.Authorization(
+                    summary = "This account is not allowed to see that library.",
+                    missingPermission = "library.read",
+                ),
+            )
         }
+        val bearer = bearerOf(connection.accessToken.value)
+        val catalogue = retries.readOnly("listItems") {
+            service.items(bearer, libraryId.value)
+                .toResult { body -> LibraryMapper.toItemIds(body ?: LibraryItemsResponseDto()) }
+        }
+        when (catalogue) {
+            is AppResult.Failure -> catalogue
+            is AppResult.Success ->
+                snapshots(connection, libraryId, service, bearer, catalogue.value, onBatch)
+        }
+    }
 
     /**
      * PRODUCT_SPEC LIB-001 — "failed optional sections do not fail the whole sync".
@@ -129,15 +133,27 @@ internal class AbsLibraryApi @Inject constructor(
         service: LibraryService,
         bearer: String,
         ids: List<LibraryItemId>,
+        onBatch: suspend (List<BookSnapshot>) -> Unit,
     ): AppResult<LibrarySnapshot> {
         val fetchedAt = clock.now()
         val sweep = Sweep()
+        var emitted = 0
         for (id in ids) {
             if (sweep.giveUp) {
                 sweep.skip()
             } else {
                 sweep.record(fetchItem(connection, libraryId, service, bearer, id, fetchedAt))
             }
+            // Handed over in batches rather than per item: one transaction per book on a 490-book
+            // library is 490 transactions, and the shelf cannot redraw that fast anyway. Twenty is
+            // frequent enough to look continuous and rare enough not to thrash the database.
+            if (sweep.books.size - emitted >= BATCH_SIZE) {
+                onBatch(sweep.books.subList(emitted, sweep.books.size).toList())
+                emitted = sweep.books.size
+            }
+        }
+        if (sweep.books.size > emitted) {
+            onBatch(sweep.books.subList(emitted, sweep.books.size).toList())
         }
         if (sweep.giveUp) {
             logger.warn(
@@ -351,5 +367,8 @@ internal class AbsLibraryApi @Inject constructor(
          * Five in a row is not an item problem.
          */
         const val CONSECUTIVE_FAILURE_LIMIT = 5
+
+        /** How many books accumulate before the caller is handed them. */
+        const val BATCH_SIZE = 20
     }
 }

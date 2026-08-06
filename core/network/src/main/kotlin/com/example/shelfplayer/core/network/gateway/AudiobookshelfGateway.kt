@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
+import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 
@@ -115,5 +116,21 @@ interface LibraryApi {
      */
     suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>>
 
-    suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<LibrarySnapshot>
+    /**
+     * PRODUCT_SPEC LIB-001 — "the home screen can render partial cached content while sync continues".
+     *
+     * [onBatch] is how that becomes true for a *large* library rather than only for a fast one. The
+     * catalogue is minified, so every item needs its own fetch, and a 490-book library that only
+     * appeared once all 490 had arrived left the shelf empty for minutes — which a device run duly
+     * reported. Batches let the caller store what has arrived so far.
+     *
+     * It carries books only. Deletions and the profile's item visibility are decided from the *whole*
+     * catalogue and stay with the returned snapshot, because a partial view is exactly the thing that
+     * must not be allowed to drive a deletion.
+     */
+    suspend fun listBooks(
+        profileId: ProfileId,
+        libraryId: LibraryId,
+        onBatch: suspend (List<BookSnapshot>) -> Unit = {},
+    ): AppResult<LibrarySnapshot>
 }

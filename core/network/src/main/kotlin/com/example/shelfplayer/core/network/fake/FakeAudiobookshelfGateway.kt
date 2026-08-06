@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
+import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.map
@@ -125,11 +126,19 @@ class FakeAudiobookshelfGateway @Inject constructor(
             withMapper { mapper -> mapper.libraries(clock.now()) }
         }
 
-    override suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<LibrarySnapshot> =
-        requireProfile(profileId).flatMap {
-            withMapper { mapper -> mapper.books(libraryId, clock.now()) }
-                .map { books -> LibrarySnapshot(books = books) }
-        }
+    override suspend fun listBooks(
+        profileId: ProfileId,
+        libraryId: LibraryId,
+        onBatch: suspend (List<BookSnapshot>) -> Unit,
+    ): AppResult<LibrarySnapshot> = requireProfile(profileId).flatMap {
+        val result = withMapper { mapper -> mapper.books(libraryId, clock.now()) }
+            .map { books -> LibrarySnapshot(books = books) }
+        // The fixture library is small enough to arrive at once, so one batch is the honest report. It
+        // is still emitted, because a caller that never sees a batch from the fake would never exercise
+        // the incremental path at all.
+        if (result is AppResult.Success) onBatch(result.value.books)
+        result
+    }
 
     /**
      * PRODUCT_SPEC 5.2 — a gateway call for a profile this connection does not serve is a failure,

@@ -1,6 +1,13 @@
 package com.example.shelfplayer.feature.home
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +27,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -32,6 +38,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -103,13 +111,20 @@ fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = 
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = actions.onRefresh,
-                        enabled = !uiState.isRefreshing,
-                    ) {
+                    // PRODUCT_SPEC LIB-001 — sync is "visible but non-blocking", and one indicator is
+                    // enough to say so. There used to be two: a bar across the top and the pull-to-refresh
+                    // spinner, for a single operation. The button that starts the sync is the honest place
+                    // to show it running.
+                    val syncing = uiState.syncStatus == SyncStatus.Syncing
+                    IconButton(onClick = actions.onRefresh, enabled = !syncing) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = stringResource(R.string.home_refresh),
+                            contentDescription = stringResource(
+                                if (syncing) R.string.home_sync_running else R.string.home_refresh,
+                            ),
+                            modifier = Modifier
+                                .rotate(refreshSpin(syncing))
+                                .semantics { if (syncing) liveRegion = LiveRegionMode.Polite },
                         )
                     }
                     IconButton(onClick = actions.onProfilesSelected) {
@@ -128,32 +143,37 @@ fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = 
             )
         },
     ) { innerPadding ->
-        val refreshingLabel = stringResource(R.string.home_sync_running)
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            // PRODUCT_SPEC LIB-001 — sync status is "visible but non-blocking". A bar above the content
-            // rather than a spinner in place of it: the cached library is what the user came for, and a
-            // sync of a real library is an N+1 over every item.
-            //
-            // Driven by the *status* rather than by this screen's own in-flight flag, so a sync recorded by
-            // someone else is visible too. Without that, the first sync after sign-in ran for minutes with
-            // nothing on screen to say so.
-            if (uiState.syncStatus == SyncStatus.Syncing) {
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics {
-                            contentDescription = refreshingLabel
-                            liveRegion = LiveRegionMode.Polite
-                        },
-                )
-            }
             HomeContent(uiState = uiState, actions = actions)
         }
     }
+}
+
+/**
+ * A continuous turn while a sync runs, and a still arrow when it does not.
+ *
+ * `infiniteRepeatable` rather than a progress value: the sync has no honest percentage to report. It is
+ * an N+1 over a library whose size is only known after the first request, and inventing a fraction to
+ * fill a bar with would be a more confident lie than a spinner.
+ */
+@Composable
+private fun refreshSpin(syncing: Boolean): Float {
+    if (!syncing) return 0f
+    val transition = rememberInfiniteTransition(label = "sync")
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "sync-rotation",
+    )
+    return angle
 }
 
 @Composable
@@ -289,9 +309,15 @@ private fun EmptyOrFailed(uiState: HomeUiState, onRefresh: () -> Unit, modifier:
 @Composable
 private fun ServerStatusDot(status: ServerStatus, isOffline: Boolean, modifier: Modifier = Modifier) {
     val effective = if (isOffline) ServerStatus.Unknown else status
+    // Fixed colours rather than the theme's, and that is the point of them.
+    //
+    // `colorScheme.primary` is whatever the palette says — light blue in this app's dark scheme, a
+    // muted green in light — and a status light has to mean the same thing in both. These two are
+    // chosen to stay legible on either background: a device run reported the dark-mode dot reading as
+    // blue and the light-mode one as too dark to call green.
     val colour = when (effective) {
-        ServerStatus.Reachable -> MaterialTheme.colorScheme.primary
-        ServerStatus.Unreachable -> MaterialTheme.colorScheme.error
+        ServerStatus.Reachable -> if (isSystemInDarkTheme()) ReachableDark else ReachableLight
+        ServerStatus.Unreachable -> if (isSystemInDarkTheme()) UnreachableDark else UnreachableLight
         ServerStatus.Unknown -> MaterialTheme.colorScheme.outlineVariant
     }
     val description = stringResource(
@@ -349,3 +375,17 @@ private fun HomeUiState.syncStatusLabel(): String = when (syncStatus) {
     // run. The count is still what is on screen; the caveat is that it is not all of it.
     SyncStatus.PartiallySucceeded -> pluralStringResource(R.plurals.home_sync_partial, books.size, books.size)
 }
+
+/**
+ * PRODUCT_SPEC 21 — a status light that means the same thing in both themes.
+ *
+ * Green and red at luminances that stay readable on a dark and on a light surface respectively. They
+ * are not in the design-system palette on purpose: they are semaphore colours rather than brand ones,
+ * and pulling them from `colorScheme` is what made the dot blue in dark mode.
+ *
+ * Colour is never the only signal — every state also carries a `contentDescription`.
+ */
+private val ReachableDark = Color(0xFF6EE7A0)
+private val ReachableLight = Color(0xFF15803D)
+private val UnreachableDark = Color(0xFFFF8A80)
+private val UnreachableLight = Color(0xFFC62828)

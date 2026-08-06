@@ -26,6 +26,7 @@ import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -195,7 +196,16 @@ class DefaultLibraryRepository @Inject constructor(
             is AppResult.Success -> {
                 val snapshots = mutableMapOf<LibraryId, LibrarySnapshot>()
                 for (library in libraries.value) {
-                    when (val books = gateway.library.listBooks(profileId, library.id)) {
+                    val onBatch: suspend (List<BookSnapshot>) -> Unit = { batch ->
+                        // PRODUCT_SPEC LIB-001 — partial content on screen while the sync continues.
+                        //
+                        // Books only, and never a deletion: what may be *removed* is decided from the
+                        // whole catalogue, which this batch is not. The full write below repeats these
+                        // upserts, which is cheap and idempotent, and is what keeps the visibility and
+                        // reconciliation decisions in one place rather than spread across batches.
+                        writer.writeBooks(profileId, library, batch)
+                    }
+                    when (val books = gateway.library.listBooks(profileId, library.id, onBatch)) {
                         is AppResult.Failure -> {
                             recordFailure(profileId, books.error)
                             return@withContext books

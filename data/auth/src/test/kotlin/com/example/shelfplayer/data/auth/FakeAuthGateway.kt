@@ -13,6 +13,7 @@ import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
+import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -105,8 +106,11 @@ internal class FakeAuthGateway :
     override val library: LibraryApi = object : LibraryApi {
         override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> = unsupported()
 
-        override suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<LibrarySnapshot> =
-            unsupported()
+        override suspend fun listBooks(
+            profileId: ProfileId,
+            libraryId: LibraryId,
+            onBatch: suspend (List<BookSnapshot>) -> Unit,
+        ): AppResult<LibrarySnapshot> = unsupported()
     }
 
     internal data class SignIn(val serverUrl: String, val username: String, val password: String)

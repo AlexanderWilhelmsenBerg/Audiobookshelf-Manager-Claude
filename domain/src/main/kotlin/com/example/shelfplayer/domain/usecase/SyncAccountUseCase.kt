@@ -1,7 +1,9 @@
 package com.example.shelfplayer.domain.usecase
 
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -51,11 +53,41 @@ class SyncAccountUseCase @Inject constructor(
         return invoke(profileId)
     }
 
-    suspend operator fun invoke(profileId: ProfileId): AppResult<Int> =
-        when (val account = authRepository.refreshPermissions(profileId)) {
-            is AppResult.Failure -> AppResult.Failure(account.error)
-            // The permissions have already been stored by the call above; only the positions are left,
-            // and they are written by the layer that owns the rows.
-            is AppResult.Success -> libraryRepository.writeProgress(profileId, account.value.progress)
+    suspend operator fun invoke(profileId: ProfileId): AppResult<Int> {
+        val account = authRepository.refreshPermissions(profileId)
+        if (account is AppResult.Failure && account.error is AppError.Authentication) {
+            return renewAndRetry(profileId, original = account)
         }
+        return account.storeProgress(profileId)
+    }
+
+    /**
+     * PRODUCT_SPEC AUTH-004 — an expired access token is renewed, not announced.
+     *
+     * This runs on every resume, which makes it the call most likely to be the first to meet an expired
+     * token. Without the renewal it was also the call that told the user they had been signed out of a
+     * profile that was working perfectly well — a device run reported exactly that, triggered by nothing
+     * more than adding a second server and coming back to the shelf.
+     *
+     * Exactly one renewal and at most one retry, which is the same bound `RefreshLibraryUseCase` keeps
+     * and for the same reason: "the app never loops login requests". A renewal that cannot happen has
+     * already marked the profile inside `renewSession`, so the original failure is what comes back.
+     */
+    private suspend fun renewAndRetry(profileId: ProfileId, original: AppResult.Failure): AppResult<Int> {
+        val renewed = authRepository.renewSession(profileId)
+        val active = renewed is AppResult.Success && renewed.value == SessionStatus.Active
+        if (!active) return AppResult.Failure(original.error)
+        return authRepository.refreshPermissions(profileId).storeProgress(profileId)
+    }
+
+    /**
+     * The permissions were stored by `refreshPermissions` itself; only the positions are left, and they
+     * are written by the layer that owns the rows.
+     */
+    private suspend fun AppResult<com.example.shelfplayer.core.model.auth.AccountState>.storeProgress(
+        profileId: ProfileId,
+    ): AppResult<Int> = when (this) {
+        is AppResult.Failure -> AppResult.Failure(error)
+        is AppResult.Success -> libraryRepository.writeProgress(profileId, value.progress)
+    }
 }

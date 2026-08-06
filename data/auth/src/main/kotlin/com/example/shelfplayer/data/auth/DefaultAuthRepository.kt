@@ -296,8 +296,21 @@ class DefaultAuthRepository @Inject constructor(
 
         when (val account = gateway.auth.currentAccount(baseUrl, token)) {
             is AppResult.Failure -> {
-                if (account.error is AppError.Authentication || account.error is AppError.Authorization) {
-                    markReauthenticationRequired(profileId, reason = "permission refresh was refused")
+                // Only an *authorization* failure marks the profile here, and the distinction is the
+                // whole of AUTH-004.
+                //
+                // A `401` means the access token is not being accepted, which is the ordinary end of a
+                // token's life and is exactly what the refresh token exists for. Marking on it would
+                // announce "you have been signed out" to a user whose session could have been renewed
+                // silently — which is what happened: a device run found a working profile reported as
+                // signed out simply because the app had started asking this question on every resume.
+                // The renewal belongs to the caller (`SyncAccountUseCase`), which retries once and lets
+                // `renewSession` do the marking if that fails too.
+                //
+                // A `403`, or the disabled/locked account `AuthMapper.toAccountState` reports as one, is
+                // different in kind: no renewal changes it, so the mark is the correct and only answer.
+                if (account.error is AppError.Authorization) {
+                    markReauthenticationRequired(profileId, reason = "the account is no longer permitted")
                 }
                 AppResult.Failure(account.error)
             }

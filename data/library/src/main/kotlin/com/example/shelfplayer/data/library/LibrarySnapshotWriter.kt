@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.data.library.mapper.EntityMappers
@@ -90,6 +91,54 @@ class LibrarySnapshotWriter @Inject constructor(
             }
         }
         return written
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-001 — books that have arrived so far, written so the shelf can show them.
+     *
+     * Additive only. No visibility, no reconciliation, no deletions: every one of those is a statement
+     * about the *whole* catalogue, and a batch is by definition a part of it. Writing a deletion from a
+     * partial view is the defect this codebase has already been bitten by twice.
+     *
+     * Its own transaction per batch, so each becomes visible as it lands. That is the entire point —
+     * one transaction at the end is what left a 490-book library blank for minutes.
+     */
+    suspend fun writeBooks(profileId: ProfileId, library: Library, books: List<BookSnapshot>) {
+        if (books.isEmpty()) return
+        val rows = books.map(EntityMappers::toEntities)
+        val libraryKey = EntityKey.of(library.serverId.value, library.id.value)
+        transaction {
+            libraryWriteDao.upsertLibraries(listOf(EntityMappers.toEntity(library)))
+            libraryWriteDao.upsertAuthors(rows.flatMap { it.authors }.distinctBy { it.authorKey })
+            libraryWriteDao.upsertSeries(rows.flatMap { it.series }.distinctBy { it.seriesKey })
+            libraryWriteDao.upsertBooks(rows.map { it.book })
+            rows.forEach { row ->
+                libraryWriteDao.deleteAuthorLinksFor(row.book.bookKey)
+                libraryWriteDao.deleteSeriesLinksFor(row.book.bookKey)
+                libraryWriteDao.deleteTracksFor(row.book.bookKey)
+                libraryWriteDao.deleteChaptersFor(row.book.bookKey)
+            }
+            libraryWriteDao.upsertBookAuthors(rows.flatMap { it.authorLinks })
+            libraryWriteDao.upsertBookSeries(rows.flatMap { it.seriesLinks })
+            libraryWriteDao.upsertTracks(rows.flatMap { it.tracks })
+            libraryWriteDao.upsertChapters(rows.flatMap { it.chapters })
+            progressDao.upsertProgress(rows.mapNotNull { it.progress })
+            // PRODUCT_SPEC 5.2 — visible as they arrive, or they do not arrive at all: every read joins
+            // through this table, so a batch written without it is a batch nothing can display.
+            //
+            // Added, never cleared. The clear belongs to the final pass, which knows the whole catalogue.
+            // Doing it here would briefly hide books the profile could already see, and a sync that then
+            // failed would leave them hidden — turning a dropped connection into a shrinking library.
+            libraryWriteDao.insertVisibility(
+                rows.map { row ->
+                    ProfileVisibleBookEntity(
+                        profileId = profileId.value,
+                        bookKey = row.book.bookKey,
+                        libraryKey = libraryKey,
+                    )
+                },
+            )
+        }
     }
 
     /**
