@@ -12,6 +12,10 @@ import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.realtime.RealtimeEvent
+import com.example.shelfplayer.core.model.realtime.RealtimeStatus
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * PRODUCT_SPEC 10.4 — every Audiobookshelf call goes through this adapter.
@@ -36,6 +40,28 @@ interface AudiobookshelfGateway {
     val capabilities: CapabilityResolver
 
     val library: LibraryApi
+}
+
+/**
+ * PRODUCT_SPEC SYNC-002 / LIB-001 — events the server pushes, when it can.
+ *
+ * Deliberately not a member of [AudiobookshelfGateway]. The gateway is request/response; this is a
+ * connection with a lifetime, and giving it the same shape would invite a caller to treat "no events"
+ * as a failure. It is not: PRODUCT_SPEC LIB-001 requires REST refresh whenever the websocket is
+ * unavailable, so an implementation that never emits anything is a correct one on a deployment whose
+ * reverse proxy strips the upgrade.
+ */
+interface RealtimeConnection {
+    /** Coarse state, for a UI that wants to say whether events are arriving. */
+    val status: StateFlow<RealtimeStatus>
+
+    /**
+     * Connects as [profileId] and emits until the collector is cancelled.
+     *
+     * The flow is the connection's lifetime. Cancelling closes the socket, which is what keeps "open
+     * only while something is listening" true without a stop call anyone could forget.
+     */
+    fun events(profileId: ProfileId): Flow<RealtimeEvent>
 }
 
 /**

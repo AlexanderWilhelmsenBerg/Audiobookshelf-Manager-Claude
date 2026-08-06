@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookSortOrder
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
+import com.example.shelfplayer.domain.usecase.ObserveRealtimeUpdatesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
@@ -55,6 +56,7 @@ class HomeViewModel @Inject constructor(
     profileRepository: ProfileRepository,
     private val networkMonitor: NetworkMonitor,
     private val syncAccount: SyncAccountUseCase,
+    private val observeRealtimeUpdates: ObserveRealtimeUpdatesUseCase,
     private val refreshLibrary: RefreshLibraryUseCase,
 ) : ViewModel() {
 
@@ -196,6 +198,14 @@ class HomeViewModel @Inject constructor(
         val state = uiState.value
         val profileId = state.profile?.id ?: return
 
+        // PRODUCT_SPEC SYNC-002 — and the connection, for as long as this screen is alive.
+        //
+        // Scoped to the ViewModel rather than to the process: a socket held open by a backgrounded app
+        // is a wake lock with extra steps, and PRODUCT_SPEC SYNC-003 puts persistent background work
+        // under WorkManager rather than under an open connection. `collectRealtime` guards against a
+        // second collector for the same profile, because `onVisible` runs on every appearance.
+        collectRealtime(profileId)
+
         // PRODUCT_SPEC LIB-001 / AUTH-004 — the cheap half, every time the screen appears.
         //
         // One request that brings back positions played elsewhere, a grant changed on the server, and
@@ -207,6 +217,23 @@ class HomeViewModel @Inject constructor(
         if (profileId in syncAttemptedFor || state.isRefreshing) return
         syncAttemptedFor += profileId
         refresh()
+    }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — one collector per profile, replaced when the profile changes.
+     *
+     * Without the guard, returning to the shelf would open a second socket beside the first: both
+     * authenticated, both delivering the same events, both writing the same rows. Idempotent, and still
+     * two connections to a server that only needed one.
+     */
+    private var realtimeJob: kotlinx.coroutines.Job? = null
+    private var realtimeProfile: ProfileId? = null
+
+    private fun collectRealtime(profileId: ProfileId) {
+        if (realtimeProfile == profileId && realtimeJob?.isActive == true) return
+        realtimeJob?.cancel()
+        realtimeProfile = profileId
+        realtimeJob = viewModelScope.launch { observeRealtimeUpdates(profileId) }
     }
 
     fun refresh() {

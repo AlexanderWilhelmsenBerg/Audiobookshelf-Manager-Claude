@@ -10,6 +10,8 @@ import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 import kotlin.time.Duration.Companion.seconds
 
@@ -86,6 +88,23 @@ internal object AuthMapper {
                 progress = user.mediaProgress.mapNotNull(::toProgress),
             ),
         )
+    }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the same account object, arriving over the socket instead of a response.
+     *
+     * `user_updated` carries exactly what `POST /api/authorize` nests under `user`, so it is decoded by
+     * the same [UserDto] and mapped by the same rules. A second implementation for the push path is how
+     * the two would drift, and the one that would drift is the one nobody tests against a live server.
+     *
+     * `null` for a body this mapper cannot use. An unreadable push is not an error the user can act on,
+     * and the next REST account sync reads the same thing — which is why this transport is allowed to
+     * be best-effort.
+     */
+    fun toAccountState(json: Json, body: JsonObject): AccountState? {
+        val user = runCatching { json.decodeFromJsonElement(UserDto.serializer(), body) }.getOrNull()
+        val mapped = user?.let(::toAccountState)
+        return (mapped as? AppResult.Success)?.value
     }
 
     /**

@@ -229,11 +229,11 @@ playback steps belong to Phase 2.
 - ✅ **P1-06 — Probe websocket availability** into the capability set (SYNC-001), from the handshake's
   `upgrades` rather than from the server version — it is a property of the deployment, and a reverse
   proxy that strips the upgrade will not list it.
-- **P1-07 — `RealtimeConnection`:** the engine.io sequence (handshake → `40` → `42["auth", token]`),
+- ✅ **P1-07 — `RealtimeConnection`:** the engine.io sequence (handshake → `40` → `42["auth", token]`),
   bounded exponential backoff with jitter, reconnect on lifecycle and network change, foreground-scoped,
   the 25 s / 20 s heartbeat the server states, the token inside the frame and never in a query string or
   a log, reverse-proxy failures diagnosable (SYNC-002).
-- **P1-08 — Apply `user_updated` to Room** through the existing repositories, with an `EventDedupEntity`
+- ✅ **P1-08 — Apply `user_updated` to Room** through the existing repositories, with an `EventDedupEntity`
   for idempotency. One handler, three outcomes, because the frame carries all three: progress (TC-10),
   the grant (TC-37 — reuses P1-02's write path), and account state (TC-45 — reuses the reauthentication
   mark). Bound to the profile whose socket received it: the frame carries no server identity, so the

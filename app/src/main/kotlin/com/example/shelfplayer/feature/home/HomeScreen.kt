@@ -240,9 +240,14 @@ private fun BookShelf(uiState: HomeUiState, actions: HomeActions, modifier: Modi
             // PRODUCT_SPEC LIB-001 — "pull-to-refresh refreshes the active library", in as many words.
             // The toolbar button stays: pull is a gesture some users never discover, and TalkBack has no
             // sensible way to perform one.
+            // The gesture without the spinner. `PullToRefreshBox` draws its own indicator whenever
+            // `isRefreshing` is true, which for an automatic sync meant a wheel appearing over the shelf
+            // that the user never asked for — and a second one, since the refresh button already turns.
+            // An empty indicator slot keeps the pull working and leaves the button to say so.
             else -> PullToRefreshBox(
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = actions.onRefresh,
+                indicator = {},
                 modifier = Modifier.fillMaxSize(),
             ) {
                 LazyColumn(

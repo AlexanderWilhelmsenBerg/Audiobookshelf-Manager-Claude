@@ -2,6 +2,9 @@ package com.example.shelfplayer.feature.home
 
 import app.cash.turbine.test
 import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
+import com.example.shelfplayer.core.common.log.DefaultRedactor
+import com.example.shelfplayer.core.common.log.RedactingLogger
+import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
@@ -21,11 +24,16 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
+import com.example.shelfplayer.core.model.realtime.RealtimeEvent
+import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import com.example.shelfplayer.core.testing.MainDispatcherRule
+import com.example.shelfplayer.core.testing.RecordingLogSink
+import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
+import com.example.shelfplayer.domain.usecase.ObserveRealtimeUpdatesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
@@ -33,6 +41,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -76,6 +85,17 @@ class HomeViewModelTest {
             override val isOnline: Flow<Boolean> = network
         },
         syncAccount = SyncAccountUseCase(profiles, NeverRenewingAuth(), libraries),
+        // A connection that never connects, which is the case PRODUCT_SPEC LIB-001 requires to be
+        // uneventful: everything the socket would deliver also arrives over REST.
+        observeRealtimeUpdates = ObserveRealtimeUpdatesUseCase(
+            realtime = object : RealtimeUpdates {
+                override val status = MutableStateFlow(RealtimeStatus.Idle)
+
+                override fun events(profileId: ProfileId): Flow<RealtimeEvent> = emptyFlow()
+            },
+            libraryRepository = libraries,
+            logger = RecordingLogSink().let { RedactingLogger(it, DefaultRedactor(RedactionPolicy.Default)) },
+        ),
         refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),
     )
 

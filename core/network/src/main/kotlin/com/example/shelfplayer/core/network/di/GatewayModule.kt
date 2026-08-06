@@ -8,6 +8,8 @@ import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.RealtimeConnection
+import com.example.shelfplayer.core.network.realtime.AbsRealtimeConnection
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -35,6 +37,14 @@ annotation class RemoteGateway
 @Module
 @InstallIn(SingletonComponent::class)
 internal interface GatewayModule {
+    /**
+     * PRODUCT_SPEC SYNC-002 — bound unconditionally, because "the server has no websocket" is a state
+     * the implementation reports rather than a reason to have no implementation.
+     */
+    @Binds
+    @Singleton
+    fun bindsRealtimeConnection(impl: AbsRealtimeConnection): RealtimeConnection
+
     @Binds
     @Singleton
     @RemoteGateway
