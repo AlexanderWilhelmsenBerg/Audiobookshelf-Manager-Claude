@@ -140,6 +140,18 @@ jobs:
           if [ -n "$added" ]; then
             echo "::notice::New capture targets, never committed before:"
             echo "$added"
+            # Printed in full, not just named. A new fixture is the answer to a question somebody asked
+            # by adding it to the capture script — "what does this endpoint actually return?" — and the
+            # answer belongs where the question is being reviewed rather than inside a zip.
+            #
+            # Safe because of the ordering: the credential gate above has already run over these files
+            # and failed the job if any value survived redaction. Nothing reaches this line unscrubbed.
+            for file in $added; do
+              echo "::group::$file"
+              head -c 20000 "$RUNNER_TEMP/captured/$file"
+              echo
+              echo "::endgroup::"
+            done
           fi
           echo "::error::The captured contracts differ from the committed ones."
           echo "Download the captured-contracts artifact, review the diff, and commit the update."
