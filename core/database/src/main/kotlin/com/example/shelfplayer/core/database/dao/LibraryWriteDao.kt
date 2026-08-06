@@ -12,6 +12,7 @@ import com.example.shelfplayer.core.database.entity.BookEntity
 import com.example.shelfplayer.core.database.entity.BookSeriesCrossRef
 import com.example.shelfplayer.core.database.entity.ChapterEntity
 import com.example.shelfplayer.core.database.entity.LibraryEntity
+import com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity
 import com.example.shelfplayer.core.database.entity.SeriesEntity
 
 /**
@@ -114,4 +115,22 @@ interface LibraryWriteDao {
 
     @Query("UPDATE books SET isDeleted = 1 WHERE serverId = :serverId AND libraryKey NOT IN (:presentKeys)")
     suspend fun markBooksOutsideLibrariesDeleted(serverId: String, presentKeys: List<String>)
+
+    /**
+     * PRODUCT_SPEC 5.2 — one profile's item visibility in one library, replaced wholesale.
+     *
+     * Replace rather than merge, and scoped to the library rather than the profile: the catalogue this
+     * sync received *is* the current answer for that library, so an item the server stopped listing has
+     * to stop being visible in the same transaction — otherwise revoking a tag leaves the book on the
+     * shelf until the cache is cleared. Other libraries are untouched because their own sync owns them,
+     * and a run that failed halfway must not blank the ones it never reached.
+     *
+     * Deleting by `(profileId, libraryKey)` is why the row carries a library key it could otherwise
+     * derive from `books`: the delete has to work for ids that have no `books` row yet.
+     */
+    @Query("DELETE FROM profile_visible_books WHERE profileId = :profileId AND libraryKey = :libraryKey")
+    suspend fun clearVisibility(profileId: String, libraryKey: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVisibility(rows: List<ProfileVisibleBookEntity>)
 }

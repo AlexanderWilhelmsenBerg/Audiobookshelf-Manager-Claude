@@ -36,6 +36,31 @@ class SwitchProfileUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> =
         profileRepository.setActiveProfile(profileId).flatMap {
-            authRepository.restoreSession(profileId)
+            authRepository.restoreSession(profileId).also { status ->
+                if (status.isActive()) refreshPermissions(profileId)
+            }
         }
+
+    /**
+     * PRODUCT_SPEC 5.2 — the incoming account's grant, re-read before its content fills the screen.
+     *
+     * The result is deliberately discarded. The switch has already happened by this point and must not be
+     * undone by a server that could not be reached: PRODUCT_SPEC 6.3 keeps a profile's cached library
+     * browsable offline, and failing the switch would strand the user on an account they were leaving.
+     * What the call is *for* is the success case — a grant changed on the server since this profile last
+     * signed in, which is otherwise never noticed — and the marking that `refreshPermissions` performs
+     * when the server actively rejects the session.
+     *
+     * Only attempted for a session that restored. A profile already needing reauthentication has no token
+     * to ask with, and asking anyway would spend a network round trip to be told what is already known.
+     *
+     * This is cheap on purpose. AUTH-002 allows 500 ms for a switch, so the library sync that has to
+     * follow it belongs to the screen that shows the result, not to this call.
+     */
+    private suspend fun refreshPermissions(profileId: ProfileId) {
+        authRepository.refreshPermissions(profileId)
+    }
+
+    private fun AppResult<SessionStatus>.isActive(): Boolean =
+        this is AppResult.Success && value == SessionStatus.Active
 }

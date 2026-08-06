@@ -6,7 +6,32 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
 
 ### Phase 1 — Authentication and cached browsing (in progress)
 
-**Not complete.** See `docs/handover.md` for a deliverable-by-deliverable status.
+**Not complete.** `docs/phase-1-remaining.md` is the authoritative list of what is left — an audit
+against acceptance criteria rather than deliverables, which is how LIB-001's websocket requirement
+came to be missed. `docs/handover.md` has the deliverable-by-deliverable history.
+
+- **Item-level permission enforcement** (5.2, exit criterion 3): `profile_visible_books` records which
+  items each profile's own sync was served, and every read joins through it. Audiobookshelf restricts
+  twice — by library, and by tag inside a library — and reports the second only by shortening the item
+  list it serves, so there is no predicate to evaluate and nothing but a per-profile record will do.
+  A device run had a restricted account reading all 490 of another account's cached books, online and
+  offline alike, because both were granted the shared library. Absence now means hidden; a profile that
+  has not synced sees nothing rather than everything. Database version 5.
+- **Permission refresh** (5.2): `AuthApi.currentAccount` over the already-captured `POST /api/authorize`,
+  called on a profile switch and after any `403`. The stored grant and role were previously written once
+  at sign-in and never revisited, so a library revoked on the server stayed on the shelf until sign-out.
+  Returns an `AccountState` rather than an `AuthSession` on purpose: that response carries the legacy
+  `user.token` and no refresh token, and adopting it would replace a renewable credential with one that
+  cannot be renewed.
+- **A sync on every launch, per profile** (LIB-001, 6.5): the home screen no longer skips its automatic
+  sync for a profile that succeeded on some earlier launch. Two device runs reported switching accounts
+  and getting no sync at all.
+- **Contract capture for the progress and websocket shapes** (22.5): `scripts/capture-contracts.sh`
+  records a listening position before capturing, so `user.mediaProgress` is no longer an empty array
+  whose element shape nobody has seen, and it records the socket.io handshake, namespace connect,
+  authentication frame and a post-progress poll over the polling transport. Frames are stored parsed so
+  a token inside one is redacted and the shape is not. Six new capture targets; the fixtures land when
+  the workflow next runs against a real server.
 
 - Audiobookshelf contract capture: `.github/workflows/contract-capture.yml` runs the real server
   image and records what it answers, failing if committed fixtures drift (ADR-0007).

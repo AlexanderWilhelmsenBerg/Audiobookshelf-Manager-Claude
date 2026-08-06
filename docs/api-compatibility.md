@@ -144,6 +144,27 @@ No code in this repository may present one as the other.
 | `core/network/src/main/resources/fixtures/demo-library.json` | **ShelfPlayer-owned format** | The Phase 0 demo library. Not an Audiobookshelf response; see [ADR-0005](adr/0005-fake-gateway-and-fixtures.md). |
 | `core/network/src/test/resources/contracts/` | Captured server responses | **Twelve fixtures**, committed. `contract-capture.yml` re-captures on every `:core:network` change and fails on drift. |
 
+### Six capture targets added, none yet committed
+
+`scripts/capture-contracts.sh` now records six more responses. They exist as capture targets only: the
+job that produces them needs a real server, so the fixtures land when `contract-capture.yml` next runs
+and its artifact is committed. Until then nothing may be mapped from them (`PRODUCT_SPEC 22.5`).
+
+| Target | Why it was missing | What it unblocks |
+| --- | --- | --- |
+| `me.json`, `authorize-with-progress.json`, `media-progress.json` | Every earlier capture ran against a server that had never played anything, so `user.mediaProgress` was `[]` and the **element** shape has never been seen. The script now records a position before capturing. | P1-09 — a progress-only sync, which fixes acceptance case TC-10 without any websocket at all. |
+| `socket-handshake.json` | Never attempted. | P1-06 — a real `Websocket` capability probe instead of an assumption. |
+| `socket-connected.json` | Never attempted. Records what the server volunteers after a namespace connect, with no guess involved. | P1-07 — the connection lifecycle. |
+| `socket-auth.json`, `socket-event-after-progress.json` | Never attempted. The authentication frame's event name is **a guess** (`42["auth", token]`); the capture is how the guess is checked. | P1-08 — event payloads, if they turn out to exist in the shape the guess assumes. |
+
+The socket frames are recorded parsed rather than as text: an engine.io polling response is `42["event",
+{…}]`, and storing it structured is both readable as a contract and reachable by the redaction pass. A
+token inside a frame is redacted; the frame's shape is kept.
+
+**If `socket-auth.json` comes back empty or with an error frame, that is a result, not a failure.** It
+means the event name is wrong, and the next step is to look at what `socket-connected.json` recorded
+rather than to guess again.
+
 ## Known endpoint differences
 
 None recorded. This section fills in as contract tests run against real server versions, and every

@@ -89,5 +89,54 @@ object Migrations {
         }
     }
 
-    val ALL: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /**
+     * Version 5 — item-level visibility, recorded per profile (PRODUCT_SPEC 5.2).
+     *
+     * See [com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity] for why a table is
+     * the only place this can live.
+     *
+     * ### Why every profile is reset to never-synced
+     *
+     * The new table starts empty, and an empty table means "this profile can see nothing" — which is
+     * the point, but it would also blank the shelf of an upgrading user until they discovered
+     * pull-to-refresh. There is no honest way to backfill it: the cache records which books were
+     * *stored*, never which account was shown them, and attributing them to every profile is precisely
+     * the bug this migration exists to fix.
+     *
+     * So instead of inventing visibility, the migration removes the claim that a sync has happened.
+     * `NeverSynced` is already the state that makes the home screen sync on its own, so the shelf
+     * refills without the user doing anything, and it refills with each profile's real visibility. The
+     * books, their tracks, their chapters and — the part that matters — every profile's progress are
+     * untouched; only the assertion "this profile is up to date" is withdrawn, because after this
+     * migration it is no longer true.
+     *
+     * Nothing is dropped and no table is recreated, so this remains an additive migration.
+     */
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `profile_visible_books` (
+                    `profileId` TEXT NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `libraryKey` TEXT NOT NULL,
+                    PRIMARY KEY(`profileId`, `bookKey`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_profile_visible_books_bookKey` " +
+                    "ON `profile_visible_books` (`bookKey`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_profile_visible_books_profileId_libraryKey` " +
+                    "ON `profile_visible_books` (`profileId`, `libraryKey`)",
+            )
+            db.execSQL("UPDATE sync_state SET status = 'NeverSynced', lastSuccessfulSyncAt = NULL")
+        }
+    }
+
+    val ALL: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
@@ -97,6 +98,9 @@ class FakeAudiobookshelfGateway @Inject constructor(
         unsupported()
 
     override suspend fun refresh(serverUrl: String, refreshToken: AuthToken): AppResult<AuthSession> = unsupported()
+
+    override suspend fun currentAccount(serverUrl: String, accessToken: AuthToken): AppResult<AccountState> =
+        unsupported()
 
     override suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit> = AppResult.Success(Unit)
 

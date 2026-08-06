@@ -15,6 +15,7 @@ import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.book
 import com.example.shelfplayer.domain.library
 import com.example.shelfplayer.domain.library.BookSortOrder
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -23,6 +24,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class LibraryUseCaseTest {
 
     /**
@@ -212,6 +214,42 @@ class LibraryUseCaseTest {
         assertIs<AppError.Authentication>(result.error)
         assertTrue(libraries.refreshedProfiles.isEmpty())
         assertTrue(auth.renewedProfiles.isEmpty(), "there is no session to renew without a profile")
+    }
+
+    // --- PRODUCT_SPEC 14.3 / 5.2: what a 403 means ------------------------------------------------
+
+    /**
+     * "403: no retry; refresh permissions" — both halves.
+     *
+     * The refresh is not a way to make this attempt succeed. It is how the *next* one stops asking for
+     * something the account is no longer allowed to have, which is why the original failure is still what
+     * the caller gets back.
+     */
+    @Test
+    fun `a forbidden refresh reloads permissions and is not retried`() = runTest {
+        val libraries = FakeLibraryRepository().apply {
+            queueRefreshResults(AppResult.Failure(AppError.Authorization(summary = "no")))
+        }
+        val auth = FakeAuthRepository()
+
+        val result = refreshUseCase(libraries, auth)()
+
+        assertIs<AppError.Authorization>(assertIs<AppResult.Failure>(result).error)
+        assertEquals(listOf(TEST_PROFILE), auth.permissionRefreshes)
+        assertEquals(listOf(TEST_PROFILE), libraries.refreshedProfiles, "a 403 must not be retried")
+    }
+
+    /** Every other failure leaves the stored permissions alone: a timeout is not a revocation. */
+    @Test
+    fun `a network failure does not reload permissions`() = runTest {
+        val libraries = FakeLibraryRepository().apply {
+            queueRefreshResults(AppResult.Failure(AppError.Network()))
+        }
+        val auth = FakeAuthRepository()
+
+        refreshUseCase(libraries, auth)()
+
+        assertTrue(auth.permissionRefreshes.isEmpty())
     }
 
     // --- PRODUCT_SPEC AUTH-004 -------------------------------------------------------------------

@@ -4,7 +4,9 @@ import com.example.shelfplayer.core.database.DatabaseTransactionRunner
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.entity.EntityKey
+import com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.data.library.mapper.EntityMappers
@@ -41,6 +43,7 @@ class LibrarySnapshotWriter @Inject constructor(
      * 490 books were marked removed.
      */
     suspend fun write(
+        profileId: ProfileId,
         libraries: List<Library>,
         snapshots: Map<LibraryId, LibrarySnapshot>,
         reconciles: Boolean = true,
@@ -69,6 +72,7 @@ class LibrarySnapshotWriter @Inject constructor(
                 libraryWriteDao.upsertChapters(rows.flatMap { it.chapters })
                 progressDao.upsertProgress(rows.mapNotNull { it.progress })
                 val libraryKey = EntityKey.of(library.serverId.value, library.id.value)
+                recordVisibility(profileId, library, libraryKey, fetched)
                 // PRODUCT_SPEC 13.2 / LIB-001 — absence only means deletion when this profile could have
                 // seen everything *and* the fetch actually did.
                 //
@@ -86,6 +90,33 @@ class LibrarySnapshotWriter @Inject constructor(
             }
         }
         return written
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — what this profile was shown, as opposed to what is stored.
+     *
+     * Only a library this sync actually reached is rewritten. A library whose fetch never produced a
+     * snapshot keeps whatever visibility it had, because "we could not ask" is not "you may not see it"
+     * — the same distinction `LibrarySnapshot.unreachableCount` draws one level down, and getting it
+     * wrong here would empty a shelf on a dropped connection.
+     */
+    private suspend fun recordVisibility(
+        profileId: ProfileId,
+        library: Library,
+        libraryKey: String,
+        fetched: LibrarySnapshot?,
+    ) {
+        if (fetched == null) return
+        libraryWriteDao.clearVisibility(profileId.value, libraryKey)
+        libraryWriteDao.insertVisibility(
+            fetched.visibleIds.map { itemId ->
+                ProfileVisibleBookEntity(
+                    profileId = profileId.value,
+                    bookKey = EntityKey.of(library.serverId.value, itemId.value),
+                    libraryKey = libraryKey,
+                )
+            },
+        )
     }
 
     /**

@@ -13,6 +13,7 @@ import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
@@ -139,9 +140,20 @@ class HomeViewModelTest {
         }
     }
 
-    /** A library that already synced is not re-synced behind the user's back on every visit. */
+    /**
+     * PRODUCT_SPEC LIB-001 / 5.2 — a past success is not a reason to skip this launch's sync.
+     *
+     * This test asserted the opposite, and the assertion was the defect: two device runs found that
+     * switching to an account which had ever synced showed that account's old library until the user
+     * found the refresh button. It matters more since item visibility became per profile — what an
+     * account may see is established by its own sync, so an account that never syncs has an empty shelf
+     * rather than merely a stale one.
+     *
+     * What still bounds it is [HomeViewModel.syncAttemptedFor]: once per profile per process, proved by
+     * the test above.
+     */
     @Test
-    fun `a profile that has already synced is left alone`() = runTest {
+    fun `a profile that synced on an earlier launch syncs again on this one`() = runTest {
         profiles.setActive(demoProfile)
         libraries.emitBooks(listOf(book("cached", "A cached book")))
         libraries.setSyncState(
@@ -159,8 +171,9 @@ class HomeViewModelTest {
         viewModel.uiState.test {
             awaitItem()
             viewModel.onVisible()
+            viewModel.onVisible()
 
-            assertEquals(0, libraries.refreshCount)
+            assertEquals(1, libraries.refreshCount, "synced once for this launch, and only once")
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -407,6 +420,8 @@ class HomeViewModelTest {
     private class NeverRenewingAuth : AuthRepository {
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
             AppResult.Success(SessionStatus.ReauthenticationRequired)
+
+        override suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess> = notUsed()
 
         override suspend fun probeServer(serverUrl: String): AppResult<ServerCandidate> = notUsed()
 

@@ -194,22 +194,26 @@ playback steps belong to Phase 2.
 
 ## 4. The task list, in dependency order
 
+> **Wave 1 is done** (commit history on this branch): P1-01, P1-02, P1-03 and P1-05 below are
+> implemented, with `verifyDebug` green and 358 unit tests passing. P1-05 ships the *harness*; the
+> fixtures it produces need a run against a real server before anything may be mapped from them.
+
 ### Blocking the exit criteria
 
-- **P1-01 — Per-profile item visibility.** Record which items each profile's own sync returned; filter
+- **P1-01 — Per-profile item visibility.** ✅ Done. Record which items each profile's own sync returned; filter
   every read through it; default-deny for a profile that has not synced. Room migration 5. Closes
   TC-09, TC-27, TC-34, TC-37c, TC-43 and exit criterion 3.
-- **P1-02 — Permission refresh.** Add a current-user operation to the gateway over the already-captured
+- **P1-02 — Permission refresh.** ✅ Done. Add a current-user operation to the gateway over the already-captured
   `POST /api/authorize`; refresh the stored grant on sign-in, on profile switch, on app resume and after
   any 403. Closes TC-37 and `PRODUCT_SPEC 5.2`.
-- **P1-03 — Refresh on profile switch.** Closes TC-08b and exit criterion 1.
+- **P1-03 — Refresh on profile switch.** ✅ Done. Closes TC-08b and exit criterion 1.
 - **P1-04 — Connectivity observation and a distinct offline state.** `ConnectivityManager` behind a
   domain-level seam; offline rendered as its own state; refresh on regained connectivity. Closes exit
   criterion 2's second half and LIB-002's state criterion.
 
 ### Step 10 — websocket (LIB-001, SYNC-002)
 
-- **P1-05 — Capture the contract.** socket.io handshake, auth frame and event payloads, plus the
+- **P1-05 — Capture the contract.** ✅ Harness done, awaiting a run. socket.io handshake, auth frame and event payloads, plus the
   `user.mediaProgress` element shape, which the committed `authorize.json` fixture leaves as an empty
   array. **Everything below is blocked on this** — `PRODUCT_SPEC 22.4` and `22.5` forbid building on an
   unobserved shape. Deliverable: a capture harness the owner runs against a server that has played

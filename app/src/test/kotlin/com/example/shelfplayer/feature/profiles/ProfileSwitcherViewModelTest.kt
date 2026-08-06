@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.asFailure
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.repository.AuthRepository
@@ -239,6 +240,9 @@ class ProfileSwitcherViewModelTest {
 
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
             error("not part of this fake")
+
+        override suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess> =
+            AppResult.Success(LibraryAccess.None)
 
         override suspend fun signOut(profileId: ProfileId): AppResult<Unit> {
             signedOutProfiles += profileId

@@ -105,26 +105,32 @@ interface ProfileDao {
     suspend fun setLastUsedAt(profileId: String, usedAt: Long)
 
     /**
-     * PRODUCT_SPEC 5.2 — records the grant the server most recently reported.
+     * PRODUCT_SPEC 5.2 — records what the server most recently said about this account.
      *
-     * Separate from the profile upsert because a grant can change without anything else about the profile
-     * changing: a `403` triggers a permission refresh, and re-writing the whole row from a stale copy
-     * would undo whatever else had moved on.
+     * Separate from the profile upsert because all of this can change without anything else about the
+     * profile changing: a `403` triggers a permission refresh, and re-writing the whole row from a stale
+     * copy would undo whatever else had moved on.
+     *
+     * [role] travels with the grant rather than in its own statement because it comes from the same
+     * response and answers the same question — what this account may do. An account demoted on the
+     * server would otherwise keep offering actions it can no longer perform (PRODUCT_SPEC 5.1).
      */
     @Query(
         """
         UPDATE profiles
         SET accessibleLibrariesJson = :accessibleLibrariesJson,
             hasAllLibraryAccess = :hasAllLibraryAccess,
-            hasAllTagAccess = :hasAllTagAccess
+            hasAllTagAccess = :hasAllTagAccess,
+            role = :role
         WHERE profileId = :profileId
         """,
     )
-    suspend fun setLibraryAccess(
+    suspend fun setAccountState(
         profileId: String,
         accessibleLibrariesJson: String,
         hasAllLibraryAccess: Boolean,
         hasAllTagAccess: Boolean,
+        role: String,
     )
 
     /**

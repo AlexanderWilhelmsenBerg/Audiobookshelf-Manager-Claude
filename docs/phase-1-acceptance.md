@@ -67,6 +67,7 @@ worth nothing later.
 | ID | Requirement | Steps | Expected | Result |
 | --- | --- | --- | --- | --- |
 | **TC-08b** | LIB-001, AUTH-002 | Sign in a **second** account and watch the shelf. | Its first sync starts by itself too. Only the first account used to sync automatically. | |
+| **TC-08c** | LIB-001, 6.5 | Switch to an account that **has** synced before, on this launch or a previous one, and watch the shelf. | A sync starts by itself. Each profile gets one automatic sync per app launch; a past success is no longer a reason to skip it. This is what "no sync initiated, same server, different account" was. | |
 | **TC-09** | LIB-001 | Watch the screen immediately after TC-08. | Sign-in returns **quickly** — it no longer waits for the library — and a sync then starts **by itself** on the shelf, shown as a thin progress bar at the top. You are not asked to trigger it. | |
 | **TC-10** | LIB-001 | Wait for it to finish. **A first sync of a large library is one request per book; several minutes is normal.** | Books appear. The progress bar goes away. A line reports the number of books. **No manual refresh should be needed** — this is the defect four device runs reported. | |
 | **TC-10b** | LIB-001 | Force-stop the app *while the first sync is running*, then reopen it. | The sync starts again by itself rather than showing a progress bar for a sync nothing is running. | |
@@ -118,11 +119,12 @@ the sanity check.
 
 | ID | Requirement | Steps | Expected | Result |
 | --- | --- | --- | --- | --- |
-| **TC-34** | 5.2 | Switch to account **B** (restricted) and let it sync. | Only B's granted libraries and their books appear. | |
+| **TC-34** | 5.2 | Switch to account **B** (restricted) and let it sync. | Only B's granted libraries and their books appear — **including books A has cached from a library they share**. B sees what the server listed for B, nothing more. This failed until item-level visibility was recorded per profile: B was granted the shared library, so all 490 of A's books passed the check. | |
 | **TC-35** | **Exit 2** | Open **Settings → Storage on this device** as A and write down **Libraries stored** and **Books stored**. Switch to B, let it sync, and look again. | **Libraries stored** and **Books stored** are unchanged by B's sync — B added nothing A had not already synced — while **Visible to this profile** is *lower* for B than for A. That pair is the criterion: rows outside B's grant were never written by B, and the ones that exist are hidden from it. | |
 | **TC-35b** | 5.2 | Sign in B on a device that has **never** had A on it (or clear the app first), let it sync, and look at Settings. | **Libraries stored** equals **Visible to this profile**. Nothing outside B's grant was written at all. This is the strongest form of the check, and the one worth doing if you only do one. | |
-| **TC-36** | 5.2 | Turn on **Open on libraries** while B is active. | The library list shows **only** B's granted libraries. | |
-| **TC-37** | 5.2 | On the server, **revoke** one of B's libraries. Back in the app, refresh as B. | The revoked library and its books disappear from B's shelf, its library list, and search. | |
+| ~~**TC-36**~~ | — | ~~Turn on **Open on libraries** while B is active.~~ | **Struck.** The toggle was removed; Settings now always lists the libraries. TC-34 covers what this asked. | n/a |
+| **TC-37** | 5.2 | On the server, **revoke** one of B's libraries. Back in the app, **switch away from B and back** (no sign-out). | The revoked library and its books disappear from B's shelf, its library list, and search. The switch is what re-reads the grant: the app used to record it once at sign-in and never ask again, so a revoked library stayed until sign-out. | |
+| **TC-37d** | 5.2 | On the server, **grant** B a library it did not have. Switch away from B and back, and let it sync. | The new library and its books appear. Same mechanism as TC-37, in the other direction. | |
 | **TC-37b** | 13.2 | **Delete** a library on the server. Refresh as **A** (the unrestricted account). | The library disappears from Settings → Libraries, and its books leave the shelf. It used to survive as a stale entry for ever. | |
 | **TC-37c** | **5.2** | Note **Books stored** as A. Switch to restricted B, let it sync, switch back to A, and look again. | **Unchanged**, and **Removed on the server** has not grown. This is the worst defect found so far: B's filtered item list used to mark 302 of A's 490 books removed. | |
 | **TC-38** | 5.2 | Switch to A and refresh. | A still sees everything. Revoking B's access changed nothing for A. | |
@@ -136,7 +138,7 @@ the sanity check.
 | **TC-40** | Exit 3 | Still offline, search and change sort order. | Both work — they read the cache, not the network. | |
 | **TC-41** | Exit 3 | Still offline, open a book. | Its details render from the cache. | |
 | **TC-42** | Exit 3 | Still offline, tap refresh. | A clear network error. **The library stays on screen.** | |
-| **TC-43** | Exit 3 | Still offline, switch to profile B and back. | Both accounts' cached libraries are browsable offline, each with its own progress. | |
+| **TC-43** | Exit 3 | Still offline, switch to profile B and back. | Both accounts' cached libraries are browsable offline, each with its own progress — **and B still does not see A's restricted books**. Offline is the harder case: the filter has to hold with no server to ask, which is why it is enforced in the query rather than at fetch time. | |
 | **TC-44** | LIB-001 | Turn the network back on and refresh. | The sync succeeds and the error clears without restarting the app. | |
 
 ## 6b. Partial sync — the fix most worth confirming (LIB-001)

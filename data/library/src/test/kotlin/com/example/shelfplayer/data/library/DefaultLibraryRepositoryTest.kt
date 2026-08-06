@@ -275,8 +275,9 @@ class DefaultLibraryRepositoryTest {
         repository.refresh(fixtureProfile)
         assertEquals(2, repository.observeLibraries(fixtureProfile).first().size)
 
-        database.profileDao().setLibraryAccess(
+        database.profileDao().setAccountState(
             profileId = fixtureProfile.value,
+            role = "Listener",
             accessibleLibrariesJson = """["lib-nonfiction"]""",
             hasAllLibraryAccess = false,
             hasAllTagAccess = false,
@@ -305,8 +306,9 @@ class DefaultLibraryRepositoryTest {
     @Test
     fun `a profile granted nothing sees nothing`() = runTest {
         repository.refresh(fixtureProfile)
-        database.profileDao().setLibraryAccess(
+        database.profileDao().setAccountState(
             profileId = fixtureProfile.value,
+            role = "Listener",
             accessibleLibrariesJson = "[]",
             hasAllLibraryAccess = false,
             hasAllTagAccess = false,
@@ -362,11 +364,16 @@ class DefaultLibraryRepositoryTest {
         // One book came back; the other four were unreachable. Written directly, because the fake gateway
         // has no way to make an individual item fail.
         writer.write(
+            profileId = fixtureProfile,
             libraries = listOf(fictionLibrary(before.first().serverId)),
             snapshots = mapOf(
                 LibraryId("lib-fiction") to LibrarySnapshot(
                     books = listOf(BookSnapshot(before.first(), tracks = emptyList(), chapters = emptyList())),
                     unreachableCount = 4,
+                    // The catalogue still listed all five. Visibility follows the listing, not the fetch:
+                    // an item whose expanded fetch timed out is one this account may see and this device
+                    // could not reach, and those are not the same thing.
+                    visibleIds = before.map { it.id },
                 ),
             ),
         )
@@ -385,6 +392,7 @@ class DefaultLibraryRepositoryTest {
         val before = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first()
 
         writer.write(
+            profileId = fixtureProfile,
             libraries = listOf(fictionLibrary(before.first().serverId)),
             snapshots = mapOf(
                 LibraryId("lib-fiction") to LibrarySnapshot(
@@ -409,21 +417,29 @@ class DefaultLibraryRepositoryTest {
     )
 
     /**
-     * PRODUCT_SPEC 5.2 — a filtered account never deletes another account's books.
+     * PRODUCT_SPEC 5.2 — a filtered account never deletes another account's books, and never sees them.
      *
      * The defect a device run found, and the worst one in the project so far: a restricted account synced
      * a shared library, the server served it 188 of 490 items, and reconciliation marked the other 302
      * removed — under the *unrestricted* account too. Absence from a filtered account's sync says
      * something about the filter, not about the server.
+     *
+     * The two halves are separate and both are asserted here, because fixing the first one alone is what
+     * produced the second bug. Nothing may be **deleted**: the rows belong to whoever else can see them.
+     * And the filtered profile's own view narrows to what it was served: the later device run found the
+     * restricted account reading all 490 of the unrestricted account's books straight out of the shared
+     * cache, online and offline alike.
      */
     @Test
-    fun `a profile the server filters does not delete what it cannot see`() = runTest {
+    fun `a profile the server filters sees less without deleting anything`() = runTest {
         repository.refresh(fixtureProfile)
         val all = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first()
         assertEquals(5, all.size)
+        val serverId = all.first().serverId
 
         writer.write(
-            libraries = listOf(fictionLibrary(all.first().serverId)),
+            profileId = fixtureProfile,
+            libraries = listOf(fictionLibrary(serverId)),
             snapshots = mapOf(
                 LibraryId("lib-fiction") to LibrarySnapshot(
                     books = listOf(BookSnapshot(all.first(), tracks = emptyList(), chapters = emptyList())),
@@ -433,9 +449,14 @@ class DefaultLibraryRepositoryTest {
         )
 
         assertEquals(
-            5,
-            repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().size,
+            0,
+            database.libraryDao().observeBookCount(serverId.value, deleted = true).first(),
             "a filtered sync adds and updates; it never removes",
+        )
+        assertEquals(
+            listOf(all.first().id),
+            repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().map { it.id },
+            "…and it shows this account only what the server was willing to list for it",
         )
     }
 
@@ -453,6 +474,7 @@ class DefaultLibraryRepositoryTest {
 
         // The server now lists only Fiction. Non-fiction was deleted.
         writer.write(
+            profileId = fixtureProfile,
             libraries = listOf(fictionLibrary(serverId)),
             snapshots = mapOf(LibraryId("lib-fiction") to LibrarySnapshot(books = emptyList())),
             reconciles = true,
@@ -474,6 +496,7 @@ class DefaultLibraryRepositoryTest {
         val serverId = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().first().serverId
 
         writer.write(
+            profileId = fixtureProfile,
             libraries = listOf(fictionLibrary(serverId)),
             snapshots = mapOf(LibraryId("lib-fiction") to LibrarySnapshot(books = emptyList())),
             reconciles = false,

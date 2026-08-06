@@ -18,6 +18,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.AuthSession
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionIdentity
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.flatMap
@@ -245,11 +246,12 @@ class DefaultAuthRepository @Inject constructor(
                 // A renewal is also a fresh statement of the account's permissions, so the stored grant is
                 // updated from it. PRODUCT_SPEC 5.2 wants the grant refreshed rather than assumed
                 // unchanged: a library revoked while the session was expired must not come back with it.
-                profileDao.setLibraryAccess(
+                profileDao.setAccountState(
                     profileId = profileId.value,
                     accessibleLibrariesJson = AuthEntityMappers.accessibleLibrariesJson(renewed.value.access),
                     hasAllLibraryAccess = renewed.value.access.hasAllLibraryAccess,
                     hasAllTagAccess = renewed.value.access.hasAllTagAccess,
+                    role = renewed.value.role.name,
                 )
                 logger.info(
                     LogCategory.Auth,
@@ -261,6 +263,68 @@ class DefaultAuthRepository @Inject constructor(
             }
         }
     }
+
+    /**
+     * PRODUCT_SPEC 5.2 — asks the server what this account may do now, and records the answer.
+     *
+     * ### What each outcome means, and why they differ
+     *
+     * A **success** overwrites the stored grant and the role. It also clears the reauthentication mark:
+     * the token just proved it works, which is stronger evidence than whatever set the mark.
+     *
+     * An **authentication failure** is the token no longer being accepted — revoked, expired, or the
+     * account deleted. AUTH-004 wants the profile marked, and the stored grant left alone: a `401` says
+     * nothing about what the account may see, and blanking the grant would hide cached content the user
+     * is entitled to browse offline.
+     *
+     * An **authorization failure** is [AuthMapper.toAccountState]'s disabled-or-locked check. A device run
+     * found this one from the other side: disabling a user on the server did lock them out, while changing
+     * their password did not, because Audiobookshelf does not invalidate tokens on a password change. This
+     * is the call that notices either.
+     *
+     * Anything **else** — a timeout, a 5xx, an unreachable host — changes nothing. Offline is not a
+     * permission change, and treating it as one would revoke a user's library every time they walked into
+     * a lift.
+     */
+    override suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess> =
+        withContext(ioDispatcher) {
+            val baseUrl = serverBaseUrlFor(profileId)
+                ?: return@withContext AppError.Validation(
+                    summary = "That profile is no longer saved on this device.",
+                ).asFailure()
+            val token = sessionTokens.accessTokenFor(profileId)
+                ?: return@withContext AppError.Authentication().asFailure()
+
+            when (val account = gateway.auth.currentAccount(baseUrl, token)) {
+                is AppResult.Failure -> {
+                    if (account.error is AppError.Authentication || account.error is AppError.Authorization) {
+                        markReauthenticationRequired(profileId, reason = "permission refresh was refused")
+                    }
+                    AppResult.Failure(account.error)
+                }
+
+                is AppResult.Success -> {
+                    val access = account.value.access
+                    profileDao.setAccountState(
+                        profileId = profileId.value,
+                        accessibleLibrariesJson = AuthEntityMappers.accessibleLibrariesJson(access),
+                        hasAllLibraryAccess = access.hasAllLibraryAccess,
+                        hasAllTagAccess = access.hasAllTagAccess,
+                        role = account.value.role.name,
+                    )
+                    profileDao.setRequiresReauthentication(profileId.value, required = false)
+                    logger.info(
+                        LogCategory.Auth,
+                        "Refreshed an account's permissions",
+                        LogField.Identifier("profile", profileId.value),
+                        LogField.Public("allLibraries", access.hasAllLibraryAccess),
+                        LogField.Public("allTags", access.hasAllTagAccess),
+                        LogField.Count("grantedLibraries", access.accessibleLibraryIds.size),
+                    )
+                    AppResult.Success(access)
+                }
+            }
+        }
 
     override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = withContext(ioDispatcher) {
         // Told to the server first, while the credential still exists to authenticate the request. A

@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.library.Library
@@ -65,6 +66,18 @@ interface AuthApi {
      */
     suspend fun refresh(serverUrl: String, refreshToken: AuthToken): AppResult<AuthSession>
 
+    /**
+     * PRODUCT_SPEC 5.2 — "Get current user and permissions", over `POST /api/authorize`.
+     *
+     * Returns an [AccountState] and not an [AuthSession]: the response carries the legacy `user.token`
+     * and no refresh token, so it is not a credential this app may adopt. See [AccountState].
+     *
+     * A `401` here means the token stopped working — revoked, expired, or the account deleted — and a
+     * `403` or a disabled account means it works but the account may no longer do what it did. Both are
+     * things AUTH-004 wants the profile marked for rather than discovered at the next silent failure.
+     */
+    suspend fun currentAccount(serverUrl: String, accessToken: AuthToken): AppResult<AccountState>
+
     suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit>
 }
 
@@ -82,19 +95,14 @@ interface CapabilityResolver {
 }
 
 /**
- * PRODUCT_SPEC 23 — "Get current user and permissions" is *not* declared here, on purpose.
+ * PRODUCT_SPEC 23 — "Get current user and permissions" is [AuthApi.currentAccount], and there is no
+ * separate `AccountApi`.
  *
- * Phase 0 had an `AccountApi` with parameterless `currentServer()` and `currentProfile()`. That suited a
- * gateway serving one fixture profile and cannot serve a real client: there is no ambient "current"
- * account when several profiles on several servers coexist, and a permission refresh attributed to the
- * wrong one would write one account's grant over another's (PRODUCT_SPEC 5.2). Its only consumer was the
- * demo-library bootstrapper, which real sign-in replaces.
- *
- * `POST /api/authorize` is the endpoint a permission refresh will use — PRODUCT_SPEC 5.2 requires one
- * after a `403` — and its response is already captured in `contracts/authorize.json`. It is added when
- * that refresh is implemented, taking an explicit profile. Note for whoever does: the captured response
- * carries `user.token` only, with no `accessToken` and no `refreshToken`, so `AuthMapper.toSession` is the
- * wrong mapping for it — using it would store the legacy, non-refreshable token as the access token.
+ * Phase 0 had one, with parameterless `currentServer()` and `currentProfile()`. That suited a gateway
+ * serving one fixture profile and cannot serve a real client: there is no ambient "current" account when
+ * several profiles on several servers coexist, and a permission refresh attributed to the wrong one would
+ * write one account's grant over another's (PRODUCT_SPEC 5.2). Every replacement takes its server and its
+ * credential explicitly.
  */
 
 /** PRODUCT_SPEC 23 — "Get accessible libraries" and "Get library items". */

@@ -290,6 +290,54 @@ data class ChapterEntity(
 )
 
 /**
+ * PRODUCT_SPEC 5.2 — which items one profile may actually see.
+ *
+ * ### Why a table and not a predicate
+ *
+ * `LibraryAccess` answers "may this profile read this *library*", and that is all the server tells us
+ * up front. Audiobookshelf restricts a second time, by tag, *inside* a library — and it reports that
+ * restriction nowhere except by silently shortening the item list it serves. So there is no predicate
+ * to evaluate: the only evidence of item-level visibility is which ids came back, and the only place to
+ * keep it is a row per profile per item.
+ *
+ * A device run is what forced this. Account A cached 490 books from a shared library; account B, which
+ * the server restricts by tag, has `hasAllLibraryAccess = true` and so passed every library-level check
+ * — and saw all 490 of A's books, online and offline alike. That is product priority 4, crossing a
+ * permission boundary, and it is the one Phase 1 exit criterion that was failing.
+ *
+ * ### Two deliberate choices
+ *
+ * **Absence means hidden.** A profile with no rows here sees no books. That is the opposite of the
+ * usual "fail open" instinct and it is chosen on purpose: an empty shelf until the first sync is a
+ * visible, self-correcting annoyance, whereas showing another account's library is a silent leak.
+ *
+ * **No foreign key on [bookKey].** The rows are written from the server's catalogue, which lists items
+ * whose expanded fetch may have failed and which therefore have no `books` row yet. Visibility is a
+ * statement about what the server showed this account, not about what we managed to cache, and a
+ * foreign key would make the weaker fact govern the stronger one. The profile key *is* constrained, so
+ * removing a profile takes its visibility with it.
+ */
+@Entity(
+    tableName = "profile_visible_books",
+    primaryKeys = ["profileId", "bookKey"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["profileId"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("bookKey"), Index("profileId", "libraryKey")],
+)
+data class ProfileVisibleBookEntity(
+    val profileId: String,
+    val bookKey: String,
+    /** Scopes the replace-on-sync: one library's visibility is rewritten without touching another's. */
+    val libraryKey: String,
+)
+
+/**
  * PRODUCT_SPEC PLAY-004 — one profile's position in one book.
  *
  * [hasUnsyncedChanges] is what stops PRODUCT_SPEC DL-006 from deleting a book whose progress has not

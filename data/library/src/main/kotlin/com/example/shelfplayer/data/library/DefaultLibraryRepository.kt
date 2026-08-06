@@ -73,7 +73,13 @@ class DefaultLibraryRepository @Inject constructor(
                     entities
                         .filter { scope.access.allows(LibraryId(it.remoteId)) }
                         .map { entity ->
-                            EntityMappers.toDomain(entity, bookCount = libraryDao.countBooks(entity.libraryKey))
+                            EntityMappers.toDomain(
+                                entity,
+                                // The count follows the same visibility rule as the list it labels. A
+                                // library reading "490 books" that opens onto 188 is a worse answer than
+                                // no count at all.
+                                bookCount = libraryDao.countBooks(profileId.value, entity.libraryKey),
+                            )
                         }
                 }
             }
@@ -86,7 +92,7 @@ class DefaultLibraryRepository @Inject constructor(
             } else {
                 val key = EntityKey.of(scope.serverId.value, libraryId.value)
                 libraryDao.observeLibrary(key).map { entity ->
-                    entity?.let { EntityMappers.toDomain(it, libraryDao.countBooks(key)) }
+                    entity?.let { EntityMappers.toDomain(it, libraryDao.countBooks(profileId.value, key)) }
                 }
             }
         }
@@ -97,12 +103,16 @@ class DefaultLibraryRepository @Inject constructor(
                 flowOf(emptyList())
             } else {
                 val libraryKey = EntityKey.of(scope.serverId.value, libraryId.value)
-                withProgress(profileId, libraryDao.observeBooksIn(listOf(libraryKey)))
+                withProgress(profileId, libraryDao.observeBooksIn(profileId.value, listOf(libraryKey)))
             }
         }
 
     /**
-     * PRODUCT_SPEC LIB-002 / 5.2 — the whole shelf, minus anything the grant does not cover.
+     * PRODUCT_SPEC LIB-002 / 5.2 — the whole shelf, minus anything this profile may not see.
+     *
+     * Two filters, and both are needed. The library grant is applied here, from the profile row; the
+     * item grant is applied by the DAO's join onto the recorded visibility, because the server never
+     * states it and only the shape of the catalogue it served reveals it.
      *
      * A grant of *all* libraries is one query on the server id. A narrower grant is a query on the
      * library keys it names, and an empty set short-circuits before reaching SQL: `IN ()` is a shape
@@ -113,9 +123,12 @@ class DefaultLibraryRepository @Inject constructor(
             val keys = scope?.allowedLibraryKeys()
             when {
                 scope == null -> flowOf(emptyList())
-                keys == null -> withProgress(profileId, libraryDao.observeBooksOnServer(scope.serverId.value))
+                keys == null -> withProgress(
+                    profileId,
+                    libraryDao.observeBooksOnServer(profileId.value, scope.serverId.value),
+                )
                 keys.isEmpty() -> flowOf(emptyList())
-                else -> withProgress(profileId, libraryDao.observeBooksIn(keys))
+                else -> withProgress(profileId, libraryDao.observeBooksIn(profileId.value, keys))
             }
         }
 
@@ -127,13 +140,13 @@ class DefaultLibraryRepository @Inject constructor(
                 val bookKey = EntityKey.of(scope.serverId.value, bookId.value)
                 val allowedKeys = scope.allowedLibraryKeys()
                 combine(
-                    libraryDao.observeBook(bookKey),
+                    // The item grant is already applied by the query; the library grant still is not,
+                    // and both matter. A revoked library and a revoked tag hide a book for different
+                    // reasons, and the detail screen must not open it on either count.
+                    libraryDao.observeBook(profileId.value, bookKey),
                     progressDao.observeProgress(profileId.value, bookKey),
                 ) { relations, progress ->
                     relations
-                        // A book is reachable only through a library the profile is granted. Without this
-                        // the detail screen would still open a book whose library has been revoked, which
-                        // is the same leak the list path closes.
                         ?.takeIf { allowedKeys == null || it.book.libraryKey in allowedKeys }
                         ?.let { EntityMappers.toDomain(it, progress) }
                 }
@@ -193,7 +206,7 @@ class DefaultLibraryRepository @Inject constructor(
                 // PRODUCT_SPEC 5.2 — only an account the server does not filter may drive deletions.
                 val access = profileDao.findProfile(profileId.value)?.let(EntityMappers::toLibraryAccess)
                     ?: LibraryAccess.None
-                val written = writer.write(libraries.value, snapshots, reconciles = access.reconciles)
+                val written = writer.write(profileId, libraries.value, snapshots, reconciles = access.reconciles)
                 // PRODUCT_SPEC LIB-001 — a sync that could not reach some items succeeded *partly*, and
                 // says so. Recording it as a plain success would hide that the library on screen is
                 // missing books; recording it as a failure would hide that most of it is current.

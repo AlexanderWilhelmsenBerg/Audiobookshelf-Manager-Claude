@@ -164,7 +164,16 @@ internal class AbsLibraryApi @Inject constructor(
         // Nothing came back and something went wrong: that is a failed sync, not an empty library.
         if (snapshots.isEmpty() && failure != null) return AppResult.Failure(failure)
         return AppResult.Success(
-            LibrarySnapshot(books = snapshots, removedCount = removed, unreachableCount = unreachable),
+            LibrarySnapshot(
+                books = snapshots,
+                removedCount = removed,
+                unreachableCount = unreachable,
+                // PRODUCT_SPEC 5.2 — the catalogue, not the successfully-fetched subset. These are the ids
+                // the server was willing to list *for this profile*, which is the only place item-level
+                // visibility is observable: an account restricted by tag inside a shared library gets a
+                // shorter list here and an identical response everywhere else.
+                visibleIds = ids,
+            ),
         )
     }
 

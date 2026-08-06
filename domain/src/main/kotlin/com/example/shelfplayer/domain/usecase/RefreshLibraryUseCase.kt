@@ -39,11 +39,14 @@ class RefreshLibraryUseCase @Inject constructor(
             )
 
         val attempt = libraryRepository.refresh(profileId)
-        return if (attempt is AppResult.Failure && attempt.error is AppError.Authentication) {
-            renewAndRetry(profileId, original = attempt)
-        } else {
-            attempt
-        }
+        if (attempt !is AppResult.Failure) return attempt
+        if (attempt.error is AppError.Authentication) return renewAndRetry(profileId, original = attempt)
+        // PRODUCT_SPEC 14.3 — "403: no retry; refresh permissions". The refresh is not a way to make this
+        // attempt succeed; it is how the *next* one stops asking for something the account is no longer
+        // allowed to have. Retrying would be asking the server the same rejected question, so the original
+        // failure is what the caller gets back either way.
+        if (attempt.error is AppError.Authorization) authRepository.refreshPermissions(profileId)
+        return attempt
     }
 
     /**

@@ -127,11 +127,23 @@ jobs:
           fi
           if diff -ru "$committed" "$RUNNER_TEMP/captured"; then
             echo "Committed contracts match the server."
-          else
-            echo "::error::The server's responses no longer match the committed contracts."
-            echo "Download the captured-contracts artifact, review the diff, and commit the update."
-            exit 1
+            exit 0
           fi
+          # Two different findings share one diff, and they need different reactions. A fixture that
+          # exists only in the capture is a *new capture target* — somebody added an endpoint to the
+          # script and the fixture has never been committed, which is the expected state of the pull
+          # request that adds it. A fixture that changed is drift: the server now answers something the
+          # adapter was written against, which is the failure this job exists to catch.
+          added="$(comm -13 \
+            <(cd "$committed" && find . -name '*.json' | sort) \
+            <(cd "$RUNNER_TEMP/captured" && find . -name '*.json' | sort))"
+          if [ -n "$added" ]; then
+            echo "::notice::New capture targets, never committed before:"
+            echo "$added"
+          fi
+          echo "::error::The captured contracts differ from the committed ones."
+          echo "Download the captured-contracts artifact, review the diff, and commit the update."
+          exit 1
 
       - name: Upload captured contracts
         if: always()

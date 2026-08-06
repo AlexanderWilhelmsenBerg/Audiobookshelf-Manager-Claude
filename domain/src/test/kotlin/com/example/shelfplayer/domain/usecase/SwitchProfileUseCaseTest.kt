@@ -62,6 +62,45 @@ class SwitchProfileUseCaseTest {
         assertTrue(auth.restoredProfiles.isEmpty(), "no credential may be loaded for a refused switch")
     }
 
+    /**
+     * PRODUCT_SPEC 5.2 — the incoming account's grant is re-read before its content fills the screen.
+     *
+     * Without it, an account switched to keeps whatever grant it was signed in with, which is how a
+     * library revoked days ago stays on its shelf.
+     */
+    @Test
+    fun `switching re-reads the incoming profile's permissions`() = runTest {
+        useCase()(OTHER)
+
+        assertEquals(listOf(OTHER), auth.permissionRefreshes)
+    }
+
+    /**
+     * A switch is not undone by an unreachable server.
+     *
+     * The user asked to be on the other account; PRODUCT_SPEC 6.3 keeps its cached library browsable
+     * offline, so failing the switch would strand them on the one they were leaving.
+     */
+    @Test
+    fun `a permission refresh that fails does not fail the switch`() = runTest {
+        auth.willFailToRefreshPermissions(AppError.Network())
+
+        val result = useCase()(OTHER)
+
+        assertEquals(AppResult.Success(SessionStatus.Active), result)
+        assertEquals(OTHER, profiles.activeProfileId())
+    }
+
+    /** A profile with no usable session has no token to ask with, so nothing is spent finding out. */
+    @Test
+    fun `a profile that needs reauthentication is not asked for permissions`() = runTest {
+        auth.willRestoreInto(SessionStatus.ReauthenticationRequired)
+
+        useCase()(OTHER)
+
+        assertTrue(auth.permissionRefreshes.isEmpty())
+    }
+
     private companion object {
         val OTHER = ProfileId("profile-2")
     }

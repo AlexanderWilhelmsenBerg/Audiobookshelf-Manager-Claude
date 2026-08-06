@@ -160,6 +160,44 @@ class MigrationTest {
     }
 
     /**
+     * PRODUCT_SPEC 5.2 — version 5 arrives with nothing visible to anyone, on purpose.
+     *
+     * The new table cannot be backfilled: the cache records which books were *stored*, never which account
+     * was shown them, and attributing them to every profile is the bug the table exists to fix. So an
+     * upgrading profile starts with an empty view, and the migration withdraws its claim to be up to date
+     * so the next launch syncs on its own and fills the view with that account's real visibility.
+     */
+    @Test
+    fun `version 5 starts every profile with no visible books and a sync owed`() = runTest {
+        createVersion(4)
+
+        val migrated = openWithMigrations()
+
+        assertEquals(
+            0,
+            migrated.libraryDao().observeVisibleBookCount(PROFILE_ID, SERVER_ID).first(),
+            "an upgrading profile has no recorded visibility, and absence must mean hidden",
+        )
+        val syncState = assertNotNull(migrated.syncStateDao().findSyncState(PROFILE_ID))
+        assertEquals("NeverSynced", syncState.status, "the shelf refills only if a sync is owed")
+        assertNull(syncState.lastSuccessfulSyncAt)
+    }
+
+    /** The rows themselves survive: this migration withdraws a claim, it does not delete content. */
+    @Test
+    fun `version 5 keeps the profile and its server`() = runTest {
+        createVersion(4)
+
+        val migrated = openWithMigrations()
+
+        val profile = assertNotNull(migrated.profileDao().findProfile(PROFILE_ID))
+        assertEquals("ada", profile.username)
+        assertTrue(profile.hasAllLibraryAccess)
+        assertTrue(profile.hasAllTagAccess)
+        assertNotNull(migrated.profileDao().findServer(SERVER_ID))
+    }
+
+    /**
      * Room validates the migrated schema against the one it expects and throws if they differ. Reading
      * through a DAO is what forces that validation to run, so this fails loudly on a migration that
      * produced a *nearly* correct schema — a missing default, a wrong nullability.
@@ -253,54 +291,78 @@ class MigrationTest {
      * it is testing checks nothing.
      */
     private fun seed(db: SupportSQLiteDatabase, version: Int) = when (version) {
-        VERSION_1 -> {
-            db.execSQL(
-                "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, lastFetchedAt) " +
-                    "VALUES (?, ?, ?, NULL, 0, 0)",
-                arrayOf(SERVER_ID, "Demo", "https://books.example"),
-            )
-            db.execSQL(
-                "INSERT INTO profiles " +
-                    "(profileId, serverId, username, displayName, role, requiresReauthentication, " +
-                    "lastUsedAt, isFixture) VALUES (?, ?, ?, ?, 'Listener', 0, NULL, 0)",
-                arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
-            )
-        }
-
-        VERSION_2 -> {
-            db.execSQL(
-                "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, " +
-                    "lastFetchedAt, authMethodsJson, capabilitiesJson, capabilitiesDetectedAt) " +
-                    "VALUES (?, ?, ?, '2.36.0', 0, 0, '[\"local\"]', '[]', NULL)",
-                arrayOf(SERVER_ID, "Demo", "https://books.example"),
-            )
-            db.execSQL(
-                "INSERT INTO profiles " +
-                    "(profileId, serverId, remoteUserId, username, displayName, role, " +
-                    "requiresReauthentication, lastUsedAt, isFixture) " +
-                    "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0)",
-                arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
-            )
-        }
-
-        VERSION_3 -> {
-            db.execSQL(
-                "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, " +
-                    "lastFetchedAt, authMethodsJson, capabilitiesJson, capabilitiesDetectedAt) " +
-                    "VALUES (?, ?, ?, '2.36.0', 0, 0, '[\"local\"]', '[]', NULL)",
-                arrayOf(SERVER_ID, "Demo", "https://books.example"),
-            )
-            db.execSQL(
-                "INSERT INTO profiles " +
-                    "(profileId, serverId, remoteUserId, username, displayName, role, " +
-                    "requiresReauthentication, lastUsedAt, isFixture, accessibleLibrariesJson, " +
-                    "hasAllLibraryAccess) " +
-                    "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0, '[]', 1)",
-                arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
-            )
-        }
-
+        VERSION_1 -> seedVersion1(db)
+        VERSION_2 -> seedVersion2(db)
+        VERSION_3 -> seedVersion3(db)
+        VERSION_4 -> seedVersion4(db)
         else -> error("no seed data defined for schema version $version")
+    }
+
+    private fun seedVersion1(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, lastFetchedAt) " +
+                "VALUES (?, ?, ?, NULL, 0, 0)",
+            arrayOf(SERVER_ID, "Demo", "https://books.example"),
+        )
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, username, displayName, role, requiresReauthentication, " +
+                "lastUsedAt, isFixture) VALUES (?, ?, ?, ?, 'Listener', 0, NULL, 0)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+    }
+
+    private fun seedVersion2(db: SupportSQLiteDatabase) {
+        seedServerWithCapabilities(db)
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, remoteUserId, username, displayName, role, " +
+                "requiresReauthentication, lastUsedAt, isFixture) " +
+                "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+    }
+
+    private fun seedVersion3(db: SupportSQLiteDatabase) {
+        seedServerWithCapabilities(db)
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, remoteUserId, username, displayName, role, " +
+                "requiresReauthentication, lastUsedAt, isFixture, accessibleLibrariesJson, " +
+                "hasAllLibraryAccess) " +
+                "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0, '[]', 1)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+    }
+
+    private fun seedVersion4(db: SupportSQLiteDatabase) {
+        seedServerWithCapabilities(db)
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, remoteUserId, username, displayName, role, " +
+                "requiresReauthentication, lastUsedAt, isFixture, accessibleLibrariesJson, " +
+                "hasAllLibraryAccess, hasAllTagAccess) " +
+                "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0, '[]', 1, 1)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+        // A profile that believes it is up to date, which is the state version 5 has to withdraw.
+        db.execSQL(
+            "INSERT INTO sync_state " +
+                "(profileId, serverId, status, lastSuccessfulSyncAt, lastAttemptedAt, " +
+                "lastErrorCode, lastErrorSummary) " +
+                "VALUES (?, ?, 'Succeeded', 1000, 1000, NULL, NULL)",
+            arrayOf(PROFILE_ID, SERVER_ID),
+        )
+    }
+
+    /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
+    private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, " +
+                "lastFetchedAt, authMethodsJson, capabilitiesJson, capabilitiesDetectedAt) " +
+                "VALUES (?, ?, ?, '2.36.0', 0, 0, '[\"local\"]', '[]', NULL)",
+            arrayOf(SERVER_ID, "Demo", "https://books.example"),
+        )
     }
 
     /**
@@ -331,6 +393,7 @@ class MigrationTest {
         const val VERSION_2 = 2
         const val SERVER_ID = "srv_test"
         const val VERSION_3 = 3
+        const val VERSION_4 = 4
         const val PROFILE_ID = "prf_test"
 
         /** Room's placeholder for the table name in an exported `createSql`. */

@@ -126,16 +126,21 @@ class HomeViewModel @Inject constructor(
      * `sync_state` row stuck on [SyncStatus.Syncing]. That is the "empty library until I pressed refresh"
      * report from three device runs.
      *
-     * Two states start one:
+     * ### The rule: one automatic sync per profile per process
      *
-     * - [SyncStatus.NeverSynced] — no sync has run for this profile.
-     * - [SyncStatus.Syncing] — a sync is *recorded* as running while nothing here is running it. Either it
-     *   was abandoned, or another process is doing it; starting one is right in the first case and
-     *   harmless in the second, because the write is a single transaction over a fully materialised result.
+     * There used to be a second condition — only sync when the recorded status was [SyncStatus.NeverSynced]
+     * or [SyncStatus.Syncing] — and it is gone. It meant a profile that had ever synced successfully never
+     * synced again on its own, so switching to an account that was up to date last week showed last week's
+     * library until the user found the refresh button. Two device runs reported it: "no sync initiated,
+     * same server, different account", and progress played elsewhere not appearing until a manual refresh.
      *
-     * Bounded to one attempt **per profile**, so a server that fails repeatedly is not retried in a loop —
-     * LIB-001 wants sync status visible and non-blocking, not persistent. A failure leaves the recorded
-     * state on screen with a retry button.
+     * It matters more since item visibility became per profile (PRODUCT_SPEC 5.2): what an account may see
+     * is now something only its *own* sync establishes, so an account that never syncs is an account whose
+     * shelf is not merely stale but empty.
+     *
+     * The cost is real and bounded: a sync is an N+1 over the library, and this runs it once per profile
+     * per process launch rather than once per screen visit. A staleness window that skips the run when the
+     * last one was minutes ago belongs with the rest of the foreground refresh policy, not here.
      *
      * Per profile, not per ViewModel: it was a single flag, so switching accounts synced the first one and
      * silently skipped every later one. A device run reported exactly that — "sync only starts on the
@@ -147,7 +152,6 @@ class HomeViewModel @Inject constructor(
         val state = uiState.value
         val profileId = state.profile?.id ?: return
         if (profileId in syncAttemptedFor || state.isRefreshing) return
-        if (state.syncStatus != SyncStatus.NeverSynced && state.syncStatus != SyncStatus.Syncing) return
         syncAttemptedFor += profileId
         refresh()
     }

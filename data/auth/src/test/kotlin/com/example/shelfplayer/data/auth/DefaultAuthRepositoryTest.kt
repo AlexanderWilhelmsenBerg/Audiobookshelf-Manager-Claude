@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.datastore.AppSettingsSerializer
 import com.example.shelfplayer.core.datastore.security.SessionTokenStore
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
@@ -477,6 +478,107 @@ class DefaultAuthRepositoryTest {
 
         assertIs<AppResult.Success<*>>(repository.signOut(profile.id))
         assertNull(tokens.currentToken())
+    }
+
+    // --- 5.2: refreshing permissions ---------------------------------------------------------------
+
+    /**
+     * PRODUCT_SPEC 5.2 — a grant narrowed on the server is a grant narrowed here.
+     *
+     * The device-run failure this closes: a library was revoked from an account and stayed on its shelf,
+     * because the grant recorded at sign-in was never asked about again.
+     */
+    @Test
+    fun `a refresh replaces the stored grant with what the server now reports`() = runTest {
+        val profile = successfulSignIn()
+        assertTrue(assertNotNull(database.profileDao().findProfile(profile.id.value)).hasAllLibraryAccess)
+
+        gateway.currentAccountResult = AppResult.Success(
+            FakeAuthGateway.account(
+                accessibleLibraryIds = listOf(LibraryId("lib-nonfiction")),
+                hasAllLibraryAccess = false,
+                hasAllTagAccess = false,
+            ),
+        )
+        val refreshed = repository.refreshPermissions(profile.id)
+
+        assertIs<AppResult.Success<*>>(refreshed)
+        val stored = assertNotNull(database.profileDao().findProfile(profile.id.value))
+        assertFalse(stored.hasAllLibraryAccess)
+        assertFalse(stored.hasAllTagAccess)
+        assertEquals("""["lib-nonfiction"]""", stored.accessibleLibrariesJson)
+    }
+
+    /** PRODUCT_SPEC 5.1 — a role changed on the server changes which actions the UI offers. */
+    @Test
+    fun `a refresh records a role the server has changed`() = runTest {
+        val profile = successfulSignIn()
+
+        gateway.currentAccountResult = AppResult.Success(FakeAuthGateway.account(role = ProfileRole.Admin))
+        repository.refreshPermissions(profile.id)
+
+        assertEquals("Admin", assertNotNull(database.profileDao().findProfile(profile.id.value)).role)
+    }
+
+    /** PRODUCT_SPEC 5.2 — asked as the profile named, with that profile's own credential. */
+    @Test
+    fun `a refresh asks the profile's own server with the profile's own token`() = runTest {
+        val profile = successfulSignIn()
+
+        repository.refreshPermissions(profile.id)
+
+        assertEquals(
+            listOf(FakeAuthGateway.CurrentAccount("https://books.example", "access-1")),
+            gateway.currentAccountCalls,
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC AUTH-004 — an account disabled on the server is marked, not silently left signed in.
+     *
+     * A device run found the asymmetry from the other side: disabling a user did lock them out, while
+     * changing their password did not, because Audiobookshelf does not invalidate tokens on a password
+     * change. This call is what notices either of them.
+     */
+    @Test
+    fun `a refusal marks the profile as needing to sign in again`() = runTest {
+        val profile = successfulSignIn()
+        gateway.currentAccountResult = AppError.Authorization(
+            summary = "This account has been disabled on the server.",
+        ).asFailure()
+
+        assertIs<AppResult.Failure>(repository.refreshPermissions(profile.id))
+
+        assertTrue(assertNotNull(database.profileDao().findProfile(profile.id.value)).requiresReauthentication)
+    }
+
+    /**
+     * …and being offline is not a permission change.
+     *
+     * Treating an unreachable server as a revocation would empty a user's library every time they lost
+     * signal, which is product priority 3 read backwards.
+     */
+    @Test
+    fun `an unreachable server leaves the stored grant exactly as it was`() = runTest {
+        val profile = successfulSignIn()
+        gateway.currentAccountResult = AppError.Network().asFailure()
+
+        assertIs<AppResult.Failure>(repository.refreshPermissions(profile.id))
+
+        val stored = assertNotNull(database.profileDao().findProfile(profile.id.value))
+        assertTrue(stored.hasAllLibraryAccess)
+        assertFalse(stored.requiresReauthentication)
+    }
+
+    /** A token that still works is proof the profile does not need reauthenticating. */
+    @Test
+    fun `a successful refresh clears an outstanding reauthentication mark`() = runTest {
+        val profile = successfulSignIn()
+        database.profileDao().setRequiresReauthentication(profile.id.value, required = true)
+
+        repository.refreshPermissions(profile.id)
+
+        assertFalse(assertNotNull(database.profileDao().findProfile(profile.id.value)).requiresReauthentication)
     }
 
     // --- AUTH-002: removing a profile -------------------------------------------------------------

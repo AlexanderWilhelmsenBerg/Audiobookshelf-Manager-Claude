@@ -62,7 +62,7 @@ class DefaultDiagnosticsRepository @Inject constructor(
             libraryDao.observeLibraryCount(active.serverId),
             libraryDao.observeBookCount(active.serverId, deleted = false),
             libraryDao.observeBookCount(active.serverId, deleted = true),
-            accessibleBookCount(active, accessibleKeys),
+            libraryDao.observeVisibleBookCount(active.profileId, active.serverId),
             combine(
                 progressDao.observeProgressCount(active.profileId),
                 progressDao.observeUnsyncedCount(active.profileId),
@@ -92,10 +92,4 @@ class DefaultDiagnosticsRepository @Inject constructor(
             .filter(String::isNotBlank)
             .map { EntityKey.of(profile.serverId, it) }
     }
-
-    private fun accessibleBookCount(profile: ProfileEntity, keys: List<String>?): Flow<Int> = when {
-        keys == null -> libraryDao.observeBookCount(profile.serverId, deleted = false)
-        keys.isEmpty() -> flowOf(0)
-        else -> libraryDao.observeBookCountIn(keys)
-    }.map { it }
 }

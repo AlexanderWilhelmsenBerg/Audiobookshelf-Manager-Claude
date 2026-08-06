@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
@@ -44,6 +45,38 @@ internal object AuthMapper {
                     accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
                     // Same safe default, and for a sharper reason: an account wrongly believed to see
                     // every item is an account whose sync is allowed to delete another account's books.
+                    hasAllTagAccess = user.permissions?.accessAllTags ?: false,
+                ),
+            ),
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — the same account, re-read, without its credentials.
+     *
+     * Shares [rejectionFor]'s account checks minus the token one: `POST /api/authorize` answers with
+     * `user.token` and no `user.accessToken`, so requiring an access token here would reject every
+     * response this endpoint gives. The caller already holds a working token — that is how it reached
+     * this endpoint — and [AccountState] exists so that this response can never replace it.
+     *
+     * A disabled or locked account still fails, and that is the point of asking: PRODUCT_SPEC AUTH-004
+     * wants the profile marked rather than left believing it is signed in.
+     */
+    fun toAccountState(user: UserDto?): AppResult<AccountState> = when {
+        user == null -> AppResult.Failure(missingField("user"))
+        user.username.isNullOrBlank() -> AppResult.Failure(missingField("user.username"))
+        !user.isActive || user.isLocked -> AppResult.Failure(
+            AppError.Authorization(summary = "This account has been disabled on the server."),
+        )
+
+        else -> AppResult.Success(
+            AccountState(
+                userId = user.id?.takeIf(String::isNotBlank),
+                username = user.username,
+                role = toRole(user.type),
+                access = LibraryAccess(
+                    hasAllLibraryAccess = user.permissions?.accessAllLibraries ?: false,
+                    accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
                     hasAllTagAccess = user.permissions?.accessAllTags ?: false,
                 ),
             ),

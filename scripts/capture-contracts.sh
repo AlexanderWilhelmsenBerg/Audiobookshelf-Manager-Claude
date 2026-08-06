@@ -61,8 +61,60 @@ VOLATILE_KEYS = {
     "id", "userId", "libraryId", "folderId", "oldUserId", "seriesId", "authorId",
     "createdAt", "updatedAt", "lastSeen", "lastUpdate", "lastScan", "addedAt", "birthtimeMs",
     "mtimeMs", "ctimeMs", "inode", "size", "ino",
+    # engine.io's session id. Not secret in the credential sense — it is useless without the
+    # connection — but it changes on every handshake, so leaving it in would report drift on every run.
+    "sid", "libraryItemId", "episodeId",
 }
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+
+# The same session id in an engine.io text frame, where it is not a JSON key this scrubber can reach.
+TEXT_SID = re.compile(r'("sid"\s*:\s*")[^"]+(")')
+
+# A last-resort scrub for bodies that never became JSON.
+#
+# It exists because of the socket frames. Those arrive as engine.io text — `42["event",{…}]` — and the
+# structured scrubber above cannot reach inside a string. If a frame carries a user object, it carries a
+# token, and these files are committed and scanned. Belt and braces: [socket_frames] parses the frames
+# properly, and this catches whatever it could not.
+TEXT_SECRET = re.compile(
+    r'("(?:{})"\s*:\s*")[^"]*(")'.format("|".join(sorted(SECRET_KEYS))),
+    re.I,
+)
+JWT = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*")
+
+
+def scrub_text(raw):
+    text = TEXT_SECRET.sub(r"\1<redacted-secret>\2", raw)
+    text = JWT.sub("<redacted-secret>", text)
+    return TEXT_SID.sub(r"\1<volatile>\2", UUID.sub("<volatile>", text))
+
+
+def socket_frames(raw):
+    """engine.io frames, parsed so the JSON inside them can be scrubbed like any other body.
+
+    A polling response is one or more frames joined by the record separator, each a numeric type
+    followed by an optional JSON payload: `0{"sid":…}` is the handshake, `40` a namespace connect,
+    `42["event",{…}]` an event. Returning them structured is what makes an event payload readable as a
+    contract rather than as a wall of text — and what lets the scrubber reach a token inside one.
+
+    Returns None when nothing looks like a frame, so the caller can fall back to plain text.
+    """
+    parsed = []
+    for chunk in raw.strip().split("\x1e"):
+        if not chunk:
+            continue
+        match = re.match(r"^(\d+)(.*)$", chunk, re.S)
+        if not match:
+            return None
+        prefix, payload = match.group(1), match.group(2).strip()
+        frame = {"type": prefix}
+        if payload:
+            try:
+                frame["payload"] = scrub(json.loads(payload))
+            except json.JSONDecodeError:
+                frame["payloadText"] = scrub_text(payload)[:2000]
+        parsed.append(frame)
+    return parsed or None
 
 # `contentUrl` embeds the audio file's inode: `/api/items/<id>/file/1892359`. The inode is already
 # scrubbed where it appears as its own `ino` field, but a value spliced into a path needs its own rule —
@@ -94,8 +146,13 @@ try:
 except json.JSONDecodeError:
     # Recorded verbatim rather than discarded: "this endpoint does not answer JSON" is part of the
     # contract, and a reader needs to see what it does answer.
-    envelope["bodyKind"] = "text"
-    envelope["bodyText"] = UUID.sub("<volatile>", raw.strip())[:2000]
+    frames = socket_frames(raw)
+    if frames is not None:
+        envelope["bodyKind"] = "socket-frames"
+        envelope["frames"] = frames
+    else:
+        envelope["bodyKind"] = "text"
+        envelope["bodyText"] = scrub_text(raw)[:2000]
 
 with open(out_path, "w") as handle:
     json.dump(envelope, handle, indent=2, sort_keys=True)
@@ -240,6 +297,105 @@ else
   echo "::error::the library has no items, so the item shape LIB-001 depends on was not captured." >&2
   echo "::error::Check that the media directory contains an audio file the scanner accepts." >&2
   exit 1
+fi
+
+# --- Media progress -------------------------------------------------------------------------------
+#
+# PRODUCT_SPEC LIB-001 / SYNC-002 and acceptance case TC-10: progress played on another device does not
+# reach the app until a manual refresh. The cheap fix is to read `user.mediaProgress` — which the app
+# already receives on every cold start — instead of re-syncing the whole library.
+#
+# It could not be written, because the committed `authorize.json` has `mediaProgress: []`. The capture
+# never played anything, so the *element* shape has never been observed, and PRODUCT_SPEC 22.5 forbids
+# mapping a shape no fixture covers. Recording a position first is the whole point of this section: it
+# turns an empty array into evidence.
+log "recording a listening position so the progress shape can be observed"
+curl -sS -X PATCH "$BASE_URL/api/me/progress/$ITEM_ID" \
+  -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+  -d '{"currentTime":42.5,"isFinished":false}' >/dev/null || true
+
+# Both endpoints that carry it, because the app reads one on cold start and could poll the other.
+capture me GET /api/me -H "$AUTH_HEADER"
+capture authorize-with-progress POST /api/authorize -H "$AUTH_HEADER"
+capture media-progress GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
+
+python3 - "$OUT_DIR/authorize-with-progress.json" <<'PY' || true
+import json, sys
+body = (json.load(open(sys.argv[1])).get("body") or {})
+progress = ((body.get("user") or {}).get("mediaProgress")) or []
+if not progress:
+    print("::warning::mediaProgress is still empty. The progress write was not accepted, so the "
+          "element shape remains unobserved and LIB-001's progress sync stays blocked.", file=sys.stderr)
+PY
+
+# --- Websocket ------------------------------------------------------------------------------------
+#
+# PRODUCT_SPEC LIB-001's last acceptance criterion ("websocket events update Room") and SYNC-002.
+# Nothing about the socket has ever been observed: not the handshake, not the authentication frame,
+# not one event payload. This section records all three, over engine.io's *polling* transport, which
+# is plain HTTP and therefore capturable with curl alone.
+#
+# Polling rather than a websocket upgrade is deliberate. The frames are identical either way — the
+# transport is what differs — and a dependency-free capture is one that still runs in three years.
+#
+# ### What is a guess here, and why that is allowed
+#
+# The event name in the authentication frame is not documented and is not in `openapi.json`. Sending
+# it is a guess. That is the correct place for one: PRODUCT_SPEC 22.4 forbids an *adapter* built on an
+# invented shape, and the way to stop guessing is to ask a real server and record the answer. If the
+# guess is wrong, the recorded poll shows an error or silence, and that is itself the finding. What
+# must not happen is code written against a shape nobody ever saw.
+#
+# Non-fatal throughout: a reverse proxy or an image without socket support should leave the rest of
+# the capture intact. Each step still writes its fixture, so "nothing came back" is visible rather
+# than skipped.
+SOCKET_URL="$BASE_URL/socket.io/?EIO=4&transport=polling"
+
+capture socket-handshake GET "/socket.io/?EIO=4&transport=polling"
+
+SOCKET_SID="$(python3 - "$RAW_DIR/socket-handshake.raw" <<'PY'
+import json, re, sys
+try:
+    raw = open(sys.argv[1]).read()
+except OSError:
+    sys.exit(0)
+# engine.io frames are a single-digit type followed by the payload: `0{"sid":...}` is OPEN.
+match = re.search(r"\{.*\}", raw)
+if match:
+    try:
+        print(json.loads(match.group(0)).get("sid", ""))
+    except json.JSONDecodeError:
+        pass
+PY
+)"
+
+if [ -z "$SOCKET_SID" ]; then
+  log "no engine.io session id; skipping the socket frames (socket-handshake.json records why)"
+else
+  log "socket session established; recording frames"
+  # `40` is the socket.io CONNECT frame for the default namespace. Without it the server answers no
+  # events at all, so this is the step that turns a transport into a session.
+  curl -sS -X POST "$SOCKET_URL&sid=$SOCKET_SID" \
+    -H 'Content-Type: text/plain;charset=UTF-8' --data-binary '40' >/dev/null || true
+
+  # Whatever the server volunteers once connected, before this client asserts anything. No guess is
+  # involved in this one, which makes it the most trustworthy frame in the set.
+  capture socket-connected GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
+
+  # The guess: `42["auth", "<token>"]` is socket.io's EVENT frame carrying an `auth` event. The token
+  # travels in the frame rather than in a query string, which is what PRODUCT_SPEC 22.6 requires of
+  # any credential this app sends.
+  curl -sS -X POST "$SOCKET_URL&sid=$SOCKET_SID" \
+    -H 'Content-Type: text/plain;charset=UTF-8' \
+    --data-binary "42[\"auth\",\"$ACCESS_TOKEN\"]" >/dev/null || true
+  capture socket-auth GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
+
+  # A progress change made over REST, then a poll: if the server broadcasts progress at all, this is
+  # the frame that carries it, and it is exactly what TC-10 needs.
+  curl -sS -X PATCH "$BASE_URL/api/me/progress/$ITEM_ID" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":128.25,"isFinished":false}' >/dev/null || true
+  capture socket-event-after-progress GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
 fi
 
 capture logout POST /logout -H "$AUTH_HEADER"

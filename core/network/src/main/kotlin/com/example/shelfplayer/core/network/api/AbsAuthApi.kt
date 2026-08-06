@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.network.api
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.resultOf
@@ -64,6 +65,18 @@ internal class AbsAuthApi @Inject constructor(
     override suspend fun refresh(serverUrl: String, refreshToken: AuthToken): AppResult<AuthSession> =
         call(serverUrl) { service ->
             service.refresh(refreshToken.value).toResult { body -> AuthMapper.toSession(body?.user) }
+        }
+
+    /**
+     * PRODUCT_SPEC 5.2 — the account, re-read with the token the caller already holds.
+     *
+     * The bearer is passed explicitly for the same reason sign-out passes it: refreshing profile B's
+     * permissions must ask as B, never as whichever session an interceptor considers active.
+     */
+    override suspend fun currentAccount(serverUrl: String, accessToken: AuthToken): AppResult<AccountState> =
+        call(serverUrl) { service ->
+            service.authorize(bearerOf(accessToken.value))
+                .toResult { body -> AuthMapper.toAccountState(body?.user) }
         }
 
     override suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit> =

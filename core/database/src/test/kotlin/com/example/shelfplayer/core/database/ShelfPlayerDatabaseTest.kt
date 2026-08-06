@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.LibraryEntity
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
+import com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity
 import com.example.shelfplayer.core.database.entity.SeriesEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import kotlinx.coroutines.flow.first
@@ -54,7 +55,7 @@ class ShelfPlayerDatabaseTest {
     fun `books are readable with their authors, series, tracks and chapters`() = runTest {
         seed()
 
-        val books = database.libraryDao().observeBooksIn(listOf(LIBRARY_KEY)).first()
+        val books = database.libraryDao().observeBooksIn(PROFILE_ID, listOf(LIBRARY_KEY)).first()
         val book = books.single()
 
         assertEquals("The Salt Harbour", book.book.title)
@@ -103,8 +104,10 @@ class ShelfPlayerDatabaseTest {
 
         assertTrue(database.progressDao().observeProgressFor(PROFILE_ID).first().isEmpty())
         assertEquals(1, database.progressDao().observeProgressFor(OTHER_PROFILE_ID).first().size)
-        // The library and its books belong to the server, not to the profile that synced them.
-        assertEquals(1, database.libraryDao().observeBooksIn(listOf(LIBRARY_KEY)).first().size)
+        // The library and its books belong to the server, not to the profile that synced them. Counted
+        // unfiltered on purpose: the deleted profile's visibility rows went with it, so a profile-scoped
+        // read would now be empty for the right reason and prove nothing about the books themselves.
+        assertEquals(1, database.libraryDao().observeBookCount(SERVER_ID, deleted = false).first())
     }
 
     /** PRODUCT_SPEC 13.2 — a book that vanished from a sync is soft-deleted, not dropped. */
@@ -114,22 +117,77 @@ class ShelfPlayerDatabaseTest {
 
         database.libraryWriteDao().markAllBooksDeleted(LIBRARY_KEY)
 
-        assertTrue(database.libraryDao().observeBooksIn(listOf(LIBRARY_KEY)).first().isEmpty())
-        assertNull(database.libraryDao().observeBook(BOOK_KEY).first())
-        assertEquals(0, database.libraryDao().countBooks(LIBRARY_KEY))
+        assertTrue(database.libraryDao().observeBooksIn(PROFILE_ID, listOf(LIBRARY_KEY)).first().isEmpty())
+        assertNull(database.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first())
+        assertEquals(0, database.libraryDao().countBooks(PROFILE_ID, LIBRARY_KEY))
     }
 
     @Test
     fun `markMissingBooksDeleted keeps the books that are still present`() = runTest {
         seed()
+        val secondKey = EntityKey.of(SERVER_ID, "book-2")
         database.libraryWriteDao().upsertBooks(listOf(bookEntity(remoteId = "book-2", title = "Second")))
+        // Visible to the reading profile, so that the assertion below is about the soft delete rather
+        // than about a book this profile could never see anyway.
+        makeVisible(PROFILE_ID, secondKey)
 
         database.libraryWriteDao().markMissingBooksDeleted(LIBRARY_KEY, listOf(BOOK_KEY))
 
         assertEquals(
             listOf("book-1"),
-            database.libraryDao().observeBooksIn(listOf(LIBRARY_KEY)).first().map { it.book.remoteId },
+            database.libraryDao().observeBooksIn(PROFILE_ID, listOf(LIBRARY_KEY)).first().map { it.book.remoteId },
         )
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — one account's cached books are not another account's, even on one server.
+     *
+     * The exact shape of the device-run failure: two profiles, one shared library, both granted the
+     * library, and only one of them shown the book by the server. Before item visibility existed, both
+     * profiles read the same `books` rows and the restricted account saw all of the other's library.
+     */
+    @Test
+    fun `a book cached by one profile is invisible to another that was never shown it`() = runTest {
+        seed()
+        seedSecondProfile()
+
+        assertEquals(1, database.libraryDao().observeBooksIn(PROFILE_ID, listOf(LIBRARY_KEY)).first().size)
+        assertTrue(database.libraryDao().observeBooksIn(OTHER_PROFILE_ID, listOf(LIBRARY_KEY)).first().isEmpty())
+        assertTrue(database.libraryDao().observeBooksOnServer(OTHER_PROFILE_ID, SERVER_ID).first().isEmpty())
+        assertNull(database.libraryDao().observeBook(OTHER_PROFILE_ID, BOOK_KEY).first())
+        assertEquals(0, database.libraryDao().countBooks(OTHER_PROFILE_ID, LIBRARY_KEY))
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — visibility withdrawn by the server is withdrawn here, in the same transaction.
+     *
+     * A tag revoked on the server shortens the item list the next sync receives. Clearing the library's
+     * visibility before writing the new list is what makes the book leave the shelf; merging would leave
+     * it there until the cache was cleared.
+     */
+    @Test
+    fun `clearing a library's visibility hides its books from that profile only`() = runTest {
+        seed()
+        seedSecondProfile()
+        makeVisible(OTHER_PROFILE_ID, BOOK_KEY)
+
+        database.libraryWriteDao().clearVisibility(OTHER_PROFILE_ID, LIBRARY_KEY)
+
+        assertTrue(database.libraryDao().observeBooksIn(OTHER_PROFILE_ID, listOf(LIBRARY_KEY)).first().isEmpty())
+        assertEquals(1, database.libraryDao().observeBooksIn(PROFILE_ID, listOf(LIBRARY_KEY)).first().size)
+    }
+
+    /** PRODUCT_SPEC AUTH-002 — a removed profile takes its visibility rows with it, and only its own. */
+    @Test
+    fun `deleting a profile removes its visibility rows`() = runTest {
+        seed()
+        seedSecondProfile()
+        makeVisible(OTHER_PROFILE_ID, BOOK_KEY)
+
+        database.profileDao().deleteProfile(OTHER_PROFILE_ID)
+
+        assertEquals(1, database.libraryDao().observeBooksIn(PROFILE_ID, listOf(LIBRARY_KEY)).first().size)
+        assertEquals(0, database.libraryDao().observeVisibleBookCount(OTHER_PROFILE_ID, SERVER_ID).first())
     }
 
     /** PRODUCT_SPEC 13.1 — the same remote id on two servers is two different books. */
@@ -200,10 +258,17 @@ class ShelfPlayerDatabaseTest {
         database.libraryWriteDao().upsertBookSeries(
             listOf(BookSeriesCrossRef(BOOK_KEY, SERIES_KEY, sequenceRaw = "1", isPrimary = true)),
         )
+        makeVisible(PROFILE_ID, BOOK_KEY)
     }
 
     private suspend fun seedSecondProfile() {
         database.profileDao().upsertProfile(profileEntity(OTHER_PROFILE_ID))
+    }
+
+    private suspend fun makeVisible(profileId: String, vararg bookKeys: String) {
+        database.libraryWriteDao().insertVisibility(
+            bookKeys.map { ProfileVisibleBookEntity(profileId = profileId, bookKey = it, libraryKey = LIBRARY_KEY) },
+        )
     }
 
     private fun profileEntity(profileId: String) = ProfileEntity(

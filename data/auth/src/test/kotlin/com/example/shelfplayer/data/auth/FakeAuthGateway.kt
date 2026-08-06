@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.asFailure
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
@@ -46,10 +47,13 @@ internal class FakeAuthGateway :
 
     var refreshResult: AppResult<AuthSession> = AppResult.Success(session())
 
+    var currentAccountResult: AppResult<AccountState> = AppResult.Success(account())
+
     val probedUrls = mutableListOf<String>()
     val signInCalls = mutableListOf<SignIn>()
     val signOutCalls = mutableListOf<SignOut>()
     val refreshCalls = mutableListOf<Refresh>()
+    val currentAccountCalls = mutableListOf<CurrentAccount>()
 
     override val auth: AuthApi get() = this
 
@@ -66,6 +70,11 @@ internal class FakeAuthGateway :
     override suspend fun refresh(serverUrl: String, refreshToken: AuthToken): AppResult<AuthSession> {
         refreshCalls += Refresh(serverUrl, refreshToken.value)
         return refreshResult
+    }
+
+    override suspend fun currentAccount(serverUrl: String, accessToken: AuthToken): AppResult<AccountState> {
+        currentAccountCalls += CurrentAccount(serverUrl, accessToken.value)
+        return currentAccountResult
     }
 
     override suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit> {
@@ -106,6 +115,8 @@ internal class FakeAuthGateway :
 
     internal data class Refresh(val serverUrl: String, val refreshToken: String)
 
+    internal data class CurrentAccount(val serverUrl: String, val accessToken: String)
+
     internal data class Handshake(val serverId: ServerId, val serverUrl: String)
 
     internal companion object {
@@ -126,6 +137,24 @@ internal class FakeAuthGateway :
             access = LibraryAccess(
                 hasAllLibraryAccess = hasAllLibraryAccess,
                 accessibleLibraryIds = accessibleLibraryIds,
+            ),
+        )
+
+        fun account(
+            userId: String? = "remote-user-1",
+            username: String = "ada",
+            role: ProfileRole = ProfileRole.Listener,
+            accessibleLibraryIds: List<LibraryId> = emptyList(),
+            hasAllLibraryAccess: Boolean = true,
+            hasAllTagAccess: Boolean = true,
+        ) = AccountState(
+            userId = userId,
+            username = username,
+            role = role,
+            access = LibraryAccess(
+                hasAllLibraryAccess = hasAllLibraryAccess,
+                accessibleLibraryIds = accessibleLibraryIds,
+                hasAllTagAccess = hasAllTagAccess,
             ),
         )
 

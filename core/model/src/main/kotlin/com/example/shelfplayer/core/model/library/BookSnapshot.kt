@@ -1,5 +1,7 @@
 package com.example.shelfplayer.core.model.library
 
+import com.example.shelfplayer.core.model.LibraryItemId
+
 /**
  * Everything a gateway returns about one book in a single unit.
  *
@@ -24,8 +26,20 @@ data class BookSnapshot(val book: Book, val tracks: List<AudioTrack>, val chapte
  * bare `List<BookSnapshot>`. A device run showed why it matters: syncing a 490-book library is 490 requests,
  * one of them failed, and the whole sync was discarded — the user saw an empty library and a suggestion to
  * try again.
+ *
+ * @property visibleIds every item the server **listed** for the syncing profile, which is not the same as
+ *   [books]. Audiobookshelf filters an item list twice — by library, and by tag within a library — so this
+ *   list is the only direct evidence of what one account may see, and PRODUCT_SPEC 5.2 needs it recorded
+ *   per profile rather than inferred from a shared cache. It comes from the catalogue rather than from the
+ *   fetched snapshots deliberately: an item whose expanded fetch timed out is still visible to this
+ *   account, and dropping it here would hide a book on the strength of a dropped connection.
  */
-data class LibrarySnapshot(val books: List<BookSnapshot>, val removedCount: Int = 0, val unreachableCount: Int = 0) {
+data class LibrarySnapshot(
+    val books: List<BookSnapshot>,
+    val removedCount: Int = 0,
+    val unreachableCount: Int = 0,
+    val visibleIds: List<LibraryItemId> = books.map { it.book.id },
+) {
     /**
      * Whether every item the server listed was accounted for.
      *

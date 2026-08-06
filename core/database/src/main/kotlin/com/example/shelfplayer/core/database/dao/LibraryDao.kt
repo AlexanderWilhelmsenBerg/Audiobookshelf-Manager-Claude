@@ -32,12 +32,18 @@ interface LibraryDao {
     fun observeLibrary(libraryKey: String): Flow<LibraryEntity?>
 
     /**
-     * The books of an explicit set of libraries.
+     * The books of an explicit set of libraries, as one profile may see them.
      *
      * One query serves both a single library and the whole shelf: a caller that wants one library
      * passes one key, and a caller honouring a profile's library grant passes the keys it names. Which
      * libraries a profile may read is decided outside this module — a DAO holds no opinion about who
      * may see what.
+     *
+     * The join onto `profile_visible_books` is not an optimisation and cannot be dropped for a profile
+     * that "sees everything": Audiobookshelf's second restriction is per item, so the library grant the
+     * caller applied is only half the answer (PRODUCT_SPEC 5.2). An inner join also gives the
+     * default-deny the requirement wants for free — a profile with no recorded visibility matches no
+     * rows.
      *
      * Callers must not pass an empty list; there is no row one could want back, and the repository
      * short-circuits that case rather than relying on how `IN ()` is expanded.
@@ -45,15 +51,18 @@ interface LibraryDao {
     @Transaction
     @Query(
         """
-        SELECT * FROM books
-        WHERE libraryKey IN (:libraryKeys) AND isDeleted = 0
-        ORDER BY title COLLATE NOCASE ASC
+        SELECT books.* FROM books
+        INNER JOIN profile_visible_books ON profile_visible_books.bookKey = books.bookKey
+        WHERE profile_visible_books.profileId = :profileId
+          AND books.libraryKey IN (:libraryKeys)
+          AND books.isDeleted = 0
+        ORDER BY books.title COLLATE NOCASE ASC
         """,
     )
-    fun observeBooksIn(libraryKeys: List<String>): Flow<List<BookWithRelations>>
+    fun observeBooksIn(profileId: String, libraryKeys: List<String>): Flow<List<BookWithRelations>>
 
     /**
-     * Every non-deleted book on one server, for the profile whose grant covers all libraries.
+     * Every non-deleted book on one server that this profile can see.
      *
      * Kept apart from [observeBooksIn] rather than expressed as "all the keys": the grant says *all
      * libraries*, including one that appears between this query and the next sync, and enumerating
@@ -62,19 +71,44 @@ interface LibraryDao {
     @Transaction
     @Query(
         """
-        SELECT * FROM books
-        WHERE serverId = :serverId AND isDeleted = 0
-        ORDER BY title COLLATE NOCASE ASC
+        SELECT books.* FROM books
+        INNER JOIN profile_visible_books ON profile_visible_books.bookKey = books.bookKey
+        WHERE profile_visible_books.profileId = :profileId
+          AND books.serverId = :serverId
+          AND books.isDeleted = 0
+        ORDER BY books.title COLLATE NOCASE ASC
         """,
     )
-    fun observeBooksOnServer(serverId: String): Flow<List<BookWithRelations>>
+    fun observeBooksOnServer(profileId: String, serverId: String): Flow<List<BookWithRelations>>
 
+    /**
+     * One book, if this profile may see it.
+     *
+     * PRODUCT_SPEC 15 requires a deep link to validate access, and a detail screen reached by id is a
+     * deep link whether or not it arrived through one.
+     */
     @Transaction
-    @Query("SELECT * FROM books WHERE bookKey = :bookKey AND isDeleted = 0")
-    fun observeBook(bookKey: String): Flow<BookWithRelations?>
+    @Query(
+        """
+        SELECT books.* FROM books
+        INNER JOIN profile_visible_books ON profile_visible_books.bookKey = books.bookKey
+        WHERE profile_visible_books.profileId = :profileId
+          AND books.bookKey = :bookKey
+          AND books.isDeleted = 0
+        """,
+    )
+    fun observeBook(profileId: String, bookKey: String): Flow<BookWithRelations?>
 
-    @Query("SELECT COUNT(*) FROM books WHERE libraryKey = :libraryKey AND isDeleted = 0")
-    suspend fun countBooks(libraryKey: String): Int
+    @Query(
+        """
+        SELECT COUNT(*) FROM books
+        INNER JOIN profile_visible_books ON profile_visible_books.bookKey = books.bookKey
+        WHERE profile_visible_books.profileId = :profileId
+          AND books.libraryKey = :libraryKey
+          AND books.isDeleted = 0
+        """,
+    )
+    suspend fun countBooks(profileId: String, libraryKey: String): Int
 
     /**
      * PRODUCT_SPEC SET-002 (Privacy/diagnostics) — what is stored, regardless of who may see it.
@@ -90,6 +124,22 @@ interface LibraryDao {
     @Query("SELECT COUNT(*) FROM books WHERE serverId = :serverId AND isDeleted = :deleted")
     fun observeBookCount(serverId: String, deleted: Boolean): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM books WHERE libraryKey IN (:libraryKeys) AND isDeleted = 0")
-    fun observeBookCountIn(libraryKeys: List<String>): Flow<Int>
+    /**
+     * The counterpart to [observeBookCount]: of everything stored for this server, how much this profile
+     * can see.
+     *
+     * The pair is the diagnostic. "490 stored, 188 visible" is the on-device proof that item-level
+     * filtering is doing its job, and it is a question the shelf itself cannot answer — a screen showing
+     * 188 books looks identical whether the other 302 were hidden or never fetched.
+     */
+    @Query(
+        """
+        SELECT COUNT(*) FROM books
+        INNER JOIN profile_visible_books ON profile_visible_books.bookKey = books.bookKey
+        WHERE profile_visible_books.profileId = :profileId
+          AND books.serverId = :serverId
+          AND books.isDeleted = 0
+        """,
+    )
+    fun observeVisibleBookCount(profileId: String, serverId: String): Flow<Int>
 }

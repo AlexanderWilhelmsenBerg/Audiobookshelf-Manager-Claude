@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
@@ -227,6 +228,24 @@ internal class FakeAuthRepository(
     override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> {
         renewedProfiles += profileId
         return renewal
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — recorded rather than stubbed, because the requirements under test are about
+     * *when* a permission refresh happens: after a `403`, and on a profile switch. Never, and once, are
+     * both interesting answers.
+     */
+    val permissionRefreshes = mutableListOf<ProfileId>()
+
+    private var permissions: AppResult<LibraryAccess> = AppResult.Success(LibraryAccess.None)
+
+    fun willFailToRefreshPermissions(error: AppError) {
+        permissions = AppResult.Failure(error)
+    }
+
+    override suspend fun refreshPermissions(profileId: ProfileId): AppResult<LibraryAccess> {
+        permissionRefreshes += profileId
+        return permissions
     }
 
     private var signIn: AppResult<Profile> = AppResult.Success(profile())
