@@ -98,6 +98,14 @@ data class ProfileEntity(
      */
     @ColumnInfo(defaultValue = EMPTY_JSON_ARRAY) val accessibleLibrariesJson: String,
     @ColumnInfo(defaultValue = "0") val hasAllLibraryAccess: Boolean,
+    /**
+     * PRODUCT_SPEC 5.2 — whether the server serves this account an unfiltered *item* list.
+     *
+     * Separate from the library grant because Audiobookshelf restricts twice, and only an account with
+     * both may be trusted to say a book is gone by not returning it. Defaults to `0`: an account whose
+     * item access is unknown adds rows but never deletes them.
+     */
+    @ColumnInfo(defaultValue = "0") val hasAllTagAccess: Boolean,
 )
 
 @Entity(

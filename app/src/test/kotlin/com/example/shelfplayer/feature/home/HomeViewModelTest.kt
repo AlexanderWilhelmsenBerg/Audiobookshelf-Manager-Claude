@@ -55,7 +55,11 @@ class HomeViewModelTest {
     private val libraries = FakeLibraries()
 
     private fun viewModel() = HomeViewModel(
-        observeAccessibleBooks = ObserveAccessibleBooksUseCase(profiles, libraries),
+        observeAccessibleBooks = ObserveAccessibleBooksUseCase(
+            profiles,
+            libraries,
+            mainDispatcherRule.testDispatcher,
+        ),
         observeSyncState = ObserveSyncStateUseCase(profiles, libraries),
         profileRepository = profiles,
         refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),

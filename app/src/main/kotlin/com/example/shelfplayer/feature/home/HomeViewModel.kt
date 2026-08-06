@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookSortOrder
@@ -132,17 +133,22 @@ class HomeViewModel @Inject constructor(
      *   was abandoned, or another process is doing it; starting one is right in the first case and
      *   harmless in the second, because the write is a single transaction over a fully materialised result.
      *
-     * Bounded to one attempt per ViewModel instance, so a server that fails repeatedly is not retried in a
-     * loop — LIB-001 wants sync status visible and non-blocking, not persistent. A failure leaves the
-     * recorded state on screen with a retry button.
+     * Bounded to one attempt **per profile**, so a server that fails repeatedly is not retried in a loop —
+     * LIB-001 wants sync status visible and non-blocking, not persistent. A failure leaves the recorded
+     * state on screen with a retry button.
+     *
+     * Per profile, not per ViewModel: it was a single flag, so switching accounts synced the first one and
+     * silently skipped every later one. A device run reported exactly that — "sync only starts on the
+     * first user's login".
      */
-    private var initialSyncAttempted = false
+    private val syncAttemptedFor = mutableSetOf<ProfileId>()
 
     fun onVisible() {
         val state = uiState.value
-        if (initialSyncAttempted || state.profile == null || state.isRefreshing) return
+        val profileId = state.profile?.id ?: return
+        if (profileId in syncAttemptedFor || state.isRefreshing) return
         if (state.syncStatus != SyncStatus.NeverSynced && state.syncStatus != SyncStatus.Syncing) return
-        initialSyncAttempted = true
+        syncAttemptedFor += profileId
         refresh()
     }
 

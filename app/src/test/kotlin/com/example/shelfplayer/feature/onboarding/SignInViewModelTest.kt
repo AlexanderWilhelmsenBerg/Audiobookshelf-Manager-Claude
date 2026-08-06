@@ -91,19 +91,28 @@ class SignInViewModelTest {
     }
 
     /**
-     * PRODUCT_SPEC AUTH-004 — a profile sent here to sign in again arrives with what the app already knows.
+     * PRODUCT_SPEC AUTH-004 — a reauthentication asks for a password and nothing else.
      *
-     * It still starts on the address stage: PRODUCT_SPEC 6.1 wants the version and the encryption line seen
-     * before a password is typed, and skipping the probe would skip both.
+     * The address and username are filled in, and the probe has already run, so the screen opens on the
+     * credentials stage. The probe is *run*, not skipped: PRODUCT_SPEC 6.1 wants the version and the
+     * encryption line seen before a password is typed, and the credentials stage shows both. What is gone
+     * is the pointless tap on an address the app supplied itself.
      */
     @Test
-    fun `a reauthentication arrives with its address and username filled in`() {
+    fun `a reauthentication lands on the password field with everything else filled in`() = runTest {
         val state = viewModel(serverUrl = "https://books.example", username = "ada").uiState.value
 
+        assertEquals(SignInStage.Credentials, state.stage)
         assertEquals("https://books.example", state.serverUrl)
         assertEquals("ada", state.username)
-        assertEquals(SignInStage.Address, state.stage)
         assertEquals("", state.password)
+        assertNotNull(state.candidate, "the version and encryption line come from a probe, not from memory")
+    }
+
+    /** A fresh sign-in has no address to probe, so it still starts by asking for one. */
+    @Test
+    fun `a fresh sign-in starts on the address stage`() {
+        assertEquals(SignInStage.Address, viewModel().uiState.value.stage)
     }
 
     // --- PRODUCT_SPEC 6.1 steps 3-4: the address, before the password -----------------------------

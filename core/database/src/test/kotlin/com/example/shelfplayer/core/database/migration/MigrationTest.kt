@@ -113,6 +113,26 @@ class MigrationTest {
         assertEquals("[]", profile.accessibleLibrariesJson)
     }
 
+    /**
+     * PRODUCT_SPEC 5.2 — and the *opposite* default for item access, deliberately.
+     *
+     * `hasAllLibraryAccess` is made permissive for an upgrading profile because the restrictive value
+     * would hide content the user already has. `hasAllTagAccess` is left restrictive because the
+     * restrictive value only stops that profile *deleting*, and the permissive one would let a filtered
+     * account mark another account's books removed — which is exactly the defect this column exists to
+     * prevent. Getting one wrong hides data; getting the other wrong destroys it.
+     */
+    @Test
+    fun `a profile that predates item access does not gain the right to delete`() = runTest {
+        createVersion(3)
+
+        val migrated = openWithMigrations()
+
+        val profile = assertNotNull(migrated.profileDao().findProfile(PROFILE_ID))
+        assertFalse(profile.hasAllTagAccess, "an unknown item grant must not authorise reconciliation")
+        assertTrue(profile.hasAllLibraryAccess, "…while its cached libraries stay readable")
+    }
+
     /** The other half of the same decision: a *new* profile with no recorded grant is granted nothing. */
     @Test
     fun `a profile created after the migration is granted nothing by default`() = runTest {
@@ -132,6 +152,7 @@ class MigrationTest {
                 isFixture = false,
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = false,
+                hasAllTagAccess = false,
             ),
         )
 
@@ -262,6 +283,23 @@ class MigrationTest {
             )
         }
 
+        VERSION_3 -> {
+            db.execSQL(
+                "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, " +
+                    "lastFetchedAt, authMethodsJson, capabilitiesJson, capabilitiesDetectedAt) " +
+                    "VALUES (?, ?, ?, '2.36.0', 0, 0, '[\"local\"]', '[]', NULL)",
+                arrayOf(SERVER_ID, "Demo", "https://books.example"),
+            )
+            db.execSQL(
+                "INSERT INTO profiles " +
+                    "(profileId, serverId, remoteUserId, username, displayName, role, " +
+                    "requiresReauthentication, lastUsedAt, isFixture, accessibleLibrariesJson, " +
+                    "hasAllLibraryAccess) " +
+                    "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0, '[]', 1)",
+                arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+            )
+        }
+
         else -> error("no seed data defined for schema version $version")
     }
 
@@ -292,6 +330,7 @@ class MigrationTest {
         const val VERSION_1 = 1
         const val VERSION_2 = 2
         const val SERVER_ID = "srv_test"
+        const val VERSION_3 = 3
         const val PROFILE_ID = "prf_test"
 
         /** Room's placeholder for the table name in an exported `createSql`. */

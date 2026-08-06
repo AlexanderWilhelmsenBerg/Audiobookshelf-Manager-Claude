@@ -193,6 +193,73 @@ Three requests came out of running the plan, and all three were about the plan b
 sections 1–8 replaced by a single `## c`, so no result was recorded here. The plan below is the current one;
 the run needs repeating against this build, which is no loss, since three of its cases changed.
 
+### Sixth device run — the full plan, and the worst defect yet
+
+The plan was run end to end. Most of it passed; four findings are defects and two are server behaviour.
+
+#### Fixed
+
+1. **A restricted account was deleting the unrestricted account's books.** The report: account A saw
+   490 books, then switching to restricted account B showed 188 — *and 302 under "removed on the server"*.
+
+   Audiobookshelf restricts twice: by library, and by tag *within* a library. B could see the shared
+   library, so it synced it, and the server served it a filtered 188 items. Reconciliation then marked
+   everything absent from that list deleted — 302 of A's books, on A's account too.
+
+   Absence from a filtered account's sync says something about the filter, not about the server. The
+   grant now carries `accessAllTags` (already in the captured contract, never read) and only an account
+   with **all libraries and all tags** may drive deletions. Everyone else adds and updates, never removes.
+   Database version 4; the new column defaults to restrictive for existing rows, unlike `hasAllLibraryAccess`
+   in version 3 — getting that one wrong hides data, getting this one wrong destroys it.
+
+2. **Libraries deleted on the server became permanent stale entries.** Nothing ever enumerated libraries:
+   `refresh` reconciled books *within* a library and never the list of libraries itself. They are
+   reconciled now, along with their books — the shelf reads books by server, so a deleted library's
+   contents would otherwise stay on screen. Same authority rule as (1).
+
+3. **Only the first account ever auto-synced.** `initialSyncAttempted` was one boolean for the whole
+   ViewModel, so the second and third profiles were silently skipped. It is a set of profile ids now.
+
+4. **"Saved sign-ins" read 6 for 3 accounts.** It counted files, and each profile stores an access token
+   and a refresh token. It counts distinct profiles now.
+
+5. **Search took about a second.** Filtering and sorting 490 books ran on the main thread, because a
+   `Flow` collected in a ViewModel runs there. `flowOn(Default)` — the 300 ms debounce LIB-002 mandates is
+   now the only delay.
+
+6. **Pull-to-refresh** (LIB-001 asks for it in as many words). The toolbar button stays: a gesture some
+   users never find, and one TalkBack cannot perform, is not a replacement for a button.
+
+7. **Reauthentication lands on the password field.** The address and username were filled in but the user
+   still had to tap *Continue* on an address the app had supplied. The probe now runs on arrival — run,
+   not skipped: PRODUCT_SPEC 6.1 wants the version and encryption line seen before a password, and the
+   credentials stage shows both.
+
+8. **Book rows show position, remaining and total**, not just a percentage (LIB-004).
+
+#### Server behaviour, not ours
+
+- **Changing a password does not invalidate the session.** Audiobookshelf keeps existing tokens valid;
+  *disabling* the account does invalidate, and the app handled that correctly. Nothing on the client can
+  fix a token the server still honours.
+- **Usernames are matched case-insensitively.** That is the server's login lookup. The app already stores
+  and displays the username the *server* returned rather than what was typed, so it cannot show one
+  account under another's name.
+
+#### Asked for and not built — the next slice
+
+These are real, and each is more than a fix:
+
+- **Websocket for live progress** (LIB-001's last bullet, SYNC-002). Audiobookshelf uses socket.io, which
+  is a new dependency and a new contract to capture. Until it exists, progress played elsewhere arrives on
+  the next refresh.
+- **Server-reachable indicator**, on the shelf and against each known server on the sign-in screen. Needs
+  a reachability probe plus `ConnectivityManager` observation.
+- **Refresh when the server comes back**, which falls out of the same connectivity observation.
+- **Books appearing as the sync runs.** The write is one transaction at the end; showing them progressively
+  means chunking the fetch and writing per chunk, with reconciliation still once at the end.
+- The per-library screen has no refresh, profile or settings action.
+
 ### Exit criteria: 0 of 3 *demonstrated*, all 3 now reachable
 
 Every deliverable is built, and the device run above verified a good deal of the machinery underneath

@@ -15,6 +15,7 @@ import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.book
 import com.example.shelfplayer.domain.library
 import com.example.shelfplayer.domain.library.BookSortOrder
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -23,6 +24,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LibraryUseCaseTest {
+
+    /**
+     * The use cases sort off the main thread; this test runs everything on one.
+     *
+     * `UnconfinedTestDispatcher` keeps `flowOn` from adding a hop the assertions would have to wait for,
+     * without pretending the production dispatcher is the main one.
+     */
+    private val testDispatcher = UnconfinedTestDispatcher()
 
     private val books = listOf(
         book(id = "b-10", title = "The Last Sounding", sequence = "10"),
@@ -73,7 +82,11 @@ class LibraryUseCaseTest {
                 playedAt = TEST_INSTANT,
             ),
         )
-        val useCase = ObserveAccessibleBooksUseCase(FakeProfileRepository(), FakeLibraryRepository(books = shelf))
+        val useCase = ObserveAccessibleBooksUseCase(
+            FakeProfileRepository(),
+            FakeLibraryRepository(books = shelf),
+            testDispatcher,
+        )
 
         useCase().test {
             assertEquals(
@@ -88,6 +101,7 @@ class LibraryUseCaseTest {
         val useCase = ObserveAccessibleBooksUseCase(
             FakeProfileRepository(active = null),
             FakeLibraryRepository(books = books),
+            testDispatcher,
         )
 
         useCase().test {
@@ -100,10 +114,13 @@ class LibraryUseCaseTest {
     fun `the shelf searches the same fields a library does`() = runTest {
         val repository = FakeLibraryRepository(books = books)
 
-        ObserveAccessibleBooksUseCase(FakeProfileRepository(), repository)("Nkemelu").test {
+        ObserveAccessibleBooksUseCase(FakeProfileRepository(), repository, testDispatcher)("Nkemelu").test {
             assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
         }
-        ObserveLibraryBooksUseCase(FakeProfileRepository(), repository)(TEST_LIBRARY, query = "Nkemelu").test {
+        ObserveLibraryBooksUseCase(FakeProfileRepository(), repository, testDispatcher)(
+            TEST_LIBRARY,
+            query = "Nkemelu",
+        ).test {
             assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
         }
     }
@@ -113,6 +130,7 @@ class LibraryUseCaseTest {
         val useCase = ObserveLibraryBooksUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = books),
+            testDispatcher,
         )
 
         useCase(TEST_LIBRARY, order = BookSortOrder.SeriesSequenceAscending).test {
@@ -126,6 +144,7 @@ class LibraryUseCaseTest {
         val useCase = ObserveLibraryBooksUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = books),
+            testDispatcher,
         )
 
         suspend fun matchesFor(query: String): List<String> {
@@ -149,6 +168,7 @@ class LibraryUseCaseTest {
         val useCase = ObserveLibraryBooksUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = books),
+            testDispatcher,
         )
 
         useCase(TEST_LIBRARY, query = "   WEATHER   ").test {

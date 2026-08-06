@@ -116,6 +116,7 @@ class DefaultLibraryRepositoryTest {
                 isFixture = true,
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
+                hasAllTagAccess = true,
             ),
         )
     }
@@ -175,6 +176,7 @@ class DefaultLibraryRepositoryTest {
                 isFixture = true,
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
+                hasAllTagAccess = true,
             ),
         )
         val forOther = repository
@@ -230,6 +232,7 @@ class DefaultLibraryRepositoryTest {
                 isFixture = false,
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
+                hasAllTagAccess = true,
             ),
         )
 
@@ -276,6 +279,7 @@ class DefaultLibraryRepositoryTest {
             profileId = fixtureProfile.value,
             accessibleLibrariesJson = """["lib-nonfiction"]""",
             hasAllLibraryAccess = false,
+            hasAllTagAccess = false,
         )
 
         assertEquals(
@@ -305,6 +309,7 @@ class DefaultLibraryRepositoryTest {
             profileId = fixtureProfile.value,
             accessibleLibrariesJson = "[]",
             hasAllLibraryAccess = false,
+            hasAllTagAccess = false,
         )
 
         assertEquals(emptyList(), repository.observeLibraries(fixtureProfile).first())
@@ -333,6 +338,7 @@ class DefaultLibraryRepositoryTest {
                 isFixture = true,
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
+                hasAllTagAccess = true,
             ),
         )
 
@@ -401,6 +407,80 @@ class DefaultLibraryRepositoryTest {
         remoteUpdatedAt = null,
         lastFetchedAt = Instant.EPOCH,
     )
+
+    /**
+     * PRODUCT_SPEC 5.2 — a filtered account never deletes another account's books.
+     *
+     * The defect a device run found, and the worst one in the project so far: a restricted account synced
+     * a shared library, the server served it 188 of 490 items, and reconciliation marked the other 302
+     * removed — under the *unrestricted* account too. Absence from a filtered account's sync says
+     * something about the filter, not about the server.
+     */
+    @Test
+    fun `a profile the server filters does not delete what it cannot see`() = runTest {
+        repository.refresh(fixtureProfile)
+        val all = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first()
+        assertEquals(5, all.size)
+
+        writer.write(
+            libraries = listOf(fictionLibrary(all.first().serverId)),
+            snapshots = mapOf(
+                LibraryId("lib-fiction") to LibrarySnapshot(
+                    books = listOf(BookSnapshot(all.first(), tracks = emptyList(), chapters = emptyList())),
+                ),
+            ),
+            reconciles = false,
+        )
+
+        assertEquals(
+            5,
+            repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().size,
+            "a filtered sync adds and updates; it never removes",
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC 13.2 — a library the server no longer lists goes, and takes its books with it.
+     *
+     * Nothing enumerated libraries before, so deleting one on the server left a row that survived every
+     * refresh. A device run called them "stale entries".
+     */
+    @Test
+    fun `a library the server stopped listing is removed with its books`() = runTest {
+        repository.refresh(fixtureProfile)
+        assertEquals(2, repository.observeLibraries(fixtureProfile).first().size)
+        val serverId = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().first().serverId
+
+        // The server now lists only Fiction. Non-fiction was deleted.
+        writer.write(
+            libraries = listOf(fictionLibrary(serverId)),
+            snapshots = mapOf(LibraryId("lib-fiction") to LibrarySnapshot(books = emptyList())),
+            reconciles = true,
+        )
+
+        assertEquals(listOf("Fiction"), repository.observeLibraries(fixtureProfile).first().map { it.name })
+        assertTrue(
+            repository.observeAccessibleBooks(fixtureProfile).first().none {
+                it.libraryId == LibraryId("lib-nonfiction")
+            },
+            "the shelf reads books by server, so a deleted library's books have to go too",
+        )
+    }
+
+    /** …and a filtered account must not be able to delete a library either. */
+    @Test
+    fun `a filtered profile does not remove libraries it was not shown`() = runTest {
+        repository.refresh(fixtureProfile)
+        val serverId = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().first().serverId
+
+        writer.write(
+            libraries = listOf(fictionLibrary(serverId)),
+            snapshots = mapOf(LibraryId("lib-fiction") to LibrarySnapshot(books = emptyList())),
+            reconciles = false,
+        )
+
+        assertEquals(2, repository.observeLibraries(fixtureProfile).first().size)
+    }
 
     /** PRODUCT_SPEC 14.5 — a sync log line never names a library or a book. */
     @Test

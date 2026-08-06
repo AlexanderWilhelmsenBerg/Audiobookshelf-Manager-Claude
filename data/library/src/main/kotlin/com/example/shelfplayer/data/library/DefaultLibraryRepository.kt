@@ -190,7 +190,10 @@ class DefaultLibraryRepository @Inject constructor(
                     }
                 }
 
-                val written = writer.write(libraries.value, snapshots)
+                // PRODUCT_SPEC 5.2 — only an account the server does not filter may drive deletions.
+                val access = profileDao.findProfile(profileId.value)?.let(EntityMappers::toLibraryAccess)
+                    ?: LibraryAccess.None
+                val written = writer.write(libraries.value, snapshots, reconciles = access.reconciles)
                 // PRODUCT_SPEC LIB-001 — a sync that could not reach some items succeeded *partly*, and
                 // says so. Recording it as a plain success would hide that the library on screen is
                 // missing books; recording it as a failure would hide that most of it is current.

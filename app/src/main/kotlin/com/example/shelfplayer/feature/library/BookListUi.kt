@@ -20,6 +20,7 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookSortOrder
 import kotlin.math.roundToInt
+import kotlin.time.Duration
 
 /**
  * The book row and the sort chips, shared by the shelf of every accessible book and by a single
@@ -72,17 +73,24 @@ internal fun BookCard(book: Book, onClick: () -> Unit, modifier: Modifier = Modi
  */
 @Composable
 private fun BookProgressLine(book: Book, modifier: Modifier = Modifier) {
-    val progress = book.progress ?: return
+    val progress = book.progress
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = when {
-                progress.isFinished -> stringResource(R.string.book_finished)
-                else -> stringResource(R.string.book_progress, (progress.fractionComplete * 100).roundToInt())
+                progress == null -> stringResource(R.string.book_length, book.duration.readable())
+                progress.isFinished -> stringResource(R.string.book_finished_of, book.duration.readable())
+                else -> stringResource(
+                    R.string.book_position,
+                    progress.position.readable(),
+                    (progress.duration - progress.position).coerceAtLeast(Duration.ZERO).readable(),
+                    progress.duration.readable(),
+                    (progress.fractionComplete * 100).roundToInt(),
+                )
             },
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (!progress.isFinished) {
+        if (progress != null && !progress.isFinished) {
             LinearProgressIndicator(
                 progress = { progress.fractionComplete },
                 modifier = Modifier.fillMaxWidth(),
@@ -90,6 +98,20 @@ private fun BookProgressLine(book: Book, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/**
+ * `4h 12m`, or `12m` under an hour.
+ *
+ * Seconds are dropped deliberately: an audiobook's remaining time is a rough answer to "will I finish this
+ * on the way home", and a ticking seconds field invites a precision the value does not have.
+ */
+private fun Duration.readable(): String {
+    val hours = inWholeHours
+    val minutes = inWholeMinutes % MINUTES_PER_HOUR
+    return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+}
+
+private const val MINUTES_PER_HOUR = 60
 
 /** PRODUCT_SPEC LIB-002 — sort order is a visible, one-tap choice, not a buried menu. */
 @Composable

@@ -95,6 +95,7 @@ internal object EntityMappers {
         accessibleLibraryIds = StringListConverters.toStringList(entity.accessibleLibrariesJson)
             .filter(String::isNotBlank)
             .map(::LibraryId),
+        hasAllTagAccess = entity.hasAllTagAccess,
     )
 
     // --- Library ----------------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 package com.example.shelfplayer.domain.usecase
 
+import com.example.shelfplayer.core.common.dispatcher.Dispatcher
+import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookSortOrder
@@ -7,10 +9,12 @@ import com.example.shelfplayer.domain.library.matchesQuery
 import com.example.shelfplayer.domain.library.sortBooks
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
@@ -24,6 +28,13 @@ import javax.inject.Inject
 class ObserveLibraryBooksUseCase @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val libraryRepository: LibraryRepository,
+    /**
+     * PRODUCT_SPEC 16.3 — filtering and sorting run off the main thread.
+     *
+     * A collector in a ViewModel runs on `Dispatchers.Main`, so without this every keystroke sorted the
+     * whole shelf there. On a 490-book library a device run felt it: "it takes a second to update".
+     */
+    @param:Dispatcher(ShelfDispatcher.Default) private val defaultDispatcher: CoroutineDispatcher,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     operator fun invoke(
@@ -37,5 +48,5 @@ class ObserveLibraryBooksUseCase @Inject constructor(
             libraryRepository.observeBooks(profile.id, libraryId)
                 .map { books -> sortBooks(books.filter { it.matchesQuery(query) }, order) }
         }
-    }
+    }.flowOn(defaultDispatcher)
 }

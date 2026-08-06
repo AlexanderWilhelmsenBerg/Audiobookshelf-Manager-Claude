@@ -70,5 +70,24 @@ object Migrations {
         }
     }
 
-    val ALL: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3)
+    /**
+     * Version 4 — whether the account also sees every *item* (PRODUCT_SPEC 5.2).
+     *
+     * Audiobookshelf restricts twice: by library, and by tag within a library. Reconciliation deletes
+     * what a sync did not return, so an account served a filtered item list must never drive deletions —
+     * a device run showed a restricted account's sync marking 302 of another account's 490 books removed.
+     *
+     * Defaults to `0` for every row, new and existing alike, and unlike `hasAllLibraryAccess` in
+     * MIGRATION_2_3 there is no permissive `UPDATE` for existing rows. The two defaults point opposite
+     * ways because the risks do: getting `hasAllLibraryAccess` wrong for an upgrading profile hides
+     * content the user already has, while getting *this* wrong deletes it. An existing profile simply
+     * stops reconciling until its next sign-in records the real value — it still syncs, and it still adds.
+     */
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE profiles ADD COLUMN hasAllTagAccess INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    val ALL: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

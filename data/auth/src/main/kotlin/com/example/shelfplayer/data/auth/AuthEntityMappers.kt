@@ -89,6 +89,7 @@ internal object AuthEntityMappers {
         isFixture = profile.isFixture,
         accessibleLibrariesJson = accessibleLibrariesJson(access),
         hasAllLibraryAccess = access.hasAllLibraryAccess,
+        hasAllTagAccess = access.hasAllTagAccess,
     )
 
     /**
@@ -102,6 +103,7 @@ internal object AuthEntityMappers {
         accessibleLibraryIds = StringListConverters.toStringList(entity.accessibleLibrariesJson)
             .filter(String::isNotBlank)
             .map(::LibraryId),
+        hasAllTagAccess = entity.hasAllTagAccess,
     )
 
     fun accessibleLibrariesJson(access: LibraryAccess): String =

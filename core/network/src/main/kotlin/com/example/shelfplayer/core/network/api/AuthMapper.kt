@@ -42,6 +42,9 @@ internal object AuthMapper {
                     // nothing about what this account may see.
                     hasAllLibraryAccess = user.permissions?.accessAllLibraries ?: false,
                     accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
+                    // Same safe default, and for a sharper reason: an account wrongly believed to see
+                    // every item is an account whose sync is allowed to delete another account's books.
+                    hasAllTagAccess = user.permissions?.accessAllTags ?: false,
                 ),
             ),
         )

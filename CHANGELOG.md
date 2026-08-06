@@ -99,6 +99,27 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
   word between two buttons, the whole card switches profile, each card shows its **server address** — the
   open item from the previous PR — and a signed-out profile offers **Sign in** rather than *Sign out*,
   carrying its address and username to the sign-in screen so only the password is retyped.
+- **A restricted account was deleting the unrestricted account's books** (PRODUCT_SPEC 5.2). Audiobookshelf
+  restricts by library *and* by tag within a library, so an account with `accessAllTags = false` is served a
+  filtered item list for a library it can otherwise see. Reconciliation then marked everything absent from
+  that list deleted: a device run showed 302 of 490 books removed after a restricted account synced.
+  `LibraryAccess` now carries `hasAllTagAccess` — captured in the contract all along, never read — and only
+  an account that sees every library **and** every item may drive deletions. Database version 4, restrictive
+  default for existing rows.
+- **Libraries deleted on the server are removed** (PRODUCT_SPEC 13.2). Nothing enumerated libraries, so a
+  deleted one survived every refresh as a stale entry. Their books go with them, under the same authority
+  rule.
+- **Every profile gets its initial sync**, not just the first: the "already attempted" flag was one boolean
+  for the whole screen rather than a set of profile ids, so switching accounts silently skipped the sync.
+- **Pull-to-refresh** (LIB-001 asks for it by name). The toolbar button stays — TalkBack cannot pull.
+- Search and sort run off the main thread. Filtering 490 books per keystroke ran on `Dispatchers.Main`,
+  which a device run felt as a second of lag; LIB-002's 300 ms debounce is now the only delay.
+- Reauthentication lands on the password field: the probe runs on arrival instead of asking the user to tap
+  *Continue* on an address the app supplied itself. It is run, not skipped — the credentials stage still
+  shows the version and the encryption line before a password is typed.
+- "Saved sign-ins" counts accounts, not files. It read 6 for 3 accounts, because each stores an access and a
+  refresh token.
+- Book rows show position, time remaining and total length rather than a bare percentage (LIB-004).
 - `docs/phase-1-acceptance.md`: the manual acceptance plan that closes Phase 1 — 53 cases covering
   sign-in, the shelf, settings, two-account switching, a library-restricted account, offline browse,
   session expiry and accessibility, with the database checks the UI cannot substitute for and an explicit

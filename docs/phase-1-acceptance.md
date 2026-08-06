@@ -66,16 +66,17 @@ worth nothing later.
 
 | ID | Requirement | Steps | Expected | Result |
 | --- | --- | --- | --- | --- |
+| **TC-08b** | LIB-001, AUTH-002 | Sign in a **second** account and watch the shelf. | Its first sync starts by itself too. Only the first account used to sync automatically. | |
 | **TC-09** | LIB-001 | Watch the screen immediately after TC-08. | Sign-in returns **quickly** — it no longer waits for the library — and a sync then starts **by itself** on the shelf, shown as a thin progress bar at the top. You are not asked to trigger it. | |
 | **TC-10** | LIB-001 | Wait for it to finish. **A first sync of a large library is one request per book; several minutes is normal.** | Books appear. The progress bar goes away. A line reports the number of books. **No manual refresh should be needed** — this is the defect four device runs reported. | |
 | **TC-10b** | LIB-001 | Force-stop the app *while the first sync is running*, then reopen it. | The sync starts again by itself rather than showing a progress bar for a sync nothing is running. | |
 | **TC-11** | LIB-001 | Force-stop the app and reopen it. | Books are on screen **immediately**, before any sync completes. No full-screen spinner in front of them. | |
-| **TC-12** | LIB-001 | Pull down / tap refresh while books are on screen. | The progress bar appears **above** the list; the books stay visible and scrollable throughout. | |
+| **TC-12** | LIB-001 | **Pull down** on the list, then tap the refresh button. | Both start a refresh. The progress bar appears **above** the list; the books stay visible and scrollable throughout. | |
 | **TC-13** | LIB-001 | Turn on aeroplane mode and tap refresh. | An error is reported **and the books stay on screen**. The library is never blanked by a failed refresh. | |
 | **TC-14** | **LIB-002** | Turn the network back on, refresh, and look at the order of the list. | The books you played in the web player are **at the top, most recently played first**. Books you have never opened come after them, in title order. | |
-| **TC-15** | LIB-002 | Look at a book you partly played. | It shows a percentage and a progress bar; the percentage roughly matches where you stopped in the web player. | |
+| **TC-15** | LIB-002 | Look at a book you partly played. | It shows **how far in you are, how much is left, the total length and a percentage**, plus a progress bar, and they match where you stopped in the web player. A book never opened shows only its length. | |
 | **TC-16** | LIB-002 | Tap the "Last played" chip through to "Title (A–Z)", "Author", "Series order". | The list reorders immediately for each. Series order puts `2` before `10` — **not** lexicographically. | |
-| **TC-17** | LIB-002 | Type part of a book title into the search field. | Results narrow. The **typed text keeps up with your keyboard** — the field never lags. | |
+| **TC-17** | LIB-002 | Type part of a book title into the search field. | Results narrow after roughly a third of a second — LIB-002 mandates a 300 ms debounce. The **typed text keeps up with your keyboard**, and the list itself no longer stalls: the sort runs off the main thread. | |
 | **TC-18** | LIB-002 | Search for an author's name, then a narrator's name, then a series name. | Each matches. | |
 | **TC-19** | LIB-002 | Search for something in no book at all. | A distinct "no matches" message — not the same message as an empty library. | |
 | **TC-20** | LIB-004 | Clear the search and open any book. | Title, author, narrator, duration, description and progress are shown, and the progress matches the list. **Cover art is expected to be absent** — see *Known gaps*. | |
@@ -100,9 +101,9 @@ worth nothing later.
 | **TC-27** | **Exit 1** | Switch back to A, then to B, then to A again. | Each switch lands on that account's own library and its own progress. **A's progress never shows under B**, and vice versa. | |
 | **TC-28** | 6.5 | Open **Settings → Storage on this device**. | **Servers: 1** and **Profiles: 2**. Two accounts on one server must not produce two server rows. | |
 | **TC-29** | AUTH-002 | Sign **out** of B (not remove). | B stays in the list, marked as needing to sign in again. **Its card now offers *Sign in*, not *Sign out*.** Its cached library is still browsable when selected. | |
-| **TC-29b** | AUTH-004 | Tap **Sign in** on B's card. | The sign-in screen opens with B's **server address and username already filled in**. Only the password is asked for. Confirming the address still shows the version and the encryption line before the password field is usable. | |
+| **TC-29b** | AUTH-004 | Tap **Sign in** on B's card. | The sign-in screen opens **straight on the password field**, with the address and username filled in and the server's version and encryption line already shown. You should not have to tap *Continue*. | |
 | **TC-29c** | AUTH-004 | Complete that sign-in. | B returns to the **same profile** — not a duplicate — with its progress intact, and the reauthentication mark is gone. | |
-| **TC-30** | AUTH-003 | Note **Saved sign-ins** in Settings before signing B out, then check it after. | The number goes **down**. Signing out deletes that profile's stored credential and leaves A's alone. | |
+| **TC-30** | AUTH-003 | Note **Saved sign-ins** in Settings before signing B out, then check it after. | It counts **accounts**, so three signed-in profiles read `3`, not `6`. Signing B out takes it to `2` and leaves A's credential alone. | |
 | **TC-31** | AUTH-002 | Sign B back in from the switcher. | It returns to the **same profile** — B is not duplicated in the list, and its progress is still there. | |
 | **TC-32** | AUTH-002, 21 | Tap *Remove* on B and read the dialog **before** confirming. | It says removal deletes B's session, progress and downloads **from this device**, deletes nothing on the server, and does not affect other profiles. | |
 | **TC-33** | AUTH-002 | Confirm the removal. | B is gone from the list. **A is untouched** — still signed in, still has its library and its progress. | |
@@ -122,6 +123,8 @@ the sanity check.
 | **TC-35b** | 5.2 | Sign in B on a device that has **never** had A on it (or clear the app first), let it sync, and look at Settings. | **Libraries stored** equals **Visible to this profile**. Nothing outside B's grant was written at all. This is the strongest form of the check, and the one worth doing if you only do one. | |
 | **TC-36** | 5.2 | Turn on **Open on libraries** while B is active. | The library list shows **only** B's granted libraries. | |
 | **TC-37** | 5.2 | On the server, **revoke** one of B's libraries. Back in the app, refresh as B. | The revoked library and its books disappear from B's shelf, its library list, and search. | |
+| **TC-37b** | 13.2 | **Delete** a library on the server. Refresh as **A** (the unrestricted account). | The library disappears from Settings → Libraries, and its books leave the shelf. It used to survive as a stale entry for ever. | |
+| **TC-37c** | **5.2** | Note **Books stored** as A. Switch to restricted B, let it sync, switch back to A, and look again. | **Unchanged**, and **Removed on the server** has not grown. This is the worst defect found so far: B's filtered item list used to mark 302 of A's 490 books removed. | |
 | **TC-38** | 5.2 | Switch to A and refresh. | A still sees everything. Revoking B's access changed nothing for A. | |
 | **TC-38b** | 5.2, AUTH-002 | With both accounts synced, check that each still has its own progress: open a book A has played and one B has played, under each account in turn. | Each account sees only its own position. A sync for one profile must not touch the other's progress rows. | |
 

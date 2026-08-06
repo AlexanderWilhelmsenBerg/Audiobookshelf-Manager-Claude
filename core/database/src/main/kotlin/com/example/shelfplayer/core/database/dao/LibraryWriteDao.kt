@@ -96,4 +96,22 @@ interface LibraryWriteDao {
      */
     @Query("UPDATE books SET isDeleted = 1 WHERE libraryKey = :libraryKey")
     suspend fun markAllBooksDeleted(libraryKey: String)
+
+    /**
+     * PRODUCT_SPEC 13.2 — a library the server no longer lists.
+     *
+     * Nothing enumerated these before, so deleting a library on the server left its row and its books in
+     * the cache for good: a device run reported them as "stale entries" that survived even deleting the
+     * library. The books go with it, because the shelf reads books by server and would otherwise keep
+     * showing the contents of a library that no longer exists.
+     *
+     * Only a profile that sees every library **and** every item may drive this — see
+     * `LibraryAccess.reconciles`. For anyone else, absence is the server filtering, not the server
+     * forgetting.
+     */
+    @Query("UPDATE libraries SET isDeleted = 1 WHERE serverId = :serverId AND libraryKey NOT IN (:presentKeys)")
+    suspend fun markMissingLibrariesDeleted(serverId: String, presentKeys: List<String>)
+
+    @Query("UPDATE books SET isDeleted = 1 WHERE serverId = :serverId AND libraryKey NOT IN (:presentKeys)")
+    suspend fun markBooksOutsideLibrariesDeleted(serverId: String, presentKeys: List<String>)
 }

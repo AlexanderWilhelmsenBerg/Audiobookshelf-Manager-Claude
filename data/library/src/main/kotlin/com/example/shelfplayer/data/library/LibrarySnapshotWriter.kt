@@ -31,11 +31,26 @@ class LibrarySnapshotWriter @Inject constructor(
     private val libraryWriteDao: LibraryWriteDao,
     private val progressDao: ProgressDao,
 ) {
-    /** Returns the number of books written. */
-    suspend fun write(libraries: List<Library>, snapshots: Map<LibraryId, LibrarySnapshot>): Int {
+    /**
+     * Returns the number of books written.
+     *
+     * [reconciles] is the syncing profile's authority to *delete*, not just to add — see
+     * `LibraryAccess.reconciles`. An account the server filters (by library or by tag) sees a partial
+     * view, so absence from its sync says nothing about the server. A device run showed what happens
+     * without this: a restricted account synced a shared library and 302 of the unrestricted account's
+     * 490 books were marked removed.
+     */
+    suspend fun write(
+        libraries: List<Library>,
+        snapshots: Map<LibraryId, LibrarySnapshot>,
+        reconciles: Boolean = true,
+    ): Int {
         var written = 0
         transaction {
             libraryWriteDao.upsertLibraries(libraries.map(EntityMappers::toEntity))
+            if (reconciles) {
+                reconcileLibraries(libraries)
+            }
             libraries.forEach { library ->
                 val fetched = snapshots[library.id]
                 val rows = fetched?.books.orEmpty().map(EntityMappers::toEntities)
@@ -54,12 +69,13 @@ class LibrarySnapshotWriter @Inject constructor(
                 libraryWriteDao.upsertChapters(rows.flatMap { it.chapters })
                 progressDao.upsertProgress(rows.mapNotNull { it.progress })
                 val libraryKey = EntityKey.of(library.serverId.value, library.id.value)
-                // PRODUCT_SPEC 13.2 / LIB-001 — absence only means deletion when the fetch was complete.
+                // PRODUCT_SPEC 13.2 / LIB-001 — absence only means deletion when this profile could have
+                // seen everything *and* the fetch actually did.
                 //
-                // An incomplete fetch is missing items *because the network failed*, and soft-deleting
-                // them would turn one timeout into a library that visibly loses books. The rows it did
-                // bring back are still written; reconciliation waits for a sync that saw everything.
-                if (fetched?.isComplete == true) {
+                // An incomplete fetch is missing items because the network failed, and soft-deleting them
+                // would turn one timeout into a library that visibly loses books. A filtered profile is
+                // missing items because the server hid them, which is not the same as their being gone.
+                if (reconciles && fetched?.isComplete == true) {
                     if (rows.isEmpty()) {
                         libraryWriteDao.markAllBooksDeleted(libraryKey)
                     } else {
@@ -70,5 +86,18 @@ class LibrarySnapshotWriter @Inject constructor(
             }
         }
         return written
+    }
+
+    /**
+     * PRODUCT_SPEC 13.2 — libraries the server stopped listing, and their books.
+     *
+     * The books have to go too: the shelf reads books by server, so a library row marked deleted would
+     * otherwise leave its contents on screen.
+     */
+    private suspend fun reconcileLibraries(libraries: List<Library>) {
+        val serverId = libraries.firstOrNull()?.serverId?.value ?: return
+        val presentKeys = libraries.map { EntityKey.of(it.serverId.value, it.id.value) }
+        libraryWriteDao.markMissingLibrariesDeleted(serverId, presentKeys)
+        libraryWriteDao.markBooksOutsideLibrariesDeleted(serverId, presentKeys)
     }
 }

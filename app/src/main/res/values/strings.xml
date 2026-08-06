@@ -84,6 +84,10 @@
     <string name="book_narrated_by">Narrated by %1$s</string>
     <string name="book_duration">%1$s long</string>
     <string name="book_progress">%1$d%% listened</string>
+    <!-- PRODUCT_SPEC LIB-004 — where you are, what is left, and how long the whole thing is. -->
+    <string name="book_position">%1$s in · %2$s left · %3$s · %4$d%%</string>
+    <string name="book_length">%1$s</string>
+    <string name="book_finished_of">Finished · %1$s</string>
     <string name="book_finished">Finished</string>
     <string name="book_not_downloaded">Not downloaded</string>
     <string name="book_download_partial">Download incomplete</string>

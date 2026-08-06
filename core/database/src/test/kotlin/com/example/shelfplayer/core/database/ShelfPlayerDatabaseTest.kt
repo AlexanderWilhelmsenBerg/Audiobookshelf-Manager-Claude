@@ -218,6 +218,7 @@ class ShelfPlayerDatabaseTest {
         isFixture = true,
         accessibleLibrariesJson = "[]",
         hasAllLibraryAccess = true,
+        hasAllTagAccess = true,
     )
 
     private fun bookEntity(remoteId: String = "book-1", title: String = "The Salt Harbour") = BookEntity(

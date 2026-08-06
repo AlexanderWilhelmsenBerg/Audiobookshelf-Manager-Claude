@@ -115,11 +115,17 @@ interface ProfileDao {
         """
         UPDATE profiles
         SET accessibleLibrariesJson = :accessibleLibrariesJson,
-            hasAllLibraryAccess = :hasAllLibraryAccess
+            hasAllLibraryAccess = :hasAllLibraryAccess,
+            hasAllTagAccess = :hasAllTagAccess
         WHERE profileId = :profileId
         """,
     )
-    suspend fun setLibraryAccess(profileId: String, accessibleLibrariesJson: String, hasAllLibraryAccess: Boolean)
+    suspend fun setLibraryAccess(
+        profileId: String,
+        accessibleLibrariesJson: String,
+        hasAllLibraryAccess: Boolean,
+        hasAllTagAccess: Boolean,
+    )
 
     /**
      * PRODUCT_SPEC AUTH-002 — removing one profile must not remove another profile's data.

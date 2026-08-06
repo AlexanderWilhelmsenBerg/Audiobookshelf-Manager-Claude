@@ -208,6 +208,7 @@ class DefaultCapabilityRepositoryTest {
                 isFixture = false,
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
+                hasAllTagAccess = true,
             ),
         )
     }

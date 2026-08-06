@@ -70,6 +70,15 @@ class SignInViewModel @Inject constructor(
      * before any password field appears, so what is shown was confirmed just now rather than remembered
      * from last time.
      */
+    init {
+        // PRODUCT_SPEC AUTH-004 — a reauthentication should ask for a password and nothing else.
+        //
+        // The probe is not skipped, it is simply run for the user: PRODUCT_SPEC 6.1 wants the version and
+        // the encryption line seen before a password is typed, and the credentials stage shows both. What
+        // is removed is the pointless tap on an address the app supplied itself.
+        if (state.value.serverUrl.isNotBlank()) onServerSubmitted()
+    }
+
     val uiState: StateFlow<SignInUiState> = combine(
         state,
         profileRepository.observeServers(),

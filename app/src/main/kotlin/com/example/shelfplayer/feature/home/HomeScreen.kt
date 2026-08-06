@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -173,6 +174,7 @@ private fun HomeContent(uiState: HomeUiState, actions: HomeActions) {
  * Search and sort appear once there is something to search. A search field above "No books yet" offers
  * the user a way to narrow nothing down.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BookShelf(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
@@ -199,14 +201,23 @@ private fun BookShelf(uiState: HomeUiState, actions: HomeActions, modifier: Modi
 
             uiState.books.isEmpty() -> EmptyOrFailed(uiState = uiState, onRefresh = actions.onRefresh)
 
-            else -> LazyColumn(
+            // PRODUCT_SPEC LIB-001 — "pull-to-refresh refreshes the active library", in as many words.
+            // The toolbar button stays: pull is a gesture some users never discover, and TalkBack has no
+            // sensible way to perform one.
+            else -> PullToRefreshBox(
+                isRefreshing = uiState.isRefreshing,
+                onRefresh = actions.onRefresh,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item { ShelfHeader(uiState) }
-                items(items = uiState.books, key = { it.id.value }) { book ->
-                    BookCard(book = book, onClick = { actions.onBookSelected(book.id) })
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item { ShelfHeader(uiState) }
+                    items(items = uiState.books, key = { it.id.value }) { book ->
+                        BookCard(book = book, onClick = { actions.onBookSelected(book.id) })
+                    }
                 }
             }
         }

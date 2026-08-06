@@ -249,6 +249,7 @@ class DefaultAuthRepository @Inject constructor(
                     profileId = profileId.value,
                     accessibleLibrariesJson = AuthEntityMappers.accessibleLibrariesJson(renewed.value.access),
                     hasAllLibraryAccess = renewed.value.access.hasAllLibraryAccess,
+                    hasAllTagAccess = renewed.value.access.hasAllTagAccess,
                 )
                 logger.info(
                     LogCategory.Auth,
