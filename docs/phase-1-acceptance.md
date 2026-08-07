@@ -180,17 +180,24 @@ Not an exit criterion, but the requirement most likely to be wrong in a way test
 These are **built-and-missing**, not broken. They are listed so a tester does not spend time on them and so
 nobody reads a clean run of the table above as "Phase 1 is complete".
 
+Last checked against the tree on 2026-08-07, at 0.1.10. **Nine of the gaps this table used to list have
+since been closed** — cover art, ISBN/ASIN search, progress without a full refresh, per-library sort, and
+the rest. They are struck rather than deleted so a re-reader can see what moved.
+
 | Gap | Requirement | Status |
 | --- | --- | --- |
-| **No cover art anywhere** | LIB-001, LIB-004 | **In Phase 1's scope and not built.** `coverPath` is synced and stored; the missing piece is the UI plus an authenticated image loader, since a cover URL needs the profile's credential. Deferred by the owner. |
-| Thin book metadata | LIB-004 | Genres, tags, publisher, language, publication data and file count are stored but not all shown. |
 | No playback of any kind | PLAY-* | Phase 2. Book details say so. |
 | No downloads, no offline media | DL-* | Phase 3. "Offline" in TC-39…TC-44 means **browsing cached metadata**, which is all Phase 1 promises. |
-| Settings has no preferences yet | SET-002 | It has the libraries list and the storage counts. A real preference arrives with the behaviour that honours it; a screen of switches that change nothing is worse than a short one. |
-| Per-server cleartext opt-in | 15 | The sign-in screen warns; the opt-in is a SET-002 item that does not exist. |
-| **Progress does not update until you refresh** | LIB-001 | Playing in the Audiobookshelf web player does not reach the app on its own. LIB-001 wants websocket events with a REST refresh as the fallback, and only the fallback exists. A full refresh is one request per book, far too expensive to run on every foreground. The cheap fix — a progress-only sync from `POST /api/authorize`, which already returns `user.mediaProgress` — is blocked on one contract capture: the committed fixture's `mediaProgress` array is empty, so the element shape has never been seen. |
-| Search does not match ISBN or ASIN | LIB-002 | Those fields are not synced yet, so matching them would be a promise with nothing behind it. |
-| Sort order is not remembered per library | LIB-002 | Persisting it is the remainder of LIB-002. |
+| No collections axis | LIB-002 | **Blocked on a capture, not on code.** `GET /api/libraries/{id}/collections` returned `results: []` — the capture server has none — so the envelope is known and a collection object has never been seen. PRODUCT_SPEC 22.4 forbids writing the mapper from the published reference alone. Create one collection on the capture server and re-run. |
+| No OpenID sign-in | AUTH-001, SYNC-001 | `authMethods` is persisted and only `local` is ever used. A server configured for OIDC-only cannot be signed into. Also blocked on a capture. |
+| Server search covers books only | LIB-002 | The other five result kinds — authors, series, genres, narrators, tags — came back as empty arrays on the capture, so their element shapes are unverified. Searching those axes still works against the cache. |
+| Settings has few preferences | SET-002 | Two tabs, one real preference (the default library). A preference arrives with the behaviour that honours it; a screen of switches that change nothing is worse than a short one. |
+| Per-server cleartext opt-in | 15 | **Resolved as "no" — see ADR-0009.** Android's network security config is static, so a per-server exception cannot be expressed; the only release-build lever would drop the guarantee for every host. Debug builds permit cleartext; release builds do not, and the sign-in screen warns either way. |
+| ~~No cover art anywhere~~ | LIB-001, LIB-004 | **Closed at 0.1.9.** Covers on every shelf, card and row, through the authenticated client, with a disk cache. |
+| ~~Search does not match ISBN or ASIN~~ | LIB-002 | **Closed.** Both are synced and matched, ISBN on digits-only prefix so the number on a jacket finds the book. |
+| ~~Progress does not update until you refresh~~ | LIB-001 | **Closed.** The `mediaProgress` shape was captured, and `SyncAccountUseCase` writes positions from `POST /api/authorize` on every `onVisible()` at the cost of no extra request. Websocket events land on top of that. |
+| ~~Sort order is not remembered per library~~ | LIB-002 | **Closed.** Stored per profile *and* per library in Proto DataStore. |
+| ~~Thin book metadata~~ | LIB-004 | **Closed.** Genres, tags, publisher, language, year, size, ISBN and ASIN are shown where present. |
 
 ## The decision this list feeds
 
@@ -200,9 +207,19 @@ Phase 1's exit criteria are exactly three:
 2. **Unauthorized libraries never appear** → TC-35, supported by TC-34…TC-38.
 3. **Offline cached browse works** → TC-39, supported by TC-40…TC-44.
 
-If those three pass, the criteria are met **and covers are still missing** — so the honest close is
-*"Phase 1 exit criteria demonstrated; LIB-001/LIB-004 cover art carried forward."* Record it that way
-rather than as "Phase 1 complete", so the carried-forward work is visible when Phase 2 is planned.
+**All three passed on hardware across the 0.1.5 … 0.1.9 device runs**, together with E-01…E-29 and the
+0.1.9 G-series. Covers, which the earlier version of this section carried forward, shipped at 0.1.9.
+
+The honest close is therefore *"Phase 1 exit criteria demonstrated; the quality gates are not"*. What is
+carried forward is no longer product scope but tooling: **no `androidTest` source set exists**, so the
+UI tests PRODUCT_SPEC 17.1 lists — login, profile switching, offline home, TalkBack semantics,
+large-font and landscape layouts — have only ever been performed by hand; there is **no coverage
+tooling**, so 17.3's 80%/90% thresholds are unmeasured; **dependency verification is `off`**; and there
+is **no `values-nb`**. `docs/roadmap-to-phase-1-close.md` holds the full audit.
+
+Record it that way rather than as "Phase 1 complete", so what is carried forward stays visible when
+Phase 2 is planned. TalkBack in particular is the one to weigh: TC-52 and TC-53 have never been run, and
+there is no automated tier that would notice if the semantics regressed.
 
 If any of the three fails, it is a Phase 1 defect and Phase 2 should not open — `PRODUCT_SPEC 20`'s phases
 are sequential for the reason that a playback layer built on a broken profile boundary is worse than no
