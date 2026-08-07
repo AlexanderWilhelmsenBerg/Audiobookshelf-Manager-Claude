@@ -22,7 +22,6 @@ class QualityConventionPlugin : Plugin<Project> {
         with(target) {
             configureKtlint()
             configureDetekt()
-            configureCoverage()
             configureDependencyLocking()
             registerVerifyDebug()
         }
@@ -49,17 +48,6 @@ private fun Project.configureKtlint() {
             }
         }
     }
-}
-
-/**
- * PRODUCT_SPEC 17.3 — coverage, measured.
- *
- * Applied by id and configured nowhere here: the thresholds are a project-wide policy, not a per-module
- * one, so they live in the root build file where the aggregate report is assembled. This only makes each
- * module *measurable*.
- */
-private fun Project.configureCoverage() {
-    pluginManager.apply("org.jetbrains.kotlinx.kover")
 }
 
 private fun Project.configureDetekt() {

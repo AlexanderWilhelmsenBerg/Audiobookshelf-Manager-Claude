@@ -1,5 +1,7 @@
 plugins {
     id("shelfplayer.jvm.library")
+    // PRODUCT_SPEC 17.3 — this module contributes coverage data; the thresholds live in the root build.
+    alias(libs.plugins.kover)
 }
 
 /**

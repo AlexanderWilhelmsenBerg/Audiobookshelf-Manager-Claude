@@ -108,8 +108,12 @@ tasks.register<Delete>("clean") {
  *
  * Excluded, each for a reason rather than because the number was inconvenient:
  *
- *  - `:core:database` and `:core:datastore` are overwhelmingly generated — Room DAOs, protobuf message
- *    classes — and measuring generated code says nothing about the tests.
+ *  - `:core:database` contributes execution data but its own classes are filtered out: Room DAOs are
+ *    generated, and measuring generated code says nothing about the tests.
+ *  - `:core:datastore` does not have the plugin applied at all. Its classes are protobuf-generated and
+ *    would be filtered out anyway, and Kover's bytecode transform adds a runtime classpath edge that
+ *    Gradle's dependency locking cannot record for that module — so applying it there would cost a
+ *    broken lock state to measure nothing.
  *  - `:core:designsystem` is theme values with no branches.
  *  - `:app` is Compose; its ViewModels are covered and its screens are covered by the Robolectric tier,
  *    but line coverage over generated composable lambdas is not a number worth gating on.
@@ -120,7 +124,6 @@ dependencies {
     kover(projects.app)
     kover(projects.core.common)
     kover(projects.core.database)
-    kover(projects.core.datastore)
     kover(projects.core.model)
     kover(projects.core.network)
     kover(projects.data.auth)
