@@ -3,13 +3,9 @@ package com.example.shelfplayer.feature.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
-import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
-import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
-import com.example.shelfplayer.domain.usecase.ServerDiagnostics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,13 +19,11 @@ import javax.inject.Inject
  *
  * Two sections, and neither is a preference:
  *
- * - **Libraries.** Browsing by library lives here. It was briefly a switch that turned the home screen
- *   into a list of libraries, which was worse in the way modal settings usually are: the user had to go to
- *   Settings, flip something, and navigate back to find out what it did. The libraries are simply listed,
- *   and tapping one opens it.
- * - **Storage.** The counts behind the acceptance checks that ask what was *stored* rather than what is
- *   shown (PRODUCT_SPEC SET-002, Privacy/diagnostics). They existed only as `adb … sqlite3` commands,
- *   which needs a cable and a device shipping `sqlite3`.
+ * - **Libraries.** The one real preference: which library the shelf opens on. Tapping a row stars it.
+ * - **About.** One row, opening the readings: the app's version, what the capability handshake learned,
+ *   and the storage counts. They used to sit on this screen and a device run was right that they did
+ *   not belong — a preference and a diagnostic are different kinds of thing, and mixing them puts a
+ *   screenful of numbers between the user and the one choice here.
  *
  * Real preferences arrive with the behaviour that honours them. A screen full of switches that change
  * nothing is worse than a short one: it tells the user the app does something it does not.
@@ -37,25 +31,19 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     observeLibraries: ObserveLibrariesUseCase,
-    diagnostics: DiagnosticsRepository,
-    observeServerDiagnostics: ObserveServerDiagnosticsUseCase,
     private val preferences: PreferencesRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
         observeLibraries(),
-        diagnostics.observeStorage(),
         preferences.observePreferences(),
-        observeServerDiagnostics(),
-    ) { libraries, storage, stored, server ->
+    ) { libraries, stored ->
         SettingsUiState(
             libraries = libraries,
-            storage = storage,
             // PRODUCT_SPEC 6.1 step 9 — resolved against the granted libraries rather than shown raw.
             // A default library the profile has since lost is not a default any more, and rendering the
             // stored id would put a tick beside a library that is no longer in the list.
             defaultLibraryId = stored.defaultLibraryId?.takeIf { id -> libraries.any { it.id == id } },
-            server = server,
             isLoaded = true,
         )
     }.stateIn(
@@ -89,10 +77,7 @@ class SettingsViewModel @Inject constructor(
  */
 data class SettingsUiState(
     val libraries: List<Library> = emptyList(),
-    val storage: StorageDiagnostics = StorageDiagnostics(),
     /** PRODUCT_SPEC 6.1 step 9 — `null` is every granted library, which is the default. */
     val defaultLibraryId: LibraryId? = null,
-    /** PRODUCT_SPEC SYNC-001 — what the handshake learned, or `null` while no profile is active. */
-    val server: ServerDiagnostics? = null,
     val isLoaded: Boolean = false,
 )

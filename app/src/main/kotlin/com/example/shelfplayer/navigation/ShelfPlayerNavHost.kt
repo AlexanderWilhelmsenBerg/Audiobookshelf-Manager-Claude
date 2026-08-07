@@ -7,6 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.shelfplayer.feature.about.AboutRoute
 import com.example.shelfplayer.feature.book.BookRoute
 import com.example.shelfplayer.feature.home.HomeRoute
 import com.example.shelfplayer.feature.onboarding.SignInRoute
@@ -81,7 +82,13 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
             // search and sort chips, which a device run called out as "two different places for the same
             // functions". Choosing a library here narrows the home screen, and the home screen is where
             // browsing happens.
-            SettingsRoute(onNavigateUp = navController::navigateUp)
+            SettingsRoute(
+                onAboutSelected = { navController.navigate(ShelfDestinations.ABOUT) },
+                onNavigateUp = navController::navigateUp,
+            )
+        }
+        composable(ShelfDestinations.ABOUT) {
+            AboutRoute(onNavigateUp = navController::navigateUp)
         }
         composable(
             route = ShelfDestinations.BOOK,

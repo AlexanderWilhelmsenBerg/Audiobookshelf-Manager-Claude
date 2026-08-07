@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
@@ -16,7 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,13 +34,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
-import com.example.shelfplayer.core.model.realtime.RealtimeStatus
-import com.example.shelfplayer.domain.usecase.ServerDiagnostics
 
 @Composable
 fun SettingsRoute(
+    onAboutSelected: () -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -50,6 +47,7 @@ fun SettingsRoute(
     SettingsScreen(
         uiState = uiState,
         onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
+        onAboutSelected = onAboutSelected,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
     )
@@ -60,6 +58,7 @@ fun SettingsRoute(
 fun SettingsScreen(
     uiState: SettingsUiState,
     onDefaultLibraryChanged: (LibraryId?) -> Unit,
+    onAboutSelected: () -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -99,174 +98,23 @@ fun SettingsScreen(
                 item { Hint(text = stringResource(R.string.settings_default_library_hint)) }
             }
 
-            uiState.server?.let { server -> serverRows(server) }
-
-            item { SectionHeader(text = stringResource(R.string.settings_section_storage)) }
-            item { Hint(text = stringResource(R.string.settings_storage_body)) }
-            if (uiState.isLoaded) {
-                storageRows(uiState.storage)
-            } else {
-                item { Hint(text = stringResource(R.string.settings_storage_loading)) }
-            }
+            item { SectionHeader(text = stringResource(R.string.settings_section_about)) }
+            item { NavigationRow(labelRes = R.string.settings_about_row, onClick = onAboutSelected) }
         }
     }
 }
 
-/**
- * PRODUCT_SPEC SYNC-001 — "the compatibility result is visible in diagnostics".
- *
- * The interesting line is the capability list, and specifically that most of it says **no**. The
- * handshake confirms nothing it has not probed, and from outside the app "confirmed nothing" and
- * "never ran" look identical — so the header says which of those happened, and the rows say what was
- * asked.
- *
- * The address is printed because this is the screen a user reads to answer "which server am I even
- * talking to" with two profiles on the go. It never reaches a log or a report unless the user has
- * opted in (PRODUCT_SPEC SET-002, Privacy/diagnostics); on screen it is their own address.
- */
-private fun LazyListScope.serverRows(server: ServerDiagnostics) {
-    item { SectionHeader(text = stringResource(R.string.settings_section_server)) }
-    server.serverAddress?.let { address ->
-        item { TextRow(labelRes = R.string.settings_server_address, value = address) }
-    }
-    item {
-        TextRow(
-            labelRes = R.string.settings_server_version,
-            value = server.reportedVersion ?: stringResource(R.string.settings_server_version_unknown),
-        )
-    }
-    item {
-        TextRow(
-            labelRes = R.string.settings_server_auth,
-            value = server.authMethods.joinToString().ifEmpty { stringResource(R.string.settings_server_none) },
-        )
-    }
-    item {
-        TextRow(
-            labelRes = R.string.settings_server_socket,
-            value = stringResource(server.socketStatus.labelRes()),
-        )
-    }
-    item {
-        Hint(
-            text = stringResource(
-                if (server.hasHandshake) {
-                    R.string.settings_server_capabilities_hint
-                } else {
-                    R.string.settings_server_no_handshake
-                },
-            ),
-        )
-    }
-    if (server.hasHandshake) {
-        items(server.allCapabilities, key = { it.first.name }) { (capability, confirmed) ->
-            CapabilityRow(name = capability.name, confirmed = confirmed)
-        }
-    }
-    item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-}
-
-private fun RealtimeStatus.labelRes(): Int = when (this) {
-    RealtimeStatus.Idle -> R.string.settings_server_socket_idle
-    RealtimeStatus.Connecting -> R.string.settings_server_socket_connecting
-    RealtimeStatus.Connected -> R.string.settings_server_socket_connected
-    RealtimeStatus.Disconnected -> R.string.settings_server_socket_disconnected
-}
-
+/** A row that opens another screen — the only navigation Settings still does. */
 @Composable
-private fun CapabilityRow(name: String, confirmed: Boolean, modifier: Modifier = Modifier) {
-    Row(
+private fun NavigationRow(labelRes: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Text(
+        text = stringResource(labelRes),
+        style = MaterialTheme.typography.bodyLarge,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text = name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Text(
-            text = stringResource(
-                if (confirmed) R.string.settings_server_confirmed else R.string.settings_server_unconfirmed,
-            ),
-            style = MaterialTheme.typography.labelMedium,
-            color = if (confirmed) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
-    }
-}
-
-@Composable
-private fun TextRow(labelRes: Int, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(text = stringResource(labelRes), style = MaterialTheme.typography.bodyMedium)
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-/**
- * PRODUCT_SPEC SET-002 (Privacy/diagnostics) — the on-device answer to the questions that used to need
- * `adb shell run-as … sqlite3`.
- *
- * The two pairs are the interesting ones. **Libraries stored** against **visible to this profile** is how
- * "unauthorized libraries never appear" becomes checkable: the requirement is that unauthorized rows were
- * never *written*, and a screen that merely hides them looks identical to one that never had them. Same
- * for books. Counts only — printing the names of libraries this profile may not see would be a strange way
- * to demonstrate that they are hidden.
- */
-private fun LazyListScope.storageRows(storage: StorageDiagnostics) {
-    item {
-        ValueRow(
-            labelRes = R.string.settings_storage_servers,
-            value = storage.serversStored,
-            hintRes = R.string.settings_storage_servers_hint,
-        )
-    }
-    item { ValueRow(labelRes = R.string.settings_storage_profiles, value = storage.profilesStored) }
-    item {
-        ValueRow(
-            labelRes = R.string.settings_storage_credentials,
-            value = storage.storedCredentials,
-            hintRes = R.string.settings_storage_credentials_hint,
-        )
-    }
-    item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-    item {
-        ValueRow(
-            labelRes = R.string.settings_storage_libraries,
-            value = storage.librariesStored,
-            hintRes = R.string.settings_storage_libraries_hint,
-        )
-    }
-    item { ValueRow(labelRes = R.string.settings_storage_libraries_visible, value = storage.librariesAccessible) }
-    item { ValueRow(labelRes = R.string.settings_storage_books, value = storage.booksStored) }
-    item { ValueRow(labelRes = R.string.settings_storage_books_visible, value = storage.booksAccessible) }
-    item {
-        ValueRow(
-            labelRes = R.string.settings_storage_books_deleted,
-            value = storage.booksSoftDeleted,
-            hintRes = R.string.settings_storage_books_deleted_hint,
-        )
-    }
-    item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-    item { ValueRow(labelRes = R.string.settings_storage_progress, value = storage.progressRecords) }
-    item {
-        ValueRow(
-            labelRes = R.string.settings_storage_progress_unsynced,
-            value = storage.unsyncedProgressRecords,
-            hintRes = R.string.settings_storage_progress_unsynced_hint,
-        )
-    }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    )
 }
 
 /**
@@ -308,33 +156,6 @@ private fun LibraryRow(
             // here would have TalkBack read the library twice.
             contentDescription = null,
             tint = if (isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-        )
-    }
-}
-
-@Composable
-private fun ValueRow(labelRes: Int, value: Int, modifier: Modifier = Modifier, hintRes: Int? = null) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(text = stringResource(labelRes), style = MaterialTheme.typography.bodyMedium)
-            hintRes?.let {
-                Text(
-                    text = stringResource(it),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Text(
-            text = value.toString(),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
         )
     }
 }

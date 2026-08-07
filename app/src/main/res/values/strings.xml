@@ -157,6 +157,16 @@
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->
     <string name="settings_title">Settings</string>
+    <!-- PRODUCT_SPEC SET-002 — the readings live behind About, not among the preferences. -->
+    <string name="settings_section_about">About</string>
+    <string name="settings_about_row">About and diagnostics</string>
+    <string name="about_title">About</string>
+    <string name="about_section_app">ShelfPlayer</string>
+    <string name="about_version">Version</string>
+    <string name="about_phase">A work in progress. Playback and downloads are not built yet.</string>
+    <string name="about_section_testing">Testing</string>
+    <string name="about_testing_body">Readings used to check a build against its acceptance cases. Nothing here changes how the app behaves.</string>
+
     <string name="settings_section_libraries">Libraries</string>
     <!-- PRODUCT_SPEC 6.1 step 9 — the library the app opens on. %1$s is the library's name. -->
     <string name="settings_default_library_hint">Tap a library to open on it. With none chosen, the shelf shows every library you can see.</string>
@@ -180,8 +190,8 @@
     <string name="settings_server_socket_connecting">Connecting…</string>
     <string name="settings_server_socket_connected">Connected</string>
     <string name="settings_server_socket_disconnected">Disconnected — refreshing instead</string>
-    <string name="settings_server_capabilities_hint">Each feature is used only when this server has been confirmed to support it. Anything not confirmed is treated as unsupported.</string>
-    <string name="settings_server_no_handshake">This server has not been checked yet. Nothing is treated as supported until it has been.</string>
+    <string name="settings_server_capabilities_hint">This server has been checked. Each feature below is used only where support was confirmed; anything not confirmed is treated as unsupported.</string>
+    <string name="settings_server_no_handshake">This server has not been checked yet, so no feature list can be shown. Nothing is treated as supported until it has been checked.</string>
     <string name="settings_server_confirmed">Confirmed</string>
     <string name="settings_server_unconfirmed">Not confirmed</string>
 

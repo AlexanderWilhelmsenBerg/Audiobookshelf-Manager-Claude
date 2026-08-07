@@ -247,6 +247,55 @@ of the cover work turns on.
 
 **Cover art stays unimplemented until that capture returns 200.**
 
+## How books should be fetched — the N+1, measured (LIB-001)
+
+A full refresh today is **1 + N requests**: one `GET /api/libraries/{id}/items`, then one
+`GET /api/items/{id}?expanded=1&include=progress` for **every** item, sequentially
+(`AbsLibraryApi.snapshots`). On the 490-book library a device run used, that is 491 round trips before
+the sync is finished.
+
+AudioBooth does not do this. It fetches `GET /api/libraries/{id}/items` with `minified=1` plus
+`limit`/`page`/`sort`/`desc`/`collapseseries`/`filter`, and calls `GET /api/items/{id}?expanded=1`
+**only for the book the user opened**.
+
+### What each response actually carries
+
+Compared from the two committed fixtures, so this is observed rather than assumed:
+
+| | `…/items` (list) | `…/items/{id}?expanded=1` |
+| --- | --- | --- |
+| title, subtitle, description | ✅ | ✅ |
+| genres, tags, publisher, publishedYear, language | ✅ | ✅ |
+| **isbn, asin** | ✅ | ✅ |
+| duration, size, numTracks, numChapters, coverPath | ✅ | ✅ |
+| addedAt, updatedAt | ✅ | ✅ |
+| authors / series / narrators | **flat strings only** (`authorName`, `seriesName`, `narratorName`) | structured arrays **with ids and sequences** |
+| `media.tracks`, `media.chapters`, `media.audioFiles` | ❌ absent | ✅ |
+| `userMediaProgress` | ❌ | ✅ (`include=progress`) |
+
+So the per-item fetch **cannot be deleted**. Track offsets and chapters are what make a downloaded book
+resumable (PRODUCT_SPEC 2.3), and `LIB-003`'s series *sequence* only exists in the structured
+`metadata.series` — the list's `seriesName` is a display string with no position in it.
+
+But it can be **deferred**. The list alone is enough for the entire browse surface: the shelf, search,
+genres, and the book detail screen minus its track count. The right shape is therefore:
+
+1. one list request → write rows → **the library is browsable**;
+2. expand items in the background, and on demand when a book is opened.
+
+That turns "wait 491 requests for a shelf" into "wait one". It is the single largest improvement
+available and it is **not blocked on a capture**: both shapes above are already committed.
+
+### What *is* blocked
+
+- **`minified=1`** changes the item shape (a reduced `media` object). Not captured → not used.
+- **`sort` / `desc` / `filter` / `collapseseries`** — the sort keys are literal server field paths
+  (`media.metadata.title`, `media.metadata.authorNameLF`, `addedAt`, `progress.finishedAt`, …). Sorting
+  server-side would also *break offline sorting*, which Room does today for free. Recorded, not adopted.
+- **`limit` / `page`** are safe on the shape — the committed `library-items.json` already carries
+  `total`, `page`, `limit`, `offset` at the top level, so the envelope is observed. Paging is worth
+  having for a 5,000-item library, but it is not what is slow today.
+
 ## Known endpoint differences
 
 None recorded. This section fills in as contract tests run against real server versions, and every
