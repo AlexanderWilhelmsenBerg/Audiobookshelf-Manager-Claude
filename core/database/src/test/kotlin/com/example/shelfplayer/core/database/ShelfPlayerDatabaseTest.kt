@@ -309,6 +309,7 @@ class ShelfPlayerDatabaseTest {
         trackCount = 1,
         sizeBytes = 0,
         remoteUpdatedAt = null,
+        addedAt = null,
         lastFetchedAt = 0,
         isDeleted = false,
         localAvailability = "NotDownloaded",

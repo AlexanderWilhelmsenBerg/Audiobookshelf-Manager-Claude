@@ -179,6 +179,7 @@ internal object EntityMappers {
         trackCount = book.trackCount,
         sizeBytes = book.sizeBytes,
         remoteUpdatedAt = book.remoteUpdatedAt?.toEpochMilli(),
+        addedAt = book.addedAt?.toEpochMilli(),
         lastFetchedAt = book.lastFetchedAt.toEpochMilli(),
         isDeleted = false,
         localAvailability = book.localAvailability.name,
@@ -275,6 +276,7 @@ internal object EntityMappers {
             trackCount = entity.trackCount,
             sizeBytes = entity.sizeBytes,
             remoteUpdatedAt = entity.remoteUpdatedAt?.let(Instant::ofEpochMilli),
+            addedAt = entity.addedAt?.let(Instant::ofEpochMilli),
             lastFetchedAt = Instant.ofEpochMilli(entity.lastFetchedAt),
             progress = progress?.let { stored ->
                 MediaProgress(

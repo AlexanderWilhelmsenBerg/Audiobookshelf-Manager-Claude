@@ -92,6 +92,17 @@
     <string name="library_sort_series">Series order</string>
     <string name="library_tab_books">Books</string>
     <string name="library_tab_series">Series</string>
+    <string name="library_tab_authors">Authors</string>
+    <string name="library_tab_genres">Genres</string>
+    <string name="library_sort_added">Recently added</string>
+    <string name="library_filter_all">All</string>
+    <string name="library_filter_continue">Continue listening</string>
+    <string name="library_filter_downloaded">Downloaded</string>
+    <!-- %1$s is the author or genre the list has been narrowed to. -->
+    <string name="library_focus_clear">Show all books again instead of %1$s</string>
+    <string name="library_authors_empty_title">No authors here</string>
+    <string name="library_genres_empty_title">No genres here</string>
+    <string name="library_groups_empty_body">Nothing in this library matches your search.</string>
 
     <!-- PRODUCT_SPEC LIB-003 / TC-16 — browsing by series. -->
     <string name="series_title">Series</string>

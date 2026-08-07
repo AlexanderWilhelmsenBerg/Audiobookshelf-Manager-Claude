@@ -13,6 +13,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.domain.library.BookGroup
 import com.example.shelfplayer.domain.library.SeriesShelf
 
 /**
@@ -55,6 +56,29 @@ internal fun SeriesCard(shelf: SeriesShelf, onClick: () -> Unit, modifier: Modif
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+/**
+ * PRODUCT_SPEC LIB-002 — one author or one genre, and how many of the profile's books are under it.
+ *
+ * Tapping it narrows the book list rather than opening a screen; see `LibraryViewModel.onGroupSelected`
+ * for why.
+ */
+@Composable
+internal fun GroupCard(group: BookGroup, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(text = group.label, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = pluralStringResource(R.plurals.series_book_count, group.bookCount, group.bookCount),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

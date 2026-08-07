@@ -29,6 +29,15 @@ enum class BookSortOrder {
     AuthorAscending,
     RecentlyUpdated,
 
+    /**
+     * PRODUCT_SPEC LIB-002 — newest on the server first.
+     *
+     * Distinct from [RecentlyUpdated], which moves a book every time its metadata is edited. "Recently
+     * added" is meant to answer "what is new", and a ten-year-old book whose description was fixed
+     * yesterday is not.
+     */
+    RecentlyAdded,
+
     /** PRODUCT_SPEC LIB-003 — numeric sequences first and numerically, everything else after. */
     SeriesSequenceAscending,
     ;
@@ -73,6 +82,11 @@ fun sortBooks(books: List<Book>, order: BookSortOrder): List<Book> {
             compareBy<Book> { it.authors.firstOrNull()?.name?.lowercase().orEmpty() }.then(tieBreak)
         BookSortOrder.RecentlyUpdated ->
             compareByDescending<Book> { it.remoteUpdatedAt ?: it.lastFetchedAt }.then(tieBreak)
+        // `Instant.MIN` for a book whose added date was never fetched, so it sorts last rather than
+        // first. Substituting `lastFetchedAt` would put every pre-upgrade row at the top of "recently
+        // added", which is the opposite of what the shelf claims.
+        BookSortOrder.RecentlyAdded ->
+            compareByDescending<Book> { it.addedAt ?: Instant.MIN }.then(tieBreak)
         BookSortOrder.SeriesSequenceAscending ->
             compareBy<Book> { it.primarySequence() }.then(tieBreak)
     }

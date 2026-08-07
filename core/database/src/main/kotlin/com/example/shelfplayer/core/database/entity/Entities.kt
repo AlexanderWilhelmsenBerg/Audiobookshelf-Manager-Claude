@@ -191,6 +191,8 @@ data class BookEntity(
     val trackCount: Int,
     val sizeBytes: Long,
     val remoteUpdatedAt: Long?,
+    /** PRODUCT_SPEC LIB-002 — the server's own "added" timestamp, not the day this cache fetched it. */
+    val addedAt: Long?,
     val lastFetchedAt: Long,
     val isDeleted: Boolean,
     /** PRODUCT_SPEC DL-001 — `NotDownloaded`, `Partial` or `Complete`. */

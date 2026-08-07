@@ -5,10 +5,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.domain.library.BookFilter
+import com.example.shelfplayer.domain.library.BookFocus
+import com.example.shelfplayer.domain.library.BookGroup
+import com.example.shelfplayer.domain.library.BookGroupKind
 import com.example.shelfplayer.domain.library.BookSortOrder
 import com.example.shelfplayer.domain.library.SeriesShelf
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibraryBooksUseCase
+import com.example.shelfplayer.domain.usecase.ObserveLibraryGroupsUseCase
 import com.example.shelfplayer.domain.usecase.ObserveLibrarySeriesUseCase
 import com.example.shelfplayer.navigation.ShelfDestinations
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,6 +46,7 @@ class LibraryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     observeLibraryBooks: ObserveLibraryBooksUseCase,
     observeLibrarySeries: ObserveLibrarySeriesUseCase,
+    private val observeLibraryGroups: ObserveLibraryGroupsUseCase,
     private val preferences: PreferencesRepository,
 ) : ViewModel() {
 
@@ -81,18 +87,33 @@ class LibraryViewModel @Inject constructor(
         .distinctUntilChanged()
 
     /**
-     * The two inputs are combined into a named [LibraryQuery] rather than a `Pair`, so the
-     * downstream lambda reads `request.query` instead of `first`.
+     * The inputs are combined into a named [LibraryQuery] rather than a tuple, so the downstream lambda
+     * reads `request.query` instead of `first`.
      */
-    private val books: Flow<List<Book>> =
-        combine(debouncedQuery, order) { query, order -> LibraryQuery(query, order) }
-            .flatMapLatest { request ->
-                observeLibraryBooks(
-                    libraryId = libraryId,
-                    query = request.query,
-                    order = request.order,
-                )
-            }
+    private val books: Flow<List<Book>> = combine(
+        debouncedQuery,
+        order,
+        controls.map { it.filter to it.focus }.distinctUntilChanged(),
+    ) { query, currentOrder, (filter, focus) ->
+        LibraryQuery(query, currentOrder, filter, focus)
+    }.flatMapLatest { request ->
+        observeLibraryBooks(
+            libraryId = libraryId,
+            query = request.query,
+            order = request.order,
+            filter = request.filter,
+            focus = request.focus,
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — authors and genres, grouped from the same rows.
+     *
+     * Like the series axis, no sort order: a list of authors is alphabetical, and a sort chip over it
+     * would be a control that does nothing.
+     */
+    private fun groups(kind: BookGroupKind): Flow<List<BookGroup>> = debouncedQuery
+        .flatMapLatest { query -> observeLibraryGroups(libraryId = libraryId, kind = kind, query = query) }
 
     /**
      * PRODUCT_SPEC LIB-003 — the series axis takes no sort order, so it is kept out of [books]'
@@ -103,13 +124,15 @@ class LibraryViewModel @Inject constructor(
         .flatMapLatest { query -> observeLibrarySeries(libraryId = libraryId, query = query) }
 
     /**
-     * Only the visible axis is collected. `flatMapLatest` on the tab cancels the other one, so the
-     * library is not grouped into series for a user who is looking at the book list.
+     * Only the visible axis is collected. `flatMapLatest` on the tab cancels the others, so the library
+     * is not grouped into series, authors and genres for a user looking at the book list.
      */
     private val content: Flow<LibraryContent> = tab.flatMapLatest { current ->
         when (current) {
             LibraryTab.Books -> books.map { LibraryContent.OfBooks(it) }
             LibraryTab.Series -> series.map { LibraryContent.OfSeries(it) }
+            LibraryTab.Authors -> groups(BookGroupKind.Author).map { LibraryContent.OfGroups(it) }
+            LibraryTab.Genres -> groups(BookGroupKind.Genre).map { LibraryContent.OfGroups(it) }
         }
     }
 
@@ -122,8 +145,11 @@ class LibraryViewModel @Inject constructor(
             query = current.query,
             order = currentOrder,
             tab = current.tab,
+            filter = current.filter,
+            focus = current.focus,
             books = (loaded as? LibraryContent.OfBooks)?.books.orEmpty(),
             series = (loaded as? LibraryContent.OfSeries)?.series.orEmpty(),
+            groups = (loaded as? LibraryContent.OfGroups)?.groups.orEmpty(),
             isLoading = false,
         )
     }.stateIn(
@@ -141,15 +167,44 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch { preferences.setSortOrder(libraryId = libraryId, order = order.name) }
     }
 
+    /** Switching axis drops the focus: an author picked on the Authors tab is not a filter on Genres. */
     fun onTabChanged(tab: LibraryTab) {
-        controls.update { it.copy(tab = tab) }
+        controls.update { it.copy(tab = tab, focus = null) }
     }
 
-    /** One resolved request: what to search for and how to order the result. */
-    private data class LibraryQuery(val query: String, val order: BookSortOrder)
+    fun onFilterChanged(filter: BookFilter) {
+        controls.update { it.copy(filter = filter) }
+    }
 
-    /** The order lives in preferences, not here — see [order]. */
-    private data class LibraryControls(val query: String = "", val tab: LibraryTab = LibraryTab.Books)
+    /**
+     * PRODUCT_SPEC LIB-002 — opening an author or a genre narrows the book list rather than pushing a
+     * screen, so the search field and both chip rows keep working inside it.
+     */
+    fun onGroupSelected(group: BookGroup) {
+        controls.update {
+            it.copy(tab = LibraryTab.Books, focus = BookFocus(group.kind, group.key, group.label))
+        }
+    }
+
+    fun onFocusCleared() {
+        controls.update { it.copy(focus = null) }
+    }
+
+    /** One resolved request: what to search for, over what, and in what order. */
+    private data class LibraryQuery(
+        val query: String,
+        val order: BookSortOrder,
+        val filter: BookFilter,
+        val focus: BookFocus?,
+    )
+
+    /** The sort order lives in preferences, not here — see [order]. */
+    private data class LibraryControls(
+        val query: String = "",
+        val tab: LibraryTab = LibraryTab.Books,
+        val filter: BookFilter = BookFilter.Default,
+        val focus: BookFocus? = null,
+    )
 
     /**
      * Whichever axis is being collected, carrying its own list.
@@ -161,6 +216,8 @@ class LibraryViewModel @Inject constructor(
         data class OfBooks(val books: List<Book>) : LibraryContent
 
         data class OfSeries(val series: List<SeriesShelf>) : LibraryContent
+
+        data class OfGroups(val groups: List<BookGroup>) : LibraryContent
     }
 
     private companion object {
@@ -174,16 +231,24 @@ data class LibraryUiState(
     val query: String = "",
     val order: BookSortOrder = BookSortOrder.Default,
     val tab: LibraryTab = LibraryTab.Books,
+    val filter: BookFilter = BookFilter.Default,
+    /** PRODUCT_SPEC LIB-002 — the author or genre the book list has been narrowed to, if any. */
+    val focus: BookFocus? = null,
     val books: List<Book> = emptyList(),
     val series: List<SeriesShelf> = emptyList(),
+    val groups: List<BookGroup> = emptyList(),
     val isLoading: Boolean = true,
 )
 
 /**
  * PRODUCT_SPEC LIB-002 — which axis the library is being browsed along.
  *
- * Two entries today. LIB-002 also lists recently added, continue listening, downloaded, author and
- * genre, and this is the seam they arrive through; series is separate because it is the one axis whose
- * rows are not books.
+ * Four axes, of which three list something other than books. Recently added, continue listening and
+ * downloaded are *not* tabs: they are a sort and two filters over the book list, and making each its
+ * own tab would mean four near-identical lists that cannot be combined — "downloaded, by title" would
+ * become impossible to ask for.
+ *
+ * Collections are absent. PRODUCT_SPEC 3.2 makes them conditional on consistent server support and no
+ * capability probe confirms them yet.
  */
-enum class LibraryTab { Books, Series }
+enum class LibraryTab { Books, Series, Authors, Genres }

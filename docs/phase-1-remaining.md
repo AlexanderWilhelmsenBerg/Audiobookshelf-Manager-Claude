@@ -276,16 +276,29 @@ playback steps belong to Phase 2.
 
   Expect the re-run to report drift in `library-item.json`: `media.coverPath` becomes a path and
   `libraryFiles` gains an image entry. That drift is the fix working.
-- **P1-15 — Series browse.** Group by series, open a series into its ordered books (LIB-003, TC-16).
-- **P1-16 — Remaining browse axes:** recently added, continue listening, downloaded, author, genre;
-  collections only if the capability probe confirms them (LIB-002).
-- **P1-17 — Per-profile settings layer,** then filter and sort persistence per profile and library
-  (LIB-002, AUTH-002, SET-001).
-- **P1-18 — Book detail completeness:** genres, tags, publisher, year, language, download size, and
-  remote availability shown independently of local (LIB-004).
-- **P1-19 — Sync and match ISBN/ASIN** (LIB-002).
+- **P1-15 — Series browse.** ✅ Done. Group by series, open a series into its ordered books (LIB-003, TC-16).
+  Grouping is derived on read, so it inherits P1-01's visibility filter; a book in two series appears in
+  both at each series' own position.
+- **P1-16 — Remaining browse axes.** ✅ Done. Authors and Genres are tabs beside Books and Series;
+  recently added is a sort and continue-listening/downloaded are filters, because four near-identical
+  tabs could not be combined ("downloaded, by title" has to be askable). Opening an author or genre
+  narrows the book list in place, so search, sort and filter keep working inside it. Room 7 adds the
+  server's own `addedAt`. Collections remain absent: PRODUCT_SPEC 3.2 makes them conditional on a
+  capability probe that does not exist yet.
+- **P1-17 — Per-profile settings layer.** ✅ Done. `ProfileSettings` keyed by profile id in the proto,
+  `PreferencesRepository` scoping every read and write to the active profile, and sort order persisted
+  per profile and library. The store is the source of truth — neither shelf keeps a local copy, so the
+  chip moves because the write landed (LIB-002, AUTH-002, SET-001).
+- **P1-18 — Book detail completeness.** ✅ Done. Genres, tags, publisher, year, language, size and both
+  identifiers, each omitted rather than dashed when absent. Remote availability is a second chip beside
+  the local one, qualified by when the row was last fetched (LIB-004).
+- **P1-19 — Sync and match ISBN/ASIN.** ✅ Done. Room 6. ISBN matches on digits alone so the hyphenated
+  number on a jacket finds the book; ASIN is not stripped, and both match on a prefix rather than a
+  fragment (LIB-002).
 - **P1-20 — Server-side search enrichment** (LIB-002). Needs a contract capture.
-- **P1-21 — Default library selection** (`PRODUCT_SPEC 6.1` step 9).
+- **P1-21 — Default library selection.** ✅ Done. Starred in Settings, resolved against the current
+  grant on every read, and named in the home title so a narrowed shelf does not read as missing books
+  (`PRODUCT_SPEC 6.1` step 9).
 
 ### Diagnostics and settings
 

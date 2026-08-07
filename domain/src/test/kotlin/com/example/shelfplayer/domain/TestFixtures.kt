@@ -129,6 +129,7 @@ internal fun book(
     trackCount = 1,
     sizeBytes = 0,
     remoteUpdatedAt = updatedAt,
+    addedAt = null,
     lastFetchedAt = TEST_INSTANT,
     progress = playedAt?.let {
         MediaProgress(

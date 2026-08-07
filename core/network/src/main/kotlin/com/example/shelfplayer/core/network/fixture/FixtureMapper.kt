@@ -130,6 +130,7 @@ internal class FixtureMapper(private val document: FixtureLibraryDocument) {
         trackCount = fixture.tracks.count { !it.excluded },
         sizeBytes = fixture.sizeBytes,
         remoteUpdatedAt = null,
+        addedAt = null,
         lastFetchedAt = fetchedAt,
         progress = progressOf(fixture, bookId),
         // PRODUCT_SPEC DL-001: nothing is downloaded until a real download commits.

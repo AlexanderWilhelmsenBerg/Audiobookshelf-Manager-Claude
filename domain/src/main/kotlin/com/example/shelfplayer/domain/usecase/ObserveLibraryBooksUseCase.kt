@@ -4,7 +4,11 @@ import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.domain.library.BookFilter
+import com.example.shelfplayer.domain.library.BookFocus
 import com.example.shelfplayer.domain.library.BookSortOrder
+import com.example.shelfplayer.domain.library.filterBooks
+import com.example.shelfplayer.domain.library.inGroup
 import com.example.shelfplayer.domain.library.matchesQuery
 import com.example.shelfplayer.domain.library.sortBooks
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -36,17 +40,29 @@ class ObserveLibraryBooksUseCase @Inject constructor(
      */
     @param:Dispatcher(ShelfDispatcher.Default) private val defaultDispatcher: CoroutineDispatcher,
 ) {
+    /**
+     * @param filter PRODUCT_SPEC LIB-002 — narrows to a named shelf before ordering. Composable with
+     *   [order] on purpose: "what I have not finished, by title" is a reasonable thing to ask for.
+     * @param focus narrows to one author or genre, which is how those axes open. Applied last, so it
+     *   composes with both of the above rather than replacing them.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
     operator fun invoke(
         libraryId: LibraryId,
         query: String = "",
         order: BookSortOrder = BookSortOrder.Default,
+        filter: BookFilter = BookFilter.Default,
+        focus: BookFocus? = null,
     ): Flow<List<Book>> = profileRepository.observeActiveProfile().flatMapLatest { profile ->
         if (profile == null) {
             flowOf(emptyList())
         } else {
-            libraryRepository.observeBooks(profile.id, libraryId)
-                .map { books -> sortBooks(books.filter { it.matchesQuery(query) }, order) }
+            libraryRepository.observeBooks(profile.id, libraryId).map { books ->
+                val narrowed = filterBooks(books, filter)
+                    .filter { it.matchesQuery(query) }
+                    .filter { focus == null || it.inGroup(focus.kind, focus.key) }
+                sortBooks(narrowed, order)
+            }
         }
     }.flowOn(defaultDispatcher)
 }

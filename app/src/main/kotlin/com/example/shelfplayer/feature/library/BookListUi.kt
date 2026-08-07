@@ -154,5 +154,6 @@ private fun BookSortOrder.labelRes(): Int = when (this) {
     BookSortOrder.TitleDescending -> R.string.library_sort_title_desc
     BookSortOrder.AuthorAscending -> R.string.library_sort_author
     BookSortOrder.RecentlyUpdated -> R.string.library_sort_recent
+    BookSortOrder.RecentlyAdded -> R.string.library_sort_added
     BookSortOrder.SeriesSequenceAscending -> R.string.library_sort_series
 }

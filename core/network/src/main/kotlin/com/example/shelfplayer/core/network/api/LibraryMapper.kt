@@ -133,6 +133,7 @@ internal object LibraryMapper {
                     trackCount = tracks.count { !it.exclude },
                     sizeBytes = media.size,
                     remoteUpdatedAt = dto.updatedAt?.let(::instantOrNull),
+                    addedAt = dto.addedAt?.let(::instantOrNull),
                     lastFetchedAt = fetchedAt,
                     progress = progressOf(serverId, profileId, bookId, dto),
                     // PRODUCT_SPEC DL-001: nothing is downloaded until a download commits. The

@@ -223,6 +223,24 @@ class MigrationTest {
     }
 
     /**
+     * PRODUCT_SPEC LIB-002 — version 7 adds the server's own "added" timestamp, and keeps the books.
+     *
+     * `lastFetchedAt` is not a substitute and the migration does not pretend it is: a row fetched before
+     * this build genuinely does not know when the server acquired it, so the column stays null and that
+     * book sorts last under "recently added" rather than first.
+     */
+    @Test
+    fun `version 7 adds the added timestamp without disturbing the cached books`() = runTest {
+        createVersion(6)
+
+        val migrated = openWithMigrations()
+
+        val book = assertNotNull(migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first())
+        assertEquals("The Salt Harbour", book.book.title)
+        assertNull(book.book.addedAt, "a date that was never fetched is unknown, not the epoch")
+    }
+
+    /**
      * Room validates the migrated schema against the one it expects and throws if they differ. Reading
      * through a DAO is what forces that validation to run, so this fails loudly on a migration that
      * produced a *nearly* correct schema — a missing default, a wrong nullability.
@@ -321,6 +339,7 @@ class MigrationTest {
         VERSION_3 -> seedVersion3(db)
         VERSION_4 -> seedVersion4(db)
         VERSION_5 -> seedVersion5(db)
+        VERSION_6 -> seedVersion6(db)
         else -> error("no seed data defined for schema version $version")
     }
 
@@ -425,6 +444,9 @@ class MigrationTest {
         )
     }
 
+    /** Version 6 is version 5 plus two nullable columns this seed leaves unset, as an upgrade would. */
+    private fun seedVersion6(db: SupportSQLiteDatabase) = seedVersion5(db)
+
     /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
     private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
         db.execSQL(
@@ -465,6 +487,7 @@ class MigrationTest {
         const val VERSION_3 = 3
         const val VERSION_4 = 4
         const val VERSION_5 = 5
+        const val VERSION_6 = 6
         const val PROFILE_ID = "prf_test"
         const val LIBRARY_KEY = "srv_test:library-1"
         const val BOOK_KEY = "srv_test:item-1"

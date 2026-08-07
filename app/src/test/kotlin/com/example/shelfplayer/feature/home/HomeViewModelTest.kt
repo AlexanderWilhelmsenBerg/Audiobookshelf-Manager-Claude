@@ -648,6 +648,7 @@ class HomeViewModelTest {
         trackCount = 1,
         sizeBytes = 0,
         remoteUpdatedAt = null,
+        addedAt = null,
         lastFetchedAt = Instant.EPOCH,
         progress = playedAt?.let {
             MediaProgress(

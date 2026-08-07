@@ -157,11 +157,29 @@ object Migrations {
         }
     }
 
+    /**
+     * Version 7 — the server's own "added" timestamp (PRODUCT_SPEC LIB-002).
+     *
+     * `lastFetchedAt` was already stored and is not a substitute: it is when *this cache* read the item,
+     * so a first sync stamps every book with the same instant and a "recently added" shelf built on it
+     * would list the whole library in fetch order. The distinction is the only reason the column exists.
+     *
+     * Nullable and additive, like version 6. Rows fetched before this build do not know their added
+     * date; they sort last in that order until the next sync fills it in, which is the honest place for
+     * "unknown" and does not cost the user their offline library to correct.
+     */
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN addedAt INTEGER")
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
         MIGRATION_3_4,
         MIGRATION_4_5,
         MIGRATION_5_6,
+        MIGRATION_6_7,
     )
 }
