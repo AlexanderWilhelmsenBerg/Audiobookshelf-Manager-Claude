@@ -4,7 +4,13 @@
   Every user-visible string lives here so a translation is a resource change, not a code change.
 -->
 <resources>
-    <string name="app_name">ShelfPlayer</string>
+    <!--
+      The launcher label, and the one string that is never translated: the product is called
+      ShelfPlayer in every locale, and a translated name would read as a different app on the home
+      screen. Marked rather than duplicated into each locale, so lint asks about it once and no
+      translator has to decide.
+    -->
+    <string name="app_name" translatable="false">ShelfPlayer</string>
 
     <string name="home_title">ShelfPlayer</string>
     <string name="home_loading">Loading your books</string>

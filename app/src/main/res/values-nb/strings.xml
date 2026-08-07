@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC 3.1 — Norwegian Bokmål.
+
+  `app_name` is deliberately absent: the product is called ShelfPlayer in every locale, and a
+  translated launcher label would be a different app on the home screen.
+
+  Two conventions worth stating, because they are what a reviewer should check rather than the
+  individual words:
+
+  - **Bokmål, not Nynorsk**, and the moderate register a Norwegian reader expects from software:
+    "logg på" rather than "innlogging", "server" rather than "tjener".
+  - **Sentence case throughout.** Norwegian does not capitalise mid-sentence words the way English
+    headings do, so "Continue listening" is "Fortsett å lytte" and not "Fortsett Å Lytte".
+
+  Plurals declare `one` and `other`, which is the set Norwegian needs — it splits on exactly one, as
+  English does.
+-->
+<resources>
+    <string name="home_title">ShelfPlayer</string>
+    <string name="home_loading">Laster bøkene dine</string>
+    <string name="home_empty_title">Ingen bøker ennå</string>
+    <string name="home_empty_body">Denne kontoen har ingenting i bibliotekene sine ennå, eller de er ikke synkronisert. Oppdater for å prøve igjen.</string>
+    <string name="home_offline_title">Ingen tilkobling</string>
+    <string name="home_offline_body">Denne enheten er frakoblet, og ingenting er lastet ned for denne kontoen ennå. Biblioteket ditt vises når tilkoblingen er tilbake.</string>
+    <string name="home_server_reachable">Serveren svarer</string>
+    <string name="home_server_unreachable">Serveren svarer ikke</string>
+    <string name="home_server_unknown">Ukjent serverstatus</string>
+    <string name="home_server_offline">Enheten er frakoblet, serverstatus er ukjent</string>
+    <string name="home_offline_caption">Frakoblet — viser det bufrede biblioteket</string>
+    <string name="home_no_profile_title">Ingen server tilkoblet</string>
+    <string name="home_no_profile_body">Logg på en Audiobookshelf-server for å se bøkene dine.</string>
+    <string name="home_error_title">Kunne ikke laste bøkene dine</string>
+    <string name="home_refresh">Oppdater</string>
+    <string name="home_settings">Innstillinger</string>
+    <string name="home_search_hint">Søk i bøkene dine</string>
+    <string name="home_search_open">Søk</string>
+    <string name="home_search_close">Lukk søk</string>
+    <string name="home_view_shelves">Vis hyller</string>
+    <string name="home_view_list">Vis alle bøker som liste</string>
+
+    <string name="shelf_continue_listening">Fortsett å lytte</string>
+    <string name="shelf_continue_series">Fortsett en serie</string>
+    <string name="shelf_recently_added">Nylig lagt til</string>
+    <string name="shelf_listen_again">Hør på nytt</string>
+    <string name="shelf_discover">Oppdag</string>
+    <string name="shelf_series_next">Neste: %1$s · %2$s</string>
+    <string name="home_no_matches_title">Ingen treff</string>
+    <string name="home_no_matches_body">Ingen bok i bibliotekene dine passer med det søket.</string>
+    <string name="home_sync_never">Ikke synkronisert ennå</string>
+    <string name="home_sync_failed">Viser bufret innhold. Den siste oppdateringen mislyktes.</string>
+    <string name="home_sync_running">Oppdaterer…</string>
+    <string name="home_profiles">Profiler</string>
+    <string name="home_sign_in">Logg på</string>
+    <string name="home_needs_sign_in">Denne profilen må logge på igjen. Biblioteket vises fra den siste synkroniseringen.</string>
+
+    <string name="sign_in_title">Koble til en server</string>
+    <string name="sign_in_address_prompt">Skriv inn adressen til Audiobookshelf-serveren din.</string>
+    <string name="sign_in_server_label">Serveradresse</string>
+    <string name="sign_in_server_hint">For eksempel books.example.com. HTTPS brukes med mindre du skriver http://</string>
+    <string name="sign_in_continue">Fortsett</string>
+    <string name="sign_in_detected_version">Audiobookshelf %1$s</string>
+    <string name="sign_in_version_unknown">Denne serveren oppga ikke versjonen sin.</string>
+    <string name="sign_in_https_assumed">Ingen protokoll ble skrevet, så HTTPS ble brukt.</string>
+    <string name="sign_in_encrypted">Tilkoblingen er kryptert.</string>
+    <string name="sign_in_cleartext_warning">Denne tilkoblingen er ikke kryptert. Passordet ditt og lyttedataene dine ville gått ukryptert over nettverket.</string>
+    <string name="sign_in_username_label">Brukernavn</string>
+    <string name="sign_in_password_label">Passord</string>
+    <string name="sign_in_submit">Logg på</string>
+    <string name="sign_in_change_server">Bruk en annen server</string>
+    <string name="sign_in_known_servers">Servere du har brukt</string>
+    <string name="sign_in_known_encrypted">Kryptert</string>
+    <string name="sign_in_known_cleartext">Ikke kryptert</string>
+    <string name="sign_in_known_version_unknown">Versjon ikke registrert</string>
+    <string name="sign_in_known_checked_again">Hver adresse sjekkes på nytt når du velger den.</string>
+
+    <string name="profiles_title">Profiler</string>
+    <string name="profiles_empty_title">Ingen profiler ennå</string>
+    <string name="profiles_empty_body">Koble til en Audiobookshelf-server for å legge til en.</string>
+    <string name="profiles_add">Legg til en server</string>
+    <string name="profiles_active">I bruk</string>
+    <string name="profiles_use">Bruk</string>
+    <string name="profiles_use_named">Bruk %1$s</string>
+    <string name="profiles_sign_out">Logg av</string>
+    <string name="profiles_sign_in_again">Logg på</string>
+    <string name="profiles_remove">Fjern</string>
+    <string name="profiles_dismiss">Lukk</string>
+    <string name="profiles_role">Rolle: %1$s</string>
+    <string name="profiles_needs_sign_in">Må logge på igjen</string>
+    <string name="profiles_remove_title">Fjern %1$s?</string>
+    <!--
+      PRODUCT_SPEC 21 — den destruktive handlingen beskriver hva den faktisk gjør.
+
+      Alle tre påstandene må overleve oversettelsen: at det gjelder denne enheten, at serveren beholder
+      sitt, og at andre profiler ikke berøres. En kortere norsk setning ville vært lettere å lese og
+      ville ha løyet.
+    -->
+    <string name="profiles_remove_body">Dette sletter denne profilens lagrede økt, lyttefremdrift og nedlastinger fra denne enheten. Ingenting slettes på serveren, og andre profiler berøres ikke.</string>
+    <string name="profiles_remove_confirm">Fjern profil</string>
+    <string name="profiles_remove_cancel">Avbryt</string>
+
+    <string name="library_sort_last_played">Sist spilt</string>
+    <string name="library_sort_title">Tittel (A–Å)</string>
+    <string name="library_sort_title_desc">Tittel (Å–A)</string>
+    <string name="library_sort_author">Forfatter</string>
+    <string name="library_sort_recent">Nylig oppdatert</string>
+    <string name="library_sort_series">Serierekkefølge</string>
+    <string name="library_tab_books">Bøker</string>
+    <string name="library_tab_series">Serier</string>
+    <string name="library_tab_authors">Forfattere</string>
+    <string name="library_tab_genres">Sjangre</string>
+    <string name="library_sort_added">Nylig lagt til</string>
+    <string name="library_filter_all">Alle</string>
+    <string name="library_filter_continue">Fortsett å lytte</string>
+    <string name="library_filter_downloaded">Nedlastet</string>
+    <string name="library_focus_clear">Vis alle bøker igjen i stedet for %1$s</string>
+    <string name="library_authors_empty_title">Ingen forfattere her</string>
+    <string name="library_genres_empty_title">Ingen sjangre her</string>
+    <string name="library_groups_empty_body">Ingenting i dette biblioteket passer med søket ditt.</string>
+
+    <string name="series_title">Serier</string>
+    <string name="series_loading">Laster serier</string>
+    <string name="series_empty_title">Ingen serier her</string>
+    <string name="series_missing_title">Serien er ikke tilgjengelig</string>
+    <string name="series_missing_body">Denne serien finnes ikke i biblioteket til den aktive profilen.</string>
+    <string name="series_summary_progress">%1$s · %2$s</string>
+    <string name="series_summary_finished">%1$s · fullført</string>
+    <string name="series_next_up">Neste: %1$s</string>
+
+    <string name="book_loading">Laster bok</string>
+    <string name="book_missing_title">Boken er ikke tilgjengelig</string>
+    <string name="book_missing_body">Denne boken finnes ikke lenger i det bufrede biblioteket.</string>
+    <string name="book_narrated_by">Lest av %1$s</string>
+    <string name="book_duration">%1$s lang</string>
+    <string name="book_progress">%1$d %% hørt</string>
+    <string name="book_position">%1$s inn · %2$s igjen · %3$s · %4$d %%</string>
+    <string name="book_length">%1$s</string>
+    <string name="book_finished_of">Fullført · %1$s</string>
+    <string name="book_finished">Fullført</string>
+    <string name="book_not_downloaded">Ikke nedlastet</string>
+    <string name="book_download_partial">Nedlastingen er ufullstendig</string>
+    <string name="book_downloaded">Nedlastet</string>
+    <string name="book_series_position">%1$s, bok %2$s</string>
+
+    <string name="book_on_server">På serveren</string>
+    <string name="book_last_checked">Sist sjekket %1$s</string>
+    <string name="book_published">Utgitt %1$s</string>
+    <string name="book_publisher">Forlag: %1$s</string>
+    <string name="book_language">Språk: %1$s</string>
+    <string name="book_isbn">ISBN: %1$s</string>
+    <string name="book_asin">ASIN: %1$s</string>
+    <string name="book_size">Størrelse: %1$s</string>
+    <string name="book_playback_unavailable">Avspilling kommer i neste fase</string>
+    <string name="navigate_back">Tilbake</string>
+
+    <string name="settings_title">Innstillinger</string>
+    <string name="settings_tab_server">Server</string>
+    <string name="settings_tab_about">Om</string>
+    <string name="about_section_app">ShelfPlayer</string>
+    <string name="about_version">Versjon</string>
+    <string name="about_phase">Under arbeid. Avspilling og nedlastinger er ikke bygget ennå.</string>
+    <string name="about_section_testing">Testing</string>
+    <string name="about_testing_body">Avlesninger som brukes til å kontrollere en bygging mot akseptansetestene. Ingenting her endrer hvordan appen oppfører seg.</string>
+
+    <string name="settings_section_libraries">Bibliotek</string>
+    <string name="settings_default_library_hint">Trykk på et bibliotek for å åpne på det. Uten et valg viser hyllen alle bibliotekene du kan se.</string>
+    <string name="settings_libraries_empty">Ingen bibliotek ennå. De dukker opp etter den første synkroniseringen.</string>
+
+    <string name="settings_section_server">Server</string>
+    <string name="settings_server_address">Adresse</string>
+    <string name="settings_server_version">Oppgitt versjon</string>
+    <string name="settings_server_version_unknown">Denne serveren oppga ingen versjon.</string>
+    <string name="settings_server_auth">Påloggingsmåter</string>
+    <string name="settings_server_none">Ingen oppgitt</string>
+    <string name="settings_server_socket">Sanntidsoppdateringer</string>
+    <string name="settings_server_socket_idle">Ikke startet</string>
+    <string name="settings_server_socket_connecting">Kobler til…</string>
+    <string name="settings_server_socket_connected">Tilkoblet</string>
+    <string name="settings_server_socket_disconnected">Frakoblet — oppdaterer i stedet</string>
+    <string name="settings_section_capabilities">Kapabilitetssjekk</string>
+    <string name="settings_server_capabilities_hint">Denne serveren er sjekket. Hver funksjon nedenfor brukes bare der støtte er bekreftet; alt som ikke er bekreftet, behandles som ikke støttet.</string>
+    <string name="settings_server_no_handshake">Denne serveren er ikke sjekket ennå, så ingen funksjonsliste kan vises. Ingenting behandles som støttet før den er sjekket.</string>
+    <string name="settings_server_confirmed">Bekreftet</string>
+    <string name="settings_server_unconfirmed">Ikke bekreftet</string>
+
+    <string name="settings_section_storage">Lagring på denne enheten</string>
+    <string name="settings_storage_body">Hva denne appen har lagret. To kontoer deler bøkene på en server, så et tall kan være større enn det du selv ser.</string>
+    <string name="settings_storage_loading">Leser…</string>
+    <string name="settings_storage_servers">Servere</string>
+    <string name="settings_storage_servers_hint">To kontoer på én server telles én gang.</string>
+    <string name="settings_storage_profiles">Profiler</string>
+    <string name="settings_storage_credentials">Lagrede pålogginger</string>
+    <string name="settings_storage_credentials_hint">Krypterte filer. Å logge av en profil fjerner dens egen.</string>
+    <string name="settings_storage_libraries">Bibliotek lagret</string>
+    <string name="settings_storage_libraries_hint">Alt som er lagret for denne serveren, også bibliotek denne profilen ikke kan åpne.</string>
+    <string name="settings_storage_libraries_visible">Synlig for denne profilen</string>
+    <string name="settings_storage_books">Bøker lagret</string>
+    <string name="settings_storage_books_visible">Synlig for denne profilen</string>
+    <string name="settings_storage_books_deleted">Fjernet på serveren</string>
+    <string name="settings_storage_books_deleted_hint">Beholdes til ingenting lokalt trenger dem lenger.</string>
+    <string name="settings_storage_progress">Fremdriftsoppføringer</string>
+    <string name="settings_storage_progress_unsynced">Ikke sendt til serveren</string>
+    <string name="settings_storage_progress_unsynced_hint">Alltid 0 til avspilling finnes.</string>
+
+    <plurals name="home_library_books">
+        <item quantity="one">%1$d bok</item>
+        <item quantity="other">%1$d bøker</item>
+    </plurals>
+
+    <plurals name="shelf_series_progress">
+        <item quantity="one">%1$d av %2$d ferdig</item>
+        <item quantity="other">%1$d av %2$d ferdig</item>
+    </plurals>
+
+    <plurals name="series_book_count">
+        <item quantity="one">%1$d bok</item>
+        <item quantity="other">%1$d bøker</item>
+    </plurals>
+
+    <plurals name="series_finished_count">
+        <item quantity="one">%1$d fullført</item>
+        <item quantity="other">%1$d fullført</item>
+    </plurals>
+
+    <plurals name="home_sync_partial">
+        <item quantity="one">%1$d bok. Den siste oppdateringen nådde ikke alle.</item>
+        <item quantity="other">%1$d bøker. Den siste oppdateringen nådde ikke alle.</item>
+    </plurals>
+
+    <plurals name="book_tracks">
+        <item quantity="one">%1$d lydfil</item>
+        <item quantity="other">%1$d lydfiler</item>
+    </plurals>
+</resources>
