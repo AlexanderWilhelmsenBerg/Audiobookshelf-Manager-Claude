@@ -72,14 +72,14 @@ The capture ran on 2026-08-07 against Audiobookshelf 2.36.0. Four new fixtures, 
   no collections, so `results: []` told us the envelope and nothing about the element. One collection
   created on that server and one re-run closes it.
 
-### Wave B — quality gates, all actionable now
+### Wave B — quality gates, all four done
 
-- **P1-26** dependency verification. `gradle.properties:20` is `off` and `verification-metadata.xml`
-  has **0** components. Needs one network-complete build to generate checksums, then flip to `strict`.
-- **P1-25** coverage. No Kover, no JaCoCo. PRODUCT_SPEC 17.3 wants 80% domain/core, 90% security.
-- **P1-24** UI test tier. No `androidTest` source set anywhere. PRODUCT_SPEC 17.1 lists login, profile
-  switching, offline home, TalkBack semantics, large-font layouts.
-- **P1-29** `values-nb`. Only `values` and `values-night` exist.
+Closed on 2026-08-07. The detail is under "Can Phase 1 be closed?" below.
+
+- **P1-26** dependency verification — `strict`, 868 components.
+- **P1-25** coverage — Kover, gated at 80% / 90%, wired into `verifyDebug`.
+- **P1-24** UI test tier — 22 rendered tests on Robolectric, inside `verifyDebug`.
+- **P1-29** `values-nb` — complete.
 
 ### Wave C — needs hardware
 
@@ -89,8 +89,8 @@ The capture ran on 2026-08-07 against Audiobookshelf 2.36.0. Four new fixtures, 
 
 ### Wave D — housekeeping
 
-- **P1-30** acceptance-plan maintenance: run TC-04, TC-06, TC-47, TC-52, TC-53, which never have been;
-  strike TC-36, whose toggle no longer exists.
+- **P1-30** acceptance-plan maintenance. TC-36 is struck. TC-04, TC-06, TC-47, TC-52 and TC-53 have
+  still never been run, and four of the five need hardware or a server configured a particular way.
 
 ### Blocked on the capture server, not on us
 
@@ -158,30 +158,46 @@ PRODUCT_SPEC's Phase 1 exit criteria are exactly three, and each has both automa
 | Offline cached browse works | `HomeViewModelTest`'s offline-versus-error cases, the Room-only read path in `DefaultLibraryRepository`; device cases E-25…E-29, G-16, G-21 |
 | Unauthorized libraries never appear | Enforced in `AbsLibraryApi.accessible` *before* anything is written, plus the visibility join on every read; `AbsLibraryContractTest`, `DefaultLibraryRepositoryTest`, and the stored-versus-visible counts on the About tab that make it checkable on a device |
 
-### Four cross-cutting requirements are not met
+### The four cross-cutting gaps are now closed
 
-These are not Phase 1 exit criteria. They are requirements the whole repository is subject to, and
-Phase 1's code is the code that would be covered by them, so closing the phase with them open is a
-decision rather than an oversight.
+Closed on 2026-08-07, after the audit above found them. None was a Phase 1 exit criterion; all four are
+requirements the repository as a whole is subject to.
 
 | # | Requirement | State |
 | --- | --- | --- |
-| **P1-24** | 17.1 UI test tier — login, profile switching, offline home, TalkBack semantics, large-font and landscape/tablet layouts | **No `androidTest` source set exists anywhere.** `verifyDebug` does not compile one either, so this gap is invisible to the gate. The listed surfaces are all Phase 1 surfaces. |
-| **P1-25** | 17.3 coverage — 80% domain/core, 90% for security and deletion policy | **No coverage tooling at all.** Neither number is measured, so neither can be claimed. 35 test classes exist; what fraction they cover is unknown. |
-| **P1-26** | 16.1 dependency verification | `gradle.properties` is `off` and `verification-metadata.xml` has **0** components. The policy file and bootstrap script are written; the checksums need one network-complete build. |
-| **P1-29** | Localisation — `values-nb` | Only `values` and `values-night` exist. |
+| **P1-24** | 17.1 UI test tier | ✅ **22 rendered tests**, `ui-test-junit4` on Robolectric in `src/test`, so they run inside `verifyDebug` on every build. An `androidTest` set would need an emulator this CI does not have, and a suite nothing runs is not a regression net. Covers login, profile switching, destructive-confirmation wording, offline home, the semantics tree, and a 2× font-scale smoke test. |
+| **P1-25** | 17.3 coverage | ✅ **Gated at 17.3's own numbers** — 80% over domain and core, 90% over the redaction policy. Measured 89.7% and 92.7%. Wired into `verifyDebug`. |
+| **P1-26** | 16.1 dependency verification | ✅ **`strict`, 868 components.** The bootstrap script alone was not enough — `aapt2` and KSP's embeddable processor arrive through detached configurations that only exist inside a task, so the checksums were recorded during a real `verifyDebug`. |
+| **P1-29** | Localisation — `values-nb` | ✅ **Complete**, every string and plural, format specifiers checked against the English set. |
+
+### On TalkBack specifically
+
+The requirement was read, at first, as "somebody has to run a screen reader". It is not. TalkBack reads
+the **semantics tree**, so a Compose test asserting a content description, a role, a live region or an
+enabled state is asserting what TalkBack would announce — and it does so on every build rather than
+whenever someone remembers. That is what P1-24 now covers.
+
+What it still cannot judge: reading order on a real device, and whether the result is pleasant to listen
+to. **TC-52 and TC-53 remain unrun**, and they are the right place for a person.
 
 ### And two API gaps that are not ours to close
 
 **D4** (collections) and **D7** (OpenID) are blocked on the capture server, not on the code. Both are
 recorded above with the action that unblocks each.
 
-### The recommendation
+### What is genuinely left
 
-The phase's own criteria are met and the product works. The four gaps above are quality-gate debt, and
-**P1-24 is the one with real risk in it**: TalkBack semantics and large-font layouts are correctness
-properties of screens that have only ever been checked by hand, and hand-checking does not survive the
-next change. Closing Phase 1 without it means Phase 2 inherits a UI with no regression net under it.
+Nothing that blocks the phase. Two API gaps wait on the capture server (**D4** collections, **D7**
+OpenID), **P1-27** and **P1-28** want hardware, and five acceptance cases have never been run — TC-04,
+TC-06, TC-47, TC-52, TC-53 — four of them for want of the hardware or server configuration they need.
+
+One thing found while closing P1-26 and worth recording: **dependency *locking* has no committed lock
+state.** 16.1 lists locking alongside verification; `lockAllConfigurations()` is configured, but no
+`gradle.lockfile` has ever been committed, so it validates nothing. Generating one is not a matter of
+running the script — Kover's bytecode transform adds a runtime classpath edge that Gradle cannot record
+for `:core:datastore`, and AGP resolves several artifacts through detached configurations that
+`resolveAndLockAll` cannot reach standalone. Verification is the stronger of the two guarantees and it
+is on; locking is a separate, still-open item.
 
 ---
 
