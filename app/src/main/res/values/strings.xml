@@ -168,6 +168,23 @@
       Counts, never names, for anything outside what the active profile may see: the numbers exist to show
       that unauthorized rows were never written, and listing them would defeat the point.
     -->
+    <!-- PRODUCT_SPEC SYNC-001 — "the compatibility result is visible in diagnostics". -->
+    <string name="settings_section_server">Server</string>
+    <string name="settings_server_address">Address</string>
+    <string name="settings_server_version">Reported version</string>
+    <string name="settings_server_version_unknown">This server did not report a version.</string>
+    <string name="settings_server_auth">Sign-in methods</string>
+    <string name="settings_server_none">None reported</string>
+    <string name="settings_server_socket">Live updates</string>
+    <string name="settings_server_socket_idle">Not started</string>
+    <string name="settings_server_socket_connecting">Connecting…</string>
+    <string name="settings_server_socket_connected">Connected</string>
+    <string name="settings_server_socket_disconnected">Disconnected — refreshing instead</string>
+    <string name="settings_server_capabilities_hint">Each feature is used only when this server has been confirmed to support it. Anything not confirmed is treated as unsupported.</string>
+    <string name="settings_server_no_handshake">This server has not been checked yet. Nothing is treated as supported until it has been.</string>
+    <string name="settings_server_confirmed">Confirmed</string>
+    <string name="settings_server_unconfirmed">Not confirmed</string>
+
     <string name="settings_section_storage">Storage on this device</string>
     <string name="settings_storage_body">What this app has saved. Two accounts share a server\'s books, so a number can be larger than what you can see.</string>
     <string name="settings_storage_loading">Reading…</string>

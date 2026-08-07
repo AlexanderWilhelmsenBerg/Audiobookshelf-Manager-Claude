@@ -302,8 +302,10 @@ playback steps belong to Phase 2.
 
 ### Diagnostics and settings
 
-- **P1-22 — Server compatibility section in diagnostics:** version, auth mode, each capability and
-  whether it was confirmed (SYNC-001).
+- **P1-22 — Server compatibility section in diagnostics.** ✅ Done. Address, reported version, sign-in
+  methods, socket state, and every capability with whether it was confirmed. The header distinguishes
+  "the probe ran and confirmed nothing" from "the probe never ran" — the same empty set, and only one
+  of them means the server cannot do it (SYNC-001).
 - **P1-23 — Per-server cleartext exception** in an advanced screen with a warning, and a debug/release
   split of the network security config (`PRODUCT_SPEC 15`, open decision 24.13).
 

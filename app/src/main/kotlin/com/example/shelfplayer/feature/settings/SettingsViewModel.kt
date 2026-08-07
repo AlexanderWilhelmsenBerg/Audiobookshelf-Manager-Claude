@@ -8,6 +8,8 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
+import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
+import com.example.shelfplayer.domain.usecase.ServerDiagnostics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +38,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     observeLibraries: ObserveLibrariesUseCase,
     diagnostics: DiagnosticsRepository,
+    observeServerDiagnostics: ObserveServerDiagnosticsUseCase,
     private val preferences: PreferencesRepository,
 ) : ViewModel() {
 
@@ -43,7 +46,8 @@ class SettingsViewModel @Inject constructor(
         observeLibraries(),
         diagnostics.observeStorage(),
         preferences.observePreferences(),
-    ) { libraries, storage, stored ->
+        observeServerDiagnostics(),
+    ) { libraries, storage, stored, server ->
         SettingsUiState(
             libraries = libraries,
             storage = storage,
@@ -51,6 +55,7 @@ class SettingsViewModel @Inject constructor(
             // A default library the profile has since lost is not a default any more, and rendering the
             // stored id would put a tick beside a library that is no longer in the list.
             defaultLibraryId = stored.defaultLibraryId?.takeIf { id -> libraries.any { it.id == id } },
+            server = server,
             isLoaded = true,
         )
     }.stateIn(
@@ -87,5 +92,7 @@ data class SettingsUiState(
     val storage: StorageDiagnostics = StorageDiagnostics(),
     /** PRODUCT_SPEC 6.1 step 9 — `null` is every granted library, which is the default. */
     val defaultLibraryId: LibraryId? = null,
+    /** PRODUCT_SPEC SYNC-001 — what the handshake learned, or `null` while no profile is active. */
+    val server: ServerDiagnostics? = null,
     val isLoaded: Boolean = false,
 )

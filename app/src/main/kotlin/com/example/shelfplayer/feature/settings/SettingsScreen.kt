@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
@@ -36,6 +37,8 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.realtime.RealtimeStatus
+import com.example.shelfplayer.domain.usecase.ServerDiagnostics
 
 @Composable
 fun SettingsRoute(
@@ -96,6 +99,8 @@ fun SettingsScreen(
                 item { Hint(text = stringResource(R.string.settings_default_library_hint)) }
             }
 
+            uiState.server?.let { server -> serverRows(server) }
+
             item { SectionHeader(text = stringResource(R.string.settings_section_storage)) }
             item { Hint(text = stringResource(R.string.settings_storage_body)) }
             if (uiState.isLoaded) {
@@ -104,6 +109,108 @@ fun SettingsScreen(
                 item { Hint(text = stringResource(R.string.settings_storage_loading)) }
             }
         }
+    }
+}
+
+/**
+ * PRODUCT_SPEC SYNC-001 — "the compatibility result is visible in diagnostics".
+ *
+ * The interesting line is the capability list, and specifically that most of it says **no**. The
+ * handshake confirms nothing it has not probed, and from outside the app "confirmed nothing" and
+ * "never ran" look identical — so the header says which of those happened, and the rows say what was
+ * asked.
+ *
+ * The address is printed because this is the screen a user reads to answer "which server am I even
+ * talking to" with two profiles on the go. It never reaches a log or a report unless the user has
+ * opted in (PRODUCT_SPEC SET-002, Privacy/diagnostics); on screen it is their own address.
+ */
+private fun LazyListScope.serverRows(server: ServerDiagnostics) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_server)) }
+    server.serverAddress?.let { address ->
+        item { TextRow(labelRes = R.string.settings_server_address, value = address) }
+    }
+    item {
+        TextRow(
+            labelRes = R.string.settings_server_version,
+            value = server.reportedVersion ?: stringResource(R.string.settings_server_version_unknown),
+        )
+    }
+    item {
+        TextRow(
+            labelRes = R.string.settings_server_auth,
+            value = server.authMethods.joinToString().ifEmpty { stringResource(R.string.settings_server_none) },
+        )
+    }
+    item {
+        TextRow(
+            labelRes = R.string.settings_server_socket,
+            value = stringResource(server.socketStatus.labelRes()),
+        )
+    }
+    item {
+        Hint(
+            text = stringResource(
+                if (server.hasHandshake) {
+                    R.string.settings_server_capabilities_hint
+                } else {
+                    R.string.settings_server_no_handshake
+                },
+            ),
+        )
+    }
+    if (server.hasHandshake) {
+        items(server.allCapabilities, key = { it.first.name }) { (capability, confirmed) ->
+            CapabilityRow(name = capability.name, confirmed = confirmed)
+        }
+    }
+    item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+}
+
+private fun RealtimeStatus.labelRes(): Int = when (this) {
+    RealtimeStatus.Idle -> R.string.settings_server_socket_idle
+    RealtimeStatus.Connecting -> R.string.settings_server_socket_connecting
+    RealtimeStatus.Connected -> R.string.settings_server_socket_connected
+    RealtimeStatus.Disconnected -> R.string.settings_server_socket_disconnected
+}
+
+@Composable
+private fun CapabilityRow(name: String, confirmed: Boolean, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(
+            text = stringResource(
+                if (confirmed) R.string.settings_server_confirmed else R.string.settings_server_unconfirmed,
+            ),
+            style = MaterialTheme.typography.labelMedium,
+            color = if (confirmed) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+    }
+}
+
+@Composable
+private fun TextRow(labelRes: Int, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(text = stringResource(labelRes), style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -117,7 +224,7 @@ fun SettingsScreen(
  * for books. Counts only — printing the names of libraries this profile may not see would be a strange way
  * to demonstrate that they are hidden.
  */
-private fun androidx.compose.foundation.lazy.LazyListScope.storageRows(storage: StorageDiagnostics) {
+private fun LazyListScope.storageRows(storage: StorageDiagnostics) {
     item {
         ValueRow(
             labelRes = R.string.settings_storage_servers,
