@@ -1,6 +1,7 @@
 plugins {
     id("shelfplayer.android.application.compose")
     id("shelfplayer.hilt")
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -41,6 +42,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
+    // PRODUCT_SPEC SYNC-003 — persistent background refresh. `hilt-work` is what lets a Worker be
+    // constructed with injected dependencies rather than reaching into the graph through a static.
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
 

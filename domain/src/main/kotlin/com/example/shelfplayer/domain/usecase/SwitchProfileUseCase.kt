@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.flatMap
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.sync.BackgroundSync
 import javax.inject.Inject
 
 /**
@@ -34,11 +35,19 @@ class SwitchProfileUseCase @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val authRepository: AuthRepository,
     private val syncAccount: SyncAccountUseCase,
+    private val backgroundSync: BackgroundSync,
 ) {
     suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> =
         profileRepository.setActiveProfile(profileId).flatMap {
             authRepository.restoreSession(profileId).also { status ->
-                if (status.isActive()) refreshPermissions(profileId)
+                if (status.isActive()) {
+                    refreshPermissions(profileId)
+                    // PRODUCT_SPEC SYNC-003 — an account the user actually uses earns a background
+                    // schedule. Idempotent by unique name, so calling it on every switch is the point
+                    // rather than a cost: a profile added before this existed gets one the first time
+                    // it is used.
+                    backgroundSync.schedule(profileId)
+                }
             }
         }
 

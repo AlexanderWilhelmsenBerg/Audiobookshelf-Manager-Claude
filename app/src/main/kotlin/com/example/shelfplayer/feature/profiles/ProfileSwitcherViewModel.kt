@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.RemoveProfileUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,7 @@ class ProfileSwitcherViewModel @Inject constructor(
     profileRepository: ProfileRepository,
     private val switchProfile: SwitchProfileUseCase,
     private val authRepository: AuthRepository,
+    private val removeProfile: RemoveProfileUseCase,
 ) : ViewModel() {
 
     private val action = MutableStateFlow(ActionState())
@@ -70,7 +72,7 @@ class ProfileSwitcherViewModel @Inject constructor(
      */
     fun onSignOut(profileId: ProfileId) = run(profileId) { authRepository.signOut(it) }
 
-    fun onRemoveProfile(profileId: ProfileId) = run(profileId) { authRepository.removeProfile(it) }
+    fun onRemoveProfile(profileId: ProfileId) = run(profileId) { removeProfile(it) }
 
     fun onErrorDismissed() = action.update { it.copy(error = null) }
 

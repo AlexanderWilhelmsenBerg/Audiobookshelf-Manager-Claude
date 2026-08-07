@@ -29,6 +29,7 @@ import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.sync.BackgroundSync
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -305,4 +306,23 @@ internal class FakeAuthRepository(
     /** Fails loudly rather than returning an empty value, so a test cannot pass by accident. */
     private fun <T> notUsed(): AppResult<T> =
         AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this fake"))
+}
+
+/**
+ * PRODUCT_SPEC SYNC-003 — a scheduler that records rather than schedules.
+ *
+ * What the requirements say is *when* work is created and cancelled, not what WorkManager does with
+ * it, so a recording fake is the whole of what a test needs here.
+ */
+internal class FakeBackgroundSync : BackgroundSync {
+    val scheduled = mutableListOf<ProfileId>()
+    val cancelled = mutableListOf<ProfileId>()
+
+    override suspend fun schedule(profileId: ProfileId) {
+        scheduled += profileId
+    }
+
+    override suspend fun cancel(profileId: ProfileId) {
+        cancelled += profileId
+    }
 }

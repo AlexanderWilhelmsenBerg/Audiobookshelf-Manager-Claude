@@ -22,6 +22,8 @@ import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.sync.BackgroundSync
+import com.example.shelfplayer.domain.usecase.RemoveProfileUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import kotlinx.coroutines.flow.Flow
@@ -49,11 +51,13 @@ class ProfileSwitcherViewModelTest {
     private val profiles = FakeProfiles()
     private val auth = FakeAuth()
     private val libraries = StubLibraries()
+    private val backgroundSync = RecordingBackgroundSync()
 
     private fun viewModel() = ProfileSwitcherViewModel(
         profiles,
-        SwitchProfileUseCase(profiles, auth, SyncAccountUseCase(profiles, auth, libraries)),
+        SwitchProfileUseCase(profiles, auth, SyncAccountUseCase(profiles, auth, libraries), backgroundSync),
         auth,
+        RemoveProfileUseCase(auth, backgroundSync),
     )
 
     @Test
@@ -305,6 +309,17 @@ class ProfileSwitcherViewModelTest {
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> = error("not part of this fake")
 
         override suspend fun refresh(profileId: ProfileId): AppResult<Int> = error("not part of this fake")
+    }
+
+    /** PRODUCT_SPEC SYNC-003 — "profile removal cancels its work". */
+    private class RecordingBackgroundSync : BackgroundSync {
+        val cancelled = mutableListOf<ProfileId>()
+
+        override suspend fun schedule(profileId: ProfileId) = Unit
+
+        override suspend fun cancel(profileId: ProfileId) {
+            cancelled += profileId
+        }
     }
 }
 

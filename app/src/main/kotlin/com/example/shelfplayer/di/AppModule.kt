@@ -7,7 +7,9 @@ import com.example.shelfplayer.core.common.log.LogSink
 import com.example.shelfplayer.core.network.di.RemoteGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.http.UserAgent
+import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.log.AndroidLogSink
+import com.example.shelfplayer.sync.WorkManagerBackgroundSync
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -50,6 +52,11 @@ interface AppModule {
     @Binds
     @Singleton
     fun bindsNetworkMonitor(impl: AndroidNetworkMonitor): NetworkMonitor
+
+    /** PRODUCT_SPEC SYNC-003 — the scheduling policy is domain; the enqueueing is platform. */
+    @Binds
+    @Singleton
+    fun bindsBackgroundSync(impl: WorkManagerBackgroundSync): BackgroundSync
 
     // PRODUCT_SPEC AUTH-003: the TokenProvider binding moved to `:data:auth`. It is not final wiring —
     // it is the credential store answering the HTTP layer, and both ends of that seam are inside that

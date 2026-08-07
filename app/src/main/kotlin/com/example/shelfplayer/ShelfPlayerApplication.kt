@@ -1,6 +1,8 @@
 package com.example.shelfplayer
 
 import android.app.Application
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
@@ -23,7 +25,19 @@ import javax.inject.Inject
  * and a fixture library written into the same tables as real content would be indistinguishable from it.
  */
 @HiltAndroidApp
-class ShelfPlayerApplication : Application() {
+class ShelfPlayerApplication :
+    Application(),
+    Configuration.Provider {
+    /**
+     * PRODUCT_SPEC SYNC-003 — WorkManager builds our workers, so it needs a factory that can inject
+     * them. The manifest removes the default initializer, because two initialisations race.
+     */
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().setWorkerFactory(workerFactory).build()
+
     @Inject
     lateinit var sessionRestorer: SessionRestorer
 

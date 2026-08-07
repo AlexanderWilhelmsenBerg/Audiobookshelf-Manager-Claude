@@ -252,7 +252,7 @@ playback steps belong to Phase 2.
 - ✅ **P1-12 — Foreground refresh policy.** Staleness-driven refresh on resume, a cancellable in-flight
   refresh, a single-flight guard so pull-to-refresh, reconnect, profile switch and socket events cannot
   stampede the same N+1 sweep, and a session probe on resume (TC-45).
-- **P1-13 — WorkManager background refresh.** Uniquely named per profile, cancelled on profile removal,
+- ✅ **P1-13 — WorkManager background refresh.** Uniquely named per profile, cancelled on profile removal,
   never waking the device for cover art (SYNC-003).
 
 ### Browsing completeness
