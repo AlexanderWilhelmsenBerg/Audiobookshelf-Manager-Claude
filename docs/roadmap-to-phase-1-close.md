@@ -167,7 +167,7 @@ requirements the repository as a whole is subject to.
 | --- | --- | --- |
 | **P1-24** | 17.1 UI test tier | ✅ **22 rendered tests**, `ui-test-junit4` on Robolectric in `src/test`, so they run inside `verifyDebug` on every build. An `androidTest` set would need an emulator this CI does not have, and a suite nothing runs is not a regression net. Covers login, profile switching, destructive-confirmation wording, offline home, the semantics tree, and a 2× font-scale smoke test. |
 | **P1-25** | 17.3 coverage | ✅ **Gated at 17.3's own numbers** — 80% over domain and core, 90% over the redaction policy. Measured 89.7% and 92.7%. Wired into `verifyDebug`. |
-| **P1-26** | 16.1 dependency verification | ✅ **`strict`, 868 components.** The bootstrap script alone was not enough — `aapt2` and KSP's embeddable processor arrive through detached configurations that only exist inside a task, so the checksums were recorded during a real `verifyDebug`. |
+| **P1-26** | 16.1 dependency verification | ✅ **`strict`, 868 components.** The bootstrap script alone was not enough — `aapt2` and KSP's embeddable processor arrive through detached configurations that only exist inside a task, so the checksums were recorded during a real `verifyDebug`. 16.1's *locking* half is off by decision (ADR-0010). |
 | **P1-29** | Localisation — `values-nb` | ✅ **Complete**, every string and plural, format specifiers checked against the English set. |
 
 ### On TalkBack specifically
@@ -191,13 +191,12 @@ Nothing that blocks the phase. Two API gaps wait on the capture server (**D4** c
 OpenID), **P1-27** and **P1-28** want hardware, and five acceptance cases have never been run — TC-04,
 TC-06, TC-47, TC-52, TC-53 — four of them for want of the hardware or server configuration they need.
 
-One thing found while closing P1-26 and worth recording: **dependency *locking* has no committed lock
-state.** 16.1 lists locking alongside verification; `lockAllConfigurations()` is configured, but no
-`gradle.lockfile` has ever been committed, so it validates nothing. Generating one is not a matter of
-running the script — Kover's bytecode transform adds a runtime classpath edge that Gradle cannot record
-for `:core:datastore`, and AGP resolves several artifacts through detached configurations that
-`resolveAndLockAll` cannot reach standalone. Verification is the stronger of the two guarantees and it
-is on; locking is a separate, still-open item.
+**Dependency locking is off, by decision — see ADR-0010.** 16.1 lists it beside verification, it was
+implemented three different ways, and none of them produces a build that passes: Gradle writes a lock
+state for `debugRuntimeClasspath` that it then rejects when AGP's bytecode-transform task resolves the
+same configuration. The ADR has the reproduction. Verification is the stronger of the two mechanisms and
+is `strict`, and the version catalog pins every direct dependency, so what is actually lost is narrow.
+The retry is tied to the Gradle 9 / AGP 9 upgrade.
 
 ---
 

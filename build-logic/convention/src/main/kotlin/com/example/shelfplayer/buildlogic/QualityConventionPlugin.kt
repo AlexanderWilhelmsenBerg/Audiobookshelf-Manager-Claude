@@ -14,16 +14,18 @@ import java.util.concurrent.Callable
 /**
  * The quality gate applied to every ShelfPlayer project, including the root project.
  *
- * PRODUCT_SPEC 16.2 (ktlint), 16.3 (detekt with type resolution, Android Lint, warnings as errors),
- * 16.1 (dependency locking) and 16.5 (`verifyDebug`).
+ * PRODUCT_SPEC 16.2 (ktlint), 16.3 (detekt with type resolution, Android Lint, warnings as errors)
+ * and 16.5 (`verifyDebug`). 16.1's locking is not applied — see ADR-0010.
  */
 class QualityConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) {
         with(target) {
             configureKtlint()
             configureDetekt()
-            configureDependencyLocking()
             registerVerifyDebug()
+            // PRODUCT_SPEC 16.1's dependency *locking* is deliberately absent here; ADR-0010 records
+            // three attempts and the Gradle behaviour that defeats them. Verification carries the
+            // guarantee meanwhile and is `strict`. Revisit at the Gradle 9 / AGP 9 upgrade.
         }
     }
 }
@@ -76,14 +78,6 @@ private fun Project.configureDetekt() {
     }
     tasks.withType<DetektCreateBaselineTask>().configureEach {
         jvmTarget = JVM_TARGET
-    }
-}
-
-private fun Project.configureDependencyLocking() {
-    // PRODUCT_SPEC 16.1: dependency locking. Lock state is written by
-    // `./gradlew resolveAndLockAll --write-locks` (see scripts/update-dependency-locks.sh).
-    dependencyLocking {
-        lockAllConfigurations()
     }
 }
 
