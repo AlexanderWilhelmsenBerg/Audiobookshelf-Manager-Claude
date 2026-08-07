@@ -29,21 +29,22 @@ copyrightable.
 | Populate the shelf from `…/items` | ✅ | ✅ **as of P1-31** |
 | Expand `…/items/{id}?expanded=1` only when needed | ✅ | ✅ **as of P1-31** |
 | Bearer token in the `Authorization` header | ✅ | ✅ |
-| Cover fetched with the auth header, never a token in the URL | ✅ | ⛔ P1-14 |
+| Cover fetched with the auth header, never a token in the URL | ✅ | ✅ **as of P1-14** |
+| Ask for the catalogue a page at a time | ✅ | ✅ **as of D1** |
 
-## Differences still worth taking
+## D1 – D7, and where each one landed
 
-Ranked. Every one needs a capture unless marked otherwise.
+Ranked when they were written; struck through as they shipped.
 
-| # | What | Why it is worth it | Capture needed? |
+| # | What | Status | Detail |
 | --- | --- | --- | --- |
-| **D1** | **Pagination** — `limit` / `page` on `…/items`, reading `total` from the envelope | A 5,000-item library is currently one enormous response. Both clients page; the fork reads `result.total` to drive it. | **No** — `total`, `page`, `limit`, `offset` are already in the committed `library-items.json` |
-| **D2** | **Cover art** — `GET /api/items/{id}/cover`, auth header, Coil with the app's OkHttp client | The one visible hole in the browse surface | **Yes** — the seed is fixed, the capture has never returned 200 |
-| **D3** | **Server search** — `GET /api/libraries/{id}/search?q=` | LIB-002's "server search may enrich results" | **Yes** |
-| **D4** | **Collections** — `GET /api/libraries/{id}/collections` | The missing browse axis | **Yes** |
-| **D5** | **Response TTL cache** — the fork attaches a short TTL (12 s) to library reads | Cheap protection against a screen that re-queries on every recomposition. We have Room in front of everything, so the win is smaller here than for them. | No — client-side |
-| **D6** | **Custom request headers per server** — both clients support them | Reverse proxies with auth headers (Authelia, Cloudflare Access) are common in self-hosting. Neither PRODUCT_SPEC nor any acceptance case asks for it; worth raising as a Phase 2+ feature rather than smuggling into Phase 1. | No |
-| **D7** | **OpenID sign-in** — the fork supports it | `SYNC-001` persists `authMethods` and we only ever use `local`. A server configured for OIDC-only cannot be signed into at all. | **Yes** |
+| **D1** | **Pagination** — `limit` / `page` on `…/items`, reading `total` from the envelope | ✅ **Done** | `limit=100&page=N`, each page handed over as it lands. Three stopping conditions; the page cap is a *failure*, never a quiet end-of-list, so a truncated catalogue can never drive a deletion. |
+| **D2** | **Cover art** — `GET /api/items/{id}/cover` | ✅ **Done** (P1-14) | Fetched through the app's authenticated OkHttp client even though the capture shows the endpoint answering `200` anonymously. 128 MB Coil disk cache. |
+| **D3** | **Server search** — `GET /api/libraries/{id}/search?q=` | ✅ **Done, books only** (P1-20) | The capture settled two things worth more than the endpoint itself: a hit is the **expanded** item (tracks included, so no follow-up request), and it carries **no `userMediaProgress`** (so a hit cannot rewind a book). The other five result arrays came back `[]` and stay unmapped. |
+| **D4** | **Collections** — `GET /api/libraries/{id}/collections` | ⛔ **Still blocked** | The capture returned `results: []`. The envelope is observed; a collection *object* has never been seen. PRODUCT_SPEC 22.4 forbids writing the mapper from the OpenAPI document alone. **Unblocking action: create one collection on the capture server and re-run the capture.** |
+| **D5** | **Response TTL cache** — the fork attaches a 12 s TTL to library reads | ➖ **Declined, superseded** | It exists to stop *their* views re-fetching, because their views fetch. Ours read Room, and Room already de-duplicates. The equivalent win here was the unchanged-item skip in P1-31, which is strictly better: it eliminates the request rather than caching its answer. |
+| **D6** | **Custom request headers per server** | ➖ **Out of Phase 1** | Real (Authelia, Cloudflare Access), but no requirement or acceptance case asks for it. Raise as a Phase 2+ feature rather than smuggling it in. |
+| **D7** | **OpenID sign-in** | ⛔ **Blocked, and a real gap** | `SYNC-001` already persists `authMethods` and we only ever use `local`; an OIDC-only server cannot be signed into at all. Needs a capture against a server configured for it, which the current capture server is not. **Unblocking action: configure OIDC on the capture server, or accept it as a Phase 2 item.** |
 
 ### Deliberately declined
 
@@ -60,15 +61,16 @@ Ranked. Every one needs a capture unless marked otherwise.
 
 ## The waves
 
-### Wave A — one capture run unblocks four things
+### Wave A — done, three of four
 
-Everything here is blocked on the same action: **run the contract-capture workflow**. The seed now
-places a `cover.jpg`, and `/search`, `/collections` and `/personalized` are already capture targets.
+The capture ran on 2026-08-07 against Audiobookshelf 2.36.0. Four new fixtures, two expected drifts.
 
-- **P1-14** cover art (D2)
-- **P1-20** server search (D3)
-- Collections axis (D4)
-- Expect legitimate drift in `library-item.json` as `coverPath` fills in — that is the seed fix working
+- **P1-14** cover art (D2) — ✅ shipped
+- **P1-20** server search (D3) — ✅ shipped, books only
+- **D1** pagination — ✅ shipped, it needed no capture and was done alongside
+- Collections axis (D4) — ⛔ **still blocked**, and the only Wave A item that is. The capture server has
+  no collections, so `results: []` told us the envelope and nothing about the element. One collection
+  created on that server and one re-run closes it.
 
 ### Wave B — quality gates, all actionable now
 
@@ -89,12 +91,46 @@ places a `cover.jpg`, and `/search`, `/collections` and `/personalized` are alre
 
 - **P1-30** acceptance-plan maintenance: run TC-04, TC-06, TC-47, TC-52, TC-53, which never have been;
   strike TC-36, whose toggle no longer exists.
-- **D1** pagination — not blocked, and the right time is alongside a 2,000-item fixture in Wave C,
-  because that is what makes the difference measurable.
+
+### Blocked on the capture server, not on us
+
+- **D4** collections — needs one collection created on the capture server, then a re-run.
+- **D7** OpenID — needs the capture server configured for OIDC, or a decision to defer it to Phase 2.
+
+---
+
+## Why the reference clients feel instant, and what we took from it
+
+Measured against both clients' code rather than guessed. Four things, and only two of them are speed:
+
+1. **Neither ever syncs a whole library.** Both page `…/items` at 100 on demand — no client-side mirror
+   of the catalogue exists to be built. Ours does mirror it, on purpose: PRODUCT_SPEC 6.3 requires
+   browse, filter and sort to work offline, and none of that is possible over a paged remote list.
+2. **A home refresh costs one request.** `/personalized` returns every shelf server-side. ADR-0008
+   records why we derive shelves from Room instead — same reason as above.
+3. **Cached content is painted before the first byte.** We do this too, and it is what P1-31's
+   catalogue-first pass and D1's per-page hand-over made real: the shelf now appears after the first
+   response instead of after the last.
+4. **Nothing is re-fetched that has not changed.** P1-31's `updatedAt` skip. A second refresh over an
+   untouched library is now one request per page and no item fetches at all.
+
+The honest summary: **their refresh is fast because it does less, and ours is now fast because it does
+the same work in a different order.** The one thing we still pay that they do not is the expansion pass
+— and it buys offline playback, which neither of them offers.
+
+### And the home screen that "looks empty"
+
+Worth recording, because the obvious answer was the wrong one: **neither reference client has anything
+below its carousels either.** Their home screens are carousels to the bottom of the scroll and nothing
+else. What ours was missing was not a section under the shelves — it was *shelves*, and covers.
+
+So: five shelves instead of three (Discover and Listen again fill the two that are structurally empty
+on a new account), and cover art on every card, which is most of what makes a row read as content
+rather than as a list of strings.
 
 ---
 
 ## Done since the original audit
 
-P1-01 … P1-13, P1-15 … P1-19, P1-21, P1-22, P1-23, P1-31. **P1-12** was found already satisfied by
+P1-01 … P1-19, P1-21, P1-22, P1-23, P1-31, D1, D2, D3, D5. **P1-12** was found already satisfied by
 `SyncAccountUseCase`, which revalidates on every `onVisible()`.

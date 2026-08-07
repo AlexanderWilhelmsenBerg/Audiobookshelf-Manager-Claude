@@ -263,6 +263,29 @@ empty, so **no fixture has ever shown an `authors`, `series`, `genres`, `narrato
 result**. PRODUCT_SPEC 22.5 applies to each independently: search enrichment ships for books only, and
 the other five stay unmapped until a capture against a library that actually matches them.
 
+Two further facts the fixture settled, both of which changed the implementation:
+
+- **`book[].libraryItem` is the *expanded* shape.** It carries `media.tracks`, `media.chapters`,
+  `metadata.authors` and `metadata.series` — none of which `…/items` sends. A search hit is therefore a
+  complete, playable book with no follow-up request, which is what makes server search worth the round
+  trip at all rather than a way to learn some ids.
+- **There is no `userMediaProgress`.** The endpoint takes no `include` parameter and the response has
+  no such key. Every hit maps with `progress = null`, and `LibrarySnapshotWriter` writes only non-null
+  progress — so searching for a book you are halfway through updates its metadata and leaves the
+  position alone. Had that not been checked, a search would have been able to rewind a book.
+
+### Paging `…/items` (D1)
+
+`limit`, `page`, `offset` and `total` are all in the committed `library-items.json` envelope. The
+capture was taken without paging parameters and the server answered `limit: 0` with every item, which
+is a **default, not a contract** — so the client states `limit=100&page=N` and reads `total` to decide
+whether to ask again.
+
+A server that ignores `limit` is handled by the same check: `received >= total` is true after the first
+response, so it is asked once. A server that ignores `page` would loop, which is why a page cap exists
+and why tripping it is reported as a failure rather than as the end of the library — a truncated
+catalogue treated as complete would let reconciliation soft-delete everything past the cut.
+
 ### Collections: the envelope is not the element
 
 `results: []` is a real observation — this server has no collections — but it says nothing about what a
