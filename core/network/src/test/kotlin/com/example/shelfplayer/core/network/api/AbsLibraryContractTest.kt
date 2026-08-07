@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
+import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
@@ -85,6 +86,55 @@ class AbsLibraryContractTest {
     }
 
     // --- GET /api/libraries ------------------------------------------------------------------------
+
+    /**
+     * PRODUCT_SPEC LIB-001 / P1-31 — the shelf is populated by the **first** response, not the last.
+     *
+     * The catalogue batch arrives before any item is expanded. That is the whole point: on the 490-book
+     * library a device run used, waiting for the expansion pass meant 491 round trips before anything
+     * appeared.
+     *
+     * Asserted on the *order* of the batches rather than on the final result, because the final result
+     * was already correct — what was wrong was when the user could see it.
+     */
+    @Test
+    fun `the catalogue is handed over before any item is expanded`() = runTest {
+        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.response("library-item"))
+        val batches = mutableListOf<List<BookSnapshot>>()
+
+        api().listBooks(PROFILE, LIBRARY) { batch -> batches += batch }
+
+        val first = batches.first()
+        assertEquals(1, first.size, "the catalogue response carried one item")
+        assertEquals("The Salt Harbour", first.single().book.title, "browsable straight away")
+        assertTrue(first.single().tracks.isEmpty(), "the list endpoint sends no tracks")
+        assertTrue(batches.size > 1, "the expansion pass still runs")
+        assertTrue(batches.last().single().tracks.isNotEmpty(), "and it fills the tracks in")
+    }
+
+    /**
+     * A catalogue row carries everything the list response has, and nothing it does not.
+     *
+     * The second half matters more than the first: authors and series are left **empty** rather than
+     * invented from `authorName`/`seriesName`, because those are display strings with no ids and no
+     * sequence, and LIB-003's ordering cannot be built from them. A wrong link is worse than a late one.
+     */
+    @Test
+    fun `a catalogue row carries the metadata but not the structured links`() = runTest {
+        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(MockResponse().setResponseCode(503))
+        repeat(RETRY_ATTEMPTS) { server.enqueue(MockResponse().setResponseCode(503)) }
+        val batches = mutableListOf<List<BookSnapshot>>()
+
+        api().listBooks(PROFILE, LIBRARY) { batch -> batches += batch }
+
+        val book = batches.first().single().book
+        assertEquals(listOf("Fiction"), book.genres)
+        assertEquals(2024, book.publishedYear)
+        assertTrue(book.authors.isEmpty(), "no author id in the list response, so no author link")
+        assertTrue(book.seriesMemberships.isEmpty(), "no sequence in the list response, so no series link")
+    }
 
     @Test
     fun `libraries are read from the captured envelope`() = runTest {

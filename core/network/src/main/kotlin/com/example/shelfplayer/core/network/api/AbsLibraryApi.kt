@@ -21,6 +21,7 @@ import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
 import com.example.shelfplayer.core.network.http.NetworkErrorMapper
 import com.example.shelfplayer.core.network.http.RetryPolicy
 import retrofit2.Response
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -81,11 +82,19 @@ internal class AbsLibraryApi @Inject constructor(
     }
 
     /**
-     * The catalogue, then one expanded fetch per item.
+     * PRODUCT_SPEC LIB-001 — the catalogue first, then one expanded fetch per item.
      *
-     * N+1 requests, and there is no alternative that stores playable books: the list endpoint returns
-     * `numTracks` rather than the tracks, and PRODUCT_SPEC 2.3 needs the track offsets stored alongside
-     * the book or offline resume cannot work.
+     * It is still N+1 requests, and it has to be: the list endpoint sends `numTracks` rather than the
+     * tracks, and PRODUCT_SPEC 2.3 needs track offsets stored beside the book or offline resume cannot
+     * work. What changed is that the N is no longer on the critical path.
+     *
+     * The catalogue response is handed to `onBatch` **before** any item is expanded, so the shelf is
+     * populated after **one** round trip instead of after 491 on the library a device run used. The
+     * expansion pass then rewrites each book in place, adding its tracks, chapters, authors and series.
+     *
+     * Both writes go through the same `onBatch`, so a book is never half-written: a catalogue row is a
+     * complete, browsable book that is missing exactly the fields the list endpoint does not carry. See
+     * `LibraryMapper.toCatalogueSnapshots` for which those are and why they cannot be faked from it.
      */
     override suspend fun listBooks(
         profileId: ProfileId,
@@ -104,14 +113,37 @@ internal class AbsLibraryApi @Inject constructor(
             )
         }
         val bearer = bearerOf(connection.accessToken.value)
+        val fetchedAt = clock.now()
         val catalogue = retries.readOnly("listItems") {
-            service.items(bearer, libraryId.value)
-                .toResult { body -> LibraryMapper.toItemIds(body ?: LibraryItemsResponseDto()) }
+            service.items(bearer, libraryId.value).toResult { body ->
+                val response = body ?: LibraryItemsResponseDto()
+                LibraryMapper.toItemIds(response).map { ids ->
+                    Catalogue(
+                        ids = ids,
+                        browsable = LibraryMapper.toCatalogueSnapshots(
+                            serverId = connection.serverId,
+                            libraryId = libraryId,
+                            dto = response,
+                            fetchedAt = fetchedAt,
+                        ),
+                    )
+                }
+            }
         }
         when (catalogue) {
             is AppResult.Failure -> catalogue
-            is AppResult.Success ->
-                snapshots(connection, libraryId, service, bearer, catalogue.value, onBatch)
+            is AppResult.Success -> {
+                // Before a single item is expanded. This is the whole of P1-31: one round trip, and the
+                // user has a library.
+                if (catalogue.value.browsable.isNotEmpty()) onBatch(catalogue.value.browsable)
+                logger.info(
+                    LogCategory.Sync,
+                    "Catalogue written; expanding items",
+                    LogField.Count("browsable", catalogue.value.browsable.size),
+                    LogField.Count("toExpand", catalogue.value.ids.size),
+                )
+                snapshots(connection, libraryId, service, bearer, catalogue.value.ids, onBatch, fetchedAt)
+            }
         }
     }
 
@@ -134,8 +166,8 @@ internal class AbsLibraryApi @Inject constructor(
         bearer: String,
         ids: List<LibraryItemId>,
         onBatch: suspend (List<BookSnapshot>) -> Unit,
+        fetchedAt: Instant,
     ): AppResult<LibrarySnapshot> {
-        val fetchedAt = clock.now()
         val sweep = Sweep()
         var emitted = 0
         for (id in ids) {
@@ -165,7 +197,10 @@ internal class AbsLibraryApi @Inject constructor(
         }
         logCounts(sweep.removed, sweep.unreachable, ids.size)
         val failure = sweep.firstFailure
-        // Nothing came back and something went wrong: that is a failed sync, not an empty library.
+        // Nothing expanded and something went wrong. Still a failure — the caller uses it to decide
+        // whether absence may mean deletion, and it must never conclude "deleted" from a dead
+        // connection. The user is not left with nothing, though: the catalogue rows are already
+        // written and browsable, which is the difference this pass made.
         if (sweep.books.isEmpty() && failure != null) return AppResult.Failure(failure)
         return AppResult.Success(
             LibrarySnapshot(
@@ -249,6 +284,9 @@ internal class AbsLibraryApi @Inject constructor(
      * data and no correctness. Any success resets the count, because a library with a few scattered bad
      * items is a different situation from a library behind a dead server.
      */
+    /** One catalogue response, read twice: for what to expand, and for what to show meanwhile. */
+    private data class Catalogue(val ids: List<LibraryItemId>, val browsable: List<BookSnapshot>)
+
     private class Sweep {
         val books = mutableListOf<BookSnapshot>()
         var removed = 0
