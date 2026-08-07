@@ -1,0 +1,147 @@
+{
+  "body": [
+    {
+      "entities": [
+        {
+          "addedAt": 0,
+          "birthtimeMs": 0,
+          "ctimeMs": 0,
+          "folderId": "<volatile>",
+          "id": "<volatile>",
+          "ino": "<volatile>",
+          "isFile": false,
+          "isInvalid": false,
+          "isMissing": false,
+          "libraryId": "<volatile>",
+          "media": {
+            "coverPath": "/audiobooks/Marisol Holt/The Salt Harbour/cover.jpg",
+            "duration": 8,
+            "id": "<volatile>",
+            "metadata": {
+              "abridged": false,
+              "asin": null,
+              "authorName": "Marisol Holt",
+              "authorNameLF": "Holt, Marisol",
+              "description": null,
+              "explicit": false,
+              "genres": [
+                "Fiction"
+              ],
+              "isbn": null,
+              "language": null,
+              "narratorName": "Ada Fenwick",
+              "publishedDate": null,
+              "publishedYear": "2024",
+              "publisher": null,
+              "seriesName": "",
+              "subtitle": null,
+              "title": "The Salt Harbour",
+              "titleIgnorePrefix": "Salt Harbour, The"
+            },
+            "numAudioFiles": 1,
+            "numChapters": 2,
+            "numTracks": 1,
+            "size": 0,
+            "tags": []
+          },
+          "mediaType": "book",
+          "mtimeMs": 0,
+          "numFiles": 2,
+          "oldLibraryItemId": null,
+          "path": "/audiobooks/Marisol Holt/The Salt Harbour",
+          "relPath": "Marisol Holt/The Salt Harbour",
+          "size": 0,
+          "updatedAt": 0
+        }
+      ],
+      "id": "<volatile>",
+      "label": "Recently Added",
+      "labelStringKey": "LabelRecentlyAdded",
+      "total": 1,
+      "type": "book"
+    },
+    {
+      "entities": [
+        {
+          "addedAt": 0,
+          "birthtimeMs": 0,
+          "ctimeMs": 0,
+          "folderId": "<volatile>",
+          "id": "<volatile>",
+          "ino": "<volatile>",
+          "isFile": false,
+          "isInvalid": false,
+          "isMissing": false,
+          "libraryId": "<volatile>",
+          "media": {
+            "coverPath": "/audiobooks/Marisol Holt/The Salt Harbour/cover.jpg",
+            "duration": 8,
+            "id": "<volatile>",
+            "metadata": {
+              "abridged": false,
+              "asin": null,
+              "authorName": "Marisol Holt",
+              "authorNameLF": "Holt, Marisol",
+              "description": null,
+              "explicit": false,
+              "genres": [
+                "Fiction"
+              ],
+              "isbn": null,
+              "language": null,
+              "narratorName": "Ada Fenwick",
+              "publishedDate": null,
+              "publishedYear": "2024",
+              "publisher": null,
+              "seriesName": "",
+              "subtitle": null,
+              "title": "The Salt Harbour",
+              "titleIgnorePrefix": "Salt Harbour, The"
+            },
+            "numAudioFiles": 1,
+            "numChapters": 2,
+            "numTracks": 1,
+            "size": 0,
+            "tags": []
+          },
+          "mediaType": "book",
+          "mtimeMs": 0,
+          "numFiles": 2,
+          "oldLibraryItemId": null,
+          "path": "/audiobooks/Marisol Holt/The Salt Harbour",
+          "relPath": "Marisol Holt/The Salt Harbour",
+          "size": 0,
+          "updatedAt": 0
+        }
+      ],
+      "id": "<volatile>",
+      "label": "Discover",
+      "labelStringKey": "LabelDiscover",
+      "total": 1,
+      "type": "book"
+    },
+    {
+      "entities": [
+        {
+          "addedAt": 0,
+          "asin": null,
+          "description": null,
+          "id": "<volatile>",
+          "imagePath": null,
+          "libraryId": "<volatile>",
+          "name": "Marisol Holt",
+          "numBooks": 1,
+          "updatedAt": 0
+        }
+      ],
+      "id": "<volatile>",
+      "label": "Newest Authors",
+      "labelStringKey": "LabelNewestAuthors",
+      "total": 1,
+      "type": "authors"
+    }
+  ],
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

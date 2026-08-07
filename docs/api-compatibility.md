@@ -233,6 +233,42 @@ arrives as a number or an object, and the item mapper runs inside `resultOf`, so
 single item reported unreadable rather than a wrong value written to the cache. If a server is ever
 found that returns a numeric ISBN, the fix is a lenient deserializer here, not a schema change.
 
+## Wave A capture — 2026-08-07, Audiobookshelf 2.36.0
+
+Four new fixtures and two expected drifts. What each one unblocked, and what it did **not**:
+
+| Fixture | Result | Verdict |
+| --- | --- | --- |
+| `item-cover.json` | **200**, `image/webp`, and **`unauthenticatedStatus: 200`** | **P1-14 unblocked** |
+| `library-search.json` | 200. `book[]` carries a full `libraryItem`; `authors`, `series`, `genres`, `narrators`, `tags` are all **`[]`** | **P1-20 partially unblocked** — books only |
+| `library-collections.json` | 200, paginated envelope, `results: []` | **Still blocked** — the envelope is observed, a collection object is not |
+| `library-personalized.json` | 200. An array of `{id, label, labelStringKey, type, total, entities}`; this server returned *Recently Added* (book), *Discover* (book), *Newest Authors* (authors) | Held, not adopted — see ADR-0008 |
+| `library-item.json` | drift: `media.coverPath` is now `/audiobooks/…/cover.jpg` | The seed fix working |
+| `library-items.json` | drift: `libraryFiles` gained the image | The seed fix working |
+
+### The cover endpoint does not require a credential
+
+`unauthenticatedStatus: 200` — this server serves `/api/items/{id}/cover` to anyone who knows the item
+id. That is the server's choice and not something the app can rely on: a deployment behind a
+reverse proxy with forward auth, or a future Audiobookshelf release, may well require one.
+
+**Covers are therefore fetched through the authenticated client anyway.** It works in both cases,
+costs nothing extra, and keeps the token in a header rather than a URL. Coil handles `image/webp`
+natively.
+
+### Search: books yes, everything else no
+
+The `book[]` element is a complete library item and can be mapped. The other five arrays came back
+empty, so **no fixture has ever shown an `authors`, `series`, `genres`, `narrators` or `tags` search
+result**. PRODUCT_SPEC 22.5 applies to each independently: search enrichment ships for books only, and
+the other five stay unmapped until a capture against a library that actually matches them.
+
+### Collections: the envelope is not the element
+
+`results: []` is a real observation — this server has no collections — but it says nothing about what a
+collection *looks like*. This is the same gap `mediaProgress` had before the progress capture, and it
+has the same answer: the axis waits.
+
 ## The cover endpoint — `404`, and why (LIB-004)
 
 The first capture of `GET /api/items/{id}/cover` returned **404, `text/plain`**. Not a wrong path: the
@@ -245,7 +281,7 @@ re-run also probes the endpoint without a credential, because whether a cover UR
 straight to an image library or must travel through the authenticated client is the decision the whole
 of the cover work turns on.
 
-**Cover art stays unimplemented until that capture returns 200.**
+**Superseded: that capture returned 200 on 2026-08-07. See the Wave A section above.**
 
 ## How books should be fetched — the N+1, measured (LIB-001)
 

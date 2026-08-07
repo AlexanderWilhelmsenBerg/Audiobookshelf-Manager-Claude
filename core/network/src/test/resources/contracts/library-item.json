@@ -27,6 +27,23 @@
           "size": 0
         },
         "updatedAt": 0
+      },
+      {
+        "addedAt": 0,
+        "fileType": "image",
+        "ino": "<volatile>",
+        "isSupplementary": null,
+        "metadata": {
+          "birthtimeMs": 0,
+          "ctimeMs": 0,
+          "ext": ".jpg",
+          "filename": "cover.jpg",
+          "mtimeMs": 0,
+          "path": "/audiobooks/Marisol Holt/The Salt Harbour/cover.jpg",
+          "relPath": "cover.jpg",
+          "size": 0
+        },
+        "updatedAt": 0
       }
     ],
     "libraryId": "<volatile>",
@@ -103,7 +120,7 @@
           "title": "Chapter Two"
         }
       ],
-      "coverPath": null,
+      "coverPath": "/audiobooks/Marisol Holt/The Salt Harbour/cover.jpg",
       "duration": 8,
       "ebookFile": null,
       "id": "<volatile>",
@@ -209,7 +226,7 @@
     },
     "mediaType": "book",
     "mtimeMs": 0,
-    "numFiles": 1,
+    "numFiles": 2,
     "oldLibraryItemId": null,
     "path": "/audiobooks/Marisol Holt/The Salt Harbour",
     "relPath": "Marisol Holt/The Salt Harbour",
