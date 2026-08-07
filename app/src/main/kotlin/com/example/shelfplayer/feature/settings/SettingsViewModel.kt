@@ -2,10 +2,15 @@ package com.example.shelfplayer.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
+import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
+import com.example.shelfplayer.domain.usecase.ServerDiagnostics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,42 +20,59 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * PRODUCT_SPEC SET-001 / SET-002 — what the settings screen has to show today.
+ * PRODUCT_SPEC SET-001 / SET-002 / SYNC-001 — everything the settings screen shows, across both tabs.
  *
- * Two sections, and neither is a preference:
+ * ### Why one ViewModel for two tabs
  *
- * - **Libraries.** The one real preference: which library the shelf opens on. Tapping a row stars it.
- * - **About.** One row, opening the readings: the app's version, what the capability handshake learned,
- *   and the storage counts. They used to sit on this screen and a device run was right that they did
- *   not belong — a preference and a diagnostic are different kinds of thing, and mixing them puts a
- *   screenful of numbers between the user and the one choice here.
+ * The tabs are a layout, not a boundary. They are two views of one screen's state, they switch without
+ * navigating, and both are alive the moment the screen is. A ViewModel each would mean two independent
+ * subscriptions to the same profile, two `WhileSubscribed` timers, and a tab switch that could show one
+ * tab's idea of the active profile beside the other's. The earlier split — a separate About destination
+ * with its own ViewModel — was a *navigation* boundary, and folding it in is what removed the need for
+ * it.
  *
- * Real preferences arrive with the behaviour that honours them. A screen full of switches that change
- * nothing is worse than a short one: it tells the user the app does something it does not.
+ * ### What goes where
+ *
+ * - **Server**: the address, what the server reported about itself, and the libraries this profile may
+ *   open — including which one the shelf opens on, the single real preference here.
+ * - **About**: the app's version, and the readings under a *Testing* heading. Those exist to make an
+ *   acceptance case checkable on a device rather than through `adb`, which is why they are labelled as
+ *   such and kept away from the preference.
+ *
+ * The capability list is the one server fact under Testing rather than under Server. It is not
+ * information about the server so much as a record of what this build asked it, and a device run was
+ * explicit that it belonged with the test readings.
  */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     observeLibraries: ObserveLibrariesUseCase,
+    observeServerDiagnostics: ObserveServerDiagnosticsUseCase,
+    diagnostics: DiagnosticsRepository,
     private val preferences: PreferencesRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
         observeLibraries(),
         preferences.observePreferences(),
-    ) { libraries, stored ->
+        observeServerDiagnostics(),
+        diagnostics.observeStorage(),
+    ) { libraries, stored, server, storage ->
         SettingsUiState(
             libraries = libraries,
             // PRODUCT_SPEC 6.1 step 9 — resolved against the granted libraries rather than shown raw.
             // A default library the profile has since lost is not a default any more, and rendering the
             // stored id would put a tick beside a library that is no longer in the list.
             defaultLibraryId = stored.defaultLibraryId?.takeIf { id -> libraries.any { it.id == id } },
+            server = server,
+            storage = storage,
+            versionName = BuildConfig.VERSION_NAME,
             isLoaded = true,
         )
     }.stateIn(
         scope = viewModelScope,
         // PRODUCT_SPEC 16.3: no unbounded collection in a lifecycle owner.
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-        initialValue = SettingsUiState(),
+        initialValue = SettingsUiState(versionName = BuildConfig.VERSION_NAME),
     )
 
     /**
@@ -71,6 +93,7 @@ class SettingsViewModel @Inject constructor(
 /**
  * @property libraries the libraries the active profile is granted — the grant is applied by the
  *   repository, so this list is what the user may open, not what exists.
+ * @property server what the capability handshake learned, or `null` while no profile is active.
  * @property storage what is on disk, including rows outside that grant, as counts. The difference between
  *   the two is the point: it is how "unauthorized libraries were never written" becomes checkable.
  * @property isLoaded whether the first read has arrived. Zeroes before it has would read as facts.
@@ -79,5 +102,8 @@ data class SettingsUiState(
     val libraries: List<Library> = emptyList(),
     /** PRODUCT_SPEC 6.1 step 9 — `null` is every granted library, which is the default. */
     val defaultLibraryId: LibraryId? = null,
+    val server: ServerDiagnostics? = null,
+    val storage: StorageDiagnostics = StorageDiagnostics(),
+    val versionName: String = "",
     val isLoaded: Boolean = false,
 )

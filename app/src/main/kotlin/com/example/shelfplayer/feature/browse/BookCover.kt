@@ -3,6 +3,7 @@ package com.example.shelfplayer.feature.browse
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -15,6 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -32,12 +35,12 @@ import com.example.shelfplayer.core.model.library.Book
  * book twice. PRODUCT_SPEC 21 wants the information available once, not twice.
  */
 @Composable
-internal fun BookCover(book: Book, modifier: Modifier = Modifier, aspect: Float = SQUARE) {
+internal fun BookCover(book: Book, modifier: Modifier = Modifier, aspect: Float = SQUARE, shape: Shape = CoverShape) {
     val url = LocalCoverUrls.current.forBook(book)
     Box(
         modifier = modifier
             .aspectRatio(aspect)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
@@ -60,14 +63,20 @@ internal fun BookCover(book: Book, modifier: Modifier = Modifier, aspect: Float 
 }
 
 /**
- * A small cover for a list row, where the text beside it sets the height.
+ * A cover for a list row, sized to the full height of the row beside it.
  *
- * Fixed rather than proportional: a row whose height depends on its title wrapping is a list that
- * jitters as it scrolls.
+ * The caller has to give the row `Modifier.height(IntrinsicSize.Min)`, which is what lets
+ * `fillMaxHeight` mean "as tall as the text column" rather than "as tall as the screen". The square
+ * then follows from the height, so a row with a two-line title gets a larger cover than one with a
+ * single line and neither has to be told a number.
+ *
+ * Square-cornered, unlike [BookCover]'s default: this one sits flush against the left edge of a card
+ * that is already rounding its own corners, and a rounded rectangle inside a rounded rectangle reads
+ * as a mistake.
  */
 @Composable
 internal fun BookCoverThumbnail(book: Book, modifier: Modifier = Modifier) {
-    BookCover(book = book, modifier = modifier.size(THUMBNAIL))
+    BookCover(book = book, modifier = modifier.fillMaxHeight(), shape = RectangleShape)
 }
 
 /**
@@ -77,7 +86,8 @@ internal fun BookCoverThumbnail(book: Book, modifier: Modifier = Modifier) {
  */
 private const val SQUARE = 1f
 
-private val THUMBNAIL = 56.dp
+/** The rounding a free-standing cover gets. A cover flush inside a card passes `RectangleShape`. */
+private val CoverShape = RoundedCornerShape(8.dp)
 
 /** Kept beside [BookCover] so a card and a row cannot disagree about the gap after the image. */
 internal val CoverGap = 12.dp

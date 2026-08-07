@@ -173,6 +173,34 @@ interface LibraryDao {
         """,
     )
     suspend fun expandedBookStamps(profileId: String, libraryKey: String): List<ExpandedBookStamp>
+
+    /**
+     * PRODUCT_SPEC LIB-002 — the books on the *Continue listening* shelf, by their server ids.
+     *
+     * Used to decide what a refresh expands **first**. Started-and-unfinished is the one shelf the user
+     * is certain to look at, and expanding those items before the rest costs nothing: the same requests
+     * are made, in a different order.
+     *
+     * `positionMillis > 0` rather than merely "a progress row exists". The server sends a zeroed row for
+     * a book that was opened and closed, and treating that as in-progress would put books nobody has
+     * listened to at the front of the queue — which is the same as having no priority at all.
+     *
+     * Scoped by visibility like every other read.
+     */
+    @Query(
+        """
+        SELECT books.remoteId FROM books
+        INNER JOIN profile_visible_books ON profile_visible_books.bookKey = books.bookKey
+          AND profile_visible_books.profileId = :profileId
+        INNER JOIN media_progress ON media_progress.bookKey = books.bookKey
+          AND media_progress.profileId = :profileId
+        WHERE books.libraryKey = :libraryKey
+          AND books.isDeleted = 0
+          AND media_progress.isFinished = 0
+          AND media_progress.positionMillis > 0
+        """,
+    )
+    suspend fun inProgressBookIds(profileId: String, libraryKey: String): List<String>
 }
 
 /** One already-expanded book: its server id and the `updatedAt` the server reported when it was stored. */

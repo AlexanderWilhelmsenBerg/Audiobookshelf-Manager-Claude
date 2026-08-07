@@ -1,6 +1,5 @@
 package com.example.shelfplayer.feature.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
@@ -20,10 +20,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -38,7 +43,6 @@ import com.example.shelfplayer.core.model.library.Library
 
 @Composable
 fun SettingsRoute(
-    onAboutSelected: () -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -47,21 +51,31 @@ fun SettingsRoute(
     SettingsScreen(
         uiState = uiState,
         onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
-        onAboutSelected = onAboutSelected,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
     )
 }
 
+/**
+ * PRODUCT_SPEC SET-001 / SET-002 — two tabs: what the app is connected to, and what it knows about
+ * itself.
+ *
+ * Tabs rather than a list of sections with a row that opens another screen. The two halves are read for
+ * different reasons and neither is long enough to deserve a destination of its own; a tab switch keeps
+ * both one gesture away, which a pushed screen does not.
+ *
+ * The selection is `rememberSaveable`, so a rotation or a trip through the background comes back to the
+ * tab the user was on. Losing it would be a small thing that reads as the screen restarting.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     uiState: SettingsUiState,
     onDefaultLibraryChanged: (LibraryId?) -> Unit,
-    onAboutSelected: () -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var selected by rememberSaveable { mutableStateOf(SettingsTab.Server) }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -78,54 +92,84 @@ fun SettingsScreen(
             )
         },
     ) { innerPadding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(bottom = 24.dp),
         ) {
-            item { SectionHeader(text = stringResource(R.string.settings_section_libraries)) }
-            if (uiState.libraries.isEmpty()) {
-                item { Hint(text = stringResource(R.string.settings_libraries_empty)) }
-            } else {
-                items(uiState.libraries, key = { it.id.value }) { library ->
-                    LibraryRow(
-                        library = library,
-                        isDefault = library.id == uiState.defaultLibraryId,
-                        onToggled = { isDefault -> onDefaultLibraryChanged(library.id.takeIf { isDefault }) },
+            TabRow(selectedTabIndex = selected.ordinal) {
+                SettingsTab.entries.forEach { tab ->
+                    Tab(
+                        selected = tab == selected,
+                        onClick = { selected = tab },
+                        text = { Text(text = stringResource(tab.labelRes)) },
                     )
                 }
-                item { Hint(text = stringResource(R.string.settings_default_library_hint)) }
             }
-
-            item { SectionHeader(text = stringResource(R.string.settings_section_about)) }
-            item { NavigationRow(labelRes = R.string.settings_about_row, onClick = onAboutSelected) }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 24.dp),
+            ) {
+                when (selected) {
+                    SettingsTab.Server -> serverTab(uiState, onDefaultLibraryChanged)
+                    SettingsTab.About -> aboutTab(uiState)
+                }
+            }
         }
     }
 }
 
-/** A row that opens another screen — the only navigation Settings still does. */
-@Composable
-private fun NavigationRow(labelRes: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Text(
-        text = stringResource(labelRes),
-        style = MaterialTheme.typography.bodyLarge,
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-    )
+/** PRODUCT_SPEC SET-002 — which server, and which of its libraries. */
+private fun LazyListScope.serverTab(uiState: SettingsUiState, onDefaultLibraryChanged: (LibraryId?) -> Unit) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_server)) }
+    uiState.server?.let { server -> serverInfoRows(server) }
+
+    item { SectionHeader(text = stringResource(R.string.settings_section_libraries)) }
+    if (uiState.libraries.isEmpty()) {
+        item { Hint(text = stringResource(R.string.settings_libraries_empty)) }
+    } else {
+        items(uiState.libraries, key = { it.id.value }) { library ->
+            LibraryRow(
+                library = library,
+                isDefault = library.id == uiState.defaultLibraryId,
+                onToggled = { isDefault -> onDefaultLibraryChanged(library.id.takeIf { isDefault }) },
+            )
+        }
+        item { Hint(text = stringResource(R.string.settings_default_library_hint)) }
+    }
 }
 
 /**
- * PRODUCT_SPEC 6.1 step 9 — the whole row toggles the choice, and that is the only thing it does.
+ * PRODUCT_SPEC SET-002 — the app's own version, and the readings.
  *
- * It used to open a second browse screen, with the star as a separate target beside it. A device run
- * asked for the opposite — "pressing a library will star it so it is filtered on that library, but not
- * enter it" — and the reason it is the right call is that the browse screen behind it was a duplicate
- * of the home screen. With that screen gone there is one action left, so the row is one target: a
- * `toggleable` row rather than a row containing a button, which is also what gives TalkBack a single
- * stop announcing its own checked state.
+ * Everything below the Testing heading exists to make an acceptance case checkable on a device rather
+ * than through `adb`. It is deliberately grouped and deliberately labelled as such: these are numbers to
+ * verify a build against, not settings to change.
+ */
+private fun LazyListScope.aboutTab(uiState: SettingsUiState) {
+    item { SectionHeader(text = stringResource(R.string.about_section_app)) }
+    item { TextRow(labelRes = R.string.about_version, value = uiState.versionName) }
+    item { Hint(text = stringResource(R.string.about_phase)) }
+
+    item { SectionHeader(text = stringResource(R.string.about_section_testing)) }
+    item { Hint(text = stringResource(R.string.about_testing_body)) }
+
+    uiState.server?.let { server -> capabilityRows(server) }
+
+    item { SubHeader(text = stringResource(R.string.settings_section_storage)) }
+    item { Hint(text = stringResource(R.string.settings_storage_body)) }
+    if (uiState.isLoaded) {
+        storageRows(uiState.storage)
+    } else {
+        item { Hint(text = stringResource(R.string.settings_storage_loading)) }
+    }
+}
+
+/**
+ * PRODUCT_SPEC 6.1 step 9 — a library row is a toggle, not a destination.
+ *
+ * There is no library screen to open: browsing happens on the shelf, and tapping here narrows it. The
+ * star says which library the app opens on, and tapping the starred one again clears the choice.
  */
 @Composable
 private fun LibraryRow(
@@ -134,48 +178,36 @@ private fun LibraryRow(
     onToggled: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val count = pluralStringResource(R.plurals.home_library_books, library.bookCount, library.bookCount)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .toggleable(value = isDefault, role = Role.Switch, onValueChange = onToggled)
+            .toggleable(value = isDefault, role = Role.Checkbox, onValueChange = onToggled)
             .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(text = library.name, style = MaterialTheme.typography.bodyLarge)
             Text(
-                text = count,
-                style = MaterialTheme.typography.bodyMedium,
+                text = pluralStringResource(R.plurals.home_library_books, library.bookCount, library.bookCount),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Icon(
             imageVector = if (isDefault) Icons.Filled.Star else Icons.Outlined.StarBorder,
-            // Null: the row already carries the name and the checked state, and a second description
-            // here would have TalkBack read the library twice.
             contentDescription = null,
-            tint = if (isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            tint = if (isDefault) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
         )
     }
 }
 
-@Composable
-private fun SectionHeader(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 4.dp),
-    )
-}
-
-@Composable
-private fun Hint(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-    )
+/** The two tabs, in the order they appear. `ordinal` is the selected index, so the order is the order. */
+private enum class SettingsTab(val labelRes: Int) {
+    Server(R.string.settings_tab_server),
+    About(R.string.settings_tab_about),
 }

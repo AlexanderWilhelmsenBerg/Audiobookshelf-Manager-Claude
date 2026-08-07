@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.auth.AuthToken
@@ -13,6 +14,7 @@ import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
 import com.example.shelfplayer.core.network.http.NetworkErrorMapper
@@ -103,7 +105,7 @@ class AbsLibraryContractTest {
             PROFILE,
             LIBRARY,
             onBatch = { batch -> batches += batch },
-            isUpToDate = { _, _ -> true },
+            cached = Cached(upToDate = true),
         )
 
         assertIs<AppResult.Success<LibrarySnapshot>>(result)
@@ -187,7 +189,7 @@ class AbsLibraryContractTest {
         server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_TWO],"total":2}"""))
         val batches = mutableListOf<List<BookSnapshot>>()
 
-        api().listBooks(PROFILE, LIBRARY, onBatch = { batch -> batches += batch }, isUpToDate = { _, _ -> true })
+        api().listBooks(PROFILE, LIBRARY, onBatch = { batch -> batches += batch }, cached = Cached(upToDate = true))
 
         assertEquals(2, server.requestCount, "two catalogue pages, and no expansion")
         assertEquals(listOf("One", "Two"), batches.map { it.single().book.title })
@@ -208,7 +210,7 @@ class AbsLibraryContractTest {
             MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE,$CATALOGUE_ROW_TWO],"total":2,"limit":0}"""),
         )
 
-        api().listBooks(PROFILE, LIBRARY, isUpToDate = { _, _ -> true })
+        api().listBooks(PROFILE, LIBRARY, cached = Cached(upToDate = true))
 
         assertEquals(1, server.requestCount, "everything arrived on the first page")
     }
@@ -599,6 +601,52 @@ class AbsLibraryContractTest {
         assertEquals(PROFILE, progress?.profileId)
         // Rounded to the nearest millisecond rather than truncated, so a position cannot creep backwards.
         assertEquals(4_500L, progress?.position?.inWholeMilliseconds)
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — the *Continue listening* shelf is expanded before the rest.
+     *
+     * Two items, the second of them in progress, and the second is fetched first. The catalogue order is
+     * the control: without the reordering the assertion below would read `item-1` and this test would be
+     * indistinguishable from no feature at all.
+     *
+     * It is only an ordering. Both items are still fetched, which the request count pins — a "priority"
+     * that quietly dropped the rest of the library would be a much worse bug than the one it fixed.
+     */
+    @Test
+    fun `books in progress are expanded before the rest of the library`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE,$CATALOGUE_ROW_TWO],"total":2}"""))
+        server.enqueue(ContractFixtures.response("library-item"))
+        server.enqueue(ContractFixtures.response("library-item"))
+
+        api().listBooks(PROFILE, LIBRARY, cached = Cached(inProgress = setOf("item-2")))
+
+        assertEquals(3, server.requestCount, "the catalogue and both items — nothing is dropped")
+        server.takeRequest()
+        assertTrue(server.takeRequest().path.orEmpty().contains("item-2"), "the started book comes first")
+        assertTrue(server.takeRequest().path.orEmpty().contains("item-1"))
+    }
+
+    /** With nothing started, the server's own catalogue order is left alone. */
+    @Test
+    fun `an account with nothing in progress keeps the catalogue order`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE,$CATALOGUE_ROW_TWO],"total":2}"""))
+        server.enqueue(ContractFixtures.response("library-item"))
+        server.enqueue(ContractFixtures.response("library-item"))
+
+        api().listBooks(PROFILE, LIBRARY)
+
+        server.takeRequest()
+        assertTrue(server.takeRequest().path.orEmpty().contains("item-1"))
+        assertTrue(server.takeRequest().path.orEmpty().contains("item-2"))
+    }
+
+    /** A cache the test dictates: what is already current, and what the user has started. */
+    private class Cached(private val upToDate: Boolean = false, private val inProgress: Set<String> = emptySet()) :
+        CachedLibrary {
+        override fun isUpToDate(id: LibraryItemId, updatedAt: Long?): Boolean = upToDate
+
+        override fun isInProgress(id: LibraryItemId): Boolean = id.value in inProgress
     }
 
     private class FakeConnectionResolver : ProfileConnectionResolver {

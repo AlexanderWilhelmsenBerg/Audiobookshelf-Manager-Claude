@@ -158,16 +158,15 @@ interface LibraryApi {
     /**
      * @param onBatch called with the catalogue rows first, then with each batch of expanded items, so
      *   the shelf is populated after one request rather than after N+1 (P1-31).
-     * @param isUpToDate asked, per item, whether the stored copy already matches the server's
-     *   `updatedAt` **and** already holds its tracks. Returning `true` skips that item's expanded
-     *   fetch. The default answers `false`, which is the safe direction: a caller that does not know
-     *   re-fetches rather than silently keeping a stale book.
+     * @param cached what the caller already holds, which decides what is skipped and what is fetched
+     *   first. The default knows nothing, which is the safe direction in both respects: everything is
+     *   re-fetched, in catalogue order.
      */
     suspend fun listBooks(
         profileId: ProfileId,
         libraryId: LibraryId,
         onBatch: suspend (List<BookSnapshot>) -> Unit = {},
-        isUpToDate: suspend (LibraryItemId, Long?) -> Boolean = { _, _ -> false },
+        cached: CachedLibrary = CachedLibrary.Unknown,
     ): AppResult<LibrarySnapshot>
 
     /**
@@ -184,4 +183,44 @@ interface LibraryApi {
      * 22.4). Those axes stay local-only until a capture covers them.
      */
     suspend fun searchBooks(profileId: ProfileId, libraryId: LibraryId, query: String): AppResult<List<BookSnapshot>>
+}
+
+/**
+ * PRODUCT_SPEC LIB-001 — what the caller already holds, so a sweep can skip work and reorder the rest.
+ *
+ * One object rather than two lambdas on [LibraryApi.listBooks] because they are one thing: both are
+ * answered from the same read of the local cache, both are supplied together or not at all, and a
+ * caller that knew one but not the other would be in an incoherent state. It also stops the signature
+ * growing a parameter every time the sweep learns to use another local fact.
+ *
+ * Neither method suspends. Both are answered from collections the caller materialised before the sweep
+ * started — a per-item database round trip inside the loop would cost more than the request it saves.
+ */
+interface CachedLibrary {
+    /**
+     * Whether the stored copy already matches the server's `updatedAt` **and** already holds its
+     * tracks, in which case the expanded fetch is skipped.
+     *
+     * Both sides must be known. "I cannot tell" has to mean "check", or an item that changed silently
+     * stays stale for the life of the cache.
+     */
+    fun isUpToDate(id: LibraryItemId, updatedAt: Long?): Boolean
+
+    /**
+     * Whether this is a book the user has started and not finished — the *Continue listening* shelf.
+     *
+     * These are expanded first. It is a pure reordering: the same items are fetched, and no request is
+     * added or removed, so it cannot make a refresh slower. What it changes is which shelf is correct
+     * soonest, and Continue listening is the one a returning user actually opens the app for.
+     */
+    fun isInProgress(id: LibraryItemId): Boolean
+
+    companion object {
+        /** A cache that knows nothing: re-fetch everything, in the order the server listed it. */
+        val Unknown = object : CachedLibrary {
+            override fun isUpToDate(id: LibraryItemId, updatedAt: Long?): Boolean = false
+
+            override fun isInProgress(id: LibraryItemId): Boolean = false
+        }
+    }
 }

@@ -30,6 +30,7 @@ import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
+import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.data.library.mapper.EntityMappers
 import com.example.shelfplayer.data.library.mapper.ProgressMappers
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -205,23 +206,11 @@ class DefaultLibraryRepository @Inject constructor(
                         // reconciliation decisions in one place rather than spread across batches.
                         writer.writeBooks(profileId, library, batch)
                     }
-                    // PRODUCT_SPEC LIB-001 — what is already expanded and current, asked once per
-                    // library rather than once per item. On a library nothing has changed in, this is
-                    // the difference between 490 round trips and none.
-                    val expanded = libraryDao
-                        .expandedBookStamps(
-                            profileId.value,
-                            EntityKey.of(library.serverId.value, library.id.value),
-                        )
-                        .associate { it.remoteId to it.remoteUpdatedAt }
-                    val isUpToDate: suspend (LibraryItemId, Long?) -> Boolean = { id, updatedAt ->
-                        // Both sides must be known. A stored book with no recorded revision, or a
-                        // catalogue row the server did not stamp, is re-fetched — "I cannot tell" has
-                        // to mean "check", or an item that changed silently stays stale forever.
-                        val stored = expanded[id.value]
-                        stored != null && updatedAt != null && stored == updatedAt
-                    }
-                    when (val books = gateway.library.listBooks(profileId, library.id, onBatch, isUpToDate)) {
+                    // PRODUCT_SPEC LIB-001 / LIB-002 — what the cache already holds, read once per
+                    // library rather than once per item. Two queries decide the whole shape of the
+                    // sweep: what can be skipped, and what is worth fetching first.
+                    val cached = cachedLibrary(profileId, library)
+                    when (val books = gateway.library.listBooks(profileId, library.id, onBatch, cached)) {
                         is AppResult.Failure -> {
                             recordFailure(profileId, books.error)
                             return@withContext books
@@ -304,6 +293,31 @@ class DefaultLibraryRepository @Inject constructor(
             )
             AppResult.Success(rows.size)
         }
+
+    /**
+     * PRODUCT_SPEC LIB-001 / LIB-002 — the two local facts a sweep uses, read once per library.
+     *
+     * **What to skip**: a book whose stored `remoteUpdatedAt` matches the catalogue's, and which already
+     * holds its tracks. Both sides must be known — a stored book with no recorded revision, or a
+     * catalogue row the server did not stamp, is re-fetched, because "I cannot tell" has to mean "check"
+     * or an item that changed silently stays stale forever.
+     *
+     * **What to fetch first**: the books on the *Continue listening* shelf.
+     */
+    private suspend fun cachedLibrary(profileId: ProfileId, library: Library): CachedLibrary {
+        val libraryKey = EntityKey.of(library.serverId.value, library.id.value)
+        val expanded = libraryDao.expandedBookStamps(profileId.value, libraryKey)
+            .associate { it.remoteId to it.remoteUpdatedAt }
+        val inProgress = libraryDao.inProgressBookIds(profileId.value, libraryKey).toSet()
+        return object : CachedLibrary {
+            override fun isUpToDate(id: LibraryItemId, updatedAt: Long?): Boolean {
+                val stored = expanded[id.value]
+                return stored != null && updatedAt != null && stored == updatedAt
+            }
+
+            override fun isInProgress(id: LibraryItemId): Boolean = id.value in inProgress
+        }
+    }
 
     /**
      * PRODUCT_SPEC LIB-002 — the server's hits, written where the cached ones already are.

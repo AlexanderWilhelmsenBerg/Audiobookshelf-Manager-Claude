@@ -3,7 +3,6 @@ package com.example.shelfplayer.data.auth
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.ServerCapabilities
@@ -19,6 +18,7 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
+import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 
@@ -111,7 +111,7 @@ internal class FakeAuthGateway :
             profileId: ProfileId,
             libraryId: LibraryId,
             onBatch: suspend (List<BookSnapshot>) -> Unit,
-            isUpToDate: suspend (LibraryItemId, Long?) -> Boolean,
+            cached: CachedLibrary,
         ): AppResult<LibrarySnapshot> = unsupported()
 
         override suspend fun searchBooks(

@@ -10,7 +10,6 @@ import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
@@ -29,6 +28,7 @@ import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.network.fixture.FixtureMapper
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
+import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import kotlinx.coroutines.CoroutineDispatcher
@@ -131,7 +131,7 @@ class FakeAudiobookshelfGateway @Inject constructor(
         profileId: ProfileId,
         libraryId: LibraryId,
         onBatch: suspend (List<BookSnapshot>) -> Unit,
-        isUpToDate: suspend (LibraryItemId, Long?) -> Boolean,
+        cached: CachedLibrary,
     ): AppResult<LibrarySnapshot> = requireProfile(profileId).flatMap {
         val result = withMapper { mapper -> mapper.books(libraryId, clock.now()) }
             .map { books -> LibrarySnapshot(books = books) }

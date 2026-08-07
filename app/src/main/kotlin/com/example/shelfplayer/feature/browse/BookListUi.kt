@@ -2,9 +2,11 @@ package com.example.shelfplayer.feature.browse
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -33,9 +35,12 @@ import kotlin.time.Duration
  * composable. Two copies would drift, and the first thing to drift would be the progress line — the
  * part a user checks against what they were actually listening to.
  *
- * The cover is a fixed-size thumbnail rather than a proportional one: a row whose height depends on
- * how its title wraps is a list that jitters as it scrolls. A book with no cover still gets the box,
- * so the text column starts in the same place on every row.
+ * The cover runs the **full height of the card**, flush to its left edge, and takes its size from the
+ * text beside it: `IntrinsicSize.Min` measures the text column first, and the square follows. A row
+ * with a series line is therefore taller and gets a larger cover, without either being told a number.
+ *
+ * A book with no cover still gets the box, so the text column starts in the same place on every row —
+ * a list where some rows indent and some do not is harder to scan than one with a few empty squares.
  */
 @Composable
 internal fun BookCard(
@@ -52,10 +57,17 @@ internal fun BookCard(
     membership: SeriesMembership? = book.seriesMemberships.firstOrNull(),
 ) {
     Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            // Measures the text column, then lets the cover fill that height. Without it,
+            // `fillMaxHeight` on the cover would resolve against an unbounded constraint.
+            modifier = Modifier.height(IntrinsicSize.Min),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             BookCoverThumbnail(book = book, modifier = Modifier.coverPadding())
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 16.dp, top = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(text = book.title, style = MaterialTheme.typography.titleMedium)

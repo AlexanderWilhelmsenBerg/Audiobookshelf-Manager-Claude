@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.resultOf
+import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
@@ -100,7 +101,7 @@ internal class AbsLibraryApi @Inject constructor(
         profileId: ProfileId,
         libraryId: LibraryId,
         onBatch: suspend (List<BookSnapshot>) -> Unit,
-        isUpToDate: suspend (LibraryItemId, Long?) -> Boolean,
+        cached: CachedLibrary,
     ): AppResult<LibrarySnapshot> = withConnection(profileId) { connection, service ->
         // Checked again rather than trusted from listLibraries: a caller can ask for any library id,
         // including one it never saw in a listing (a deep link, a stale cached id). PRODUCT_SPEC 15
@@ -130,7 +131,7 @@ internal class AbsLibraryApi @Inject constructor(
                     catalogue = catalogue.value,
                     onBatch = onBatch,
                     fetchedAt = fetchedAt,
-                    isUpToDate = isUpToDate,
+                    cached = cached,
                 )
             }
         }
@@ -263,16 +264,16 @@ internal class AbsLibraryApi @Inject constructor(
         catalogue: Catalogue,
         onBatch: suspend (List<BookSnapshot>) -> Unit,
         fetchedAt: Instant,
-        isUpToDate: suspend (LibraryItemId, Long?) -> Boolean,
+        cached: CachedLibrary,
     ): AppResult<LibrarySnapshot> {
         val ids = catalogue.ids
         val sweep = Sweep()
         var emitted = 0
         var skipped = 0
-        for (id in ids) {
+        for (id in expansionOrder(ids, cached)) {
             if (sweep.giveUp) {
                 sweep.skip()
-            } else if (isUpToDate(id, catalogue.stamps[id])) {
+            } else if (cached.isUpToDate(id, catalogue.stamps[id])) {
                 // PRODUCT_SPEC LIB-001 — the expensive half of a refresh, not done twice.
                 //
                 // The catalogue reports `updatedAt` per item. A stored book carrying the same stamp and
@@ -333,6 +334,37 @@ internal class AbsLibraryApi @Inject constructor(
                 visibleIds = ids,
             ),
         )
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — the *Continue listening* shelf is expanded before the rest of the library.
+     *
+     * Asked for from a device: the books that were started and not finished are the ones a returning
+     * user opens the app for, and on a large library they were arriving whenever the catalogue happened
+     * to list them.
+     *
+     * It is **only a reordering**. The same items are fetched, the same requests are made, and nothing
+     * is added or skipped — so a refresh cannot come out slower than it was. What changes is which shelf
+     * is complete first.
+     *
+     * `partition` is stable, so within each half the catalogue's own order survives. That matters for
+     * the second half: the server lists items in a deliberate order, and shuffling the remainder to make
+     * a point about the first few would be a worse trade than the one being made here.
+     *
+     * The very first sync of an empty cache has no progress to sort by and gets catalogue order, which
+     * is correct — there is no *Continue listening* shelf on an account that has not listened to
+     * anything.
+     */
+    private fun expansionOrder(ids: List<LibraryItemId>, cached: CachedLibrary): List<LibraryItemId> {
+        val (started, rest) = ids.partition(cached::isInProgress)
+        if (started.isEmpty()) return ids
+        logger.info(
+            LogCategory.Sync,
+            "Expanding in-progress books before the rest of the library",
+            LogField.Count("inProgress", started.size),
+            LogField.Count("total", ids.size),
+        )
+        return started + rest
     }
 
     /**

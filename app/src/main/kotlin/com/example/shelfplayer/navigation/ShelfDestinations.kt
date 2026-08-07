@@ -25,7 +25,6 @@ object ShelfDestinations {
     const val HOME = "home"
     const val PROFILES = "profiles"
     const val SETTINGS = "settings"
-    const val ABOUT = "about"
     const val BOOK = "book/{bookId}"
     const val SERIES = "series/{seriesId}"
 

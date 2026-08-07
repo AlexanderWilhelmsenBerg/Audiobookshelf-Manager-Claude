@@ -159,10 +159,15 @@
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->
     <string name="settings_title">Settings</string>
-    <!-- PRODUCT_SPEC SET-002 — the readings live behind About, not among the preferences. -->
-    <string name="settings_section_about">About</string>
-    <string name="settings_about_row">About and diagnostics</string>
-    <string name="about_title">About</string>
+    <!--
+      PRODUCT_SPEC SET-002 — two tabs, split by kind rather than by topic.
+
+      Server holds what the app is talking to and what it may open; About holds the readings. Keeping
+      them apart is what stops a screenful of diagnostics sitting between the user and the one
+      preference on this screen.
+    -->
+    <string name="settings_tab_server">Server</string>
+    <string name="settings_tab_about">About</string>
     <string name="about_section_app">ShelfPlayer</string>
     <string name="about_version">Version</string>
     <string name="about_phase">A work in progress. Playback and downloads are not built yet.</string>
@@ -192,6 +197,8 @@
     <string name="settings_server_socket_connecting">Connecting…</string>
     <string name="settings_server_socket_connected">Connected</string>
     <string name="settings_server_socket_disconnected">Disconnected — refreshing instead</string>
+    <!-- The one part of the server block that is a test reading, so it lives under About → Testing. -->
+    <string name="settings_section_capabilities">Capability handshake</string>
     <string name="settings_server_capabilities_hint">This server has been checked. Each feature below is used only where support was confirmed; anything not confirmed is treated as unsupported.</string>
     <string name="settings_server_no_handshake">This server has not been checked yet, so no feature list can be shown. Nothing is treated as supported until it has been checked.</string>
     <string name="settings_server_confirmed">Confirmed</string>
