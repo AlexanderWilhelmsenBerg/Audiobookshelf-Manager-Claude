@@ -52,7 +52,33 @@ dependencies {
 
     testImplementation(projects.core.testing)
     testImplementation(libs.turbine)
+    // PRODUCT_SPEC 17.1 — the UI tier, on the JVM.
+    //
+    // `ui-test-junit4` with Robolectric rather than an `androidTest` source set, so these run inside
+    // `verifyDebug` on every build and on every pull request. An instrumented tier needs an emulator,
+    // which this project's CI does not have, and a test suite nothing runs is not a regression net.
+    //
+    // What it can assert is the semantics tree — content descriptions, roles, toggleable state, merged
+    // nodes — which is exactly what a screen reader consumes. What it cannot assert is what a real
+    // device does with it: that is PRODUCT_SPEC 17.2's matrix, and it needs hardware.
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
 
-    androidTestImplementation(libs.androidx.test.ext.junit)
-    androidTestImplementation(libs.androidx.test.runner)
+/**
+ * PRODUCT_SPEC 17.1 — the rendered UI tier runs on the debug variant, and only there.
+ *
+ * `ui-test-manifest` is what declares the `ComponentActivity` that `createComposeRule` launches, and it
+ * is a `debugImplementation` on purpose: shipping a test activity in a release build would be a strange
+ * thing to do to fix a test. The release unit-test variant therefore has no activity to launch, and
+ * these classes are excluded from it rather than being made to pass by weakening the release build.
+ *
+ * Nothing is lost. The debug variant is what `verifyDebug` gates on and what CI runs, and the code under
+ * test is identical in both — a Compose semantics tree does not change with the build type.
+ */
+tasks.withType<Test>().configureEach {
+    if (name == "testReleaseUnitTest") {
+        exclude("**/*ScreenTest.class")
+    }
 }
