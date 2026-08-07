@@ -205,7 +205,23 @@ class DefaultLibraryRepository @Inject constructor(
                         // reconciliation decisions in one place rather than spread across batches.
                         writer.writeBooks(profileId, library, batch)
                     }
-                    when (val books = gateway.library.listBooks(profileId, library.id, onBatch)) {
+                    // PRODUCT_SPEC LIB-001 — what is already expanded and current, asked once per
+                    // library rather than once per item. On a library nothing has changed in, this is
+                    // the difference between 490 round trips and none.
+                    val expanded = libraryDao
+                        .expandedBookStamps(
+                            profileId.value,
+                            EntityKey.of(library.serverId.value, library.id.value),
+                        )
+                        .associate { it.remoteId to it.remoteUpdatedAt }
+                    val isUpToDate: suspend (LibraryItemId, Long?) -> Boolean = { id, updatedAt ->
+                        // Both sides must be known. A stored book with no recorded revision, or a
+                        // catalogue row the server did not stamp, is re-fetched — "I cannot tell" has
+                        // to mean "check", or an item that changed silently stays stale forever.
+                        val stored = expanded[id.value]
+                        stored != null && updatedAt != null && stored == updatedAt
+                    }
+                    when (val books = gateway.library.listBooks(profileId, library.id, onBatch, isUpToDate)) {
                         is AppResult.Failure -> {
                             recordFailure(profileId, books.error)
                             return@withContext books

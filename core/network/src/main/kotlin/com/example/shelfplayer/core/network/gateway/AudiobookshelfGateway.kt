@@ -2,6 +2,7 @@ package com.example.shelfplayer.core.network.gateway
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
@@ -154,9 +155,18 @@ interface LibraryApi {
      * catalogue and stay with the returned snapshot, because a partial view is exactly the thing that
      * must not be allowed to drive a deletion.
      */
+    /**
+     * @param onBatch called with the catalogue rows first, then with each batch of expanded items, so
+     *   the shelf is populated after one request rather than after N+1 (P1-31).
+     * @param isUpToDate asked, per item, whether the stored copy already matches the server's
+     *   `updatedAt` **and** already holds its tracks. Returning `true` skips that item's expanded
+     *   fetch. The default answers `false`, which is the safe direction: a caller that does not know
+     *   re-fetches rather than silently keeping a stale book.
+     */
     suspend fun listBooks(
         profileId: ProfileId,
         libraryId: LibraryId,
         onBatch: suspend (List<BookSnapshot>) -> Unit = {},
+        isUpToDate: suspend (LibraryItemId, Long?) -> Boolean = { _, _ -> false },
     ): AppResult<LibrarySnapshot>
 }

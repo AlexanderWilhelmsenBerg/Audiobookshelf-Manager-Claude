@@ -152,4 +152,28 @@ interface LibraryDao {
      */
     @Query("SELECT bookKey FROM profile_visible_books WHERE profileId = :profileId")
     suspend fun visibleBookKeys(profileId: String): List<String>
+
+    /**
+     * PRODUCT_SPEC LIB-001 — which books are already expanded, and at which server revision.
+     *
+     * "Expanded" is `EXISTS (a track)`, not a flag. A flag would have to be written correctly by every
+     * path that stores a book and would be wrong the first time one forgot; the tracks either are in
+     * the database or they are not, and that is the thing the sync actually needs to know.
+     *
+     * Scoped by visibility like every other read, so one profile's cache cannot answer for another's.
+     */
+    @Query(
+        """
+        SELECT books.remoteId AS remoteId, books.remoteUpdatedAt AS remoteUpdatedAt FROM books
+        INNER JOIN profile_visible_books ON profile_visible_books.bookKey = books.bookKey
+        WHERE profile_visible_books.profileId = :profileId
+          AND books.libraryKey = :libraryKey
+          AND books.isDeleted = 0
+          AND EXISTS (SELECT 1 FROM audio_tracks WHERE audio_tracks.bookKey = books.bookKey)
+        """,
+    )
+    suspend fun expandedBookStamps(profileId: String, libraryKey: String): List<ExpandedBookStamp>
 }
+
+/** One already-expanded book: its server id and the `updatedAt` the server reported when it was stored. */
+data class ExpandedBookStamp(val remoteId: String, val remoteUpdatedAt: Long?)

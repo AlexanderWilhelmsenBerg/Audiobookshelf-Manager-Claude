@@ -88,6 +88,47 @@ class AbsLibraryContractTest {
     // --- GET /api/libraries ------------------------------------------------------------------------
 
     /**
+     * PRODUCT_SPEC LIB-001 — an item the server reports unchanged is not fetched again.
+     *
+     * The expensive half of a refresh, skipped. Only **one** response is enqueued here: if the sweep
+     * tried to expand the item anyway, MockWebServer would hang or 404 and the assertion below would
+     * not hold. That absence is the test.
+     */
+    @Test
+    fun `an item whose stored copy matches the server revision is not re-fetched`() = runTest {
+        server.enqueue(ContractFixtures.response("library-items"))
+        val batches = mutableListOf<List<BookSnapshot>>()
+
+        val result = api().listBooks(
+            PROFILE,
+            LIBRARY,
+            onBatch = { batch -> batches += batch },
+            isUpToDate = { _, _ -> true },
+        )
+
+        assertIs<AppResult.Success<LibrarySnapshot>>(result)
+        assertEquals(1, server.requestCount, "the catalogue only — no expanded fetch")
+        assertEquals(1, batches.size, "the catalogue batch is still written")
+    }
+
+    /**
+     * "I cannot tell" has to mean "check".
+     *
+     * A stored book with no recorded revision, or a catalogue row the server did not stamp, must be
+     * re-fetched — otherwise an item that changed silently stays stale for the life of the cache. The
+     * predicate the repository supplies returns `false` for both, and this pins the default.
+     */
+    @Test
+    fun `an item with no known revision is fetched`() = runTest {
+        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.response("library-item"))
+
+        api().listBooks(PROFILE, LIBRARY, onBatch = {})
+
+        assertEquals(2, server.requestCount, "the default predicate re-fetches")
+    }
+
+    /**
      * PRODUCT_SPEC LIB-001 / P1-31 — the shelf is populated by the **first** response, not the last.
      *
      * The catalogue batch arrives before any item is expanded. That is the whole point: on the 490-book
@@ -103,7 +144,7 @@ class AbsLibraryContractTest {
         server.enqueue(ContractFixtures.response("library-item"))
         val batches = mutableListOf<List<BookSnapshot>>()
 
-        api().listBooks(PROFILE, LIBRARY) { batch -> batches += batch }
+        api().listBooks(PROFILE, LIBRARY, onBatch = { batch -> batches += batch })
 
         val first = batches.first()
         assertEquals(1, first.size, "the catalogue response carried one item")
@@ -127,7 +168,7 @@ class AbsLibraryContractTest {
         repeat(RETRY_ATTEMPTS) { server.enqueue(MockResponse().setResponseCode(503)) }
         val batches = mutableListOf<List<BookSnapshot>>()
 
-        api().listBooks(PROFILE, LIBRARY) { batch -> batches += batch }
+        api().listBooks(PROFILE, LIBRARY, onBatch = { batch -> batches += batch })
 
         val book = batches.first().single().book
         assertEquals(listOf("Fiction"), book.genres)

@@ -100,6 +100,7 @@ internal class AbsLibraryApi @Inject constructor(
         profileId: ProfileId,
         libraryId: LibraryId,
         onBatch: suspend (List<BookSnapshot>) -> Unit,
+        isUpToDate: suspend (LibraryItemId, Long?) -> Boolean,
     ): AppResult<LibrarySnapshot> = withConnection(profileId) { connection, service ->
         // Checked again rather than trusted from listLibraries: a caller can ask for any library id,
         // including one it never saw in a listing (a deep link, a stale cached id). PRODUCT_SPEC 15
@@ -120,6 +121,9 @@ internal class AbsLibraryApi @Inject constructor(
                 LibraryMapper.toItemIds(response).map { ids ->
                     Catalogue(
                         ids = ids,
+                        stamps = response.results.mapNotNull { item ->
+                            item.id?.takeIf(String::isNotBlank)?.let { LibraryItemId(it) to item.updatedAt }
+                        }.toMap(),
                         browsable = LibraryMapper.toCatalogueSnapshots(
                             serverId = connection.serverId,
                             libraryId = libraryId,
@@ -142,7 +146,13 @@ internal class AbsLibraryApi @Inject constructor(
                     LogField.Count("browsable", catalogue.value.browsable.size),
                     LogField.Count("toExpand", catalogue.value.ids.size),
                 )
-                snapshots(connection, libraryId, service, bearer, catalogue.value.ids, onBatch, fetchedAt)
+                snapshots(
+                    target = Target(connection, libraryId, service, bearer),
+                    catalogue = catalogue.value,
+                    onBatch = onBatch,
+                    fetchedAt = fetchedAt,
+                    isUpToDate = isUpToDate,
+                )
             }
         }
     }
@@ -160,21 +170,33 @@ internal class AbsLibraryApi @Inject constructor(
      * server that answered nothing must not read as a library with no books in it.
      */
     private suspend fun snapshots(
-        connection: ProfileConnection,
-        libraryId: LibraryId,
-        service: LibraryService,
-        bearer: String,
-        ids: List<LibraryItemId>,
+        target: Target,
+        catalogue: Catalogue,
         onBatch: suspend (List<BookSnapshot>) -> Unit,
         fetchedAt: Instant,
+        isUpToDate: suspend (LibraryItemId, Long?) -> Boolean,
     ): AppResult<LibrarySnapshot> {
+        val ids = catalogue.ids
         val sweep = Sweep()
         var emitted = 0
+        var skipped = 0
         for (id in ids) {
             if (sweep.giveUp) {
                 sweep.skip()
+            } else if (isUpToDate(id, catalogue.stamps[id])) {
+                // PRODUCT_SPEC LIB-001 — the expensive half of a refresh, not done twice.
+                //
+                // The catalogue reports `updatedAt` per item. A stored book carrying the same stamp and
+                // already holding its tracks is, by the server's own account, unchanged — so fetching it
+                // again buys nothing and costs a round trip. On a library that has not been edited since
+                // the last sync this turns 490 requests into none, which is the whole difference between
+                // a refresh that takes minutes and one that returns at once.
+                //
+                // It is the *server's* timestamp that decides, never a local clock: a device with a
+                // wrong date must not be able to convince the app that a changed book is current.
+                skipped++
             } else {
-                sweep.record(fetchItem(connection, libraryId, service, bearer, id, fetchedAt))
+                sweep.record(fetchItem(target, id, fetchedAt))
             }
             // Handed over in batches rather than per item: one transaction per book on a 490-book
             // library is 490 transactions, and the shelf cannot redraw that fast anyway. Twenty is
@@ -195,13 +217,21 @@ internal class AbsLibraryApi @Inject constructor(
                 LogField.Count("unreachable", sweep.unreachable),
             )
         }
+        if (skipped > 0) {
+            logger.info(
+                LogCategory.Sync,
+                "Skipped items the server reports unchanged",
+                LogField.Count("skipped", skipped),
+                LogField.Count("fetched", ids.size - skipped),
+            )
+        }
         logCounts(sweep.removed, sweep.unreachable, ids.size)
         val failure = sweep.firstFailure
         // Nothing expanded and something went wrong. Still a failure — the caller uses it to decide
         // whether absence may mean deletion, and it must never conclude "deleted" from a dead
         // connection. The user is not left with nothing, though: the catalogue rows are already
         // written and browsable, which is the difference this pass made.
-        if (sweep.books.isEmpty() && failure != null) return AppResult.Failure(failure)
+        if (sweep.books.isEmpty() && failure != null && skipped == 0) return AppResult.Failure(failure)
         return AppResult.Success(
             LibrarySnapshot(
                 books = sweep.books,
@@ -223,14 +253,11 @@ internal class AbsLibraryApi @Inject constructor(
      * about the item that the repository may act on, and a failure is a fact about this attempt that it
      * must not.
      */
-    private suspend fun fetchItem(
-        connection: ProfileConnection,
-        libraryId: LibraryId,
-        service: LibraryService,
-        bearer: String,
-        id: LibraryItemId,
-        fetchedAt: java.time.Instant,
-    ): ItemOutcome {
+    private suspend fun fetchItem(target: Target, id: LibraryItemId, fetchedAt: Instant): ItemOutcome {
+        val service = target.service
+        val bearer = target.bearer
+        val connection = target.connection
+        val libraryId = target.libraryId
         val response = retries.readOnly("getItem") {
             val attempt = service.item(bearer, id.value)
             // A 404 leaves the retry loop by counting as a success here: the item is gone, and asking
@@ -284,8 +311,27 @@ internal class AbsLibraryApi @Inject constructor(
      * data and no correctness. Any success resets the count, because a library with a few scattered bad
      * items is a different situation from a library behind a dead server.
      */
+    /**
+     * Everything an item fetch needs that does not vary per item.
+     *
+     * The four travelled together through every signature in this file, which is what pushed the sweep
+     * past the parameter limit. Bundling them is not only a count fix: they are one thing — the
+     * connection this sweep is running over.
+     */
+    private data class Target(
+        val connection: ProfileConnection,
+        val libraryId: LibraryId,
+        val service: LibraryService,
+        val bearer: String,
+    )
+
     /** One catalogue response, read twice: for what to expand, and for what to show meanwhile. */
-    private data class Catalogue(val ids: List<LibraryItemId>, val browsable: List<BookSnapshot>)
+    private data class Catalogue(
+        val ids: List<LibraryItemId>,
+        val browsable: List<BookSnapshot>,
+        /** `updatedAt` per item, which is how an unchanged item is recognised without fetching it. */
+        val stamps: Map<LibraryItemId, Long?>,
+    )
 
     private class Sweep {
         val books = mutableListOf<BookSnapshot>()
