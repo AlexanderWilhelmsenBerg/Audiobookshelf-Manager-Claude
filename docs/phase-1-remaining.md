@@ -257,7 +257,13 @@ playback steps belong to Phase 2.
 
 ### Browsing completeness
 
-- **P1-14 — Cover art.** Wire Coil, authenticate image requests without putting a token in a URL, cache
+- **P1-14 — Cover art.** *Blocked on a capture, like the socket was.* The item response carries
+  `media.coverPath`, which is the path on the **server's filesystem** (`/audiobooks/Some Book/cover.jpg`)
+  — not a URL, and PRODUCT_SPEC 3.4 rules out reaching a server's filesystem, so it cannot become one.
+  The endpoint that serves the image, `GET /api/items/{id}/cover`, has never been observed. It is now a
+  capture target (headers only — a JPEG in a fixture proves nothing a content type does not, and
+  PRODUCT_SPEC 14.5 keeps private media out of the repository). Once its shape is committed: Coil, an
+  authenticated image loader, and Wire Coil, authenticate image requests without putting a token in a URL, cache
   for offline (LIB-001, LIB-004).
 - **P1-15 — Series browse.** Group by series, open a series into its ordered books (LIB-003, TC-16).
 - **P1-16 — Remaining browse axes:** recently added, continue listening, downloaded, author, genre;

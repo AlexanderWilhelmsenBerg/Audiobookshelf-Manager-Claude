@@ -304,6 +304,35 @@ else
   exit 1
 fi
 
+# --- Cover art -------------------------------------------------------------------------------------
+#
+# PRODUCT_SPEC LIB-001 ("initial sync stores … covers") and LIB-004. No build has ever rendered one,
+# and the reason is here: the item response carries `media.coverPath`, which is the path on the
+# *server's* filesystem — `/audiobooks/Some Book/cover.jpg`. It is not a URL, and PRODUCT_SPEC 3.4
+# rules out reaching a server's filesystem directly, so it cannot become one.
+#
+# The endpoint that serves the image has never been captured. This records its response *shape* — the
+# status and the content type — which is the whole of what an image pipeline needs to know. The bytes
+# are deliberately not committed: a JPEG in a contract fixture proves nothing a content type does not,
+# and PRODUCT_SPEC 14.5 keeps private media out of the repository.
+log "recording the cover endpoint's shape (headers only, never the image)"
+COVER_META="$(curl -sS -o /dev/null "$BASE_URL/api/items/$ITEM_ID/cover" -H "$AUTH_HEADER" \
+  -w '%{http_code} %{content_type}')"
+python3 -c '
+import json, sys
+out_path, meta = sys.argv[1], sys.argv[2]
+status, _, content_type = meta.partition(" ")
+envelope = {
+    "status": int(status or 0),
+    "contentType": (content_type or "").split(";")[0] or None,
+    "bodyKind": "binary-not-recorded",
+    "note": "GET /api/items/{id}/cover. Bytes deliberately not committed; the shape is the contract.",
+}
+with open(out_path, "w") as handle:
+    json.dump(envelope, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+' "$OUT_DIR/item-cover.json" "$COVER_META"
+
 # --- Media progress -------------------------------------------------------------------------------
 #
 # PRODUCT_SPEC LIB-001 / SYNC-002 and acceptance case TC-10: progress played on another device does not
