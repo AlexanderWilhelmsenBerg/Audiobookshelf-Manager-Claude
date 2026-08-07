@@ -25,6 +25,7 @@ import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.library.SeriesProgress
+import com.example.shelfplayer.feature.browse.BookCover
 
 /**
  * PRODUCT_SPEC LIB-002 — the three horizontal shelves the app opens on.
@@ -64,6 +65,27 @@ internal fun LazyListScope.homeShelves(
             )
         }
     }
+    // Last on purpose. The first three answer "what was I doing"; these two answer "what now", which is
+    // the question a user only reaches once the first three have failed to interest them — except on a
+    // brand-new account, where the first three are absent and these are the whole screen.
+    if (shelves.listenAgain.isNotEmpty()) {
+        item(key = "shelf-again") {
+            BookShelfRow(
+                titleRes = R.string.shelf_listen_again,
+                books = shelves.listenAgain,
+                onBookSelected = onBookSelected,
+            )
+        }
+    }
+    if (shelves.discover.isNotEmpty()) {
+        item(key = "shelf-discover") {
+            BookShelfRow(
+                titleRes = R.string.shelf_discover,
+                books = shelves.discover,
+                onBookSelected = onBookSelected,
+            )
+        }
+    }
 }
 
 @Composable
@@ -85,6 +107,7 @@ private fun BookShelfRow(
                     subtitle = book.authors.firstOrNull()?.name,
                     progress = book.progress?.fractionComplete?.takeIf { book.progress?.isFinished == false },
                     onClick = { onBookSelected(book.id) },
+                    cover = { BookCover(book = book) },
                 )
             }
         }
@@ -120,6 +143,9 @@ private fun SeriesShelfRow(
                     ),
                     progress = entry.finishedCount.toFloat() / entry.bookCount.toFloat(),
                     onClick = { onSeriesSelected(entry.series.id) },
+                    // The next book's cover stands for the series. A series has no artwork of its own,
+                    // and the book the user would actually start is the most useful thing to show.
+                    cover = { BookCover(book = entry.nextBook) },
                 )
             }
         }
@@ -130,9 +156,8 @@ private fun SeriesShelfRow(
  * A fixed-width card, because a `LazyRow` of intrinsically sized cards jumps as it scrolls: each new
  * item measures its own title and the row's rhythm changes under the finger.
  *
- * There is no cover on it yet. That is P1-14, still blocked on a contract capture — see
- * `docs/api-compatibility.md`. The card is laid out so an image slot can be added above the title
- * without the row's geometry changing.
+ * The cover is a slot rather than a `Book`, because the series shelf shows the *next book's* cover for
+ * a row whose subject is a series.
  */
 @Composable
 private fun ShelfCard(
@@ -141,12 +166,14 @@ private fun ShelfCard(
     progress: Float?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    cover: @Composable () -> Unit = {},
 ) {
     Card(onClick = onClick, modifier = modifier.width(SHELF_CARD_WIDTH)) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            cover()
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,

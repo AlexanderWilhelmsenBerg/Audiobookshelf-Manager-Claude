@@ -136,6 +136,36 @@ class HomeShelvesTest {
     @Test
     fun `an account with nothing in it produces no shelves at all`() {
         assertTrue(homeShelvesOf(emptyList()).isEmpty)
-        assertTrue(homeShelvesOf(listOf(book(id = "b1"))).isEmpty, "one untouched, undated book is not a shelf")
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — a brand-new account still gets a home screen.
+     *
+     * This is what *Discover* is for. Continue listening and Continue a series are both structurally
+     * empty on day one, and Recently added needs a server date the first sync may not have fetched —
+     * so without this shelf the first thing a new user sees is nothing at all.
+     */
+    @Test
+    fun `an untouched, undated book still fills the discover shelf`() {
+        val shelves = homeShelvesOf(listOf(book(id = "b1", title = "Untouched")))
+
+        assertEquals(listOf("Untouched"), shelves.discover.map { it.title })
+        assertTrue(shelves.continueListening.isEmpty())
+        assertTrue(shelves.recentlyAdded.isEmpty(), "no added date, so not on that shelf")
+    }
+
+    /** A finished book leaves *continue listening* and appears on *listen again*, not both. */
+    @Test
+    fun `a finished book moves to listen again`() {
+        val shelves = homeShelvesOf(
+            listOf(
+                book(id = "b1", title = "Finished", playedAt = at(20), isFinished = true),
+                book(id = "b2", title = "Started", playedAt = at(10)),
+            ),
+        )
+
+        assertEquals(listOf("Finished"), shelves.listenAgain.map { it.title })
+        assertEquals(listOf("Started"), shelves.continueListening.map { it.title })
+        assertTrue(shelves.discover.isEmpty(), "both have progress, so neither is a discovery")
     }
 }

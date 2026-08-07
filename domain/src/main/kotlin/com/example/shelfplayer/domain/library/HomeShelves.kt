@@ -19,12 +19,18 @@ data class HomeShelves(
     val continueListening: List<Book>,
     val continueSeries: List<SeriesProgress>,
     val recentlyAdded: List<Book>,
+    val discover: List<Book>,
+    val listenAgain: List<Book>,
 ) {
     val isEmpty: Boolean
-        get() = continueListening.isEmpty() && continueSeries.isEmpty() && recentlyAdded.isEmpty()
+        get() = continueListening.isEmpty() &&
+            continueSeries.isEmpty() &&
+            recentlyAdded.isEmpty() &&
+            discover.isEmpty() &&
+            listenAgain.isEmpty()
 
     companion object {
-        val Empty = HomeShelves(emptyList(), emptyList(), emptyList())
+        val Empty = HomeShelves(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
     }
 }
 
@@ -53,7 +59,37 @@ fun homeShelvesOf(books: List<Book>, limit: Int = SHELF_LIMIT): HomeShelves = Ho
     continueListening = continueListening(books, limit),
     continueSeries = continueSeries(books, limit),
     recentlyAdded = recentlyAdded(books, limit),
+    discover = discover(books, limit),
+    listenAgain = listenAgain(books, limit),
 )
+
+/**
+ * PRODUCT_SPEC LIB-002 — something to start, from the part of the library the user has never touched.
+ *
+ * Both reference clients carry a shelf like this ("Discover"), and it is the one that keeps a home
+ * screen useful for an account with nothing in progress — which is every account on its first day.
+ *
+ * The order is **stable but arbitrary**: books are ranked by a hash of their id, so the shelf looks
+ * shuffled and yet renders identically on every recomposition. A real `shuffled()` would reorder the
+ * row under the user's finger every time Room emitted, which is the kind of motion that reads as a
+ * bug. It changes when the library changes, which is often enough for a discovery shelf.
+ */
+private fun discover(books: List<Book>, limit: Int): List<Book> = books
+    .filter { it.progress == null }
+    .sortedWith(compareBy({ it.id.value.hashCode() }, { it.id.value }))
+    .take(limit)
+
+/**
+ * Finished, most recently finished first.
+ *
+ * Deliberately separate from *continue listening*, which excludes finished books on purpose. This is
+ * the other half of that decision: a book you finished is not something to resume, but it is
+ * something you might want again, and hiding it entirely loses the only trace of what you have read.
+ */
+private fun listenAgain(books: List<Book>, limit: Int): List<Book> = books
+    .filter { it.progress?.isFinished == true }
+    .sortedWith(compareByDescending<Book> { it.progress?.updatedAt ?: Instant.MIN }.thenBy { it.id.value })
+    .take(limit)
 
 /** Started and not finished, most recently played first — the same predicate [BookFilter] uses. */
 private fun continueListening(books: List<Book>, limit: Int): List<Book> =

@@ -38,6 +38,8 @@
     <string name="shelf_continue_listening">Continue listening</string>
     <string name="shelf_continue_series">Continue a series</string>
     <string name="shelf_recently_added">Recently added</string>
+    <string name="shelf_listen_again">Listen again</string>
+    <string name="shelf_discover">Discover</string>
     <!-- %1$s is the next book\'s title, %2$s an already-formatted progress phrase such as "2 of 7 done". -->
     <string name="shelf_series_next">Next: %1$s · %2$s</string>
     <string name="home_no_matches_title">No matches</string>

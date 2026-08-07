@@ -3,6 +3,7 @@ package com.example.shelfplayer.feature.browse
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
@@ -13,6 +14,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -31,9 +33,9 @@ import kotlin.time.Duration
  * composable. Two copies would drift, and the first thing to drift would be the progress line — the
  * part a user checks against what they were actually listening to.
  *
- * Cover art is deliberately absent: PRODUCT_SPEC LIB-001 syncs covers and LIB-004 shows them, but a
- * cover on an Audiobookshelf server is an authenticated request, and wiring the session token into the
- * image loader is its own slice of work rather than a detail of this list.
+ * The cover is a fixed-size thumbnail rather than a proportional one: a row whose height depends on
+ * how its title wraps is a list that jitters as it scrolls. A book with no cover still gets the box,
+ * so the text column starts in the same place on every row.
  */
 @Composable
 internal fun BookCard(
@@ -50,30 +52,33 @@ internal fun BookCard(
     membership: SeriesMembership? = book.seriesMemberships.firstOrNull(),
 ) {
     Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(text = book.title, style = MaterialTheme.typography.titleMedium)
-            book.authors.firstOrNull()?.let { author ->
-                Text(
-                    text = author.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            BookCoverThumbnail(book = book, modifier = Modifier.coverPadding())
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(text = book.title, style = MaterialTheme.typography.titleMedium)
+                book.authors.firstOrNull()?.let { author ->
+                    Text(
+                        text = author.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                membership?.let { inSeries ->
+                    Text(
+                        text = stringResource(
+                            R.string.book_series_position,
+                            inSeries.series.name,
+                            inSeries.sequence.raw.ifEmpty { "—" },
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                BookProgressLine(book)
             }
-            membership?.let { inSeries ->
-                Text(
-                    text = stringResource(
-                        R.string.book_series_position,
-                        inSeries.series.name,
-                        inSeries.sequence.raw.ifEmpty { "—" },
-                    ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            BookProgressLine(book)
         }
     }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.ThemeMode
+import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,10 +25,14 @@ class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileR
     val state: StateFlow<AppUiState> = combine(
         settings.settings,
         profileRepository.observeProfiles(),
-    ) { stored, profiles ->
+        profileRepository.observeServers(),
+    ) { stored, profiles, servers ->
         AppUiState(
             themeMode = stored.themeMode,
             dynamicColor = stored.dynamicColor,
+            // PRODUCT_SPEC LIB-004 — the addresses cover URLs are built from. Held app-wide because a
+            // cover is rendered on every shelf and the address belongs to the server row, not the book.
+            serverBaseUrls = servers.associate { it.id to it.baseUrl },
             // PRODUCT_SPEC 6.1 / AUTH-002 — observed rather than read once, so that removing the last
             // profile sends the user back to onboarding instead of leaving them on an unusable home.
             hasAnyProfile = profiles.isNotEmpty(),
@@ -58,6 +63,8 @@ class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileR
 data class AppUiState(
     val themeMode: ThemeMode = ThemeMode.THEME_MODE_SYSTEM,
     val dynamicColor: Boolean = false,
+    /** PRODUCT_SPEC LIB-004 — server id to base address, for resolving cover URLs. */
+    val serverBaseUrls: Map<ServerId, String> = emptyMap(),
     val hasAnyProfile: Boolean = false,
     val isResolved: Boolean = false,
 ) {
