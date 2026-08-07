@@ -130,7 +130,63 @@ rather than as a list of strings.
 
 ---
 
+## Measured on a device — 0.1.9
+
+The two numbers the whole of P1-31 and D1 were for, reported from a real library:
+
+| | Result |
+| --- | --- |
+| Time until the first book appeared, clean sign-in | **Before it could be counted** |
+| Second refresh, over an unchanged library | **About one second** |
+
+That is two of PRODUCT_SPEC 17.3's thresholds met in the field — "cached library screen interactive
+under one second" and, by implication, the refresh cost the N+1 was blocking. It is **not** the whole of
+**P1-27**: the 2,000-item scroll fixture and the profile-switch timing are still unmeasured, and both
+need a fixture this project does not have yet.
+
+---
+
+## Can Phase 1 be closed? — audited 2026-08-07, against the tree
+
+### The three contractual exit criteria are met
+
+PRODUCT_SPEC's Phase 1 exit criteria are exactly three, and each has both automated and device evidence:
+
+| Criterion | Evidence |
+| --- | --- |
+| Two accounts on one server can switch | `ProfileSwitcherViewModelTest`, `SwitchProfileUseCaseTest`, `DefaultLibraryRepositoryTest`'s per-profile progress and visibility tests; device cases TC-30…TC-35, G-25 |
+| Offline cached browse works | `HomeViewModelTest`'s offline-versus-error cases, the Room-only read path in `DefaultLibraryRepository`; device cases E-25…E-29, G-16, G-21 |
+| Unauthorized libraries never appear | Enforced in `AbsLibraryApi.accessible` *before* anything is written, plus the visibility join on every read; `AbsLibraryContractTest`, `DefaultLibraryRepositoryTest`, and the stored-versus-visible counts on the About tab that make it checkable on a device |
+
+### Four cross-cutting requirements are not met
+
+These are not Phase 1 exit criteria. They are requirements the whole repository is subject to, and
+Phase 1's code is the code that would be covered by them, so closing the phase with them open is a
+decision rather than an oversight.
+
+| # | Requirement | State |
+| --- | --- | --- |
+| **P1-24** | 17.1 UI test tier — login, profile switching, offline home, TalkBack semantics, large-font and landscape/tablet layouts | **No `androidTest` source set exists anywhere.** `verifyDebug` does not compile one either, so this gap is invisible to the gate. The listed surfaces are all Phase 1 surfaces. |
+| **P1-25** | 17.3 coverage — 80% domain/core, 90% for security and deletion policy | **No coverage tooling at all.** Neither number is measured, so neither can be claimed. 35 test classes exist; what fraction they cover is unknown. |
+| **P1-26** | 16.1 dependency verification | `gradle.properties` is `off` and `verification-metadata.xml` has **0** components. The policy file and bootstrap script are written; the checksums need one network-complete build. |
+| **P1-29** | Localisation — `values-nb` | Only `values` and `values-night` exist. |
+
+### And two API gaps that are not ours to close
+
+**D4** (collections) and **D7** (OpenID) are blocked on the capture server, not on the code. Both are
+recorded above with the action that unblocks each.
+
+### The recommendation
+
+The phase's own criteria are met and the product works. The four gaps above are quality-gate debt, and
+**P1-24 is the one with real risk in it**: TalkBack semantics and large-font layouts are correctness
+properties of screens that have only ever been checked by hand, and hand-checking does not survive the
+next change. Closing Phase 1 without it means Phase 2 inherits a UI with no regression net under it.
+
+---
+
 ## Done since the original audit
 
 P1-01 … P1-19, P1-21, P1-22, P1-23, P1-31, D1, D2, D3, D5. **P1-12** was found already satisfied by
-`SyncAccountUseCase`, which revalidates on every `onVisible()`.
+`SyncAccountUseCase`, which revalidates on every `onVisible()`. **P1-30** is half done: TC-36 is struck,
+and TC-04, TC-06, TC-47, TC-52 and TC-53 have still never been run.
