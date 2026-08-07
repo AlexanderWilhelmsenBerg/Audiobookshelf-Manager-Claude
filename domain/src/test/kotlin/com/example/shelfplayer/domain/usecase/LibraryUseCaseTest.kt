@@ -345,6 +345,35 @@ class LibraryUseCaseTest {
         assertEquals(1, libraries.refreshedProfiles.size)
     }
 
+    // --- PRODUCT_SPEC LIB-002: the server half of search -------------------------------------------
+
+    @Test
+    fun `a server search names the active profile`() = runTest {
+        val libraries = FakeLibraryRepository().apply { serverSearchResult = AppResult.Success(3) }
+
+        val result = SearchServerUseCase(FakeProfileRepository(), libraries)("salt")
+
+        assertEquals(AppResult.Success(3), result)
+        assertEquals(listOf("salt"), libraries.serverQueries)
+    }
+
+    /**
+     * Signed out, a search that already worked must not turn into an error.
+     *
+     * Unlike a refresh, nothing the user asked for has failed here: they typed into a field and the
+     * cached matches appeared. Reporting a failure would put a banner over a search that worked, which
+     * is why this returns success with nothing found rather than [AppError.Authentication].
+     */
+    @Test
+    fun `a server search without a profile is quietly nothing found`() = runTest {
+        val libraries = FakeLibraryRepository()
+
+        val result = SearchServerUseCase(FakeProfileRepository(active = null), libraries)("salt")
+
+        assertEquals(AppResult.Success(0), result)
+        assertTrue(libraries.serverQueries.isEmpty(), "no profile, so no server to ask")
+    }
+
     private fun refreshUseCase(libraries: FakeLibraryRepository, auth: FakeAuthRepository = FakeAuthRepository()) =
         RefreshLibraryUseCase(FakeProfileRepository(), libraries, auth)
 }

@@ -54,6 +54,33 @@ internal data class LibraryItemsResponseDto(
     val limit: Int = 0,
 )
 
+/**
+ * `GET /api/libraries/{id}/search?q=`, captured as `library-search.json`.
+ *
+ * ### Only `book`
+ *
+ * The response is an object of six arrays — `authors`, `book`, `genres`, `narrators`, `series`,
+ * `tags`. On the capture server only `book` came back populated; the other five were `[]`, so their
+ * element shapes are **unverified** and PRODUCT_SPEC 22.4 forbids inventing them. They are not declared
+ * here, and `ignoreUnknownKeys` discards them. When a capture with an author or series hit exists, they
+ * can be added; until then a missing field would be a guess.
+ *
+ * ### `book[].libraryItem` is the expanded shape
+ *
+ * Unlike `…/items`, a search hit carries `media.tracks`, `media.chapters`, `metadata.authors` and
+ * `metadata.series` — the fixture confirms all four. So a hit maps through the same
+ * [LibraryMapper.toSnapshot] as a fetched item and needs no follow-up request.
+ *
+ * It does **not** carry `userMediaProgress`: the endpoint takes no `include` parameter and the capture
+ * has no such key. A search result therefore maps with `progress = null`, which the writer skips rather
+ * than storing — a search must never be able to erase a listening position (product priority 2).
+ */
+@Serializable
+internal data class LibrarySearchResponseDto(val book: List<LibrarySearchBookDto> = emptyList())
+
+@Serializable
+internal data class LibrarySearchBookDto(val libraryItem: LibraryItemDto? = null)
+
 @Serializable
 internal data class LibraryItemDto(
     val id: String? = null,

@@ -115,39 +115,18 @@ internal class AbsLibraryApi @Inject constructor(
         }
         val bearer = bearerOf(connection.accessToken.value)
         val fetchedAt = clock.now()
-        val catalogue = retries.readOnly("listItems") {
-            service.items(bearer, libraryId.value).toResult { body ->
-                val response = body ?: LibraryItemsResponseDto()
-                LibraryMapper.toItemIds(response).map { ids ->
-                    Catalogue(
-                        ids = ids,
-                        stamps = response.results.mapNotNull { item ->
-                            item.id?.takeIf(String::isNotBlank)?.let { LibraryItemId(it) to item.updatedAt }
-                        }.toMap(),
-                        browsable = LibraryMapper.toCatalogueSnapshots(
-                            serverId = connection.serverId,
-                            libraryId = libraryId,
-                            dto = response,
-                            fetchedAt = fetchedAt,
-                        ),
-                    )
-                }
-            }
-        }
-        when (catalogue) {
+        val target = Target(connection, libraryId, service, bearer)
+        when (val catalogue = catalogue(target, fetchedAt, onBatch)) {
             is AppResult.Failure -> catalogue
             is AppResult.Success -> {
-                // Before a single item is expanded. This is the whole of P1-31: one round trip, and the
-                // user has a library.
-                if (catalogue.value.browsable.isNotEmpty()) onBatch(catalogue.value.browsable)
                 logger.info(
                     LogCategory.Sync,
                     "Catalogue written; expanding items",
-                    LogField.Count("browsable", catalogue.value.browsable.size),
+                    LogField.Count("browsable", catalogue.value.browsable),
                     LogField.Count("toExpand", catalogue.value.ids.size),
                 )
                 snapshots(
-                    target = Target(connection, libraryId, service, bearer),
+                    target = target,
                     catalogue = catalogue.value,
                     onBatch = onBatch,
                     fetchedAt = fetchedAt,
@@ -155,6 +134,116 @@ internal class AbsLibraryApi @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — the server's answer, for what the cache could not answer.
+     *
+     * Access is re-checked here for the same reason [listBooks] re-checks it: a library id reaching this
+     * method has not necessarily come from a listing this profile was shown.
+     */
+    override suspend fun searchBooks(
+        profileId: ProfileId,
+        libraryId: LibraryId,
+        query: String,
+    ): AppResult<List<BookSnapshot>> = withConnection(profileId) { connection, service ->
+        if (!connection.access.allows(libraryId)) {
+            return@withConnection AppResult.Failure(
+                AppError.Authorization(
+                    summary = "This account is not allowed to see that library.",
+                    missingPermission = "library.read",
+                ),
+            )
+        }
+        val fetchedAt = clock.now()
+        retries.readOnly("searchLibrary") {
+            service
+                .search(bearerOf(connection.accessToken.value), libraryId.value, query, SEARCH_LIMIT)
+                .toResult { body ->
+                    AppResult.Success(
+                        LibraryMapper.toSearchSnapshots(
+                            serverId = connection.serverId,
+                            libraryId = libraryId,
+                            profileId = connection.profileId,
+                            dto = body ?: LibrarySearchResponseDto(),
+                            fetchedAt = fetchedAt,
+                        ),
+                    )
+                }
+        }
+    }
+
+    /**
+     * D1 — the catalogue in pages, each one handed over as it lands.
+     *
+     * The capture was taken with no page size and the server answered `limit: 0` with the whole library
+     * in one body. That is a default, not a contract, and on a five-thousand-item library it is a single
+     * response measured in megabytes that nothing can render until the last byte of it arrives. Asking
+     * for [PAGE_SIZE] at a time means the first shelf is drawn after the first hundred books.
+     *
+     * Three independent stopping conditions, because one of them is a guess about server behaviour and
+     * the other two are not:
+     *
+     *  - the envelope's `total` has been reached — the normal exit, and the one that also covers a
+     *    server that ignores `limit` and sends everything on page zero;
+     *  - a page came back empty — the exit for a `total` that disagrees with what is actually sent;
+     *  - [MAX_PAGES] — the backstop for a server that ignores `page` and answers the same rows forever.
+     *    Hitting it is logged as a warning, never silently treated as the end of the library, because a
+     *    truncated catalogue that read as complete would let reconciliation delete the remainder.
+     */
+    private suspend fun catalogue(
+        target: Target,
+        fetchedAt: Instant,
+        onBatch: suspend (List<BookSnapshot>) -> Unit,
+    ): AppResult<Catalogue> {
+        val ids = mutableListOf<LibraryItemId>()
+        val stamps = mutableMapOf<LibraryItemId, Long?>()
+        var browsable = 0
+        var received = 0
+        var page = 0
+        while (true) {
+            val response = retries.readOnly("listItems") {
+                target.service.items(target.bearer, target.libraryId.value, PAGE_SIZE, page)
+                    .toResult { body -> AppResult.Success(body ?: LibraryItemsResponseDto()) }
+            }
+            if (response is AppResult.Failure) {
+                // A later page failing is still a failure. The earlier pages are already on screen —
+                // `onBatch` wrote them — but the id list is now incomplete, and returning it as the
+                // catalogue would tell reconciliation that every unlisted book had been deleted.
+                return AppResult.Failure(response.error)
+            }
+            val body = (response as AppResult.Success).value
+            when (val pageIds = LibraryMapper.toItemIds(body)) {
+                is AppResult.Failure -> return AppResult.Failure(pageIds.error)
+                is AppResult.Success -> ids += pageIds.value
+            }
+            body.results.forEach { item ->
+                item.id?.takeIf(String::isNotBlank)?.let { stamps[LibraryItemId(it)] = item.updatedAt }
+            }
+            val rows = LibraryMapper.toCatalogueSnapshots(target.connection.serverId, target.libraryId, body, fetchedAt)
+            // Before a single item is expanded. This is the whole of P1-31: one round trip, and the user
+            // has a library — now one round trip regardless of how large that library is.
+            if (rows.isNotEmpty()) onBatch(rows)
+            browsable += rows.size
+            received += body.results.size
+            if (body.results.isEmpty() || received >= body.total) break
+            page++
+            if (page >= MAX_PAGES) {
+                logger.warn(
+                    LogCategory.Sync,
+                    "Stopped paging the catalogue at the page limit; the listing is incomplete",
+                    LogField.Count("pages", page),
+                    LogField.Count("received", received),
+                )
+                return AppResult.Failure(
+                    AppError.ApiCompatibility(
+                        summary = "This server did not finish listing the library.",
+                        missingField = "page",
+                    ),
+                )
+            }
+        }
+        return AppResult.Success(Catalogue(ids = ids, browsable = browsable, stamps = stamps))
     }
 
     /**
@@ -325,10 +414,16 @@ internal class AbsLibraryApi @Inject constructor(
         val bearer: String,
     )
 
-    /** One catalogue response, read twice: for what to expand, and for what to show meanwhile. */
+    /**
+     * What every page of the catalogue added up to.
+     *
+     * [browsable] is a count rather than the rows: each page's rows were handed to `onBatch` as it
+     * arrived, so holding all of them here would keep a second copy of the whole library in memory for
+     * the length of the expansion pass — which is exactly the cost paging was added to avoid.
+     */
     private data class Catalogue(
         val ids: List<LibraryItemId>,
-        val browsable: List<BookSnapshot>,
+        val browsable: Int,
         /** `updatedAt` per item, which is how an unchanged item is recognised without fetching it. */
         val stamps: Map<LibraryItemId, Long?>,
     )
@@ -454,5 +549,26 @@ internal class AbsLibraryApi @Inject constructor(
 
         /** How many books accumulate before the caller is handed them. */
         const val BATCH_SIZE = 20
+
+        /**
+         * D1 — catalogue rows per request.
+         *
+         * A hundred is what both reference clients ask for, and the number is a compromise rather than a
+         * measurement: small enough that the first page arrives quickly on a phone connection, large
+         * enough that a two-thousand-item library is twenty requests rather than two hundred.
+         */
+        const val PAGE_SIZE = 100
+
+        /** At [PAGE_SIZE] a page, two hundred thousand items — far past any real library. */
+        const val MAX_PAGES = 2_000
+
+        /**
+         * PRODUCT_SPEC LIB-002 — server search hits per library.
+         *
+         * Search enriches a list the cache already produced, and a user scanning results does not read
+         * past the first screenful. Fetching more would cost a larger response and a longer write for
+         * rows nobody scrolls to.
+         */
+        const val SEARCH_LIMIT = 25
     }
 }

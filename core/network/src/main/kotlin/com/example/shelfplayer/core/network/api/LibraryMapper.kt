@@ -128,6 +128,28 @@ internal object LibraryMapper {
     }
 
     /**
+     * PRODUCT_SPEC LIB-002 — server search hits as storable books.
+     *
+     * A hit that cannot be mapped is **dropped, not fatal**. Search is an enrichment of results the
+     * cache already produced; one unusable item in a result set is not a reason to report that the
+     * search failed and show the user nothing. That is the same rule LIB-001 applies to optional
+     * sections of a sync, for the same reason.
+     */
+    fun toSearchSnapshots(
+        serverId: ServerId,
+        libraryId: LibraryId,
+        profileId: ProfileId,
+        dto: LibrarySearchResponseDto,
+        fetchedAt: Instant,
+    ): List<BookSnapshot> = dto.book.mapNotNull { hit ->
+        val item = hit.libraryItem ?: return@mapNotNull null
+        when (val mapped = toSnapshot(serverId, libraryId, profileId, item, fetchedAt)) {
+            is AppResult.Success -> mapped.value
+            is AppResult.Failure -> null
+        }
+    }
+
+    /**
      * One expanded item as a complete [BookSnapshot].
      *
      * [profileId] scopes the progress: PRODUCT_SPEC 5.2 keeps one account's position out of another's,

@@ -505,6 +505,55 @@ class DefaultLibraryRepositoryTest {
         assertEquals(2, repository.observeLibraries(fixtureProfile).first().size)
     }
 
+    /**
+     * PRODUCT_SPEC LIB-002 — a server search reaches the shelf by being written, not returned.
+     *
+     * The count is the receipt; the books arrive on the Room stream the screen was already reading. That
+     * is the property worth pinning, because a search that returned its own list would give the screen
+     * two sources for the same book.
+     */
+    @Test
+    fun `a server search writes its hits where the cached books are`() = runTest {
+        val written = repository.searchServer(fixtureProfile, "Salt")
+
+        assertEquals(AppResult.Success(1), written)
+        val titles = repository.observeAccessibleBooks(fixtureProfile).first().map { it.title }
+        assertTrue(titles.contains("The Salt Harbour"), "the hit is readable from Room: $titles")
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — one character is not a search worth a request.
+     *
+     * The local predicate still narrows the shelf from the first keystroke. This governs only whether
+     * the network is involved, and a single letter matches most of a library.
+     */
+    @Test
+    fun `a one-character query never reaches the server`() = runTest {
+        assertEquals(AppResult.Success(0), repository.searchServer(fixtureProfile, "S"))
+        assertEquals(AppResult.Success(0), repository.searchServer(fixtureProfile, "  "))
+    }
+
+    /**
+     * Product priority 2 — a search cannot erase a listening position.
+     *
+     * A search hit arrives with no `userMediaProgress`, so its snapshot carries `progress = null`. If
+     * that null were written, searching for a book you are halfway through would rewind it.
+     */
+    @Test
+    fun `a server search leaves an existing position alone`() = runTest {
+        repository.refresh(fixtureProfile)
+        val before = repository.observeAccessibleBooks(fixtureProfile).first()
+            .first { it.title == "The Salt Harbour" }
+            .progress
+
+        repository.searchServer(fixtureProfile, "Salt")
+
+        val after = repository.observeAccessibleBooks(fixtureProfile).first()
+            .first { it.title == "The Salt Harbour" }
+            .progress
+        assertEquals(before, after)
+    }
+
     /** PRODUCT_SPEC 14.5 — a sync log line never names a library or a book. */
     @Test
     fun `refresh logging contains no media titles`() = runTest {

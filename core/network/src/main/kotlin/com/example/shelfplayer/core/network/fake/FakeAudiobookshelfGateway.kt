@@ -143,6 +143,22 @@ class FakeAudiobookshelfGateway @Inject constructor(
     }
 
     /**
+     * The fixture library, filtered by the same predicate a server would apply loosely.
+     *
+     * A fake that returned nothing would make the demo profile's search look broken; a fake that
+     * returned everything would hide the distinction between a cached hit and a server hit. Matching on
+     * the title is the smallest thing that behaves like a search.
+     */
+    override suspend fun searchBooks(
+        profileId: ProfileId,
+        libraryId: LibraryId,
+        query: String,
+    ): AppResult<List<BookSnapshot>> = requireProfile(profileId).flatMap {
+        withMapper { mapper -> mapper.books(libraryId, clock.now()) }
+            .map { books -> books.filter { it.book.title.contains(query, ignoreCase = true) } }
+    }
+
+    /**
      * PRODUCT_SPEC 5.2 — a gateway call for a profile this connection does not serve is a failure,
      * not an empty list. Returning empty would render as "this library is empty" instead of "you are
      * looking at the wrong account".

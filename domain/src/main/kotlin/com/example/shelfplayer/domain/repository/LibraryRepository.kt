@@ -62,4 +62,17 @@ interface LibraryRepository {
      * which positions are declined and why.
      */
     suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int>
+
+    /**
+     * PRODUCT_SPEC LIB-002 — "server search may enrich results".
+     *
+     * Asks the server about [query] and stores what comes back, so the hits flow to the UI through the
+     * same Room streams the cached results already came from. It returns a count rather than the books
+     * for that reason: a second list to merge would be a second source of truth for the same screen,
+     * and the screen would then have to decide which copy of a book it was showing.
+     *
+     * Best-effort by design. Offline, or against a server that does not answer, the user keeps the
+     * cached results and learns nothing new — which is the stated fallback, not a failure to report.
+     */
+    suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int>
 }

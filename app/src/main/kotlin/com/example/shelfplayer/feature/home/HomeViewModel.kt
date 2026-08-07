@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -297,6 +298,21 @@ class HomeViewModel @Inject constructor(
                     val failed = state.error != null || state.syncStatus == SyncStatus.Failed
                     if (failed && !state.isRefreshing && state.profile != null) refresh()
                 }
+        }
+        // PRODUCT_SPEC LIB-002 — "local cached results appear immediately; server search may enrich
+        // results". The cached half is the `books` flow, which narrows on the first keystroke. This is
+        // the other half, and it runs off the *same* debounced query so the 300 ms rule governs the
+        // request as well as the filter.
+        //
+        // `collectLatest` cancels an in-flight search when the query moves on: a user typing "sal" then
+        // "salt" wants the answer to "salt", and the earlier request writing its hits afterwards would
+        // be the older answer landing last. Nothing here touches the result — the hits reach the screen
+        // by being written to Room, which the shelf is already observing.
+        viewModelScope.launch {
+            debouncedQuery.collectLatest { query ->
+                if (query.isBlank()) return@collectLatest
+                browse.searchServer(query)
+            }
         }
     }
 

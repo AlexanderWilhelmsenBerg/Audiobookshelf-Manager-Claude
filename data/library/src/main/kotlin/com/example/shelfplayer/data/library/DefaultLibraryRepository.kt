@@ -305,6 +305,62 @@ class DefaultLibraryRepository @Inject constructor(
             AppResult.Success(rows.size)
         }
 
+    /**
+     * PRODUCT_SPEC LIB-002 — the server's hits, written where the cached ones already are.
+     *
+     * ### Every accessible library, not the filtered one
+     *
+     * The shelf's library filter is a view over one list of books; the search that feeds it is not
+     * scoped to it, because a user searching for a title they half-remember does not first remember
+     * which library it is in. In practice this is one request per library, and a self-hosted
+     * Audiobookshelf has two or three.
+     *
+     * ### A library that fails does not fail the search
+     *
+     * `LIB-001`'s rule for optional sections. One library behind a dead mount must not blank the hits
+     * the others returned, and the user still has every cached result regardless — which is why this
+     * reports success with a count of zero rather than an error when nothing could be reached.
+     *
+     * ### Storing hits cannot lose a position
+     *
+     * A search hit arrives without `userMediaProgress` (the endpoint takes no `include`), so every
+     * snapshot here carries `progress = null`. The writer stores only non-null progress, so a hit for a
+     * book the user is halfway through updates its metadata and leaves the position alone.
+     */
+    override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> = withContext(ioDispatcher) {
+        val needle = query.trim()
+        if (needle.length < MIN_SERVER_QUERY) return@withContext AppResult.Success(0)
+
+        val libraries = when (val result = gateway.library.listLibraries(profileId)) {
+            is AppResult.Failure -> return@withContext result
+            is AppResult.Success -> result.value
+        }
+        var written = 0
+        var reached = 0
+        for (library in libraries) {
+            when (val hits = gateway.library.searchBooks(profileId, library.id, needle)) {
+                is AppResult.Failure -> logger.warn(
+                    LogCategory.Sync,
+                    "A library could not be searched; the others were still searched",
+                    LogField.Public("errorCode", hits.error.code),
+                )
+
+                is AppResult.Success -> {
+                    reached++
+                    writer.writeBooks(profileId, library, hits.value)
+                    written += hits.value.size
+                }
+            }
+        }
+        logger.info(
+            LogCategory.Sync,
+            "Enriched search results from the server",
+            LogField.Count("libraries", reached),
+            LogField.Count("hits", written),
+        )
+        AppResult.Success(written)
+    }
+
     private fun serverIdFlow(profileId: ProfileId): Flow<ServerId?> =
         profileDao.observeProfile(profileId.value).map { entity ->
             entity?.serverId?.let(::ServerId)
@@ -399,5 +455,14 @@ class DefaultLibraryRepository @Inject constructor(
          * keyed by profile, so the row still resolves; the server id is cosmetic in that case.
          */
         val UNKNOWN_SERVER = ServerId("unknown")
+
+        /**
+         * PRODUCT_SPEC LIB-002 — how much has to be typed before the server is asked.
+         *
+         * One character matches most of a library, and the response would be a large write of rows the
+         * cache already holds. The local predicate still runs from the first keystroke, so the shelf
+         * narrows immediately either way; this only governs when the network is involved.
+         */
+        const val MIN_SERVER_QUERY = 2
     }
 }

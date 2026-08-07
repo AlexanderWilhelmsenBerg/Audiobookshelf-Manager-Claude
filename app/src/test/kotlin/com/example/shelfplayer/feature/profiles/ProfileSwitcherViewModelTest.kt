@@ -295,6 +295,8 @@ class ProfileSwitcherViewModelTest {
             return AppResult.Success(progress.size)
         }
 
+        override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> = AppResult.Success(0)
+
         override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = error("not part of this fake")
 
         override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> =

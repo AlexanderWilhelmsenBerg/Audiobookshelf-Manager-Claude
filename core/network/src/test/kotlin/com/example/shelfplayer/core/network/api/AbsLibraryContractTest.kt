@@ -155,6 +155,140 @@ class AbsLibraryContractTest {
     }
 
     /**
+     * D1 — the catalogue is asked for in pages, and the request says so.
+     *
+     * The capture was taken with no paging parameters and the server obliged with the whole library in
+     * one body. Relying on that is relying on a default: this pins that the client states its page size
+     * rather than hoping for the server's.
+     */
+    @Test
+    fun `the catalogue is requested one page at a time`() = runTest {
+        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.response("library-item"))
+
+        api().listBooks(PROFILE, LIBRARY)
+
+        val path = server.takeRequest().path.orEmpty()
+        assertTrue(path.contains("limit=100"), "a stated page size, not the server's default: $path")
+        assertTrue(path.contains("page=0"), "starting at the first page: $path")
+    }
+
+    /**
+     * D1 — a library larger than one page is fetched to the end, and each page is shown as it lands.
+     *
+     * The envelope's `total` is what says there is more. Two pages of one item each, with a `total` of
+     * two, is the smallest library that can distinguish "paged until done" from "read the first page and
+     * stopped" — and the batch count is what distinguishes "shown as they land" from "collected, then
+     * shown".
+     */
+    @Test
+    fun `paging continues until the envelope's total is reached`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE],"total":2}"""))
+        server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_TWO],"total":2}"""))
+        val batches = mutableListOf<List<BookSnapshot>>()
+
+        api().listBooks(PROFILE, LIBRARY, onBatch = { batch -> batches += batch }, isUpToDate = { _, _ -> true })
+
+        assertEquals(2, server.requestCount, "two catalogue pages, and no expansion")
+        assertEquals(listOf("One", "Two"), batches.map { it.single().book.title })
+        assertTrue(server.takeRequest().path.orEmpty().contains("page=0"))
+        assertTrue(server.takeRequest().path.orEmpty().contains("page=1"))
+    }
+
+    /**
+     * A server that ignores `limit` is not paged forever.
+     *
+     * Older deployments answer the whole library on page zero regardless of what was asked. `received >=
+     * total` is what recognises that, and without it the client would keep asking for page one, two,
+     * three… of a library it already has.
+     */
+    @Test
+    fun `a server that ignores the page size is asked only once`() = runTest {
+        server.enqueue(
+            MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE,$CATALOGUE_ROW_TWO],"total":2,"limit":0}"""),
+        )
+
+        api().listBooks(PROFILE, LIBRARY, isUpToDate = { _, _ -> true })
+
+        assertEquals(1, server.requestCount, "everything arrived on the first page")
+    }
+
+    // --- GET /api/libraries/{id}/search -------------------------------------------------------------
+
+    /**
+     * PRODUCT_SPEC LIB-002 — a search hit arrives expanded, so it needs no follow-up request.
+     *
+     * This is the fact the capture established and the reason server search is worth having at all: the
+     * `book[].libraryItem` shape carries `media.tracks`, so a book found by searching is immediately
+     * playable rather than a stub that has to be fetched again.
+     */
+    @Test
+    fun `a search hit is a complete book, tracks included`() = runTest {
+        server.enqueue(ContractFixtures.response("library-search"))
+
+        val hits = assertIs<AppResult.Success<List<BookSnapshot>>>(api().searchBooks(PROFILE, LIBRARY, "salt")).value
+
+        val hit = hits.single()
+        assertEquals("The Salt Harbour", hit.book.title)
+        assertTrue(hit.tracks.isNotEmpty(), "expanded, unlike the catalogue response")
+        assertEquals(listOf("Marisol Holt"), hit.book.authors.map { it.name }, "structured authors, not a string")
+    }
+
+    /**
+     * The query and the limit reach the server, and the credential does not reach the URL.
+     *
+     * PRODUCT_SPEC 14.5's rule is enforced at the client, but the search path is the one that puts
+     * user-supplied text into a URL, so it is worth pinning here as well as trusting the interceptor.
+     */
+    @Test
+    fun `a search sends the query as a parameter and the token as a header`() = runTest {
+        server.enqueue(ContractFixtures.response("library-search"))
+
+        api().searchBooks(PROFILE, LIBRARY, "salt")
+
+        val request = server.takeRequest()
+        val path = request.path.orEmpty()
+        assertTrue(path.contains("q=salt"), path)
+        assertTrue(path.contains("limit=25"), path)
+        assertFalse(path.contains(TOKEN), "PRODUCT_SPEC 14.5 — never a credential in a URL")
+        assertEquals("Bearer $TOKEN", request.getHeader("Authorization"))
+    }
+
+    /**
+     * A search may not be used to reach a library the profile was never granted.
+     *
+     * The same check `listBooks` makes, for the same reason: a library id can arrive from a deep link or
+     * a stale cache, not only from a listing this account was shown.
+     */
+    @Test
+    fun `a library the profile is not granted cannot be searched`() = runTest {
+        connections.access = LibraryAccess(
+            hasAllLibraryAccess = false,
+            accessibleLibraryIds = listOf(LibraryId("some-other-library")),
+        )
+
+        val error = assertIs<AppResult.Failure>(api().searchBooks(PROFILE, LIBRARY, "salt")).error
+
+        assertIs<AppError.Authorization>(error)
+        assertEquals(0, server.requestCount, "refused before the request was sent")
+    }
+
+    /**
+     * One unusable hit does not fail the search.
+     *
+     * Search enriches results the cache already produced. Reporting a failure because one item in a
+     * result set was unmappable would replace a working search with an error banner.
+     */
+    @Test
+    fun `an unmappable hit is dropped rather than failing the search`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"book":[{"libraryItem":{"id":"broken"}}]}"""))
+
+        val hits = assertIs<AppResult.Success<List<BookSnapshot>>>(api().searchBooks(PROFILE, LIBRARY, "salt")).value
+
+        assertTrue(hits.isEmpty())
+    }
+
+    /**
      * A catalogue row carries everything the list response has, and nothing it does not.
      *
      * The second half matters more than the first: authors and series are left **empty** rather than
@@ -295,7 +429,8 @@ class AbsLibraryContractTest {
         assertEquals(4_000L, snapshot.chapters[1].start.inWholeMilliseconds)
 
         val list = server.takeRequest()
-        assertEquals("/api/libraries/lib-1/items", list.path)
+        // The paging parameters are pinned by their own test; here only the path matters.
+        assertTrue(list.path.orEmpty().startsWith("/api/libraries/lib-1/items"), list.path.orEmpty())
         val expanded = server.takeRequest()
         assertTrue(expanded.path!!.startsWith("/api/items/"))
         assertTrue(expanded.path!!.contains("expanded=1"))
@@ -479,7 +614,7 @@ class AbsLibraryContractTest {
                 profileId = profileId,
                 serverId = SERVER,
                 serverUrl = serverUrl,
-                accessToken = AuthToken("that-profiles-token"),
+                accessToken = AuthToken(TOKEN),
                 access = access,
             )
         }
@@ -488,6 +623,14 @@ class AbsLibraryContractTest {
     private companion object {
         /** PRODUCT_SPEC 14.3 — one attempt plus three retries. */
         const val RETRY_ATTEMPTS = 4
+
+        const val TOKEN = "that-profiles-token"
+
+        /** The two smallest rows the catalogue mapper accepts, for the paging tests. */
+        const val CATALOGUE_ROW_ONE =
+            """{"id":"item-1","media":{"metadata":{"title":"One"}}}"""
+        const val CATALOGUE_ROW_TWO =
+            """{"id":"item-2","media":{"metadata":{"title":"Two"}}}"""
 
         val SERVER = ServerId("srv_books")
         val PROFILE = ProfileId("prf_ada")

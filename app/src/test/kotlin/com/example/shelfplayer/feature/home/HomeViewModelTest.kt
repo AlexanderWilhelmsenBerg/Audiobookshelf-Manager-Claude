@@ -43,6 +43,7 @@ import com.example.shelfplayer.domain.usecase.ObserveRealtimeUpdatesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSeriesShelvesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
+import com.example.shelfplayer.domain.usecase.SearchServerUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import com.example.shelfplayer.testing.FakePreferences
 import kotlinx.coroutines.CompletableDeferred
@@ -99,6 +100,7 @@ class HomeViewModelTest {
             shelves = ObserveHomeShelvesUseCase(profiles, libraries, mainDispatcherRule.testDispatcher),
             series = ObserveSeriesShelvesUseCase(profiles, libraries, mainDispatcherRule.testDispatcher),
             groups = ObserveBookGroupsUseCase(profiles, libraries, mainDispatcherRule.testDispatcher),
+            searchServer = SearchServerUseCase(profiles, libraries),
         ),
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         observeSyncState = ObserveSyncStateUseCase(profiles, libraries),
@@ -447,6 +449,46 @@ class HomeViewModelTest {
         assertEquals(listOf("The Weather Glass"), viewModel.uiState.value.books.map { it.title })
     }
 
+    /**
+     * PRODUCT_SPEC LIB-002 — "local cached results appear immediately; server search may enrich results".
+     *
+     * The server is asked once, for the settled query, not once per keystroke. Both halves matter: a
+     * request per keystroke is four requests to answer one question, and no request at all means a book
+     * added since the last sync cannot be found.
+     */
+    @Test
+    fun `the settled query is the one the server is asked`() = runTest {
+        profiles.setActive(demoProfile)
+        val viewModel = listViewModel()
+        backgroundScope.launch(mainDispatcherRule.testDispatcher) { viewModel.uiState.collect { } }
+
+        viewModel.onQueryChanged("s")
+        viewModel.onQueryChanged("sa")
+        viewModel.onQueryChanged("salt")
+        advanceTimeBy(400)
+        runCurrent()
+
+        assertEquals(listOf("salt"), libraries.serverQueries)
+    }
+
+    /** Clearing the field is not a search: an empty query would ask the server for the whole library. */
+    @Test
+    fun `closing the search field does not ask the server for everything`() = runTest {
+        profiles.setActive(demoProfile)
+        val viewModel = listViewModel()
+        backgroundScope.launch(mainDispatcherRule.testDispatcher) { viewModel.uiState.collect { } }
+
+        viewModel.onSearchToggled()
+        viewModel.onQueryChanged("salt")
+        advanceTimeBy(400)
+        runCurrent()
+        viewModel.onSearchToggled()
+        advanceTimeBy(400)
+        runCurrent()
+
+        assertEquals(listOf("salt"), libraries.serverQueries, "the clear must not become a query")
+    }
+
     @Test
     fun `a refresh failure surfaces the typed error without clearing content`() = runTest {
         profiles.setActive(demoProfile)
@@ -766,6 +808,14 @@ class HomeViewModelTest {
 
         override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> =
             AppResult.Success(0)
+
+        /** Every query that reached the server, in order, so a test can pin what the debounce sent. */
+        val serverQueries = mutableListOf<String>()
+
+        override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> {
+            serverQueries += query
+            return AppResult.Success(0)
+        }
 
         override suspend fun refresh(profileId: ProfileId): AppResult<Int> {
             refreshCount++

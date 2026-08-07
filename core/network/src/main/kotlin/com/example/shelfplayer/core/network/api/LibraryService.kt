@@ -23,16 +23,39 @@ internal interface LibraryService {
     suspend fun libraries(@Header(AUTHORIZATION) bearer: String): Response<LibrariesResponseDto>
 
     /**
-     * The catalogue of one library.
+     * The catalogue of one library, one page at a time.
      *
      * The response is **minified**: counts instead of tracks and chapters, author and series as strings.
      * A book cannot be stored as playable from this alone — see [item].
+     *
+     * [limit] and [page] are sent explicitly rather than left to the server's default. The capture was
+     * taken without them and came back `limit: 0` with every item in one response, which is fine for a
+     * library of one and is a single multi-megabyte body on a library of five thousand. The envelope
+     * carries `total`, so the caller can page until it has that many without guessing.
      */
     @GET("api/libraries/{libraryId}/items")
     suspend fun items(
         @Header(AUTHORIZATION) bearer: String,
         @Path("libraryId") libraryId: String,
+        @Query("limit") limit: Int,
+        @Query("page") page: Int,
     ): Response<LibraryItemsResponseDto>
+
+    /**
+     * PRODUCT_SPEC LIB-002 — server search, for what the cache does not hold.
+     *
+     * Captured as `library-search.json`. The response is an object of arrays keyed by kind, and only
+     * `book` was populated on the capture server — every other key came back `[]`, so their element
+     * shapes are unverified and PRODUCT_SPEC 22.4 forbids mapping them. [LibrarySearchResponseDto]
+     * therefore reads `book` and nothing else.
+     */
+    @GET("api/libraries/{libraryId}/search")
+    suspend fun search(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("libraryId") libraryId: String,
+        @Query("q") query: String,
+        @Query("limit") limit: Int,
+    ): Response<LibrarySearchResponseDto>
 
     /**
      * One item, expanded.

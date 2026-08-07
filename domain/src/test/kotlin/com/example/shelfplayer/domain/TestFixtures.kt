@@ -230,6 +230,16 @@ internal class FakeLibraryRepository(books: List<Book> = emptyList(), libraries:
         queuedResults.clear()
         queuedResults.addAll(results)
     }
+
+    /** Every query the server was asked about, so a test can assert what was and was not sent. */
+    val serverQueries = mutableListOf<String>()
+
+    var serverSearchResult: AppResult<Int> = AppResult.Success(0)
+
+    override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> {
+        serverQueries += query
+        return serverSearchResult
+    }
 }
 
 /**

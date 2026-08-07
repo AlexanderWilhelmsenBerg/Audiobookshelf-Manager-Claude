@@ -169,4 +169,19 @@ interface LibraryApi {
         onBatch: suspend (List<BookSnapshot>) -> Unit = {},
         isUpToDate: suspend (LibraryItemId, Long?) -> Boolean = { _, _ -> false },
     ): AppResult<LibrarySnapshot>
+
+    /**
+     * PRODUCT_SPEC LIB-002 — "local cached results appear immediately; server search may enrich
+     * results".
+     *
+     * This is the enrichment half. It finds books the cache does not hold — added since the last sync,
+     * or matched on a field the local predicate does not index — and returns them as complete snapshots
+     * the caller may store: a search hit arrives expanded, tracks included, so no follow-up fetch is
+     * needed to make one playable.
+     *
+     * Books only. The endpoint also answers with author, series, narrator, genre and tag hits, and the
+     * capture returned every one of those arrays empty, so their shapes are unverified (PRODUCT_SPEC
+     * 22.4). Those axes stay local-only until a capture covers them.
+     */
+    suspend fun searchBooks(profileId: ProfileId, libraryId: LibraryId, query: String): AppResult<List<BookSnapshot>>
 }

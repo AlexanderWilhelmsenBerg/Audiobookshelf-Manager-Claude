@@ -177,5 +177,7 @@ class SettingsViewModelTest {
 
         override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> =
             AppResult.Success(0)
+
+        override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> = AppResult.Success(0)
     }
 }

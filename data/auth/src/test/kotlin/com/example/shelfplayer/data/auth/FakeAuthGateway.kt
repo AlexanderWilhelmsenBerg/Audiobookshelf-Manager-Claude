@@ -113,6 +113,12 @@ internal class FakeAuthGateway :
             onBatch: suspend (List<BookSnapshot>) -> Unit,
             isUpToDate: suspend (LibraryItemId, Long?) -> Boolean,
         ): AppResult<LibrarySnapshot> = unsupported()
+
+        override suspend fun searchBooks(
+            profileId: ProfileId,
+            libraryId: LibraryId,
+            query: String,
+        ): AppResult<List<BookSnapshot>> = unsupported()
     }
 
     internal data class SignIn(val serverUrl: String, val username: String, val password: String)
