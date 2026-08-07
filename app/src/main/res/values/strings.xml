@@ -141,6 +141,10 @@
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->
     <string name="settings_title">Settings</string>
     <string name="settings_section_libraries">Libraries</string>
+    <!-- PRODUCT_SPEC 6.1 step 9 — the library the app opens on. %1$s is the library's name. -->
+    <string name="settings_default_library_hint">Star a library to open on it. With none starred, the shelf shows every library you can see.</string>
+    <string name="settings_default_library_set">Open on %1$s</string>
+    <string name="settings_default_library_clear">Stop opening on %1$s</string>
     <string name="settings_libraries_empty">No libraries yet. They appear after the first sync.</string>
 
     <!--

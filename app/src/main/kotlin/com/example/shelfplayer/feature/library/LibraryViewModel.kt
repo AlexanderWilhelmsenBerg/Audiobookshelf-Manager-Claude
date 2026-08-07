@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookSortOrder
 import com.example.shelfplayer.domain.library.SeriesShelf
+import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibraryBooksUseCase
 import com.example.shelfplayer.domain.usecase.ObserveLibrarySeriesUseCase
 import com.example.shelfplayer.navigation.ShelfDestinations
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -39,6 +41,7 @@ class LibraryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     observeLibraryBooks: ObserveLibraryBooksUseCase,
     observeLibrarySeries: ObserveLibrarySeriesUseCase,
+    private val preferences: PreferencesRepository,
 ) : ViewModel() {
 
     private val libraryId: LibraryId = LibraryId(
@@ -62,8 +65,15 @@ class LibraryViewModel @Inject constructor(
         .distinctUntilChanged()
         .debounce { query -> if (query.isEmpty()) 0L else SEARCH_DEBOUNCE_MILLIS }
 
-    private val order: Flow<BookSortOrder> = controls
-        .map { it.order }
+    /**
+     * PRODUCT_SPEC SET-001 / LIB-002 — the order comes from this profile's preferences for *this*
+     * library, and is written back there.
+     *
+     * Per library rather than one order for all of them: a podcast library and a novel library are not
+     * usefully sorted the same way, and LIB-002 asks for the choice to persist per profile and library.
+     */
+    private val order: Flow<BookSortOrder> = preferences.observePreferences()
+        .map { BookSortOrder.fromStoredName(it.orderName(libraryId)) }
         .distinctUntilChanged()
 
     private val tab: Flow<LibraryTab> = controls
@@ -105,11 +115,12 @@ class LibraryViewModel @Inject constructor(
 
     val uiState: StateFlow<LibraryUiState> = combine(
         controls,
+        order,
         content,
-    ) { current, loaded ->
+    ) { current, currentOrder, loaded ->
         LibraryUiState(
             query = current.query,
-            order = current.order,
+            order = currentOrder,
             tab = current.tab,
             books = (loaded as? LibraryContent.OfBooks)?.books.orEmpty(),
             series = (loaded as? LibraryContent.OfSeries)?.series.orEmpty(),
@@ -125,8 +136,9 @@ class LibraryViewModel @Inject constructor(
         controls.update { it.copy(query = query) }
     }
 
+    /** PRODUCT_SPEC SET-001 — persisted for this profile and this library; the list re-reads it. */
     fun onOrderChanged(order: BookSortOrder) {
-        controls.update { it.copy(order = order) }
+        viewModelScope.launch { preferences.setSortOrder(libraryId = libraryId, order = order.name) }
     }
 
     fun onTabChanged(tab: LibraryTab) {
@@ -136,11 +148,8 @@ class LibraryViewModel @Inject constructor(
     /** One resolved request: what to search for and how to order the result. */
     private data class LibraryQuery(val query: String, val order: BookSortOrder)
 
-    private data class LibraryControls(
-        val query: String = "",
-        val order: BookSortOrder = BookSortOrder.Default,
-        val tab: LibraryTab = LibraryTab.Books,
-    )
+    /** The order lives in preferences, not here — see [order]. */
+    private data class LibraryControls(val query: String = "", val tab: LibraryTab = LibraryTab.Books)
 
     /**
      * Whichever axis is being collected, carrying its own list.

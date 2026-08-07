@@ -22,21 +22,25 @@ import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.core.testing.RecordingLogSink
+import com.example.shelfplayer.domain.library.BookSortOrder
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
+import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveRealtimeUpdatesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
+import com.example.shelfplayer.testing.FakePreferences
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -73,14 +77,19 @@ class HomeViewModelTest {
      */
     private val network = MutableStateFlow(true)
 
+    /** PRODUCT_SPEC SET-001 — the shelf's sort order and default library live here now, not in the ViewModel. */
+    private val preferences = FakePreferences()
+
     private fun viewModel() = HomeViewModel(
         observeAccessibleBooks = ObserveAccessibleBooksUseCase(
             profiles,
             libraries,
             mainDispatcherRule.testDispatcher,
         ),
+        observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         observeSyncState = ObserveSyncStateUseCase(profiles, libraries),
         profileRepository = profiles,
+        preferences = preferences,
         networkMonitor = object : NetworkMonitor {
             override val isOnline: Flow<Boolean> = network
         },
@@ -501,10 +510,124 @@ class HomeViewModelTest {
         isFixture = true,
     )
 
-    private fun book(id: String, title: String, playedAt: Instant? = null) = Book(
+    /**
+     * PRODUCT_SPEC SET-001 — the order survives the ViewModel, because it no longer lives in it.
+     *
+     * The assertion is on the shelf rather than on a stored string on purpose: reading back what was
+     * written proves only that the fake works. What matters is that the books come out in the order the
+     * *preference* names, which is what a relaunch will show.
+     */
+    @Test
+    fun `the shelf is ordered by the profile's stored preference`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.emitBooks(
+            listOf(
+                book("z", "Zenith", playedAt = Instant.EPOCH.plusSeconds(20)),
+                book("a", "Anchor"),
+            ),
+        )
+        preferences.setSortOrder(libraryId = null, order = BookSortOrder.TitleAscending.name)
+
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertEquals(BookSortOrder.TitleAscending, state.order)
+            assertEquals(listOf("Anchor", "Zenith"), state.books.map { it.title })
+        }
+    }
+
+    /** A profile that has never chosen opens on what it was listening to, not on A–Z. */
+    @Test
+    fun `a profile with no stored order opens on last played`() = runTest {
+        profiles.setActive(demoProfile)
+
+        viewModel().uiState.test {
+            assertEquals(BookSortOrder.LastPlayed, awaitItem().order)
+        }
+    }
+
+    /**
+     * The chip moves because the write landed, which is the whole point of the order living in the
+     * store: there is no local copy to move on its own.
+     *
+     * Asserted on `order` rather than on the book list because the two arrive in separate emissions —
+     * the preference reaches the state before the re-queried shelf does, and waiting for the shelf here
+     * would be asserting on `combine`'s scheduling. The ordering itself is covered above.
+     */
+    @Test
+    fun `changing the order persists it`() = runTest {
+        profiles.setActive(demoProfile)
+        val model = viewModel()
+
+        model.uiState.test {
+            assertEquals(BookSortOrder.LastPlayed, awaitItem().order)
+            model.onOrderChanged(BookSortOrder.TitleAscending)
+            assertEquals(BookSortOrder.TitleAscending, awaitItem().order)
+        }
+    }
+
+    /** PRODUCT_SPEC 6.1 step 9 — with a default library chosen, the shelf is that library. */
+    @Test
+    fun `a default library narrows the shelf and names itself`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.emit(listOf(library("lib-fiction", "Fiction"), library("lib-nonfiction", "Non-fiction")))
+        libraries.emitBooks(
+            listOf(
+                book("f", "A novel"),
+                book("n", "A history", libraryId = LibraryId("lib-nonfiction")),
+            ),
+        )
+        preferences.setDefaultLibrary(LibraryId("lib-nonfiction"))
+
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertEquals(listOf("A history"), state.books.map { it.title })
+            assertEquals("Non-fiction", state.scopedTo?.name, "the shelf says which library it is showing")
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 / 6.1 step 9 — losing access to the default library widens the shelf, never
+     * empties it.
+     *
+     * The stored id outlives the grant. Trusting it would leave the user staring at an empty shelf with
+     * the explanation two screens away in Settings, which is indistinguishable from a failed sync.
+     */
+    @Test
+    fun `a default library the profile can no longer see falls back to every library`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.emit(listOf(library("lib-fiction", "Fiction")))
+        libraries.emitBooks(
+            listOf(book("f", "A novel"), book("n", "A history", libraryId = LibraryId("lib-nonfiction"))),
+        )
+        preferences.setDefaultLibrary(LibraryId("lib-nonfiction"))
+
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertEquals(listOf("A history", "A novel"), state.books.map { it.title }.sorted())
+            assertNull(state.scopedTo)
+        }
+    }
+
+    private fun library(id: String, name: String) = Library(
+        serverId = ServerId("fixture-server"),
+        id = LibraryId(id),
+        name = name,
+        kind = LibraryKind.Book,
+        displayOrder = 0,
+        bookCount = 0,
+        remoteUpdatedAt = null,
+        lastFetchedAt = Instant.EPOCH,
+    )
+
+    private fun book(
+        id: String,
+        title: String,
+        playedAt: Instant? = null,
+        libraryId: LibraryId = LibraryId("lib-fiction"),
+    ) = Book(
         serverId = ServerId("fixture-server"),
         id = LibraryItemId(id),
-        libraryId = LibraryId("lib-fiction"),
+        libraryId = libraryId,
         title = title,
         subtitle = null,
         authors = emptyList(),

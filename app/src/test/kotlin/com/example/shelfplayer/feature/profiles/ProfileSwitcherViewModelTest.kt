@@ -26,6 +26,7 @@ import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.domain.usecase.RemoveProfileUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
+import com.example.shelfplayer.testing.FakePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,12 +53,13 @@ class ProfileSwitcherViewModelTest {
     private val auth = FakeAuth()
     private val libraries = StubLibraries()
     private val backgroundSync = RecordingBackgroundSync()
+    private val preferences = FakePreferences()
 
     private fun viewModel() = ProfileSwitcherViewModel(
         profiles,
         SwitchProfileUseCase(profiles, auth, SyncAccountUseCase(profiles, auth, libraries), backgroundSync),
         auth,
-        RemoveProfileUseCase(auth, backgroundSync),
+        RemoveProfileUseCase(auth, backgroundSync, preferences),
     )
 
     @Test

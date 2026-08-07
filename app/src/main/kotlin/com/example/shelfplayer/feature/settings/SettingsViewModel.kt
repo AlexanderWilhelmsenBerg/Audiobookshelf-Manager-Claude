@@ -2,15 +2,18 @@ package com.example.shelfplayer.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
+import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -33,19 +36,39 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     observeLibraries: ObserveLibrariesUseCase,
     diagnostics: DiagnosticsRepository,
+    private val preferences: PreferencesRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
         observeLibraries(),
         diagnostics.observeStorage(),
-    ) { libraries, storage ->
-        SettingsUiState(libraries = libraries, storage = storage, isLoaded = true)
+        preferences.observePreferences(),
+    ) { libraries, storage, stored ->
+        SettingsUiState(
+            libraries = libraries,
+            storage = storage,
+            // PRODUCT_SPEC 6.1 step 9 — resolved against the granted libraries rather than shown raw.
+            // A default library the profile has since lost is not a default any more, and rendering the
+            // stored id would put a tick beside a library that is no longer in the list.
+            defaultLibraryId = stored.defaultLibraryId?.takeIf { id -> libraries.any { it.id == id } },
+            isLoaded = true,
+        )
     }.stateIn(
         scope = viewModelScope,
         // PRODUCT_SPEC 16.3: no unbounded collection in a lifecycle owner.
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
         initialValue = SettingsUiState(),
     )
+
+    /**
+     * PRODUCT_SPEC 6.1 step 9 — chooses the library the app opens on, or clears the choice.
+     *
+     * Clearing is not "choose the library that has everything": it returns the shelf to every library
+     * the profile is granted, which is a different list the moment a second library is added.
+     */
+    fun onDefaultLibraryChanged(libraryId: LibraryId?) {
+        viewModelScope.launch { preferences.setDefaultLibrary(libraryId) }
+    }
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
@@ -62,5 +85,7 @@ class SettingsViewModel @Inject constructor(
 data class SettingsUiState(
     val libraries: List<Library> = emptyList(),
     val storage: StorageDiagnostics = StorageDiagnostics(),
+    /** PRODUCT_SPEC 6.1 step 9 — `null` is every granted library, which is the default. */
+    val defaultLibraryId: LibraryId? = null,
     val isLoaded: Boolean = false,
 )

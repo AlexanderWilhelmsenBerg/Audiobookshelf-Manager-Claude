@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.usecase
 
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
+import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookSortOrder
 import com.example.shelfplayer.domain.library.matchesQuery
@@ -39,14 +40,27 @@ class ObserveAccessibleBooksUseCase @Inject constructor(
      */
     @param:Dispatcher(ShelfDispatcher.Default) private val defaultDispatcher: CoroutineDispatcher,
 ) {
+    /**
+     * @param libraryId PRODUCT_SPEC 6.1 step 9 — narrows the shelf to one library. `null`, the default,
+     *   is every library the profile is granted. The caller resolves a stored default against the
+     *   current grant before passing it: a library the profile has lost must widen the shelf back to
+     *   everything, not empty it.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
-    operator fun invoke(query: String = "", order: BookSortOrder = BookSortOrder.LastPlayed): Flow<List<Book>> =
-        profileRepository.observeActiveProfile().flatMapLatest { profile ->
-            if (profile == null) {
-                flowOf(emptyList())
-            } else {
+    operator fun invoke(
+        query: String = "",
+        order: BookSortOrder = BookSortOrder.LastPlayed,
+        libraryId: LibraryId? = null,
+    ): Flow<List<Book>> = profileRepository.observeActiveProfile().flatMapLatest { profile ->
+        if (profile == null) {
+            flowOf(emptyList())
+        } else {
+            val source = if (libraryId == null) {
                 libraryRepository.observeAccessibleBooks(profile.id)
-                    .map { books -> sortBooks(books.filter { it.matchesQuery(query) }, order) }
+            } else {
+                libraryRepository.observeBooks(profile.id, libraryId)
             }
-        }.flowOn(defaultDispatcher)
+            source.map { books -> sortBooks(books.filter { it.matchesQuery(query) }, order) }
+        }
+    }.flowOn(defaultDispatcher)
 }

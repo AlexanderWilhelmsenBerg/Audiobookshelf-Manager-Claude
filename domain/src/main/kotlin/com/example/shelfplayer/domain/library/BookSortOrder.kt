@@ -35,6 +35,20 @@ enum class BookSortOrder {
 
     companion object {
         val Default: BookSortOrder = TitleAscending
+
+        /**
+         * PRODUCT_SPEC SET-001 — resolves a stored order name, falling back to [fallback].
+         *
+         * Preferences hold the name rather than the ordinal, so a value written by an older build that
+         * named an order this one no longer has resolves to the fallback instead of throwing or — far
+         * worse — silently becoming whichever order now holds that position.
+         *
+         * The fallback is a parameter because the two shelves open differently and deliberately so: the
+         * home shelf opens on [LastPlayed] ("carry on with these"), a single library on [Default]. A
+         * shared constant would quietly make one of them wrong.
+         */
+        fun fromStoredName(name: String?, fallback: BookSortOrder = Default): BookSortOrder =
+            entries.firstOrNull { it.name == name } ?: fallback
     }
 }
 

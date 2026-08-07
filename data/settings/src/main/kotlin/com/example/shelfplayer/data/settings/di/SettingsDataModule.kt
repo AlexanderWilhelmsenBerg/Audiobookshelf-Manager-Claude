@@ -1,7 +1,9 @@
 package com.example.shelfplayer.data.settings.di
 
 import com.example.shelfplayer.data.settings.DefaultDiagnosticsRepository
+import com.example.shelfplayer.data.settings.DefaultPreferencesRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
+import com.example.shelfplayer.domain.repository.PreferencesRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -15,4 +17,8 @@ interface SettingsDataModule {
     @Binds
     @Singleton
     fun bindsDiagnosticsRepository(impl: DefaultDiagnosticsRepository): DiagnosticsRepository
+
+    @Binds
+    @Singleton
+    fun bindsPreferencesRepository(impl: DefaultPreferencesRepository): PreferencesRepository
 }

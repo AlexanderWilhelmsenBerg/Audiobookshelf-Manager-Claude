@@ -20,6 +20,7 @@ import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
+import com.example.shelfplayer.testing.FakePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -28,6 +29,7 @@ import org.junit.Test
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** PRODUCT_SPEC SET-001 / SET-002 — the two things the settings screen shows. */
@@ -39,8 +41,9 @@ class SettingsViewModelTest {
     private val profiles = FakeProfiles()
     private val libraries = FakeLibraries()
     private val diagnostics = FakeDiagnostics()
+    private val preferences = FakePreferences()
 
-    private fun viewModel() = SettingsViewModel(ObserveLibrariesUseCase(profiles, libraries), diagnostics)
+    private fun viewModel() = SettingsViewModel(ObserveLibrariesUseCase(profiles, libraries), diagnostics, preferences)
 
     /**
      * PRODUCT_SPEC SET-002 — browsing by library lives here, as a list rather than a switch.
@@ -88,6 +91,52 @@ class SettingsViewModelTest {
             assertEquals(1, storage.librariesAccessible)
             assertEquals(490, storage.booksStored)
             assertEquals(188, storage.booksAccessible)
+        }
+    }
+
+    /** PRODUCT_SPEC 6.1 step 9 — starring a library records it as the one the app opens on. */
+    @Test
+    fun `choosing a default library stores it`() = runTest {
+        libraries.emit(listOf(library("lib-fiction", "Fiction", 12)))
+        val model = viewModel()
+
+        model.uiState.test {
+            assertNull(awaitItem().defaultLibraryId, "no default until one is chosen")
+            model.onDefaultLibraryChanged(LibraryId("lib-fiction"))
+            assertEquals(LibraryId("lib-fiction"), awaitItem().defaultLibraryId)
+        }
+    }
+
+    /** Clearing it returns the shelf to every granted library, which is not the same as choosing one. */
+    @Test
+    fun `clearing the default library removes the choice entirely`() = runTest {
+        libraries.emit(listOf(library("lib-fiction", "Fiction", 12)))
+        val model = viewModel()
+        model.onDefaultLibraryChanged(LibraryId("lib-fiction"))
+
+        model.uiState.test {
+            assertEquals(LibraryId("lib-fiction"), awaitItem().defaultLibraryId)
+            model.onDefaultLibraryChanged(null)
+            assertNull(awaitItem().defaultLibraryId)
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — a default library the profile has lost is not shown as a default.
+     *
+     * The stored id survives the grant being revoked, and rendering it raw would put a filled star
+     * beside nothing at all — the library is no longer in the list to draw it against.
+     */
+    @Test
+    fun `a default library the profile can no longer see is not reported as the default`() = runTest {
+        libraries.emit(listOf(library("lib-fiction", "Fiction", 12)))
+        val model = viewModel()
+        model.onDefaultLibraryChanged(LibraryId("lib-fiction"))
+
+        libraries.emit(listOf(library("lib-nonfiction", "Non-fiction", 3)))
+
+        model.uiState.test {
+            assertNull(awaitItem().defaultLibraryId)
         }
     }
 

@@ -5,15 +5,19 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerStatus
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.domain.library.BookSortOrder
+import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
+import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveRealtimeUpdatesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
@@ -52,8 +56,10 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     observeAccessibleBooks: ObserveAccessibleBooksUseCase,
+    observeLibraries: ObserveLibrariesUseCase,
     observeSyncState: ObserveSyncStateUseCase,
     profileRepository: ProfileRepository,
+    private val preferences: PreferencesRepository,
     private val networkMonitor: NetworkMonitor,
     private val syncAccount: SyncAccountUseCase,
     private val observeRealtimeUpdates: ObserveRealtimeUpdatesUseCase,
@@ -64,17 +70,56 @@ class HomeViewModel @Inject constructor(
     private val controls = MutableStateFlow(ShelfControls())
 
     /**
+     * PRODUCT_SPEC SET-001 / LIB-002 — the sort order is read from the profile's preferences, not held
+     * here.
+     *
+     * The stored value is the single source of truth rather than a copy seeded into local state. That
+     * is what makes the persistence real: the chip moves because the write landed, so a sort order that
+     * survives a relaunch and one that does not are different on screen rather than only on disk.
+     *
+     * The fallback is [BookSortOrder.LastPlayed], which is what this shelf opens on for a profile that
+     * has never chosen — not the global default.
+     */
+    /**
+     * The query, the persisted order and the resolved default library, in one flow.
+     *
+     * Combined here because `combine` stops at five typed flows and the shelf state below already uses
+     * all five — and because the three are read together anyway: they are what the shelf *is*.
+     *
+     * PRODUCT_SPEC 6.1 step 9 — the stored default is resolved against the granted libraries rather
+     * than trusted. A library the profile has since lost must widen the shelf back to everything; a
+     * shelf scoped to a library that no longer exists is an empty screen with no explanation on it.
+     */
+    private val view: Flow<ShelfView> = combine(
+        controls,
+        preferences.observePreferences(),
+        observeLibraries(),
+    ) { current, stored, libraries ->
+        ShelfView(
+            query = current.query,
+            order = BookSortOrder.fromStoredName(stored.orderName(libraryId = null), BookSortOrder.LastPlayed),
+            library = stored.defaultLibraryId?.let { id -> libraries.firstOrNull { it.id == id } },
+        )
+    }
+
+    /**
      * PRODUCT_SPEC LIB-002 — the 300 ms debounce applies to typing only.
      *
      * Changing the sort order re-queries immediately: that is one discrete choice, not a stream of
      * keystrokes, and there is nothing to settle.
      */
     private val books: Flow<List<Book>> = combine(
-        controls.map { it.query }.distinctUntilChanged()
+        view.map { it.query }.distinctUntilChanged()
             .debounce { query -> if (query.isEmpty()) 0L else SEARCH_DEBOUNCE_MILLIS },
-        controls.map { it.order }.distinctUntilChanged(),
-    ) { query, order -> ShelfQuery(query, order) }
-        .flatMapLatest { request -> observeAccessibleBooks(query = request.query, order = request.order) }
+        view.map { ShelfScope(it.order, it.library?.id) }.distinctUntilChanged(),
+    ) { query, scope -> ShelfQuery(query, scope) }
+        .flatMapLatest { request ->
+            observeAccessibleBooks(
+                query = request.query,
+                order = request.scope.order,
+                libraryId = request.scope.libraryId,
+            )
+        }
 
     /**
      * PRODUCT_SPEC LIB-002 — the refresh's own state and the device's, read together.
@@ -91,7 +136,7 @@ class HomeViewModel @Inject constructor(
         books,
         observeSyncState(),
         attempt,
-        controls,
+        view,
     ) { profile, shelf, syncState, (refresh, isOnline), current ->
         HomeUiState(
             isOffline = !isOnline,
@@ -99,6 +144,9 @@ class HomeViewModel @Inject constructor(
             books = shelf,
             query = current.query,
             order = current.order,
+            // PRODUCT_SPEC 6.1 step 9 / 21 — a shelf showing part of what the profile can see says which
+            // part. A silently narrowed list reads as missing books.
+            scopedTo = current.library,
             isRefreshing = refresh.inFlight,
             syncStatus = when {
                 refresh.inFlight -> SyncStatus.Syncing
@@ -255,8 +303,15 @@ class HomeViewModel @Inject constructor(
         controls.update { it.copy(query = query) }
     }
 
+    /**
+     * PRODUCT_SPEC SET-001 — the choice is written to the profile's preferences, and the shelf re-reads
+     * it from there.
+     *
+     * A failure leaves the chip where it was, which is the honest outcome: the order did not change,
+     * because it could not be saved. `DefaultPreferencesRepository` logs why.
+     */
     fun onOrderChanged(order: BookSortOrder) {
-        controls.update { it.copy(order = order) }
+        viewModelScope.launch { preferences.setSortOrder(libraryId = null, order = order.name) }
     }
 
     fun dismissError() {
@@ -270,11 +325,17 @@ class HomeViewModel @Inject constructor(
         val lastAttemptSucceeded: Boolean = false,
     )
 
-    /** What the user has asked the shelf to show: the default order is what was played last. */
-    private data class ShelfControls(val query: String = "", val order: BookSortOrder = BookSortOrder.LastPlayed)
+    /** What the user has asked the shelf to show. The order and the scope live in preferences. */
+    private data class ShelfControls(val query: String = "")
 
-    /** One resolved request: what to search for and how to order the result. */
-    private data class ShelfQuery(val query: String, val order: BookSortOrder)
+    /** The in-memory query alongside the persisted order and default library, resolved together. */
+    private data class ShelfView(val query: String, val order: BookSortOrder, val library: Library?)
+
+    /** The parts of a shelf that are not the search term, so they can be de-duplicated as one. */
+    private data class ShelfScope(val order: BookSortOrder, val libraryId: LibraryId?)
+
+    /** One resolved request: what to search for, and over what. */
+    private data class ShelfQuery(val query: String, val scope: ShelfScope)
 
     /** A refresh's own state alongside the device's, so the UI can tell "no network" from "server said no". */
     private data class Attempt(val refresh: RefreshState, val isOnline: Boolean)
@@ -324,6 +385,13 @@ data class HomeUiState(
     val books: List<Book> = emptyList(),
     val query: String = "",
     val order: BookSortOrder = BookSortOrder.LastPlayed,
+    /**
+     * PRODUCT_SPEC 6.1 step 9 — the library this shelf is narrowed to, or `null` for all of them.
+     *
+     * The resolved library rather than the stored id: the screen names it, and a stored id that no
+     * longer resolves has already widened the shelf back to everything by the time it gets here.
+     */
+    val scopedTo: Library? = null,
     val isRefreshing: Boolean = false,
     val syncStatus: SyncStatus = SyncStatus.NeverSynced,
     val error: AppError? = null,

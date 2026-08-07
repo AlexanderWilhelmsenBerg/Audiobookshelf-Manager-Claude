@@ -102,7 +102,10 @@ fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = 
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = stringResource(R.string.home_title))
+                        // PRODUCT_SPEC 6.1 step 9 — a shelf narrowed to one library is titled with it.
+                        // Showing "Library" over a subset of the profile's books reads as books having
+                        // gone missing, and the setting that caused it is two screens away.
+                        Text(text = uiState.scopedTo?.name ?: stringResource(R.string.home_title))
                         ServerStatusDot(
                             status = uiState.serverStatus,
                             isOffline = uiState.isOffline,

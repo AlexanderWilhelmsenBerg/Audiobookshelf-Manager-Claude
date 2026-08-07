@@ -12,10 +12,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -45,6 +48,7 @@ fun SettingsRoute(
     SettingsScreen(
         uiState = uiState,
         onLibrarySelected = onLibrarySelected,
+        onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
     )
@@ -55,6 +59,7 @@ fun SettingsRoute(
 fun SettingsScreen(
     uiState: SettingsUiState,
     onLibrarySelected: (LibraryId) -> Unit,
+    onDefaultLibraryChanged: (LibraryId?) -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -85,8 +90,16 @@ fun SettingsScreen(
                 item { Hint(text = stringResource(R.string.settings_libraries_empty)) }
             } else {
                 items(uiState.libraries, key = { it.id.value }) { library ->
-                    LibraryRow(library = library, onClick = { onLibrarySelected(library.id) })
+                    LibraryRow(
+                        library = library,
+                        isDefault = library.id == uiState.defaultLibraryId,
+                        onClick = { onLibrarySelected(library.id) },
+                        onDefaultChanged = { isDefault ->
+                            onDefaultLibraryChanged(library.id.takeIf { isDefault })
+                        },
+                    )
                 }
+                item { Hint(text = stringResource(R.string.settings_default_library_hint)) }
             }
 
             item { SectionHeader(text = stringResource(R.string.settings_section_storage)) }
@@ -155,22 +168,55 @@ private fun androidx.compose.foundation.lazy.LazyListScope.storageRows(storage: 
     }
 }
 
+/**
+ * PRODUCT_SPEC 6.1 step 9 — opening a library and choosing it as the default are two separate targets.
+ *
+ * The star is not part of the row's click area on purpose. Tapping a library to browse it is the common
+ * action by a wide margin; making that same tap also change what the home screen shows would be a
+ * setting the user changed without meaning to, and would not survive them tapping a second library.
+ */
 @Composable
-private fun LibraryRow(library: Library, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun LibraryRow(
+    library: Library,
+    isDefault: Boolean,
+    onClick: () -> Unit,
+    onDefaultChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val count = pluralStringResource(R.plurals.home_library_books, library.bookCount, library.bookCount)
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = library.name, style = MaterialTheme.typography.bodyLarge)
-        Text(
-            text = count,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onClick)
+                .padding(start = 16.dp, top = 12.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(text = library.name, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = count,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconToggleButton(
+            checked = isDefault,
+            onCheckedChange = onDefaultChanged,
+            modifier = Modifier.padding(end = 8.dp),
+        ) {
+            Icon(
+                imageVector = if (isDefault) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                // PRODUCT_SPEC 21 — the label says what the tap will do, and names the library, because
+                // a screen of identical "Set as default" buttons is unusable with a screen reader.
+                contentDescription = stringResource(
+                    if (isDefault) R.string.settings_default_library_clear else R.string.settings_default_library_set,
+                    library.name,
+                ),
+            )
+        }
     }
 }
 
