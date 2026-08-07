@@ -472,6 +472,71 @@ else
   capture socket-event-after-progress GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
 fi
 
+# --- Playback sessions (PLAY-001, PLAY-004, PLAY-005) ---------------------------------------------
+#
+# Phase 2's whole surface, and none of it has ever been captured. `ServerCapability.PlaybackSession`
+# and `LocalSessionSync` are both listed "verified against a server: No" in docs/api-compatibility.md,
+# which under PRODUCT_SPEC 22.5 means nothing may be written against them yet.
+#
+# Three things need establishing before a note of audio can be played:
+#
+#  1. **What a session is.** `POST /api/items/{id}/play` opens one. It is expected to carry the audio
+#     tracks with their content URLs, the chapters, and the position to start from — which is what
+#     `PLAY-003`'s global timeline is built out of. Whether those URLs are absolute or relative, and
+#     whether they carry their own credential, decides how the player is wired to the network stack.
+#  2. **How progress goes back.** `POST /api/session/{id}/sync` is the session-scoped route, as opposed
+#     to `PATCH /api/me/progress/{id}`, which the app already uses and which is captured above.
+#     `PLAY-004` wants a sync roughly every thirty seconds; `PLAY-005` wants a retry to be idempotent.
+#     Both need the request *and* the response observed.
+#  3. **How a session ends.** `POST /api/session/{id}/close`, and what the server then considers the
+#     final position.
+#
+# The device description is sent because the server records it against the session and may vary its
+# answer by it. Every value is deliberately generic — no real device identifier reaches a fixture.
+log "opening a playback session so the Phase 2 shapes can be observed"
+PLAY_BODY='{"deviceInfo":{"clientName":"ShelfPlayer","clientVersion":"0.0.0","deviceId":"capture","manufacturer":"capture","model":"capture","sdkVersion":36},"supportedMimeTypes":["audio/mpeg","audio/mp4","audio/flac"],"mediaPlayer":"exo-player","forceDirectPlay":false,"forceTranscode":false}'
+
+capture item-play POST "/api/items/$ITEM_ID/play" \
+  -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$PLAY_BODY"
+
+# The session id drives the two routes below. Read out of the response this capture already made,
+# rather than fetched again, so the fixtures describe one session rather than three unrelated ones.
+#
+# From the **raw** body, not the fixture: `record` redacts volatile fields, and a session id is the
+# most volatile thing in the response — it is `<volatile>` by the time it reaches `$OUT_DIR`.
+SESSION_ID="$(python3 -c '
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get("id") or "")
+except Exception:
+    print("")
+' "$RAW_DIR/item-play.raw" 2>/dev/null || true)"
+
+if [ -n "$SESSION_ID" ]; then
+  log "syncing and closing the session"
+  capture session-sync POST "/api/session/$SESSION_ID/sync" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":63.5,"timeListened":21,"duration":8}'
+
+  # Sent twice on purpose. PLAY-005 requires a retried sync to be idempotent, and "the server took it
+  # twice without the position moving backwards" is a property only a second request can demonstrate.
+  capture session-sync-repeated POST "/api/session/$SESSION_ID/sync" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":63.5,"timeListened":21,"duration":8}'
+
+  capture session-close POST "/api/session/$SESSION_ID/close" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":63.5,"timeListened":21,"duration":8}'
+
+  # What the account looks like after a session, which is where PLAY-004's conflict resolution reads
+  # from. Captured separately from the pre-session `me.json` so the two can be diffed.
+  capture me-after-session GET /api/me -H "$AUTH_HEADER"
+else
+  # Loud, not silent. No session id means the play route did not answer as expected, and the right
+  # outcome is a visible gap in the fixtures rather than three files full of error bodies.
+  echo "::warning::no session id in item-play.json — session sync and close were not captured"
+fi
+
 capture logout POST /logout -H "$AUTH_HEADER"
 
 log "captured $(find "$OUT_DIR" -name '*.json' | wc -l) fixtures"

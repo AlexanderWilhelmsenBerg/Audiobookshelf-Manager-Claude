@@ -110,8 +110,8 @@ guessing.
 
 | Capability | Gates | Verified against a server |
 | --- | --- | --- |
-| `PlaybackSession` | PLAY-001, streaming session | No |
-| `LocalSessionSync` | PLAY-005 | No |
+| `PlaybackSession` | PLAY-001, streaming session | No — **capture targets added**, see below |
+| `LocalSessionSync` | PLAY-005 | No — **capture targets added**, see below |
 | `RangeDownload` | DL-001 resume | No |
 | `ChecksumOrETag` | DL-002 integrity | No |
 | `MetadataUpdate` | MGR-001 | No |
@@ -364,3 +364,37 @@ new privileged endpoint must add a row (`PRODUCT_SPEC 22.19`).
 bearer auth, and the library/item read shapes. Playback, progress, downloads, management, users and
 websocket are unverified, and every capability in the table above still reads "No" because nothing in
 `GET /status` reports one.
+
+## Playback sessions — capture targets, not yet observed (PLAY-001, PLAY-004, PLAY-005)
+
+`scripts/capture-contracts.sh` opens a real playback session and records five fixtures. **None of them
+exists yet**, and nothing in the app may be written against these shapes until they do — that is
+PRODUCT_SPEC 22.5, and it is the rule that made Phase 1's search and cover work correct on the first
+attempt rather than the second.
+
+| Fixture | Endpoint | What it has to settle |
+| --- | --- | --- |
+| `item-play.json` | `POST /api/items/{id}/play` | The audio tracks, their content URLs, the chapters, the start position |
+| `session-sync.json` | `POST /api/session/{id}/sync` | What a progress sync accepts and returns |
+| `session-sync-repeated.json` | the same call again | Whether a retry is idempotent — PLAY-005 requires it |
+| `session-close.json` | `POST /api/session/{id}/close` | What the server treats as the final position |
+| `me-after-session.json` | `GET /api/me` | The account record afterwards, diffable against the pre-session `me.json` |
+
+### The three questions `item-play` decides
+
+Each one changes how the player is wired, and none can be answered by reading a document:
+
+1. **Are the track URLs absolute or relative?** A relative path has to be resolved against the profile's
+   server, which the player does not otherwise need to know about.
+2. **Do they carry their own credential, or need the `Authorization` header?** PRODUCT_SPEC 14.5 forbids
+   a token in a URL, so if the server hands back pre-signed URLs containing one, that is a finding to
+   record and design around rather than a convenience to use.
+3. **Are the offsets per-track or already global?** PLAY-003's seek-across-boundary requirement is
+   arithmetic in one case and a no-op in the other.
+
+### Why `/api/session/{id}/sync` rather than the progress route the app already uses
+
+`PATCH /api/me/progress/{id}` is captured and in use, and it is enough to *record* a position. It says
+nothing about a listening **session** — `timeListened`, the device that produced it, or the identity a
+retry has to match on. PLAY-005's outbox is built on session identity, so the session route has to be
+observed even though a simpler one already works.
