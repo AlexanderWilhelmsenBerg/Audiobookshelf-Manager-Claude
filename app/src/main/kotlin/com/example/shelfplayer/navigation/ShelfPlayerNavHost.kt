@@ -9,7 +9,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.shelfplayer.feature.book.BookRoute
 import com.example.shelfplayer.feature.home.HomeRoute
-import com.example.shelfplayer.feature.library.LibraryRoute
 import com.example.shelfplayer.feature.onboarding.SignInRoute
 import com.example.shelfplayer.feature.onboarding.SignInViewModel
 import com.example.shelfplayer.feature.profiles.ProfileSwitcherRoute
@@ -57,6 +56,9 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
                 onBookSelected = { bookId ->
                     navController.navigate(ShelfDestinations.book(bookId))
                 },
+                onSeriesSelected = { seriesId ->
+                    navController.navigate(ShelfDestinations.series(seriesId))
+                },
                 onProfilesSelected = { navController.navigate(ShelfDestinations.PROFILES) },
                 onSettingsSelected = { navController.navigate(ShelfDestinations.SETTINGS) },
                 onSignInSelected = { navController.navigate(ShelfDestinations.signIn()) },
@@ -74,30 +76,12 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
             )
         }
         composable(ShelfDestinations.SETTINGS) {
-            // PRODUCT_SPEC SET-002 — browsing by library lives here now, as a list rather than a switch
-            // that turns the home screen into something else.
-            SettingsRoute(
-                onLibrarySelected = { libraryId ->
-                    navController.navigate(ShelfDestinations.library(libraryId))
-                },
-                onNavigateUp = navController::navigateUp,
-            )
-        }
-        composable(
-            route = ShelfDestinations.LIBRARY,
-            arguments = listOf(
-                navArgument(ShelfDestinations.ARG_LIBRARY_ID) { type = NavType.StringType },
-            ),
-        ) {
-            LibraryRoute(
-                onBookSelected = { bookId ->
-                    navController.navigate(ShelfDestinations.book(bookId))
-                },
-                onSeriesSelected = { seriesId ->
-                    navController.navigate(ShelfDestinations.series(seriesId))
-                },
-                onNavigateUp = navController::navigateUp,
-            )
+            // PRODUCT_SPEC SET-002 / 6.1 step 9 — Settings *scopes* the shelf; it is not a second place
+            // to browse from. There used to be a library screen behind this list with its own tabs,
+            // search and sort chips, which a device run called out as "two different places for the same
+            // functions". Choosing a library here narrows the home screen, and the home screen is where
+            // browsing happens.
+            SettingsRoute(onNavigateUp = navController::navigateUp)
         }
         composable(
             route = ShelfDestinations.BOOK,

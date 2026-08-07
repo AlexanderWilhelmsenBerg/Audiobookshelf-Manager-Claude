@@ -34,9 +34,13 @@ import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.BrowseUseCases
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
+import com.example.shelfplayer.domain.usecase.ObserveBookGroupsUseCase
+import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveRealtimeUpdatesUseCase
+import com.example.shelfplayer.domain.usecase.ObserveSeriesShelvesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
 import com.example.shelfplayer.domain.usecase.RefreshLibraryUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
@@ -80,11 +84,21 @@ class HomeViewModelTest {
     /** PRODUCT_SPEC SET-001 — the shelf's sort order and default library live here now, not in the ViewModel. */
     private val preferences = FakePreferences()
 
+    /**
+     * Home opens on the three shelves, so a test about the flat list has to ask for it.
+     *
+     * Only the visible axis is collected — that is the point of the `flatMapLatest` on the view — so
+     * `uiState.books` is deliberately empty while the shelves are showing. A test that asserted on it
+     * anyway would be asserting that the app does work nobody asked for.
+     */
+    private fun listViewModel() = viewModel().also { it.onBooksViewChanged(BooksView.List) }
+
     private fun viewModel() = HomeViewModel(
-        observeAccessibleBooks = ObserveAccessibleBooksUseCase(
-            profiles,
-            libraries,
-            mainDispatcherRule.testDispatcher,
+        browse = BrowseUseCases(
+            books = ObserveAccessibleBooksUseCase(profiles, libraries, mainDispatcherRule.testDispatcher),
+            shelves = ObserveHomeShelvesUseCase(profiles, libraries, mainDispatcherRule.testDispatcher),
+            series = ObserveSeriesShelvesUseCase(profiles, libraries, mainDispatcherRule.testDispatcher),
+            groups = ObserveBookGroupsUseCase(profiles, libraries, mainDispatcherRule.testDispatcher),
         ),
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         observeSyncState = ObserveSyncStateUseCase(profiles, libraries),
@@ -343,7 +357,7 @@ class HomeViewModelTest {
         val gate = CompletableDeferred<Unit>()
         libraries.gate = gate
 
-        val viewModel = viewModel()
+        val viewModel = listViewModel()
         viewModel.uiState.test {
             awaitItem()
             viewModel.refresh()
@@ -376,7 +390,7 @@ class HomeViewModelTest {
         profiles.setActive(demoProfile)
         libraries.emitBooks(listOf(book("cached", "A cached book")))
 
-        viewModel().uiState.test {
+        listViewModel().uiState.test {
             val state = awaitItem()
             assertEquals(listOf("A cached book"), state.books.map { it.title })
             assertEquals(SyncStatus.Succeeded, state.syncStatus)
@@ -400,7 +414,7 @@ class HomeViewModelTest {
             ),
         )
 
-        viewModel().uiState.test {
+        listViewModel().uiState.test {
             assertEquals(listOf("Newest", "Older", "Never opened"), awaitItem().books.map { it.title })
         }
     }
@@ -418,7 +432,7 @@ class HomeViewModelTest {
         profiles.setActive(demoProfile)
         libraries.emitBooks(listOf(book("salt", "The Salt Harbour"), book("glass", "The Weather Glass")))
 
-        val viewModel = viewModel()
+        val viewModel = listViewModel()
         backgroundScope.launch(mainDispatcherRule.testDispatcher) { viewModel.uiState.collect { } }
         assertEquals(2, viewModel.uiState.value.books.size)
 
@@ -439,7 +453,7 @@ class HomeViewModelTest {
         libraries.emitBooks(listOf(book("cached", "A cached book")))
         libraries.refreshResult = AppResult.Failure(AppError.Network())
 
-        val viewModel = viewModel()
+        val viewModel = listViewModel()
         viewModel.uiState.test {
             awaitItem()
 
@@ -528,7 +542,7 @@ class HomeViewModelTest {
         )
         preferences.setSortOrder(libraryId = null, order = BookSortOrder.TitleAscending.name)
 
-        viewModel().uiState.test {
+        listViewModel().uiState.test {
             val state = awaitItem()
             assertEquals(BookSortOrder.TitleAscending, state.order)
             assertEquals(listOf("Anchor", "Zenith"), state.books.map { it.title })
@@ -578,7 +592,7 @@ class HomeViewModelTest {
         )
         preferences.setDefaultLibrary(LibraryId("lib-nonfiction"))
 
-        viewModel().uiState.test {
+        listViewModel().uiState.test {
             val state = awaitItem()
             assertEquals(listOf("A history"), state.books.map { it.title })
             assertEquals("Non-fiction", state.scopedTo?.name, "the shelf says which library it is showing")
@@ -601,7 +615,7 @@ class HomeViewModelTest {
         )
         preferences.setDefaultLibrary(LibraryId("lib-nonfiction"))
 
-        viewModel().uiState.test {
+        listViewModel().uiState.test {
             val state = awaitItem()
             assertEquals(listOf("A history", "A novel"), state.books.map { it.title }.sorted())
             assertNull(state.scopedTo)

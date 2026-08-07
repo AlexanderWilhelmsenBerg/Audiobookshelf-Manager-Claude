@@ -1,6 +1,5 @@
 package com.example.shelfplayer.navigation
 
-import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
 import java.net.URLEncoder
@@ -26,11 +25,9 @@ object ShelfDestinations {
     const val HOME = "home"
     const val PROFILES = "profiles"
     const val SETTINGS = "settings"
-    const val LIBRARY = "library/{libraryId}"
     const val BOOK = "book/{bookId}"
     const val SERIES = "series/{seriesId}"
 
-    const val ARG_LIBRARY_ID = "libraryId"
     const val ARG_BOOK_ID = "bookId"
     const val ARG_SERIES_ID = "seriesId"
 
@@ -42,8 +39,6 @@ object ShelfDestinations {
         encode(serverUrl) + "&username=" + encode(username)
 
     private fun encode(value: String?): String = URLEncoder.encode(value.orEmpty(), Charsets.UTF_8.name())
-
-    fun library(libraryId: LibraryId): String = "library/${libraryId.value}"
 
     fun book(bookId: LibraryItemId): String = "book/${bookId.value}"
 

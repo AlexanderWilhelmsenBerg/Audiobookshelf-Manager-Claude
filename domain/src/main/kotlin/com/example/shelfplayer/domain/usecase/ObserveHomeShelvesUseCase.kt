@@ -3,10 +3,9 @@ package com.example.shelfplayer.domain.usecase
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.domain.library.BookGroup
-import com.example.shelfplayer.domain.library.BookGroupKind
-import com.example.shelfplayer.domain.library.groupBooks
-import com.example.shelfplayer.domain.library.matchesQuery
+import com.example.shelfplayer.domain.library.HomeShelves
+import com.example.shelfplayer.domain.library.homeShelvesOf
+import com.example.shelfplayer.domain.library.visibleBooks
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -19,25 +18,24 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 /**
- * PRODUCT_SPEC LIB-002 — browsing one library by author or by genre.
+ * PRODUCT_SPEC LIB-002 — the three shelves the home screen opens on.
  *
- * The same shape as [ObserveLibrarySeriesUseCase] and for the same reason: built on the book rows the
- * profile can see, so the grant is applied once in the query and every axis inherits it rather than
- * each re-deriving what is visible.
+ * Reads the same visible rows every other axis reads, so the grant is applied once and the shelves
+ * cannot show a book the flat list would hide.
  */
-class ObserveLibraryGroupsUseCase @Inject constructor(
+class ObserveHomeShelvesUseCase @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val libraryRepository: LibraryRepository,
+    /** PRODUCT_SPEC 16.3 — three sorts and a series grouping over the whole library, off the main thread. */
     @param:Dispatcher(ShelfDispatcher.Default) private val defaultDispatcher: CoroutineDispatcher,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
-    operator fun invoke(libraryId: LibraryId, kind: BookGroupKind, query: String = ""): Flow<List<BookGroup>> =
+    operator fun invoke(libraryId: LibraryId? = null): Flow<HomeShelves> =
         profileRepository.observeActiveProfile().flatMapLatest { profile ->
             if (profile == null) {
-                flowOf(emptyList())
+                flowOf(HomeShelves.Empty)
             } else {
-                libraryRepository.observeBooks(profile.id, libraryId)
-                    .map { books -> groupBooks(books, kind).filter { it.matchesQuery(query) } }
+                libraryRepository.visibleBooks(profile.id, libraryId).map { books -> homeShelvesOf(books) }
             }
         }.flowOn(defaultDispatcher)
 }

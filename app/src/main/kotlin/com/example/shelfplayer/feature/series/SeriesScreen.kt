@@ -26,7 +26,7 @@ import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.domain.library.SeriesShelf
-import com.example.shelfplayer.feature.library.BookCard
+import com.example.shelfplayer.feature.browse.BookCard
 
 @Composable
 fun SeriesRoute(

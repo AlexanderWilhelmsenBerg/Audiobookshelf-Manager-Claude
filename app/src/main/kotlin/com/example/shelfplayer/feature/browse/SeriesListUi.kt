@@ -1,4 +1,4 @@
-package com.example.shelfplayer.feature.library
+package com.example.shelfplayer.feature.browse
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

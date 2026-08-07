@@ -13,10 +13,16 @@ import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.domain.library.BookFilter
+import com.example.shelfplayer.domain.library.BookFocus
+import com.example.shelfplayer.domain.library.BookGroup
+import com.example.shelfplayer.domain.library.BookGroupKind
 import com.example.shelfplayer.domain.library.BookSortOrder
+import com.example.shelfplayer.domain.library.HomeShelves
+import com.example.shelfplayer.domain.library.SeriesShelf
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
-import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
+import com.example.shelfplayer.domain.usecase.BrowseUseCases
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveRealtimeUpdatesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
@@ -55,7 +61,7 @@ import javax.inject.Inject
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    observeAccessibleBooks: ObserveAccessibleBooksUseCase,
+    private val browse: BrowseUseCases,
     observeLibraries: ObserveLibrariesUseCase,
     observeSyncState: ObserveSyncStateUseCase,
     profileRepository: ProfileRepository,
@@ -67,27 +73,22 @@ class HomeViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val refreshState = MutableStateFlow(RefreshState())
-    private val controls = MutableStateFlow(ShelfControls())
+    private val controls = MutableStateFlow(HomeControls())
 
     /**
-     * PRODUCT_SPEC SET-001 / LIB-002 — the sort order is read from the profile's preferences, not held
-     * here.
+     * The controls the user is holding, the order this profile persisted, and the library it is scoped
+     * to — resolved into one value.
      *
-     * The stored value is the single source of truth rather than a copy seeded into local state. That
-     * is what makes the persistence real: the chip moves because the write landed, so a sort order that
-     * survives a relaunch and one that does not are different on screen rather than only on disk.
+     * Combined here rather than added to the state `combine` below because that one is already at
+     * `combine`'s five-flow limit, and because these three are read together anyway: between them they
+     * are what the shelf *is*.
      *
-     * The fallback is [BookSortOrder.LastPlayed], which is what this shelf opens on for a profile that
-     * has never chosen — not the global default.
-     */
-    /**
-     * The query, the persisted order and the resolved default library, in one flow.
+     * PRODUCT_SPEC SET-001 — the sort order is read from preferences rather than held here, so the chip
+     * moves because the write landed. The fallback is [BookSortOrder.LastPlayed]: what this shelf opens
+     * on for a profile that has never chosen, not the global default.
      *
-     * Combined here because `combine` stops at five typed flows and the shelf state below already uses
-     * all five — and because the three are read together anyway: they are what the shelf *is*.
-     *
-     * PRODUCT_SPEC 6.1 step 9 — the stored default is resolved against the granted libraries rather
-     * than trusted. A library the profile has since lost must widen the shelf back to everything; a
+     * PRODUCT_SPEC 6.1 step 9 — the stored default library is resolved against the granted libraries
+     * rather than trusted. One the profile has since lost must widen the shelf back to everything; a
      * shelf scoped to a library that no longer exists is an empty screen with no explanation on it.
      */
     private val view: Flow<ShelfView> = combine(
@@ -96,7 +97,7 @@ class HomeViewModel @Inject constructor(
         observeLibraries(),
     ) { current, stored, libraries ->
         ShelfView(
-            query = current.query,
+            controls = current,
             order = BookSortOrder.fromStoredName(stored.orderName(libraryId = null), BookSortOrder.LastPlayed),
             library = stored.defaultLibraryId?.let { id -> libraries.firstOrNull { it.id == id } },
         )
@@ -105,20 +106,69 @@ class HomeViewModel @Inject constructor(
     /**
      * PRODUCT_SPEC LIB-002 — the 300 ms debounce applies to typing only.
      *
-     * Changing the sort order re-queries immediately: that is one discrete choice, not a stream of
-     * keystrokes, and there is nothing to settle.
+     * Changing an axis, a filter or the sort order re-queries immediately: each is one discrete choice,
+     * not a stream of keystrokes, and there is nothing to settle.
      */
-    private val books: Flow<List<Book>> = combine(
-        view.map { it.query }.distinctUntilChanged()
-            .debounce { query -> if (query.isEmpty()) 0L else SEARCH_DEBOUNCE_MILLIS },
-        view.map { ShelfScope(it.order, it.library?.id) }.distinctUntilChanged(),
-    ) { query, scope -> ShelfQuery(query, scope) }
-        .flatMapLatest { request ->
-            observeAccessibleBooks(
-                query = request.query,
-                order = request.scope.order,
-                libraryId = request.scope.libraryId,
-            )
+    private val debouncedQuery: Flow<String> = view
+        .map { it.controls.query }
+        .distinctUntilChanged()
+        .debounce { query -> if (query.isEmpty()) 0L else SEARCH_DEBOUNCE_MILLIS }
+
+    /** Everything that decides *what* is queried, de-duplicated as one value. */
+    private val scope: Flow<ShelfScope> = view
+        .map { ShelfScope(it.order, it.library?.id, it.controls.filter, it.controls.focus) }
+        .distinctUntilChanged()
+
+    private val axis: Flow<HomeAxis> = view.map { it.controls.axis }.distinctUntilChanged()
+
+    private val booksView: Flow<BooksView> = view.map { it.controls.effectiveView }.distinctUntilChanged()
+
+    private val books: Flow<List<Book>> =
+        combine(debouncedQuery, scope) { query, current -> query to current }
+            .flatMapLatest { (query, current) ->
+                browse.books(
+                    query = query,
+                    order = current.order,
+                    libraryId = current.libraryId,
+                    filter = current.filter,
+                    focus = current.focus,
+                )
+            }
+
+    private val shelves: Flow<HomeShelves> = scope
+        .map { it.libraryId }
+        .distinctUntilChanged()
+        .flatMapLatest { libraryId -> browse.shelves(libraryId) }
+
+    /**
+     * Only the visible axis is collected. `flatMapLatest` cancels the others, so a user looking at the
+     * book list is not paying to group 490 books into series, authors and genres — and a user on the
+     * shelves is not paying to sort the flat list either.
+     */
+    private val content: Flow<HomeContent> = combine(axis, booksView) { current, mode -> current to mode }
+        .flatMapLatest { (current, mode) ->
+            when (current) {
+                HomeAxis.Books -> when (mode) {
+                    BooksView.Shelves -> shelves.map { HomeContent.OfShelves(it) }
+                    BooksView.List -> books.map { HomeContent.OfBooks(it) }
+                }
+
+                HomeAxis.Series -> groupedSeries().map { HomeContent.OfSeries(it) }
+                HomeAxis.Authors -> groups(BookGroupKind.Author).map { HomeContent.OfGroups(it) }
+                HomeAxis.Genres -> groups(BookGroupKind.Genre).map { HomeContent.OfGroups(it) }
+            }
+        }
+
+    private fun groupedSeries(): Flow<List<SeriesShelf>> =
+        combine(debouncedQuery, scope.map { it.libraryId }.distinctUntilChanged()) { query, libraryId ->
+            query to libraryId
+        }.flatMapLatest { (query, libraryId) -> browse.series(libraryId = libraryId, query = query) }
+
+    private fun groups(kind: BookGroupKind): Flow<List<BookGroup>> =
+        combine(debouncedQuery, scope.map { it.libraryId }.distinctUntilChanged()) { query, libraryId ->
+            query to libraryId
+        }.flatMapLatest { (query, libraryId) ->
+            browse.groups(kind = kind, libraryId = libraryId, query = query)
         }
 
     /**
@@ -133,16 +183,24 @@ class HomeViewModel @Inject constructor(
 
     val uiState: StateFlow<HomeUiState> = combine(
         profileRepository.observeActiveProfile(),
-        books,
+        content,
         observeSyncState(),
         attempt,
         view,
-    ) { profile, shelf, syncState, (refresh, isOnline), current ->
+    ) { profile, loaded, syncState, (refresh, isOnline), current ->
         HomeUiState(
             isOffline = !isOnline,
             profile = profile,
-            books = shelf,
-            query = current.query,
+            books = (loaded as? HomeContent.OfBooks)?.books.orEmpty(),
+            shelves = (loaded as? HomeContent.OfShelves)?.shelves ?: HomeShelves.Empty,
+            series = (loaded as? HomeContent.OfSeries)?.series.orEmpty(),
+            groups = (loaded as? HomeContent.OfGroups)?.groups.orEmpty(),
+            query = current.controls.query,
+            isSearching = current.controls.isSearching,
+            axis = current.controls.axis,
+            booksView = current.controls.effectiveView,
+            filter = current.controls.filter,
+            focus = current.controls.focus,
             order = current.order,
             // PRODUCT_SPEC 6.1 step 9 / 21 — a shelf showing part of what the profile can see says which
             // part. A silently narrowed list reads as missing books.
@@ -161,7 +219,7 @@ class HomeViewModel @Inject constructor(
                 // Labelling a populated library "not synchronized yet" would be the app contradicting
                 // what the user is looking at.
                 syncState != null && syncState.status != SyncStatus.NeverSynced -> syncState.status
-                shelf.isNotEmpty() -> SyncStatus.Succeeded
+                loaded.hasRows -> SyncStatus.Succeeded
                 else -> SyncStatus.NeverSynced
             },
             // A live error from the user's own refresh wins: it is the newer fact, and it is the one they
@@ -304,6 +362,46 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
+     * PRODUCT_SPEC LIB-002 / 21 — search is a button, and the field only exists once it is pressed.
+     *
+     * A permanent text field costs a row of vertical space on every screen to serve the one visit in
+     * ten that is a search. Closing it clears the query, because a hidden field still filtering the
+     * shelf is a list of missing books with no visible cause.
+     */
+    fun onSearchToggled() {
+        controls.update {
+            if (it.isSearching) it.copy(isSearching = false, query = "") else it.copy(isSearching = true)
+        }
+    }
+
+    /** Switching axis drops the focus: an author picked on the Authors axis is not a filter on Genres. */
+    fun onAxisChanged(axis: HomeAxis) {
+        controls.update { it.copy(axis = axis, focus = null) }
+    }
+
+    fun onBooksViewChanged(view: BooksView) {
+        controls.update { it.copy(booksView = view) }
+    }
+
+    fun onFilterChanged(filter: BookFilter) {
+        controls.update { it.copy(filter = filter) }
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — opening an author or a genre narrows the book list rather than pushing a
+     * screen, so the search field, the sort chips and the filter chips keep working inside it.
+     */
+    fun onGroupSelected(group: BookGroup) {
+        controls.update {
+            it.copy(axis = HomeAxis.Books, focus = BookFocus(group.kind, group.key, group.label))
+        }
+    }
+
+    fun onFocusCleared() {
+        controls.update { it.copy(focus = null) }
+    }
+
+    /**
      * PRODUCT_SPEC SET-001 — the choice is written to the profile's preferences, and the shelf re-reads
      * it from there.
      *
@@ -325,17 +423,48 @@ class HomeViewModel @Inject constructor(
         val lastAttemptSucceeded: Boolean = false,
     )
 
-    /** What the user has asked the shelf to show. The order and the scope live in preferences. */
-    private data class ShelfControls(val query: String = "")
+    /** The in-memory controls alongside the persisted order and default library, resolved together. */
+    private data class ShelfView(val controls: HomeControls, val order: BookSortOrder, val library: Library?)
 
-    /** The in-memory query alongside the persisted order and default library, resolved together. */
-    private data class ShelfView(val query: String, val order: BookSortOrder, val library: Library?)
+    /** Everything that decides what is queried, so it can be de-duplicated as one value. */
+    private data class ShelfScope(
+        val order: BookSortOrder,
+        val libraryId: LibraryId?,
+        val filter: BookFilter,
+        val focus: BookFocus?,
+    )
 
-    /** The parts of a shelf that are not the search term, so they can be de-duplicated as one. */
-    private data class ShelfScope(val order: BookSortOrder, val libraryId: LibraryId?)
+    /**
+     * Whichever axis is being collected, carrying its own rows.
+     *
+     * A sealed type rather than four nullable lists in the state, so "the Authors axis is showing and
+     * it is empty" cannot be confused with "the Authors axis is showing and the books are stale".
+     */
+    private sealed interface HomeContent {
+        /**
+         * Whether this axis produced anything.
+         *
+         * Read by the sync-status branch, which treats content on screen as proof that a sync ran —
+         * the repository reports `NeverSynced` both for "no sync has run" and for "there is no row".
+         */
+        val hasRows: Boolean
 
-    /** One resolved request: what to search for, and over what. */
-    private data class ShelfQuery(val query: String, val scope: ShelfScope)
+        data class OfShelves(val shelves: HomeShelves) : HomeContent {
+            override val hasRows: Boolean get() = !shelves.isEmpty
+        }
+
+        data class OfBooks(val books: List<Book>) : HomeContent {
+            override val hasRows: Boolean get() = books.isNotEmpty()
+        }
+
+        data class OfSeries(val series: List<SeriesShelf>) : HomeContent {
+            override val hasRows: Boolean get() = series.isNotEmpty()
+        }
+
+        data class OfGroups(val groups: List<BookGroup>) : HomeContent {
+            override val hasRows: Boolean get() = groups.isNotEmpty()
+        }
+    }
 
     /** A refresh's own state alongside the device's, so the UI can tell "no network" from "server said no". */
     private data class Attempt(val refresh: RefreshState, val isOnline: Boolean)
@@ -383,7 +512,17 @@ class HomeViewModel @Inject constructor(
 data class HomeUiState(
     val profile: Profile? = null,
     val books: List<Book> = emptyList(),
+    /** PRODUCT_SPEC LIB-002 — the three shelves, shown when the user has asked for nothing in particular. */
+    val shelves: HomeShelves = HomeShelves.Empty,
+    val series: List<SeriesShelf> = emptyList(),
+    val groups: List<BookGroup> = emptyList(),
     val query: String = "",
+    val isSearching: Boolean = false,
+    val axis: HomeAxis = HomeAxis.Books,
+    val booksView: BooksView = BooksView.Shelves,
+    val filter: BookFilter = BookFilter.Default,
+    /** PRODUCT_SPEC LIB-002 — the author or genre the book list has been narrowed to, if any. */
+    val focus: BookFocus? = null,
     val order: BookSortOrder = BookSortOrder.LastPlayed,
     /**
      * PRODUCT_SPEC 6.1 step 9 — the library this shelf is narrowed to, or `null` for all of them.
@@ -426,3 +565,17 @@ data class HomeUiState(
      */
     val isLoaded: Boolean = false,
 )
+
+/**
+ * Whether the axis currently on screen has nothing to show.
+ *
+ * A property on the state rather than a `when` in the composable: "is this empty" is answered
+ * differently per axis, and a screen that got it wrong would render a `LazyColumn` of nothing instead
+ * of the sentence explaining why.
+ */
+val HomeUiState.isAxisEmpty: Boolean
+    get() = when (axis) {
+        HomeAxis.Books -> if (booksView == BooksView.Shelves) shelves.isEmpty else books.isEmpty()
+        HomeAxis.Series -> series.isEmpty()
+        HomeAxis.Authors, HomeAxis.Genres -> groups.isEmpty()
+    }

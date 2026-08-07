@@ -323,6 +323,28 @@ playback steps belong to Phase 2.
 
 ---
 
+## 4b. The 0.1.6 restructure — one browse surface
+
+A device run rejected the shape rather than the features: "the main screen should be the place to be,
+not two different places for the same functions". It was right, and the second place was worse than
+redundant — the library screen behind Settings had learned about filters and axes that the home shelf
+had not, so the same search answered differently depending on which screen asked.
+
+- **The library screen is deleted.** Its axes, search, sort and filters are the home screen's now.
+  `ObserveLibraryBooksUseCase` is gone with it: `libraryId` is a parameter of the one book query.
+- **Settings scopes, it does not browse.** Tapping a library toggles the star; there is nowhere to
+  navigate to any more.
+- **The axes are a bottom bar** — Books, Series, Authors, Genres — rather than tabs on a sub-screen.
+- **Search is a button.** Closing it clears the query, because a hidden field still filtering the shelf
+  is a list of missing books with no visible cause.
+- **The Books axis opens on three horizontal shelves** (continue listening, continue a series, recently
+  added) and switches to the flat list on demand, or on its own as soon as a search, a filter or an
+  author makes a five-card preview the wrong answer.
+- **Collections are still absent.** `/api/libraries/{id}/collections` is now a known endpoint
+  (ADR-0008) and a capture target, but PRODUCT_SPEC 22.5 governs and no fixture exists.
+
+---
+
 ## 5. Deferred, with the reason recorded
 
 - **`syncVersion` / ETag columns** (`PRODUCT_SPEC 13.2`) — no captured response carries the header.

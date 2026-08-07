@@ -18,16 +18,29 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -36,10 +49,14 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -54,10 +71,14 @@ import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfErrorState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.ServerStatus
 import com.example.shelfplayer.core.model.SyncStatus
-import com.example.shelfplayer.feature.library.BookCard
-import com.example.shelfplayer.feature.library.BookSortRow
+import com.example.shelfplayer.domain.library.BookFilter
+import com.example.shelfplayer.feature.browse.BookCard
+import com.example.shelfplayer.feature.browse.BookSortRow
+import com.example.shelfplayer.feature.browse.GroupCard
+import com.example.shelfplayer.feature.browse.SeriesCard
 
 /**
  * PRODUCT_SPEC 16.4 — `*Route` wires navigation and state; `*Screen` is a pure function of its
@@ -66,6 +87,7 @@ import com.example.shelfplayer.feature.library.BookSortRow
 @Composable
 fun HomeRoute(
     onBookSelected: (LibraryItemId) -> Unit,
+    onSeriesSelected: (SeriesId) -> Unit,
     onProfilesSelected: () -> Unit,
     onSettingsSelected: () -> Unit,
     onSignInSelected: () -> Unit,
@@ -82,8 +104,15 @@ fun HomeRoute(
         uiState = uiState,
         actions = HomeActions(
             onBookSelected = onBookSelected,
+            onSeriesSelected = onSeriesSelected,
+            onGroupSelected = viewModel::onGroupSelected,
             onQueryChanged = viewModel::onQueryChanged,
+            onSearchToggled = viewModel::onSearchToggled,
+            onAxisChanged = viewModel::onAxisChanged,
+            onBooksViewChanged = viewModel::onBooksViewChanged,
             onOrderChanged = viewModel::onOrderChanged,
+            onFilterChanged = viewModel::onFilterChanged,
+            onFocusCleared = viewModel::onFocusCleared,
             onRefresh = viewModel::refresh,
             onProfilesSelected = onProfilesSelected,
             onSettingsSelected = onSettingsSelected,
@@ -114,6 +143,22 @@ fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = 
                     }
                 },
                 actions = {
+                    // PRODUCT_SPEC LIB-002 / 21 — search is a button. A permanent field costs a row of
+                    // vertical space on every screen to serve the one visit in ten that is a search, and
+                    // a device run asked for it back.
+                    if (uiState.profile != null) {
+                        IconButton(onClick = actions.onSearchToggled) {
+                            Icon(
+                                imageVector = if (uiState.isSearching) Icons.Filled.Close else Icons.Filled.Search,
+                                contentDescription = stringResource(
+                                    if (uiState.isSearching) R.string.home_search_close else R.string.home_search_open,
+                                ),
+                            )
+                        }
+                    }
+                    if (uiState.axis == HomeAxis.Books && uiState.profile != null) {
+                        HomeViewToggle(current = uiState.booksView, onChanged = actions.onBooksViewChanged)
+                    }
                     // PRODUCT_SPEC LIB-001 — sync is "visible but non-blocking", and one indicator is
                     // enough to say so. There used to be two: a bar across the top and the pull-to-refresh
                     // spinner, for a single operation. The button that starts the sync is the honest place
@@ -145,6 +190,14 @@ fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = 
                 },
             )
         },
+        // PRODUCT_SPEC LIB-002 — the axes live in a bottom bar rather than in tabs on a second screen.
+        // Hidden while there is no profile: four destinations over "No server connected" are four ways
+        // to reach the same empty screen.
+        bottomBar = {
+            if (uiState.profile != null) {
+                HomeAxisBar(current = uiState.axis, onAxisChanged = actions.onAxisChanged)
+            }
+        },
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -153,6 +206,57 @@ fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = 
         ) {
             HomeContent(uiState = uiState, actions = actions)
         }
+    }
+}
+
+/** PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */
+@Composable
+private fun HomeAxisBar(current: HomeAxis, onAxisChanged: (HomeAxis) -> Unit, modifier: Modifier = Modifier) {
+    NavigationBar(modifier = modifier) {
+        HomeAxis.entries.forEach { axis ->
+            NavigationBarItem(
+                selected = axis == current,
+                onClick = { onAxisChanged(axis) },
+                icon = { Icon(imageVector = axis.icon(), contentDescription = null) },
+                label = { Text(text = stringResource(axis.labelRes())) },
+            )
+        }
+    }
+}
+
+private fun HomeAxis.icon(): ImageVector = when (this) {
+    HomeAxis.Books -> Icons.AutoMirrored.Filled.MenuBook
+    HomeAxis.Series -> Icons.AutoMirrored.Filled.List
+    HomeAxis.Authors -> Icons.Filled.Person
+    HomeAxis.Genres -> Icons.Filled.Category
+}
+
+private fun HomeAxis.labelRes(): Int = when (this) {
+    HomeAxis.Books -> R.string.library_tab_books
+    HomeAxis.Series -> R.string.library_tab_series
+    HomeAxis.Authors -> R.string.library_tab_authors
+    HomeAxis.Genres -> R.string.library_tab_genres
+}
+
+/**
+ * Switches the Books axis between the shelves and the flat list.
+ *
+ * One icon with two states rather than a pair of tabs: the shelves and the list show the same books,
+ * so this is a change of view and not a change of place.
+ */
+@Composable
+private fun HomeViewToggle(current: BooksView, onChanged: (BooksView) -> Unit, modifier: Modifier = Modifier) {
+    val toShelves = current == BooksView.List
+    IconButton(
+        onClick = { onChanged(if (toShelves) BooksView.Shelves else BooksView.List) },
+        modifier = modifier,
+    ) {
+        Icon(
+            imageVector = if (toShelves) Icons.Filled.ViewAgenda else Icons.AutoMirrored.Filled.FormatListBulleted,
+            contentDescription = stringResource(
+                if (toShelves) R.string.home_view_shelves else R.string.home_view_list,
+            ),
+        )
     }
 }
 
@@ -208,64 +312,194 @@ private fun HomeContent(uiState: HomeUiState, actions: HomeActions) {
 }
 
 /**
- * PRODUCT_SPEC LIB-002 — the shelf: every accessible book, most recently played first.
+ * PRODUCT_SPEC LIB-002 — the browse surface: shelves, books, series, authors or genres.
  *
- * Search and sort appear once there is something to search. A search field above "No books yet" offers
- * the user a way to narrow nothing down.
+ * Search and the chip rows appear once there is something to narrow. A search field above "No books
+ * yet" offers the user a way to filter nothing down.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BookShelf(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
-        if (uiState.books.isNotEmpty() || uiState.query.isNotEmpty()) {
-            OutlinedTextField(
-                value = uiState.query,
-                onValueChange = actions.onQueryChanged,
-                singleLine = true,
-                label = { Text(text = stringResource(R.string.home_search_hint)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+        if (uiState.isSearching) {
+            SearchField(query = uiState.query, onQueryChanged = actions.onQueryChanged)
+        }
+
+        // The chip rows belong to the flat book list. A shelf of series, authors or genres is ordered
+        // by name and has nothing to filter, and the three horizontal shelves carry their own order.
+        if (uiState.axis == HomeAxis.Books && uiState.booksView == BooksView.List) {
+            uiState.focus?.let { focus -> FocusChip(label = focus.label, onCleared = actions.onFocusCleared) }
+            BookFilterRow(selected = uiState.filter, onFilterChanged = actions.onFilterChanged)
             BookSortRow(selected = uiState.order, onOrderChanged = actions.onOrderChanged)
         }
 
-        when {
-            uiState.books.isEmpty() && uiState.query.isNotEmpty() ->
-                ShelfEmptyState(
-                    title = stringResource(R.string.home_no_matches_title),
-                    body = stringResource(R.string.home_no_matches_body),
-                    modifier = Modifier.fillMaxSize(),
-                )
-
-            uiState.books.isEmpty() -> EmptyOrFailed(uiState = uiState, onRefresh = actions.onRefresh)
-
-            // PRODUCT_SPEC LIB-001 — "pull-to-refresh refreshes the active library", in as many words.
-            // The toolbar button stays: pull is a gesture some users never discover, and TalkBack has no
-            // sensible way to perform one.
-            // The gesture without the spinner. `PullToRefreshBox` draws its own indicator whenever
-            // `isRefreshing` is true, which for an automatic sync meant a wheel appearing over the shelf
-            // that the user never asked for — and a second one, since the refresh button already turns.
-            // An empty indicator slot keeps the pull working and leaves the button to say so.
-            else -> PullToRefreshBox(
-                isRefreshing = uiState.isRefreshing,
-                onRefresh = actions.onRefresh,
-                indicator = {},
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    item { ShelfHeader(uiState) }
-                    items(items = uiState.books, key = { it.id.value }) { book ->
-                        BookCard(book = book, onClick = { actions.onBookSelected(book.id) })
-                    }
-                }
-            }
+        // PRODUCT_SPEC LIB-001 — "pull-to-refresh refreshes the active library", in as many words. The
+        // toolbar button stays: pull is a gesture some users never discover, and TalkBack has no
+        // sensible way to perform one.
+        //
+        // The gesture without the spinner. `PullToRefreshBox` draws its own indicator whenever
+        // `isRefreshing` is true, which for an automatic sync meant a wheel appearing over the shelf
+        // the user never asked for — and a second one, since the refresh button already turns. An empty
+        // indicator slot keeps the pull working and leaves the button to say so.
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = actions.onRefresh,
+            indicator = {},
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            AxisContent(uiState = uiState, actions = actions)
         }
     }
+}
+
+@Composable
+private fun SearchField(query: String, onQueryChanged: (String) -> Unit, modifier: Modifier = Modifier) {
+    val focusRequester = remember { FocusRequester() }
+    // Opened by a button press, so the keyboard is what the user asked for. Without this the field
+    // appears and the user has to tap it a second time to type in it.
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChanged,
+        singleLine = true,
+        label = { Text(text = stringResource(R.string.home_search_hint)) },
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .focusRequester(focusRequester),
+    )
+}
+
+/**
+ * PRODUCT_SPEC LIB-002 / 21 — the book list narrowed to one author or genre says so, and says how to
+ * leave.
+ *
+ * A narrowed list the user cannot see the reason for reads as books having gone missing, and one they
+ * cannot widen again is a trap.
+ */
+@Composable
+private fun FocusChip(label: String, onCleared: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier = modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        InputChip(
+            selected = true,
+            onClick = onCleared,
+            label = { Text(text = label) },
+            trailingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.library_focus_clear, label),
+                )
+            },
+        )
+    }
+}
+
+/** PRODUCT_SPEC LIB-002 — continue listening and downloaded, as filters over the list rather than axes. */
+@Composable
+private fun BookFilterRow(selected: BookFilter, onFilterChanged: (BookFilter) -> Unit, modifier: Modifier = Modifier) {
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(items = BookFilter.entries, key = { it.name }) { filter ->
+            FilterChip(
+                selected = filter == selected,
+                onClick = { onFilterChanged(filter) },
+                label = { Text(text = stringResource(filter.labelRes())) },
+            )
+        }
+    }
+}
+
+private fun BookFilter.labelRes(): Int = when (this) {
+    BookFilter.All -> R.string.library_filter_all
+    BookFilter.ContinueListening -> R.string.library_filter_continue
+    BookFilter.Downloaded -> R.string.library_filter_downloaded
+}
+
+@Composable
+private fun AxisContent(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
+    if (uiState.isAxisEmpty) {
+        AxisEmptyState(uiState = uiState, actions = actions, modifier = modifier)
+        return
+    }
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item { ShelfHeader(uiState, modifier = Modifier.padding(horizontal = 16.dp)) }
+        when (uiState.axis) {
+            HomeAxis.Books -> if (uiState.booksView == BooksView.Shelves) {
+                homeShelves(
+                    shelves = uiState.shelves,
+                    onBookSelected = actions.onBookSelected,
+                    onSeriesSelected = actions.onSeriesSelected,
+                )
+            } else {
+                items(items = uiState.books, key = { it.id.value }) { book ->
+                    BookCard(
+                        book = book,
+                        onClick = { actions.onBookSelected(book.id) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+            }
+
+            HomeAxis.Series -> items(items = uiState.series, key = { it.series.id.value }) { shelf ->
+                SeriesCard(
+                    shelf = shelf,
+                    onClick = { actions.onSeriesSelected(shelf.series.id) },
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+
+            HomeAxis.Authors, HomeAxis.Genres ->
+                items(items = uiState.groups, key = { it.key }) { group ->
+                    GroupCard(
+                        group = group,
+                        onClick = { actions.onGroupSelected(group) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+        }
+    }
+}
+
+/**
+ * Why the current axis is bare.
+ *
+ * A search that matched nothing is the most likely answer and is checked first — it is the one the
+ * user can act on. Everything else falls through to the shared empty/offline/error branch, which is
+ * about the library as a whole rather than about this axis.
+ */
+@Composable
+private fun AxisEmptyState(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
+    val content = modifier.fillMaxSize()
+    when {
+        uiState.query.isNotBlank() || uiState.focus != null || uiState.filter != BookFilter.All ->
+            ShelfEmptyState(
+                title = stringResource(R.string.home_no_matches_title),
+                body = stringResource(R.string.home_no_matches_body),
+                modifier = content,
+            )
+
+        uiState.axis != HomeAxis.Books -> ShelfEmptyState(
+            title = stringResource(uiState.axis.emptyTitleRes()),
+            body = stringResource(R.string.library_groups_empty_body),
+            modifier = content,
+        )
+
+        else -> EmptyOrFailed(uiState = uiState, onRefresh = actions.onRefresh, modifier = modifier)
+    }
+}
+
+private fun HomeAxis.emptyTitleRes(): Int = when (this) {
+    HomeAxis.Books -> R.string.home_empty_title
+    HomeAxis.Series -> R.string.series_empty_title
+    HomeAxis.Authors -> R.string.library_authors_empty_title
+    HomeAxis.Genres -> R.string.library_genres_empty_title
 }
 
 /**

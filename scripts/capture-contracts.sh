@@ -291,6 +291,27 @@ capture library-items GET "/api/libraries/$LIBRARY_ID/items" -H "$AUTH_HEADER"
 capture library-series GET "/api/libraries/$LIBRARY_ID/series" -H "$AUTH_HEADER"
 capture library-authors GET "/api/libraries/$LIBRARY_ID/authors" -H "$AUTH_HEADER"
 
+# --- Endpoints learned from AudioBooth (ADR-0008) ---------------------------------------------------
+#
+# AudioBooth is an MPL-2.0 iOS client observed to work against real servers. Reading it told us these
+# paths exist; it did not tell us what they return, and ADR-0008 is explicit that it must not be read
+# as a schema. That is what these captures are for — PRODUCT_SPEC 22.5 still governs, and nothing is
+# mapped from any of them until the fixture below is committed.
+#
+# `q=the` rather than an empty query: an empty search may be answered with an empty envelope on some
+# versions, and an envelope with no results in it does not show the element shapes the mapper needs.
+capture library-search GET "/api/libraries/$LIBRARY_ID/search?q=the" -H "$AUTH_HEADER"
+
+# PRODUCT_SPEC 3.2 makes collections conditional on consistent server support. Capturing the shape is
+# how "consistent" stops being an assumption: an empty array from a server with no collections is
+# itself a useful observation, and it is recorded rather than treated as a failure.
+capture library-collections GET "/api/libraries/$LIBRARY_ID/collections" -H "$AUTH_HEADER"
+
+# The server's own home shelves. ShelfPlayer derives its shelves from Room instead, deliberately — see
+# ADR-0008 — so this is captured for the parts a client cannot compute rather than to be adopted
+# wholesale. Held, not used.
+capture library-personalized GET "/api/libraries/$LIBRARY_ID/personalized" -H "$AUTH_HEADER"
+
 # The expanded single item: `LIB-004` and `PLAY-003` need the audio files and chapters, and the list
 # endpoint does not include them.
 ITEM_ID="$(curl -sS "$BASE_URL/api/libraries/$LIBRARY_ID/items" -H "$AUTH_HEADER" |

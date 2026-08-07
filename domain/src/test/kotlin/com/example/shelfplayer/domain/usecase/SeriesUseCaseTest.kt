@@ -32,13 +32,13 @@ class SeriesUseCaseTest {
 
     @Test
     fun `a library's books are grouped into series in sequence order`() = runTest {
-        val useCase = ObserveLibrarySeriesUseCase(
+        val useCase = ObserveSeriesShelvesUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = voyage + standalone),
             testDispatcher,
         )
 
-        useCase(TEST_LIBRARY).test {
+        useCase(libraryId = TEST_LIBRARY).test {
             val shelf = awaitItem().single()
             assertEquals("The Long Voyage", shelf.series.name)
             assertEquals(
@@ -52,33 +52,33 @@ class SeriesUseCaseTest {
     @Test
     fun `series are empty while no profile is active`() = runTest {
         val profiles = FakeProfileRepository().apply { signOut() }
-        val useCase = ObserveLibrarySeriesUseCase(profiles, FakeLibraryRepository(books = voyage), testDispatcher)
+        val useCase = ObserveSeriesShelvesUseCase(profiles, FakeLibraryRepository(books = voyage), testDispatcher)
 
-        useCase(TEST_LIBRARY).test { assertTrue(awaitItem().isEmpty()) }
+        useCase(libraryId = TEST_LIBRARY).test { assertTrue(awaitItem().isEmpty()) }
     }
 
     /** The series axis is scoped to the library being browsed, exactly as the book axis is. */
     @Test
     fun `a series in another library is not listed`() = runTest {
-        val useCase = ObserveLibrarySeriesUseCase(
+        val useCase = ObserveSeriesShelvesUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = voyage),
             testDispatcher,
         )
 
-        useCase(LibraryId("library-2")).test { assertTrue(awaitItem().isEmpty()) }
+        useCase(libraryId = LibraryId("library-2")).test { assertTrue(awaitItem().isEmpty()) }
     }
 
     @Test
     fun `searching the series axis matches a series by name`() = runTest {
-        val useCase = ObserveLibrarySeriesUseCase(
+        val useCase = ObserveSeriesShelvesUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = voyage),
             testDispatcher,
         )
 
-        useCase(TEST_LIBRARY, query = "voyage").test { assertEquals(1, awaitItem().size) }
-        useCase(TEST_LIBRARY, query = "no such series").test { assertTrue(awaitItem().isEmpty()) }
+        useCase(libraryId = TEST_LIBRARY, query = "voyage").test { assertEquals(1, awaitItem().size) }
+        useCase(libraryId = TEST_LIBRARY, query = "no such series").test { assertTrue(awaitItem().isEmpty()) }
     }
 
     @Test

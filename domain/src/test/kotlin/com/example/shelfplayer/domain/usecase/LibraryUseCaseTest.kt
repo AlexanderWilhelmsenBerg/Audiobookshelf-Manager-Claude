@@ -111,31 +111,38 @@ class LibraryUseCaseTest {
         }
     }
 
-    /** The shelf and a single library share one search predicate, so they cannot answer differently. */
+    /**
+     * PRODUCT_SPEC LIB-002 — scoping to one library changes *which* books are searched, not how.
+     *
+     * There used to be a second use case for a single library, and the two drifted the moment filters
+     * arrived: one learned about them and the other did not, so the same query answered differently
+     * depending on which screen asked. `libraryId` is now the whole of the difference.
+     */
     @Test
-    fun `the shelf searches the same fields a library does`() = runTest {
-        val repository = FakeLibraryRepository(books = books)
+    fun `searching one library and searching them all use the same predicate`() = runTest {
+        val useCase = ObserveAccessibleBooksUseCase(
+            FakeProfileRepository(),
+            FakeLibraryRepository(books = books),
+            testDispatcher,
+        )
 
-        ObserveAccessibleBooksUseCase(FakeProfileRepository(), repository, testDispatcher)("Nkemelu").test {
+        useCase(query = "Nkemelu").test {
             assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
         }
-        ObserveLibraryBooksUseCase(FakeProfileRepository(), repository, testDispatcher)(
-            TEST_LIBRARY,
-            query = "Nkemelu",
-        ).test {
+        useCase(query = "Nkemelu", libraryId = TEST_LIBRARY).test {
             assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
         }
     }
 
     @Test
     fun `books are sorted by the requested order`() = runTest {
-        val useCase = ObserveLibraryBooksUseCase(
+        val useCase = ObserveAccessibleBooksUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = books),
             testDispatcher,
         )
 
-        useCase(TEST_LIBRARY, order = BookSortOrder.SeriesSequenceAscending).test {
+        useCase(libraryId = TEST_LIBRARY, order = BookSortOrder.SeriesSequenceAscending).test {
             assertEquals(listOf("b-1", "b-2", "b-10"), awaitItem().map { it.id.value })
         }
     }
@@ -143,7 +150,7 @@ class LibraryUseCaseTest {
     /** PRODUCT_SPEC LIB-002 — search matches title, author, narrator, series and tags. */
     @Test
     fun `search matches every documented field`() = runTest {
-        val useCase = ObserveLibraryBooksUseCase(
+        val useCase = ObserveAccessibleBooksUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = books),
             testDispatcher,
@@ -151,7 +158,7 @@ class LibraryUseCaseTest {
 
         suspend fun matchesFor(query: String): List<String> {
             var result = emptyList<String>()
-            useCase(TEST_LIBRARY, query = query).test {
+            useCase(libraryId = TEST_LIBRARY, query = query, order = BookSortOrder.Default).test {
                 result = awaitItem().map { it.id.value }
             }
             return result
@@ -167,13 +174,13 @@ class LibraryUseCaseTest {
 
     @Test
     fun `search is case-insensitive and ignores surrounding whitespace`() = runTest {
-        val useCase = ObserveLibraryBooksUseCase(
+        val useCase = ObserveAccessibleBooksUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = books),
             testDispatcher,
         )
 
-        useCase(TEST_LIBRARY, query = "   WEATHER   ").test {
+        useCase(libraryId = TEST_LIBRARY, query = "   WEATHER   ").test {
             assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
         }
     }
