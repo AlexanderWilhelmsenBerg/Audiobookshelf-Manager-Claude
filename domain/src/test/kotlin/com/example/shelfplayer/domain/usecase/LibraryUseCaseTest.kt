@@ -3,16 +3,20 @@ package com.example.shelfplayer.domain.usecase
 import app.cash.turbine.test
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.domain.FakeAuthRepository
 import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.FakeProfileRepository
+import com.example.shelfplayer.domain.TEST_INSTANT
 import com.example.shelfplayer.domain.TEST_LIBRARY
 import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.book
 import com.example.shelfplayer.domain.library
 import com.example.shelfplayer.domain.library.BookSortOrder
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -20,7 +24,16 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class LibraryUseCaseTest {
+
+    /**
+     * The use cases sort off the main thread; this test runs everything on one.
+     *
+     * `UnconfinedTestDispatcher` keeps `flowOn` from adding a hop the assertions would have to wait for,
+     * without pretending the production dispatcher is the main one.
+     */
+    private val testDispatcher = UnconfinedTestDispatcher()
 
     private val books = listOf(
         book(id = "b-10", title = "The Last Sounding", sequence = "10"),
@@ -53,14 +66,83 @@ class LibraryUseCaseTest {
         }
     }
 
+    /**
+     * PRODUCT_SPEC LIB-002 — the shelf spans every library the profile can see.
+     *
+     * A book from a second library appears without the user having chosen a library first: that is the
+     * whole point of the screen the app opens on.
+     */
     @Test
-    fun `books are sorted by the requested order`() = runTest {
-        val useCase = ObserveLibraryBooksUseCase(
+    fun `the shelf spans libraries and opens on what was played last`() = runTest {
+        val shelf = listOf(
+            book(id = "fiction-cold", title = "Untouched"),
+            book(id = "fiction-old", title = "Older", playedAt = TEST_INSTANT.minusSeconds(600)),
+            book(
+                id = "other-library",
+                title = "From another library",
+                libraryId = LibraryId("library-2"),
+                playedAt = TEST_INSTANT,
+            ),
+        )
+        val useCase = ObserveAccessibleBooksUseCase(
             FakeProfileRepository(),
-            FakeLibraryRepository(books = books),
+            FakeLibraryRepository(books = shelf),
+            testDispatcher,
         )
 
-        useCase(TEST_LIBRARY, order = BookSortOrder.SeriesSequenceAscending).test {
+        useCase().test {
+            assertEquals(
+                listOf("other-library", "fiction-old", "fiction-cold"),
+                awaitItem().map { it.id.value },
+            )
+        }
+    }
+
+    @Test
+    fun `the shelf is empty while no profile is active`() = runTest {
+        val useCase = ObserveAccessibleBooksUseCase(
+            FakeProfileRepository(active = null),
+            FakeLibraryRepository(books = books),
+            testDispatcher,
+        )
+
+        useCase().test {
+            assertEquals(emptyList(), awaitItem())
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — scoping to one library changes *which* books are searched, not how.
+     *
+     * There used to be a second use case for a single library, and the two drifted the moment filters
+     * arrived: one learned about them and the other did not, so the same query answered differently
+     * depending on which screen asked. `libraryId` is now the whole of the difference.
+     */
+    @Test
+    fun `searching one library and searching them all use the same predicate`() = runTest {
+        val useCase = ObserveAccessibleBooksUseCase(
+            FakeProfileRepository(),
+            FakeLibraryRepository(books = books),
+            testDispatcher,
+        )
+
+        useCase(query = "Nkemelu").test {
+            assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
+        }
+        useCase(query = "Nkemelu", libraryId = TEST_LIBRARY).test {
+            assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
+        }
+    }
+
+    @Test
+    fun `books are sorted by the requested order`() = runTest {
+        val useCase = ObserveAccessibleBooksUseCase(
+            FakeProfileRepository(),
+            FakeLibraryRepository(books = books),
+            testDispatcher,
+        )
+
+        useCase(libraryId = TEST_LIBRARY, order = BookSortOrder.SeriesSequenceAscending).test {
             assertEquals(listOf("b-1", "b-2", "b-10"), awaitItem().map { it.id.value })
         }
     }
@@ -68,14 +150,15 @@ class LibraryUseCaseTest {
     /** PRODUCT_SPEC LIB-002 — search matches title, author, narrator, series and tags. */
     @Test
     fun `search matches every documented field`() = runTest {
-        val useCase = ObserveLibraryBooksUseCase(
+        val useCase = ObserveAccessibleBooksUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = books),
+            testDispatcher,
         )
 
         suspend fun matchesFor(query: String): List<String> {
             var result = emptyList<String>()
-            useCase(TEST_LIBRARY, query = query).test {
+            useCase(libraryId = TEST_LIBRARY, query = query, order = BookSortOrder.Default).test {
                 result = awaitItem().map { it.id.value }
             }
             return result
@@ -91,12 +174,13 @@ class LibraryUseCaseTest {
 
     @Test
     fun `search is case-insensitive and ignores surrounding whitespace`() = runTest {
-        val useCase = ObserveLibraryBooksUseCase(
+        val useCase = ObserveAccessibleBooksUseCase(
             FakeProfileRepository(),
             FakeLibraryRepository(books = books),
+            testDispatcher,
         )
 
-        useCase(TEST_LIBRARY, query = "   WEATHER   ").test {
+        useCase(libraryId = TEST_LIBRARY, query = "   WEATHER   ").test {
             assertEquals(listOf("b-2"), awaitItem().map { it.id.value })
         }
     }
@@ -137,6 +221,42 @@ class LibraryUseCaseTest {
         assertIs<AppError.Authentication>(result.error)
         assertTrue(libraries.refreshedProfiles.isEmpty())
         assertTrue(auth.renewedProfiles.isEmpty(), "there is no session to renew without a profile")
+    }
+
+    // --- PRODUCT_SPEC 14.3 / 5.2: what a 403 means ------------------------------------------------
+
+    /**
+     * "403: no retry; refresh permissions" — both halves.
+     *
+     * The refresh is not a way to make this attempt succeed. It is how the *next* one stops asking for
+     * something the account is no longer allowed to have, which is why the original failure is still what
+     * the caller gets back.
+     */
+    @Test
+    fun `a forbidden refresh reloads permissions and is not retried`() = runTest {
+        val libraries = FakeLibraryRepository().apply {
+            queueRefreshResults(AppResult.Failure(AppError.Authorization(summary = "no")))
+        }
+        val auth = FakeAuthRepository()
+
+        val result = refreshUseCase(libraries, auth)()
+
+        assertIs<AppError.Authorization>(assertIs<AppResult.Failure>(result).error)
+        assertEquals(listOf(TEST_PROFILE), auth.permissionRefreshes)
+        assertEquals(listOf(TEST_PROFILE), libraries.refreshedProfiles, "a 403 must not be retried")
+    }
+
+    /** Every other failure leaves the stored permissions alone: a timeout is not a revocation. */
+    @Test
+    fun `a network failure does not reload permissions`() = runTest {
+        val libraries = FakeLibraryRepository().apply {
+            queueRefreshResults(AppResult.Failure(AppError.Network()))
+        }
+        val auth = FakeAuthRepository()
+
+        refreshUseCase(libraries, auth)()
+
+        assertTrue(auth.permissionRefreshes.isEmpty())
     }
 
     // --- PRODUCT_SPEC AUTH-004 -------------------------------------------------------------------
@@ -223,6 +343,35 @@ class LibraryUseCaseTest {
         assertIs<AppError.Network>(assertIs<AppResult.Failure>(result).error)
         assertTrue(auth.renewedProfiles.isEmpty())
         assertEquals(1, libraries.refreshedProfiles.size)
+    }
+
+    // --- PRODUCT_SPEC LIB-002: the server half of search -------------------------------------------
+
+    @Test
+    fun `a server search names the active profile`() = runTest {
+        val libraries = FakeLibraryRepository().apply { serverSearchResult = AppResult.Success(3) }
+
+        val result = SearchServerUseCase(FakeProfileRepository(), libraries)("salt")
+
+        assertEquals(AppResult.Success(3), result)
+        assertEquals(listOf("salt"), libraries.serverQueries)
+    }
+
+    /**
+     * Signed out, a search that already worked must not turn into an error.
+     *
+     * Unlike a refresh, nothing the user asked for has failed here: they typed into a field and the
+     * cached matches appeared. Reporting a failure would put a banner over a search that worked, which
+     * is why this returns success with nothing found rather than [AppError.Authentication].
+     */
+    @Test
+    fun `a server search without a profile is quietly nothing found`() = runTest {
+        val libraries = FakeLibraryRepository()
+
+        val result = SearchServerUseCase(FakeProfileRepository(active = null), libraries)("salt")
+
+        assertEquals(AppResult.Success(0), result)
+        assertTrue(libraries.serverQueries.isEmpty(), "no profile, so no server to ask")
     }
 
     private fun refreshUseCase(libraries: FakeLibraryRepository, auth: FakeAuthRepository = FakeAuthRepository()) =

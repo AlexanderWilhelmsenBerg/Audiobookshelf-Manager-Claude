@@ -2,14 +2,21 @@ package com.example.shelfplayer.core.network.gateway
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.realtime.RealtimeEvent
+import com.example.shelfplayer.core.model.realtime.RealtimeStatus
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * PRODUCT_SPEC 10.4 — every Audiobookshelf call goes through this adapter.
@@ -34,6 +41,28 @@ interface AudiobookshelfGateway {
     val capabilities: CapabilityResolver
 
     val library: LibraryApi
+}
+
+/**
+ * PRODUCT_SPEC SYNC-002 / LIB-001 — events the server pushes, when it can.
+ *
+ * Deliberately not a member of [AudiobookshelfGateway]. The gateway is request/response; this is a
+ * connection with a lifetime, and giving it the same shape would invite a caller to treat "no events"
+ * as a failure. It is not: PRODUCT_SPEC LIB-001 requires REST refresh whenever the websocket is
+ * unavailable, so an implementation that never emits anything is a correct one on a deployment whose
+ * reverse proxy strips the upgrade.
+ */
+interface RealtimeConnection {
+    /** Coarse state, for a UI that wants to say whether events are arriving. */
+    val status: StateFlow<RealtimeStatus>
+
+    /**
+     * Connects as [profileId] and emits until the collector is cancelled.
+     *
+     * The flow is the connection's lifetime. Cancelling closes the socket, which is what keeps "open
+     * only while something is listening" true without a stop call anyone could forget.
+     */
+    fun events(profileId: ProfileId): Flow<RealtimeEvent>
 }
 
 /**
@@ -65,6 +94,18 @@ interface AuthApi {
      */
     suspend fun refresh(serverUrl: String, refreshToken: AuthToken): AppResult<AuthSession>
 
+    /**
+     * PRODUCT_SPEC 5.2 — "Get current user and permissions", over `POST /api/authorize`.
+     *
+     * Returns an [AccountState] and not an [AuthSession]: the response carries the legacy `user.token`
+     * and no refresh token, so it is not a credential this app may adopt. See [AccountState].
+     *
+     * A `401` here means the token stopped working — revoked, expired, or the account deleted — and a
+     * `403` or a disabled account means it works but the account may no longer do what it did. Both are
+     * things AUTH-004 wants the profile marked for rather than discovered at the next silent failure.
+     */
+    suspend fun currentAccount(serverUrl: String, accessToken: AuthToken): AppResult<AccountState>
+
     suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit>
 }
 
@@ -82,19 +123,14 @@ interface CapabilityResolver {
 }
 
 /**
- * PRODUCT_SPEC 23 — "Get current user and permissions" is *not* declared here, on purpose.
+ * PRODUCT_SPEC 23 — "Get current user and permissions" is [AuthApi.currentAccount], and there is no
+ * separate `AccountApi`.
  *
- * Phase 0 had an `AccountApi` with parameterless `currentServer()` and `currentProfile()`. That suited a
- * gateway serving one fixture profile and cannot serve a real client: there is no ambient "current"
- * account when several profiles on several servers coexist, and a permission refresh attributed to the
- * wrong one would write one account's grant over another's (PRODUCT_SPEC 5.2). Its only consumer was the
- * demo-library bootstrapper, which real sign-in replaces.
- *
- * `POST /api/authorize` is the endpoint a permission refresh will use — PRODUCT_SPEC 5.2 requires one
- * after a `403` — and its response is already captured in `contracts/authorize.json`. It is added when
- * that refresh is implemented, taking an explicit profile. Note for whoever does: the captured response
- * carries `user.token` only, with no `accessToken` and no `refreshToken`, so `AuthMapper.toSession` is the
- * wrong mapping for it — using it would store the legacy, non-refreshable token as the access token.
+ * Phase 0 had one, with parameterless `currentServer()` and `currentProfile()`. That suited a gateway
+ * serving one fixture profile and cannot serve a real client: there is no ambient "current" account when
+ * several profiles on several servers coexist, and a permission refresh attributed to the wrong one would
+ * write one account's grant over another's (PRODUCT_SPEC 5.2). Every replacement takes its server and its
+ * credential explicitly.
  */
 
 /** PRODUCT_SPEC 23 — "Get accessible libraries" and "Get library items". */
@@ -107,5 +143,84 @@ interface LibraryApi {
      */
     suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>>
 
-    suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<List<BookSnapshot>>
+    /**
+     * PRODUCT_SPEC LIB-001 — "the home screen can render partial cached content while sync continues".
+     *
+     * [onBatch] is how that becomes true for a *large* library rather than only for a fast one. The
+     * catalogue is minified, so every item needs its own fetch, and a 490-book library that only
+     * appeared once all 490 had arrived left the shelf empty for minutes — which a device run duly
+     * reported. Batches let the caller store what has arrived so far.
+     *
+     * It carries books only. Deletions and the profile's item visibility are decided from the *whole*
+     * catalogue and stay with the returned snapshot, because a partial view is exactly the thing that
+     * must not be allowed to drive a deletion.
+     */
+    /**
+     * @param onBatch called with the catalogue rows first, then with each batch of expanded items, so
+     *   the shelf is populated after one request rather than after N+1 (P1-31).
+     * @param cached what the caller already holds, which decides what is skipped and what is fetched
+     *   first. The default knows nothing, which is the safe direction in both respects: everything is
+     *   re-fetched, in catalogue order.
+     */
+    suspend fun listBooks(
+        profileId: ProfileId,
+        libraryId: LibraryId,
+        onBatch: suspend (List<BookSnapshot>) -> Unit = {},
+        cached: CachedLibrary = CachedLibrary.Unknown,
+    ): AppResult<LibrarySnapshot>
+
+    /**
+     * PRODUCT_SPEC LIB-002 — "local cached results appear immediately; server search may enrich
+     * results".
+     *
+     * This is the enrichment half. It finds books the cache does not hold — added since the last sync,
+     * or matched on a field the local predicate does not index — and returns them as complete snapshots
+     * the caller may store: a search hit arrives expanded, tracks included, so no follow-up fetch is
+     * needed to make one playable.
+     *
+     * Books only. The endpoint also answers with author, series, narrator, genre and tag hits, and the
+     * capture returned every one of those arrays empty, so their shapes are unverified (PRODUCT_SPEC
+     * 22.4). Those axes stay local-only until a capture covers them.
+     */
+    suspend fun searchBooks(profileId: ProfileId, libraryId: LibraryId, query: String): AppResult<List<BookSnapshot>>
+}
+
+/**
+ * PRODUCT_SPEC LIB-001 — what the caller already holds, so a sweep can skip work and reorder the rest.
+ *
+ * One object rather than two lambdas on [LibraryApi.listBooks] because they are one thing: both are
+ * answered from the same read of the local cache, both are supplied together or not at all, and a
+ * caller that knew one but not the other would be in an incoherent state. It also stops the signature
+ * growing a parameter every time the sweep learns to use another local fact.
+ *
+ * Neither method suspends. Both are answered from collections the caller materialised before the sweep
+ * started — a per-item database round trip inside the loop would cost more than the request it saves.
+ */
+interface CachedLibrary {
+    /**
+     * Whether the stored copy already matches the server's `updatedAt` **and** already holds its
+     * tracks, in which case the expanded fetch is skipped.
+     *
+     * Both sides must be known. "I cannot tell" has to mean "check", or an item that changed silently
+     * stays stale for the life of the cache.
+     */
+    fun isUpToDate(id: LibraryItemId, updatedAt: Long?): Boolean
+
+    /**
+     * Whether this is a book the user has started and not finished — the *Continue listening* shelf.
+     *
+     * These are expanded first. It is a pure reordering: the same items are fetched, and no request is
+     * added or removed, so it cannot make a refresh slower. What it changes is which shelf is correct
+     * soonest, and Continue listening is the one a returning user actually opens the app for.
+     */
+    fun isInProgress(id: LibraryItemId): Boolean
+
+    companion object {
+        /** A cache that knows nothing: re-fetch everything, in the order the server listed it. */
+        val Unknown = object : CachedLibrary {
+            override fun isUpToDate(id: LibraryItemId, updatedAt: Long?): Boolean = false
+
+            override fun isInProgress(id: LibraryItemId): Boolean = false
+        }
+    }
 }

@@ -10,30 +10,45 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.SeriesSequence
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
+import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.auth.AccountState
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.sync.BackgroundSync
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Instant
+import kotlin.time.Duration.Companion.minutes
 
 internal val TEST_SERVER = ServerId("server-1")
 internal val TEST_PROFILE = ProfileId("profile-1")
 internal val TEST_LIBRARY = LibraryId("library-1")
 internal val TEST_INSTANT: Instant = Instant.parse("2026-01-01T00:00:00Z")
+
+internal val TEST_SERVER_ROW = Server(
+    id = TEST_SERVER,
+    displayName = "Demo server",
+    baseUrl = "https://books.example",
+    detectedVersion = "2.36.0",
+    isFixture = true,
+)
 
 internal fun profile(id: ProfileId = TEST_PROFILE) = Profile(
     id = id,
@@ -57,6 +72,17 @@ internal fun library(id: LibraryId = TEST_LIBRARY, bookCount: Int = 0) = Library
     lastFetchedAt = TEST_INSTANT,
 )
 
+internal fun membership(
+    seriesId: String = "series-1",
+    name: String = "The Long Voyage",
+    sequence: String? = null,
+    isPrimary: Boolean = true,
+) = SeriesMembership(
+    series = Series(TEST_SERVER, SeriesId(seriesId), name),
+    sequence = SeriesSequence.parse(sequence),
+    isPrimary = isPrimary,
+)
+
 @Suppress("LongParameterList")
 internal fun book(
     id: String,
@@ -66,23 +92,28 @@ internal fun book(
     sequence: String? = null,
     tags: List<String> = emptyList(),
     updatedAt: Instant? = null,
+    libraryId: LibraryId = TEST_LIBRARY,
+    /** When this profile last listened. `null` is a book with no progress row at all. */
+    playedAt: Instant? = null,
+    isFinished: Boolean = false,
+    /**
+     * Overrides the single membership [sequence] would produce.
+     *
+     * PRODUCT_SPEC LIB-003 lets a book belong to several series at different positions, and the
+     * grouping tests need exactly that case; `sequence` is the shorthand every other test uses.
+     */
+    memberships: List<SeriesMembership>? = null,
+    isbn: String? = null,
+    asin: String? = null,
 ) = Book(
     serverId = TEST_SERVER,
     id = LibraryItemId(id),
-    libraryId = TEST_LIBRARY,
+    libraryId = libraryId,
     title = title,
     subtitle = null,
     authors = listOf(Author(TEST_SERVER, AuthorId("author-1"), authorName)),
     narrators = narrators,
-    seriesMemberships = sequence?.let {
-        listOf(
-            SeriesMembership(
-                series = Series(TEST_SERVER, SeriesId("series-1"), "The Long Voyage"),
-                sequence = SeriesSequence.parse(it),
-                isPrimary = true,
-            ),
-        )
-    }.orEmpty(),
+    seriesMemberships = memberships ?: sequence?.let { listOf(membership(sequence = it)) }.orEmpty(),
     duration = kotlin.time.Duration.ZERO,
     description = null,
     genres = emptyList(),
@@ -90,14 +121,28 @@ internal fun book(
     publishedYear = null,
     publisher = null,
     language = null,
+    isbn = isbn,
+    asin = asin,
     isExplicit = false,
     isAbridged = false,
     coverPath = null,
     trackCount = 1,
     sizeBytes = 0,
     remoteUpdatedAt = updatedAt,
+    addedAt = null,
     lastFetchedAt = TEST_INSTANT,
-    progress = null,
+    progress = playedAt?.let {
+        MediaProgress(
+            serverId = TEST_SERVER,
+            profileId = TEST_PROFILE,
+            bookId = LibraryItemId(id),
+            position = 1.minutes,
+            duration = 10.minutes,
+            isFinished = isFinished,
+            updatedAt = it,
+            hasUnsyncedChanges = false,
+        )
+    },
     localAvailability = LocalAvailability.NotDownloaded,
 )
 
@@ -111,6 +156,8 @@ internal class FakeProfileRepository(active: Profile? = profile()) : ProfileRepo
     private val activeProfile = MutableStateFlow(active)
 
     override fun observeProfiles(): Flow<List<Profile>> = activeProfile.map { listOfNotNull(it) }
+
+    override fun observeServers(): Flow<List<Server>> = MutableStateFlow(listOf(TEST_SERVER_ROW))
 
     override fun observeActiveProfile(): Flow<Profile?> = activeProfile
 
@@ -144,6 +191,14 @@ internal class FakeLibraryRepository(books: List<Book> = emptyList(), libraries:
     var refreshResult: AppResult<Int> = AppResult.Success(0)
     val refreshedProfiles = mutableListOf<ProfileId>()
 
+    /** What a progress-only sync handed over, so a test can assert it happened without a library sweep. */
+    val progressWritten = mutableListOf<List<AccountProgress>>()
+
+    override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> {
+        progressWritten += progress
+        return AppResult.Success(progress.size)
+    }
+
     override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = storedLibraries
 
     override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> =
@@ -151,6 +206,8 @@ internal class FakeLibraryRepository(books: List<Book> = emptyList(), libraries:
 
     override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
         storedBooks.map { all -> all.filter { it.libraryId == libraryId } }
+
+    override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = storedBooks
 
     override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
         storedBooks.map { all -> all.firstOrNull { it.id == bookId } }
@@ -172,6 +229,16 @@ internal class FakeLibraryRepository(books: List<Book> = emptyList(), libraries:
     fun queueRefreshResults(vararg results: AppResult<Int>) {
         queuedResults.clear()
         queuedResults.addAll(results)
+    }
+
+    /** Every query the server was asked about, so a test can assert what was and was not sent. */
+    val serverQueries = mutableListOf<String>()
+
+    var serverSearchResult: AppResult<Int> = AppResult.Success(0)
+
+    override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> {
+        serverQueries += query
+        return serverSearchResult
     }
 }
 
@@ -197,6 +264,36 @@ internal class FakeAuthRepository(
     override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> {
         renewedProfiles += profileId
         return renewal
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — recorded rather than stubbed, because the requirements under test are about
+     * *when* a permission refresh happens: after a `403`, and on a profile switch. Never, and once, are
+     * both interesting answers.
+     */
+    val permissionRefreshes = mutableListOf<ProfileId>()
+
+    private var permissions: AppResult<AccountState> = AppResult.Success(account(emptyList()))
+
+    private fun account(progress: List<AccountProgress>) = AccountState(
+        userId = null,
+        username = "ada",
+        role = ProfileRole.Listener,
+        access = LibraryAccess.None,
+        progress = progress,
+    )
+
+    fun willFailToRefreshPermissions(error: AppError) {
+        permissions = AppResult.Failure(error)
+    }
+
+    override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> {
+        permissionRefreshes += profileId
+        return permissions
+    }
+
+    fun willReportProgress(progress: List<AccountProgress>) {
+        permissions = AppResult.Success(account(progress))
     }
 
     private var signIn: AppResult<Profile> = AppResult.Success(profile())
@@ -234,4 +331,23 @@ internal class FakeAuthRepository(
     /** Fails loudly rather than returning an empty value, so a test cannot pass by accident. */
     private fun <T> notUsed(): AppResult<T> =
         AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this fake"))
+}
+
+/**
+ * PRODUCT_SPEC SYNC-003 — a scheduler that records rather than schedules.
+ *
+ * What the requirements say is *when* work is created and cancelled, not what WorkManager does with
+ * it, so a recording fake is the whole of what a test needs here.
+ */
+internal class FakeBackgroundSync : BackgroundSync {
+    val scheduled = mutableListOf<ProfileId>()
+    val cancelled = mutableListOf<ProfileId>()
+
+    override suspend fun schedule(profileId: ProfileId) {
+        scheduled += profileId
+    }
+
+    override suspend fun cancel(profileId: ProfileId) {
+        cancelled += profileId
+    }
 }

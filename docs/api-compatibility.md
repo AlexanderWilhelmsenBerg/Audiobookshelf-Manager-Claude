@@ -144,6 +144,217 @@ No code in this repository may present one as the other.
 | `core/network/src/main/resources/fixtures/demo-library.json` | **ShelfPlayer-owned format** | The Phase 0 demo library. Not an Audiobookshelf response; see [ADR-0005](adr/0005-fake-gateway-and-fixtures.md). |
 | `core/network/src/test/resources/contracts/` | Captured server responses | **Twelve fixtures**, committed. `contract-capture.yml` re-captures on every `:core:network` change and fails on drift. |
 
+## The websocket contract — observed 2026-08-06, Audiobookshelf 2.36.0
+
+Nothing about the socket had ever been observed. It has now, over engine.io's **polling** transport,
+which is plain HTTP and therefore capturable without a socket.io client. The frames are identical on
+either transport; only the carriage differs.
+
+### The sequence
+
+| Step | Sent | Received |
+| --- | --- | --- |
+| Handshake | `GET /socket.io/?EIO=4&transport=polling` | `0{"sid":…,"upgrades":["websocket"],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}` |
+| Namespace connect | `40` | `40{"sid":…}` — a **socket.io** sid, distinct from the engine.io one above |
+| Authenticate | `42["auth","<accessToken>"]` | `42["user_online",{…}]` then `42["init",{"userId","username","usersOnline":[…]}]` |
+| A progress change made over REST | — | `42["user_updated",{ the entire user object }]` |
+
+`upgrades: ["websocket"]` is the answer `SYNC-001`'s websocket capability needs, and it is a property of
+the *deployment*: a reverse proxy that strips the upgrade will not list it, which is exactly why the
+capability is probed rather than derived from a version.
+
+`pingInterval: 25000` / `pingTimeout: 20000` are the server's heartbeat terms, so a client that has heard
+nothing for 45 s can consider the connection dead rather than guessing an interval.
+
+### The authentication event name was a guess, and it was right
+
+`42["auth", "<accessToken>"]` is not in `openapi.json` and is not documented. It was sent as a guess and
+the server accepted it, answering `user_online` and `init`. That is now an observation rather than an
+assumption, which is the whole point of capturing before implementing (`PRODUCT_SPEC 22.4`, `22.5`).
+
+The token travels inside the frame, not in the query string, which is what `PRODUCT_SPEC 22.6` requires.
+
+### `user_updated` is bigger than expected, and it changes the plan
+
+A progress change made through the REST API came back over the socket as `user_updated` carrying **the
+whole user object** — `mediaProgress`, `permissions`, `librariesAccessible`, `itemTagsSelected`,
+`isActive`, `isLocked`, `type`. Three separate problems collapse into one handler:
+
+- **TC-10** — progress played on another device. `mediaProgress` arrives unprompted.
+- **TC-37 / P1-02** — a grant changed on the server. `permissions` and `librariesAccessible` arrive in
+  the same frame, so the permission refresh becomes event-driven rather than switch-driven.
+- **TC-45** — an account disabled server-side. `isActive` and `isLocked` are in the frame.
+
+`PRODUCT_SPEC 13.2` says an event "may mark an entity stale and trigger refresh rather than carrying a
+complete trustworthy object". Here the object *is* complete for the user, so it can be applied directly —
+but only to the profile whose socket received it, and the frame contains no server identity, so the
+binding must come from the connection rather than from the payload.
+
+### `mediaProgress`, the element
+
+Empty in every previous capture, because no capture had ever played anything. Observed fields:
+
+```
+currentTime, duration, progress, isFinished, hideFromContinueListening,
+libraryItemId, mediaItemId, mediaItemType, episodeId, ebookLocation, ebookProgress,
+id, userId, startedAt, finishedAt, lastUpdate
+```
+
+`startedAt`, `finishedAt` and `lastUpdate` are wall-clock milliseconds and are stabilised by the capture;
+`duration` and `progress` read `0` against the synthetic fixture media, which has no real duration.
+
+### What is still unobserved
+
+- Every other event name. `user_updated` and `init` are the only ones this capture provoked; item
+  changes, library scans and session events have not been seen and must not be assumed.
+- Behaviour of the actual websocket upgrade, as opposed to the polling transport.
+- What the server does with an **invalid** token in the `auth` frame.
+
+### Fixtures
+
+`me.json`, `media-progress.json`, `socket-handshake.json`, `socket-connected.json`, `socket-auth.json`,
+`socket-event-after-progress.json`. Frames are stored parsed rather than as text, so the redaction pass
+can reach a token inside one: the shape is kept, the credential is not.
+
+## `isbn` and `asin` — present, and null (LIB-002)
+
+`media.metadata` in the captured `library-item.json` carries both keys, and both are `null`: the
+seeded book has neither, and the container runs with `scannerFindCovers` off and no metadata provider
+configured, so nothing filled them in.
+
+So the *presence* of both fields is observed, and their nullability is observed. What is **not**
+observed is their type when populated — no capture has ever produced a non-null value. They are
+mapped as `String?` on the strength of Audiobookshelf's documented metadata schema, which is a
+narrower assumption than `PRODUCT_SPEC 22.5` normally allows and is recorded here rather than left
+implicit.
+
+The exposure is small and one-directional. `kotlinx.serialization` fails a `String?` field that
+arrives as a number or an object, and the item mapper runs inside `resultOf`, so the worst case is a
+single item reported unreadable rather than a wrong value written to the cache. If a server is ever
+found that returns a numeric ISBN, the fix is a lenient deserializer here, not a schema change.
+
+## Wave A capture — 2026-08-07, Audiobookshelf 2.36.0
+
+Four new fixtures and two expected drifts. What each one unblocked, and what it did **not**:
+
+| Fixture | Result | Verdict |
+| --- | --- | --- |
+| `item-cover.json` | **200**, `image/webp`, and **`unauthenticatedStatus: 200`** | **P1-14 unblocked** |
+| `library-search.json` | 200. `book[]` carries a full `libraryItem`; `authors`, `series`, `genres`, `narrators`, `tags` are all **`[]`** | **P1-20 partially unblocked** — books only |
+| `library-collections.json` | 200, paginated envelope, `results: []` | **Still blocked** — the envelope is observed, a collection object is not |
+| `library-personalized.json` | 200. An array of `{id, label, labelStringKey, type, total, entities}`; this server returned *Recently Added* (book), *Discover* (book), *Newest Authors* (authors) | Held, not adopted — see ADR-0008 |
+| `library-item.json` | drift: `media.coverPath` is now `/audiobooks/…/cover.jpg` | The seed fix working |
+| `library-items.json` | drift: `libraryFiles` gained the image | The seed fix working |
+
+### The cover endpoint does not require a credential
+
+`unauthenticatedStatus: 200` — this server serves `/api/items/{id}/cover` to anyone who knows the item
+id. That is the server's choice and not something the app can rely on: a deployment behind a
+reverse proxy with forward auth, or a future Audiobookshelf release, may well require one.
+
+**Covers are therefore fetched through the authenticated client anyway.** It works in both cases,
+costs nothing extra, and keeps the token in a header rather than a URL. Coil handles `image/webp`
+natively.
+
+### Search: books yes, everything else no
+
+The `book[]` element is a complete library item and can be mapped. The other five arrays came back
+empty, so **no fixture has ever shown an `authors`, `series`, `genres`, `narrators` or `tags` search
+result**. PRODUCT_SPEC 22.5 applies to each independently: search enrichment ships for books only, and
+the other five stay unmapped until a capture against a library that actually matches them.
+
+Two further facts the fixture settled, both of which changed the implementation:
+
+- **`book[].libraryItem` is the *expanded* shape.** It carries `media.tracks`, `media.chapters`,
+  `metadata.authors` and `metadata.series` — none of which `…/items` sends. A search hit is therefore a
+  complete, playable book with no follow-up request, which is what makes server search worth the round
+  trip at all rather than a way to learn some ids.
+- **There is no `userMediaProgress`.** The endpoint takes no `include` parameter and the response has
+  no such key. Every hit maps with `progress = null`, and `LibrarySnapshotWriter` writes only non-null
+  progress — so searching for a book you are halfway through updates its metadata and leaves the
+  position alone. Had that not been checked, a search would have been able to rewind a book.
+
+### Paging `…/items` (D1)
+
+`limit`, `page`, `offset` and `total` are all in the committed `library-items.json` envelope. The
+capture was taken without paging parameters and the server answered `limit: 0` with every item, which
+is a **default, not a contract** — so the client states `limit=100&page=N` and reads `total` to decide
+whether to ask again.
+
+A server that ignores `limit` is handled by the same check: `received >= total` is true after the first
+response, so it is asked once. A server that ignores `page` would loop, which is why a page cap exists
+and why tripping it is reported as a failure rather than as the end of the library — a truncated
+catalogue treated as complete would let reconciliation soft-delete everything past the cut.
+
+### Collections: the envelope is not the element
+
+`results: []` is a real observation — this server has no collections — but it says nothing about what a
+collection *looks like*. This is the same gap `mediaProgress` had before the progress capture, and it
+has the same answer: the axis waits.
+
+## The cover endpoint — `404`, and why (LIB-004)
+
+The first capture of `GET /api/items/{id}/cover` returned **404, `text/plain`**. Not a wrong path: the
+same capture recorded `"coverPath": null` on the item. The seeded book had no cover art, so there was
+nothing to serve.
+
+`scripts/seed-contract-media.sh` now generates a flat `cover.jpg` beside the audio, and the capture
+treats a non-200 as a hard error rather than committing a 404 as though it were the contract. The
+re-run also probes the endpoint without a credential, because whether a cover URL can be handed
+straight to an image library or must travel through the authenticated client is the decision the whole
+of the cover work turns on.
+
+**Superseded: that capture returned 200 on 2026-08-07. See the Wave A section above.**
+
+## How books should be fetched — the N+1, measured (LIB-001)
+
+A full refresh today is **1 + N requests**: one `GET /api/libraries/{id}/items`, then one
+`GET /api/items/{id}?expanded=1&include=progress` for **every** item, sequentially
+(`AbsLibraryApi.snapshots`). On the 490-book library a device run used, that is 491 round trips before
+the sync is finished.
+
+AudioBooth does not do this. It fetches `GET /api/libraries/{id}/items` with `minified=1` plus
+`limit`/`page`/`sort`/`desc`/`collapseseries`/`filter`, and calls `GET /api/items/{id}?expanded=1`
+**only for the book the user opened**.
+
+### What each response actually carries
+
+Compared from the two committed fixtures, so this is observed rather than assumed:
+
+| | `…/items` (list) | `…/items/{id}?expanded=1` |
+| --- | --- | --- |
+| title, subtitle, description | ✅ | ✅ |
+| genres, tags, publisher, publishedYear, language | ✅ | ✅ |
+| **isbn, asin** | ✅ | ✅ |
+| duration, size, numTracks, numChapters, coverPath | ✅ | ✅ |
+| addedAt, updatedAt | ✅ | ✅ |
+| authors / series / narrators | **flat strings only** (`authorName`, `seriesName`, `narratorName`) | structured arrays **with ids and sequences** |
+| `media.tracks`, `media.chapters`, `media.audioFiles` | ❌ absent | ✅ |
+| `userMediaProgress` | ❌ | ✅ (`include=progress`) |
+
+So the per-item fetch **cannot be deleted**. Track offsets and chapters are what make a downloaded book
+resumable (PRODUCT_SPEC 2.3), and `LIB-003`'s series *sequence* only exists in the structured
+`metadata.series` — the list's `seriesName` is a display string with no position in it.
+
+But it can be **deferred**. The list alone is enough for the entire browse surface: the shelf, search,
+genres, and the book detail screen minus its track count. The right shape is therefore:
+
+1. one list request → write rows → **the library is browsable**;
+2. expand items in the background, and on demand when a book is opened.
+
+That turns "wait 491 requests for a shelf" into "wait one". It is the single largest improvement
+available and it is **not blocked on a capture**: both shapes above are already committed.
+
+### What *is* blocked
+
+- **`minified=1`** changes the item shape (a reduced `media` object). Not captured → not used.
+- **`sort` / `desc` / `filter` / `collapseseries`** — the sort keys are literal server field paths
+  (`media.metadata.title`, `media.metadata.authorNameLF`, `addedAt`, `progress.finishedAt`, …). Sorting
+  server-side would also *break offline sorting*, which Room does today for free. Recorded, not adopted.
+- **`limit` / `page`** are safe on the shape — the committed `library-items.json` already carries
+  `total`, `page`, `limit`, `offset` at the top level, so the envelope is observed. Paging is worth
+  having for a 5,000-item library, but it is not what is slow today.
+
 ## Known endpoint differences
 
 None recorded. This section fills in as contract tests run against real server versions, and every

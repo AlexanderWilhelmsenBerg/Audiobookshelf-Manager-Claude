@@ -98,6 +98,14 @@ data class ProfileEntity(
      */
     @ColumnInfo(defaultValue = EMPTY_JSON_ARRAY) val accessibleLibrariesJson: String,
     @ColumnInfo(defaultValue = "0") val hasAllLibraryAccess: Boolean,
+    /**
+     * PRODUCT_SPEC 5.2 — whether the server serves this account an unfiltered *item* list.
+     *
+     * Separate from the library grant because Audiobookshelf restricts twice, and only an account with
+     * both may be trusted to say a book is gone by not returning it. Defaults to `0`: an account whose
+     * item access is unknown adds rows but never deletes them.
+     */
+    @ColumnInfo(defaultValue = "0") val hasAllTagAccess: Boolean,
 )
 
 @Entity(
@@ -168,12 +176,23 @@ data class BookEntity(
     val publishedYear: Int?,
     val publisher: String?,
     val language: String?,
+    /**
+     * PRODUCT_SPEC LIB-002 — searchable identifiers.
+     *
+     * Nullable and unindexed. Both are absent on most self-hosted items, and an index over a column
+     * that is null for 490 of 491 rows costs writes to buy nothing; the search is a `LIKE` over cached
+     * rows in memory, not a query.
+     */
+    val isbn: String?,
+    val asin: String?,
     val isExplicit: Boolean,
     val isAbridged: Boolean,
     val coverPath: String?,
     val trackCount: Int,
     val sizeBytes: Long,
     val remoteUpdatedAt: Long?,
+    /** PRODUCT_SPEC LIB-002 — the server's own "added" timestamp, not the day this cache fetched it. */
+    val addedAt: Long?,
     val lastFetchedAt: Long,
     val isDeleted: Boolean,
     /** PRODUCT_SPEC DL-001 — `NotDownloaded`, `Partial` or `Complete`. */
@@ -279,6 +298,54 @@ data class ChapterEntity(
     val title: String,
     val startMillis: Long,
     val endMillis: Long,
+)
+
+/**
+ * PRODUCT_SPEC 5.2 — which items one profile may actually see.
+ *
+ * ### Why a table and not a predicate
+ *
+ * `LibraryAccess` answers "may this profile read this *library*", and that is all the server tells us
+ * up front. Audiobookshelf restricts a second time, by tag, *inside* a library — and it reports that
+ * restriction nowhere except by silently shortening the item list it serves. So there is no predicate
+ * to evaluate: the only evidence of item-level visibility is which ids came back, and the only place to
+ * keep it is a row per profile per item.
+ *
+ * A device run is what forced this. Account A cached 490 books from a shared library; account B, which
+ * the server restricts by tag, has `hasAllLibraryAccess = true` and so passed every library-level check
+ * — and saw all 490 of A's books, online and offline alike. That is product priority 4, crossing a
+ * permission boundary, and it is the one Phase 1 exit criterion that was failing.
+ *
+ * ### Two deliberate choices
+ *
+ * **Absence means hidden.** A profile with no rows here sees no books. That is the opposite of the
+ * usual "fail open" instinct and it is chosen on purpose: an empty shelf until the first sync is a
+ * visible, self-correcting annoyance, whereas showing another account's library is a silent leak.
+ *
+ * **No foreign key on [bookKey].** The rows are written from the server's catalogue, which lists items
+ * whose expanded fetch may have failed and which therefore have no `books` row yet. Visibility is a
+ * statement about what the server showed this account, not about what we managed to cache, and a
+ * foreign key would make the weaker fact govern the stronger one. The profile key *is* constrained, so
+ * removing a profile takes its visibility with it.
+ */
+@Entity(
+    tableName = "profile_visible_books",
+    primaryKeys = ["profileId", "bookKey"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["profileId"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("bookKey"), Index("profileId", "libraryKey")],
+)
+data class ProfileVisibleBookEntity(
+    val profileId: String,
+    val bookKey: String,
+    /** Scopes the replace-on-sync: one library's visibility is rewritten without touching another's. */
+    val libraryKey: String,
 )
 
 /**

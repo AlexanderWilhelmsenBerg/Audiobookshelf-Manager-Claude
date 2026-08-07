@@ -12,12 +12,24 @@ rule a build cannot check is a rule that erodes.
       │              │  │  │  └──► :core:network ──┤
       │              │  │  └─────► :core:database  │
       │              │  └────────► :core:datastore │
+      ├────────► :data:settings ──► :core:datastore
       ├──► :core:designsystem                      │
       └──► :core:common ────────────────────────────┘
 ```
 
 `:data:auth` and `:data:library` have the same shape and the same dependencies. They are separate
 modules because their contents are separate concerns, not because their graphs differ.
+
+`:data:settings` is narrower: `:domain` and `:core:datastore`, nothing else. It exists so a screen does
+not have to name `AppSettingsDataSource`. Two reasons. A screen that reaches the store directly cannot be
+tested without a DataStore on disk; and the *meaning* of a setting — its default, its place in
+`SET-001`'s five-level precedence chain — then belongs to whichever screen happened to need it first
+instead of to one owner.
+
+**One call site has not moved yet.** `AppViewModel` still injects `AppSettingsDataSource` for the
+appearance settings, and its `AppUiState` exposes the generated `ThemeMode` enum. Routing it through
+`SettingsRepository` needs a `:core:model` theme type first, which is `SET-002` (Appearance) work rather
+than part of the setting that prompted this module.
 
 `:core:testing` is a `testImplementation` dependency only.
 
@@ -28,8 +40,9 @@ modules because their contents are separate concerns, not because their graphs d
 | Domain depends only on core model/common | `:domain` uses the Kotlin/JVM plugin. An Android import does not compile. |
 | Network DTOs stay inside data/network | The gateway signature uses `:core:model` types. `:core:network` exposes no wire type, so nothing else can name one. |
 | Room entities stay inside database/data | `:core:database` is an `implementation` dependency of `:data:library` and `:data:auth` only. `*Entity` is off the classpath of `:domain` and `:app`. |
+| Proto settings types stay inside datastore/data | `:core:datastore` is an `implementation` dependency of `:data:settings`, so the generated `AppSettings` message stops there. Not yet total: `:app` still has `:core:datastore` on its classpath for `AppViewModel` (see above). |
 | Room itself stays inside `:core:database` | `DatabaseTransactionRunner` names no Room type, so a data module can be transactional with `androidx.room` off its compile classpath. See below. |
-| Data modules implement domain interfaces | `LibraryDataModule` and `AuthDataModule` bind `Default*Repository` to the `:domain` interface. `:app` injects the interface. |
+| Data modules implement domain interfaces | `LibraryDataModule`, `AuthDataModule` and `SettingsDataModule` bind `Default*Repository` to the `:domain` interface. `:app` injects the interface. |
 | No cyclic module dependencies | The graph above is acyclic; Gradle rejects a cycle. |
 | `:app` performs final wiring | `AppModule` in `:app` binds the gateway and the log sink — the two seams a later phase replaces. |
 

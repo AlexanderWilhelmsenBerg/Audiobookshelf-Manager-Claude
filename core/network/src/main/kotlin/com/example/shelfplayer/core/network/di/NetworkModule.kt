@@ -12,6 +12,7 @@ import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 import javax.inject.Qualifier
 import javax.inject.Singleton
+import kotlin.random.Random
 
 /**
  * PRODUCT_SPEC 10.3 — one configured OkHttp stack per context.
@@ -67,6 +68,17 @@ interface NetworkModule {
             explicitNulls = false
             coerceInputValues = false
         }
+
+        /**
+         * PRODUCT_SPEC 14.3 — the jitter source for `RetryPolicy`, injected so a test can seed it.
+         *
+         * Not security-sensitive: it decides how far apart two retries land, so `Random.Default` is the
+         * right choice and a `SecureRandom` here would be cargo cult. What it must be is *replaceable*,
+         * because a backoff test that cannot predict its own delays asserts nothing.
+         */
+        @Provides
+        @Singleton
+        fun providesRandom(): Random = Random.Default
 
         /**
          * PRODUCT_SPEC 15 — platform trust only.

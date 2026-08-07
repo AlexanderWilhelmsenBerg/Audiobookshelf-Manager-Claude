@@ -1,9 +1,8 @@
 package com.example.shelfplayer.core.database.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import kotlinx.coroutines.flow.Flow
@@ -25,10 +24,25 @@ interface ProfileDao {
     @Query("SELECT * FROM servers WHERE serverId = :serverId")
     fun observeServer(serverId: String): Flow<ServerEntity?>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT * FROM servers ORDER BY displayName COLLATE NOCASE ASC")
+    fun observeServers(): Flow<List<ServerEntity>>
+
+    /** PRODUCT_SPEC AUTH-002 — two accounts on one server must produce one row here, not two. */
+    @Query("SELECT COUNT(*) FROM servers")
+    fun observeServerCount(): Flow<Int>
+
+    /**
+     * `@Upsert`, not `@Insert(REPLACE)`: `servers` is the parent of `profiles` and `libraries`, and a
+     * `REPLACE` conflict is a delete plus an insert, which runs `ON DELETE CASCADE`. Signing a second
+     * account into a server would otherwise delete the first account's profile — and with it, its
+     * progress. PRODUCT_SPEC AUTH-002: removing one profile does not remove another profile's data, and
+     * *not* removing one certainly must not either.
+     */
+    @Upsert
     suspend fun upsertServer(server: ServerEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /** Same reason as [upsertServer]: `media_progress` cascades from `profiles`. */
+    @Upsert
     suspend fun upsertProfile(profile: ProfileEntity)
 
     /**
@@ -91,21 +105,33 @@ interface ProfileDao {
     suspend fun setLastUsedAt(profileId: String, usedAt: Long)
 
     /**
-     * PRODUCT_SPEC 5.2 — records the grant the server most recently reported.
+     * PRODUCT_SPEC 5.2 — records what the server most recently said about this account.
      *
-     * Separate from the profile upsert because a grant can change without anything else about the profile
-     * changing: a `403` triggers a permission refresh, and re-writing the whole row from a stale copy
-     * would undo whatever else had moved on.
+     * Separate from the profile upsert because all of this can change without anything else about the
+     * profile changing: a `403` triggers a permission refresh, and re-writing the whole row from a stale
+     * copy would undo whatever else had moved on.
+     *
+     * [role] travels with the grant rather than in its own statement because it comes from the same
+     * response and answers the same question — what this account may do. An account demoted on the
+     * server would otherwise keep offering actions it can no longer perform (PRODUCT_SPEC 5.1).
      */
     @Query(
         """
         UPDATE profiles
         SET accessibleLibrariesJson = :accessibleLibrariesJson,
-            hasAllLibraryAccess = :hasAllLibraryAccess
+            hasAllLibraryAccess = :hasAllLibraryAccess,
+            hasAllTagAccess = :hasAllTagAccess,
+            role = :role
         WHERE profileId = :profileId
         """,
     )
-    suspend fun setLibraryAccess(profileId: String, accessibleLibrariesJson: String, hasAllLibraryAccess: Boolean)
+    suspend fun setAccountState(
+        profileId: String,
+        accessibleLibrariesJson: String,
+        hasAllLibraryAccess: Boolean,
+        hasAllTagAccess: Boolean,
+        role: String,
+    )
 
     /**
      * PRODUCT_SPEC AUTH-002 — removing one profile must not remove another profile's data.

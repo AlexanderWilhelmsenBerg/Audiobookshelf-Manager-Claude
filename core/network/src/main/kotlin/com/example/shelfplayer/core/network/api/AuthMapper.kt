@@ -3,10 +3,17 @@ package com.example.shelfplayer.core.network.api
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import java.time.Instant
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Turns the `/login` envelope into [AuthSession].
@@ -42,8 +49,80 @@ internal object AuthMapper {
                     // nothing about what this account may see.
                     hasAllLibraryAccess = user.permissions?.accessAllLibraries ?: false,
                     accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
+                    // Same safe default, and for a sharper reason: an account wrongly believed to see
+                    // every item is an account whose sync is allowed to delete another account's books.
+                    hasAllTagAccess = user.permissions?.accessAllTags ?: false,
                 ),
             ),
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — the same account, re-read, without its credentials.
+     *
+     * Shares [rejectionFor]'s account checks minus the token one: `POST /api/authorize` answers with
+     * `user.token` and no `user.accessToken`, so requiring an access token here would reject every
+     * response this endpoint gives. The caller already holds a working token — that is how it reached
+     * this endpoint — and [AccountState] exists so that this response can never replace it.
+     *
+     * A disabled or locked account still fails, and that is the point of asking: PRODUCT_SPEC AUTH-004
+     * wants the profile marked rather than left believing it is signed in.
+     */
+    fun toAccountState(user: UserDto?): AppResult<AccountState> = when {
+        user == null -> AppResult.Failure(missingField("user"))
+        user.username.isNullOrBlank() -> AppResult.Failure(missingField("user.username"))
+        !user.isActive || user.isLocked -> AppResult.Failure(
+            AppError.Authorization(summary = "This account has been disabled on the server."),
+        )
+
+        else -> AppResult.Success(
+            AccountState(
+                userId = user.id?.takeIf(String::isNotBlank),
+                username = user.username,
+                role = toRole(user.type),
+                access = LibraryAccess(
+                    hasAllLibraryAccess = user.permissions?.accessAllLibraries ?: false,
+                    accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
+                    hasAllTagAccess = user.permissions?.accessAllTags ?: false,
+                ),
+                progress = user.mediaProgress.mapNotNull(::toProgress),
+            ),
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the same account object, arriving over the socket instead of a response.
+     *
+     * `user_updated` carries exactly what `POST /api/authorize` nests under `user`, so it is decoded by
+     * the same [UserDto] and mapped by the same rules. A second implementation for the push path is how
+     * the two would drift, and the one that would drift is the one nobody tests against a live server.
+     *
+     * `null` for a body this mapper cannot use. An unreadable push is not an error the user can act on,
+     * and the next REST account sync reads the same thing — which is why this transport is allowed to
+     * be best-effort.
+     */
+    fun toAccountState(json: Json, body: JsonObject): AccountState? {
+        val user = runCatching { json.decodeFromJsonElement(UserDto.serializer(), body) }.getOrNull()
+        val mapped = user?.let(::toAccountState)
+        return (mapped as? AppResult.Success)?.value
+    }
+
+    /**
+     * `null` for an entry with no item id: a position that names no book cannot be stored against one,
+     * and inventing a key for it would attach somebody's listening position to an arbitrary row.
+     *
+     * The unit conversion is the thing to be careful about. `currentTime` and `duration` are **seconds**
+     * — `42.5` is forty-two and a half — while `lastUpdate` is milliseconds. Reading either as the other
+     * silently misplaces every position in the library.
+     */
+    private fun toProgress(dto: MediaProgressDto): AccountProgress? {
+        val bookId = dto.libraryItemId?.takeIf(String::isNotBlank) ?: return null
+        return AccountProgress(
+            bookId = LibraryItemId(bookId),
+            position = dto.currentTime.seconds,
+            duration = dto.duration.seconds,
+            isFinished = dto.isFinished,
+            updatedAt = Instant.ofEpochMilli(dto.lastUpdate ?: 0L),
         )
     }
 

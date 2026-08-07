@@ -6,6 +6,8 @@ androidGradlePlugin = "8.12.0"
 kotlin = "2.2.0"
 ksp = "2.2.0-2.0.2"
 detekt = "1.23.8"
+# PRODUCT_SPEC 17.3 — coverage thresholds. Kover reads Kotlin's own coverage, so no JaCoCo agent.
+kover = "0.9.1"
 ktlintGradle = "12.3.0"
 ktlint = "1.5.0"
 protobufPlugin = "0.9.5"
@@ -150,6 +152,7 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }

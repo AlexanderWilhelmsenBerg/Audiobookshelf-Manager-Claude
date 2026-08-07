@@ -4,7 +4,9 @@ import androidx.datastore.core.DataStore
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.warn
+import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.settings.ProfilePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -63,6 +65,69 @@ class AppSettingsDataSource @Inject constructor(
     suspend fun clearActiveProfile() {
         dataStore.updateData { current -> current.toBuilder().clearActiveProfileId().build() }
     }
+
+    /**
+     * PRODUCT_SPEC SET-001 — one profile's view preferences, defaults when it has none stored.
+     *
+     * A profile with no entry reads as [ProfilePreferences.Empty] rather than as an error: not having
+     * chosen a sort order is the normal state of a new account, and the caller resolves the names.
+     */
+    fun profilePreferences(profileId: ProfileId): Flow<ProfilePreferences> = settings.map { stored ->
+        stored.profileSettingsMap[profileId.value]?.toPreferences() ?: ProfilePreferences.Empty
+    }
+
+    /** PRODUCT_SPEC 6.1 step 9 — `null` clears the choice and returns the profile to every library. */
+    suspend fun setDefaultLibrary(profileId: ProfileId, libraryId: LibraryId?) {
+        updateProfile(profileId) { current ->
+            if (libraryId == null) {
+                current.clearDefaultLibraryId()
+            } else {
+                current.setDefaultLibraryId(libraryId.value)
+            }
+        }
+    }
+
+    suspend fun setLibrarySortOrder(profileId: ProfileId, libraryId: LibraryId, order: String) {
+        updateProfile(profileId) { current -> current.putLibrarySortOrder(libraryId.value, order) }
+    }
+
+    suspend fun setShelfSortOrder(profileId: ProfileId, order: String) {
+        updateProfile(profileId) { current -> current.setShelfSortOrder(order) }
+    }
+
+    /**
+     * PRODUCT_SPEC AUTH-002 — removing a profile takes its preferences with it.
+     *
+     * Otherwise the map grows a dead entry per removed account, and a profile id reissued by a server
+     * would inherit the arrangement of the account it replaced.
+     */
+    suspend fun clearProfilePreferences(profileId: ProfileId) {
+        dataStore.updateData { current ->
+            current.toBuilder().removeProfileSettings(profileId.value).build()
+        }
+    }
+
+    /**
+     * Read-modify-write of one profile's entry inside `updateData`, so two screens writing at once
+     * cannot lose each other's change — DataStore serializes the whole transform.
+     */
+    private suspend fun updateProfile(
+        profileId: ProfileId,
+        transform: (ProfileSettings.Builder) -> ProfileSettings.Builder,
+    ) {
+        dataStore.updateData { current ->
+            val existing = current.profileSettingsMap[profileId.value] ?: ProfileSettings.getDefaultInstance()
+            current.toBuilder()
+                .putProfileSettings(profileId.value, transform(existing.toBuilder()).build())
+                .build()
+        }
+    }
+
+    private fun ProfileSettings.toPreferences() = ProfilePreferences(
+        defaultLibraryId = defaultLibraryId.takeIf(String::isNotBlank)?.let(::LibraryId),
+        libraryOrders = librarySortOrderMap.filterValues(String::isNotBlank),
+        shelfOrder = shelfSortOrder.takeIf(String::isNotBlank),
+    )
 
     suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.updateData { current -> current.toBuilder().setThemeMode(mode).build() }

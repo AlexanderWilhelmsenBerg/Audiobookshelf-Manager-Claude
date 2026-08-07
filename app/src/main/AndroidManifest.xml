@@ -37,5 +37,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!--
+          PRODUCT_SPEC SYNC-003 — the app provides WorkManager's configuration itself, so that workers
+          can be constructed with injected dependencies. Leaving the default initializer in place would
+          initialise WorkManager before Hilt's factory exists, and the first worker would fail to build.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 </manifest>

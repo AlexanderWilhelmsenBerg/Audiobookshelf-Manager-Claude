@@ -10,6 +10,13 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 
 ## Phase 1 — **not complete**
 
+> **Read `docs/phase-1-remaining.md` first.** The table below tracks `PRODUCT_SPEC 20`'s *deliverables*,
+> and every one of them exists. That is not the same as Phase 1 being close to done: `PRODUCT_SPEC 21`
+> makes a requirement complete only when its **acceptance criteria** are met, and an audit of Phase 0 and
+> Phase 1 against those criteria found 30 open tasks — including LIB-001's websocket criterion, which
+> this plan lost entirely, and a permission refresh that `PRODUCT_SPEC 5.2` requires and no code performs.
+> Marking a deliverable done here says a screen or a repository exists, nothing more.
+
 `PRODUCT_SPEC 20` lists seven deliverables.
 
 | Deliverable | Status | Evidence |
@@ -19,36 +26,287 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 | Secure token storage | **done** | `KeystoreTokenCipher`, `SessionTokenStore`, `SessionTokenProvider` in `:data:auth`. |
 | Capability handshake | **done** | `AbsCapabilityResolver`, `DefaultCapabilityRepository`. Runs against the bound real gateway; confirms no capability, correctly. |
 | Libraries/items sync | **done** | `AbsLibraryApi`, `LibraryMapper`, `AbsLibraryContractTest`. The real gateway is bound; the demo bootstrapper is gone. |
-| Room-backed home/library/search/details | **done** | Now reads server data. Never rendered on a device. |
-| Profile switch | **policy done, no UI** | `SwitchProfileUseCase` is written and tested. Nothing calls it. |
+| Room-backed home/library/search/details | **partly done** | Reads server data, rendered on a device. Home is the shelf of all accessible books with LIB-002 search and sort; per-library browse and book details exist. **Covers are not built** (LIB-001, LIB-004), deferred by the owner. |
+| Profile switch | **done** | `ProfileSwitcherScreen` + `ProfileSwitcherViewModel`, driving `SwitchProfileUseCase`. |
+| Sign-in UI | **done** | `SignInScreen` + `SignInViewModel`, two stages, address confirmed before the password. |
 
-### Exit criteria: 0 of 3 met, and all three now blocked on the same thing
+### First run on a real device — 2026-08-05
 
-- Two accounts on one server can switch — **no UI**. `DefaultAuthRepositoryTest` proves two accounts on
-  one server become two profiles sharing one server row, and `SwitchProfileUseCaseTest` proves the switch
-  behaves. Nothing calls either.
-- Offline cached browse works — **untested against real data**. The sync writes server data into Room and
-  the UI reads Room, so the pieces are in place, but no one has signed in and pulled the network.
-- Unauthorized libraries never appear — **enforced and unit-tested, not demonstrated**. `AbsLibraryApi`
-  drops an ungranted library before it can reach Room, and the grant is persisted on the profile
-  (database version 3). `AbsLibraryContractTest` covers it against a MockWebServer. What has not happened
-  is a real account with a restricted grant signing in.
+A debug APK was installed on hardware and pointed at a real Audiobookshelf server. **This is the first
+time any of this code has run outside a test.** What was observed:
 
-### The gap that matters, restated
+| Behaviour | Result |
+| --- | --- |
+| Install and sign in against a real server | **Works.** First end-to-end sign-in this project has had. |
+| Detected server version on the sign-in screen | **Correct.** |
+| Library after sign-in | **Empty** — a manual refresh then populated it. A defect; see below. |
+| Library sync from a real server | **Works** once refreshed: real libraries and items in Room. |
+| Book details: history and progress | **Correct.** The `userMediaProgress` mapping is right on real data. |
+| Sign-out | Library stays browsable, profile stays saved — AUTH-004's intent, confirmed on hardware. |
 
-**Everything below the UI is done. There is no UI.**
+Two defects came out of it and are fixed:
 
-The real gateway is bound, the demo library is gone, and `ShelfPlayerApplication` restores the active
-profile's session on start. On a device that means: a fresh install shows an empty home and has no way to
-add a profile, because the only path to one is a screen that does not exist. That is a worse *user*
-state than the demo library it replaced, and a better *project* state — nothing in the app now pretends
-to have data it did not get from a server.
+1. **The empty library after sign-in had no explanation.** `SignInUseCase` runs an initial sync and
+   `DefaultLibraryRepository` records its outcome in `sync_state`; home never read that table, deriving its
+   status from an in-memory flag only a user-started refresh sets. A failed initial sync was therefore
+   indistinguishable from an empty library. `ObserveSyncStateUseCase` now surfaces it, and home runs the
+   initial sync itself once when a profile has never synced — so the case self-corrects whatever caused it.
+   **The underlying cause of that first sync failing is still unknown**, because nothing recorded it where
+   anyone could see. The next device run will show it.
+2. **The reauthentication banner said "Downloaded books still play."** There are no downloads (Phase 3) and
+   no player (Phase 2). Reworded.
 
-Step 9 is the whole remaining gap.
+### Second device run — the same day
+
+The auto-sync fix worked: the library populated on opening. Two further points, one fixed and one
+deferred by the owner.
+
+3. **Home blocked on the sync.** Fixed. `LIB-001` says the home screen "can render partial cached content
+   while sync continues" and that sync status is "visible but non-blocking", and it was doing neither: a
+   refresh in flight replaced the whole screen with a spinner. Since a sync of a real library is an N+1
+   over every item, that is a long wait in front of content the app already had. The cached library now
+   renders immediately under a progress bar. The one remaining blocking state waits on *Room*, not the
+   network — without it a cold start flashes "No server connected" before the profile row arrives.
+
+4. **No cover art, and thin metadata on screen.** Deferred by the owner to a later phase, and recorded
+   here because the *data* is not the problem: `LibraryMapper` maps and stores `coverPath`, `description`
+   (preferring the server's `descriptionPlain`, already sanitized), narrators, genres, publisher, language
+   and published year, and the device run confirmed progress and history render from that same expanded
+   fetch. What is missing is the UI, plus one piece of plumbing for covers specifically — a cover URL is a
+   server path that needs an authenticated image loader, so Coil has to be given the profile's credential.
+   That is the `@AuthenticatedClient` OkHttp stack, which exists and is currently unused; wiring Coil to it
+   is the natural next step and the reason that client was kept.
+
+   **Correction to the deferral, for the record:** covers are *not* later-phase work in the spec. LIB-001
+   lists them among what initial sync stores, LIB-004 lists them among what a book shows, and Phase 1
+   delivers "Room-backed home/library/search/details". Deferring them is a scope decision the owner is
+   entitled to make; calling Phase 1 complete without them is not the same thing, and this note exists so
+   the two do not get confused later.
+
+### Third device run — the shelf
+
+The screenshot showed the home screen doing exactly what it was built to do and exactly what nobody
+wanted: one card reading "Audiobooks — 188 books" above an empty screen, with the books one tap further
+in.
+
+5. **The app now opens on the books** (LIB-002), across every library the profile is granted, ordered by
+   what was played last. `ObserveAccessibleBooksUseCase` + `LibraryRepository.observeAccessibleBooks`, with
+   `BookSortOrder.LastPlayed` and the search and sort controls LIB-002 already required. Browsing by
+   library did not go away — it moved behind **Settings → Open on libraries**, the first entry in the first
+   settings screen (SET-001, SET-002), stored in Proto DataStore behind the new `:data:settings` module.
+
+   Two things fell out of doing this that are worth more than the screen itself:
+
+   - **The library grant is now enforced on read, not only on write.** Showing every accessible book meant
+     asking "which libraries may this profile see?" at query time, and that exposed a real hole: the grant
+     is applied when rows are *written*, and a grant that shrinks afterwards leaves the revoked library's
+     rows in the cache with nothing to enumerate them again. All four read paths now filter by the grant
+     persisted on the profile, and `DefaultLibraryRepositoryTest` proves a narrowed grant hides the library
+     from every one of them — including the book detail route, which a deep link could otherwise reach.
+   - `LibraryDao` is split into a read half and a write half, and the sync's write path is now
+     `LibrarySnapshotWriter`. Both changes were forced by detekt rather than chosen, and both are right:
+     nothing that reads can now name an `upsert`.
+
+### Fourth device run — two accounts, and the root cause found
+
+The run that mattered. Two real accounts on one server, one of them library-restricted, and the reports
+from it identified the defect three earlier runs had only described.
+
+| Reported | Verdict |
+| --- | --- |
+| Signing in as a user that does not exist said **"This profile needs to sign in again."** | **Defect.** `AppError.Authentication`'s default summary is the AUTH-004 reauthentication wording, and `NetworkErrorMapper` maps every `401` to it — including the one that means "those credentials were refused". Fixed at the call site, which is the only place that knows what was asked. |
+| Signing in as root **needed a manual refresh before books appeared** | **Defect, root cause found.** See below. |
+| An added empty library appeared | Correct. |
+| Playing in the web interface **did not update the app** until a refresh | **Working as built, and a gap.** See *Progress freshness*. |
+| After signing out, the card still offered **Sign out**, and asked to sign in again | **Defect.** Fixed: a profile that needs to sign in again now offers **Sign in**, and carries its server address and username to the sign-in screen. |
+| Root saw everything; the restricted account saw only its own libraries | **Correct** — the first real-world evidence for exit criterion 2, though not the database check TC-35 asks for. |
+| "I should be able to press which user I want, and it should show clearly which is active" | **Defect.** "In use" was plain text between two buttons and read as a third, disabled one. The active card now has the theme's selected colour and a filled badge, the whole card switches profile, and each card shows its server address. |
+| Turning off the network and refreshing showed cached content with a failure | Correct — TC-42. TC-39 (force-stop and reopen offline) is still not done. |
+
+#### The root cause of "empty until I pressed refresh"
+
+Two bugs, both fixed, and neither was where the earlier runs suggested.
+
+1. **One failed item threw away the entire library sync.** `AbsLibraryApi` fetches each item expanded —
+   490 books is 490 requests — and it `return`ed on the first failure, discarding every snapshot already
+   collected. One timeout in 490 attempts is close to certain over a home connection. PRODUCT_SPEC LIB-001
+   says "failed optional sections do not fail the whole sync"; this did the opposite. It now keeps what it
+   fetched and reports how much it could not, and the sync is recorded as `PartiallySucceeded` — a status
+   the model has always had and nothing ever produced.
+
+   The counterpart matters as much: an **unreachable** item must not be treated as a **removed** one.
+   Reconciliation soft-deletes anything absent from a sync, so a partial sync that deleted what it could
+   not reach would turn one timeout into books visibly disappearing. `LibrarySnapshot.isComplete` gates
+   that, and only a fetch that saw everything is allowed to delete.
+
+2. **`INSERT OR REPLACE` was cascading deletes across the schema.** Found by the test written for (1),
+   which failed for the wrong reason. SQLite implements a `REPLACE` conflict as *delete the old row, then
+   insert* — and the delete runs `ON DELETE CASCADE`. Every parent table was written that way: re-writing
+   a library row deleted its books; re-writing a book row deleted its tracks, chapters, author and series
+   links **and the reading profile's progress in it**; re-writing a server row deleted its profiles.
+   Invisible while a sync always re-inserted everything it had just deleted, and data loss the moment one
+   did not. All four parent tables now use `@Upsert`, which updates instead of replacing.
+
+   This is the one worth remembering: the bug was not in the code the failing test was written for.
+
+3. **The initial sync ran in a scope that was cancelled.** `SignInUseCase` awaited it, in the sign-in
+   screen's `viewModelScope`, and a successful sign-in **pops** that screen. The sync died part-way and
+   left `sync_state` saying `Syncing` — for a sync nothing was running. Home then refused to start its own,
+   because its trigger was `NeverSynced`. The sync moved to home, which owns the screen the result appears
+   on and outlives the navigation that reaches it; home also adopts a sync recorded as running that nothing
+   is running.
+
+#### Progress freshness — the remaining gap
+
+Playing in the web interface does not reach the app until a refresh, and that is the current design rather
+than a bug: PRODUCT_SPEC LIB-001 wants websocket events to update Room with a REST refresh as the fallback,
+and only the fallback exists. A full refresh is an N+1 over every item, so it is far too expensive to run
+on every foreground.
+
+The cheap fix is a **progress-only sync**, and it is nearly reachable: `POST /api/authorize` already returns
+`user.mediaProgress` for the signed-in account in one request, and that endpoint is already captured and
+contract-tested. What is *not* captured is the shape of a `mediaProgress` **element** — the fixture's array
+is empty, because the seeded contract server had never played anything. Building on it now would be
+guessing at a response shape, which PRODUCT_SPEC 22.4 forbids. The next contract capture should play or seek
+an item before capturing so the array has contents; the sync is small work once it does.
+
+### Fifth device run — the acceptance plan, in the app
+
+Three requests came out of running the plan, and all three were about the plan being hard to run.
+
+1. **The libraries toggle was the wrong shape.** "Libraries should just be displayed in the settings, not
+   an *open on libraries* toggle." Correct, and it is the usual failing of a modal setting: it cost the user
+   a trip to Settings, a flip, and a trip back to discover what it did. Settings now *lists* the libraries
+   and opens one when tapped; the home screen is always the books. The proto field is reserved rather than
+   removed, because a device that wrote it still has the bytes on disk.
+
+2. **The `adb` cases were the hard ones.** They were also the important ones — the checks that ask what was
+   *stored* rather than what is shown. **Settings → Storage on this device** now reports them: servers,
+   profiles, saved sign-ins, libraries and books *stored* against *visible to this profile*, soft-deleted
+   rows, and progress records.
+
+   The stored-against-visible pair is the whole point. "Unauthorized libraries never appear" is really
+   "unauthorized rows were never written", and a screen that hides a row looks identical to one that never
+   had it — so a single number cannot answer it and two can. Counts only, never names: listing the libraries
+   a profile may not see, in order to show that they are hidden, would be its own small breach
+   (PRODUCT_SPEC 5.2).
+
+3. **Known server addresses on the sign-in screen.** The address stage now lists the servers this device has
+   used, each with the version detected and whether the connection was encrypted. Picking one fills the
+   field and **re-probes**: what the user reads before typing a password describes the server now. A
+   remembered "encrypted" would be a claim the app had stopped checking, and certificates expire.
+
+**The results table did not survive the round trip.** The uploaded copy of `phase-1-acceptance.md` had
+sections 1–8 replaced by a single `## c`, so no result was recorded here. The plan below is the current one;
+the run needs repeating against this build, which is no loss, since three of its cases changed.
+
+### Sixth device run — the full plan, and the worst defect yet
+
+The plan was run end to end. Most of it passed; four findings are defects and two are server behaviour.
+
+#### Fixed
+
+1. **A restricted account was deleting the unrestricted account's books.** The report: account A saw
+   490 books, then switching to restricted account B showed 188 — *and 302 under "removed on the server"*.
+
+   Audiobookshelf restricts twice: by library, and by tag *within* a library. B could see the shared
+   library, so it synced it, and the server served it a filtered 188 items. Reconciliation then marked
+   everything absent from that list deleted — 302 of A's books, on A's account too.
+
+   Absence from a filtered account's sync says something about the filter, not about the server. The
+   grant now carries `accessAllTags` (already in the captured contract, never read) and only an account
+   with **all libraries and all tags** may drive deletions. Everyone else adds and updates, never removes.
+   Database version 4; the new column defaults to restrictive for existing rows, unlike `hasAllLibraryAccess`
+   in version 3 — getting that one wrong hides data, getting this one wrong destroys it.
+
+2. **Libraries deleted on the server became permanent stale entries.** Nothing ever enumerated libraries:
+   `refresh` reconciled books *within* a library and never the list of libraries itself. They are
+   reconciled now, along with their books — the shelf reads books by server, so a deleted library's
+   contents would otherwise stay on screen. Same authority rule as (1).
+
+3. **Only the first account ever auto-synced.** `initialSyncAttempted` was one boolean for the whole
+   ViewModel, so the second and third profiles were silently skipped. It is a set of profile ids now.
+
+4. **"Saved sign-ins" read 6 for 3 accounts.** It counted files, and each profile stores an access token
+   and a refresh token. It counts distinct profiles now.
+
+5. **Search took about a second.** Filtering and sorting 490 books ran on the main thread, because a
+   `Flow` collected in a ViewModel runs there. `flowOn(Default)` — the 300 ms debounce LIB-002 mandates is
+   now the only delay.
+
+6. **Pull-to-refresh** (LIB-001 asks for it in as many words). The toolbar button stays: a gesture some
+   users never find, and one TalkBack cannot perform, is not a replacement for a button.
+
+7. **Reauthentication lands on the password field.** The address and username were filled in but the user
+   still had to tap *Continue* on an address the app had supplied. The probe now runs on arrival — run,
+   not skipped: PRODUCT_SPEC 6.1 wants the version and encryption line seen before a password, and the
+   credentials stage shows both.
+
+8. **Book rows show position, remaining and total**, not just a percentage (LIB-004).
+
+#### Server behaviour, not ours
+
+- **Changing a password does not invalidate the session.** Audiobookshelf keeps existing tokens valid;
+  *disabling* the account does invalidate, and the app handled that correctly. Nothing on the client can
+  fix a token the server still honours.
+- **Usernames are matched case-insensitively.** That is the server's login lookup. The app already stores
+  and displays the username the *server* returned rather than what was typed, so it cannot show one
+  account under another's name.
+
+#### Asked for and not built — the next slice
+
+These are real, and each is more than a fix:
+
+- **Websocket for live progress** (LIB-001's last bullet, SYNC-002). Audiobookshelf uses socket.io, which
+  is a new dependency and a new contract to capture. Until it exists, progress played elsewhere arrives on
+  the next refresh.
+- **Server-reachable indicator**, on the shelf and against each known server on the sign-in screen. Needs
+  a reachability probe plus `ConnectivityManager` observation.
+- **Refresh when the server comes back**, which falls out of the same connectivity observation.
+- **Books appearing as the sync runs.** The write is one transaction at the end; showing them progressively
+  means chunking the fetch and writing per chunk, with reconciliation still once at the end.
+- The per-library screen has no refresh, profile or settings action.
+
+### Exit criteria: 0 of 3 *demonstrated*, all 3 now reachable
+
+Every deliverable is built, and the device run above verified a good deal of the machinery underneath
+them. What is missing for the criteria themselves is a second account, a restricted account, and an
+offline test — not code.
+
+- Two accounts on one server can switch — **built, never run**. The repository creates both profiles
+  sharing one server row, the switcher lists them, and `SwitchProfileUseCase` swaps between them. Proven
+  by unit tests at every layer; never performed by a human on hardware.
+- Offline cached browse works — **built, never run**. The sync writes server data to Room and the UI reads
+  Room, so pulling the network cable should leave the library on screen. Nobody has tried it.
+- Unauthorized libraries never appear — **enforced, never demonstrated against a real restricted account**.
+  `AbsLibraryApi` drops an ungranted library before it can reach Room; `AbsLibraryContractTest` covers it
+  against a MockWebServer with a fabricated grant. Since the third device run the grant is also applied on
+  every read, so a grant that shrinks after a sync hides the revoked library too — proven against a real
+  in-memory database, still not against a real restricted account.
+
+### What closing them takes
+
+An APK, a real Audiobookshelf server, and a human. **`docs/phase-1-acceptance.md` is the executable
+version of this list** — 53 numbered cases with the exact `adb` commands, the accounts to prepare, and the
+gaps that are expected to fail so nobody raises them as defects. The short form:
+
+1. Sign in. Confirm the version and the encryption line appear before the password field, and that a
+   deliberately wrong host is rejected there rather than at the password.
+2. Sign in a **second** account on the same server, switch between them, and confirm each sees its own
+   library and its own progress.
+3. Give one account access to a subset of libraries on the server, sign it in, and confirm the others do
+   not appear. Then check the database — the requirement is that they were never *written*, which the UI
+   cannot show.
+4. Turn off the network and confirm the library is still browsable.
+5. Let a session expire, or revoke it server-side, and confirm the profile is marked rather than signed
+   out, and that the reauthentication banner appears.
+
+Nothing in this environment can do any of that: `verifyDebug` compiles and unit-tests, and there is no
+device or emulator.
 
 ## What was added in this session
 
-Six commits, each with `verifyDebug` green. **196 unit tests pass, 0 failures**; 109 of them are new.
+Each commit with `verifyDebug` green. **248 unit tests pass, 0 failures.**
 
 ### `:data:auth` (AUTH-001, AUTH-002)
 
@@ -166,6 +424,11 @@ Two capture artefacts, so they are not mistaken for server behaviour: `size` and
 
 ## Remaining Phase 1 work
 
+Steps 1–9 below are the *deliverable* plan and are all complete. **They were never the whole of Phase 1.**
+The acceptance-criteria audit in `docs/phase-1-remaining.md` supersedes this list: steps 10 onward
+(P1-01 … P1-30 there) are what actually remains, starting with per-profile item visibility, permission
+refresh, and the websocket criterion this list omitted.
+
 In dependency order.
 
 1. ~~Commit the captured contract fixtures.~~ **Done.**
@@ -182,7 +445,22 @@ In dependency order.
    `authorize.json` returning `user.token` only now lives on the gateway interface, where the next person
    to add a permission refresh will read it.
 
-9. **Sign-in UI and profile switch.** The only remaining Phase 1 work, and the whole gap.
+9. ~~**Sign-in UI and profile switch.**~~ **Done.** Two-stage sign-in, a profile switcher with sign-out and
+   remove, a start destination decided from observed state, and AUTH-004's mark shown in both places.
+
+   What step 9 deliberately did *not* build, so nobody looks for it:
+
+   - **The switcher shows no server name.** It shows display name and role. `Profile` carries a `serverId`
+     but not the server's own name, and joining the two needs a repository read the domain layer does not
+     expose. A switcher that showed the wrong server would be worse than one that shows none
+     (PRODUCT_SPEC AUTH-002 does ask for it, so this is an open item rather than a decision).
+   - **No avatar or colour.** AUTH-002 lists them as optional.
+   - **No biometric lock on profile selection.** AUTH-003 lists it as optional and explicitly not an
+     authentication mechanism.
+   - **No settings screen**, so cleartext cannot be opted into per server. The sign-in screen warns about
+     it; PRODUCT_SPEC 15's per-server exception is a SET-002 item.
+
+   The old text, for whoever compares: this was written as the only remaining Phase 1 work, and it was.
 
    Ready for it:
 

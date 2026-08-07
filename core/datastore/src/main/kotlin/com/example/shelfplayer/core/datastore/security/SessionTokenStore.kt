@@ -114,6 +114,24 @@ class SessionTokenStore @Inject constructor(
         cipher.clear()
     }
 
+    /**
+     * PRODUCT_SPEC SET-002 (Privacy/diagnostics) — how many **accounts** have a credential on disk.
+     *
+     * Accounts, not files. Each profile stores one file per [SessionTokenKind], so counting files reported
+     * six for three signed-in accounts — a device run duly asked why. The file *stem* is the hashed profile
+     * id, so counting distinct stems answers the question the label asks.
+     *
+     * A count and nothing else. It exists so that signing out can be *seen* to have deleted something,
+     * which is otherwise invisible; a store that could describe its contents to a screen would be a worse
+     * store, and the names are hashed for the same reason (PRODUCT_SPEC AUTH-003).
+     */
+    suspend fun storedCredentialCount(): Int = withContext(ioDispatcher) {
+        directory().listFiles().orEmpty()
+            .map { it.name.substringBefore('.') }
+            .distinct()
+            .size
+    }
+
     private fun directory(): File = File(context.filesDir, DIRECTORY)
 
     /**

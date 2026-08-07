@@ -1,0 +1,42 @@
+{
+  "bodyKind": "socket-frames",
+  "contentType": "text/plain",
+  "frames": [
+    {
+      "payload": [
+        "user_online",
+        {
+          "createdAt": 0,
+          "id": "<volatile>",
+          "lastSeen": null,
+          "session": null,
+          "type": "root",
+          "username": "contractroot"
+        }
+      ],
+      "type": "42"
+    },
+    {
+      "payload": [
+        "init",
+        {
+          "userId": "<volatile>",
+          "username": "contractroot",
+          "usersOnline": [
+            {
+              "connections": 1,
+              "createdAt": 0,
+              "id": "<volatile>",
+              "lastSeen": 0,
+              "session": null,
+              "type": "root",
+              "username": "contractroot"
+            }
+          ]
+        }
+      ],
+      "type": "42"
+    }
+  ],
+  "status": 200
+}

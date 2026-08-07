@@ -1,0 +1,52 @@
+{
+  "body": {
+    "bookmarks": [],
+    "createdAt": 0,
+    "email": null,
+    "hasOpenIDLink": false,
+    "id": "<volatile>",
+    "isActive": true,
+    "isLocked": false,
+    "itemTagsSelected": [],
+    "lastSeen": null,
+    "librariesAccessible": [],
+    "mediaProgress": [
+      {
+        "currentTime": 42.5,
+        "duration": 0,
+        "ebookLocation": null,
+        "ebookProgress": 0,
+        "episodeId": null,
+        "finishedAt": null,
+        "hideFromContinueListening": false,
+        "id": "<volatile>",
+        "isFinished": false,
+        "lastUpdate": 0,
+        "libraryItemId": "<volatile>",
+        "mediaItemId": "<volatile>",
+        "mediaItemType": "book",
+        "progress": 0,
+        "startedAt": 0,
+        "userId": "<volatile>"
+      }
+    ],
+    "permissions": {
+      "accessAllLibraries": true,
+      "accessAllTags": true,
+      "accessExplicitContent": true,
+      "createEreader": true,
+      "delete": true,
+      "download": true,
+      "selectedTagsNotAccessible": false,
+      "update": true,
+      "upload": true
+    },
+    "seriesHideFromContinueListening": [],
+    "token": "<redacted-secret>",
+    "type": "root",
+    "username": "contractroot"
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

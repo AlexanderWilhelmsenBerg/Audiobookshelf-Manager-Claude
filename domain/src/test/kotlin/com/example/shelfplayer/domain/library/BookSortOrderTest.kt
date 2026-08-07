@@ -8,6 +8,7 @@ import com.example.shelfplayer.domain.TEST_INSTANT
 import com.example.shelfplayer.domain.TEST_SERVER
 import com.example.shelfplayer.domain.book
 import org.junit.Test
+import java.time.Instant
 import kotlin.test.assertEquals
 
 /** PRODUCT_SPEC LIB-002 / LIB-003 — library ordering. */
@@ -66,6 +67,47 @@ class BookSortOrderTest {
         )
     }
 
+    /**
+     * PRODUCT_SPEC LIB-002 — the order the app opens on.
+     *
+     * The unplayed books are not dropped and not interleaved: they follow everything with progress, in
+     * title order. The shelf has to show the whole library, not only what has been started.
+     */
+    @Test
+    fun `last played puts the newest listening first and the untouched books after`() {
+        val books = listOf(
+            book(id = "cold", title = "Never opened"),
+            book(id = "yesterday", title = "Yesterday", playedAt = TEST_INSTANT.minusSeconds(86_400)),
+            book(id = "just-now", title = "Just now", playedAt = TEST_INSTANT),
+            book(id = "also-cold", title = "Another unopened"),
+            book(id = "last-week", title = "Last week", playedAt = TEST_INSTANT.minusSeconds(604_800)),
+        )
+
+        assertEquals(
+            listOf("just-now", "yesterday", "last-week", "also-cold", "cold"),
+            sortBooks(books, BookSortOrder.LastPlayed).map { it.id.value },
+        )
+    }
+
+    /**
+     * A finished book keeps its place by timestamp.
+     *
+     * "Last played" is a claim about when, not about whether the user is still going. Demoting finished
+     * books is the *continue listening* shelf LIB-002 also asks for, and that is a filter.
+     */
+    @Test
+    fun `last played does not demote a finished book`() {
+        val books = listOf(
+            book(id = "in-progress", playedAt = TEST_INSTANT.minusSeconds(60)),
+            book(id = "finished", playedAt = TEST_INSTANT, isFinished = true),
+        )
+
+        assertEquals(
+            listOf("finished", "in-progress"),
+            sortBooks(books, BookSortOrder.LastPlayed).map { it.id.value },
+        )
+    }
+
     /** Sorting must be total: equal keys still produce one deterministic order. */
     @Test
     fun `books without a sequence keep a deterministic order`() {
@@ -112,5 +154,39 @@ class BookSortOrderTest {
     @Test
     fun `a book with no series at all reports an absent sequence`() {
         assertEquals(SeriesSequence.Absent, book(id = "lonely").primarySequence())
+    }
+}
+
+/** PRODUCT_SPEC LIB-002 — "recently added" is the server's own date, not this cache's fetch date. */
+class RecentlyAddedSortTest {
+
+    @Test
+    fun `newest on the server comes first`() {
+        val books = listOf(
+            book(id = "b1", title = "Older").copy(addedAt = Instant.EPOCH.plusSeconds(10)),
+            book(id = "b2", title = "Newest").copy(addedAt = Instant.EPOCH.plusSeconds(30)),
+            book(id = "b3", title = "Middle").copy(addedAt = Instant.EPOCH.plusSeconds(20)),
+        )
+
+        assertEquals(
+            listOf("Newest", "Middle", "Older"),
+            sortBooks(books, BookSortOrder.RecentlyAdded).map { it.title },
+        )
+    }
+
+    /**
+     * A row cached before the column existed sorts last, not first.
+     *
+     * Substituting `lastFetchedAt` would put every pre-upgrade book at the top of a shelf that claims
+     * to show what is new, which is precisely backwards.
+     */
+    @Test
+    fun `a book with no added date sorts after every book that has one`() {
+        val books = listOf(
+            book(id = "b1", title = "Unknown"),
+            book(id = "b2", title = "Known").copy(addedAt = Instant.EPOCH.plusSeconds(10)),
+        )
+
+        assertEquals(listOf("Known", "Unknown"), sortBooks(books, BookSortOrder.RecentlyAdded).map { it.title })
     }
 }

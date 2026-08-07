@@ -33,6 +33,45 @@ message AppSettings {
   // PRODUCT_SPEC 20, Phase 0 — set once the bundled demo library has been written to Room, so the
   // seed runs on first launch only and a user who deletes demo content does not get it back.
   bool fixture_library_seeded = 7;
+
+  // Field 8 held `home_shows_libraries`, a toggle that swapped the home screen for a list of libraries.
+  // It is gone: the app always opens on the books, and browsing by library is an entry in Settings rather
+  // than a mode the home screen can be in. A setting that changes what a screen *is* costs a user a trip
+  // to Settings and back to find out what it does.
+  //
+  // Reserved, not reused. A device upgrading from a build that wrote this field still has the bytes on
+  // disk, and a new field with number 8 would read them as its own.
+  reserved 8;
+  reserved "home_shows_libraries";
+
+  // PRODUCT_SPEC SET-001 / AUTH-002 — preferences that belong to one account, keyed by profile id.
+  //
+  // Per profile rather than global because two accounts on one server are two different people's
+  // shelves: PRODUCT_SPEC 5.2 keeps their content apart, and a sort order or a default library that
+  // followed the device rather than the account would leak one person's arrangement onto another's
+  // screen. Removing a profile removes its entry.
+  map<string, ProfileSettings> profile_settings = 9;
+}
+
+// PRODUCT_SPEC SET-001 — one account's view preferences.
+//
+// Nothing here is a credential or an identifier of the user. It is how they last left a screen.
+message ProfileSettings {
+  // PRODUCT_SPEC 6.1 step 9 — the library this profile opens on. Empty means no choice has been made,
+  // which is not the same as a choice of "all": the home shelf spans every granted library by default,
+  // and this narrows it only once the user picks one.
+  string default_library_id = 1;
+
+  // PRODUCT_SPEC LIB-002 — sort order per library, keyed by library id.
+  //
+  // The value is a `BookSortOrder` name rather than an enum defined here, deliberately. An enum would
+  // have to be kept in step with the domain type across a module boundary, and the failure mode of
+  // getting that wrong is silent: a renumbered constant reads back as a different order. A name that
+  // no longer resolves falls back to the default instead, which is visible and harmless.
+  map<string, string> library_sort_order = 2;
+
+  // The order used on the home shelf, which spans libraries and so has no library id to key on.
+  string shelf_sort_order = 3;
 }
 
 enum ThemeMode {

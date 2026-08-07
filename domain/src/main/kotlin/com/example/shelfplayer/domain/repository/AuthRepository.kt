@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCandidate
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.SessionStatus
 
 /**
@@ -63,6 +64,25 @@ interface AuthRepository {
      * A failed renewal never removes the profile and never touches its downloads or local progress.
      */
     suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus>
+
+    /**
+     * PRODUCT_SPEC 5.2 — re-reads the account's permissions from the server and stores them.
+     *
+     * The grant a profile was signed in with is otherwise never revisited, so access granted or revoked
+     * on the server stays invisible until the user signs out and back in. The requirement names two
+     * moments this must happen — after a `403`, and before a destructive request whose cached permissions
+     * are over five minutes old — and a profile switch is a third, because the account whose view is about
+     * to fill the screen is exactly the one whose grant should not be stale.
+     *
+     * Returns everything the server said about the account, which is more than the grant: the same
+     * response carries every listening position it has. The caller decides what to do with those — see
+     * `SyncAccountUseCase`, which is what makes a book played on another device appear without a
+     * 491-request library sync.
+     *
+     * A failure leaves the stored grant untouched unless the server actively rejected the session,
+     * which is marked instead; an unreachable server is not a permission change.
+     */
+    suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState>
 
     /**
      * PRODUCT_SPEC AUTH-004 — ends the session but keeps the profile.

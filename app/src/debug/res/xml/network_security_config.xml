@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC 15 — the **debug** network security configuration.
+
+  Debug builds permit cleartext. Release builds do not, and `app/src/main/res/xml` still holds the
+  `false` that ships. This file is the whole of the difference between them.
+
+  ### Why the split exists at all
+
+  Until now one config covered both, so a LAN-only `http://` server was unreachable by *every* build —
+  including the debug APKs the acceptance runs are performed with. The sign-in screen warned about
+  cleartext for an address the HTTP stack then refused outright, which is a warning about a thing that
+  cannot happen followed by a failure with no explanation.
+
+  ### Why release is not given a per-server exception
+
+  `PRODUCT_SPEC 15` asks for "a per-server local-network exception in an advanced screen", and open
+  decision 24.13 asks whether release builds should have one at all. The platform cannot express it:
+  `<domain-config>` takes literal domains fixed at build time, there is no CIDR form for "any private
+  address", and nothing can add a host at runtime. The only release-build lever is
+  `cleartextTrafficPermitted="true"` on the base config — which would remove the platform's guarantee
+  for *every* host in order to serve one. See ADR-0009.
+
+  There is intentionally no `<trust-anchors>` override here. PRODUCT_SPEC AUTH-001 forbids a
+  "trust all certificates" mode, and a debug-only trust anchor is the usual way one gets added by
+  accident — cleartext and a forged certificate are not the same risk, and this file grants only the
+  first.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      Suppressed here and *only* here. `InsecureBaseConfiguration` is exactly the right error for the
+      release config, which is why the release file has no suppression and must never gain one: if this
+      line ever appears in `src/main`, the check that would have caught it has been switched off.
+    -->
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration" />
+</network-security-config>

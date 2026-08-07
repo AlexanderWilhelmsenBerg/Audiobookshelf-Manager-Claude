@@ -18,6 +18,9 @@ interface ProgressDao {
     @Query("SELECT * FROM media_progress WHERE profileId = :profileId")
     fun observeProgressFor(profileId: String): Flow<List<MediaProgressEntity>>
 
+    @Query("SELECT * FROM media_progress WHERE profileId = :profileId")
+    suspend fun findProgressFor(profileId: String): List<MediaProgressEntity>
+
     @Query("SELECT * FROM media_progress WHERE profileId = :profileId AND bookKey = :bookKey")
     fun observeProgress(profileId: String, bookKey: String): Flow<MediaProgressEntity?>
 
@@ -35,4 +38,11 @@ interface ProgressDao {
         """,
     )
     suspend fun countUnsynced(profileId: String): Int
+
+    /** PRODUCT_SPEC SET-002 (Privacy/diagnostics) — how much of this profile's listening is on device. */
+    @Query("SELECT COUNT(*) FROM media_progress WHERE profileId = :profileId")
+    fun observeProgressCount(profileId: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM media_progress WHERE profileId = :profileId AND hasUnsyncedChanges = 1")
+    fun observeUnsyncedCount(profileId: String): Flow<Int>
 }

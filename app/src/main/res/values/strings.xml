@@ -4,29 +4,136 @@
   Every user-visible string lives here so a translation is a resource change, not a code change.
 -->
 <resources>
-    <string name="app_name">ShelfPlayer</string>
+    <!--
+      The launcher label, and the one string that is never translated: the product is called
+      ShelfPlayer in every locale, and a translated name would read as a different app on the home
+      screen. Marked rather than duplicated into each locale, so lint asks about it once and no
+      translator has to decide.
+    -->
+    <string name="app_name" translatable="false">ShelfPlayer</string>
 
     <string name="home_title">ShelfPlayer</string>
-    <string name="home_loading">Loading your libraries</string>
-    <string name="home_empty_title">No libraries yet</string>
-    <string name="home_empty_body">This account has no libraries yet, or they have not been synced. Refresh to try again.</string>
+    <string name="home_loading">Loading your books</string>
+    <string name="home_empty_title">No books yet</string>
+    <string name="home_empty_body">This account has nothing in its libraries yet, or they have not been synced. Refresh to try again.</string>
+    <!--
+      PRODUCT_SPEC LIB-002 / 14.4 — offline says what happened, what it means, and what will happen
+      next, and deliberately offers no Refresh button: there is nothing to refresh over, and a button
+      that can only fail is worse than none. The app retries by itself when the network returns.
+    -->
+    <string name="home_offline_title">No connection</string>
+    <string name="home_offline_body">This device is offline and nothing has been downloaded for this account yet. Your library will appear once the connection returns.</string>
+    <!-- PRODUCT_SPEC 21 — the dot's meaning in words, for TalkBack and for anyone who cannot tell red from green. -->
+    <string name="home_server_reachable">Server reachable</string>
+    <string name="home_server_unreachable">Server not reachable</string>
+    <string name="home_server_unknown">Server status unknown</string>
+    <string name="home_server_offline">Device offline, server status unknown</string>
+    <string name="home_offline_caption">Offline — showing your cached library</string>
     <string name="home_no_profile_title">No server connected</string>
-    <string name="home_no_profile_body">Sign in to an Audiobookshelf server to see your libraries.</string>
-    <string name="home_error_title">Could not load your libraries</string>
+    <string name="home_no_profile_body">Sign in to an Audiobookshelf server to see your books.</string>
+    <string name="home_error_title">Could not load your books</string>
     <string name="home_refresh">Refresh</string>
+    <string name="home_settings">Settings</string>
+    <string name="home_search_hint">Search your books</string>
+    <string name="home_search_open">Search</string>
+    <string name="home_search_close">Close search</string>
+    <string name="home_view_shelves">Show shelves</string>
+    <string name="home_view_list">Show all books as a list</string>
+
+    <!-- PRODUCT_SPEC LIB-002 — the three shelves the app opens on. -->
+    <string name="shelf_continue_listening">Continue listening</string>
+    <string name="shelf_continue_series">Continue a series</string>
+    <string name="shelf_recently_added">Recently added</string>
+    <string name="shelf_listen_again">Listen again</string>
+    <string name="shelf_discover">Discover</string>
+    <!-- %1$s is the next book\'s title, %2$s an already-formatted progress phrase such as "2 of 7 done". -->
+    <string name="shelf_series_next">Next: %1$s · %2$s</string>
+    <string name="home_no_matches_title">No matches</string>
+    <string name="home_no_matches_body">No book in your libraries matches that search.</string>
     <string name="home_sync_never">Not synchronized yet</string>
     <string name="home_sync_failed">Showing cached content. The last refresh failed.</string>
     <string name="home_sync_running">Refreshing…</string>
+    <string name="home_profiles">Profiles</string>
+    <string name="home_sign_in">Sign in</string>
+    <string name="home_needs_sign_in">This profile needs to sign in again. Your library is shown from the last sync.</string>
 
-    <string name="library_loading">Loading books</string>
-    <string name="library_empty_title">No books here</string>
-    <string name="library_empty_body">This library has no items that match your search.</string>
-    <string name="library_search_hint">Search this library</string>
+    <!-- PRODUCT_SPEC AUTH-001 / 6.1 — adding a server, in the order the journey prescribes. -->
+    <string name="sign_in_title">Connect a server</string>
+    <string name="sign_in_address_prompt">Enter the address of your Audiobookshelf server.</string>
+    <string name="sign_in_server_label">Server address</string>
+    <string name="sign_in_server_hint">For example books.example.com. HTTPS is used unless you type http://</string>
+    <string name="sign_in_continue">Continue</string>
+    <string name="sign_in_detected_version">Audiobookshelf %1$s</string>
+    <string name="sign_in_version_unknown">This server did not report its version.</string>
+    <string name="sign_in_https_assumed">No scheme was typed, so HTTPS was used.</string>
+    <string name="sign_in_encrypted">The connection is encrypted.</string>
+    <string name="sign_in_cleartext_warning">This connection is not encrypted. Your password and your listening data would cross the network in the clear.</string>
+    <string name="sign_in_username_label">Username</string>
+    <string name="sign_in_password_label">Password</string>
+    <string name="sign_in_submit">Sign in</string>
+    <string name="sign_in_change_server">Use a different server</string>
+    <!-- PRODUCT_SPEC AUTH-001 — servers this device already knows, so a second account is not a retyped URL. -->
+    <string name="sign_in_known_servers">Servers you have used</string>
+    <string name="sign_in_known_encrypted">Encrypted</string>
+    <string name="sign_in_known_cleartext">Not encrypted</string>
+    <string name="sign_in_known_version_unknown">Version not recorded</string>
+    <string name="sign_in_known_checked_again">Each address is checked again when you pick it.</string>
+
+    <!-- PRODUCT_SPEC AUTH-002 / 6.5 — the profile switcher. -->
+    <string name="profiles_title">Profiles</string>
+    <string name="profiles_empty_title">No profiles yet</string>
+    <string name="profiles_empty_body">Connect an Audiobookshelf server to add one.</string>
+    <string name="profiles_add">Add a server</string>
+    <string name="profiles_active">In use</string>
+    <string name="profiles_use">Use</string>
+    <!-- The whole card switches profile, so its accessibility label has to say which one. -->
+    <string name="profiles_use_named">Use %1$s</string>
+    <string name="profiles_sign_out">Sign out</string>
+    <string name="profiles_sign_in_again">Sign in</string>
+    <string name="profiles_remove">Remove</string>
+    <string name="profiles_dismiss">Dismiss</string>
+    <string name="profiles_role">Role: %1$s</string>
+    <string name="profiles_needs_sign_in">Needs to sign in again</string>
+    <string name="profiles_remove_title">Remove %1$s?</string>
+    <string name="profiles_remove_body">This deletes this profile\'s saved session, listening progress and downloads from this device. Nothing is deleted from the server, and other profiles are not affected.</string>
+    <string name="profiles_remove_confirm">Remove profile</string>
+    <string name="profiles_remove_cancel">Cancel</string>
+
+    <string name="library_sort_last_played">Last played</string>
     <string name="library_sort_title">Title (A–Z)</string>
     <string name="library_sort_title_desc">Title (Z–A)</string>
     <string name="library_sort_author">Author</string>
     <string name="library_sort_recent">Recently updated</string>
     <string name="library_sort_series">Series order</string>
+    <string name="library_tab_books">Books</string>
+    <string name="library_tab_series">Series</string>
+    <string name="library_tab_authors">Authors</string>
+    <string name="library_tab_genres">Genres</string>
+    <string name="library_sort_added">Recently added</string>
+    <string name="library_filter_all">All</string>
+    <string name="library_filter_continue">Continue listening</string>
+    <string name="library_filter_downloaded">Downloaded</string>
+    <!-- %1$s is the author or genre the list has been narrowed to. -->
+    <string name="library_focus_clear">Show all books again instead of %1$s</string>
+    <string name="library_authors_empty_title">No authors here</string>
+    <string name="library_genres_empty_title">No genres here</string>
+    <string name="library_groups_empty_body">Nothing in this library matches your search.</string>
+
+    <!-- PRODUCT_SPEC LIB-003 / TC-16 — browsing by series. -->
+    <string name="series_title">Series</string>
+    <string name="series_loading">Loading series</string>
+    <string name="series_empty_title">No series here</string>
+    <string name="series_missing_title">Series not available</string>
+    <string name="series_missing_body">This series is not in the current profile\'s library.</string>
+    <!--
+      Both halves are already-formatted phrases: %1$s is a book count such as "5 books" and %2$s is a
+      finished count such as "2 finished". Joined here rather than built as one format string, so each
+      count can carry its own plural form in a language that inflects them differently.
+    -->
+    <string name="series_summary_progress">%1$s · %2$s</string>
+    <!-- %1$s is a book count such as "5 books". -->
+    <string name="series_summary_finished">%1$s · finished</string>
+    <string name="series_next_up">Next up: %1$s</string>
 
     <string name="book_loading">Loading book</string>
     <string name="book_missing_title">Book not available</string>
@@ -34,13 +141,93 @@
     <string name="book_narrated_by">Narrated by %1$s</string>
     <string name="book_duration">%1$s long</string>
     <string name="book_progress">%1$d%% listened</string>
+    <!-- PRODUCT_SPEC LIB-004 — where you are, what is left, and how long the whole thing is. -->
+    <string name="book_position">%1$s in · %2$s left · %3$s · %4$d%%</string>
+    <string name="book_length">%1$s</string>
+    <string name="book_finished_of">Finished · %1$s</string>
     <string name="book_finished">Finished</string>
     <string name="book_not_downloaded">Not downloaded</string>
     <string name="book_download_partial">Download incomplete</string>
     <string name="book_downloaded">Downloaded</string>
     <string name="book_series_position">%1$s, book %2$s</string>
+
+    <!-- PRODUCT_SPEC LIB-004 — the detail fields the sync has always stored. -->
+    <string name="book_on_server">On the server</string>
+    <string name="book_last_checked">Last checked %1$s</string>
+    <string name="book_published">Published %1$s</string>
+    <string name="book_publisher">Publisher: %1$s</string>
+    <string name="book_language">Language: %1$s</string>
+    <string name="book_isbn">ISBN: %1$s</string>
+    <string name="book_asin">ASIN: %1$s</string>
+    <string name="book_size">Size: %1$s</string>
     <string name="book_playback_unavailable">Playback arrives in the next phase</string>
     <string name="navigate_back">Back</string>
+
+    <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->
+    <string name="settings_title">Settings</string>
+    <!--
+      PRODUCT_SPEC SET-002 — two tabs, split by kind rather than by topic.
+
+      Server holds what the app is talking to and what it may open; About holds the readings. Keeping
+      them apart is what stops a screenful of diagnostics sitting between the user and the one
+      preference on this screen.
+    -->
+    <string name="settings_tab_server">Server</string>
+    <string name="settings_tab_about">About</string>
+    <string name="about_section_app">ShelfPlayer</string>
+    <string name="about_version">Version</string>
+    <string name="about_phase">A work in progress. Playback and downloads are not built yet.</string>
+    <string name="about_section_testing">Testing</string>
+    <string name="about_testing_body">Readings used to check a build against its acceptance cases. Nothing here changes how the app behaves.</string>
+
+    <string name="settings_section_libraries">Libraries</string>
+    <!-- PRODUCT_SPEC 6.1 step 9 — the library the app opens on. %1$s is the library's name. -->
+    <string name="settings_default_library_hint">Tap a library to open on it. With none chosen, the shelf shows every library you can see.</string>
+    <string name="settings_libraries_empty">No libraries yet. They appear after the first sync.</string>
+
+    <!--
+      PRODUCT_SPEC SET-002 (Privacy/diagnostics) — the on-device answers to what is actually stored.
+
+      Counts, never names, for anything outside what the active profile may see: the numbers exist to show
+      that unauthorized rows were never written, and listing them would defeat the point.
+    -->
+    <!-- PRODUCT_SPEC SYNC-001 — "the compatibility result is visible in diagnostics". -->
+    <string name="settings_section_server">Server</string>
+    <string name="settings_server_address">Address</string>
+    <string name="settings_server_version">Reported version</string>
+    <string name="settings_server_version_unknown">This server did not report a version.</string>
+    <string name="settings_server_auth">Sign-in methods</string>
+    <string name="settings_server_none">None reported</string>
+    <string name="settings_server_socket">Live updates</string>
+    <string name="settings_server_socket_idle">Not started</string>
+    <string name="settings_server_socket_connecting">Connecting…</string>
+    <string name="settings_server_socket_connected">Connected</string>
+    <string name="settings_server_socket_disconnected">Disconnected — refreshing instead</string>
+    <!-- The one part of the server block that is a test reading, so it lives under About → Testing. -->
+    <string name="settings_section_capabilities">Capability handshake</string>
+    <string name="settings_server_capabilities_hint">This server has been checked. Each feature below is used only where support was confirmed; anything not confirmed is treated as unsupported.</string>
+    <string name="settings_server_no_handshake">This server has not been checked yet, so no feature list can be shown. Nothing is treated as supported until it has been checked.</string>
+    <string name="settings_server_confirmed">Confirmed</string>
+    <string name="settings_server_unconfirmed">Not confirmed</string>
+
+    <string name="settings_section_storage">Storage on this device</string>
+    <string name="settings_storage_body">What this app has saved. Two accounts share a server\'s books, so a number can be larger than what you can see.</string>
+    <string name="settings_storage_loading">Reading…</string>
+    <string name="settings_storage_servers">Servers</string>
+    <string name="settings_storage_servers_hint">Two accounts on one server count once.</string>
+    <string name="settings_storage_profiles">Profiles</string>
+    <string name="settings_storage_credentials">Saved sign-ins</string>
+    <string name="settings_storage_credentials_hint">Encrypted files. Signing a profile out removes its own.</string>
+    <string name="settings_storage_libraries">Libraries stored</string>
+    <string name="settings_storage_libraries_hint">Everything saved for this server, including libraries this profile cannot open.</string>
+    <string name="settings_storage_libraries_visible">Visible to this profile</string>
+    <string name="settings_storage_books">Books stored</string>
+    <string name="settings_storage_books_visible">Visible to this profile</string>
+    <string name="settings_storage_books_deleted">Removed on the server</string>
+    <string name="settings_storage_books_deleted_hint">Kept until nothing local still needs them.</string>
+    <string name="settings_storage_progress">Progress records</string>
+    <string name="settings_storage_progress_unsynced">Not sent to the server</string>
+    <string name="settings_storage_progress_unsynced_hint">Always 0 until playback exists.</string>
 
     <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.
@@ -52,6 +239,37 @@
     <plurals name="home_library_books">
         <item quantity="one">%1$d book</item>
         <item quantity="other">%1$d books</item>
+    </plurals>
+
+    <!--
+      How far through a series the user is. A plural because a language that inflects "book" inflects
+      this too, and lint is right that "%1$d of %2$d done" in a <string> gives a translator nowhere to
+      put the other forms.
+    -->
+    <plurals name="shelf_series_progress">
+        <item quantity="one">%1$d of %2$d done</item>
+        <item quantity="other">%1$d of %2$d done</item>
+    </plurals>
+
+    <!-- PRODUCT_SPEC LIB-003 — how many books are in one series. -->
+    <plurals name="series_book_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+
+    <!--
+      How many of a series' books are finished. English inflects nothing here, but the two forms are
+      declared anyway: a locale that does inflect cannot add one to a `<string>`.
+    -->
+    <plurals name="series_finished_count">
+        <item quantity="one">%1$d finished</item>
+        <item quantity="other">%1$d finished</item>
+    </plurals>
+
+    <!-- PRODUCT_SPEC LIB-001 — a sync that could not reach every item says so instead of claiming a clean run. -->
+    <plurals name="home_sync_partial">
+        <item quantity="one">%1$d book. The last refresh could not reach all of them.</item>
+        <item quantity="other">%1$d books. The last refresh could not reach all of them.</item>
     </plurals>
 
     <plurals name="book_tracks">

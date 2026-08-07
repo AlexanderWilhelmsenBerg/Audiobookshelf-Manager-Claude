@@ -70,5 +70,116 @@ object Migrations {
         }
     }
 
-    val ALL: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3)
+    /**
+     * Version 4 — whether the account also sees every *item* (PRODUCT_SPEC 5.2).
+     *
+     * Audiobookshelf restricts twice: by library, and by tag within a library. Reconciliation deletes
+     * what a sync did not return, so an account served a filtered item list must never drive deletions —
+     * a device run showed a restricted account's sync marking 302 of another account's 490 books removed.
+     *
+     * Defaults to `0` for every row, new and existing alike, and unlike `hasAllLibraryAccess` in
+     * MIGRATION_2_3 there is no permissive `UPDATE` for existing rows. The two defaults point opposite
+     * ways because the risks do: getting `hasAllLibraryAccess` wrong for an upgrading profile hides
+     * content the user already has, while getting *this* wrong deletes it. An existing profile simply
+     * stops reconciling until its next sign-in records the real value — it still syncs, and it still adds.
+     */
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE profiles ADD COLUMN hasAllTagAccess INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    /**
+     * Version 5 — item-level visibility, recorded per profile (PRODUCT_SPEC 5.2).
+     *
+     * See [com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity] for why a table is
+     * the only place this can live.
+     *
+     * ### Why every profile is reset to never-synced
+     *
+     * The new table starts empty, and an empty table means "this profile can see nothing" — which is
+     * the point, but it would also blank the shelf of an upgrading user until they discovered
+     * pull-to-refresh. There is no honest way to backfill it: the cache records which books were
+     * *stored*, never which account was shown them, and attributing them to every profile is precisely
+     * the bug this migration exists to fix.
+     *
+     * So instead of inventing visibility, the migration removes the claim that a sync has happened.
+     * `NeverSynced` is already the state that makes the home screen sync on its own, so the shelf
+     * refills without the user doing anything, and it refills with each profile's real visibility. The
+     * books, their tracks, their chapters and — the part that matters — every profile's progress are
+     * untouched; only the assertion "this profile is up to date" is withdrawn, because after this
+     * migration it is no longer true.
+     *
+     * Nothing is dropped and no table is recreated, so this remains an additive migration.
+     */
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `profile_visible_books` (
+                    `profileId` TEXT NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `libraryKey` TEXT NOT NULL,
+                    PRIMARY KEY(`profileId`, `bookKey`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_profile_visible_books_bookKey` " +
+                    "ON `profile_visible_books` (`bookKey`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_profile_visible_books_profileId_libraryKey` " +
+                    "ON `profile_visible_books` (`profileId`, `libraryKey`)",
+            )
+            db.execSQL("UPDATE sync_state SET status = 'NeverSynced', lastSuccessfulSyncAt = NULL")
+        }
+    }
+
+    /**
+     * Version 6 — the two identifiers LIB-002 says search must match (PRODUCT_SPEC LIB-002).
+     *
+     * Nullable columns with no default, which is the honest state for an upgrading cache: the rows
+     * already stored were fetched before the app read these fields, so it does not know them. They
+     * fill in on the next sync, and until then a search for an ISBN simply does not match a book whose
+     * ISBN was never fetched — the same answer as a book that has none, and not a wrong one.
+     *
+     * No reset to `NeverSynced` here, unlike version 5. That migration withdrew a claim that had become
+     * false; this one adds two fields nobody has searched by yet, and blanking every shelf to backfill
+     * an identifier almost no self-hosted item carries is not a trade worth making.
+     */
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN isbn TEXT")
+            db.execSQL("ALTER TABLE books ADD COLUMN asin TEXT")
+        }
+    }
+
+    /**
+     * Version 7 — the server's own "added" timestamp (PRODUCT_SPEC LIB-002).
+     *
+     * `lastFetchedAt` was already stored and is not a substitute: it is when *this cache* read the item,
+     * so a first sync stamps every book with the same instant and a "recently added" shelf built on it
+     * would list the whole library in fetch order. The distinction is the only reason the column exists.
+     *
+     * Nullable and additive, like version 6. Rows fetched before this build do not know their added
+     * date; they sort last in that order until the next sync fills it in, which is the honest place for
+     * "unknown" and does not cost the user their offline library to correct.
+     */
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN addedAt INTEGER")
+        }
+    }
+
+    val ALL: List<Migration> = listOf(
+        MIGRATION_1_2,
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+        MIGRATION_6_7,
+    )
 }

@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.book
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,6 +18,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -32,6 +34,10 @@ import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlin.time.Duration
@@ -135,11 +141,11 @@ private fun BookDetails(book: Book, modifier: Modifier = Modifier) {
 
         ProgressSummary(book = book)
 
-        AssistChip(
-            onClick = {},
-            enabled = false,
-            label = { Text(text = stringResource(book.localAvailability.labelRes())) },
-        )
+        Availability(book = book)
+
+        BookLabels(book = book)
+
+        PublicationFacts(book = book)
 
         book.description?.let { description ->
             Text(
@@ -179,11 +185,110 @@ private fun ProgressSummary(book: Book, modifier: Modifier = Modifier) {
 
 private const val PERCENT = 100
 
+/**
+ * PRODUCT_SPEC LIB-004 — remote availability, shown independently of local availability.
+ *
+ * Two chips rather than one, because they answer different questions and a single "Downloaded" label
+ * silently answers only the second. A book reaches this screen only while the last sync still listed
+ * it, so the remote chip is qualified by *when* that was: "on the server" with no date behind it is a
+ * claim about right now that a cached row cannot make.
+ */
+@Composable
+private fun Availability(book: Book, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AssistChip(
+                onClick = {},
+                enabled = false,
+                label = { Text(text = stringResource(R.string.book_on_server)) },
+            )
+            AssistChip(
+                onClick = {},
+                enabled = false,
+                label = { Text(text = stringResource(book.localAvailability.labelRes())) },
+            )
+        }
+        Text(
+            text = stringResource(R.string.book_last_checked, book.lastFetchedAt.asDate()),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** PRODUCT_SPEC LIB-004 — genres and tags, which the sync has always stored and no screen has shown. */
+@Composable
+private fun BookLabels(book: Book, modifier: Modifier = Modifier) {
+    val labels = book.genres + book.tags
+    if (labels.isEmpty()) return
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        labels.forEach { label ->
+            SuggestionChip(onClick = {}, enabled = false, label = { Text(text = label) })
+        }
+    }
+}
+
+/**
+ * PRODUCT_SPEC LIB-004 / LIB-002 — publisher, year, language, size and the two identifiers.
+ *
+ * Every row is omitted when its field is absent rather than rendered with a dash. Most self-hosted
+ * items carry almost none of these, and a detail screen of eight "—" rows tells the user less than a
+ * short one does.
+ */
+@Composable
+private fun PublicationFacts(book: Book, modifier: Modifier = Modifier) {
+    val facts = buildList {
+        book.publishedYear?.let { add(R.string.book_published to it.toString()) }
+        book.publisher?.let { add(R.string.book_publisher to it) }
+        book.language?.let { add(R.string.book_language to it) }
+        book.isbn?.let { add(R.string.book_isbn to it) }
+        book.asin?.let { add(R.string.book_asin to it) }
+        book.sizeBytes.takeIf { it > 0 }?.let { add(R.string.book_size to it.asFileSize()) }
+    }
+    if (facts.isEmpty()) return
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        facts.forEach { (labelRes, value) ->
+            Text(
+                text = stringResource(labelRes, value),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 private fun LocalAvailability.labelRes(): Int = when (this) {
     LocalAvailability.NotDownloaded -> R.string.book_not_downloaded
     LocalAvailability.Partial -> R.string.book_download_partial
     LocalAvailability.Complete -> R.string.book_downloaded
 }
+
+private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter
+    .ofLocalizedDate(FormatStyle.MEDIUM)
+    .withZone(ZoneId.systemDefault())
+
+private fun Instant.asDate(): String = DATE_FORMAT.format(this)
+
+/**
+ * `1.4 GB`, `320 MB`, `48 kB`.
+ *
+ * Decimal units, matching what a download manager and a server's own storage figure report. Binary
+ * units would render the same file as a different number to the one the server shows, and a user
+ * comparing the two would reasonably conclude the app had the wrong file.
+ */
+private fun Long.asFileSize(): String {
+    val units = listOf("GB" to GIGABYTE, "MB" to MEGABYTE, "kB" to KILOBYTE)
+    val match = units.firstOrNull { this >= it.second }
+        ?: return String.format(Locale.getDefault(), "%d B", this)
+    return String.format(Locale.getDefault(), "%.1f %s", this.toDouble() / match.second, match.first)
+}
+
+private const val KILOBYTE = 1_000L
+private const val MEGABYTE = 1_000_000L
+private const val GIGABYTE = 1_000_000_000L
 
 /**
  * Removes tags from a description before it is displayed.

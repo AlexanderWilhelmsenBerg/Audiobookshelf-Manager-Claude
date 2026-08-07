@@ -13,6 +13,7 @@ import com.example.shelfplayer.core.database.entity.LibraryEntity
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.SeriesEntity
+import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.database.entity.SyncStateEntity
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AuthorId
@@ -27,6 +28,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.AudioTrack
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
@@ -55,6 +57,20 @@ internal object EntityMappers {
     // grant and the remote account id that go with them — and this module keeps only the read side it
     // needs for browsing.
 
+    /**
+     * PRODUCT_SPEC AUTH-002 — the saved server, as the switcher shows it.
+     *
+     * No credential material crosses this mapping, and none can: `ServerEntity` holds none. The token
+     * lives in the Keystore-backed store, keyed by profile (PRODUCT_SPEC AUTH-003).
+     */
+    fun toDomain(entity: ServerEntity) = Server(
+        id = ServerId(entity.serverId),
+        displayName = entity.displayName,
+        baseUrl = entity.baseUrl,
+        detectedVersion = entity.detectedVersion,
+        isFixture = entity.isFixture,
+    )
+
     fun toDomain(entity: ProfileEntity) = Profile(
         id = ProfileId(entity.profileId),
         serverId = ServerId(entity.serverId),
@@ -64,6 +80,22 @@ internal object EntityMappers {
         requiresReauthentication = entity.requiresReauthentication,
         lastUsedAt = entity.lastUsedAt?.let(Instant::ofEpochMilli),
         isFixture = entity.isFixture,
+    )
+
+    /**
+     * PRODUCT_SPEC 5.2 — the stored library grant, read back for the browse path.
+     *
+     * `:data:auth` writes this pair and reads it back for the sync path; this module reads it for the
+     * screens. The two readers must agree, so both drop a blank id rather than handing
+     * [LibraryId] a value its constructor rejects: a corrupt row must degrade to a narrower grant,
+     * never to a crash on every query.
+     */
+    fun toLibraryAccess(entity: ProfileEntity) = LibraryAccess(
+        hasAllLibraryAccess = entity.hasAllLibraryAccess,
+        accessibleLibraryIds = StringListConverters.toStringList(entity.accessibleLibrariesJson)
+            .filter(String::isNotBlank)
+            .map(::LibraryId),
+        hasAllTagAccess = entity.hasAllTagAccess,
     )
 
     // --- Library ----------------------------------------------------------------------------------
@@ -139,12 +171,15 @@ internal object EntityMappers {
         publishedYear = book.publishedYear,
         publisher = book.publisher,
         language = book.language,
+        isbn = book.isbn,
+        asin = book.asin,
         isExplicit = book.isExplicit,
         isAbridged = book.isAbridged,
         coverPath = book.coverPath,
         trackCount = book.trackCount,
         sizeBytes = book.sizeBytes,
         remoteUpdatedAt = book.remoteUpdatedAt?.toEpochMilli(),
+        addedAt = book.addedAt?.toEpochMilli(),
         lastFetchedAt = book.lastFetchedAt.toEpochMilli(),
         isDeleted = false,
         localAvailability = book.localAvailability.name,
@@ -233,12 +268,15 @@ internal object EntityMappers {
             publishedYear = entity.publishedYear,
             publisher = entity.publisher,
             language = entity.language,
+            isbn = entity.isbn,
+            asin = entity.asin,
             isExplicit = entity.isExplicit,
             isAbridged = entity.isAbridged,
             coverPath = entity.coverPath,
             trackCount = entity.trackCount,
             sizeBytes = entity.sizeBytes,
             remoteUpdatedAt = entity.remoteUpdatedAt?.let(Instant::ofEpochMilli),
+            addedAt = entity.addedAt?.let(Instant::ofEpochMilli),
             lastFetchedAt = Instant.ofEpochMilli(entity.lastFetchedAt),
             progress = progress?.let { stored ->
                 MediaProgress(

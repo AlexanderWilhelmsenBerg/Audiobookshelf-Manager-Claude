@@ -113,6 +113,26 @@ class MigrationTest {
         assertEquals("[]", profile.accessibleLibrariesJson)
     }
 
+    /**
+     * PRODUCT_SPEC 5.2 — and the *opposite* default for item access, deliberately.
+     *
+     * `hasAllLibraryAccess` is made permissive for an upgrading profile because the restrictive value
+     * would hide content the user already has. `hasAllTagAccess` is left restrictive because the
+     * restrictive value only stops that profile *deleting*, and the permissive one would let a filtered
+     * account mark another account's books removed — which is exactly the defect this column exists to
+     * prevent. Getting one wrong hides data; getting the other wrong destroys it.
+     */
+    @Test
+    fun `a profile that predates item access does not gain the right to delete`() = runTest {
+        createVersion(3)
+
+        val migrated = openWithMigrations()
+
+        val profile = assertNotNull(migrated.profileDao().findProfile(PROFILE_ID))
+        assertFalse(profile.hasAllTagAccess, "an unknown item grant must not authorise reconciliation")
+        assertTrue(profile.hasAllLibraryAccess, "…while its cached libraries stay readable")
+    }
+
     /** The other half of the same decision: a *new* profile with no recorded grant is granted nothing. */
     @Test
     fun `a profile created after the migration is granted nothing by default`() = runTest {
@@ -132,10 +152,92 @@ class MigrationTest {
                 isFixture = false,
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = false,
+                hasAllTagAccess = false,
             ),
         )
 
         assertFalse(assertNotNull(migrated.profileDao().findProfile("prf_new")).hasAllLibraryAccess)
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — version 5 arrives with nothing visible to anyone, on purpose.
+     *
+     * The new table cannot be backfilled: the cache records which books were *stored*, never which account
+     * was shown them, and attributing them to every profile is the bug the table exists to fix. So an
+     * upgrading profile starts with an empty view, and the migration withdraws its claim to be up to date
+     * so the next launch syncs on its own and fills the view with that account's real visibility.
+     */
+    @Test
+    fun `version 5 starts every profile with no visible books and a sync owed`() = runTest {
+        createVersion(4)
+
+        val migrated = openWithMigrations()
+
+        assertEquals(
+            0,
+            migrated.libraryDao().observeVisibleBookCount(PROFILE_ID, SERVER_ID).first(),
+            "an upgrading profile has no recorded visibility, and absence must mean hidden",
+        )
+        val syncState = assertNotNull(migrated.syncStateDao().findSyncState(PROFILE_ID))
+        assertEquals("NeverSynced", syncState.status, "the shelf refills only if a sync is owed")
+        assertNull(syncState.lastSuccessfulSyncAt)
+    }
+
+    /** The rows themselves survive: this migration withdraws a claim, it does not delete content. */
+    @Test
+    fun `version 5 keeps the profile and its server`() = runTest {
+        createVersion(4)
+
+        val migrated = openWithMigrations()
+
+        val profile = assertNotNull(migrated.profileDao().findProfile(PROFILE_ID))
+        assertEquals("ada", profile.username)
+        assertTrue(profile.hasAllLibraryAccess)
+        assertTrue(profile.hasAllTagAccess)
+        assertNotNull(migrated.profileDao().findServer(SERVER_ID))
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — version 6 adds two identifiers and keeps every book that was cached.
+     *
+     * The contrast with version 5 is the point. That migration reset `sync_state` because it had made an
+     * existing claim untrue; this one only adds fields nobody has searched by, so resetting every shelf
+     * to backfill an ISBN that most self-hosted items do not have would cost the user their offline
+     * library to gain nothing.
+     */
+    @Test
+    fun `version 6 adds the identifiers without disturbing the cached books`() = runTest {
+        createVersion(5)
+
+        val migrated = openWithMigrations()
+
+        val book = assertNotNull(
+            migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first(),
+            "the cached book must survive an additive migration",
+        )
+        assertEquals("The Salt Harbour", book.book.title)
+        assertNull(book.book.isbn, "an identifier that was never fetched is unknown, not empty")
+        assertNull(book.book.asin)
+        val syncState = assertNotNull(migrated.syncStateDao().findSyncState(PROFILE_ID))
+        assertEquals("Succeeded", syncState.status, "adding a column does not owe the user a resync")
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — version 7 adds the server's own "added" timestamp, and keeps the books.
+     *
+     * `lastFetchedAt` is not a substitute and the migration does not pretend it is: a row fetched before
+     * this build genuinely does not know when the server acquired it, so the column stays null and that
+     * book sorts last under "recently added" rather than first.
+     */
+    @Test
+    fun `version 7 adds the added timestamp without disturbing the cached books`() = runTest {
+        createVersion(6)
+
+        val migrated = openWithMigrations()
+
+        val book = assertNotNull(migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first())
+        assertEquals("The Salt Harbour", book.book.title)
+        assertNull(book.book.addedAt, "a date that was never fetched is unknown, not the epoch")
     }
 
     /**
@@ -232,37 +334,127 @@ class MigrationTest {
      * it is testing checks nothing.
      */
     private fun seed(db: SupportSQLiteDatabase, version: Int) = when (version) {
-        VERSION_1 -> {
-            db.execSQL(
-                "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, lastFetchedAt) " +
-                    "VALUES (?, ?, ?, NULL, 0, 0)",
-                arrayOf(SERVER_ID, "Demo", "https://books.example"),
-            )
-            db.execSQL(
-                "INSERT INTO profiles " +
-                    "(profileId, serverId, username, displayName, role, requiresReauthentication, " +
-                    "lastUsedAt, isFixture) VALUES (?, ?, ?, ?, 'Listener', 0, NULL, 0)",
-                arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
-            )
-        }
-
-        VERSION_2 -> {
-            db.execSQL(
-                "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, " +
-                    "lastFetchedAt, authMethodsJson, capabilitiesJson, capabilitiesDetectedAt) " +
-                    "VALUES (?, ?, ?, '2.36.0', 0, 0, '[\"local\"]', '[]', NULL)",
-                arrayOf(SERVER_ID, "Demo", "https://books.example"),
-            )
-            db.execSQL(
-                "INSERT INTO profiles " +
-                    "(profileId, serverId, remoteUserId, username, displayName, role, " +
-                    "requiresReauthentication, lastUsedAt, isFixture) " +
-                    "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0)",
-                arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
-            )
-        }
-
+        VERSION_1 -> seedVersion1(db)
+        VERSION_2 -> seedVersion2(db)
+        VERSION_3 -> seedVersion3(db)
+        VERSION_4 -> seedVersion4(db)
+        VERSION_5 -> seedVersion5(db)
+        VERSION_6 -> seedVersion6(db)
         else -> error("no seed data defined for schema version $version")
+    }
+
+    private fun seedVersion1(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, lastFetchedAt) " +
+                "VALUES (?, ?, ?, NULL, 0, 0)",
+            arrayOf(SERVER_ID, "Demo", "https://books.example"),
+        )
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, username, displayName, role, requiresReauthentication, " +
+                "lastUsedAt, isFixture) VALUES (?, ?, ?, ?, 'Listener', 0, NULL, 0)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+    }
+
+    private fun seedVersion2(db: SupportSQLiteDatabase) {
+        seedServerWithCapabilities(db)
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, remoteUserId, username, displayName, role, " +
+                "requiresReauthentication, lastUsedAt, isFixture) " +
+                "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+    }
+
+    private fun seedVersion3(db: SupportSQLiteDatabase) {
+        seedServerWithCapabilities(db)
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, remoteUserId, username, displayName, role, " +
+                "requiresReauthentication, lastUsedAt, isFixture, accessibleLibrariesJson, " +
+                "hasAllLibraryAccess) " +
+                "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0, '[]', 1)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+    }
+
+    private fun seedVersion4(db: SupportSQLiteDatabase) {
+        seedServerWithCapabilities(db)
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, remoteUserId, username, displayName, role, " +
+                "requiresReauthentication, lastUsedAt, isFixture, accessibleLibrariesJson, " +
+                "hasAllLibraryAccess, hasAllTagAccess) " +
+                "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0, '[]', 1, 1)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+        // A profile that believes it is up to date, which is the state version 5 has to withdraw.
+        db.execSQL(
+            "INSERT INTO sync_state " +
+                "(profileId, serverId, status, lastSuccessfulSyncAt, lastAttemptedAt, " +
+                "lastErrorCode, lastErrorSummary) " +
+                "VALUES (?, ?, 'Succeeded', 1000, 1000, NULL, NULL)",
+            arrayOf(PROFILE_ID, SERVER_ID),
+        )
+    }
+
+    /**
+     * A version-5 cache with a book in it, which is what version 6 has to leave intact.
+     *
+     * The visibility row matters: every read joins it, so a book seeded without one is invisible for
+     * reasons that have nothing to do with the migration under test.
+     */
+    private fun seedVersion5(db: SupportSQLiteDatabase) {
+        seedServerWithCapabilities(db)
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, remoteUserId, username, displayName, role, " +
+                "requiresReauthentication, lastUsedAt, isFixture, accessibleLibrariesJson, " +
+                "hasAllLibraryAccess, hasAllTagAccess) " +
+                "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0, '[]', 1, 1)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+        db.execSQL(
+            "INSERT INTO libraries (libraryKey, serverId, remoteId, name, kind, displayOrder, " +
+                "remoteUpdatedAt, lastFetchedAt, isDeleted) " +
+                "VALUES (?, ?, 'library-1', 'Fiction', 'Book', 0, NULL, 0, 0)",
+            arrayOf(LIBRARY_KEY, SERVER_ID),
+        )
+        db.execSQL(
+            "INSERT INTO books (bookKey, serverId, remoteId, libraryKey, title, subtitle, " +
+                "narratorsJson, genresJson, tagsJson, durationMillis, description, publishedYear, " +
+                "publisher, language, isExplicit, isAbridged, coverPath, trackCount, sizeBytes, " +
+                "remoteUpdatedAt, lastFetchedAt, isDeleted, localAvailability) " +
+                "VALUES (?, ?, 'item-1', ?, 'The Salt Harbour', NULL, '[]', '[]', '[]', 1000, NULL, " +
+                "NULL, NULL, NULL, 0, 0, NULL, 1, 0, NULL, 0, 0, 'NotDownloaded')",
+            arrayOf(BOOK_KEY, SERVER_ID, LIBRARY_KEY),
+        )
+        db.execSQL(
+            "INSERT INTO profile_visible_books (profileId, bookKey, libraryKey) VALUES (?, ?, ?)",
+            arrayOf(PROFILE_ID, BOOK_KEY, LIBRARY_KEY),
+        )
+        db.execSQL(
+            "INSERT INTO sync_state " +
+                "(profileId, serverId, status, lastSuccessfulSyncAt, lastAttemptedAt, " +
+                "lastErrorCode, lastErrorSummary) " +
+                "VALUES (?, ?, 'Succeeded', 1000, 1000, NULL, NULL)",
+            arrayOf(PROFILE_ID, SERVER_ID),
+        )
+    }
+
+    /** Version 6 is version 5 plus two nullable columns this seed leaves unset, as an upgrade would. */
+    private fun seedVersion6(db: SupportSQLiteDatabase) = seedVersion5(db)
+
+    /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
+    private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "INSERT INTO servers (serverId, displayName, baseUrl, detectedVersion, isFixture, " +
+                "lastFetchedAt, authMethodsJson, capabilitiesJson, capabilitiesDetectedAt) " +
+                "VALUES (?, ?, ?, '2.36.0', 0, 0, '[\"local\"]', '[]', NULL)",
+            arrayOf(SERVER_ID, "Demo", "https://books.example"),
+        )
     }
 
     /**
@@ -292,7 +484,13 @@ class MigrationTest {
         const val VERSION_1 = 1
         const val VERSION_2 = 2
         const val SERVER_ID = "srv_test"
+        const val VERSION_3 = 3
+        const val VERSION_4 = 4
+        const val VERSION_5 = 5
+        const val VERSION_6 = 6
         const val PROFILE_ID = "prf_test"
+        const val LIBRARY_KEY = "srv_test:library-1"
+        const val BOOK_KEY = "srv_test:item-1"
 
         /** Room's placeholder for the table name in an exported `createSql`. */
         const val TABLE_NAME_PLACEHOLDER = "\${TABLE_NAME}"

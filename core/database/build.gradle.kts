@@ -3,6 +3,8 @@ plugins {
     id("shelfplayer.android.room")
     id("shelfplayer.hilt")
     alias(libs.plugins.kotlin.serialization)
+    // PRODUCT_SPEC 17.3 — this module contributes coverage data; the thresholds live in the root build.
+    alias(libs.plugins.kover)
 }
 
 android {
@@ -42,7 +44,7 @@ dependencies {
 val databaseClassName = "com.example.shelfplayer.core.database.ShelfPlayerDatabase"
 
 // Must match ShelfPlayerDatabase's @Database(version = ...).
-val databaseVersion = 3
+val databaseVersion = 7
 
 val verifyRoomSchemas by tasks.registering {
     group = "verification"

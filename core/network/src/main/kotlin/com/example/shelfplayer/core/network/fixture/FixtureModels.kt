@@ -74,6 +74,9 @@ data class FixtureBook(
     @SerialName("publishedYear") val publishedYear: Int? = null,
     @SerialName("publisher") val publisher: String? = null,
     @SerialName("language") val language: String? = null,
+    /** PRODUCT_SPEC LIB-002 — optional, so the bundled fixtures that predate them still parse. */
+    @SerialName("isbn") val isbn: String? = null,
+    @SerialName("asin") val asin: String? = null,
     @SerialName("explicit") val explicit: Boolean = false,
     @SerialName("abridged") val abridged: Boolean = false,
     @SerialName("coverPath") val coverPath: String? = null,

@@ -16,16 +16,19 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.map
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.network.fixture.FixtureMapper
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
+import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import kotlinx.coroutines.CoroutineDispatcher
@@ -98,6 +101,9 @@ class FakeAudiobookshelfGateway @Inject constructor(
 
     override suspend fun refresh(serverUrl: String, refreshToken: AuthToken): AppResult<AuthSession> = unsupported()
 
+    override suspend fun currentAccount(serverUrl: String, accessToken: AuthToken): AppResult<AccountState> =
+        unsupported()
+
     override suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit> = AppResult.Success(Unit)
 
     private fun <T> unsupported(): AppResult<T> = AppResult.Failure(
@@ -121,10 +127,36 @@ class FakeAudiobookshelfGateway @Inject constructor(
             withMapper { mapper -> mapper.libraries(clock.now()) }
         }
 
-    override suspend fun listBooks(profileId: ProfileId, libraryId: LibraryId): AppResult<List<BookSnapshot>> =
-        requireProfile(profileId).flatMap {
-            withMapper { mapper -> mapper.books(libraryId, clock.now()) }
-        }
+    override suspend fun listBooks(
+        profileId: ProfileId,
+        libraryId: LibraryId,
+        onBatch: suspend (List<BookSnapshot>) -> Unit,
+        cached: CachedLibrary,
+    ): AppResult<LibrarySnapshot> = requireProfile(profileId).flatMap {
+        val result = withMapper { mapper -> mapper.books(libraryId, clock.now()) }
+            .map { books -> LibrarySnapshot(books = books) }
+        // The fixture library is small enough to arrive at once, so one batch is the honest report. It
+        // is still emitted, because a caller that never sees a batch from the fake would never exercise
+        // the incremental path at all.
+        if (result is AppResult.Success) onBatch(result.value.books)
+        result
+    }
+
+    /**
+     * The fixture library, filtered by the same predicate a server would apply loosely.
+     *
+     * A fake that returned nothing would make the demo profile's search look broken; a fake that
+     * returned everything would hide the distinction between a cached hit and a server hit. Matching on
+     * the title is the smallest thing that behaves like a search.
+     */
+    override suspend fun searchBooks(
+        profileId: ProfileId,
+        libraryId: LibraryId,
+        query: String,
+    ): AppResult<List<BookSnapshot>> = requireProfile(profileId).flatMap {
+        withMapper { mapper -> mapper.books(libraryId, clock.now()) }
+            .map { books -> books.filter { it.book.title.contains(query, ignoreCase = true) } }
+    }
 
     /**
      * PRODUCT_SPEC 5.2 — a gateway call for a profile this connection does not serve is a failure,

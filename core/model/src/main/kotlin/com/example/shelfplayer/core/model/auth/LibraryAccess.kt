@@ -17,7 +17,32 @@ import com.example.shelfplayer.core.model.LibraryId
  * reading the list alone hides every library from them. That is why [hasAllLibraryAccess] is checked
  * first and why it is not derived from the list being empty.
  */
-data class LibraryAccess(val hasAllLibraryAccess: Boolean, val accessibleLibraryIds: List<LibraryId>) {
+data class LibraryAccess(
+    val hasAllLibraryAccess: Boolean,
+    val accessibleLibraryIds: List<LibraryId>,
+    /**
+     * PRODUCT_SPEC 5.2 — whether the server also shows this account every *item*.
+     *
+     * Audiobookshelf restricts twice: by library, and by tag within a library. An account with
+     * `accessAllTags = false` is served a *filtered* item list for a library it can otherwise see, which
+     * makes its sync a partial view of that library rather than a complete one.
+     *
+     * That distinction is the difference between a working cache and data loss. Reconciliation deletes
+     * what a sync did not return, and a device run proved the consequence: a restricted account synced a
+     * shared library and 302 of the unrestricted account's 490 books were marked removed. See
+     * [reconciles].
+     */
+    val hasAllTagAccess: Boolean = false,
+) {
+
+    /**
+     * Whether a sync by this account may be read as a complete picture of the server.
+     *
+     * Only an account that sees every library **and** every item can say "this book is gone" by not
+     * returning it. Anyone else is looking through a filter, and absence tells you about the filter.
+     * A restricted account still syncs — its books are real and current — it simply never deletes.
+     */
+    val reconciles: Boolean get() = hasAllLibraryAccess && hasAllTagAccess
 
     /**
      * Whether this account may see [libraryId].
@@ -35,6 +60,10 @@ data class LibraryAccess(val hasAllLibraryAccess: Boolean, val accessibleLibrary
          * (PRODUCT_SPEC 5.2), for the same reason an unprobed capability is unsupported: the safe
          * default is the restrictive one.
          */
-        val None: LibraryAccess = LibraryAccess(hasAllLibraryAccess = false, accessibleLibraryIds = emptyList())
+        val None: LibraryAccess = LibraryAccess(
+            hasAllLibraryAccess = false,
+            accessibleLibraryIds = emptyList(),
+            hasAllTagAccess = false,
+        )
     }
 }

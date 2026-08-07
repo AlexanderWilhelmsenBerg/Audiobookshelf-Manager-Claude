@@ -1,0 +1,7 @@
+{
+  "bodyKind": "binary-not-recorded",
+  "contentType": "image/webp",
+  "note": "GET /api/items/{id}/cover. Bytes deliberately not committed; the shape is the contract.",
+  "status": 200,
+  "unauthenticatedStatus": 200
+}

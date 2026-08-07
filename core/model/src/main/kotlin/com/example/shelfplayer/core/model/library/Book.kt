@@ -30,12 +30,17 @@ data class Book(
     val publishedYear: Int?,
     val publisher: String?,
     val language: String?,
+    /** PRODUCT_SPEC LIB-002 — an identifier the user may search by, not a field the app resolves. */
+    val isbn: String?,
+    val asin: String?,
     val isExplicit: Boolean,
     val isAbridged: Boolean,
     val coverPath: String?,
     val trackCount: Int,
     val sizeBytes: Long,
     val remoteUpdatedAt: Instant?,
+    /** PRODUCT_SPEC LIB-002 — when the *server* first saw this item, which is what "recently added" means. */
+    val addedAt: Instant?,
     val lastFetchedAt: Instant,
     val progress: MediaProgress?,
     val localAvailability: LocalAvailability,

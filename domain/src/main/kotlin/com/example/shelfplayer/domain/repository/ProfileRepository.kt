@@ -3,6 +3,7 @@ package com.example.shelfplayer.domain.repository
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.Server
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -16,6 +17,15 @@ import kotlinx.coroutines.flow.Flow
  */
 interface ProfileRepository {
     fun observeProfiles(): Flow<List<Profile>>
+
+    /**
+     * PRODUCT_SPEC AUTH-002 — the switcher shows which server a profile belongs to.
+     *
+     * Servers rather than one server per profile: two profiles on one server share a row, and the
+     * switcher's whole job is making that relationship visible. The address is also what a profile that
+     * has to sign in again needs — nobody should retype a host they already told the app about.
+     */
+    fun observeServers(): Flow<List<Server>>
 
     fun observeActiveProfile(): Flow<Profile?>
 

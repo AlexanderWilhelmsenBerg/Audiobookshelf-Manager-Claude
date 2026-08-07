@@ -20,7 +20,7 @@
         "isMissing": false,
         "libraryId": "<volatile>",
         "media": {
-          "coverPath": null,
+          "coverPath": "/audiobooks/Marisol Holt/The Salt Harbour/cover.jpg",
           "duration": 8,
           "id": "<volatile>",
           "metadata": {
@@ -52,7 +52,7 @@
         },
         "mediaType": "book",
         "mtimeMs": 0,
-        "numFiles": 1,
+        "numFiles": 2,
         "oldLibraryItemId": null,
         "path": "/audiobooks/Marisol Holt/The Salt Harbour",
         "relPath": "Marisol Holt/The Salt Harbour",

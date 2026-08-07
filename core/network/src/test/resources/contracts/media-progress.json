@@ -1,0 +1,23 @@
+{
+  "body": {
+    "currentTime": 42.5,
+    "duration": 0,
+    "ebookLocation": null,
+    "ebookProgress": 0,
+    "episodeId": null,
+    "finishedAt": null,
+    "hideFromContinueListening": false,
+    "id": "<volatile>",
+    "isFinished": false,
+    "lastUpdate": 0,
+    "libraryItemId": "<volatile>",
+    "mediaItemId": "<volatile>",
+    "mediaItemType": "book",
+    "progress": 0,
+    "startedAt": 0,
+    "userId": "<volatile>"
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

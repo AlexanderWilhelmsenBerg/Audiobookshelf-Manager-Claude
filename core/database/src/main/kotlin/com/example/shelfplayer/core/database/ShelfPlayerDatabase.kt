@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.example.shelfplayer.core.database.converter.StringListConverters
 import com.example.shelfplayer.core.database.dao.LibraryDao
+import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.dao.SyncStateDao
@@ -17,6 +18,7 @@ import com.example.shelfplayer.core.database.entity.ChapterEntity
 import com.example.shelfplayer.core.database.entity.LibraryEntity
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
+import com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity
 import com.example.shelfplayer.core.database.entity.SeriesEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.database.entity.SyncStateEntity
@@ -45,6 +47,7 @@ import com.example.shelfplayer.core.database.entity.SyncStateEntity
         AudioTrackEntity::class,
         ChapterEntity::class,
         MediaProgressEntity::class,
+        ProfileVisibleBookEntity::class,
         SyncStateEntity::class,
     ],
     version = DATABASE_VERSION,
@@ -53,6 +56,8 @@ import com.example.shelfplayer.core.database.entity.SyncStateEntity
 @TypeConverters(StringListConverters::class)
 abstract class ShelfPlayerDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
+
+    abstract fun libraryWriteDao(): LibraryWriteDao
 
     abstract fun profileDao(): ProfileDao
 
@@ -65,4 +70,4 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
     }
 }
 
-internal const val DATABASE_VERSION = 3
+internal const val DATABASE_VERSION = 7

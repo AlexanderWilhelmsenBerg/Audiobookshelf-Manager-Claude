@@ -58,9 +58,9 @@ internal object LibraryMapper {
     /**
      * The ids in one library's catalogue, in server order.
      *
-     * Only the ids, because the minified list cannot produce a storable [BookSnapshot] — see
-     * [toSnapshot]. Returning the whole minified item and mapping it anyway would produce books with no
-     * tracks, which offline playback cannot use (PRODUCT_SPEC 2.3).
+     * Used to decide *which* items the expansion pass has to fetch and which the sweep may treat as
+     * removed. The rows themselves are mapped by [toCatalogueSnapshots], which is what makes the shelf
+     * browsable before that pass has run.
      */
     fun toItemIds(dto: LibraryItemsResponseDto): AppResult<List<LibraryItemId>> {
         val ids = dto.results.map { item ->
@@ -69,6 +69,84 @@ internal object LibraryMapper {
             LibraryItemId(id)
         }
         return AppResult.Success(ids)
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-001 — the catalogue response as browsable books, without the per-item fetch.
+     *
+     * The list endpoint already carries almost everything the browse surface renders: title, subtitle,
+     * description, genres, tags, publisher, year, language, ISBN, ASIN, duration, size, cover path,
+     * `numTracks` and `addedAt`. Discarding all of it and keeping only the ids — which is what
+     * [toItemIds] alone amounted to — is what made a shelf wait for 491 round trips instead of one.
+     *
+     * What it does **not** carry, and why the expanded fetch still has to follow:
+     *
+     *  - `media.tracks` and `media.chapters`. Without track offsets a downloaded book cannot be resumed
+     *    (PRODUCT_SPEC 2.3), so these are not optional — only deferrable.
+     *  - structured `metadata.authors` / `metadata.series`. The list has `authorName` and `seriesName`
+     *    as display strings with no ids and, decisively, **no sequence** — and a series without
+     *    positions is not `LIB-003`'s series. So a catalogue book carries no author or series links at
+     *    all rather than links invented from a name, and the axes that group by them fill in as the
+     *    expansion pass lands. A wrong link is worse than a late one.
+     *
+     * An item the list cannot describe is skipped rather than failing the catalogue: the expansion pass
+     * gets its own chance at it, and one malformed row must not cost the user every other book.
+     */
+    fun toCatalogueSnapshots(
+        serverId: ServerId,
+        libraryId: LibraryId,
+        dto: LibraryItemsResponseDto,
+        fetchedAt: Instant,
+    ): List<BookSnapshot> = dto.results.mapNotNull { item ->
+        if (catalogueRejectionFor(item) != null) return@mapNotNull null
+        val media = checkNotNull(item.media)
+        val metadata = checkNotNull(media.metadata)
+        val bookId = LibraryItemId(checkNotNull(item.id))
+        BookSnapshot(
+            book = bookOf(
+                serverId = serverId,
+                libraryId = libraryId,
+                bookId = bookId,
+                media = media,
+                metadata = metadata,
+                title = checkNotNull(metadata.title),
+                // Reported by the list rather than counted from tracks it does not send. PRODUCT_SPEC
+                // PLAY-003 excludes non-playable tracks from the count, and the list cannot see which
+                // those are — so this number is corrected by the expansion pass. It is the one field a
+                // catalogue book can be briefly wrong about, and "12 tracks" reading as "11" for a few
+                // seconds is a smaller cost than a blank shelf.
+                trackCount = media.numTracks,
+                dto = item,
+                fetchedAt = fetchedAt,
+                progress = null,
+                authors = emptyList(),
+                seriesMemberships = emptyList(),
+            ),
+            tracks = emptyList(),
+            chapters = emptyList(),
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 — server search hits as storable books.
+     *
+     * A hit that cannot be mapped is **dropped, not fatal**. Search is an enrichment of results the
+     * cache already produced; one unusable item in a result set is not a reason to report that the
+     * search failed and show the user nothing. That is the same rule LIB-001 applies to optional
+     * sections of a sync, for the same reason.
+     */
+    fun toSearchSnapshots(
+        serverId: ServerId,
+        libraryId: LibraryId,
+        profileId: ProfileId,
+        dto: LibrarySearchResponseDto,
+        fetchedAt: Instant,
+    ): List<BookSnapshot> = dto.book.mapNotNull { hit ->
+        val item = hit.libraryItem ?: return@mapNotNull null
+        when (val mapped = toSnapshot(serverId, libraryId, profileId, item, fetchedAt)) {
+            is AppResult.Success -> mapped.value
+            is AppResult.Failure -> null
+        }
     }
 
     /**
@@ -97,40 +175,20 @@ internal object LibraryMapper {
         val tracks = checkNotNull(media.tracks)
         return AppResult.Success(
             BookSnapshot(
-                book = Book(
+                book = bookOf(
                     serverId = serverId,
-                    id = bookId,
                     libraryId = libraryId,
+                    bookId = bookId,
+                    media = media,
+                    metadata = metadata,
                     title = title,
-                    subtitle = metadata.subtitle?.takeIf(String::isNotBlank),
-                    authors = authorsOf(serverId, metadata),
-                    narrators = narratorsOf(metadata),
-                    seriesMemberships = seriesOf(serverId, metadata),
-                    duration = seconds(media.duration),
-                    // `descriptionPlain` first: PRODUCT_SPEC LIB-004 requires HTML descriptions to be
-                    // sanitized before rendering, and the server has already done that work. The HTML
-                    // form is the fallback, and rendering it still has to sanitize.
-                    description = metadata.descriptionPlain?.takeIf(String::isNotBlank)
-                        ?: metadata.description?.takeIf(String::isNotBlank),
-                    genres = metadata.genres.filter(String::isNotBlank),
-                    tags = media.tags.filter(String::isNotBlank),
-                    // A string on the wire, because the server keeps whatever the tag held. A value that
-                    // is not a year is dropped rather than coerced to 0, which would render as "0".
-                    publishedYear = metadata.publishedYear?.trim()?.toIntOrNull(),
-                    publisher = metadata.publisher?.takeIf(String::isNotBlank),
-                    language = metadata.language?.takeIf(String::isNotBlank),
-                    isExplicit = metadata.explicit,
-                    isAbridged = metadata.abridged,
-                    coverPath = media.coverPath?.takeIf(String::isNotBlank),
                     // PRODUCT_SPEC PLAY-003: an excluded track is not playable, so it is not counted.
                     trackCount = tracks.count { !it.exclude },
-                    sizeBytes = media.size,
-                    remoteUpdatedAt = dto.updatedAt?.let(::instantOrNull),
-                    lastFetchedAt = fetchedAt,
+                    dto = dto,
+                    fetchedAt = fetchedAt,
                     progress = progressOf(serverId, profileId, bookId, dto),
-                    // PRODUCT_SPEC DL-001: nothing is downloaded until a download commits. The
-                    // repository preserves an existing local state rather than taking this value.
-                    localAvailability = LocalAvailability.NotDownloaded,
+                    authors = authorsOf(serverId, metadata),
+                    seriesMemberships = seriesOf(serverId, metadata),
                 ),
                 tracks = tracks.map { track -> trackOf(serverId, bookId, track) },
                 chapters = media.chapters.orEmpty().mapIndexed { index, chapter ->
@@ -147,6 +205,85 @@ internal object LibraryMapper {
      * not to have is normal and maps to `null`, while these five are what a stored, browsable, playable
      * book cannot exist without.
      */
+    /**
+     * The parts of a [Book] both responses describe the same way.
+     *
+     * Extracted so the catalogue pass and the expanded pass cannot drift: every field here is one the
+     * list endpoint carries, and the four that differ — track count, progress, authors, series — are
+     * parameters precisely because they are the ones only an expanded item can answer.
+     */
+    @Suppress("LongParameterList")
+    private fun bookOf(
+        serverId: ServerId,
+        libraryId: LibraryId,
+        bookId: LibraryItemId,
+        media: MediaDto,
+        metadata: MediaMetadataDto,
+        title: String,
+        trackCount: Int,
+        dto: LibraryItemDto,
+        fetchedAt: Instant,
+        progress: MediaProgress?,
+        authors: List<Author>,
+        seriesMemberships: List<SeriesMembership>,
+    ) = Book(
+        serverId = serverId,
+        id = bookId,
+        libraryId = libraryId,
+        title = title,
+        subtitle = metadata.subtitle?.takeIf(String::isNotBlank),
+        authors = authors,
+        narrators = narratorsOf(metadata),
+        seriesMemberships = seriesMemberships,
+        duration = seconds(media.duration),
+        // `descriptionPlain` first: PRODUCT_SPEC LIB-004 requires HTML descriptions to be sanitized
+        // before rendering, and the server has already done that work. The HTML form is the fallback,
+        // and rendering it still has to sanitize.
+        description = metadata.descriptionPlain?.takeIf(String::isNotBlank)
+            ?: metadata.description?.takeIf(String::isNotBlank),
+        genres = metadata.genres.filter(String::isNotBlank),
+        tags = media.tags.filter(String::isNotBlank),
+        // A string on the wire, because the server keeps whatever the tag held. A value that is not a
+        // year is dropped rather than coerced to 0, which would render as "0".
+        publishedYear = metadata.publishedYear?.trim()?.toIntOrNull(),
+        publisher = metadata.publisher?.takeIf(String::isNotBlank),
+        language = metadata.language?.takeIf(String::isNotBlank),
+        // PRODUCT_SPEC LIB-002. Both keys are present in the captured fixtures and both are null there
+        // — the seeded book has neither — so the *presence* is observed and the string type is taken
+        // from Audiobookshelf's documented metadata schema. See `docs/api-compatibility.md`. Trimmed,
+        // because a tag editor leaves trailing spaces and " 9780000000000" would never match what the
+        // user typed.
+        isbn = metadata.isbn?.trim()?.takeIf(String::isNotEmpty),
+        asin = metadata.asin?.trim()?.takeIf(String::isNotEmpty),
+        isExplicit = metadata.explicit,
+        isAbridged = metadata.abridged,
+        coverPath = media.coverPath?.takeIf(String::isNotBlank),
+        trackCount = trackCount,
+        sizeBytes = media.size,
+        remoteUpdatedAt = dto.updatedAt?.let(::instantOrNull),
+        addedAt = dto.addedAt?.let(::instantOrNull),
+        lastFetchedAt = fetchedAt,
+        progress = progress,
+        // PRODUCT_SPEC DL-001: nothing is downloaded until a download commits. The repository preserves
+        // an existing local state rather than taking this value.
+        localAvailability = LocalAvailability.NotDownloaded,
+    )
+
+    /**
+     * What a *catalogue* row cannot be stored without: an id, a media object, metadata, a title.
+     *
+     * Deliberately shorter than [rejectionFor]. That one also demands `media.tracks`, because an item
+     * fetched with `expanded=1` and no tracks means the caller asked wrongly — but the list endpoint
+     * never sends tracks, so applying the same rule here would reject every row.
+     */
+    private fun catalogueRejectionFor(dto: LibraryItemDto): AppError? = when {
+        dto.id.isNullOrBlank() -> missingField("id")
+        dto.media == null -> missingField("media")
+        dto.media.metadata == null -> missingField("media.metadata")
+        dto.media.metadata.title.isNullOrBlank() -> missingField("media.metadata.title")
+        else -> null
+    }
+
     private fun rejectionFor(dto: LibraryItemDto): AppError? = when {
         dto.id.isNullOrBlank() -> missingField("id")
         dto.media == null -> missingField("media")
