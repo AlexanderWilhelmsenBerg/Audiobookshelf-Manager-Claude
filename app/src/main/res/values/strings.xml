@@ -90,6 +90,25 @@
     <string name="library_sort_author">Author</string>
     <string name="library_sort_recent">Recently updated</string>
     <string name="library_sort_series">Series order</string>
+    <string name="library_tab_books">Books</string>
+    <string name="library_tab_series">Series</string>
+
+    <!-- PRODUCT_SPEC LIB-003 / TC-16 — browsing by series. -->
+    <string name="series_title">Series</string>
+    <string name="series_loading">Loading series</string>
+    <string name="series_empty_title">No series here</string>
+    <string name="series_empty_body">None of the books in this library belong to a series that matches your search.</string>
+    <string name="series_missing_title">Series not available</string>
+    <string name="series_missing_body">This series is not in the current profile\'s library.</string>
+    <!--
+      Both halves are already-formatted phrases: %1$s is a book count such as "5 books" and %2$s is a
+      finished count such as "2 finished". Joined here rather than built as one format string, so each
+      count can carry its own plural form in a language that inflects them differently.
+    -->
+    <string name="series_summary_progress">%1$s · %2$s</string>
+    <!-- %1$s is a book count such as "5 books". -->
+    <string name="series_summary_finished">%1$s · finished</string>
+    <string name="series_next_up">Next up: %1$s</string>
 
     <string name="book_loading">Loading book</string>
     <string name="book_missing_title">Book not available</string>
@@ -149,6 +168,21 @@
     <plurals name="home_library_books">
         <item quantity="one">%1$d book</item>
         <item quantity="other">%1$d books</item>
+    </plurals>
+
+    <!-- PRODUCT_SPEC LIB-003 — how many books are in one series. -->
+    <plurals name="series_book_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+
+    <!--
+      How many of a series' books are finished. English inflects nothing here, but the two forms are
+      declared anyway: a locale that does inflect cannot add one to a `<string>`.
+    -->
+    <plurals name="series_finished_count">
+        <item quantity="one">%1$d finished</item>
+        <item quantity="other">%1$d finished</item>
     </plurals>
 
     <!-- PRODUCT_SPEC LIB-001 — a sync that could not reach every item says so instead of claiming a clean run. -->

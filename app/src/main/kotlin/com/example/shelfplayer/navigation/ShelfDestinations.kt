@@ -2,6 +2,7 @@ package com.example.shelfplayer.navigation
 
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.SeriesId
 import java.net.URLEncoder
 
 /**
@@ -27,9 +28,11 @@ object ShelfDestinations {
     const val SETTINGS = "settings"
     const val LIBRARY = "library/{libraryId}"
     const val BOOK = "book/{bookId}"
+    const val SERIES = "series/{seriesId}"
 
     const val ARG_LIBRARY_ID = "libraryId"
     const val ARG_BOOK_ID = "bookId"
+    const val ARG_SERIES_ID = "seriesId"
 
     /**
      * The arguments are URL-encoded: a server address contains `:` and `/`, which would otherwise end the
@@ -43,4 +46,11 @@ object ShelfDestinations {
     fun library(libraryId: LibraryId): String = "library/${libraryId.value}"
 
     fun book(bookId: LibraryItemId): String = "book/${bookId.value}"
+
+    /**
+     * PRODUCT_SPEC LIB-003 — the bare server-side series id, exactly as the book route carries an item
+     * id. The server it belongs to is not in the route: the repository scopes the lookup to the active
+     * profile's server, so a route cannot name a series on a server the user is not currently on.
+     */
+    fun series(seriesId: SeriesId): String = "series/${seriesId.value}"
 }

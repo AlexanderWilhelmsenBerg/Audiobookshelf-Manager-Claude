@@ -13,6 +13,7 @@ import com.example.shelfplayer.feature.library.LibraryRoute
 import com.example.shelfplayer.feature.onboarding.SignInRoute
 import com.example.shelfplayer.feature.onboarding.SignInViewModel
 import com.example.shelfplayer.feature.profiles.ProfileSwitcherRoute
+import com.example.shelfplayer.feature.series.SeriesRoute
 import com.example.shelfplayer.feature.settings.SettingsRoute
 
 /**
@@ -92,6 +93,9 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
                 onBookSelected = { bookId ->
                     navController.navigate(ShelfDestinations.book(bookId))
                 },
+                onSeriesSelected = { seriesId ->
+                    navController.navigate(ShelfDestinations.series(seriesId))
+                },
                 onNavigateUp = navController::navigateUp,
             )
         }
@@ -102,6 +106,19 @@ fun ShelfPlayerNavHost(startDestination: String, navController: NavHostControlle
             ),
         ) {
             BookRoute(onNavigateUp = navController::navigateUp)
+        }
+        composable(
+            route = ShelfDestinations.SERIES,
+            arguments = listOf(
+                navArgument(ShelfDestinations.ARG_SERIES_ID) { type = NavType.StringType },
+            ),
+        ) {
+            SeriesRoute(
+                onBookSelected = { bookId ->
+                    navController.navigate(ShelfDestinations.book(bookId))
+                },
+                onNavigateUp = navController::navigateUp,
+            )
         }
     }
 }

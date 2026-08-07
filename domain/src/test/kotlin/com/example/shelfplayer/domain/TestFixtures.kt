@@ -72,6 +72,17 @@ internal fun library(id: LibraryId = TEST_LIBRARY, bookCount: Int = 0) = Library
     lastFetchedAt = TEST_INSTANT,
 )
 
+internal fun membership(
+    seriesId: String = "series-1",
+    name: String = "The Long Voyage",
+    sequence: String? = null,
+    isPrimary: Boolean = true,
+) = SeriesMembership(
+    series = Series(TEST_SERVER, SeriesId(seriesId), name),
+    sequence = SeriesSequence.parse(sequence),
+    isPrimary = isPrimary,
+)
+
 @Suppress("LongParameterList")
 internal fun book(
     id: String,
@@ -85,6 +96,13 @@ internal fun book(
     /** When this profile last listened. `null` is a book with no progress row at all. */
     playedAt: Instant? = null,
     isFinished: Boolean = false,
+    /**
+     * Overrides the single membership [sequence] would produce.
+     *
+     * PRODUCT_SPEC LIB-003 lets a book belong to several series at different positions, and the
+     * grouping tests need exactly that case; `sequence` is the shorthand every other test uses.
+     */
+    memberships: List<SeriesMembership>? = null,
 ) = Book(
     serverId = TEST_SERVER,
     id = LibraryItemId(id),
@@ -93,15 +111,7 @@ internal fun book(
     subtitle = null,
     authors = listOf(Author(TEST_SERVER, AuthorId("author-1"), authorName)),
     narrators = narrators,
-    seriesMemberships = sequence?.let {
-        listOf(
-            SeriesMembership(
-                series = Series(TEST_SERVER, SeriesId("series-1"), "The Long Voyage"),
-                sequence = SeriesSequence.parse(it),
-                isPrimary = true,
-            ),
-        )
-    }.orEmpty(),
+    seriesMemberships = memberships ?: sequence?.let { listOf(membership(sequence = it)) }.orEmpty(),
     duration = kotlin.time.Duration.ZERO,
     description = null,
     genres = emptyList(),

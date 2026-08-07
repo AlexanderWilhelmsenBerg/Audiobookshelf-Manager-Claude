@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.library.BookSortOrder
 import kotlin.math.roundToInt
 import kotlin.time.Duration
@@ -35,7 +36,19 @@ import kotlin.time.Duration
  * image loader is its own slice of work rather than a detail of this list.
  */
 @Composable
-internal fun BookCard(book: Book, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun BookCard(
+    book: Book,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    /**
+     * PRODUCT_SPEC LIB-003 — which of the book's series to name on the card.
+     *
+     * Defaults to the first, which is all a general shelf can know. A series screen passes the series
+     * the user navigated through: a book can be third in one series and first in another, and the
+     * number that belongs to some other series is worse than no number at all.
+     */
+    membership: SeriesMembership? = book.seriesMemberships.firstOrNull(),
+) {
     Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -49,12 +62,12 @@ internal fun BookCard(book: Book, onClick: () -> Unit, modifier: Modifier = Modi
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            book.seriesMemberships.firstOrNull()?.let { membership ->
+            membership?.let { inSeries ->
                 Text(
                     text = stringResource(
                         R.string.book_series_position,
-                        membership.series.name,
-                        membership.sequence.raw.ifEmpty { "—" },
+                        inSeries.series.name,
+                        inSeries.sequence.raw.ifEmpty { "—" },
                     ),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

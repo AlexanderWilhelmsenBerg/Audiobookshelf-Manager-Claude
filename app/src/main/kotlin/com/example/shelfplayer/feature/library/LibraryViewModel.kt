@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookSortOrder
+import com.example.shelfplayer.domain.library.SeriesShelf
 import com.example.shelfplayer.domain.usecase.ObserveLibraryBooksUseCase
+import com.example.shelfplayer.domain.usecase.ObserveLibrarySeriesUseCase
 import com.example.shelfplayer.navigation.ShelfDestinations
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -36,6 +38,7 @@ import javax.inject.Inject
 class LibraryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     observeLibraryBooks: ObserveLibraryBooksUseCase,
+    observeLibrarySeries: ObserveLibrarySeriesUseCase,
 ) : ViewModel() {
 
     private val libraryId: LibraryId = LibraryId(
@@ -63,6 +66,10 @@ class LibraryViewModel @Inject constructor(
         .map { it.order }
         .distinctUntilChanged()
 
+    private val tab: Flow<LibraryTab> = controls
+        .map { it.tab }
+        .distinctUntilChanged()
+
     /**
      * The two inputs are combined into a named [LibraryQuery] rather than a `Pair`, so the
      * downstream lambda reads `request.query` instead of `first`.
@@ -77,14 +84,35 @@ class LibraryViewModel @Inject constructor(
                 )
             }
 
+    /**
+     * PRODUCT_SPEC LIB-003 — the series axis takes no sort order, so it is kept out of [books]'
+     * `combine` rather than folded into it. Changing the sort chips while the series tab is showing
+     * would otherwise re-group the whole library to produce exactly the same list.
+     */
+    private val series: Flow<List<SeriesShelf>> = debouncedQuery
+        .flatMapLatest { query -> observeLibrarySeries(libraryId = libraryId, query = query) }
+
+    /**
+     * Only the visible axis is collected. `flatMapLatest` on the tab cancels the other one, so the
+     * library is not grouped into series for a user who is looking at the book list.
+     */
+    private val content: Flow<LibraryContent> = tab.flatMapLatest { current ->
+        when (current) {
+            LibraryTab.Books -> books.map { LibraryContent.OfBooks(it) }
+            LibraryTab.Series -> series.map { LibraryContent.OfSeries(it) }
+        }
+    }
+
     val uiState: StateFlow<LibraryUiState> = combine(
         controls,
-        books,
-    ) { current, items ->
+        content,
+    ) { current, loaded ->
         LibraryUiState(
             query = current.query,
             order = current.order,
-            books = items,
+            tab = current.tab,
+            books = (loaded as? LibraryContent.OfBooks)?.books.orEmpty(),
+            series = (loaded as? LibraryContent.OfSeries)?.series.orEmpty(),
             isLoading = false,
         )
     }.stateIn(
@@ -101,10 +129,30 @@ class LibraryViewModel @Inject constructor(
         controls.update { it.copy(order = order) }
     }
 
+    fun onTabChanged(tab: LibraryTab) {
+        controls.update { it.copy(tab = tab) }
+    }
+
     /** One resolved request: what to search for and how to order the result. */
     private data class LibraryQuery(val query: String, val order: BookSortOrder)
 
-    private data class LibraryControls(val query: String = "", val order: BookSortOrder = BookSortOrder.Default)
+    private data class LibraryControls(
+        val query: String = "",
+        val order: BookSortOrder = BookSortOrder.Default,
+        val tab: LibraryTab = LibraryTab.Books,
+    )
+
+    /**
+     * Whichever axis is being collected, carrying its own list.
+     *
+     * A sealed type rather than two nullable lists in the state, so "the series tab is showing and it
+     * is empty" cannot be confused with "the series tab is showing and the books happen to be stale".
+     */
+    private sealed interface LibraryContent {
+        data class OfBooks(val books: List<Book>) : LibraryContent
+
+        data class OfSeries(val series: List<SeriesShelf>) : LibraryContent
+    }
 
     private companion object {
         /** PRODUCT_SPEC LIB-002: search debounce is 300 ms. */
@@ -116,6 +164,17 @@ class LibraryViewModel @Inject constructor(
 data class LibraryUiState(
     val query: String = "",
     val order: BookSortOrder = BookSortOrder.Default,
+    val tab: LibraryTab = LibraryTab.Books,
     val books: List<Book> = emptyList(),
+    val series: List<SeriesShelf> = emptyList(),
     val isLoading: Boolean = true,
 )
+
+/**
+ * PRODUCT_SPEC LIB-002 — which axis the library is being browsed along.
+ *
+ * Two entries today. LIB-002 also lists recently added, continue listening, downloaded, author and
+ * genre, and this is the seam they arrive through; series is separate because it is the one axis whose
+ * rows are not books.
+ */
+enum class LibraryTab { Books, Series }
