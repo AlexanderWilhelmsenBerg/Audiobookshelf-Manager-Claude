@@ -121,6 +121,8 @@ internal class FixtureMapper(private val document: FixtureLibraryDocument) {
         publishedYear = fixture.publishedYear,
         publisher = fixture.publisher,
         language = fixture.language,
+        isbn = fixture.isbn,
+        asin = fixture.asin,
         isExplicit = fixture.explicit,
         isAbridged = fixture.abridged,
         coverPath = fixture.coverPath,

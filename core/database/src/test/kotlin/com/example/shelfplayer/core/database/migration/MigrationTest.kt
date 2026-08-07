@@ -198,6 +198,31 @@ class MigrationTest {
     }
 
     /**
+     * PRODUCT_SPEC LIB-002 — version 6 adds two identifiers and keeps every book that was cached.
+     *
+     * The contrast with version 5 is the point. That migration reset `sync_state` because it had made an
+     * existing claim untrue; this one only adds fields nobody has searched by, so resetting every shelf
+     * to backfill an ISBN that most self-hosted items do not have would cost the user their offline
+     * library to gain nothing.
+     */
+    @Test
+    fun `version 6 adds the identifiers without disturbing the cached books`() = runTest {
+        createVersion(5)
+
+        val migrated = openWithMigrations()
+
+        val book = assertNotNull(
+            migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first(),
+            "the cached book must survive an additive migration",
+        )
+        assertEquals("The Salt Harbour", book.book.title)
+        assertNull(book.book.isbn, "an identifier that was never fetched is unknown, not empty")
+        assertNull(book.book.asin)
+        val syncState = assertNotNull(migrated.syncStateDao().findSyncState(PROFILE_ID))
+        assertEquals("Succeeded", syncState.status, "adding a column does not owe the user a resync")
+    }
+
+    /**
      * Room validates the migrated schema against the one it expects and throws if they differ. Reading
      * through a DAO is what forces that validation to run, so this fails loudly on a migration that
      * produced a *nearly* correct schema — a missing default, a wrong nullability.
@@ -295,6 +320,7 @@ class MigrationTest {
         VERSION_2 -> seedVersion2(db)
         VERSION_3 -> seedVersion3(db)
         VERSION_4 -> seedVersion4(db)
+        VERSION_5 -> seedVersion5(db)
         else -> error("no seed data defined for schema version $version")
     }
 
@@ -355,6 +381,50 @@ class MigrationTest {
         )
     }
 
+    /**
+     * A version-5 cache with a book in it, which is what version 6 has to leave intact.
+     *
+     * The visibility row matters: every read joins it, so a book seeded without one is invisible for
+     * reasons that have nothing to do with the migration under test.
+     */
+    private fun seedVersion5(db: SupportSQLiteDatabase) {
+        seedServerWithCapabilities(db)
+        db.execSQL(
+            "INSERT INTO profiles " +
+                "(profileId, serverId, remoteUserId, username, displayName, role, " +
+                "requiresReauthentication, lastUsedAt, isFixture, accessibleLibrariesJson, " +
+                "hasAllLibraryAccess, hasAllTagAccess) " +
+                "VALUES (?, ?, 'remote-user-1', ?, ?, 'Listener', 0, NULL, 0, '[]', 1, 1)",
+            arrayOf(PROFILE_ID, SERVER_ID, "ada", "ada"),
+        )
+        db.execSQL(
+            "INSERT INTO libraries (libraryKey, serverId, remoteId, name, kind, displayOrder, " +
+                "remoteUpdatedAt, lastFetchedAt, isDeleted) " +
+                "VALUES (?, ?, 'library-1', 'Fiction', 'Book', 0, NULL, 0, 0)",
+            arrayOf(LIBRARY_KEY, SERVER_ID),
+        )
+        db.execSQL(
+            "INSERT INTO books (bookKey, serverId, remoteId, libraryKey, title, subtitle, " +
+                "narratorsJson, genresJson, tagsJson, durationMillis, description, publishedYear, " +
+                "publisher, language, isExplicit, isAbridged, coverPath, trackCount, sizeBytes, " +
+                "remoteUpdatedAt, lastFetchedAt, isDeleted, localAvailability) " +
+                "VALUES (?, ?, 'item-1', ?, 'The Salt Harbour', NULL, '[]', '[]', '[]', 1000, NULL, " +
+                "NULL, NULL, NULL, 0, 0, NULL, 1, 0, NULL, 0, 0, 'NotDownloaded')",
+            arrayOf(BOOK_KEY, SERVER_ID, LIBRARY_KEY),
+        )
+        db.execSQL(
+            "INSERT INTO profile_visible_books (profileId, bookKey, libraryKey) VALUES (?, ?, ?)",
+            arrayOf(PROFILE_ID, BOOK_KEY, LIBRARY_KEY),
+        )
+        db.execSQL(
+            "INSERT INTO sync_state " +
+                "(profileId, serverId, status, lastSuccessfulSyncAt, lastAttemptedAt, " +
+                "lastErrorCode, lastErrorSummary) " +
+                "VALUES (?, ?, 'Succeeded', 1000, 1000, NULL, NULL)",
+            arrayOf(PROFILE_ID, SERVER_ID),
+        )
+    }
+
     /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
     private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
         db.execSQL(
@@ -394,7 +464,10 @@ class MigrationTest {
         const val SERVER_ID = "srv_test"
         const val VERSION_3 = 3
         const val VERSION_4 = 4
+        const val VERSION_5 = 5
         const val PROFILE_ID = "prf_test"
+        const val LIBRARY_KEY = "srv_test:library-1"
+        const val BOOK_KEY = "srv_test:item-1"
 
         /** Room's placeholder for the table name in an exported `createSql`. */
         const val TABLE_NAME_PLACEHOLDER = "\${TABLE_NAME}"

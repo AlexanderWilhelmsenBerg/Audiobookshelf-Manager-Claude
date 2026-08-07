@@ -138,5 +138,30 @@ object Migrations {
         }
     }
 
-    val ALL: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    /**
+     * Version 6 — the two identifiers LIB-002 says search must match (PRODUCT_SPEC LIB-002).
+     *
+     * Nullable columns with no default, which is the honest state for an upgrading cache: the rows
+     * already stored were fetched before the app read these fields, so it does not know them. They
+     * fill in on the next sync, and until then a search for an ISBN simply does not match a book whose
+     * ISBN was never fetched — the same answer as a book that has none, and not a wrong one.
+     *
+     * No reset to `NeverSynced` here, unlike version 5. That migration withdrew a claim that had become
+     * false; this one adds two fields nobody has searched by yet, and blanking every shelf to backfill
+     * an identifier almost no self-hosted item carries is not a trade worth making.
+     */
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN isbn TEXT")
+            db.execSQL("ALTER TABLE books ADD COLUMN asin TEXT")
+        }
+    }
+
+    val ALL: List<Migration> = listOf(
+        MIGRATION_1_2,
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+    )
 }

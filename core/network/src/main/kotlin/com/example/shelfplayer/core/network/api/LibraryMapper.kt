@@ -119,6 +119,13 @@ internal object LibraryMapper {
                     publishedYear = metadata.publishedYear?.trim()?.toIntOrNull(),
                     publisher = metadata.publisher?.takeIf(String::isNotBlank),
                     language = metadata.language?.takeIf(String::isNotBlank),
+                    // PRODUCT_SPEC LIB-002. Both keys are present in the captured item fixture and both
+                    // are null there — the seeded book has neither — so the *presence* is observed and
+                    // the string type is taken from Audiobookshelf's documented metadata schema. See
+                    // `docs/api-compatibility.md`. Trimmed, because a tag editor leaves trailing spaces
+                    // and " 9780000000000" would then never match what the user typed.
+                    isbn = metadata.isbn?.trim()?.takeIf(String::isNotEmpty),
+                    asin = metadata.asin?.trim()?.takeIf(String::isNotEmpty),
                     isExplicit = metadata.explicit,
                     isAbridged = metadata.abridged,
                     coverPath = media.coverPath?.takeIf(String::isNotBlank),

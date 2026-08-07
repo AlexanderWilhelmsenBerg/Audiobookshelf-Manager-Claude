@@ -125,6 +125,16 @@
     <string name="book_download_partial">Download incomplete</string>
     <string name="book_downloaded">Downloaded</string>
     <string name="book_series_position">%1$s, book %2$s</string>
+
+    <!-- PRODUCT_SPEC LIB-004 — the detail fields the sync has always stored. -->
+    <string name="book_on_server">On the server</string>
+    <string name="book_last_checked">Last checked %1$s</string>
+    <string name="book_published">Published %1$s</string>
+    <string name="book_publisher">Publisher: %1$s</string>
+    <string name="book_language">Language: %1$s</string>
+    <string name="book_isbn">ISBN: %1$s</string>
+    <string name="book_asin">ASIN: %1$s</string>
+    <string name="book_size">Size: %1$s</string>
     <string name="book_playback_unavailable">Playback arrives in the next phase</string>
     <string name="navigate_back">Back</string>
 

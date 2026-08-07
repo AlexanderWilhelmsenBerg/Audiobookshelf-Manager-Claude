@@ -103,6 +103,8 @@ internal fun book(
      * grouping tests need exactly that case; `sequence` is the shorthand every other test uses.
      */
     memberships: List<SeriesMembership>? = null,
+    isbn: String? = null,
+    asin: String? = null,
 ) = Book(
     serverId = TEST_SERVER,
     id = LibraryItemId(id),
@@ -119,6 +121,8 @@ internal fun book(
     publishedYear = null,
     publisher = null,
     language = null,
+    isbn = isbn,
+    asin = asin,
     isExplicit = false,
     isAbridged = false,
     coverPath = null,

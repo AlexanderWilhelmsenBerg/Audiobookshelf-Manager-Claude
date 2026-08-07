@@ -301,6 +301,8 @@ class ShelfPlayerDatabaseTest {
         publishedYear = null,
         publisher = null,
         language = null,
+        isbn = null,
+        asin = null,
         isExplicit = false,
         isAbridged = false,
         coverPath = null,

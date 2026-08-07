@@ -216,6 +216,37 @@ id, userId, startedAt, finishedAt, lastUpdate
 `socket-event-after-progress.json`. Frames are stored parsed rather than as text, so the redaction pass
 can reach a token inside one: the shape is kept, the credential is not.
 
+## `isbn` and `asin` — present, and null (LIB-002)
+
+`media.metadata` in the captured `library-item.json` carries both keys, and both are `null`: the
+seeded book has neither, and the container runs with `scannerFindCovers` off and no metadata provider
+configured, so nothing filled them in.
+
+So the *presence* of both fields is observed, and their nullability is observed. What is **not**
+observed is their type when populated — no capture has ever produced a non-null value. They are
+mapped as `String?` on the strength of Audiobookshelf's documented metadata schema, which is a
+narrower assumption than `PRODUCT_SPEC 22.5` normally allows and is recorded here rather than left
+implicit.
+
+The exposure is small and one-directional. `kotlinx.serialization` fails a `String?` field that
+arrives as a number or an object, and the item mapper runs inside `resultOf`, so the worst case is a
+single item reported unreadable rather than a wrong value written to the cache. If a server is ever
+found that returns a numeric ISBN, the fix is a lenient deserializer here, not a schema change.
+
+## The cover endpoint — `404`, and why (LIB-004)
+
+The first capture of `GET /api/items/{id}/cover` returned **404, `text/plain`**. Not a wrong path: the
+same capture recorded `"coverPath": null` on the item. The seeded book had no cover art, so there was
+nothing to serve.
+
+`scripts/seed-contract-media.sh` now generates a flat `cover.jpg` beside the audio, and the capture
+treats a non-200 as a hard error rather than committing a 404 as though it were the contract. The
+re-run also probes the endpoint without a credential, because whether a cover URL can be handed
+straight to an image library or must travel through the authenticated client is the decision the whole
+of the cover work turns on.
+
+**Cover art stays unimplemented until that capture returns 200.**
+
 ## Known endpoint differences
 
 None recorded. This section fills in as contract tests run against real server versions, and every

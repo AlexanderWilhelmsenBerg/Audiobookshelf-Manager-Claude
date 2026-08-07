@@ -30,6 +30,9 @@ data class Book(
     val publishedYear: Int?,
     val publisher: String?,
     val language: String?,
+    /** PRODUCT_SPEC LIB-002 — an identifier the user may search by, not a field the app resolves. */
+    val isbn: String?,
+    val asin: String?,
     val isExplicit: Boolean,
     val isAbridged: Boolean,
     val coverPath: String?,

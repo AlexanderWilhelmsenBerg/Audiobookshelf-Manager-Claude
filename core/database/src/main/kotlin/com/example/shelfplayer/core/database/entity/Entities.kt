@@ -176,6 +176,15 @@ data class BookEntity(
     val publishedYear: Int?,
     val publisher: String?,
     val language: String?,
+    /**
+     * PRODUCT_SPEC LIB-002 — searchable identifiers.
+     *
+     * Nullable and unindexed. Both are absent on most self-hosted items, and an index over a column
+     * that is null for 490 of 491 rows costs writes to buy nothing; the search is a `LIKE` over cached
+     * rows in memory, not a query.
+     */
+    val isbn: String?,
+    val asin: String?,
     val isExplicit: Boolean,
     val isAbridged: Boolean,
     val coverPath: String?,
