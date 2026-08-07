@@ -312,26 +312,44 @@ fi
 # rules out reaching a server's filesystem directly, so it cannot become one.
 #
 # The endpoint that serves the image has never been captured. This records its response *shape* — the
-# status and the content type — which is the whole of what an image pipeline needs to know. The bytes
-# are deliberately not committed: a JPEG in a contract fixture proves nothing a content type does not,
-# and PRODUCT_SPEC 14.5 keeps private media out of the repository.
+# status, the content type, and whether it is reachable without a credential — which is the whole of
+# what an image pipeline needs to know. The bytes are deliberately not committed: a JPEG in a contract
+# fixture proves nothing a content type does not, and PRODUCT_SPEC 14.5 keeps private media out of the
+# repository.
+#
+# The unauthenticated probe decides how the image loader is built. If the endpoint refuses an anonymous
+# request then covers have to go through the app's authenticated client rather than a bare URL handed
+# to an image library, and PRODUCT_SPEC 22.5 wants that answered by observation, not by assumption.
 log "recording the cover endpoint's shape (headers only, never the image)"
 COVER_META="$(curl -sS -o /dev/null "$BASE_URL/api/items/$ITEM_ID/cover" -H "$AUTH_HEADER" \
   -w '%{http_code} %{content_type}')"
+COVER_ANON_STATUS="$(curl -sS -o /dev/null "$BASE_URL/api/items/$ITEM_ID/cover" -w '%{http_code}')"
+
+# A 404 here means the seeded book has no cover, not that the path is wrong — that is exactly what the
+# first capture recorded, and committing it would let LIB-004 be written against a shape nobody has
+# seen. `scripts/seed-contract-media.sh` places a `cover.jpg` beside the audio so this answers 200.
+if [ "${COVER_META%% *}" != "200" ]; then
+  echo "::error::the cover endpoint answered ${COVER_META%% *}, so its shape was not captured." >&2
+  echo "::error::A 404 means the scanned book has no cover art. Check that the media directory" >&2
+  echo "::error::contains a cover file beside the audio and that the library has been rescanned." >&2
+  exit 1
+fi
+
 python3 -c '
 import json, sys
-out_path, meta = sys.argv[1], sys.argv[2]
+out_path, meta, anon_status = sys.argv[1], sys.argv[2], sys.argv[3]
 status, _, content_type = meta.partition(" ")
 envelope = {
     "status": int(status or 0),
     "contentType": (content_type or "").split(";")[0] or None,
+    "unauthenticatedStatus": int(anon_status or 0),
     "bodyKind": "binary-not-recorded",
     "note": "GET /api/items/{id}/cover. Bytes deliberately not committed; the shape is the contract.",
 }
 with open(out_path, "w") as handle:
     json.dump(envelope, handle, indent=2, sort_keys=True)
     handle.write("\n")
-' "$OUT_DIR/item-cover.json" "$COVER_META"
+' "$OUT_DIR/item-cover.json" "$COVER_META" "$COVER_ANON_STATUS"
 
 # --- Media progress -------------------------------------------------------------------------------
 #

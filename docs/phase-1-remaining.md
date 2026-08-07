@@ -265,6 +265,17 @@ playback steps belong to Phase 2.
   PRODUCT_SPEC 14.5 keeps private media out of the repository). Once its shape is committed: Coil, an
   authenticated image loader, and Wire Coil, authenticate image requests without putting a token in a URL, cache
   for offline (LIB-001, LIB-004).
+
+  **First capture run, 2026-08: `404`, `text/plain`.** Not a wrong path — the same capture recorded
+  `"coverPath": null` on the item, and the container is created with `scannerFindCovers` off, so the
+  seeded book simply had no cover for the endpoint to serve. `scripts/seed-contract-media.sh` now
+  generates a flat `cover.jpg` beside the audio, and the capture treats a non-200 here as a hard error
+  rather than committing a 404 as though it were the contract. The next run also probes the endpoint
+  *without* a credential, because whether covers can be handed to an image library as a bare URL or
+  must go through the authenticated client is the decision that shapes the whole task.
+
+  Expect the re-run to report drift in `library-item.json`: `media.coverPath` becomes a path and
+  `libraryFiles` gains an image entry. That drift is the fix working.
 - **P1-15 — Series browse.** Group by series, open a series into its ordered books (LIB-003, TC-16).
 - **P1-16 — Remaining browse axes:** recently added, continue listening, downloaded, author, genre;
   collections only if the capability probe confirms them (LIB-002).
