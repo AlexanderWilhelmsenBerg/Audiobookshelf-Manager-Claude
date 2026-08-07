@@ -347,6 +347,49 @@ had not, so the same search answered differently depending on which screen asked
 
 ---
 
+## 4c. Verified gap list — 0.1.7, checked against the tree
+
+Every line below was re-checked against the code rather than copied forward.
+
+| Task | State | Blocked? |
+| --- | --- | --- |
+| **P1-14** covers | `coil-compose` still has zero usages. The endpoint path and the header-auth approach are settled (ADR-0008); the *shape* is not. | **Blocked** on a capture returning 200 |
+| **P1-20** server search | `/api/libraries/{id}/search?q=` is a capture target; nothing calls it. | **Blocked** on a capture |
+| **Collections** | `/api/libraries/{id}/collections` is a capture target; no axis exists. | **Blocked** on a capture |
+| **P1-23** cleartext | `app/src/main/res/xml/network_security_config.xml:14` is a single `base-config cleartextTrafficPermitted="false"`. No `app/src/debug/res/xml` exists, so debug and release are identical and no `http://` server is reachable by any build. | **Actionable** |
+| **P1-24** UI test tier | No `androidTest` source set in any module. | **Actionable** |
+| **P1-25** coverage | No Kover, no JaCoCo anywhere in the build. | **Actionable** |
+| **P1-26** dependency verification | `gradle.properties:20` is `off`, and `verification-metadata.xml` has **0** `<component>` entries. | **Actionable** (needs one network-complete build) |
+| **P1-27** performance | Nothing measured. | Actionable, needs a device |
+| **P1-28** device matrix | Nothing run. | Actionable, needs devices/emulators |
+| **P1-29** `values-nb` | Only `values` and `values-night`. | **Actionable** |
+| **P1-30** acceptance-plan maintenance | TC-04, TC-06, TC-47, TC-52, TC-53 never run; TC-36's toggle no longer exists. | Actionable |
+| **P1-31** *(new)* deferred item expansion | See below. | **Actionable** — both shapes already captured |
+
+**P1-12 is done and the section above is stale.** `SyncAccountUseCase` runs `refreshPermissions` on
+every `onVisible()`, which is the in-session revalidation AUTH-004 asked for (acceptance case TC-45).
+
+### P1-31 — Stop making the shelf wait for 491 requests (LIB-001)
+
+Measured, not estimated: a full refresh is one `GET /api/libraries/{id}/items` followed by one
+`GET /api/items/{id}?expanded=1&include=progress` **per item, sequentially**
+(`AbsLibraryApi.snapshots`). AudioBooth expands only the book the user opens.
+
+`docs/api-compatibility.md` has the field-by-field comparison of the two responses. The short version:
+the list carries everything the browse surface needs — including `isbn`, `asin` and `addedAt` — and the
+expanded item is only needed for `media.tracks`, `media.chapters` and the structured
+`metadata.series` that carries a **sequence**. So the per-item fetch cannot be deleted, but it can stop
+being on the critical path:
+
+1. write the list rows first — the library is browsable after **one** request;
+2. expand in the background, and on demand when a book is opened.
+
+Not blocked: both shapes are already committed fixtures. What *is* blocked is `minified=1` (changes the
+item shape) and server-side `sort`/`filter` (not captured — and adopting them would move sorting off
+Room, which is what makes it work offline).
+
+---
+
 ## 5. Deferred, with the reason recorded
 
 - **`syncVersion` / ETag columns** (`PRODUCT_SPEC 13.2`) — no captured response carries the header.
