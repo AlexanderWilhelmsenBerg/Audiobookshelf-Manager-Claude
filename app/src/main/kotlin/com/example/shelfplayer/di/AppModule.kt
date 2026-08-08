@@ -2,6 +2,7 @@ package com.example.shelfplayer.di
 
 import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.connectivity.AndroidNetworkMonitor
+import com.example.shelfplayer.core.common.AppBuild
 import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
 import com.example.shelfplayer.core.common.log.LogSink
 import com.example.shelfplayer.core.network.di.RemoteGateway
@@ -70,6 +71,19 @@ interface AppModule {
          */
         @Provides
         @Singleton
-        fun providesUserAgent(): UserAgent = UserAgent("ShelfPlayer/${BuildConfig.VERSION_NAME}")
+        fun providesUserAgent(): UserAgent = UserAgent("${CLIENT_NAME}/${BuildConfig.VERSION_NAME}")
+
+        /**
+         * PRODUCT_SPEC PLAY-001 — the same two facts the user agent carries, for the callers that need
+         * them apart rather than joined into one string.
+         *
+         * `BuildConfig` is generated per module, so this is the only place in the app where `:app`'s
+         * version name is readable.
+         */
+        @Provides
+        @Singleton
+        fun providesAppBuild(): AppBuild = AppBuild(CLIENT_NAME, BuildConfig.VERSION_NAME)
+
+        private const val CLIENT_NAME = "ShelfPlayer"
     }
 }

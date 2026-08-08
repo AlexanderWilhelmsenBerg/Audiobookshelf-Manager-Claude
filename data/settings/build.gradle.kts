@@ -26,6 +26,8 @@ dependencies {
     implementation(projects.core.common)
     implementation(projects.core.database)
     implementation(projects.core.datastore)
+    // PRODUCT_SPEC PLAY-001 — for the `PlaybackDeviceIdentity` seam, whose stored half lives here.
+    implementation(projects.core.network)
 
     testImplementation(projects.core.testing)
     testImplementation(libs.turbine)

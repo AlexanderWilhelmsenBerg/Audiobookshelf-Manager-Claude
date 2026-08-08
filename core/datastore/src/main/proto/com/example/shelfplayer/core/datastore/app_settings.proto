@@ -51,6 +51,17 @@ message AppSettings {
   // followed the device rather than the account would leak one person's arrangement onto another's
   // screen. Removing a profile removes its entry.
   map<string, ProfileSettings> profile_settings = 9;
+
+  // PRODUCT_SPEC PLAY-001 / 14.5 — the identifier this install sends as `deviceInfo.deviceId` when it
+  // opens a playback session.
+  //
+  // A random UUID generated on first use, not a hardware or advertising identifier: the server uses it
+  // to group a device's listening sessions, which a random value does exactly as well, and an
+  // ANDROID_ID or an IMEI would hand a self-hosted server a cross-app identifier it has no use for.
+  //
+  // It is stored rather than regenerated per process so that a restart does not appear on the user's
+  // own server as a new device every time.
+  string playback_device_id = 10;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

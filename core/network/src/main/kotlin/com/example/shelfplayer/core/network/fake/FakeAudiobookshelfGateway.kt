@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
@@ -23,6 +24,7 @@ import com.example.shelfplayer.core.model.flatMap
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.map
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.network.fixture.FixtureMapper
@@ -31,6 +33,7 @@ import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -59,10 +62,12 @@ class FakeAudiobookshelfGateway @Inject constructor(
 ) : AudiobookshelfGateway,
     AuthApi,
     CapabilityResolver,
-    LibraryApi {
+    LibraryApi,
+    PlaybackApi {
     override val auth: AuthApi get() = this
     override val capabilities: CapabilityResolver get() = this
     override val library: LibraryApi get() = this
+    override val playback: PlaybackApi get() = this
 
     /**
      * The fixture server and profile, for a test that needs the identities the demo document declares.
@@ -105,6 +110,21 @@ class FakeAudiobookshelfGateway @Inject constructor(
         unsupported()
 
     override suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit> = AppResult.Success(Unit)
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — the demo document has no audio behind it, so no session can be opened.
+     *
+     * A typed failure rather than a fabricated session. A fake that returned track URLs pointing at
+     * nothing would make the player's error path unreachable in tests and would fail on a device with
+     * an ExoPlayer source error instead of a message.
+     */
+    override suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
+        AppResult.Failure(
+            AppError.ApiCompatibility(
+                summary = "This build is showing the bundled demo library and has no audio to play.",
+                missingCapability = "playback",
+            ),
+        )
 
     private fun <T> unsupported(): AppResult<T> = AppResult.Failure(
         AppError.ApiCompatibility(

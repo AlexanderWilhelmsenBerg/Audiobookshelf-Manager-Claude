@@ -142,5 +142,24 @@ class AppSettingsDataSource @Inject constructor(
     // field number that comes back with a new meaning would be reinterpreted from old bytes on an
     // upgrading device (see the note in app_settings.proto).
 
+    /**
+     * PRODUCT_SPEC PLAY-001 / 14.5 — the id this install identifies itself by when opening a session.
+     *
+     * Generated on first call and kept, so the user's own server sees one device rather than one per
+     * app start. [newId] supplies the value so that a test can be deterministic without this class
+     * reaching for a random source of its own.
+     *
+     * The read and the write are one `updateData` transform, which DataStore serializes: two callers
+     * racing on first launch get the same id rather than two, and the second does not overwrite the
+     * first.
+     */
+    suspend fun playbackDeviceId(newId: () -> String): String = dataStore.updateData { current ->
+        if (current.playbackDeviceId.isNotBlank()) {
+            current
+        } else {
+            current.toBuilder().setPlaybackDeviceId(newId()).build()
+        }
+    }.playbackDeviceId
+
     suspend fun current(): AppSettings = dataStore.updateData { it }
 }

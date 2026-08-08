@@ -3,6 +3,7 @@ package com.example.shelfplayer.data.auth
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.ServerCapabilities
@@ -16,11 +17,13 @@ import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.PlaybackApi
 
 /**
  * A gateway whose answers the test decides, with real state rather than recorded expectations
@@ -119,6 +122,11 @@ internal class FakeAuthGateway :
             libraryId: LibraryId,
             query: String,
         ): AppResult<List<BookSnapshot>> = unsupported()
+    }
+
+    override val playback: PlaybackApi = object : PlaybackApi {
+        override suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
+            unsupported()
     }
 
     internal data class SignIn(val serverUrl: String, val username: String, val password: String)

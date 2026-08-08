@@ -160,7 +160,15 @@
     <string name="book_isbn">ISBN: %1$s</string>
     <string name="book_asin">ASIN: %1$s</string>
     <string name="book_size">Size: %1$s</string>
-    <string name="book_playback_unavailable">Playback arrives in the next phase</string>
+    <!-- PRODUCT_SPEC PLAY-001 — the playback controls. -->
+    <string name="player_play">Play</string>
+    <string name="player_resume">Resume</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_stop">Stop playback</string>
+    <!-- Shown on the book screen while the server is being asked to open a session. -->
+    <string name="player_starting">Starting…</string>
+    <!-- %1$s is the position a book will resume from, such as "2 h 14 min". -->
+    <string name="player_resume_at">Resume at %1$s</string>
     <string name="navigate_back">Back</string>
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->

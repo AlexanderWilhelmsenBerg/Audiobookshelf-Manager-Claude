@@ -1,10 +1,12 @@
 package com.example.shelfplayer.data.library.di
 
 import com.example.shelfplayer.data.library.DefaultLibraryRepository
+import com.example.shelfplayer.data.library.DefaultPlaybackRepository
 import com.example.shelfplayer.data.library.DefaultProfileRepository
 import com.example.shelfplayer.data.library.DefaultRealtimeUpdates
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import dagger.Binds
 import dagger.Module
@@ -27,4 +29,8 @@ interface LibraryDataModule {
     @Binds
     @Singleton
     fun bindsProfileRepository(impl: DefaultProfileRepository): ProfileRepository
+
+    @Binds
+    @Singleton
+    fun bindsPlaybackRepository(impl: DefaultPlaybackRepository): PlaybackRepository
 }

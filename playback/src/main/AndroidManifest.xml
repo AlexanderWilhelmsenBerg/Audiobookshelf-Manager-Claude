@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC PLAY-001 / 15 — the playback service and the permissions it needs, declared by the module
+  that owns them.
+
+  Declared here rather than in `:app` on purpose. A manifest entry in `:app` for a service defined in
+  this module can drift from it — a renamed class, a changed foreground type — and nothing fails until a
+  device tries to start it. Keeping both in one module means the declaration is next to the code it
+  describes, and an install can never request a permission this module does not use.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- PRODUCT_SPEC PLAY-001: playback continues with the screen off and the app in the background. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!--
+      API 33+. Without it the media notification is not shown, and playback itself still works — the
+      foreground service starts either way. The app asks for it when the user first plays something
+      rather than at launch, because a notification permission prompt on a screen with no audio on it is
+      a prompt with no context.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Media3 takes and releases the wake lock itself, through `setWakeMode`. The permission is declared
+      because the library cannot declare it for us; nothing in this module calls `PowerManager` directly.
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application>
+        <!--
+          `exported="true"` is required, not incidental: media buttons, Bluetooth headsets, Android Auto
+          and Wear all reach a media session through this component, and an unexported service is
+          unreachable by every one of them. What is exported is a `MediaSession`, whose commands Media3
+          checks against the connecting package's permissions — not an arbitrary IPC surface.
+
+          `stopWithTask="false"` keeps audio playing when the user swipes the app off the recents screen,
+          which is what a listener expects of an audiobook and what PRODUCT_SPEC's first product priority
+          — do not interrupt playback — asks for. The notification is still how it is stopped.
+        -->
+        <!--
+          `ExportedService` is suppressed, and this is the one place in the app where that is right.
+
+          The lint check wants a signature-level permission on an exported service. A media session
+          cannot have one: the components that reach it — the system's media-button router, a Bluetooth
+          headset, Android Auto, Wear — are not this app and hold no permission it could define.
+          Requiring one would make the session unreachable by every one of them, which is PLAY-001's
+          media-button resume criterion failing by construction.
+
+          What guards it instead is Media3's own model. The exported surface is a `MediaSession`, not an
+          arbitrary binder: every connection arrives through `MediaSession.Callback.onConnect` with the
+          caller's package and signature, and every command is checked against the command set that
+          callback granted. Wave 1 accepts the default — connections allowed, standard transport
+          commands — which is what the platform's own media apps do.
+        -->
+        <service
+            android:name=".PlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback"
+            android:stopWithTask="false"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

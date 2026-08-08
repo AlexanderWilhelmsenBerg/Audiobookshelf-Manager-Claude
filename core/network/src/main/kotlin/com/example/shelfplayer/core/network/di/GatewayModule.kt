@@ -4,10 +4,12 @@ import com.example.shelfplayer.core.network.api.AbsAudiobookshelfGateway
 import com.example.shelfplayer.core.network.api.AbsAuthApi
 import com.example.shelfplayer.core.network.api.AbsCapabilityResolver
 import com.example.shelfplayer.core.network.api.AbsLibraryApi
+import com.example.shelfplayer.core.network.api.AbsPlaybackApi
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.network.gateway.RealtimeConnection
 import com.example.shelfplayer.core.network.realtime.AbsRealtimeConnection
 import dagger.Binds
@@ -61,4 +63,8 @@ internal interface GatewayModule {
     @Binds
     @Singleton
     fun bindsLibraryApi(impl: AbsLibraryApi): LibraryApi
+
+    @Binds
+    @Singleton
+    fun bindsPlaybackApi(impl: AbsPlaybackApi): PlaybackApi
 }
