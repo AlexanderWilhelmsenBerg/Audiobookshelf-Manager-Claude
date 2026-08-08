@@ -4,7 +4,7 @@ Written against `PRODUCT_SPEC` PLAY-001 … PLAY-009 and the Phase 2 exit criter
 
 ## Where Phase 2 actually stands — 2026-08-08
 
-**Three waves of six.** `:playback` exists, with a `MediaLibraryService`, ExoPlayer on the app's
+**Four waves of six.** `:playback` exists, with a `MediaLibraryService`, ExoPlayer on the app's
 authenticated client, a media notification and a mini player. Against the deliverables PRODUCT_SPEC
 lists for the phase:
 
@@ -16,8 +16,8 @@ lists for the phase:
 | Global timeline | **Built** — offsets, seeking across boundaries, chapter navigation |
 | Progress sync | **Built** — journal every 5 s, remote sync on the cadence PLAY-004 names, and a durable outbox |
 | Notification / lockscreen / headset | Notification and lock screen built; **headset resume untested on hardware** |
-| Speed / skip | Not started — wave 4 |
-| Buffer presets | Not started — wave 4 |
+| Speed / skip | **Built** — 0.5–3.0× with a per-book override, and both skips configurable |
+| Buffer presets | **Built** — applied when the player is built, which is the next book rather than mid-chapter |
 | Sleep timer | **Built** — pulled forward from wave 4, plus shake-to-restart and a local history (ADR-0014) |
 | Audio focus / noisy handling | **Built** — pause-on-transient via speech content type, becoming-noisy on |
 
@@ -242,14 +242,13 @@ book is half an hour from the end, which is not what anyone means by finished. T
   not mention stays queued, and no book title reaches the log.
 - 13 over `ListenedTime`, 10 over `ServerClock`, 8 over the checklist's verdicts, 2 over the migration.
 
-## Wave 4 — the controls a listener expects
+## Wave 4 — the controls a listener expects ✅ **built, 2026-08-08 (untested on hardware)**
 
 PLAY-006 through PLAY-009, each small, each independently testable.
 
 - Speed 0.5×–3.0× in 0.05 steps, pitch preserved, per-book override, persisting across local and
   streamed copies.
-- **Carried in from wave 3**: read the library's `markAsFinishedTimeRemaining` and prefer it over the
-  app's flat thirty seconds (ADR-0013's unfinished half).
+
 - Skip back/forward, independently configurable 5–120 s, defaulting to 15 and 30.
 - Buffer presets, remote streams only, with the invalid combinations rejected rather than clamped.
 - ~~Sleep timer with end-of-chapter, fade-out, notification extension, surviving recreation.~~ **Built
@@ -258,7 +257,68 @@ PLAY-006 through PLAY-009, each small, each independently testable.
   both, and PLAY-008's **custom length** is the one part still outstanding.
 - Auto-rewind buckets, off by default, never crossing a chapter or book start, undoable.
 
+### What wave 4 actually shipped
+
+- **Speed 0.5×–3.0× in 0.05 steps**, as a value class that cannot hold an off-grid number. That matters more
+  than it sounds: the speed is stored, incremented, dragged by a slider and compared for chip selection, and
+  `0.05f × 37` is not `1.85f` — so the snap happens in integer hundredths and the storage unit is hundredths
+  too. Pitch is preserved because `setPlaybackSpeed` leaves it at 1.0 and Media3 stretches time rather than
+  resampling; there was nothing to build for that criterion.
+- **A per-book override**, in its own table (database version 10) rather than a column on `media_progress`.
+  Progress is the server's data — uploaded, overwritten by a sync, deleted when a book leaves the library —
+  and a local preference in a row a sync can replace is a preference lost the first time the server wins.
+  Keyed by book, so PLAY-007's "persists across local and streamed versions" holds by construction.
+  "No override" is a missing row, not a stored `1.0×`: only the first follows a changed profile default.
+- **Both skips configurable, 5–120 s, defaulting to 30/30** rather than the requirement's 15/30 — ADR-0015
+  records why. The glyphs had to change with it: `Replay30` has the number drawn *into* it, so the icon now
+  follows the interval and falls back to a plain arrow where Material has no glyph for the chosen value. A
+  button reading "30" that jumps forty-five seconds is worse than one with no number.
+- **Auto-rewind after a pause**, off by default, with the requirement's four bands. Three of PLAY-009's five
+  criteria are about when *not* to rewind, so the controller is *told* why playback stopped rather than
+  inferring it: a user seek cancels it, an audio-focus loss never arms it, and the clamp stops it at the
+  current chapter's start. The undo seeks to the remembered position rather than adding the amount back —
+  by the time somebody taps it, several seconds of the rewound audio have played.
+- **Buffer presets**, applied when the player is constructed. An invalid preset falls back to Media3's
+  defaults instead of throwing, because `DefaultLoadControl.Builder` asserts those relationships itself and
+  would crash the service on the next play; a unit test makes that path unreachable.
+- **PLAY-008's custom length**, which was the last part of the sleep timer outstanding. A slider to eight
+  hours with an explicit start, because a slider that armed on every value change would write forty rows to
+  the timer history while a thumb crossed it (ADR-0014).
+
+### What wave 4 deliberately did not do
+
+- **No live player recreation for a buffer change.** PLAY-006 says a preset applies "on the next player
+  preparation *or* controlled player recreation", and this does the first. Recreating a live player mid-book
+  to honour a setting is the one thing product priority 1 forbids, and the criterion about position and queue
+  surviving recreation is therefore vacuous here rather than failed. If a live change is wanted, it wants its
+  own slice and a soak test.
+- **No Advanced buffer option.** PLAY-006 lists explicit minimum/maximum/start/rebuffer/target-bytes fields.
+  The five presets cover the requirement's own user-facing model; the validity predicate the Advanced option
+  needs is already written and tested (`BufferPreset.isValid`), which is the part that would be easy to get
+  wrong later.
+- **No rebuffer count or startup latency in diagnostics** (PLAY-006's last criterion). Those are measurements
+  of a running stream and belong with wave 5's soak, where there is something to measure.
+- **`markAsFinishedTimeRemaining` is still unread**, so ADR-0013's `max(30s, library setting)` remains half
+  implemented. It needs the library setting modelled from a Phase 1 fixture the app has never parsed.
+
+### Tests
+
+- 13 over the speed's grid, the skip clamps and every buffer preset's validity — including that stepping up
+  twelve times and down twelve returns exactly to 1.0×, which a float-accumulating implementation fails.
+- 12 over `AutoRewindMath`: every band boundary, the chapter clamp, a book with no chapters, malformed
+  metadata that would push a listener *forwards*, and the undo amount reflecting the clamp rather than the
+  request.
+- 2 over migration 9→10, including the profile cascade.
+- 1 more in `MiniPlayerScreenTest`, asserting the skip labels follow the configured interval.
+
 ## Wave 5 — the exit criteria
+
+Hardware, plus the three things wave 4 left measured-but-unmeasurable off a device:
+
+- `markAsFinishedTimeRemaining` from the library settings (ADR-0013's unfinished half).
+- Rebuffer count and startup latency in diagnostics (PLAY-006's last criterion).
+- The media notification, if the diagnostics added after the 0.3.0 device run show it is our defect rather
+  than a declined permission.
 
 Hardware. A delta test script per build, as in Phase 1, plus the soak.
 

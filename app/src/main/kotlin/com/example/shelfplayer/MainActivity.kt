@@ -33,7 +33,10 @@ import com.example.shelfplayer.feature.player.FullPlayer
 import com.example.shelfplayer.feature.player.MiniPlayer
 import com.example.shelfplayer.feature.player.PlayerActions
 import com.example.shelfplayer.feature.player.PlayerViewModel
+import com.example.shelfplayer.feature.player.RewindNotice
+import com.example.shelfplayer.feature.player.SkipControls
 import com.example.shelfplayer.feature.player.SleepTimerSheet
+import com.example.shelfplayer.feature.player.SpeedSheet
 import com.example.shelfplayer.navigation.ShelfDestinations
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
 import dagger.hilt.android.AndroidEntryPoint
@@ -93,8 +96,16 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
     val timer by playerViewModel.timer.collectAsStateWithLifecycle()
     val isExpanded by playerViewModel.isExpanded.collectAsStateWithLifecycle()
     val isNotificationBlocked by playerViewModel.isNotificationBlocked.collectAsStateWithLifecycle()
+    val playbackSettings by playerViewModel.settings.collectAsStateWithLifecycle()
+    val rewind by playerViewModel.rewind.collectAsStateWithLifecycle()
+    val skipControls = SkipControls(
+        intervals = playbackSettings.skips,
+        onBack = playerViewModel::onSkipBack,
+        onForward = playerViewModel::onSkipForward,
+    )
     var isTimerSheetOpen by remember { mutableStateOf(false) }
     var isChapterSheetOpen by remember { mutableStateOf(false) }
+    var isSpeedSheetOpen by remember { mutableStateOf(false) }
     NotificationPermission(hasPlayback = playback.bookId != null)
     SyncOnBackground(onBackgrounded = playerViewModel::onAppBackgrounded)
 
@@ -110,7 +121,7 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
             onStop = playerViewModel::onStop,
             onOpenSleepTimer = { isTimerSheetOpen = true },
             onExpand = playerViewModel::onExpand,
-            onSkipBy = playerViewModel::onSkipBy,
+            skips = skipControls,
         )
     }
 
@@ -124,12 +135,13 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
             state = playback,
             timer = timer,
             isNotificationBlocked = isNotificationBlocked,
+            skips = skipControls,
             actions = PlayerActions(
                 onTogglePlayPause = playerViewModel::onTogglePlayPause,
                 onSeekTo = playerViewModel::onSeekTo,
-                onSkipBy = playerViewModel::onSkipBy,
                 onOpenSleepTimer = { isTimerSheetOpen = true },
                 onOpenChapters = { isChapterSheetOpen = true },
+                onOpenSpeed = { isSpeedSheetOpen = true },
                 onCollapse = playerViewModel::onCollapse,
             ),
         )
@@ -144,6 +156,29 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
                 isChapterSheetOpen = false
             },
             onDismiss = { isChapterSheetOpen = false },
+        )
+    }
+
+    if (isSpeedSheetOpen) {
+        SpeedSheet(
+            speed = playback.speed,
+            onSelect = { chosen ->
+                playerViewModel.onSpeedSelected(chosen)
+            },
+            onReset = {
+                playerViewModel.onSpeedCleared()
+                isSpeedSheetOpen = false
+            },
+            onDismiss = { isSpeedSheetOpen = false },
+        )
+    }
+
+    // PRODUCT_SPEC PLAY-009 — "applied rewind is visible briefly and can be undone".
+    rewind?.let { applied ->
+        RewindNotice(
+            applied = applied,
+            onUndo = playerViewModel::onUndoRewind,
+            onDismiss = playerViewModel::onRewindNoticeShown,
         )
     }
 

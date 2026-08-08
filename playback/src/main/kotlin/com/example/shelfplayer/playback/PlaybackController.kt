@@ -20,9 +20,11 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.GlobalTimeline
 import com.example.shelfplayer.domain.repository.PlaybackRepository
+import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -66,6 +68,8 @@ class PlaybackController @Inject constructor(
     private val playbackRepository: PlaybackRepository,
     private val sleepTimer: SleepTimerController,
     private val sessionSync: SessionSyncCoordinator,
+    private val autoRewind: AutoRewindController,
+    private val playbackSettings: PlaybackSettingsRepository,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
@@ -128,10 +132,14 @@ class PlaybackController @Inject constructor(
         // fetched. A session recorded only once playback succeeded would lose the listening of a book that
         // started and then hit a network error.
         sessionSync.onSessionOpened(session)
+        autoRewind.onBookChanged(session.chapters)
         chapters = session.chapters
         lastChapter = null
         val queue = MediaItems.queueFor(session)
         media.setMediaItems(queue.items, queue.startIndex, queue.startPositionMs)
+        // PRODUCT_SPEC PLAY-007 — the book's own speed if it has one, the profile default otherwise, applied
+        // before `prepare` so the first second plays at the right rate rather than snapping a moment later.
+        media.setPlaybackSpeed(playbackSettings.speedFor(session.bookId).value)
         media.prepare()
         media.play()
         AppResult.Success(Unit)
@@ -193,6 +201,43 @@ class PlaybackController @Inject constructor(
 
     /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from a list. */
     fun seekToChapter(chapter: Chapter) = seekTo(chapter.start)
+
+    /**
+     * PRODUCT_SPEC PLAY-007 — sets the speed for the book playing now, and remembers it for that book.
+     *
+     * Applied to the player *and* stored, in that order: the listener hears the change immediately and the
+     * write happens off the main thread behind it. Storing first would make a fast tap on the plus button
+     * wait for a database write between each step.
+     *
+     * Pitch is preserved because `setPlaybackSpeed` leaves it at 1.0 and Media3's Sonic processor stretches
+     * time rather than resampling — PLAY-007's "pitch is preserved" needs no further work.
+     */
+    fun setSpeed(speed: PlaybackSpeed) {
+        applicationScope.launch(mainDispatcher) {
+            val media = controller ?: return@launch
+            val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf) ?: return@launch
+            media.setPlaybackSpeed(speed.value)
+            _state.value = _state.value.copy(speed = speed)
+            playbackSettings.setSpeedFor(bookId, speed)
+        }
+    }
+
+    /**
+     * Clears the book's override so it follows the profile default again, and applies that default now.
+     *
+     * Two different things — "no override" and "an override that happens to equal the default" — and this is
+     * the first (see `PlaybackSettingsRepository.setSpeedFor`).
+     */
+    fun clearSpeedOverride() {
+        applicationScope.launch(mainDispatcher) {
+            val media = controller ?: return@launch
+            val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf) ?: return@launch
+            playbackSettings.setSpeedFor(bookId, null)
+            val fallback = playbackSettings.speedFor(bookId)
+            media.setPlaybackSpeed(fallback.value)
+            _state.value = _state.value.copy(speed = fallback)
+        }
+    }
 
     /** Where the book is now, or `null` when nothing is loaded. Main thread only. */
     private fun currentPosition(): Duration? {
@@ -347,6 +392,9 @@ class PlaybackController @Inject constructor(
             duration = item?.let(MediaItems::bookDurationOf) ?: Duration.ZERO,
             chapters = if (item == null) emptyList() else GlobalTimeline.ordered(chapters),
             currentChapter = chapter,
+            // Read from the player rather than from the settings, so the state always reports what is
+            // actually happening — including a speed something else set through the media session.
+            speed = PlaybackSpeed.of(media.playbackParameters.speed),
         )
     }
 
@@ -400,6 +448,8 @@ data class PlaybackUiState(
     /** PRODUCT_SPEC PLAY-003 — in time order, so a list renders in the order it plays. */
     val chapters: List<Chapter> = emptyList(),
     val currentChapter: Chapter? = null,
+    /** PRODUCT_SPEC PLAY-007 — what the player is actually running at, not what a setting says. */
+    val speed: PlaybackSpeed = PlaybackSpeed.Normal,
 ) {
     /** Fraction in `0.0..1.0`; `0` when the duration is not known yet rather than a division by zero. */
     val fractionComplete: Float

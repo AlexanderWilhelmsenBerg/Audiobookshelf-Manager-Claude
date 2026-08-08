@@ -6,11 +6,17 @@ import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.playback.AutoRewind
+import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.NotificationAccess
+import com.example.shelfplayer.core.model.playback.PlaybackSettings
+import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
+import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
+import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
@@ -67,6 +73,7 @@ class SettingsViewModel @Inject constructor(
      * platform read would be the parallel abstraction CLAUDE.md warns about.
      */
     private val notifications: NotificationAccessReader,
+    private val playbackSettings: PlaybackSettingsRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -84,6 +91,7 @@ class SettingsViewModel @Inject constructor(
             sleepTimer.observeSettings(),
             sleepTimer.observeRecentSessions(),
             sessionSync.observeDiagnostics(),
+            playbackSettings.observeSettings(),
             ::Playback,
         ),
     ) { libraries, stored, server, storage, playback ->
@@ -98,6 +106,7 @@ class SettingsViewModel @Inject constructor(
             sleepTimer = playback.timer,
             sleepTimerHistory = playback.timerHistory,
             sessionSync = playback.sessionSync,
+            playback = playback.controls,
             // Read per emission rather than observed: notification state has no change callback, and this
             // flow already re-runs whenever anything it depends on moves — which on the About tab is often
             // enough to be current while somebody is looking at it.
@@ -135,6 +144,24 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { sleepTimer.setFadeLength(length) }
     }
 
+    /** PRODUCT_SPEC PLAY-007 — the speed a book uses when it has no override of its own. */
+    fun onDefaultSpeedChanged(speed: PlaybackSpeed) {
+        viewModelScope.launch { playbackSettings.setDefaultSpeed(speed) }
+    }
+
+    fun onSkipIntervalsChanged(skips: SkipIntervals) {
+        viewModelScope.launch { playbackSettings.setSkipIntervals(skips) }
+    }
+
+    /** PRODUCT_SPEC PLAY-009 — the switch and the four bands, which are one value. */
+    fun onAutoRewindChanged(rewind: AutoRewind) {
+        viewModelScope.launch { playbackSettings.setAutoRewind(rewind) }
+    }
+
+    fun onBufferPresetChanged(preset: BufferPreset) {
+        viewModelScope.launch { playbackSettings.setBufferPreset(preset) }
+    }
+
     /**
      * The three playback readings, combined before the outer `combine` sees them.
      *
@@ -146,6 +173,7 @@ class SettingsViewModel @Inject constructor(
         val timer: SleepTimerSettings,
         val timerHistory: List<SleepTimerSession>,
         val sessionSync: SessionSyncDiagnostics,
+        val controls: PlaybackSettings,
     )
 
     private companion object {
@@ -175,6 +203,8 @@ data class SettingsUiState(
     val sessionSync: SessionSyncDiagnostics = SessionSyncDiagnostics(),
     /** PRODUCT_SPEC PLAY-001 — whether the media notification can appear, and whether it has. */
     val notifications: NotificationAccess = NotificationAccess(),
+    /** PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — speed, skips, auto-rewind and the buffer. */
+    val playback: PlaybackSettings = PlaybackSettings.Default,
     val versionName: String = "",
     val isLoaded: Boolean = false,
 )

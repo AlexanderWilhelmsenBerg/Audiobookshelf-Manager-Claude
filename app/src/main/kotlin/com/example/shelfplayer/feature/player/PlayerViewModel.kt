@@ -5,9 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Chapter
+import com.example.shelfplayer.core.model.playback.PlaybackSettings
+import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
+import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
+import com.example.shelfplayer.playback.AutoRewindController
 import com.example.shelfplayer.playback.NotificationAccessReader
 import com.example.shelfplayer.playback.PlaybackController
 import com.example.shelfplayer.playback.PlaybackUiState
@@ -15,8 +19,10 @@ import com.example.shelfplayer.playback.SessionSyncCoordinator
 import com.example.shelfplayer.playback.SleepTimerController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.time.Duration
@@ -37,6 +43,8 @@ class PlayerViewModel @Inject constructor(
     private val sleepTimer: SleepTimerController,
     private val sessionSync: SessionSyncCoordinator,
     private val notifications: NotificationAccessReader,
+    private val autoRewind: AutoRewindController,
+    playbackSettings: PlaybackSettingsRepository,
     private val surface: PlayerSurface,
 ) : ViewModel() {
 
@@ -47,6 +55,21 @@ class PlayerViewModel @Inject constructor(
 
     /** PRODUCT_SPEC PLAY-001 — whether the full-screen player is showing. */
     val isExpanded: StateFlow<Boolean> = surface.isExpanded
+
+    /**
+     * PRODUCT_SPEC PLAY-007 — the configured skip intervals, so the buttons match what they do.
+     *
+     * The whole settings object rather than the two durations: the player also needs to know whether the
+     * speed it is showing is a per-book override, and one flow is one recomposition.
+     */
+    val settings: StateFlow<PlaybackSettings> = playbackSettings.observeSettings().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = PlaybackSettings.Default,
+    )
+
+    /** PRODUCT_SPEC PLAY-009 — "applied rewind is visible briefly and can be undone". */
+    val rewind: StateFlow<AutoRewindController.Applied?> = autoRewind.lastApplied
 
     /**
      * PRODUCT_SPEC PLAY-001 — whether the notification this book should have is being blocked.
@@ -98,8 +121,21 @@ class PlayerViewModel @Inject constructor(
     /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from the list. */
     fun onChapterSelected(chapter: Chapter) = controller.seekToChapter(chapter)
 
-    /** PRODUCT_SPEC PLAY-007 — the skip controls. Negative skips back. */
-    fun onSkipBy(delta: Duration) = controller.skipBy(delta)
+    /** PRODUCT_SPEC PLAY-007 — the skip controls, at the configured intervals. */
+    fun onSkipBack() = controller.skipBy(-settings.value.skips.back)
+
+    fun onSkipForward() = controller.skipBy(settings.value.skips.forward)
+
+    /** PRODUCT_SPEC PLAY-007 — sets the speed for the book playing now, remembering it for that book. */
+    fun onSpeedSelected(speed: PlaybackSpeed) = controller.setSpeed(speed)
+
+    /** Returns the book to the profile default, which is not the same as setting it to 1.0×. */
+    fun onSpeedCleared() = controller.clearSpeedOverride()
+
+    /** PRODUCT_SPEC PLAY-009 — puts the position back where the pause left it. */
+    fun onUndoRewind() = autoRewind.undo()
+
+    fun onRewindNoticeShown() = autoRewind.dismissUndo()
 
     fun onTogglePlayPause() = controller.togglePlayPause()
 
@@ -145,5 +181,9 @@ class PlayerViewModel @Inject constructor(
 
     fun onMessageShown() {
         _message.value = null
+    }
+
+    private companion object {
+        const val STOP_TIMEOUT_MILLIS = 5_000L
     }
 }
