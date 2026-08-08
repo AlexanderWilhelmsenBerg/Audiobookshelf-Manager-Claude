@@ -142,7 +142,6 @@
     <string name="book_downloaded">Nedlastet</string>
     <string name="book_series_position">%1$s, bok %2$s</string>
 
-    <string name="book_on_server">På serveren</string>
     <string name="book_last_checked">Sist sjekket %1$s</string>
     <string name="book_published">Utgitt %1$s</string>
     <string name="book_publisher">Forlag: %1$s</string>
@@ -167,6 +166,9 @@
         <item quantity="one">%1$d sekund fram</item>
         <item quantity="other">%1$d sekunder fram</item>
     </plurals>
+    <string name="player_speed_later">Avspillingshastighet — kommer i en senere fase</string>
+    <string name="player_chapters_later">Kapitler — kommer i en senere fase</string>
+    <string name="player_bookmark_later">Bokmerke — kommer i en senere fase</string>
     <string name="player_open">Åpne spilleren</string>
     <string name="player_starting">Starter …</string>
     <!-- %1$s er posisjonen boken fortsetter fra, for eksempel "2 t 14 min". -->
@@ -205,6 +207,7 @@
         <item quantity="other">Startet på nytt %1$d ganger</item>
     </plurals>
     <string name="settings_tab_sleep">Sovetid</string>
+    <string name="book_section_about">Om boken</string>
     <string name="book_download_later">Last ned — kommer i en senere fase</string>
     <string name="navigate_back">Tilbake</string>
 

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay30
@@ -30,7 +31,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -171,15 +171,12 @@ fun MiniPlayer(
                 }
                 IconButton(onClick = { onSkipBy(SKIP_INTERVAL) }) {
                     Icon(
-                        imageVector = Icons.Filled.Replay30,
+                        imageVector = Icons.Filled.Forward30,
                         contentDescription = pluralStringResource(
                             R.plurals.player_skip_forward,
                             SKIP_SECONDS,
                             SKIP_SECONDS,
                         ),
-                        // Material has no forward-30 glyph, so the replay one is mirrored. The content
-                        // description is what actually says which way it goes.
-                        modifier = Modifier.scale(scaleX = -1f, scaleY = 1f),
                     )
                 }
                 IconButton(onClick = onStop) {

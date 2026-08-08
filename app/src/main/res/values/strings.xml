@@ -152,7 +152,6 @@
     <string name="book_series_position">%1$s, book %2$s</string>
 
     <!-- PRODUCT_SPEC LIB-004 — the detail fields the sync has always stored. -->
-    <string name="book_on_server">On the server</string>
     <string name="book_last_checked">Last checked %1$s</string>
     <string name="book_published">Published %1$s</string>
     <string name="book_publisher">Publisher: %1$s</string>
@@ -182,6 +181,9 @@
         <item quantity="one">Forward %1$d second</item>
         <item quantity="other">Forward %1$d seconds</item>
     </plurals>
+    <string name="player_speed_later">Playback speed — arrives in a later phase</string>
+    <string name="player_chapters_later">Chapters — arrive in a later phase</string>
+    <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
     <string name="player_open">Open the player</string>
     <string name="player_starting">Starting…</string>
     <!-- %1$s is the position a book will resume from, such as "2 h 14 min". -->
@@ -226,6 +228,7 @@
         <item quantity="other">Restarted %1$d times</item>
     </plurals>
     <string name="settings_tab_sleep">Sleep</string>
+    <string name="book_section_about">About this book</string>
     <string name="book_download_later">Download — arrives in a later phase</string>
     <string name="navigate_back">Back</string>
 
