@@ -18,6 +18,7 @@ import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
+import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
@@ -37,6 +38,7 @@ import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
+import com.example.shelfplayer.playback.NotificationAccessReader
 import com.example.shelfplayer.testing.FakePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,6 +73,9 @@ class SettingsViewModelTest {
     private val sleepTimer = FakeSleepTimers()
     private val sessionSync = FakeSessionSync()
 
+    /** PRODUCT_SPEC PLAY-001 — a platform read, so the ViewModel test supplies the answer rather than a device. */
+    private val notifications = NotificationAccessReader { NotificationAccess() }
+
     private fun viewModel() = SettingsViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         observeServerDiagnostics = ObserveServerDiagnosticsUseCase(profiles, capabilities, StubRealtime()),
@@ -78,6 +83,7 @@ class SettingsViewModelTest {
         preferences = preferences,
         sleepTimer = sleepTimer,
         sessionSync = sessionSync,
+        notifications = notifications,
     )
 
     /**

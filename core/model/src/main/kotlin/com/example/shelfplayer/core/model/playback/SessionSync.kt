@@ -142,3 +142,37 @@ data class SessionSyncDiagnostics(
     val lastFailureCode: String? = null,
     val clockSkew: ClockSkew? = null,
 )
+
+/**
+ * PRODUCT_SPEC PLAY-001 — whether the media notification can be, and is being, shown.
+ *
+ * ### Why the app has to measure this
+ *
+ * PLAY-001 requires a media notification with transport controls, and on Android 13+ the app cannot
+ * produce one without a runtime permission the user may have declined. A declined permission is
+ * indistinguishable, from inside the app, from a notification the player failed to build — and the two have
+ * completely different fixes. Reading the platform's own answer separates them.
+ *
+ * [isShowing] is the direct observation rather than an inference: it asks the notification manager whether
+ * *this* app currently has the media notification posted. "The permission is granted" and "the notification
+ * is there" are different claims, and only the second one is the requirement.
+ *
+ * @property isAllowed whether notifications are enabled for the app at all. `true` below API 33, where the
+ *   permission does not exist.
+ * @property isChannelBlocked whether the media channel specifically has been turned off. A user can allow an
+ *   app's notifications and silence one channel, which looks exactly like the permission being denied.
+ * @property isShowing whether the media notification is posted right now.
+ */
+data class NotificationAccess(
+    val isAllowed: Boolean = true,
+    val isChannelBlocked: Boolean = false,
+    val isShowing: Boolean = false,
+) {
+    /**
+     * The one state the app should say something about: a book is playing and the notification cannot appear.
+     *
+     * Not `!isShowing` on its own — nothing is playing most of the time, and a missing notification is then
+     * correct. The caller supplies whether there is playback to show.
+     */
+    val isBlocked: Boolean get() = !isAllowed || isChannelBlocked
+}

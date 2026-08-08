@@ -307,6 +307,24 @@
     <string name="settings_check_state_waiting">Ikke ennå</string>
     <string name="settings_check_state_manual">Krever en enhet</string>
 
+    <string name="settings_section_notification">Medievarsel</string>
+    <string name="settings_notification_body">PLAY-001 krever et varsel med avspillingskontroller mens en bok spilles. Disse sier om et kan vises.</string>
+    <string name="settings_notification_allowed">Varsler tillatt</string>
+    <string name="settings_notification_allowed_hint">Android 13 og nyere spør om dette første gang en bok spilles. Å avslå skjuler varselet og ingenting annet.</string>
+    <string name="settings_notification_channel">Mediekanal</string>
+    <string name="settings_notification_channel_on">På</string>
+    <string name="settings_notification_channel_off">Dempet</string>
+    <string name="settings_notification_channel_absent">Ikke opprettet ennå</string>
+    <string name="settings_notification_showing">Vises nå</string>
+    <string name="settings_notification_showing_hint">Spill noe, og kom tilbake hit. Ja her og ingenting i varselpanelet er en reell feil.</string>
+    <string name="settings_notification_yes">Ja</string>
+    <string name="settings_notification_no">Nei</string>
+    <string name="settings_notification_open">Åpne varselinnstillinger</string>
+    <string name="settings_check_notification">Spill en bok og dra ned varselpanelet: medievarselet er der med kontroller som virker.</string>
+
+    <string name="player_notifications_blocked">Varsler er av, så denne boken har ingen varsel- eller låseskjermkontroller.</string>
+    <string name="player_notifications_fix">Slå på</string>
+
     <plurals name="home_library_books">
         <item quantity="one">%1$d bok</item>
         <item quantity="other">%1$d bøker</item>

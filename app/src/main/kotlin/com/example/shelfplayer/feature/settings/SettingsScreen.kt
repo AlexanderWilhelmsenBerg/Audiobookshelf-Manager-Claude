@@ -184,8 +184,9 @@ private fun LazyListScope.aboutTab(uiState: SettingsUiState) {
     // that order: a checklist above the numbers it is judged by would send the reader scrolling.
     if (uiState.isLoaded) {
         item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+        notificationRows(uiState.notifications)
         sessionSyncRows(uiState.sessionSync)
-        syncCheckRows(uiState.sessionSync)
+        syncCheckRows(uiState.sessionSync, uiState.notifications)
     }
 }
 

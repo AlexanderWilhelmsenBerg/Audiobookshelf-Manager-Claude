@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
+import com.example.shelfplayer.playback.NotificationAccessReader
 import com.example.shelfplayer.playback.PlaybackController
 import com.example.shelfplayer.playback.PlaybackUiState
 import com.example.shelfplayer.playback.SessionSyncCoordinator
@@ -35,6 +36,7 @@ class PlayerViewModel @Inject constructor(
     private val controller: PlaybackController,
     private val sleepTimer: SleepTimerController,
     private val sessionSync: SessionSyncCoordinator,
+    private val notifications: NotificationAccessReader,
     private val surface: PlayerSurface,
 ) : ViewModel() {
 
@@ -45,6 +47,17 @@ class PlayerViewModel @Inject constructor(
 
     /** PRODUCT_SPEC PLAY-001 — whether the full-screen player is showing. */
     val isExpanded: StateFlow<Boolean> = surface.isExpanded
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — whether the notification this book should have is being blocked.
+     *
+     * Re-read when the player opens rather than observed: notification state has no change callback, and the
+     * one moment it matters is when a listener is looking at the player wondering where their controls went.
+     * A trip to the system settings and back re-opens the player, which re-reads it.
+     */
+    private val _isNotificationBlocked = MutableStateFlow(false)
+
+    val isNotificationBlocked: StateFlow<Boolean> = _isNotificationBlocked.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
 
@@ -62,12 +75,20 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = controller.play(bookId)) {
                 is AppResult.Failure -> _message.value = result.error.summary
-                is AppResult.Success -> surface.expand()
+                is AppResult.Success -> onExpand()
             }
         }
     }
 
-    fun onExpand() = surface.expand()
+    fun onExpand() {
+        refreshNotificationAccess()
+        surface.expand()
+    }
+
+    /** Called when the player becomes visible, which is the only time the answer is worth showing. */
+    fun refreshNotificationAccess() {
+        _isNotificationBlocked.value = notifications.read().isBlocked
+    }
 
     fun onCollapse() = surface.collapse()
 

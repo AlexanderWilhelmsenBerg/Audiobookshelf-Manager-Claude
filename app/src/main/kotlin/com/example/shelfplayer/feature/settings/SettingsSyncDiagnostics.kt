@@ -1,5 +1,7 @@
 package com.example.shelfplayer.feature.settings
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,14 +17,17 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.ClockSkew
+import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import java.time.Instant
@@ -94,6 +99,52 @@ internal fun LazyListScope.sessionSyncRows(sync: SessionSyncDiagnostics) {
 }
 
 /**
+ * PRODUCT_SPEC PLAY-001 — whether the media notification can appear, and whether it has.
+ *
+ * Three rows because there are three causes with three different fixes, and from inside the app they are
+ * indistinguishable without asking the platform: the runtime permission was declined, the media channel was
+ * silenced, or the notification was never posted. A device run reported a playing book with no notification
+ * and no way to tell which of those it was — that round trip is what these rows remove.
+ *
+ * The button appears only when something is actually blocking it. A permanent "open notification settings"
+ * row on a working build is a control that invites the user to break something.
+ */
+internal fun LazyListScope.notificationRows(access: NotificationAccess) {
+    item { SubHeader(text = stringResource(R.string.settings_section_notification)) }
+    item { Hint(text = stringResource(R.string.settings_notification_body)) }
+    item {
+        YesNoRow(
+            labelRes = R.string.settings_notification_allowed,
+            value = access.isAllowed,
+            hintRes = R.string.settings_notification_allowed_hint,
+        )
+    }
+    item {
+        TextRow(
+            labelRes = R.string.settings_notification_channel,
+            value = stringResource(
+                when {
+                    access.isChannelBlocked -> R.string.settings_notification_channel_off
+                    access.isAllowed -> R.string.settings_notification_channel_on
+                    else -> R.string.settings_notification_channel_absent
+                },
+            ),
+        )
+    }
+    item {
+        YesNoRow(
+            labelRes = R.string.settings_notification_showing,
+            value = access.isShowing,
+            hintRes = R.string.settings_notification_showing_hint,
+        )
+    }
+    if (access.isBlocked) {
+        item { OpenNotificationSettingsButton() }
+    }
+    item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+}
+
+/**
  * PRODUCT_SPEC PLAY-004 / PLAY-005 — the checks wave 3 has to pass, with what to do for each.
  *
  * Three states rather than two. A check the app can see the evidence for is marked [SyncCheckState.Seen]; one
@@ -102,10 +153,10 @@ internal fun LazyListScope.sessionSyncRows(sync: SessionSyncDiagnostics) {
  * says so rather than sitting unticked forever. A checklist that cannot distinguish "not done" from "not
  * checkable here" is a checklist that reads as failing.
  */
-internal fun LazyListScope.syncCheckRows(sync: SessionSyncDiagnostics) {
+internal fun LazyListScope.syncCheckRows(sync: SessionSyncDiagnostics, access: NotificationAccess) {
     item { SubHeader(text = stringResource(R.string.settings_section_checks)) }
     item { Hint(text = stringResource(R.string.settings_checks_body)) }
-    items(checksFor(sync), key = { it.labelRes }) { check -> SyncCheckRow(check) }
+    items(checksFor(sync) + checkFor(access), key = { it.labelRes }) { check -> SyncCheckRow(check) }
 }
 
 /**
@@ -156,6 +207,20 @@ internal fun checksFor(sync: SessionSyncDiagnostics): List<SyncCheck> = listOf(
         state = if (sync.clockSkew?.isSignificant == true) SyncCheckState.Seen else SyncCheckState.NeedsDevice,
     ),
     SyncCheck(labelRes = R.string.settings_check_second_device, state = SyncCheckState.NeedsDevice),
+)
+
+/**
+ * PRODUCT_SPEC PLAY-001 — the notification check, judged by whether one is posted.
+ *
+ * Separate from [checksFor] because its evidence is the device's notification state rather than the outbox,
+ * and folding it in would make the wave-3 list depend on something wave 3 did not build. `Seen` means the app
+ * observed its own notification, which is as close to the requirement as a reading can get; anything else
+ * needs somebody to pull the shade down, because a notification that is posted and invisible is still a
+ * failure.
+ */
+internal fun checkFor(access: NotificationAccess): SyncCheck = SyncCheck(
+    labelRes = R.string.settings_check_notification,
+    state = if (access.isShowing) SyncCheckState.Seen else SyncCheckState.NeedsDevice,
 )
 
 /**
@@ -223,6 +288,61 @@ private fun SyncCheckRow(check: SyncCheck, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/**
+ * PRODUCT_SPEC 3.2 — yes/no as words, not as a colour or a tick alone.
+ *
+ * The value carries the meaning for a screen reader as well as for a glance, which a coloured icon does not.
+ */
+@Composable
+private fun YesNoRow(labelRes: Int, value: Boolean, modifier: Modifier = Modifier, hintRes: Int? = null) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(WEIGHT_FILL), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(text = stringResource(labelRes), style = MaterialTheme.typography.bodyMedium)
+            hintRes?.let {
+                Text(
+                    text = stringResource(it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Text(
+            text = stringResource(if (value) R.string.settings_notification_yes else R.string.settings_notification_no),
+            style = MaterialTheme.typography.titleMedium,
+            color = if (value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+/**
+ * The one action on this screen, and it leaves the app.
+ *
+ * The permission cannot be re-requested once declined — `launch` silently does nothing — so the system
+ * settings page is the only route back. Deep-linked to *this app's* notification settings rather than to the
+ * general list, because a user who has to find the app in a list of two hundred will not.
+ */
+@Composable
+private fun OpenNotificationSettingsButton(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    TextButton(
+        onClick = {
+            context.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+            )
+        },
+        modifier = modifier.padding(horizontal = 8.dp),
+    ) {
+        Text(text = stringResource(R.string.settings_notification_open))
     }
 }
 

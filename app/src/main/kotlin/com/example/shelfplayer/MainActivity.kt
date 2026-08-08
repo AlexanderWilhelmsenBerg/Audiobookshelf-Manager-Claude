@@ -92,6 +92,7 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
     val playback by playerViewModel.playback.collectAsStateWithLifecycle()
     val timer by playerViewModel.timer.collectAsStateWithLifecycle()
     val isExpanded by playerViewModel.isExpanded.collectAsStateWithLifecycle()
+    val isNotificationBlocked by playerViewModel.isNotificationBlocked.collectAsStateWithLifecycle()
     var isTimerSheetOpen by remember { mutableStateOf(false) }
     var isChapterSheetOpen by remember { mutableStateOf(false) }
     NotificationPermission(hasPlayback = playback.bookId != null)
@@ -122,6 +123,7 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
         FullPlayer(
             state = playback,
             timer = timer,
+            isNotificationBlocked = isNotificationBlocked,
             actions = PlayerActions(
                 onTogglePlayPause = playerViewModel::onTogglePlayPause,
                 onSeekTo = playerViewModel::onSeekTo,

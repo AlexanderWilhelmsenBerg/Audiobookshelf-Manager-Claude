@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.settings
 
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.ClockSkew
+import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import org.junit.Test
 import java.time.Instant
@@ -151,10 +152,45 @@ class SyncCheckTest {
         )
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-001 — the notification check is judged by the notification, not by the permission.
+     *
+     * A granted permission is not the requirement; a posted notification is. So "allowed but not showing" is
+     * not a pass — it is the exact state the device report described, and it must not tick itself green.
+     */
+    @Test
+    fun `the notification check passes only when one is actually posted`() {
+        assertEquals(
+            SyncCheckState.Seen,
+            checkFor(NotificationAccess(isAllowed = true, isShowing = true)).state,
+        )
+        assertEquals(
+            SyncCheckState.NeedsDevice,
+            checkFor(NotificationAccess(isAllowed = true, isShowing = false)).state,
+        )
+        assertEquals(
+            SyncCheckState.NeedsDevice,
+            checkFor(NotificationAccess(isAllowed = false, isShowing = false)).state,
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — a silenced channel counts as blocked even with the permission granted.
+     *
+     * The two are separate settings and either one alone hides the notification, which is why the app reads
+     * both rather than inferring one from the other.
+     */
+    @Test
+    fun `blocked covers a denied permission and a silenced channel alike`() {
+        assertEquals(false, NotificationAccess(isAllowed = true, isChannelBlocked = false).isBlocked)
+        assertEquals(true, NotificationAccess(isAllowed = false, isChannelBlocked = false).isBlocked)
+        assertEquals(true, NotificationAccess(isAllowed = true, isChannelBlocked = true).isBlocked)
+    }
+
     /** Every check has a distinct label, or `items(key = …)` would crash the list. */
     @Test
     fun `the checks are keyed uniquely`() {
-        val checks = checksFor(SessionSyncDiagnostics())
+        val checks = checksFor(SessionSyncDiagnostics()) + checkFor(NotificationAccess())
 
         assertEquals(checks.size, checks.map { it.labelRes }.distinct().size)
     }

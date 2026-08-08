@@ -142,12 +142,37 @@ the **Checks after wave 3** list marks the clock line as **Seen**.
 
 **Do not leave the clock wrong.** With it five minutes fast, step 8 will fail by design.
 
+## 9b. The media notification
+
+A device run on 0.3.0-sync reported a playing book with **no notification**. From inside the app that has
+three causes with three different fixes, so this build now says which.
+
+1. Play something. Open **Settings → About → Testing → Media notification**.
+
+| Reading | Meaning |
+| --- | --- |
+| *Notifications allowed* — **No** | The Android 13+ permission was declined. Use the button that appears; the app cannot ask twice. |
+| *Media channel* — **Silenced** | The permission is granted but the channel was turned off. Same button. |
+| *Showing right now* — **No**, with the two above fine | **This is our defect**, not a setting. Say so and attach `adb logcat -s MediaSessionService:* MediaNotificationManager:*` — I have no way to reproduce it off a device. |
+| *Showing right now* — **Yes**, but the shade is empty | Also our defect, and a stranger one. Same log. |
+
+2. If you had to turn the permission on, **pause and resume once**. Media3 posts the notification on a player
+   event, and the one that would have posted it already happened while the permission was off.
+
+3. With the notification showing, **tap it**.
+
+**Expect:** the app opens. That was missing until this build — the notification had no tap target at all.
+
+4. Check the transport controls in the notification work, and that the sleep-timer countdown appears there
+   while a timer runs.
+
 ## 10. The checklist
 
 1. Scroll to **Checks after wave 3**.
 
-**Expect:** the first four lines are ticked after steps 2 and 5, and the last four say **Needs a device** —
-which is what steps 6, 7, 8 and 9 are for. Tick those off against this document rather than the screen.
+**Expect:** the first four lines are ticked after steps 2 and 5, and the rest say **Needs a device** — which
+is what steps 6, 7, 8, 9 and 9b are for. Tick those off against this document rather than the screen. The
+notification line ticks itself the moment the app can see its own notification posted.
 
 ## What is known to be missing
 

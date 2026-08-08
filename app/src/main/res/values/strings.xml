@@ -359,6 +359,32 @@
     <string name="settings_check_state_manual">Needs a device</string>
 
     <!--
+      PRODUCT_SPEC PLAY-001 — the media notification, and why it might not be there.
+
+      A device run found a playing book with no notification, and from inside the app that has three causes
+      with three different fixes: the runtime permission was declined, the media channel was silenced, or the
+      notification was never posted. These rows say which.
+    -->
+    <string name="settings_section_notification">Media notification</string>
+    <string name="settings_notification_body">PLAY-001 needs a notification with transport controls while a book plays. These say whether one can appear.</string>
+    <string name="settings_notification_allowed">Notifications allowed</string>
+    <string name="settings_notification_allowed_hint">Android 13 and later ask for this the first time a book plays. Declining it hides the notification and nothing else.</string>
+    <string name="settings_notification_channel">Media channel</string>
+    <string name="settings_notification_channel_on">On</string>
+    <string name="settings_notification_channel_off">Silenced</string>
+    <string name="settings_notification_channel_absent">Not created yet</string>
+    <string name="settings_notification_showing">Showing right now</string>
+    <string name="settings_notification_showing_hint">Play something, then come back. Yes here and nothing in the shade would be a real defect.</string>
+    <string name="settings_notification_yes">Yes</string>
+    <string name="settings_notification_no">No</string>
+    <string name="settings_notification_open">Open notification settings</string>
+    <string name="settings_check_notification">Play a book, pull down the shade: the media notification is there with working controls.</string>
+
+    <!-- PRODUCT_SPEC PLAY-001 — shown over the player when the notification cannot appear. -->
+    <string name="player_notifications_blocked">Notifications are off, so this book has no notification or lock-screen controls.</string>
+    <string name="player_notifications_fix">Turn on</string>
+
+    <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.
 
       English needs two forms, but the languages this will be translated into do not all agree on

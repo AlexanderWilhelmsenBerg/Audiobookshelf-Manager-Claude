@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
 import androidx.annotation.OptIn
@@ -104,6 +105,10 @@ class PlaybackService : MediaLibraryService() {
         exoPlayer.addListener(PlayerEvents())
         session = MediaLibrarySession.Builder(this, exoPlayer, LibraryCallback())
             .setBitmapLoader(players.bitmapLoader())
+            // PRODUCT_SPEC PLAY-001 — tapping the notification opens the app. Without this the media
+            // notification has no `contentIntent` at all, so a tap does nothing: a listener who reaches for
+            // the notification to see where they are gets no response and no explanation.
+            .apply { launchIntent()?.let(::setSessionActivity) }
             .build()
         // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
         // singleton in this process, so it is the same object the app's UI drives.
@@ -114,6 +119,26 @@ class PlaybackService : MediaLibraryService() {
         startJournal()
         observeSleepTimer()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    /**
+     * A pending intent that opens the app, resolved from the package manager rather than from a class name.
+     *
+     * `:playback` cannot name the app's activity — it does not depend on `:app`, and it must not, or the
+     * module boundary that keeps `MediaSession` in one place would run backwards. Asking the package manager
+     * for the launch intent gets the same activity without naming it, and returns `null` on the one build
+     * where there is no launcher activity at all (an instrumentation run), where a session activity would be
+     * meaningless anyway.
+     */
+    private fun launchIntent(): PendingIntent? {
+        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return null
+        return PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            // `IMMUTABLE` because nothing may add extras to it, and required from API 31 regardless.
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session

@@ -6,6 +6,7 @@ import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
@@ -16,6 +17,7 @@ import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
 import com.example.shelfplayer.domain.usecase.ServerDiagnostics
+import com.example.shelfplayer.playback.NotificationAccessReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -56,6 +58,15 @@ class SettingsViewModel @Inject constructor(
     private val preferences: PreferencesRepository,
     private val sleepTimer: SleepTimerRepository,
     sessionSync: SessionSyncRepository,
+    /**
+     * PRODUCT_SPEC PLAY-001 — read directly from `:playback` rather than through a domain repository.
+     *
+     * It is a question about the *device's* notification settings and about Media3's own channel, not about
+     * this account's data, so there is nothing for a repository to mediate. `:app` already reaches into
+     * `:playback` for the controller and the sleep timer, and inventing a repository interface for a two-line
+     * platform read would be the parallel abstraction CLAUDE.md warns about.
+     */
+    private val notifications: NotificationAccessReader,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -87,6 +98,10 @@ class SettingsViewModel @Inject constructor(
             sleepTimer = playback.timer,
             sleepTimerHistory = playback.timerHistory,
             sessionSync = playback.sessionSync,
+            // Read per emission rather than observed: notification state has no change callback, and this
+            // flow already re-runs whenever anything it depends on moves — which on the About tab is often
+            // enough to be current while somebody is looking at it.
+            notifications = notifications.read(),
             versionName = BuildConfig.VERSION_NAME,
             isLoaded = true,
         )
@@ -158,6 +173,8 @@ data class SettingsUiState(
     val sleepTimerHistory: List<SleepTimerSession> = emptyList(),
     /** PRODUCT_SPEC PLAY-004 / PLAY-005 — the session outbox, as counts and timings. */
     val sessionSync: SessionSyncDiagnostics = SessionSyncDiagnostics(),
+    /** PRODUCT_SPEC PLAY-001 — whether the media notification can appear, and whether it has. */
+    val notifications: NotificationAccess = NotificationAccess(),
     val versionName: String = "",
     val isLoaded: Boolean = false,
 )
