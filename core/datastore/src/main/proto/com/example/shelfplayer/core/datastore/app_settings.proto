@@ -62,6 +62,21 @@ message AppSettings {
   // It is stored rather than regenerated per process so that a restart does not appear on the user's
   // own server as a new device every time.
   string playback_device_id = 10;
+
+  // PRODUCT_SPEC SET-002 (Playback) / PLAY-008 — the sleep timer's defaults.
+  //
+  // Device-wide rather than per profile, unlike everything in `ProfileSettings`. A sleep timer is a
+  // property of how someone uses their phone at night; it does not belong to whichever account is
+  // signed in, and putting it per profile would silently reset it on a profile switch.
+  //
+  // All three are zero-by-default, and zero means "not chosen" rather than "zero minutes" — the
+  // reader substitutes `SleepTimerSettings.Default`. That is what lets a default change in a later
+  // build reach a user who never opened the setting.
+  int32 sleep_timer_default_minutes = 11;
+  int32 sleep_timer_fade_seconds = 12;
+
+  // PRODUCT_SPEC PLAY-008 — "requires explicit opt-in". `false` by default, which proto3 gives free.
+  bool sleep_timer_shake_to_restart = 13;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

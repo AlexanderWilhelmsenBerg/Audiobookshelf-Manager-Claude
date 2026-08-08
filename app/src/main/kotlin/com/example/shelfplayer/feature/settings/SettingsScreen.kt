@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Library
+import kotlin.time.Duration
 
 @Composable
 fun SettingsRoute(
@@ -51,6 +52,9 @@ fun SettingsRoute(
     SettingsScreen(
         uiState = uiState,
         onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
+        onSleepTimerDefaultChanged = viewModel::onSleepTimerDefaultChanged,
+        onSleepTimerFadeChanged = viewModel::onSleepTimerFadeChanged,
+        onShakeToRestartChanged = viewModel::onShakeToRestartChanged,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
     )
@@ -72,6 +76,9 @@ fun SettingsRoute(
 fun SettingsScreen(
     uiState: SettingsUiState,
     onDefaultLibraryChanged: (LibraryId?) -> Unit,
+    onSleepTimerDefaultChanged: (Duration) -> Unit,
+    onSleepTimerFadeChanged: (Duration) -> Unit,
+    onShakeToRestartChanged: (Boolean) -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -112,6 +119,14 @@ fun SettingsScreen(
             ) {
                 when (selected) {
                     SettingsTab.Server -> serverTab(uiState, onDefaultLibraryChanged)
+                    SettingsTab.Sleep -> sleepTimerTab(
+                        settings = uiState.sleepTimer,
+                        history = uiState.sleepTimerHistory,
+                        onDefaultChanged = onSleepTimerDefaultChanged,
+                        onFadeChanged = onSleepTimerFadeChanged,
+                        onShakeChanged = onShakeToRestartChanged,
+                    )
+
                     SettingsTab.About -> aboutTab(uiState)
                 }
             }
@@ -206,8 +221,14 @@ private fun LibraryRow(
     }
 }
 
-/** The two tabs, in the order they appear. `ordinal` is the selected index, so the order is the order. */
+/**
+ * The tabs, in the order they appear. `ordinal` is the selected index, so the order is the order.
+ *
+ * Sleep sits between them deliberately: it is the only tab with a preference somebody changes more than
+ * once, and About is a place you arrive at rather than pass through.
+ */
 private enum class SettingsTab(val labelRes: Int) {
     Server(R.string.settings_tab_server),
+    Sleep(R.string.settings_tab_sleep),
     About(R.string.settings_tab_about),
 }

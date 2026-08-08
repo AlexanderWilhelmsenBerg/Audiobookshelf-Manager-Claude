@@ -6,8 +6,11 @@ import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.playback.SleepTimerSession
+import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
+import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
 import com.example.shelfplayer.domain.usecase.ServerDiagnostics
@@ -49,6 +52,7 @@ class SettingsViewModel @Inject constructor(
     observeServerDiagnostics: ObserveServerDiagnosticsUseCase,
     diagnostics: DiagnosticsRepository,
     private val preferences: PreferencesRepository,
+    private val sleepTimer: SleepTimerRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -56,7 +60,11 @@ class SettingsViewModel @Inject constructor(
         preferences.observePreferences(),
         observeServerDiagnostics(),
         diagnostics.observeStorage(),
-    ) { libraries, stored, server, storage ->
+        // PRODUCT_SPEC PLAY-008 / SET-002 — the timer's defaults and the history they produced, which
+        // are read together: the screen that turns shake-to-restart on is the screen that shows how
+        // often it fired.
+        combine(sleepTimer.observeSettings(), sleepTimer.observeRecentSessions(), ::Pair),
+    ) { libraries, stored, server, storage, timer ->
         SettingsUiState(
             libraries = libraries,
             // PRODUCT_SPEC 6.1 step 9 — resolved against the granted libraries rather than shown raw.
@@ -65,6 +73,8 @@ class SettingsViewModel @Inject constructor(
             defaultLibraryId = stored.defaultLibraryId?.takeIf { id -> libraries.any { it.id == id } },
             server = server,
             storage = storage,
+            sleepTimer = timer.first,
+            sleepTimerHistory = timer.second,
             versionName = BuildConfig.VERSION_NAME,
             isLoaded = true,
         )
@@ -83,6 +93,19 @@ class SettingsViewModel @Inject constructor(
      */
     fun onDefaultLibraryChanged(libraryId: LibraryId?) {
         viewModelScope.launch { preferences.setDefaultLibrary(libraryId) }
+    }
+
+    /** PRODUCT_SPEC PLAY-008 — "requires explicit opt-in". This toggle is that opt-in. */
+    fun onShakeToRestartChanged(enabled: Boolean) {
+        viewModelScope.launch { sleepTimer.setShakeToRestart(enabled) }
+    }
+
+    fun onSleepTimerDefaultChanged(length: kotlin.time.Duration) {
+        viewModelScope.launch { sleepTimer.setDefaultLength(length) }
+    }
+
+    fun onSleepTimerFadeChanged(length: kotlin.time.Duration) {
+        viewModelScope.launch { sleepTimer.setFadeLength(length) }
     }
 
     private companion object {
@@ -104,6 +127,10 @@ data class SettingsUiState(
     val defaultLibraryId: LibraryId? = null,
     val server: ServerDiagnostics? = null,
     val storage: StorageDiagnostics = StorageDiagnostics(),
+    /** PRODUCT_SPEC SET-002 (Playback) — the sleep timer's defaults. */
+    val sleepTimer: SleepTimerSettings = SleepTimerSettings.Default,
+    /** PRODUCT_SPEC PLAY-008 — what this device's timers actually did, newest first. */
+    val sleepTimerHistory: List<SleepTimerSession> = emptyList(),
     val versionName: String = "",
     val isLoaded: Boolean = false,
 )

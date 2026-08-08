@@ -61,6 +61,7 @@ import kotlin.time.Duration
 class PlaybackController @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val playbackRepository: PlaybackRepository,
+    private val sleepTimer: SleepTimerController,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
@@ -96,6 +97,10 @@ class PlaybackController @Inject constructor(
         val media = connect() ?: return@withContext AppResult.Failure(
             AppError.Playback(summary = "The player could not be started.", isRetryable = true),
         )
+        // PRODUCT_SPEC PLAY-008 — the timer needs the chapters, and this is where they exist. They
+        // travel here rather than in the playlist because a long book's chapter list in every
+        // `MediaItem`'s extras would be tens of kilobytes across the binder to answer one question.
+        sleepTimer.onBookChanged(session.chapters)
         val queue = MediaItems.queueFor(session)
         media.setMediaItems(queue.items, queue.startIndex, queue.startPositionMs)
         media.prepare()

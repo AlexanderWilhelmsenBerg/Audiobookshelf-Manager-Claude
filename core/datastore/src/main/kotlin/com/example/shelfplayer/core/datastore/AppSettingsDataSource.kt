@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.settings.ProfilePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -13,6 +14,9 @@ import kotlinx.coroutines.flow.map
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC SET-001 — typed access to the settings store.
@@ -160,6 +164,40 @@ class AppSettingsDataSource @Inject constructor(
             current.toBuilder().setPlaybackDeviceId(newId()).build()
         }
     }.playbackDeviceId
+
+    /**
+     * PRODUCT_SPEC SET-002 (Playback) / PLAY-008 — the sleep timer's defaults.
+     *
+     * A stored `0` means "never chosen" and reads back as [SleepTimerSettings.Default], which is what
+     * lets a changed product default reach a user who has not opened the setting. Both durations are
+     * clamped to the ranges PLAY-008 states, so a value written by an older build — or a corrupted
+     * file — cannot produce a two-second timer or a fade longer than the timer itself.
+     */
+    val sleepTimer: Flow<SleepTimerSettings> = settings.map { stored ->
+        SleepTimerSettings(
+            defaultLength = stored.sleepTimerDefaultMinutes.takeIf { it > 0 }?.minutes
+                ?.coerceIn(SleepTimerSettings.LengthRange)
+                ?: SleepTimerSettings.Default.defaultLength,
+            fadeLength = stored.sleepTimerFadeSeconds.takeIf { it > 0 }?.seconds
+                ?.coerceIn(SleepTimerSettings.FadeRange)
+                ?: SleepTimerSettings.Default.fadeLength,
+            shakeToRestart = stored.sleepTimerShakeToRestart,
+        )
+    }
+
+    suspend fun setSleepTimerDefaultLength(length: Duration) {
+        val minutes = length.coerceIn(SleepTimerSettings.LengthRange).inWholeMinutes.toInt()
+        dataStore.updateData { current -> current.toBuilder().setSleepTimerDefaultMinutes(minutes).build() }
+    }
+
+    suspend fun setSleepTimerFadeLength(length: Duration) {
+        val seconds = length.coerceIn(SleepTimerSettings.FadeRange).inWholeSeconds.toInt()
+        dataStore.updateData { current -> current.toBuilder().setSleepTimerFadeSeconds(seconds).build() }
+    }
+
+    suspend fun setSleepTimerShakeToRestart(enabled: Boolean) {
+        dataStore.updateData { current -> current.toBuilder().setSleepTimerShakeToRestart(enabled).build() }
+    }
 
     suspend fun current(): AppSettings = dataStore.updateData { it }
 }

@@ -158,6 +158,38 @@
     <string name="player_starting">Starter …</string>
     <!-- %1$s er posisjonen boken fortsetter fra, for eksempel "2 t 14 min". -->
     <string name="player_resume_at">Fortsett fra %1$s</string>
+
+    <!-- PRODUCT_SPEC PLAY-008 — sovetidsuret. -->
+    <string name="sleep_timer_title">Sovetid</string>
+    <string name="sleep_timer_open">Still inn sovetid</string>
+    <string name="sleep_timer_active">Sovetid: %1$s igjen</string>
+    <string name="sleep_timer_off">Av</string>
+    <string name="sleep_timer_end_of_chapter">Slutten av kapittelet</string>
+    <string name="sleep_timer_minutes">%1$d min</string>
+    <string name="sleep_timer_seconds">%1$d s</string>
+    <string name="sleep_timer_restart">Start sovetiden på nytt</string>
+
+    <string name="sleep_timer_settings">Standardverdier</string>
+    <string name="sleep_timer_default_length">Standard lengde</string>
+    <string name="sleep_timer_fade">Ton ut over</string>
+    <string name="sleep_timer_shake">Rist for å starte sovetiden på nytt</string>
+    <string name="sleep_timer_shake_hint">Av som standard. Når den er på, måler appen bevegelse bare mens sovetiden går — aldri ellers.</string>
+
+    <string name="sleep_timer_history">Nylige sovetider</string>
+    <string name="sleep_timer_history_empty">Ingen sovetid er stilt inn på denne enheten ennå.</string>
+    <string name="sleep_timer_history_hint">Lagres bare på denne enheten, og sendes aldri videre.</string>
+    <string name="sleep_timer_history_started">%1$s · %2$s</string>
+    <string name="sleep_timer_outcome_expired">Gikk ut og satte boken på pause</string>
+    <string name="sleep_timer_outcome_cancelled">Slått av</string>
+    <string name="sleep_timer_outcome_playbackstopped">Avspillingen stoppet først</string>
+    <string name="sleep_timer_outcome_abandoned">Appen ble lukket mens den gikk</string>
+    <string name="sleep_timer_outcome_running">Går nå</string>
+    <string name="sleep_timer_history_lasted">Varte %1$s</string>
+    <plurals name="sleep_timer_history_restarts">
+        <item quantity="one">Startet på nytt én gang</item>
+        <item quantity="other">Startet på nytt %1$d ganger</item>
+    </plurals>
+    <string name="settings_tab_sleep">Sovetid</string>
     <string name="navigate_back">Tilbake</string>
 
     <string name="settings_title">Innstillinger</string>

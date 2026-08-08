@@ -395,3 +395,50 @@ data class SyncStateEntity(
     val lastErrorCode: String?,
     val lastErrorSummary: String?,
 )
+
+/**
+ * PRODUCT_SPEC PLAY-008 / SET-002 — one recorded sleep-timer session.
+ *
+ * ### Why this is a table and not a preference
+ *
+ * "Did the timer fire, or did I cancel it?" is a question about a *sequence of events*, and the only
+ * honest answer to it is a log. A single "last timer" field would answer it for one night and lose the
+ * pattern, which is the part worth having.
+ *
+ * ### No foreign key to books
+ *
+ * Deliberate, unlike every other table here. A timer's history must outlive the book it was set on: a
+ * book that leaves the server, or a library the profile loses access to, would take its rows with it
+ * under a cascade — deleting the user's own record of what their phone did. [bookKey] is stored as a
+ * plain string and resolved on read, with an unresolvable one rendering as "a book that is no longer in
+ * the library".
+ *
+ * The profile key *does* cascade: removing an account removes what it did (PRODUCT_SPEC AUTH-002).
+ *
+ * [modeLength] is `0` for an end-of-chapter timer, which has no length of its own.
+ */
+@Entity(
+    tableName = "sleep_timer_sessions",
+    foreignKeys = [
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["profileId"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("profileId"), Index("startedAt")],
+)
+data class SleepTimerSessionEntity(
+    @PrimaryKey val sessionId: String,
+    val profileId: String,
+    val bookKey: String,
+    /** `Fixed` or `EndOfChapter`; an unrecognized value reads back as `Fixed` (PRODUCT_SPEC SYNC-001). */
+    val mode: String,
+    val modeLength: Long,
+    val startedAt: Long,
+    /** `null` while the timer is still running. */
+    val endedAt: Long?,
+    val outcome: String?,
+    val restarts: Int,
+)

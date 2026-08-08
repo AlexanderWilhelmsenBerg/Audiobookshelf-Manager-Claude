@@ -15,6 +15,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -23,6 +26,7 @@ import com.example.shelfplayer.feature.browse.LocalCoverUrls
 import com.example.shelfplayer.feature.browse.coverUrlsFor
 import com.example.shelfplayer.feature.player.MiniPlayer
 import com.example.shelfplayer.feature.player.PlayerViewModel
+import com.example.shelfplayer.feature.player.SleepTimerSheet
 import com.example.shelfplayer.navigation.ShelfDestinations
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
 import dagger.hilt.android.AndroidEntryPoint
@@ -79,6 +83,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun ShelfPlayerContent(startDestination: String, playerViewModel: PlayerViewModel = hiltViewModel()) {
     val playback by playerViewModel.playback.collectAsStateWithLifecycle()
+    val timer by playerViewModel.timer.collectAsStateWithLifecycle()
+    var isTimerSheetOpen by remember { mutableStateOf(false) }
     NotificationPermission(hasPlayback = playback.bookId != null)
     Column(modifier = Modifier.fillMaxSize()) {
         ShelfPlayerNavHost(
@@ -87,8 +93,20 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
         )
         MiniPlayer(
             state = playback,
+            timer = timer,
             onTogglePlayPause = playerViewModel::onTogglePlayPause,
             onStop = playerViewModel::onStop,
+            onOpenSleepTimer = { isTimerSheetOpen = true },
+        )
+    }
+    if (isTimerSheetOpen) {
+        SleepTimerSheet(
+            state = timer,
+            onSelect = { mode ->
+                playerViewModel.onSleepTimerSelected(mode)
+                isTimerSheetOpen = false
+            },
+            onDismiss = { isTimerSheetOpen = false },
         )
     }
 }
