@@ -26,9 +26,24 @@ TRACK="01 - The Salt Harbour.mp3"
 # the first capture recorded, and a 404 is not the shape LIB-004 needs to know.
 COVER="cover.jpg"
 
-mkdir -p "$MEDIA_DIR/$BOOK_DIR"
+# A second book, in **two files of different lengths**, existing to answer one question a single-file
+# book cannot: whether `audioTracks[].startOffset` is a global offset into the book or a per-file zero.
+#
+# PLAY-003 requires a seek across a track boundary to preserve the global book position, which is
+# arithmetic in one reading and a no-op in the other. With one track, `startOffset: 0` is consistent
+# with both, so the first playback capture settled nothing about it. Six seconds then four makes it
+# decisive: a second track reporting `startOffset: 6` is global, `0` is per-track.
+#
+# Different lengths on purpose. Two equal files would leave "startOffset is index × duration" as a
+# third reading that nothing in the fixture could rule out.
+MULTI_DIR="Marisol Holt/The Tidewatch Cycle"
+MULTI_ONE="01 - Tidewatch.mp3"
+MULTI_TWO="02 - Tidewatch.mp3"
 
-if [ -s "$MEDIA_DIR/$BOOK_DIR/$TRACK" ] && [ -s "$MEDIA_DIR/$BOOK_DIR/$COVER" ]; then
+mkdir -p "$MEDIA_DIR/$BOOK_DIR" "$MEDIA_DIR/$MULTI_DIR"
+
+if [ -s "$MEDIA_DIR/$BOOK_DIR/$TRACK" ] && [ -s "$MEDIA_DIR/$BOOK_DIR/$COVER" ] &&
+  [ -s "$MEDIA_DIR/$MULTI_DIR/$MULTI_TWO" ]; then
   echo "  media already present at $MEDIA_DIR/$BOOK_DIR" >&2
   exit 0
 fi
@@ -59,8 +74,26 @@ docker run --rm -v "$MEDIA_DIR:/media" --entrypoint sh "$IMAGE" -c '
     -f lavfi -i color=c=0x1F3A5F:s=512x512 \
     -frames:v 1 \
     "/media/'"$BOOK_DIR"'/'"$COVER"'"
+
+  # The two-file book. One embedded chapter per file, each starting at zero *within its own file*, so
+  # the merged response also shows whether the server globalises chapter times or leaves them relative.
+  printf "%s\n" ";FFMETADATA1" "title=Tidewatch" "artist=Marisol Holt" \
+    "album=The Tidewatch Cycle" "track=1" "date=2024" "genre=Fiction" \
+    "[CHAPTER]" "TIMEBASE=1/1000" "START=0" "END=6000" "title=The Ebb" > /tmp/meta1.txt
+  printf "%s\n" ";FFMETADATA1" "title=Tidewatch" "artist=Marisol Holt" \
+    "album=The Tidewatch Cycle" "track=2" "date=2024" "genre=Fiction" \
+    "[CHAPTER]" "TIMEBASE=1/1000" "START=0" "END=4000" "title=The Flood" > /tmp/meta2.txt
+  ffmpeg -nostdin -y -loglevel error \
+    -f lavfi -i anullsrc=r=22050:cl=mono -f ffmetadata -i /tmp/meta1.txt \
+    -map 0:a -map_metadata 1 -map_chapters 1 -c:a libmp3lame -b:a 32k -t 6 \
+    "/media/'"$MULTI_DIR"'/'"$MULTI_ONE"'"
+  ffmpeg -nostdin -y -loglevel error \
+    -f lavfi -i anullsrc=r=22050:cl=mono -f ffmetadata -i /tmp/meta2.txt \
+    -map 0:a -map_metadata 1 -map_chapters 1 -c:a libmp3lame -b:a 32k -t 4 \
+    "/media/'"$MULTI_DIR"'/'"$MULTI_TWO"'"
   chmod -R a+rw /media
 '
 
 echo "  seeded $MEDIA_DIR/$BOOK_DIR/$TRACK" >&2
 echo "  seeded $MEDIA_DIR/$BOOK_DIR/$COVER" >&2
+echo "  seeded $MEDIA_DIR/$MULTI_DIR (two files, 6s + 4s)" >&2

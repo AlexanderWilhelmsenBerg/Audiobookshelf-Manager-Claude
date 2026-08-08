@@ -16,33 +16,25 @@ PRODUCT_SPEC names four. None of them is a unit test, and that shapes the whole 
 All four are hardware. What the repository can carry is everything that makes them *pass on the first
 try* — and, per Phase 1's lesson, the thing that decides that is fixtures.
 
-## Wave 0 — the capture, before any player code
+## Wave 0 — the capture ✅ **run on 2026-08-07**
 
-**Nothing in Phase 2 may be written until this runs.** `PRODUCT_SPEC 22.4` forbids inventing an
-endpoint and `22.5` forbids relying on a response shape without a fixture, and
-`docs/api-compatibility.md` currently lists both playback capabilities as *"verified against a server:
-No"*:
+Five fixtures committed. What they settled is in `docs/api-compatibility.md`; the three consequences
+for the waves below are:
 
-| Capability | Gates | Verified |
-| --- | --- | --- |
-| `PlaybackSession` | PLAY-001, the streaming session | **No** |
-| `LocalSessionSync` | PLAY-005 | **No** |
+- **Track URLs are relative and carry no credential**, so ExoPlayer's data source must be the app's
+  authenticated OkHttp client. PRODUCT_SPEC 14.5 is satisfied by the server's design rather than
+  worked around.
+- **Sync and close answer `200` with an empty body.** No confirmation to reconcile against, so wave 3's
+  outbox is retry-until-200 plus a separate read of `/api/me`.
+- **`startOffset` across tracks is still unverified** — the seed library had one single-file book. The
+  seed now creates a two-file book and the capture opens a session against it. **Wave 2 is blocked
+  until that fixture exists**, because computing a global position from an unverified offset is exactly
+  what 22.5 forbids.
 
-`scripts/capture-contracts.sh` now opens a real session and captures five new fixtures:
-
-- `item-play.json` — `POST /api/items/{id}/play`. The one that matters most: it should carry the audio
-  tracks with their content URLs, the chapters, and the start position. **Three things it has to
-  settle** before the player can be wired at all: whether the track URLs are absolute or relative,
-  whether they carry their own credential or need the `Authorization` header, and whether the offsets
-  are per-track or already global.
-- `session-sync.json` and `session-sync-repeated.json` — `POST /api/session/{id}/sync`, sent twice, so
-  that PLAY-005's idempotency requirement is an observation rather than a hope.
-- `session-close.json` — and what the server then treats as final.
-- `me-after-session.json` — the account record afterwards, diffable against the pre-session `me.json`,
-  which is where PLAY-004's conflict resolution reads from.
-
-Expect the capture to change this plan. Phase 1's search capture settled two facts that changed the
-implementation — a hit is the expanded item, and it carries no progress — and neither was guessable.
+One accident worth keeping: the capture synced a position past the fixture book's duration, and the
+server clamped it and marked the book finished. That records a real behaviour — **a session sync can
+mark a book finished without being asked** — which collides with PLAY-004's own 95% threshold, and wave
+3 has to decide which wins.
 
 ## Wave 1 — the vertical slice: one book, one track, play and pause
 
@@ -61,7 +53,8 @@ requirement and none of them is needed to prove the service works.
 
 ## Wave 2 — the global timeline
 
-PLAY-003, and the wave with the most arithmetic in it.
+PLAY-003, and the wave with the most arithmetic in it. **Blocked on the multi-track fixture** — see
+wave 0.
 
 - Multi-file books in server track order, with excluded tracks skipped.
 - Seeking across a track boundary while keeping the global book position.

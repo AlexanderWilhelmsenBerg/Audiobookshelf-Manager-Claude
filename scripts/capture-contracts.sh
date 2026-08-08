@@ -513,20 +513,24 @@ except Exception:
 ' "$RAW_DIR/item-play.raw" 2>/dev/null || true)"
 
 if [ -n "$SESSION_ID" ]; then
+  # A position **inside** the book. The first capture sent 63.5 seconds into an eight-second fixture,
+  # and the server did the reasonable thing: clamped to the end and marked the book finished. That
+  # made `me-after-session.json` a recording of the auto-finish path rather than of an ordinary
+  # mid-book sync, which is the case PLAY-004 actually needs to see.
   log "syncing and closing the session"
   capture session-sync POST "/api/session/$SESSION_ID/sync" \
     -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
-    -d '{"currentTime":63.5,"timeListened":21,"duration":8}'
+    -d '{"currentTime":4.5,"timeListened":3,"duration":8}'
 
   # Sent twice on purpose. PLAY-005 requires a retried sync to be idempotent, and "the server took it
   # twice without the position moving backwards" is a property only a second request can demonstrate.
   capture session-sync-repeated POST "/api/session/$SESSION_ID/sync" \
     -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
-    -d '{"currentTime":63.5,"timeListened":21,"duration":8}'
+    -d '{"currentTime":4.5,"timeListened":3,"duration":8}'
 
   capture session-close POST "/api/session/$SESSION_ID/close" \
     -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
-    -d '{"currentTime":63.5,"timeListened":21,"duration":8}'
+    -d '{"currentTime":4.5,"timeListened":3,"duration":8}'
 
   # What the account looks like after a session, which is where PLAY-004's conflict resolution reads
   # from. Captured separately from the pre-session `me.json` so the two can be diffed.
@@ -535,6 +539,31 @@ else
   # Loud, not silent. No session id means the play route did not answer as expected, and the right
   # outcome is a visible gap in the fixtures rather than three files full of error bodies.
   echo "::warning::no session id in item-play.json — session sync and close were not captured"
+fi
+
+# The two-file book, opened as its own session. `startOffset` on a second track is the whole reason
+# this exists — see scripts/seed-contract-media.sh for why one track could not answer it.
+MULTI_ID="$(python3 -c '
+import json, sys
+try:
+    for item in (json.load(open(sys.argv[1])) or {}).get("results") or []:
+        title = (((item.get("media") or {}).get("metadata")) or {}).get("title") or ""
+        if "Tidewatch" in title:
+            print(item.get("id") or "")
+            break
+    else:
+        print("")
+except Exception:
+    print("")
+' "$RAW_DIR/library-items.raw" 2>/dev/null || true)"
+
+if [ -n "$MULTI_ID" ]; then
+  capture multi-item-play POST "/api/items/$MULTI_ID/play" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$PLAY_BODY"
+else
+  # Not fatal, and not silent either. Until the seeded two-file book has been scanned, PLAY-003 has no
+  # evidence to be built on and the plan says so rather than guessing at the arithmetic.
+  echo "::warning::no multi-file book found in library-items — PLAY-003's startOffset stays unverified"
 fi
 
 capture logout POST /logout -H "$AUTH_HEADER"

@@ -110,8 +110,8 @@ guessing.
 
 | Capability | Gates | Verified against a server |
 | --- | --- | --- |
-| `PlaybackSession` | PLAY-001, streaming session | No — **capture targets added**, see below |
-| `LocalSessionSync` | PLAY-005 | No — **capture targets added**, see below |
+| `PlaybackSession` | PLAY-001, streaming session | **Yes**, 2026-08-07 — see the playback section |
+| `LocalSessionSync` | PLAY-005 | **Partly** — the route is observed; multi-track is not |
 | `RangeDownload` | DL-001 resume | No |
 | `ChecksumOrETag` | DL-002 integrity | No |
 | `MetadataUpdate` | MGR-001 | No |
@@ -365,32 +365,87 @@ bearer auth, and the library/item read shapes. Playback, progress, downloads, ma
 websocket are unverified, and every capability in the table above still reads "No" because nothing in
 `GET /status` reports one.
 
-## Playback sessions — capture targets, not yet observed (PLAY-001, PLAY-004, PLAY-005)
+## Playback sessions — captured 2026-08-07, Audiobookshelf 2.36.0 (PLAY-001, PLAY-004, PLAY-005)
 
-`scripts/capture-contracts.sh` opens a real playback session and records five fixtures. **None of them
-exists yet**, and nothing in the app may be written against these shapes until they do — that is
-PRODUCT_SPEC 22.5, and it is the rule that made Phase 1's search and cover work correct on the first
-attempt rather than the second.
+Five fixtures, and they answered two of `item-play`'s three questions outright, contradicted one
+assumption, and left one thing unverified that the seed script has since been changed to cover.
 
-| Fixture | Endpoint | What it has to settle |
-| --- | --- | --- |
-| `item-play.json` | `POST /api/items/{id}/play` | The audio tracks, their content URLs, the chapters, the start position |
-| `session-sync.json` | `POST /api/session/{id}/sync` | What a progress sync accepts and returns |
-| `session-sync-repeated.json` | the same call again | Whether a retry is idempotent — PLAY-005 requires it |
-| `session-close.json` | `POST /api/session/{id}/close` | What the server treats as the final position |
-| `me-after-session.json` | `GET /api/me` | The account record afterwards, diffable against the pre-session `me.json` |
+### `POST /api/items/{id}/play` — the session
 
-### The three questions `item-play` decides
+Top-level: `id`, `userId`, `libraryItemId`, `libraryId`, `bookId`, `episodeId`, `mediaType`,
+`mediaPlayer`, `playMethod`, `startTime`, `currentTime`, `duration`, `timeListening`, `startedAt`,
+`updatedAt`, `displayTitle`, `displayAuthor`, `coverPath`, `mediaMetadata`, `libraryItem`, `chapters`,
+`audioTracks`, `deviceInfo`, `serverVersion`, `date`, `dayOfWeek`.
 
-Each one changes how the player is wired, and none can be answered by reading a document:
+**1. The track URLs are relative, and carry no credential.**
 
-1. **Are the track URLs absolute or relative?** A relative path has to be resolved against the profile's
-   server, which the player does not otherwise need to know about.
-2. **Do they carry their own credential, or need the `Authorization` header?** PRODUCT_SPEC 14.5 forbids
-   a token in a URL, so if the server hands back pre-signed URLs containing one, that is a finding to
-   record and design around rather than a convenience to use.
-3. **Are the offsets per-track or already global?** PLAY-003's seek-across-boundary requirement is
-   arithmetic in one case and a no-op in the other.
+```
+"contentUrl": "/api/items/{itemId}/file/{ino}"
+```
+
+No token, no query string, no signature. Two consequences, and both are good news:
+
+- The player must resolve it against the profile's server base URL, so a track URL is only meaningful
+  alongside the profile that produced it.
+- It must be fetched with the `Authorization` header, which means ExoPlayer's data source has to be the
+  app's **authenticated OkHttp client** rather than the default. PRODUCT_SPEC 14.5's no-token-in-a-URL
+  rule is therefore satisfied by the server's own design rather than in spite of it — the alternative,
+  a pre-signed URL with a token in it, would have been a finding to design around.
+
+**2. `playMethod: 0` — direct play.** The fixture book is MP3 and the request advertised
+`audio/mpeg`, so the server streamed the file rather than transcoding. What the other values of
+`playMethod` mean has **not** been observed and must not be assumed; a transcoding session is a
+different shape and is a separate capture.
+
+**3. `startTime` is where the session resumes from.** It came back `128.25`, which is the position the
+capture had written with `PATCH /api/me/progress/{id}` moments earlier. The server seeds the session
+from stored progress rather than starting at zero.
+
+**Chapters are on the session**, in seconds, as `{id, start, end, title}` — and also, separately, on
+each audio track. The session-level array is the one PLAY-003 wants.
+
+### What is still unverified: `startOffset` across tracks
+
+The seed library held **one single-file book**, so `audioTracks` had one element with
+`startOffset: 0` — which is consistent with `startOffset` being a global offset into the book *and*
+with it being a per-file zero. The capture proves nothing either way.
+
+This matters more than it sounds. PLAY-003 requires a seek across a track boundary to preserve the
+global book position, which is arithmetic in one reading and a no-op in the other, and getting it wrong
+is a bug that only appears on multi-file books.
+
+`scripts/seed-contract-media.sh` now creates a second book of **two files, six seconds then four**, and
+the capture opens a session against it as `multi-item-play.json`. Six-then-four rather than two equal
+files, so that "startOffset is index × duration" cannot survive either. **Until that fixture exists,
+nothing in the app may compute a global position from `startOffset`.**
+
+### `POST /api/session/{id}/sync` and `/close` — 200, and nothing else
+
+Both answer **`200` with an empty `text/plain` body**. No JSON, no echo of the accepted position, no
+session state.
+
+The client therefore gets no server-side confirmation to reconcile against, and has to treat `200` as
+"accepted" and read `GET /api/me` if it wants to know what the server actually stored. PLAY-005's
+outbox is built on exactly that: local session identity, retry until `200`, and a separate read to
+verify.
+
+**Idempotency**: both syncs returned `200`, and the resulting `currentTime` is the value sent rather
+than twice it. The position is **set, not accumulated**, which is what PLAY-005's "retrying a session
+sync is idempotent" needs. Whether `timeListened` accumulates across syncs is *not* settled by this
+capture — the two requests sent the same value, so an accumulating counter and an idempotent one are
+indistinguishable in the result.
+
+### A capture artefact worth reading carefully
+
+`me-after-session.json` shows `isFinished: true`, `progress: 1` and a non-null `finishedAt`. **That is
+not what an ordinary mid-book sync looks like.** The capture sent `currentTime: 63.5` for a book eight
+seconds long, and the server did the reasonable thing: clamped to the end and marked it finished.
+
+Two things follow. The script now syncs `4.5` so the next capture records a normal mid-book sync. And
+the accident documented something worth keeping: **the server marks a book finished from a session sync
+when the position reaches the duration**, without being asked to. PLAY-004 sets the app's own finished
+threshold at 95% and requires marking-finished to be explicit when server data is unreliable, so the
+two can disagree — and the app has to decide which wins rather than discover it in the field.
 
 ### Why `/api/session/{id}/sync` rather than the progress route the app already uses
 
