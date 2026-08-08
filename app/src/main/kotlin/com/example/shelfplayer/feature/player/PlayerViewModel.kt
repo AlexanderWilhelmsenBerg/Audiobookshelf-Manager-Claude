@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.playback.SleepTimerMode
+import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackController
 import com.example.shelfplayer.playback.PlaybackUiState
+import com.example.shelfplayer.playback.SleepTimerController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,9 +27,15 @@ import javax.inject.Inject
  * belongs to the screen that asked rather than to the session.
  */
 @HiltViewModel
-class PlayerViewModel @Inject constructor(private val controller: PlaybackController) : ViewModel() {
+class PlayerViewModel @Inject constructor(
+    private val controller: PlaybackController,
+    private val sleepTimer: SleepTimerController,
+) : ViewModel() {
 
     val playback: StateFlow<PlaybackUiState> = controller.state
+
+    /** PRODUCT_SPEC PLAY-008 — the running timer, straight from the object that owns it. */
+    val timer: StateFlow<SleepTimerState> = sleepTimer.state
 
     private val _message = MutableStateFlow<String?>(null)
 
@@ -43,6 +52,23 @@ class PlayerViewModel @Inject constructor(private val controller: PlaybackContro
     fun onTogglePlayPause() = controller.togglePlayPause()
 
     fun onStop() = controller.stop()
+
+    /**
+     * PRODUCT_SPEC PLAY-008 — sets a timer, or turns one off when [mode] is `null`.
+     *
+     * One entry point rather than a set and a cancel, because the sheet presents them as one row of
+     * choices and "off" is one of them.
+     */
+    fun onSleepTimerSelected(mode: SleepTimerMode?) {
+        viewModelScope.launch {
+            if (mode == null) {
+                sleepTimer.cancel()
+                return@launch
+            }
+            val result = sleepTimer.start(mode)
+            if (result is AppResult.Failure) _message.value = result.error.summary
+        }
+    }
 
     fun onMessageShown() {
         _message.value = null

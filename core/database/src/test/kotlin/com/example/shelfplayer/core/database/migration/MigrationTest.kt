@@ -8,6 +8,7 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.entity.ProfileEntity
+import com.example.shelfplayer.core.database.entity.SleepTimerSessionEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -241,6 +242,76 @@ class MigrationTest {
     }
 
     /**
+     * PRODUCT_SPEC PLAY-008 — version 8 adds a table and takes nothing away.
+     *
+     * The two halves are asserted separately because they fail differently. The cached book proves the
+     * migration did not disturb existing data; the successful *write* into the new table proves the
+     * hand-written `CREATE TABLE` matches what Room's DAO expects — a column Room believes is `NOT NULL`
+     * and the migration made nullable would pass a read and fail this insert.
+     */
+    @Test
+    fun `version 8 adds the sleep timer history without disturbing the cached books`() = runTest {
+        createVersion(7)
+
+        val migrated = openWithMigrations()
+
+        val book = assertNotNull(migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first())
+        assertEquals("The Salt Harbour", book.book.title)
+        assertEquals(emptyList(), migrated.sleepTimerDao().observeRecent(PROFILE_ID, limit = 10).first())
+
+        migrated.sleepTimerDao().upsert(
+            SleepTimerSessionEntity(
+                sessionId = "session-1",
+                profileId = PROFILE_ID,
+                bookKey = BOOK_KEY,
+                mode = "Fixed",
+                modeLength = 1_800_000,
+                startedAt = 1_000,
+                endedAt = null,
+                outcome = null,
+                restarts = 0,
+            ),
+        )
+        assertEquals(1, migrated.sleepTimerDao().observeRecent(PROFILE_ID, limit = 10).first().size)
+    }
+
+    /**
+     * PRODUCT_SPEC AUTH-002 — removing a profile takes its timer history with it.
+     *
+     * The cascade is declared on the entity, and a hand-written migration is exactly where a foreign
+     * key gets forgotten: SQLite accepts a table with no constraint, Room's validation compares the
+     * *declared* schema rather than enforcement, and the orphaned rows would only surface much later.
+     */
+    @Test
+    fun `removing a profile removes its sleep timer history`() = runTest {
+        createVersion(7)
+        val migrated = openWithMigrations()
+        // Room disables foreign keys during a migration and re-enables them after; this asserts the
+        // constraint that is in force for ordinary writes.
+        migrated.openHelper.writableDatabase.execSQL("PRAGMA foreign_keys = ON")
+        migrated.sleepTimerDao().upsert(
+            SleepTimerSessionEntity(
+                sessionId = "session-1",
+                profileId = PROFILE_ID,
+                bookKey = BOOK_KEY,
+                mode = "EndOfChapter",
+                modeLength = 0,
+                startedAt = 1_000,
+                endedAt = 2_000,
+                outcome = "Expired",
+                restarts = 2,
+            ),
+        )
+
+        migrated.openHelper.writableDatabase.execSQL(
+            "DELETE FROM profiles WHERE profileId = ?",
+            arrayOf<Any>(PROFILE_ID),
+        )
+
+        assertEquals(emptyList(), migrated.sleepTimerDao().observeRecent(PROFILE_ID, limit = 10).first())
+    }
+
+    /**
      * Room validates the migrated schema against the one it expects and throws if they differ. Reading
      * through a DAO is what forces that validation to run, so this fails loudly on a migration that
      * produced a *nearly* correct schema — a missing default, a wrong nullability.
@@ -340,6 +411,7 @@ class MigrationTest {
         VERSION_4 -> seedVersion4(db)
         VERSION_5 -> seedVersion5(db)
         VERSION_6 -> seedVersion6(db)
+        VERSION_7 -> seedVersion7(db)
         else -> error("no seed data defined for schema version $version")
     }
 
@@ -447,6 +519,9 @@ class MigrationTest {
     /** Version 6 is version 5 plus two nullable columns this seed leaves unset, as an upgrade would. */
     private fun seedVersion6(db: SupportSQLiteDatabase) = seedVersion5(db)
 
+    /** Version 7 added a nullable column and no new table, so version 6's rows still describe it. */
+    private fun seedVersion7(db: SupportSQLiteDatabase) = seedVersion6(db)
+
     /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
     private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
         db.execSQL(
@@ -488,6 +563,7 @@ class MigrationTest {
         const val VERSION_4 = 4
         const val VERSION_5 = 5
         const val VERSION_6 = 6
+        const val VERSION_7 = 7
         const val PROFILE_ID = "prf_test"
         const val LIBRARY_KEY = "srv_test:library-1"
         const val BOOK_KEY = "srv_test:item-1"

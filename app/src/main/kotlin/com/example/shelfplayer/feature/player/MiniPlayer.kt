@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -22,11 +23,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
 
 /**
@@ -46,11 +49,14 @@ import com.example.shelfplayer.playback.PlaybackUiState
 @Composable
 fun MiniPlayer(
     state: PlaybackUiState,
+    timer: SleepTimerState,
     onTogglePlayPause: () -> Unit,
     onStop: () -> Unit,
+    onOpenSleepTimer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (state.bookId == null) return
+    val activeTimerLabel = stringResource(R.string.sleep_timer_active, timer.remaining.asShortLabel())
     Surface(
         modifier = modifier.fillMaxWidth(),
         tonalElevation = 3.dp,
@@ -86,6 +92,24 @@ fun MiniPlayer(
                 }
                 if (state.isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                }
+                // PRODUCT_SPEC PLAY-008 — the remaining time doubles as the control's label, so a
+                // listener can see the timer is running without opening anything.
+                IconButton(onClick = onOpenSleepTimer) {
+                    if (timer.isActive) {
+                        Text(
+                            text = timer.remaining.asShortLabel(),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.semantics {
+                                contentDescription = activeTimerLabel
+                            },
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.Bedtime,
+                            contentDescription = stringResource(R.string.sleep_timer_open),
+                        )
+                    }
                 }
                 IconButton(onClick = onTogglePlayPause) {
                     Icon(

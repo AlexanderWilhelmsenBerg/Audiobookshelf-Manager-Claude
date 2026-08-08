@@ -18,6 +18,7 @@ lists for the phase:
 | Notification / lockscreen / headset | Notification and lock screen built; **headset resume untested on hardware** |
 | Speed / skip | Not started — wave 4 |
 | Buffer presets | Not started — wave 4 |
+| Sleep timer | **Built** — pulled forward from wave 4, plus shake-to-restart and a local history (ADR-0014) |
 | Audio focus / noisy handling | **Built** — pause-on-transient via speech content type, becoming-noisy on |
 
 What that table does **not** say is that any of it works on a device. Nothing here has played a second
@@ -187,7 +188,10 @@ PLAY-006 through PLAY-009, each small, each independently testable.
   streamed copies.
 - Skip back/forward, independently configurable 5–120 s, defaulting to 15 and 30.
 - Buffer presets, remote streams only, with the invalid combinations rejected rather than clamped.
-- Sleep timer with end-of-chapter, fade-out, notification extension, surviving recreation.
+- ~~Sleep timer with end-of-chapter, fade-out, notification extension, surviving recreation.~~ **Built
+  ahead of this wave**, at the project owner's request, together with two things PLAY-008 does not ask
+  for: a shake that *restarts* rather than extends, and a local record of every timer. ADR-0014 records
+  both, and PLAY-008's **custom length** is the one part still outstanding.
 - Auto-rewind buckets, off by default, never crossing a chapter or book start, undoable.
 
 ## Wave 5 — the exit criteria

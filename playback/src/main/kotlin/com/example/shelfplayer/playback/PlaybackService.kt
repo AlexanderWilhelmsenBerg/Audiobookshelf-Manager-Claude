@@ -1,14 +1,19 @@
 package com.example.shelfplayer.playback
 
 import android.content.Intent
+import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
+import androidx.media3.session.SessionResult
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
@@ -18,8 +23,11 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.domain.playback.FinishedThreshold
 import com.example.shelfplayer.domain.repository.PlaybackRepository
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -60,6 +68,9 @@ class PlaybackService : MediaLibraryService() {
     internal lateinit var playbackRepository: PlaybackRepository
 
     @Inject
+    internal lateinit var sleepTimer: SleepTimerController
+
+    @Inject
     internal lateinit var logger: Logger
 
     @Inject
@@ -73,6 +84,7 @@ class PlaybackService : MediaLibraryService() {
     private var player: ExoPlayer? = null
     private var session: MediaLibrarySession? = null
     private var journal: Job? = null
+    private var sleepTimerWatch: Job? = null
 
     /**
      * The service's own scope, on the main thread because every [Player] read has to be.
@@ -90,7 +102,11 @@ class PlaybackService : MediaLibraryService() {
         session = MediaLibrarySession.Builder(this, exoPlayer, LibraryCallback())
             .setBitmapLoader(players.bitmapLoader())
             .build()
+        // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
+        // singleton in this process, so it is the same object the app's UI drives.
+        sleepTimer.attach(exoPlayer)
         startJournal()
+        observeSleepTimer()
         logger.info(LogCategory.Playback, "Playback service started")
     }
 
@@ -113,7 +129,9 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         flushProgress()
+        sleepTimer.attach(null)
         journal?.cancel()
+        sleepTimerWatch?.cancel()
         session?.release()
         session = null
         player?.release()
@@ -230,17 +248,96 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * Wave 1's callback: connections and transport controls, no browse tree.
+     * PRODUCT_SPEC PLAY-008 — the remaining time, in the notification.
+     *
+     * Media3's notification is built from the session, so the way to put anything of our own in it is a
+     * custom-layout button. This one carries the countdown as its **display name** and extends the timer
+     * when pressed, which is both of PLAY-008's notification requirements in a single control: "displays
+     * remaining time in notification" and "a notification action extends the timer".
+     *
+     * The button disappears when no timer is running rather than sitting there greyed out. A control
+     * that does nothing is a control a half-asleep listener will press anyway.
+     */
+    private fun observeSleepTimer() {
+        sleepTimerWatch = scope.launch {
+            sleepTimer.state.collect { timer -> publishSleepTimerButton(timer) }
+        }
+    }
+
+    private fun publishSleepTimerButton(timer: SleepTimerState) {
+        val current = session ?: return
+        val buttons = if (!timer.isActive) {
+            emptyList()
+        } else {
+            listOf(
+                CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
+                    .setDisplayName(getString(R.string.player_sleep_remaining, timer.remaining.asMinutesLabel()))
+                    .setSessionCommand(SessionCommand(ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+                    .setEnabled(true)
+                    .build(),
+            )
+        }
+        current.setCustomLayout(buttons)
+    }
+
+    /**
+     * "1 min" until the last minute, then seconds.
+     *
+     * Rounding **up** while minutes are shown is deliberate: a timer with 61 seconds left saying
+     * "1 min" and then ticking to "1 min" again reads as stuck. Rounding up means it counts 2, 1, then
+     * seconds, and never shows a number it has already passed.
+     */
+    private fun Duration.asMinutesLabel(): String {
+        val seconds = inWholeSeconds
+        if (seconds < SECONDS_PER_MINUTE) return getString(R.string.player_sleep_seconds, seconds)
+        val minutes = (seconds + SECONDS_PER_MINUTE - 1) / SECONDS_PER_MINUTE
+        return getString(R.string.player_sleep_minutes, minutes)
+    }
+
+    /**
+     * Connections and transport controls, plus the sleep timer's own command. No browse tree.
      *
      * `MediaLibrarySession.Callback`'s defaults accept a connection with the standard command set and
-     * reject `onGetLibraryRoot`, which is the accurate answer until a browse tree exists. A named class
-     * rather than an anonymous object so that wave 4 has an obvious place for the custom commands —
-     * speed, skip, sleep timer — that PLAY-006 through PLAY-009 need.
+     * reject `onGetLibraryRoot`, which is the accurate answer until a browse tree exists. The custom
+     * command has to be granted here, or the button in the notification would be rendered and then
+     * rejected when pressed.
      */
-    private inner class LibraryCallback : MediaLibrarySession.Callback
+    private inner class LibraryCallback : MediaLibrarySession.Callback {
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult {
+            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                .buildUpon()
+                .add(SessionCommand(ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+                .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(commands)
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            if (customCommand.customAction != ACTION_EXTEND_SLEEP_TIMER) {
+                return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+            }
+            // PLAY-008 says the notification action *extends*; the shake *restarts*. See ADR-0014.
+            sleepTimer.extend()
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+    }
 
     private companion object {
         /** PRODUCT_SPEC PLAY-004 — "at least every five seconds". */
         const val JOURNAL_INTERVAL_MS = 5_000L
+
+        const val SECONDS_PER_MINUTE = 60L
+
+        /** PRODUCT_SPEC PLAY-008 — the notification action. Namespaced, as a session command must be. */
+        const val ACTION_EXTEND_SLEEP_TIMER = "com.example.shelfplayer.playback.EXTEND_SLEEP_TIMER"
     }
 }

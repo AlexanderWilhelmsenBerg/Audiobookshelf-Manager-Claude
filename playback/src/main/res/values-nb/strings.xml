@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- %1$s er gjenstående tid, for eksempel "12 min". -->
+    <string name="player_sleep_remaining">Sovetid %1$s</string>
+    <string name="player_sleep_minutes">%1$d min</string>
+    <string name="player_sleep_seconds">%1$d s</string>
+</resources>

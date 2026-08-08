@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC PLAY-008 — the strings the media notification shows.
+
+  In this module rather than in `:app` because the service renders them: a `Service` in a library module
+  resolves `R` against its own package, and reaching for `:app`'s resources would invert the dependency.
+  The player screen's own labels stay in `:app`.
+-->
+<resources>
+    <!-- %1$s is a formatted remaining time such as "12 min". -->
+    <string name="player_sleep_remaining">Sleep %1$s</string>
+    <!-- %1$d is a whole number of minutes. -->
+    <string name="player_sleep_minutes">%1$d min</string>
+    <!-- %1$d is a whole number of seconds, shown only in the final minute. -->
+    <string name="player_sleep_seconds">%1$d s</string>
+</resources>

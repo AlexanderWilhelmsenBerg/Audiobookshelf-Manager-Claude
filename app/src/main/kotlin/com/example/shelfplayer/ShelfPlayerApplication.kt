@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.data.auth.SessionRestorer
+import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -45,6 +46,15 @@ class ShelfPlayerApplication :
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
+    /**
+     * PRODUCT_SPEC PLAY-008 — closes sleep timers a previous process left running.
+     *
+     * A timer running when the app died has no recorded end, and leaving it open would make the history
+     * show a timer that is not running for as long as the install lives.
+     */
+    @Inject
+    lateinit var sleepTimers: SleepTimerRepository
+
     @Inject
     lateinit var logger: Logger
 
@@ -53,6 +63,9 @@ class ShelfPlayerApplication :
         logger.info(LogCategory.App, "Application started")
         applicationScope.launch {
             sessionRestorer.restoreActiveSession()
+        }
+        applicationScope.launch {
+            sleepTimers.closeOrphanedSessions()
         }
     }
 }

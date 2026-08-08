@@ -174,6 +174,57 @@ object Migrations {
         }
     }
 
+    /**
+     * Version 8 — the sleep-timer history (PRODUCT_SPEC PLAY-008, SET-002).
+     *
+     * A new table and nothing else. No existing table is touched, so there is no data to migrate and
+     * nothing a device can lose by installing this build.
+     *
+     * ### Getting a hand-written `CREATE TABLE` to match Room's
+     *
+     * Room compares this statement's result against the schema its compiler exported, column for column
+     * and index for index, and fails validation on any difference — including ones SQLite itself would
+     * not care about. Three of them are worth naming, because each one has cost somebody an afternoon:
+     *
+     *  - every `NOT NULL` column is declared `NOT NULL` here, and every nullable one is *not*;
+     *  - the foreign key clause has to match the entity's `onDelete`, spelled `ON DELETE CASCADE`;
+     *  - the indices are created separately and their **names** must match Room's generated ones,
+     *    which are `index_<table>_<column>`.
+     *
+     * The migration test opens version 7's exported schema, runs this, and lets Room validate the
+     * result — so a mismatch fails in CI rather than on a device mid-upgrade.
+     */
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `sleep_timer_sessions` (
+                    `sessionId` TEXT NOT NULL,
+                    `profileId` TEXT NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `mode` TEXT NOT NULL,
+                    `modeLength` INTEGER NOT NULL,
+                    `startedAt` INTEGER NOT NULL,
+                    `endedAt` INTEGER,
+                    `outcome` TEXT,
+                    `restarts` INTEGER NOT NULL,
+                    PRIMARY KEY(`sessionId`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_sleep_timer_sessions_profileId` " +
+                    "ON `sleep_timer_sessions` (`profileId`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_sleep_timer_sessions_startedAt` " +
+                    "ON `sleep_timer_sessions` (`startedAt`)",
+            )
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -181,5 +232,6 @@ object Migrations {
         MIGRATION_4_5,
         MIGRATION_5_6,
         MIGRATION_6_7,
+        MIGRATION_7_8,
     )
 }

@@ -18,6 +18,10 @@ import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
+import com.example.shelfplayer.core.model.playback.SleepTimerMode
+import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
+import com.example.shelfplayer.core.model.playback.SleepTimerSession
+import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import com.example.shelfplayer.core.testing.MainDispatcherRule
@@ -26,6 +30,7 @@ import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
 import com.example.shelfplayer.testing.FakePreferences
@@ -59,12 +64,14 @@ class SettingsViewModelTest {
     private val preferences = FakePreferences()
     private val diagnostics = FakeDiagnostics()
     private val capabilities = FakeCapabilities()
+    private val sleepTimer = FakeSleepTimers()
 
     private fun viewModel() = SettingsViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         observeServerDiagnostics = ObserveServerDiagnosticsUseCase(profiles, capabilities, StubRealtime()),
         diagnostics = diagnostics,
         preferences = preferences,
+        sleepTimer = sleepTimer,
     )
 
     /**
@@ -311,4 +318,50 @@ class SettingsViewModelTest {
 
         override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> = AppResult.Success(0)
     }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-008 — the sleep timer's settings and history, in memory.
+ *
+ * A fake rather than a mock, per PRODUCT_SPEC 17.1. It stores what it is told, so a test can assert
+ * that the ViewModel wrote what the user asked for rather than that a method was called.
+ */
+internal class FakeSleepTimers : SleepTimerRepository {
+    private val settings = MutableStateFlow(SleepTimerSettings.Default)
+    private val sessions = MutableStateFlow<List<SleepTimerSession>>(emptyList())
+
+    override fun observeSettings(): Flow<SleepTimerSettings> = settings
+
+    override suspend fun setDefaultLength(length: kotlin.time.Duration): AppResult<Unit> {
+        settings.value = settings.value.copy(defaultLength = length)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setFadeLength(length: kotlin.time.Duration): AppResult<Unit> {
+        settings.value = settings.value.copy(fadeLength = length)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setShakeToRestart(enabled: Boolean): AppResult<Unit> {
+        settings.value = settings.value.copy(shakeToRestart = enabled)
+        return AppResult.Success(Unit)
+    }
+
+    override fun observeRecentSessions(limit: Int): Flow<List<SleepTimerSession>> = sessions
+
+    fun emit(recorded: List<SleepTimerSession>) {
+        sessions.value = recorded
+    }
+
+    override suspend fun recordStarted(
+        bookId: com.example.shelfplayer.core.model.LibraryItemId,
+        mode: SleepTimerMode,
+    ): AppResult<String> = AppResult.Success("session-1")
+
+    override suspend fun recordRestarted(sessionId: String): AppResult<Unit> = AppResult.Success(Unit)
+
+    override suspend fun recordEnded(sessionId: String, outcome: SleepTimerOutcome): AppResult<Unit> =
+        AppResult.Success(Unit)
+
+    override suspend fun closeOrphanedSessions(): AppResult<Int> = AppResult.Success(0)
 }

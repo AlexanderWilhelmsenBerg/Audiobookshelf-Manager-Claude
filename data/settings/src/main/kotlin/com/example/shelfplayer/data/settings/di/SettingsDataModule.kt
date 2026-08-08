@@ -4,8 +4,10 @@ import com.example.shelfplayer.core.network.gateway.PlaybackDeviceIdentity
 import com.example.shelfplayer.data.settings.DefaultDiagnosticsRepository
 import com.example.shelfplayer.data.settings.DefaultPlaybackDeviceIdentity
 import com.example.shelfplayer.data.settings.DefaultPreferencesRepository
+import com.example.shelfplayer.data.settings.DefaultSleepTimerRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
+import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -34,4 +36,8 @@ interface SettingsDataModule {
     @Binds
     @Singleton
     fun bindsPlaybackDeviceIdentity(impl: DefaultPlaybackDeviceIdentity): PlaybackDeviceIdentity
+
+    @Binds
+    @Singleton
+    fun bindsSleepTimerRepository(impl: DefaultSleepTimerRepository): SleepTimerRepository
 }

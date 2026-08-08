@@ -9,6 +9,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.playback.SleepTimerMode
+import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
 import org.junit.Rule
 import org.junit.Test
@@ -19,6 +21,7 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-001 / 17.1 — the mini player, rendered.
@@ -43,7 +46,13 @@ class MiniPlayerScreenTest {
     @Test
     fun `nothing is rendered when no book is loaded`() {
         composeRule.setContent {
-            MiniPlayer(state = PlaybackUiState.Idle, onTogglePlayPause = {}, onStop = {})
+            MiniPlayer(
+                state = PlaybackUiState.Idle,
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+            )
         }
 
         composeRule.onNodeWithContentDescription("Resume").assertDoesNotExist()
@@ -53,7 +62,13 @@ class MiniPlayerScreenTest {
     @Test
     fun `a playing book shows its title and author`() {
         composeRule.setContent {
-            MiniPlayer(state = playing(), onTogglePlayPause = {}, onStop = {})
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+            )
         }
 
         composeRule.onNodeWithText("The Tidewatch Cycle").assertIsDisplayed()
@@ -69,7 +84,13 @@ class MiniPlayerScreenTest {
     @Test
     fun `the transport control announces what it will do`() {
         composeRule.setContent {
-            MiniPlayer(state = playing(), onTogglePlayPause = {}, onStop = {})
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+            )
         }
 
         composeRule.onNodeWithContentDescription("Pause").assertIsDisplayed()
@@ -79,7 +100,13 @@ class MiniPlayerScreenTest {
     @Test
     fun `a paused book offers to resume`() {
         composeRule.setContent {
-            MiniPlayer(state = playing(isPlaying = false), onTogglePlayPause = {}, onStop = {})
+            MiniPlayer(
+                state = playing(isPlaying = false),
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+            )
         }
 
         composeRule.onNodeWithContentDescription("Resume").assertIsDisplayed()
@@ -90,7 +117,13 @@ class MiniPlayerScreenTest {
         var toggles = 0
         var stops = 0
         composeRule.setContent {
-            MiniPlayer(state = playing(), onTogglePlayPause = { toggles++ }, onStop = { stops++ })
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = { toggles++ },
+                onStop = { stops++ },
+                onOpenSleepTimer = {},
+            )
         }
 
         composeRule.onNodeWithContentDescription("Pause").performClick()
@@ -104,12 +137,85 @@ class MiniPlayerScreenTest {
     @Test
     fun `the title is a polite live region`() {
         composeRule.setContent {
-            MiniPlayer(state = playing(), onTogglePlayPause = {}, onStop = {})
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+            )
         }
 
         composeRule.onNodeWithText("The Tidewatch Cycle").assert(
             SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion),
         )
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-008 — a running timer shows its remaining time on the control itself.
+     *
+     * The countdown is the label, so it is also what a screen reader reads. Asserting the content
+     * description rather than the text is what makes that true rather than incidental: "12 min" alone
+     * announces a number with no noun attached to it.
+     */
+    @Test
+    fun `a running timer shows its remaining time and says what it is`() {
+        composeRule.setContent {
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState(
+                    mode = SleepTimerMode.Fixed(30.minutes),
+                    remaining = 12.minutes,
+                    isFading = false,
+                ),
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("Sleep timer: 12 min left").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Set a sleep timer").assertDoesNotExist()
+    }
+
+    /**
+     * The rounding that stops a countdown reading as stuck.
+     *
+     * 61 seconds shows "2 min", not "1 min" twice — see `Duration.asShortLabel`.
+     */
+    @Test
+    fun `the remaining time rounds up while minutes are shown`() {
+        composeRule.setContent {
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState(
+                    mode = SleepTimerMode.Fixed(30.minutes),
+                    remaining = 61.seconds,
+                    isFading = false,
+                ),
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("Sleep timer: 2 min left").assertIsDisplayed()
+    }
+
+    /** With no timer running the control is the way to set one, and says so. */
+    @Test
+    fun `with no timer the control offers to set one`() {
+        composeRule.setContent {
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("Set a sleep timer").assertIsDisplayed()
     }
 
     /** A book whose duration is not known yet must not divide by zero to draw its progress bar. */
@@ -118,8 +224,10 @@ class MiniPlayerScreenTest {
         composeRule.setContent {
             MiniPlayer(
                 state = playing(position = 5.minutes, duration = Duration.ZERO),
+                timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
                 onStop = {},
+                onOpenSleepTimer = {},
             )
         }
 

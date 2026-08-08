@@ -30,5 +30,11 @@ dependencies {
     implementation(projects.core.network)
 
     testImplementation(projects.core.testing)
+    // The sleep-timer repository test builds a real database and a real DataStore file, because the
+    // properties worth testing are what each does with an *unset* value.
+    testImplementation(libs.androidx.room.runtime)
+    testImplementation(libs.androidx.room.ktx)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.robolectric)
     testImplementation(libs.turbine)
 }

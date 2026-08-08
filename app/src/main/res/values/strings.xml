@@ -169,6 +169,44 @@
     <string name="player_starting">Starting…</string>
     <!-- %1$s is the position a book will resume from, such as "2 h 14 min". -->
     <string name="player_resume_at">Resume at %1$s</string>
+
+    <!-- PRODUCT_SPEC PLAY-008 — the sleep timer. -->
+    <string name="sleep_timer_title">Sleep timer</string>
+    <string name="sleep_timer_open">Set a sleep timer</string>
+    <!-- %1$s is the remaining time, such as "12 min". -->
+    <string name="sleep_timer_active">Sleep timer: %1$s left</string>
+    <string name="sleep_timer_off">Off</string>
+    <string name="sleep_timer_end_of_chapter">End of chapter</string>
+    <!-- %1$d is a whole number of minutes. -->
+    <string name="sleep_timer_minutes">%1$d min</string>
+    <string name="sleep_timer_seconds">%1$d s</string>
+    <string name="sleep_timer_restart">Restart the timer</string>
+
+    <!-- SET-002 (Playback) — the sleep timer's settings. -->
+    <string name="sleep_timer_settings">Timer defaults</string>
+    <string name="sleep_timer_default_length">Default length</string>
+    <string name="sleep_timer_fade">Fade out over</string>
+    <string name="sleep_timer_shake">Shake to restart the timer</string>
+    <string name="sleep_timer_shake_hint">Off by default. When it is on, the app senses motion only while a timer is running — never at other times.</string>
+
+    <!-- PRODUCT_SPEC PLAY-008 / SET-002 — the local history. -->
+    <string name="sleep_timer_history">Recent timers</string>
+    <string name="sleep_timer_history_empty">No sleep timers have been set on this device yet.</string>
+    <string name="sleep_timer_history_hint">Kept on this device only, and never sent anywhere.</string>
+    <!-- %1$s is a date and time; %2$s is the mode, such as "30 min". -->
+    <string name="sleep_timer_history_started">%1$s · %2$s</string>
+    <string name="sleep_timer_outcome_expired">Ran down and paused the book</string>
+    <string name="sleep_timer_outcome_cancelled">Turned off</string>
+    <string name="sleep_timer_outcome_playbackstopped">Playback stopped first</string>
+    <string name="sleep_timer_outcome_abandoned">The app closed while it was running</string>
+    <string name="sleep_timer_outcome_running">Running now</string>
+    <!-- %1$s is a duration such as "24 min". -->
+    <string name="sleep_timer_history_lasted">Lasted %1$s</string>
+    <plurals name="sleep_timer_history_restarts">
+        <item quantity="one">Restarted once</item>
+        <item quantity="other">Restarted %1$d times</item>
+    </plurals>
+    <string name="settings_tab_sleep">Sleep</string>
     <string name="navigate_back">Back</string>
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->
