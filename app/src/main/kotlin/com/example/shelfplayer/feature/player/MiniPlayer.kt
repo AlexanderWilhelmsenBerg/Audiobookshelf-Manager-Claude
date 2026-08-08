@@ -1,16 +1,25 @@
 package com.example.shelfplayer.feature.player
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -21,6 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -28,9 +40,12 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-001 — what is playing, on every screen.
@@ -53,10 +68,13 @@ fun MiniPlayer(
     onTogglePlayPause: () -> Unit,
     onStop: () -> Unit,
     onOpenSleepTimer: () -> Unit,
+    onExpand: () -> Unit,
+    onSkipBy: (Duration) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (state.bookId == null) return
     val activeTimerLabel = stringResource(R.string.sleep_timer_active, timer.remaining.asShortLabel())
+    val openLabel = stringResource(R.string.player_open)
     Surface(
         modifier = modifier.fillMaxWidth(),
         tonalElevation = 3.dp,
@@ -68,37 +86,69 @@ fun MiniPlayer(
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(BAR_HEIGHT)
+                    .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                    Text(
-                        text = state.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                    )
-                    state.author?.let { author ->
+                // The cover and the text are one tap target that opens the player; the controls sit
+                // outside it. That is "anywhere except the buttons", expressed as a region rather than as
+                // a click on the whole bar that the buttons then have to out-compete.
+                //
+                // Not `clickable` on the `Surface`: a clickable container **merges** its descendants'
+                // semantics, so the buttons inside would stop being separate nodes — a screen reader
+                // would find one control where there are five, and a tap on the pause icon would fire
+                // the container's click instead of the button's.
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(onClick = onExpand, onClickLabel = openLabel),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MiniPlayerArtwork(state = state)
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = author,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = state.title,
+                            style = MaterialTheme.typography.titleSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                         )
+                        state.author?.let { author ->
+                            Text(
+                                text = author,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
                 if (state.isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                }
+                // PRODUCT_SPEC PLAY-007 — the two skips a listener reaches for without looking.
+                IconButton(onClick = { onSkipBy(-SKIP_INTERVAL) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Replay30,
+                        contentDescription = pluralStringResource(
+                            R.plurals.player_skip_back,
+                            SKIP_SECONDS,
+                            SKIP_SECONDS,
+                        ),
+                    )
                 }
                 // PRODUCT_SPEC PLAY-008 — the remaining time doubles as the control's label, so a
                 // listener can see the timer is running without opening anything.
                 IconButton(onClick = onOpenSleepTimer) {
                     if (timer.isActive) {
                         Text(
-                            text = timer.remaining.asShortLabel(),
+                            text = timer.remaining.asCountdownLabel(),
                             style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.semantics {
                                 contentDescription = activeTimerLabel
@@ -119,6 +169,16 @@ fun MiniPlayer(
                         ),
                     )
                 }
+                IconButton(onClick = { onSkipBy(SKIP_INTERVAL) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Forward30,
+                        contentDescription = pluralStringResource(
+                            R.plurals.player_skip_forward,
+                            SKIP_SECONDS,
+                            SKIP_SECONDS,
+                        ),
+                    )
+                }
                 IconButton(onClick = onStop) {
                     Icon(
                         imageVector = Icons.Filled.Close,
@@ -129,3 +189,54 @@ fun MiniPlayer(
         }
     }
 }
+
+/**
+ * The cover, at the height the bar gives it.
+ *
+ * Present in the enlarged bar and absent from the old one, and it is most of what the extra height buys:
+ * a bar with the book's cover on it says which book is playing before any text is read.
+ */
+@Composable
+private fun MiniPlayerArtwork(state: PlaybackUiState, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(ARTWORK_SIZE)
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        val uri = state.artworkUri
+        if (uri == null) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        } else {
+            AsyncImage(
+                model = uri,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+/**
+ * Double the old bar.
+ *
+ * The old one was a single row of text and two icons at about 56dp. Doubling it is what makes room for
+ * the cover and for four controls at a comfortable touch size, and it makes the bar a target big enough
+ * to tap without aiming — which matters now that tapping it opens the player.
+ */
+private val BAR_HEIGHT = 112.dp
+
+private val ARTWORK_SIZE = 88.dp
+
+/** PRODUCT_SPEC PLAY-007 — thirty seconds each way, until the setting that configures it exists. */
+private val SKIP_INTERVAL = 30.seconds
+
+/** The same number as an `Int`, for the plural lookups. */
+private const val SKIP_SECONDS = 30

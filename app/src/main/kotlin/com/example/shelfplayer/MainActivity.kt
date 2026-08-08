@@ -24,7 +24,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.feature.browse.LocalCoverUrls
 import com.example.shelfplayer.feature.browse.coverUrlsFor
+import com.example.shelfplayer.feature.player.ChapterSheet
+import com.example.shelfplayer.feature.player.FullPlayer
 import com.example.shelfplayer.feature.player.MiniPlayer
+import com.example.shelfplayer.feature.player.PlayerActions
 import com.example.shelfplayer.feature.player.PlayerViewModel
 import com.example.shelfplayer.feature.player.SleepTimerSheet
 import com.example.shelfplayer.navigation.ShelfDestinations
@@ -84,8 +87,11 @@ class MainActivity : ComponentActivity() {
 private fun ShelfPlayerContent(startDestination: String, playerViewModel: PlayerViewModel = hiltViewModel()) {
     val playback by playerViewModel.playback.collectAsStateWithLifecycle()
     val timer by playerViewModel.timer.collectAsStateWithLifecycle()
+    val isExpanded by playerViewModel.isExpanded.collectAsStateWithLifecycle()
     var isTimerSheetOpen by remember { mutableStateOf(false) }
+    var isChapterSheetOpen by remember { mutableStateOf(false) }
     NotificationPermission(hasPlayback = playback.bookId != null)
+
     Column(modifier = Modifier.fillMaxSize()) {
         ShelfPlayerNavHost(
             startDestination = startDestination,
@@ -97,8 +103,43 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
             onTogglePlayPause = playerViewModel::onTogglePlayPause,
             onStop = playerViewModel::onStop,
             onOpenSleepTimer = { isTimerSheetOpen = true },
+            onExpand = playerViewModel::onExpand,
+            onSkipBy = playerViewModel::onSkipBy,
         )
     }
+
+    // PRODUCT_SPEC PLAY-001 — the full player, over everything.
+    //
+    // Drawn after the column rather than instead of it, so collapsing reveals the screen the listener
+    // was on with its scroll intact. A book that stopped while the player was open collapses it: an
+    // expanded player showing nothing has no content and no obvious way out.
+    if (isExpanded && playback.bookId != null) {
+        FullPlayer(
+            state = playback,
+            timer = timer,
+            actions = PlayerActions(
+                onTogglePlayPause = playerViewModel::onTogglePlayPause,
+                onSeekTo = playerViewModel::onSeekTo,
+                onSkipBy = playerViewModel::onSkipBy,
+                onOpenSleepTimer = { isTimerSheetOpen = true },
+                onOpenChapters = { isChapterSheetOpen = true },
+                onCollapse = playerViewModel::onCollapse,
+            ),
+        )
+    }
+
+    if (isChapterSheetOpen) {
+        ChapterSheet(
+            chapters = playback.chapters,
+            current = playback.currentChapter,
+            onSelect = { chapter ->
+                playerViewModel.onChapterSelected(chapter)
+                isChapterSheetOpen = false
+            },
+            onDismiss = { isChapterSheetOpen = false },
+        )
+    }
+
     if (isTimerSheetOpen) {
         SleepTimerSheet(
             state = timer,

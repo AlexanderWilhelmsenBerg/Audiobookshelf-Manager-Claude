@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.domain.playback.GlobalTimeline
 import kotlin.time.Duration
@@ -34,6 +35,15 @@ object MediaItems {
     /** Milliseconds. The whole book's duration, which a single track's does not give. */
     const val KEY_BOOK_DURATION_MS = "com.example.shelfplayer.playback.BOOK_DURATION_MS"
 
+    /**
+     * Milliseconds. This track's own length.
+     *
+     * Carried so a seek can be resolved without the session: [tracksOf] rebuilds enough of the track
+     * list for [GlobalTimeline] to convert a book position into a window and an offset, using the same
+     * arithmetic the resume seek uses rather than a second copy of it.
+     */
+    const val KEY_TRACK_DURATION_MS = "com.example.shelfplayer.playback.TRACK_DURATION_MS"
+
     /** A playlist plus where to start it. */
     data class Queue(val items: List<MediaItem>, val startIndex: Int, val startPositionMs: Long)
 
@@ -51,6 +61,7 @@ object MediaItems {
             val extras = Bundle().apply {
                 putLong(KEY_TRACK_START_OFFSET_MS, track.startOffset.inWholeMilliseconds)
                 putLong(KEY_BOOK_DURATION_MS, session.duration.inWholeMilliseconds)
+                putLong(KEY_TRACK_DURATION_MS, track.duration.inWholeMilliseconds)
             }
             MediaItem.Builder()
                 .setMediaId(session.bookId.value)
@@ -88,6 +99,26 @@ object MediaItems {
         trackStartOffset = item.trackStartOffset(),
         offset = playerPositionMs.coerceAtLeast(0).milliseconds,
     )
+
+    /**
+     * The playlist as a track list, for the timeline arithmetic.
+     *
+     * The URL and the mime type are not recreated — nothing that converts a position needs them — so
+     * these are deliberately partial [PlayableTrack]s built from the two facts the items carry. It is
+     * the alternative to holding the session in memory, which the service cannot do after the app
+     * process has gone.
+     */
+    fun tracksOf(items: List<MediaItem>): List<PlayableTrack> = items.mapIndexed { index, item ->
+        PlayableTrack(
+            index = index,
+            url = "",
+            startOffset = item.trackStartOffset(),
+            duration = (item.mediaMetadata.extras?.getLong(KEY_TRACK_DURATION_MS) ?: 0L)
+                .coerceAtLeast(0).milliseconds,
+            mimeType = null,
+            isExcluded = false,
+        )
+    }
 
     /** The whole book's duration, or [Duration.ZERO] when the item does not carry one. */
     fun bookDurationOf(item: MediaItem): Duration =

@@ -13,7 +13,7 @@ lists for the phase:
 | MediaLibraryService | **Built** — one session, foreground `mediaPlayback` type |
 | Remote playback session | **Built** — `PlaybackApi.openSession`, 13 contract tests |
 | ExoPlayer | **Built** — on the `@AuthenticatedClient` OkHttp data source |
-| Global timeline | **Arithmetic built and tested**; seeking and chapter navigation are wave 2 |
+| Global timeline | **Built** — offsets, seeking across boundaries, chapter navigation |
 | Progress sync | Journaled locally every 5 s; **session sync is wave 3** |
 | Notification / lockscreen / headset | Notification and lock screen built; **headset resume untested on hardware** |
 | Speed / skip | Not started — wave 4 |
@@ -113,15 +113,26 @@ journal against a real database, and 7 over the mini player's semantics tree.
 focus behaviour is what Media3's documentation says, whether the stream survives doze — those are wave
 5's, and the first device run is where they will be found.
 
-## Wave 2 — the global timeline
+## Wave 2 — the global timeline ✅ **built, 2026-08-08 (untested on hardware)**
 
-PLAY-003, and the wave with the most arithmetic in it. **Unblocked** — `multi-item-play.json` settled
-`startOffset` — and **partly done**: `GlobalTimeline` converts in both directions and is tested against
-the six-then-four-second fixture book, because wave 1's resume seek needed it and a player that resumed
-into the wrong file on a multi-file book would have been shipping a known bug.
+PLAY-003, and the wave with the most arithmetic in it.
 
-What is left is the interactive half: seeking across a boundary *during* playback, chapter navigation,
-and the UI that drives both.
+- **Multi-file books in server track order**, excluded tracks dropped from the playlist rather than
+  skipped at playback time — a playlist that does not contain a file cannot play it by accident, from
+  any control surface.
+- **Seeking across a track boundary** keeps the global book position. Every seek in the app — the resume,
+  the dragged bar, the skips, chapter navigation — goes through the same `GlobalTimeline` conversion, so
+  none of them can disagree with another about where a position is.
+- **Chapter navigation independent of file boundaries**: a sheet listing every chapter with its start
+  time, opening scrolled to the current one, plus previous/next that restarts the current chapter when
+  well into it and steps back when just past a boundary.
+- **The unit tests that belong here rather than on a device**: 23 over the conversion both ways, boundary
+  seeking, fractional offsets that a summing implementation would drift on, and chapter data that is
+  absent, malformed or unordered.
+
+Deliberately not here: the skips are a hardcoded thirty seconds each way. PLAY-007's configurable
+5–120 second setting is wave 4's, and the constant is named in both players so the gap is visible in the
+code rather than only in this plan.
 
 The server has already globalised both track offsets and chapter times, so neither needs deriving by
 summing durations. What still needs arithmetic is the other direction: Media3 plays a **playlist** and

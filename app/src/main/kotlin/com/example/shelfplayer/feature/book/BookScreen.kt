@@ -3,16 +3,25 @@ package com.example.shelfplayer.feature.book
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -23,9 +32,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,6 +49,7 @@ import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.feature.browse.BookCover
 import com.example.shelfplayer.feature.player.PlayerViewModel
 import com.example.shelfplayer.playback.PlaybackUiState
 import java.time.Instant
@@ -132,77 +147,212 @@ private fun BookDetails(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        book.subtitle?.let { subtitle ->
-            Text(text = subtitle, style = MaterialTheme.typography.titleSmall)
-        }
-        if (book.authors.isNotEmpty()) {
-            Text(
-                text = book.authors.joinToString { it.name },
-                style = MaterialTheme.typography.bodyLarge,
-            )
-        }
-        if (book.narrators.isNotEmpty()) {
-            Text(
-                text = stringResource(R.string.book_narrated_by, book.narrators.joinToString()),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        book.seriesMemberships.forEach { membership ->
-            Text(
-                text = stringResource(
-                    R.string.book_series_position,
-                    membership.series.name,
-                    membership.sequence.raw.ifEmpty { "—" },
-                ),
-                style = MaterialTheme.typography.labelLarge,
-            )
-        }
-
-        Text(
-            text = stringResource(R.string.book_duration, book.duration.formatted()),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = pluralStringResource(R.plurals.book_tracks, book.trackCount, book.trackCount),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-
-        ProgressSummary(book = book)
-
-        Availability(book = book)
-
-        BookLabels(book = book)
-
-        PublicationFacts(book = book)
-
-        book.description?.let { description ->
-            Text(
-                // PRODUCT_SPEC LIB-004: HTML descriptions are sanitized before rendering. Phase 0
-                // strips markup rather than rendering it; a real sanitizing renderer arrives with
-                // the metadata editor in Phase 5, where untrusted provider content also lands.
-                text = description.stripHtml(),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-
-        PlayButton(
+        // PRODUCT_SPEC LIB-004 — the hero: cover, title, author, and the two actions.
+        //
+        // Everything a reader came for is above the fold and in one block, rather than a cover followed
+        // by a stack of one-line facts. The block that used to be here read as a form because every
+        // field had the same weight; hierarchy is what makes it a book instead of a record.
+        BookHeader(
             book = book,
             playback = playback,
             onPlay = onPlay,
             onTogglePlayPause = onTogglePlayPause,
         )
+
+        // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
+        // kind belong on the same line, and a reader scans a strip faster than they read a list.
+        FactStrip(book = book)
+
+        ProgressSummary(book = book, modifier = Modifier.padding(horizontal = 16.dp))
+
+        book.description?.let { description ->
+            Section(titleRes = R.string.book_section_about) {
+                Text(
+                    // PRODUCT_SPEC LIB-004: HTML descriptions are sanitized before rendering. This
+                    // strips markup rather than rendering it; a real sanitizing renderer arrives with
+                    // the metadata editor in Phase 5, where untrusted provider content also lands.
+                    text = description.stripHtml(),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
+        BookLabels(book = book)
+
+        PublicationFacts(book = book)
+
+        // PRODUCT_SPEC LIB-004 — "on the server, as of when". Demoted from a chip pair to a footnote,
+        // because that is what it is: a caveat about how fresh this screen's contents are, not a fact
+        // about the book. It stays because a cached row must never imply "on the server right now".
+        Text(
+            text = stringResource(R.string.book_last_checked, book.lastFetchedAt.asDate()),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
 /**
- * PRODUCT_SPEC PLAY-001 — one button, whose meaning depends on what the session is already doing.
+ * A titled block, so the screen reads as sections rather than as a run of paragraphs.
+ *
+ * The heading is what turns "some text" into "About this book" — a reader skimming for the description
+ * finds it by its label, and one skipping it knows what they are skipping.
+ */
+@Composable
+private fun Section(titleRes: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(titleRes),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        content()
+    }
+}
+
+/**
+ * PRODUCT_SPEC LIB-004 — length, tracks and whether it is downloaded, as one line.
+ *
+ * These were three separate sentences at body size, which gave a track count the same visual weight as
+ * the book's title. They are metadata: one row, one type size down, separated by dots. The download
+ * state joins them because "is it on this device" is the same kind of fact as "how long is it".
+ */
+@Composable
+private fun FactStrip(book: Book, modifier: Modifier = Modifier) {
+    val facts = buildList {
+        add(stringResource(R.string.book_duration, book.duration.formatted()))
+        add(pluralStringResource(R.plurals.book_tracks, book.trackCount, book.trackCount))
+        add(stringResource(book.localAvailability.labelRes()))
+    }
+    Text(
+        text = facts.joinToString(FACT_SEPARATOR),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+}
+
+private const val FACT_SEPARATOR = "  ·  "
+
+/**
+ * PRODUCT_SPEC LIB-004 / PLAY-001 — the cover, and the two things you can do with the book.
+ *
+ * The actions sit at the **top right of the cover**, in the order a hand reaches them: download on the
+ * left, play on the right, play being the one pressed every time and download the one pressed once.
+ *
+ * Download is a placeholder and says so: it is disabled, and its content description names the phase it
+ * arrives in rather than implying a button that silently does nothing. A control that looks live and is
+ * not is worse than one that admits it (PRODUCT_SPEC 21).
+ */
+@Composable
+private fun BookHeader(
+    book: Book,
+    playback: PlaybackUiState,
+    onPlay: (LibraryItemId) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        // Shadowed rather than flat. A cover that sits *on* the page instead of *in* it is most of the
+        // difference between this reading as a book and as a database row.
+        BookCover(
+            book = book,
+            modifier = Modifier
+                .width(COVER_WIDTH)
+                .shadow(elevation = 8.dp, shape = MaterialTheme.shapes.medium),
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            // The actions first, top-right of the cover as asked. `End` alignment on this one child
+            // rather than on the column, so the text below it stays left-aligned and readable.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                FilledTonalIconButton(onClick = {}, enabled = false) {
+                    Icon(
+                        imageVector = Icons.Filled.Download,
+                        contentDescription = stringResource(R.string.book_download_later),
+                    )
+                }
+                PlayIconButton(
+                    book = book,
+                    playback = playback,
+                    onPlay = onPlay,
+                    onTogglePlayPause = onTogglePlayPause,
+                )
+            }
+
+            // Title, author, narrator, series — in the order a reader wants them, at descending weight.
+            // Previously each was a separate paragraph at nearly the same size, which is why the screen
+            // read as a form: nothing told the eye where to start.
+            Text(
+                text = book.title,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            book.subtitle?.let { subtitle ->
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (book.authors.isNotEmpty()) {
+                Text(
+                    text = book.authors.joinToString { it.name },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (book.narrators.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.book_narrated_by, book.narrators.joinToString()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            book.seriesMemberships.forEach { membership ->
+                Text(
+                    text = stringResource(
+                        R.string.book_series_position,
+                        membership.series.name,
+                        membership.sequence.raw.ifEmpty { "—" },
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-001 — one icon button, whose meaning depends on what the session is already doing.
  *
  * Three states rather than a separate play and pause control:
  *
@@ -218,7 +368,7 @@ private fun BookDetails(
  * book you are eight hours into does not say what is about to happen.
  */
 @Composable
-private fun PlayButton(
+private fun PlayIconButton(
     book: Book,
     playback: PlaybackUiState,
     onPlay: (LibraryItemId) -> Unit,
@@ -226,21 +376,36 @@ private fun PlayButton(
     modifier: Modifier = Modifier,
 ) {
     val isCurrent = playback.bookId == book.id
+    val isPlayingThis = isCurrent && playback.isPlaying
     val resumeAt = book.progress?.position?.takeIf { it > Duration.ZERO && book.progress?.isFinished != true }
-    Button(
+    val startingLabel = stringResource(R.string.player_starting)
+    FilledIconButton(
         onClick = { if (isCurrent) onTogglePlayPause() else onPlay(book.id) },
         enabled = !playback.isLoading,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
     ) {
-        Text(
-            text = when {
-                playback.isLoading -> stringResource(R.string.player_starting)
-                isCurrent && playback.isPlaying -> stringResource(R.string.player_pause)
-                isCurrent -> stringResource(R.string.player_resume)
-                resumeAt != null -> stringResource(R.string.player_resume_at, resumeAt.formatted())
-                else -> stringResource(R.string.player_play)
-            },
-        )
+        if (playback.isLoading) {
+            // The spinner replaces the icon, so it has to carry the icon's label — a progress indicator
+            // with no description announces nothing at all to a screen reader.
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(20.dp)
+                    .semantics { contentDescription = startingLabel },
+            )
+        } else {
+            Icon(
+                imageVector = if (isPlayingThis) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                // An icon-only control carries its whole label here, so the description says what will
+                // happen — including *where it will resume from* on a part-finished book, which the icon
+                // cannot show and which is the one thing a listener wants confirmed before pressing.
+                contentDescription = when {
+                    isPlayingThis -> stringResource(R.string.player_pause)
+                    isCurrent -> stringResource(R.string.player_resume)
+                    resumeAt != null -> stringResource(R.string.player_resume_at, resumeAt.formatted())
+                    else -> stringResource(R.string.player_play)
+                },
+            )
+        }
     }
 }
 
@@ -266,44 +431,13 @@ private fun ProgressSummary(book: Book, modifier: Modifier = Modifier) {
 
 private const val PERCENT = 100
 
-/**
- * PRODUCT_SPEC LIB-004 — remote availability, shown independently of local availability.
- *
- * Two chips rather than one, because they answer different questions and a single "Downloaded" label
- * silently answers only the second. A book reaches this screen only while the last sync still listed
- * it, so the remote chip is qualified by *when* that was: "on the server" with no date behind it is a
- * claim about right now that a cached row cannot make.
- */
-@Composable
-private fun Availability(book: Book, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistChip(
-                onClick = {},
-                enabled = false,
-                label = { Text(text = stringResource(R.string.book_on_server)) },
-            )
-            AssistChip(
-                onClick = {},
-                enabled = false,
-                label = { Text(text = stringResource(book.localAvailability.labelRes())) },
-            )
-        }
-        Text(
-            text = stringResource(R.string.book_last_checked, book.lastFetchedAt.asDate()),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
 /** PRODUCT_SPEC LIB-004 — genres and tags, which the sync has always stored and no screen has shown. */
 @Composable
 private fun BookLabels(book: Book, modifier: Modifier = Modifier) {
     val labels = book.genres + book.tags
     if (labels.isEmpty()) return
     FlowRow(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         labels.forEach { label ->
@@ -330,7 +464,10 @@ private fun PublicationFacts(book: Book, modifier: Modifier = Modifier) {
         book.sizeBytes.takeIf { it > 0 }?.let { add(R.string.book_size to it.asFileSize()) }
     }
     if (facts.isEmpty()) return
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         facts.forEach { (labelRes, value) ->
             Text(
                 text = stringResource(labelRes, value),
@@ -394,3 +531,6 @@ private fun Duration.formatted(): String {
 }
 
 private const val MINUTES_PER_HOUR = 60
+
+/** Wide enough to read a cover's title at arm's length, narrow enough to leave room for the actions. */
+private val COVER_WIDTH = 140.dp

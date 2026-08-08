@@ -18,7 +18,9 @@ import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.domain.playback.GlobalTimeline
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -75,6 +77,16 @@ class PlaybackController @Inject constructor(
     private var ticker: Job? = null
 
     /**
+     * PRODUCT_SPEC PLAY-003 — the current book's chapters.
+     *
+     * Held here rather than sent through the playlist. A forty-chapter book's list in every `MediaItem`'s
+     * extras would be tens of kilobytes across the binder, and the only readers are in this process: the
+     * player screen and the sleep timer. It is cleared when a book changes so a chapter list can never
+     * outlive the book it describes.
+     */
+    private var chapters: List<Chapter> = emptyList()
+
+    /**
      * PRODUCT_SPEC PLAY-001 — opens a session and starts it at the position the server reported.
      *
      * Returns a failure the caller can show. The two that a user will actually meet are "you are not
@@ -101,6 +113,7 @@ class PlaybackController @Inject constructor(
         // travel here rather than in the playlist because a long book's chapter list in every
         // `MediaItem`'s extras would be tens of kilobytes across the binder to answer one question.
         sleepTimer.onBookChanged(session.chapters)
+        chapters = session.chapters
         val queue = MediaItems.queueFor(session)
         media.setMediaItems(queue.items, queue.startIndex, queue.startPositionMs)
         media.prepare()
@@ -113,6 +126,77 @@ class PlaybackController @Inject constructor(
         applicationScope.launch(mainDispatcher) {
             val media = connect() ?: return@launch
             if (media.isPlaying) media.pause() else media.play()
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — seeks to a position on the **book's** timeline.
+     *
+     * The conversion goes through [GlobalTimeline], on a track list rebuilt from the playlist's own
+     * metadata. That is deliberate rather than convenient: the resume seek uses the same function, so a
+     * dragged seek bar and a resumed book cannot disagree about where a position is — which on a
+     * multi-file book is the difference between landing in the right chapter and the wrong file.
+     *
+     * Clamped by [GlobalTimeline] at both ends, so a bar dragged to its extreme lands on a real
+     * position rather than past the last track.
+     */
+    fun seekTo(position: Duration) {
+        applicationScope.launch(mainDispatcher) {
+            val media = controller ?: return@launch
+            if (media.mediaItemCount == 0) return@launch
+            val items = (0 until media.mediaItemCount).map(media::getMediaItemAt)
+            val cursor = GlobalTimeline.cursorFor(MediaItems.tracksOf(items), position)
+            media.seekTo(cursor.index, cursor.offset.inWholeMilliseconds)
+            publish(media)
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — chapter navigation, independent of file boundaries.
+     *
+     * Both go through [seekTo], so a chapter that begins mid-file lands mid-file. That is the whole point
+     * of PLAY-003: a chapter boundary and a track boundary are different things, and navigating by the
+     * former must not be limited to the latter.
+     *
+     * Doing nothing at either end of the book is deliberate. "Next" on the last chapter has nowhere to
+     * go, and wrapping to the start — or stopping playback — would be a surprise rather than a feature.
+     */
+    fun skipToNextChapter() {
+        applicationScope.launch(mainDispatcher) {
+            val target = GlobalTimeline.nextChapterStart(chapters, currentPosition() ?: return@launch)
+            target?.let(::seekTo)
+        }
+    }
+
+    fun skipToPreviousChapter() {
+        applicationScope.launch(mainDispatcher) {
+            val target = GlobalTimeline.previousChapterStart(chapters, currentPosition() ?: return@launch)
+            target?.let(::seekTo)
+        }
+    }
+
+    /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from a list. */
+    fun seekToChapter(chapter: Chapter) = seekTo(chapter.start)
+
+    /** Where the book is now, or `null` when nothing is loaded. Main thread only. */
+    private fun currentPosition(): Duration? {
+        val media = controller ?: return null
+        val item = media.currentMediaItem ?: return null
+        return MediaItems.globalPositionOf(item, media.currentPosition)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-007 — skips [delta] along the book, forwards or backwards.
+     *
+     * Expressed as a seek on the **book's** timeline rather than as `Player.seekForward`, because
+     * Media3's own skip is per-item: thirty seconds forward from twenty seconds before the end of a
+     * track would stop at the boundary instead of crossing into the next file.
+     */
+    fun skipBy(delta: Duration) {
+        applicationScope.launch(mainDispatcher) {
+            val media = controller ?: return@launch
+            val item = media.currentMediaItem ?: return@launch
+            seekTo(MediaItems.globalPositionOf(item, media.currentPosition) + delta)
         }
     }
 
@@ -141,6 +225,7 @@ class PlaybackController @Inject constructor(
         ticker?.cancel()
         controller?.release()
         controller = null
+        chapters = emptyList()
         _state.value = PlaybackUiState.Idle
     }
 
@@ -230,6 +315,7 @@ class PlaybackController @Inject constructor(
 
     private fun publish(media: MediaController) {
         val item: MediaItem? = media.currentMediaItem
+        val position = item?.let { MediaItems.globalPositionOf(it, media.currentPosition) } ?: Duration.ZERO
         _state.value = PlaybackUiState(
             bookId = item?.let(MediaItems::bookIdOf),
             title = item?.mediaMetadata?.title?.toString().orEmpty(),
@@ -237,8 +323,10 @@ class PlaybackController @Inject constructor(
             artworkUri = item?.mediaMetadata?.artworkUri?.toString(),
             isPlaying = media.isPlaying,
             isLoading = media.playbackState == Player.STATE_BUFFERING,
-            position = item?.let { MediaItems.globalPositionOf(it, media.currentPosition) } ?: Duration.ZERO,
+            position = position,
             duration = item?.let(MediaItems::bookDurationOf) ?: Duration.ZERO,
+            chapters = if (item == null) emptyList() else GlobalTimeline.ordered(chapters),
+            currentChapter = if (item == null) null else GlobalTimeline.chapterAt(chapters, position),
         )
     }
 
@@ -277,6 +365,9 @@ data class PlaybackUiState(
     val isLoading: Boolean,
     val position: Duration,
     val duration: Duration,
+    /** PRODUCT_SPEC PLAY-003 — in time order, so a list renders in the order it plays. */
+    val chapters: List<Chapter> = emptyList(),
+    val currentChapter: Chapter? = null,
 ) {
     /** Fraction in `0.0..1.0`; `0` when the duration is not known yet rather than a division by zero. */
     val fractionComplete: Float

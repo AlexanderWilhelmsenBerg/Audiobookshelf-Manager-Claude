@@ -52,6 +52,8 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = {},
                 onStop = {},
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 
@@ -68,6 +70,8 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = {},
                 onStop = {},
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 
@@ -90,6 +94,8 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = {},
                 onStop = {},
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 
@@ -106,10 +112,66 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = {},
                 onStop = {},
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 
         composeRule.onNodeWithContentDescription("Resume").assertIsDisplayed()
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — tapping the bar opens the player; tapping a control does not.
+     *
+     * The second half is the one worth pinning. The bar carries a click of its own, and a button inside
+     * a clickable parent that did not consume its own press would both pause the book *and* open the
+     * player — which is the bug this asserts is absent.
+     */
+    @Test
+    fun `tapping the bar opens the player and tapping a control does not`() {
+        var expands = 0
+        var toggles = 0
+        composeRule.setContent {
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = { toggles++ },
+                onStop = {},
+                onOpenSleepTimer = {},
+                onExpand = { expands++ },
+                onSkipBy = {},
+            )
+        }
+
+        composeRule.onNodeWithText("The Tidewatch Cycle").performClick()
+        assertEquals(1, expands)
+        assertEquals(0, toggles)
+
+        composeRule.onNodeWithContentDescription("Pause").performClick()
+        assertEquals(1, toggles)
+        assertEquals(1, expands, "the button's press did not also open the player")
+    }
+
+    /** PRODUCT_SPEC PLAY-007 — both skips report their direction in seconds. */
+    @Test
+    fun `the skip controls report their direction`() {
+        val skips = mutableListOf<Long>()
+        composeRule.setContent {
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = { delta -> skips += delta.inWholeSeconds },
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("Back 30 seconds").performClick()
+        composeRule.onNodeWithContentDescription("Forward 30 seconds").performClick()
+
+        assertEquals(listOf(-30L, 30L), skips)
     }
 
     @Test
@@ -123,6 +185,8 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = { toggles++ },
                 onStop = { stops++ },
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 
@@ -143,6 +207,8 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = {},
                 onStop = {},
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 
@@ -171,6 +237,8 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = {},
                 onStop = {},
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 
@@ -196,6 +264,8 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = {},
                 onStop = {},
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 
@@ -212,6 +282,8 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = {},
                 onStop = {},
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 
@@ -228,6 +300,8 @@ class MiniPlayerScreenTest {
                 onTogglePlayPause = {},
                 onStop = {},
                 onOpenSleepTimer = {},
+                onExpand = {},
+                onSkipBy = {},
             )
         }
 

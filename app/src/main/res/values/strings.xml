@@ -152,7 +152,6 @@
     <string name="book_series_position">%1$s, book %2$s</string>
 
     <!-- PRODUCT_SPEC LIB-004 — the detail fields the sync has always stored. -->
-    <string name="book_on_server">On the server</string>
     <string name="book_last_checked">Last checked %1$s</string>
     <string name="book_published">Published %1$s</string>
     <string name="book_publisher">Publisher: %1$s</string>
@@ -166,6 +165,30 @@
     <string name="player_pause">Pause</string>
     <string name="player_stop">Stop playback</string>
     <!-- Shown on the book screen while the server is being asked to open a session. -->
+    <string name="player_collapse">Close the player</string>
+    <!-- %1$s is a remaining time such as "1:04:12". -->
+    <string name="player_remaining">−%1$s</string>
+    <!-- %1$d minutes, %2$02d seconds. -->
+    <string name="player_clock">%1$d:%2$02d</string>
+    <!-- %1$d hours, %2$02d minutes, %3$02d seconds. -->
+    <string name="player_clock_hours">%1$d:%2$02d:%3$02d</string>
+    <!-- %1$d is a whole number of seconds. Plurals, so a one-second skip does not read "1 seconds". -->
+    <plurals name="player_skip_back">
+        <item quantity="one">Back %1$d second</item>
+        <item quantity="other">Back %1$d seconds</item>
+    </plurals>
+    <plurals name="player_skip_forward">
+        <item quantity="one">Forward %1$d second</item>
+        <item quantity="other">Forward %1$d seconds</item>
+    </plurals>
+    <string name="player_chapters">Chapters</string>
+    <string name="player_chapters_empty">This book has no chapter information.</string>
+    <string name="player_chapter_current">Playing now</string>
+    <!-- %1$d is the chapter's position in the book, for a chapter with no title of its own. -->
+    <string name="player_chapter_number">Chapter %1$d</string>
+    <string name="player_speed_later">Playback speed — arrives in a later phase</string>
+    <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
+    <string name="player_open">Open the player</string>
     <string name="player_starting">Starting…</string>
     <!-- %1$s is the position a book will resume from, such as "2 h 14 min". -->
     <string name="player_resume_at">Resume at %1$s</string>
@@ -180,6 +203,8 @@
     <!-- %1$d is a whole number of minutes. -->
     <string name="sleep_timer_minutes">%1$d min</string>
     <string name="sleep_timer_seconds">%1$d s</string>
+    <!-- A ticking countdown: %1$d minutes and %2$02d seconds, e.g. "29:31". -->
+    <string name="sleep_timer_countdown">%1$d:%2$02d</string>
     <string name="sleep_timer_restart">Restart the timer</string>
 
     <!-- SET-002 (Playback) — the sleep timer's settings. -->
@@ -207,6 +232,8 @@
         <item quantity="other">Restarted %1$d times</item>
     </plurals>
     <string name="settings_tab_sleep">Sleep</string>
+    <string name="book_section_about">About this book</string>
+    <string name="book_download_later">Download — arrives in a later phase</string>
     <string name="navigate_back">Back</string>
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->

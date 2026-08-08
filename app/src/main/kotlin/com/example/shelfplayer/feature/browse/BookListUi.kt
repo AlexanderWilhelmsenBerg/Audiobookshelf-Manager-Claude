@@ -2,7 +2,6 @@ package com.example.shelfplayer.feature.browse
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.library.Book
@@ -35,9 +35,12 @@ import kotlin.time.Duration
  * composable. Two copies would drift, and the first thing to drift would be the progress line — the
  * part a user checks against what they were actually listening to.
  *
- * The cover runs the **full height of the card**, flush to its left edge, and takes its size from the
- * text beside it: `IntrinsicSize.Min` measures the text column first, and the square follows. A row
- * with a series line is therefore taller and gets a larger cover, without either being told a number.
+ * The cover runs the **full height of the card**, flush to its left edge, against a fixed [ROW_HEIGHT].
+ *
+ * Fixed rather than measured from the text. Intrinsic height made a row's height depend on how long its
+ * title was and on whether it had an author and a series at all, so a list of them was visibly ragged
+ * and the covers came out at different sizes down the page. Every row is now identical: two lines of
+ * title whether or not the title needs them, one line of author whether or not there is one.
  *
  * A book with no cover still gets the box, so the text column starts in the same place on every row —
  * a list where some rows indent and some do not is harder to scan than one with a few empty squares.
@@ -58,9 +61,13 @@ internal fun BookCard(
 ) {
     Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Row(
-            // Measures the text column, then lets the cover fill that height. Without it,
-            // `fillMaxHeight` on the cover would resolve against an unbounded constraint.
-            modifier = Modifier.height(IntrinsicSize.Min),
+            // A **fixed** height rather than `IntrinsicSize.Min`.
+            //
+            // Intrinsic height measured the text column, so a card's height depended on how many lines
+            // its title took and on whether it had an author and a series at all — which made a list of
+            // them visibly ragged, with the covers at different sizes down the page. Fixing the height
+            // makes every row identical and gives the cover a definite box to fill.
+            modifier = Modifier.height(ROW_HEIGHT),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BookCoverThumbnail(book = book, modifier = Modifier.coverPadding())
@@ -70,14 +77,23 @@ internal fun BookCard(
                     .padding(end = 16.dp, top = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(text = book.title, style = MaterialTheme.typography.titleMedium)
-                book.authors.firstOrNull()?.let { author ->
-                    Text(
-                        text = author.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                // Two lines, always — reserved rather than earned, so a short title does not make its
+                // row shorter than the one above it.
+                Text(
+                    text = book.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    minLines = TITLE_LINES,
+                    maxLines = TITLE_LINES,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Drawn blank when the book has no author, for the same reason.
+                Text(
+                    text = book.authors.firstOrNull()?.name.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 membership?.let { inSeries ->
                     Text(
                         text = stringResource(
@@ -142,6 +158,18 @@ private fun Duration.readable(): String {
 }
 
 private const val MINUTES_PER_HOUR = 60
+
+/**
+ * Every row in the flat list, whatever its book.
+ *
+ * Enough for a two-line title, a line of author, a line of series and the progress bar at the
+ * type scale the card uses. Fixed rather than measured, which is the only way a list of them is
+ * uniform — see `BookCard`.
+ */
+private val ROW_HEIGHT = 132.dp
+
+/** Two lines, always. */
+private const val TITLE_LINES = 2
 
 /** PRODUCT_SPEC LIB-002 — sort order is a visible, one-tap choice, not a buried menu. */
 @Composable

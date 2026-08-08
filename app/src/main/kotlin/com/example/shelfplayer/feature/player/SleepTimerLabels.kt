@@ -31,6 +31,27 @@ fun Duration.asShortLabel(): String {
     return stringResource(R.string.sleep_timer_minutes, minutes.toInt())
 }
 
+/**
+ * `29:31`, ticking every second.
+ *
+ * The minutes-only label reads as **stuck**: it changes once a minute, so a listener watching it for a
+ * few seconds sees a number that does not move and concludes the timer is not running. A countdown has
+ * to be seen to count, which means seconds on the face of it.
+ *
+ * Hours are folded into the minutes — `90:00` rather than `1:30:00` — because the longest preset is
+ * ninety minutes and a three-part clock for that is harder to read at a glance than a two-part one.
+ */
+@Composable
+@ReadOnlyComposable
+fun Duration.asCountdownLabel(): String {
+    val total = inWholeSeconds.coerceAtLeast(0)
+    return stringResource(
+        R.string.sleep_timer_countdown,
+        total / SECONDS_PER_MINUTE,
+        total % SECONDS_PER_MINUTE,
+    )
+}
+
 @Composable
 @ReadOnlyComposable
 fun SleepTimerMode.label(): String = when (this) {
@@ -49,4 +70,27 @@ fun SleepTimerOutcome?.label(): String = when (this) {
     null -> stringResource(R.string.sleep_timer_outcome_running)
 }
 
+/**
+ * `1:04:12` on a long book, `12:30` on a short one. Hours only when there are any.
+ *
+ * Shared by the player's elapsed/remaining pair and by the chapter list, so a chapter's start time and
+ * the position you land on after tapping it are formatted by the same function — two formatters would
+ * eventually disagree about rounding, and the user would see a chapter start at `12:30` and the player
+ * land on `12:29`.
+ */
+@Composable
+@ReadOnlyComposable
+fun Duration.asChapterClock(): String {
+    val total = inWholeSeconds.coerceAtLeast(0)
+    val hours = total / SECONDS_PER_HOUR
+    val minutes = (total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE
+    val seconds = total % SECONDS_PER_MINUTE
+    return if (hours > 0) {
+        stringResource(R.string.player_clock_hours, hours, minutes, seconds)
+    } else {
+        stringResource(R.string.player_clock, minutes, seconds)
+    }
+}
+
 private const val SECONDS_PER_MINUTE = 60L
+private const val SECONDS_PER_HOUR = 3_600L
