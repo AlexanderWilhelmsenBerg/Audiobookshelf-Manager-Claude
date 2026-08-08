@@ -1,0 +1,14 @@
+{
+  "body": {
+    "results": [
+      {
+        "id": "<volatile>",
+        "progressSynced": false,
+        "success": true
+      }
+    ]
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

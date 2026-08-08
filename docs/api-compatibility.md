@@ -526,3 +526,71 @@ The app should **read the library's thresholds and prefer them**, treating its o
 fallback for a server that reports none. Disagreeing with the server about whether a book is finished
 is a bug the user sees as a book that will not stay finished. Recorded here rather than decided
 unilaterally: it is a deviation from PLAY-004's literal wording and wants an ADR.
+
+## The offline routes, captured 2026-08-07
+
+Four fixtures, and they changed the design of the outbox before a line of it was written.
+
+| Fixture | Route | Status | Body |
+| --- | --- | --- | --- |
+| `session-local.json` | `POST /api/session/local` | 200 | **empty**, `text/plain` |
+| `session-local-repeated.json` | the same call again | 200 | **empty**, `text/plain` |
+| `session-local-all.json` | `POST /api/session/local-all` | 200 | `{"results":[{"id":…,"success":true,"progressSynced":false}]}` |
+
+### The outbox should use `local-all` even for a single session
+
+`POST /api/session/local` answers `200` with **nothing in it**. It reports neither which session it
+accepted nor whether the progress was applied, so a client using it cannot distinguish "stored and
+applied" from "stored and ignored".
+
+`POST /api/session/local-all` answers with a per-session result. For an outbox — whose entire job is to
+know which entries may be retired and which must be retried — that is the difference between a queue
+that drains correctly and one that guesses. So the batch route is the one to use, with a single-element
+array when there is one session.
+
+### `progressSynced: false` is the conflict rule, demonstrated
+
+The captured result says `success: true` and `progressSynced: false`, and the reason is instructive:
+the capture sent `updatedAt: 0`. The server compares the incoming `updatedAt` against the stored
+progress and takes the newer; epoch 1970 is not newer, so the session was recorded and the progress was
+**not** applied.
+
+That is the last-writer-wins rule working, observed rather than read. Three things follow:
+
+- **`success` and `progressSynced` are different questions.** An outbox that retired an entry on
+  `success` alone would retire one whose progress the server discarded. Both belong in the record.
+- The app must send a **truthful** `updatedAt`. It is the entire basis of the server's decision.
+- PLAY-005's clock-skew detection is load-bearing rather than diagnostic: a device whose clock runs
+  fast wins every conflict it takes part in, and one running slow silently loses progress it thinks it
+  saved.
+
+The capture should send a realistic `updatedAt` next time so the *accepted* path is recorded too. The
+rejected path is worth keeping regardless — it is the only fixture that shows what a declined sync
+looks like.
+
+## `startOffset` is global — settled 2026-08-07 (PLAY-003)
+
+`multi-item-play.json`, from a two-file book of six seconds then four:
+
+| Track | `startOffset` | `duration` |
+| --- | --- | --- |
+| 1 | `0` | 6 |
+| 2 | **`6`** | 4 |
+
+Track two starts at six, which is the duration of track one. **`startOffset` is an offset into the
+book**, not a per-file zero — and the unequal file lengths rule out "index × duration" as well, which
+two equal files would have left open.
+
+Chapters are globalised the same way. The second file's chapter was embedded at `0–4000 ms` *within
+that file* and the session reports it as `start: 6, end: 10`:
+
+```
+{"start": 0, "end": 6,  "title": "The Ebb"}
+{"start": 6, "end": 10, "title": "The Flood"}
+```
+
+So neither track offsets nor chapter times need deriving by summing durations — the server has already
+done it. What still needs arithmetic is the other direction: Media3 plays a **playlist**, and its
+position is per-item, so a global book position has to be mapped to a window index and an offset within
+it. `startOffset` is what makes that mapping exact rather than accumulated, and an accumulated one would
+drift on a book whose durations are not whole seconds.

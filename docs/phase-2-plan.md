@@ -38,7 +38,7 @@ PRODUCT_SPEC names four. None of them is a unit test, and that shapes the whole 
 All four are hardware. What the repository can carry is everything that makes them *pass on the first
 try* — and, per Phase 1's lesson, the thing that decides that is fixtures.
 
-## Wave 0 — the capture ✅ **mostly run on 2026-08-07**
+## Wave 0 — the capture ✅ **complete, 2026-08-07**
 
 Five fixtures committed. What they settled is in `docs/api-compatibility.md`; the three consequences
 for the waves below are:
@@ -58,14 +58,18 @@ server clamped it and marked the book finished. That records a real behaviour �
 mark a book finished without being asked** — and the reason turned out to be a library setting we had
 captured in Phase 1 and never read. See wave 3.
 
-### Still to capture
+### What the final run settled
 
-| Route | Blocks |
-| --- | --- |
-| `POST /api/items/{id}/play` on the two-file book | Wave 2 — `startOffset` is still unverified |
-| `POST /api/session/local` | Wave 3 — the offline outbox |
-| `POST /api/session/local-all` | Wave 3 — the batch drain |
-| `GET /api/session/{id}` | Resuming an open session rather than opening a second one |
+- **`startOffset` is global.** Track two of the two-file book reports `startOffset: 6`, the duration of
+  track one, and chapters are globalised the same way. **Wave 2 is unblocked.**
+- **The outbox uses `local-all`, even for one session.** `POST /api/session/local` answers `200` with an
+  empty body — no per-session result — while `local-all` reports `{id, success, progressSynced}`. A
+  queue that cannot tell "applied" from "ignored" cannot drain correctly.
+- **`progressSynced: false` was observed**, because the capture sent `updatedAt: 0` and the server
+  declined to apply progress older than what it held. The conflict rule, demonstrated rather than read.
+
+Still uncaptured, and not blocking: `GET /api/session/{id}` (resuming an open session) and
+`POST /api/items/{id}/play/{episodeId}` (podcast episodes, out of Phase 2 scope).
 
 ## Wave 1 — the vertical slice: one book, one track, play and pause
 
@@ -84,8 +88,14 @@ requirement and none of them is needed to prove the service works.
 
 ## Wave 2 — the global timeline
 
-PLAY-003, and the wave with the most arithmetic in it. **Blocked on the multi-track fixture** — see
-wave 0.
+PLAY-003, and the wave with the most arithmetic in it. **Unblocked** — `multi-item-play.json` settled
+`startOffset`.
+
+The server has already globalised both track offsets and chapter times, so neither needs deriving by
+summing durations. What still needs arithmetic is the other direction: Media3 plays a **playlist** and
+its position is per-item, so a global book position maps to a window index plus an offset within it.
+Using `startOffset` makes that exact rather than accumulated, and an accumulated one drifts on a book
+whose track durations are not whole seconds.
 
 - Multi-file books in server track order, with excluded tracks skipped.
 - Seeking across a track boundary while keeping the global book position.
@@ -128,16 +138,15 @@ outbox drains in one request rather than N.
 - Clock-skew detection stops being hygiene and becomes load-bearing: the server trusts `updatedAt`, so
   a device five minutes fast wins every conflict it takes part in.
 
-### The finished threshold needs a decision, not an implementation
+### The finished threshold — decided, ADR-0013
 
-PLAY-004 fixes the app's threshold at 95%, configurable 90–99%. The **server** marks a book finished
-from the library's own `markAsFinishedTimeRemaining` and `markAsFinishedPercentComplete` — already in
-the committed `libraries.json`, at ten seconds remaining and null respectively.
+**A book is finished when 30 seconds or less remain**, and the app is never less eager than the server:
+`max(30s, library.markAsFinishedTimeRemaining)`. A book the server reports as `isFinished` is finished
+regardless of position.
 
-Ten seconds remaining on a ten-hour book is 99.97%. The two rules will disagree constantly, and the
-symptom a user sees is a book that will not stay finished. The recommendation is to read the library's
-thresholds and prefer them, with the app's setting as the fallback for a server reporting none — but
-that is a deviation from PLAY-004's literal wording and wants an ADR before it is coded.
+This deviates from PLAY-004's literal "95%, configurable 90–99%", and deliberately: 95% of a ten-hour
+book is half an hour from the end, which is not what anyone means by finished. The requirement's intent
+— a book near its end counts as done, and the user can tune it — is kept; its unit is not.
 
 ## Wave 4 — the controls a listener expects
 

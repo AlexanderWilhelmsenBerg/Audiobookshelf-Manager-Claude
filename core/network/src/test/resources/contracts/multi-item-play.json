@@ -1,0 +1,527 @@
+{
+  "body": {
+    "audioTracks": [
+      {
+        "addedAt": 0,
+        "bitRate": 32000,
+        "channelLayout": "mono",
+        "channels": 1,
+        "chapters": [
+          {
+            "end": 6,
+            "id": 0,
+            "start": 0,
+            "title": "The Ebb"
+          }
+        ],
+        "codec": "mp3",
+        "contentUrl": "/api/items/<volatile>/file/<volatile>",
+        "discNumFromFilename": null,
+        "discNumFromMeta": null,
+        "duration": 6,
+        "embeddedCoverArt": null,
+        "error": null,
+        "exclude": false,
+        "format": "MP2/3 (MPEG audio layer 2/3)",
+        "index": 1,
+        "ino": "<volatile>",
+        "language": null,
+        "manuallyVerified": false,
+        "metaTags": {
+          "tagAlbum": "The Tidewatch Cycle",
+          "tagArtist": "Marisol Holt",
+          "tagDate": "2024",
+          "tagEncoder": "Lavf62.3.100",
+          "tagGenre": "Fiction",
+          "tagTitle": "Tidewatch",
+          "tagTrack": "1"
+        },
+        "metadata": {
+          "birthtimeMs": 0,
+          "ctimeMs": 0,
+          "ext": ".mp3",
+          "filename": "01 - Tidewatch.mp3",
+          "mtimeMs": 0,
+          "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle/01 - Tidewatch.mp3",
+          "relPath": "01 - Tidewatch.mp3",
+          "size": 0
+        },
+        "mimeType": "audio/mpeg",
+        "startOffset": 0,
+        "timeBase": "1/14112000",
+        "title": "01 - Tidewatch.mp3",
+        "trackNumFromFilename": 1,
+        "trackNumFromMeta": 1,
+        "updatedAt": 0
+      },
+      {
+        "addedAt": 0,
+        "bitRate": 32000,
+        "channelLayout": "mono",
+        "channels": 1,
+        "chapters": [
+          {
+            "end": 4,
+            "id": 0,
+            "start": 0,
+            "title": "The Flood"
+          }
+        ],
+        "codec": "mp3",
+        "contentUrl": "/api/items/<volatile>/file/<volatile>",
+        "discNumFromFilename": null,
+        "discNumFromMeta": null,
+        "duration": 4,
+        "embeddedCoverArt": null,
+        "error": null,
+        "exclude": false,
+        "format": "MP2/3 (MPEG audio layer 2/3)",
+        "index": 2,
+        "ino": "<volatile>",
+        "language": null,
+        "manuallyVerified": false,
+        "metaTags": {
+          "tagAlbum": "The Tidewatch Cycle",
+          "tagArtist": "Marisol Holt",
+          "tagDate": "2024",
+          "tagEncoder": "Lavf62.3.100",
+          "tagGenre": "Fiction",
+          "tagTitle": "Tidewatch",
+          "tagTrack": "2"
+        },
+        "metadata": {
+          "birthtimeMs": 0,
+          "ctimeMs": 0,
+          "ext": ".mp3",
+          "filename": "02 - Tidewatch.mp3",
+          "mtimeMs": 0,
+          "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle/02 - Tidewatch.mp3",
+          "relPath": "02 - Tidewatch.mp3",
+          "size": 0
+        },
+        "mimeType": "audio/mpeg",
+        "startOffset": 6,
+        "timeBase": "1/14112000",
+        "title": "02 - Tidewatch.mp3",
+        "trackNumFromFilename": 2,
+        "trackNumFromMeta": 2,
+        "updatedAt": 0
+      }
+    ],
+    "bookId": "<volatile>",
+    "chapters": [
+      {
+        "end": 6,
+        "id": 0,
+        "start": 0,
+        "title": "The Ebb"
+      },
+      {
+        "end": 10,
+        "id": 0,
+        "start": 6,
+        "title": "The Flood"
+      }
+    ],
+    "coverPath": "/audiobooks/Marisol Holt/The Tidewatch Cycle/cover.jpg",
+    "currentTime": 0,
+    "date": "2026-08-08",
+    "dayOfWeek": "Saturday",
+    "deviceInfo": {
+      "clientName": "ShelfPlayer",
+      "clientVersion": "0.0.0",
+      "deviceId": "capture",
+      "deviceName": "capture capture",
+      "id": "<volatile>",
+      "ipAddress": "::ffff:172.17.0.1",
+      "manufacturer": "capture",
+      "model": "capture",
+      "sdkVersion": "36",
+      "userId": "<volatile>"
+    },
+    "displayAuthor": "Marisol Holt",
+    "displayTitle": "The Tidewatch Cycle",
+    "duration": 10,
+    "episodeId": null,
+    "id": "<volatile>",
+    "libraryId": "<volatile>",
+    "libraryItem": {
+      "addedAt": 0,
+      "birthtimeMs": 0,
+      "ctimeMs": 0,
+      "folderId": "<volatile>",
+      "id": "<volatile>",
+      "ino": "<volatile>",
+      "isFile": false,
+      "isInvalid": false,
+      "isMissing": false,
+      "lastScan": 0,
+      "libraryFiles": [
+        {
+          "addedAt": 0,
+          "fileType": "audio",
+          "ino": "<volatile>",
+          "isSupplementary": null,
+          "metadata": {
+            "birthtimeMs": 0,
+            "ctimeMs": 0,
+            "ext": ".mp3",
+            "filename": "01 - Tidewatch.mp3",
+            "mtimeMs": 0,
+            "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle/01 - Tidewatch.mp3",
+            "relPath": "01 - Tidewatch.mp3",
+            "size": 0
+          },
+          "updatedAt": 0
+        },
+        {
+          "addedAt": 0,
+          "fileType": "audio",
+          "ino": "<volatile>",
+          "isSupplementary": null,
+          "metadata": {
+            "birthtimeMs": 0,
+            "ctimeMs": 0,
+            "ext": ".mp3",
+            "filename": "02 - Tidewatch.mp3",
+            "mtimeMs": 0,
+            "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle/02 - Tidewatch.mp3",
+            "relPath": "02 - Tidewatch.mp3",
+            "size": 0
+          },
+          "updatedAt": 0
+        },
+        {
+          "addedAt": 0,
+          "fileType": "image",
+          "ino": "<volatile>",
+          "isSupplementary": null,
+          "metadata": {
+            "birthtimeMs": 0,
+            "ctimeMs": 0,
+            "ext": ".jpg",
+            "filename": "cover.jpg",
+            "mtimeMs": 0,
+            "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle/cover.jpg",
+            "relPath": "cover.jpg",
+            "size": 0
+          },
+          "updatedAt": 0
+        }
+      ],
+      "libraryId": "<volatile>",
+      "media": {
+        "audioFiles": [
+          {
+            "addedAt": 0,
+            "bitRate": 32000,
+            "channelLayout": "mono",
+            "channels": 1,
+            "chapters": [
+              {
+                "end": 6,
+                "id": 0,
+                "start": 0,
+                "title": "The Ebb"
+              }
+            ],
+            "codec": "mp3",
+            "discNumFromFilename": null,
+            "discNumFromMeta": null,
+            "duration": 6,
+            "embeddedCoverArt": null,
+            "error": null,
+            "exclude": false,
+            "format": "MP2/3 (MPEG audio layer 2/3)",
+            "index": 1,
+            "ino": "<volatile>",
+            "language": null,
+            "manuallyVerified": false,
+            "metaTags": {
+              "tagAlbum": "The Tidewatch Cycle",
+              "tagArtist": "Marisol Holt",
+              "tagDate": "2024",
+              "tagEncoder": "Lavf62.3.100",
+              "tagGenre": "Fiction",
+              "tagTitle": "Tidewatch",
+              "tagTrack": "1"
+            },
+            "metadata": {
+              "birthtimeMs": 0,
+              "ctimeMs": 0,
+              "ext": ".mp3",
+              "filename": "01 - Tidewatch.mp3",
+              "mtimeMs": 0,
+              "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle/01 - Tidewatch.mp3",
+              "relPath": "01 - Tidewatch.mp3",
+              "size": 0
+            },
+            "mimeType": "audio/mpeg",
+            "timeBase": "1/14112000",
+            "trackNumFromFilename": 1,
+            "trackNumFromMeta": 1,
+            "updatedAt": 0
+          },
+          {
+            "addedAt": 0,
+            "bitRate": 32000,
+            "channelLayout": "mono",
+            "channels": 1,
+            "chapters": [
+              {
+                "end": 4,
+                "id": 0,
+                "start": 0,
+                "title": "The Flood"
+              }
+            ],
+            "codec": "mp3",
+            "discNumFromFilename": null,
+            "discNumFromMeta": null,
+            "duration": 4,
+            "embeddedCoverArt": null,
+            "error": null,
+            "exclude": false,
+            "format": "MP2/3 (MPEG audio layer 2/3)",
+            "index": 2,
+            "ino": "<volatile>",
+            "language": null,
+            "manuallyVerified": false,
+            "metaTags": {
+              "tagAlbum": "The Tidewatch Cycle",
+              "tagArtist": "Marisol Holt",
+              "tagDate": "2024",
+              "tagEncoder": "Lavf62.3.100",
+              "tagGenre": "Fiction",
+              "tagTitle": "Tidewatch",
+              "tagTrack": "2"
+            },
+            "metadata": {
+              "birthtimeMs": 0,
+              "ctimeMs": 0,
+              "ext": ".mp3",
+              "filename": "02 - Tidewatch.mp3",
+              "mtimeMs": 0,
+              "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle/02 - Tidewatch.mp3",
+              "relPath": "02 - Tidewatch.mp3",
+              "size": 0
+            },
+            "mimeType": "audio/mpeg",
+            "timeBase": "1/14112000",
+            "trackNumFromFilename": 2,
+            "trackNumFromMeta": 2,
+            "updatedAt": 0
+          }
+        ],
+        "chapters": [
+          {
+            "end": 6,
+            "id": 0,
+            "start": 0,
+            "title": "The Ebb"
+          },
+          {
+            "end": 10,
+            "id": 0,
+            "start": 6,
+            "title": "The Flood"
+          }
+        ],
+        "coverPath": "/audiobooks/Marisol Holt/The Tidewatch Cycle/cover.jpg",
+        "duration": 10,
+        "ebookFile": null,
+        "id": "<volatile>",
+        "libraryItemId": "<volatile>",
+        "metadata": {
+          "abridged": false,
+          "asin": null,
+          "authorName": "Marisol Holt",
+          "authorNameLF": "Holt, Marisol",
+          "authors": [
+            {
+              "id": "<volatile>",
+              "name": "Marisol Holt"
+            }
+          ],
+          "description": null,
+          "descriptionPlain": null,
+          "explicit": false,
+          "genres": [
+            "Fiction"
+          ],
+          "isbn": null,
+          "language": null,
+          "narratorName": "",
+          "narrators": [],
+          "publishedDate": null,
+          "publishedYear": "2024",
+          "publisher": null,
+          "series": [],
+          "seriesName": "",
+          "subtitle": null,
+          "title": "The Tidewatch Cycle",
+          "titleIgnorePrefix": "Tidewatch Cycle, The"
+        },
+        "numAudioFiles": 2,
+        "numChapters": 2,
+        "numTracks": 2,
+        "size": 0,
+        "tags": [],
+        "tracks": [
+          {
+            "addedAt": 0,
+            "bitRate": 32000,
+            "channelLayout": "mono",
+            "channels": 1,
+            "chapters": [
+              {
+                "end": 6,
+                "id": 0,
+                "start": 0,
+                "title": "The Ebb"
+              }
+            ],
+            "codec": "mp3",
+            "contentUrl": "/api/items/<volatile>/file/<volatile>",
+            "discNumFromFilename": null,
+            "discNumFromMeta": null,
+            "duration": 6,
+            "embeddedCoverArt": null,
+            "error": null,
+            "exclude": false,
+            "format": "MP2/3 (MPEG audio layer 2/3)",
+            "index": 1,
+            "ino": "<volatile>",
+            "language": null,
+            "manuallyVerified": false,
+            "metaTags": {
+              "tagAlbum": "The Tidewatch Cycle",
+              "tagArtist": "Marisol Holt",
+              "tagDate": "2024",
+              "tagEncoder": "Lavf62.3.100",
+              "tagGenre": "Fiction",
+              "tagTitle": "Tidewatch",
+              "tagTrack": "1"
+            },
+            "metadata": {
+              "birthtimeMs": 0,
+              "ctimeMs": 0,
+              "ext": ".mp3",
+              "filename": "01 - Tidewatch.mp3",
+              "mtimeMs": 0,
+              "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle/01 - Tidewatch.mp3",
+              "relPath": "01 - Tidewatch.mp3",
+              "size": 0
+            },
+            "mimeType": "audio/mpeg",
+            "startOffset": 0,
+            "timeBase": "1/14112000",
+            "title": "01 - Tidewatch.mp3",
+            "trackNumFromFilename": 1,
+            "trackNumFromMeta": 1,
+            "updatedAt": 0
+          },
+          {
+            "addedAt": 0,
+            "bitRate": 32000,
+            "channelLayout": "mono",
+            "channels": 1,
+            "chapters": [
+              {
+                "end": 4,
+                "id": 0,
+                "start": 0,
+                "title": "The Flood"
+              }
+            ],
+            "codec": "mp3",
+            "contentUrl": "/api/items/<volatile>/file/<volatile>",
+            "discNumFromFilename": null,
+            "discNumFromMeta": null,
+            "duration": 4,
+            "embeddedCoverArt": null,
+            "error": null,
+            "exclude": false,
+            "format": "MP2/3 (MPEG audio layer 2/3)",
+            "index": 2,
+            "ino": "<volatile>",
+            "language": null,
+            "manuallyVerified": false,
+            "metaTags": {
+              "tagAlbum": "The Tidewatch Cycle",
+              "tagArtist": "Marisol Holt",
+              "tagDate": "2024",
+              "tagEncoder": "Lavf62.3.100",
+              "tagGenre": "Fiction",
+              "tagTitle": "Tidewatch",
+              "tagTrack": "2"
+            },
+            "metadata": {
+              "birthtimeMs": 0,
+              "ctimeMs": 0,
+              "ext": ".mp3",
+              "filename": "02 - Tidewatch.mp3",
+              "mtimeMs": 0,
+              "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle/02 - Tidewatch.mp3",
+              "relPath": "02 - Tidewatch.mp3",
+              "size": 0
+            },
+            "mimeType": "audio/mpeg",
+            "startOffset": 6,
+            "timeBase": "1/14112000",
+            "title": "02 - Tidewatch.mp3",
+            "trackNumFromFilename": 2,
+            "trackNumFromMeta": 2,
+            "updatedAt": 0
+          }
+        ]
+      },
+      "mediaType": "book",
+      "mtimeMs": 0,
+      "numFiles": 3,
+      "oldLibraryItemId": null,
+      "path": "/audiobooks/Marisol Holt/The Tidewatch Cycle",
+      "relPath": "Marisol Holt/The Tidewatch Cycle",
+      "scanVersion": "2.36.0",
+      "size": 0,
+      "updatedAt": 0
+    },
+    "libraryItemId": "<volatile>",
+    "mediaMetadata": {
+      "abridged": false,
+      "asin": null,
+      "authors": [
+        {
+          "id": "<volatile>",
+          "name": "Marisol Holt"
+        }
+      ],
+      "description": null,
+      "explicit": false,
+      "genres": [
+        "Fiction"
+      ],
+      "isbn": null,
+      "language": null,
+      "narrators": [],
+      "publishedDate": null,
+      "publishedYear": "2024",
+      "publisher": null,
+      "series": [],
+      "subtitle": null,
+      "title": "The Tidewatch Cycle"
+    },
+    "mediaPlayer": "exo-player",
+    "mediaType": "book",
+    "playMethod": 0,
+    "serverVersion": "2.36.0",
+    "startTime": 0,
+    "startedAt": 0,
+    "timeListening": 0,
+    "updatedAt": 0,
+    "userId": "<volatile>"
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}
