@@ -518,3 +518,47 @@ data class PlaybackSessionEntity(
     /** The last failure's error code, or `null`. A code, never a message — a message can carry a host. */
     val lastErrorCode: String?,
 )
+
+/**
+ * PRODUCT_SPEC PLAY-007 — one book's playback speed, for one profile.
+ *
+ * ### Why a table and not a column on `media_progress`
+ *
+ * Progress is the server's data: it is uploaded, it is overwritten by a sync, and it is deleted when the
+ * server stops listing a book. A speed is none of those things — it is a local preference about how this
+ * person listens to this book, and putting it in a row that a sync can replace would lose it silently the
+ * first time the server won a conflict.
+ *
+ * ### Keyed by book rather than by track
+ *
+ * PLAY-007: "speed persists across local and streamed versions of the same item". [bookKey] is
+ * `(serverId, remoteId)` and identifies the *book*, so a downloaded copy and a streamed one are the same
+ * row by construction rather than by a rule someone has to remember.
+ *
+ * The profile cascades, as everywhere else: removing an account removes its preferences (AUTH-002). There
+ * is no foreign key to books, for the reason `sleep_timer_sessions` gives — a preference should survive the
+ * book briefly leaving the library, and a re-added book keeps the speed its listener chose.
+ */
+@Entity(
+    tableName = "book_playback_settings",
+    foreignKeys = [
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["profileId"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("profileId")],
+)
+data class BookPlaybackSettingsEntity(
+    /** `profileId` scoped to `bookKey`, as `media_progress` is. */
+    @PrimaryKey val settingsKey: String,
+    val profileId: String,
+    val bookKey: String,
+    /**
+     * Hundredths, as the preferences store keeps it: the grid PLAY-007 defines survives a round trip, which
+     * a float column would not.
+     */
+    val speedHundredths: Int,
+)

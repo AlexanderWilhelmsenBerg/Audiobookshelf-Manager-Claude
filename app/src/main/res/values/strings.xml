@@ -186,7 +186,6 @@
     <string name="player_chapter_current">Playing now</string>
     <!-- %1$d is the chapter's position in the book, for a chapter with no title of its own. -->
     <string name="player_chapter_number">Chapter %1$d</string>
-    <string name="player_speed_later">Playback speed — arrives in a later phase</string>
     <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
     <string name="player_open">Open the player</string>
     <string name="player_starting">Starting…</string>
@@ -200,6 +199,8 @@
     <string name="sleep_timer_active">Sleep timer: %1$s left</string>
     <string name="sleep_timer_off">Off</string>
     <string name="sleep_timer_end_of_chapter">End of chapter</string>
+    <string name="sleep_timer_custom">Custom</string>
+    <string name="sleep_timer_start_custom">Start this timer</string>
     <!-- %1$d is a whole number of minutes. -->
     <string name="sleep_timer_minutes">%1$d min</string>
     <string name="sleep_timer_seconds">%1$d s</string>
@@ -383,6 +384,51 @@
     <!-- PRODUCT_SPEC PLAY-001 — shown over the player when the notification cannot appear. -->
     <string name="player_notifications_blocked">Notifications are off, so this book has no notification or lock-screen controls.</string>
     <string name="player_notifications_fix">Turn on</string>
+
+    <!-- PRODUCT_SPEC PLAY-007 — the speed chooser. -->
+    <string name="player_speed_title">Playback speed</string>
+    <string name="player_speed_value">%1$s×</string>
+    <string name="player_speed_faster">Faster</string>
+    <string name="player_speed_slower">Slower</string>
+    <string name="player_speed_hint">This speed is remembered for this book. Other books use the default from Settings.</string>
+    <string name="player_speed_reset">Use the default speed</string>
+
+    <!-- PRODUCT_SPEC PLAY-009 — the rewind notice, which has to be readable at arm's length half asleep. -->
+    <string name="player_rewind_undo">Undo</string>
+    <plurals name="player_rewind_applied">
+        <item quantity="one">Rewound %1$d second</item>
+        <item quantity="other">Rewound %1$d seconds</item>
+    </plurals>
+
+    <!-- PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the Playback settings tab. -->
+    <string name="settings_tab_playback">Playback</string>
+    <string name="settings_section_speed">Speed</string>
+    <string name="settings_speed_default">Default speed</string>
+    <string name="settings_speed_hint">Used by every book that has not been given its own speed in the player.</string>
+    <string name="settings_section_skip">Skip buttons</string>
+    <string name="settings_skip_back">Back</string>
+    <string name="settings_skip_forward">Forward</string>
+    <string name="settings_skip_hint">The buttons show the number where an icon exists for it, and the amount is always announced.</string>
+    <string name="settings_section_rewind">Rewind after a pause</string>
+    <string name="settings_rewind_enabled">Rewind when playback resumes</string>
+    <string name="settings_rewind_hint">Off by default. Never crosses a chapter start, never applies after you move the position yourself, and never after a call or a navigation prompt.</string>
+    <string name="settings_rewind_short">Paused under 2 minutes</string>
+    <string name="settings_rewind_medium">2 to 10 minutes</string>
+    <string name="settings_rewind_long">10 to 60 minutes</string>
+    <string name="settings_rewind_very_long">Over an hour</string>
+    <string name="settings_section_buffer">Streaming buffer</string>
+    <string name="settings_buffer_hint">Streamed books only; a downloaded book uses the player\'s own defaults. A larger buffer survives a worse connection and uses more memory and mobile data. Takes effect the next time a book starts.</string>
+    <string name="settings_buffer_automatic">Automatic</string>
+    <string name="settings_buffer_low">Low</string>
+    <string name="settings_buffer_standard">Standard</string>
+    <string name="settings_buffer_high">High</string>
+    <string name="settings_buffer_very_high">Very high</string>
+    <plurals name="settings_buffer_range">
+        <item quantity="one">%1$d–%2$d second ahead</item>
+        <item quantity="other">%1$d–%2$d seconds ahead</item>
+    </plurals>
+    <string name="settings_buffer_automatic_range">Whatever the player decides</string>
+    <string name="settings_seconds">%1$d s</string>
 
     <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.

@@ -56,6 +56,12 @@ fun SettingsRoute(
         onSleepTimerDefaultChanged = viewModel::onSleepTimerDefaultChanged,
         onSleepTimerFadeChanged = viewModel::onSleepTimerFadeChanged,
         onShakeToRestartChanged = viewModel::onShakeToRestartChanged,
+        playbackActions = PlaybackSettingsActions(
+            onSpeedChanged = viewModel::onDefaultSpeedChanged,
+            onSkipsChanged = viewModel::onSkipIntervalsChanged,
+            onAutoRewindChanged = viewModel::onAutoRewindChanged,
+            onBufferChanged = viewModel::onBufferPresetChanged,
+        ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
     )
@@ -80,6 +86,7 @@ fun SettingsScreen(
     onSleepTimerDefaultChanged: (Duration) -> Unit,
     onSleepTimerFadeChanged: (Duration) -> Unit,
     onShakeToRestartChanged: (Boolean) -> Unit,
+    playbackActions: PlaybackSettingsActions,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -127,6 +134,8 @@ fun SettingsScreen(
                         onFadeChanged = onSleepTimerFadeChanged,
                         onShakeChanged = onShakeToRestartChanged,
                     )
+
+                    SettingsTab.Playback -> playbackTab(uiState.playback, playbackActions)
 
                     SettingsTab.About -> aboutTab(uiState)
                 }
@@ -239,6 +248,7 @@ private fun LibraryRow(
  */
 private enum class SettingsTab(val labelRes: Int) {
     Server(R.string.settings_tab_server),
+    Playback(R.string.settings_tab_playback),
     Sleep(R.string.settings_tab_sleep),
     About(R.string.settings_tab_about),
 }

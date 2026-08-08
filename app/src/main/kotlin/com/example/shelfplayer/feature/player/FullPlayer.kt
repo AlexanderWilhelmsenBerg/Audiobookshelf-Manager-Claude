@@ -21,11 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -56,11 +54,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-001 / PLAY-003 — the full-screen player.
@@ -95,6 +93,7 @@ fun FullPlayer(
     timer: SleepTimerState,
     actions: PlayerActions,
     modifier: Modifier = Modifier,
+    skips: SkipControls = SkipControls.Inert,
     isNotificationBlocked: Boolean = false,
 ) {
     BackHandler(onBack = actions.onCollapse)
@@ -144,11 +143,7 @@ fun FullPlayer(
             SeekBar(state = state, onSeekTo = actions.onSeekTo)
 
             Spacer(modifier = Modifier.height(8.dp))
-            TransportRow(
-                state = state,
-                onTogglePlayPause = actions.onTogglePlayPause,
-                onSkipBy = actions.onSkipBy,
-            )
+            TransportRow(state = state, skips = skips, onTogglePlayPause = actions.onTogglePlayPause)
 
             Spacer(modifier = Modifier.height(12.dp))
             SecondaryRow(
@@ -156,6 +151,7 @@ fun FullPlayer(
                 timer = timer,
                 onOpenSleepTimer = actions.onOpenSleepTimer,
                 onOpenChapters = actions.onOpenChapters,
+                onOpenSpeed = actions.onOpenSpeed,
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -211,6 +207,33 @@ private fun NotificationBlockedNotice(modifier: Modifier = Modifier) {
             },
         ) {
             Text(text = stringResource(R.string.player_notifications_fix))
+        }
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-007 — the speed control, showing the speed.
+ *
+ * The number rather than the glyph alone, and coloured when it is not 1.0×. A listener who left a book at
+ * 2× three weeks ago and comes back to it needs to be told, not asked to remember; the icon on its own
+ * looks identical either way.
+ */
+@Composable
+private fun SpeedAction(speed: PlaybackSpeed, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val label = stringResource(R.string.player_speed_value, speed.label())
+    IconButton(onClick = onClick, modifier = modifier) {
+        if (speed.isDefault) {
+            Icon(
+                imageVector = Icons.Filled.Speed,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -362,25 +385,29 @@ private fun TimeLabel(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun TransportRow(
     state: PlaybackUiState,
+    skips: SkipControls,
     onTogglePlayPause: () -> Unit,
-    onSkipBy: (Duration) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val backSeconds = skips.intervals.back.inWholeSeconds.toInt()
+    val forwardSeconds = skips.intervals.forward.inWholeSeconds.toInt()
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SkipButton(
-            icon = Icons.Filled.Replay30,
-            description = pluralStringResource(R.plurals.player_skip_back, SKIP_SECONDS, SKIP_SECONDS),
-            onClick = { onSkipBy(-SKIP_INTERVAL) },
+            // PRODUCT_SPEC PLAY-007 — the glyph follows the interval, and drops its number rather than
+            // printing a wrong one. See `SkipIcons`.
+            icon = SkipIcons.back(skips.intervals.back),
+            description = pluralStringResource(R.plurals.player_skip_back, backSeconds, backSeconds),
+            onClick = skips.onBack,
         )
         PlayPauseButton(state = state, onClick = onTogglePlayPause)
         SkipButton(
-            icon = Icons.Filled.Forward30,
-            description = pluralStringResource(R.plurals.player_skip_forward, SKIP_SECONDS, SKIP_SECONDS),
-            onClick = { onSkipBy(SKIP_INTERVAL) },
+            icon = SkipIcons.forward(skips.intervals.forward),
+            description = pluralStringResource(R.plurals.player_skip_forward, forwardSeconds, forwardSeconds),
+            onClick = skips.onForward,
         )
     }
 }
@@ -434,11 +461,10 @@ private fun SkipButton(icon: ImageVector, description: String, onClick: () -> Un
 /**
  * The controls used once a session rather than once a minute.
  *
- * Speed, chapters and bookmark are **disabled placeholders**, and each says so in its content description
- * rather than looking live. That is deliberate: the row is the shape the player will keep, and leaving the
- * slots visible-but-off is honest about what is coming, where hiding them would mean the layout shifting
- * under the user as each arrives. PRODUCT_SPEC 21 prefers a control that admits it does nothing to one
- * that silently does nothing.
+ * Bookmark is still a **disabled placeholder** and says so in its content description rather than looking
+ * live — the row is the shape the player will keep, and a slot that admits it does nothing beats one that
+ * silently does nothing (PRODUCT_SPEC 21). Speed became real in wave 4 and now shows its own value, because
+ * "1.5×" on the button is the fastest way to answer "why does this sound odd".
  */
 @Composable
 private fun SecondaryRow(
@@ -446,6 +472,7 @@ private fun SecondaryRow(
     timer: SleepTimerState,
     onOpenSleepTimer: () -> Unit,
     onOpenChapters: () -> Unit,
+    onOpenSpeed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -453,12 +480,7 @@ private fun SecondaryRow(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SecondaryAction(
-            icon = Icons.Filled.Speed,
-            description = stringResource(R.string.player_speed_later),
-            enabled = false,
-            onClick = {},
-        )
+        SpeedAction(speed = state.speed, onClick = onOpenSpeed)
         SecondaryAction(
             icon = Icons.AutoMirrored.Filled.MenuBook,
             description = stringResource(R.string.player_chapters),
@@ -531,9 +553,3 @@ private val PLAY_BUTTON_SIZE = 88.dp
 
 /** Keeps the artwork sane on a tablet, where a full-width square cover would be enormous. */
 private val ARTWORK_MAX = 420.dp
-
-/** PRODUCT_SPEC PLAY-007 — thirty seconds each way, until the setting that configures it exists. */
-private val SKIP_INTERVAL = 30.seconds
-
-/** The same number as an `Int`, for the plural lookups. */
-private const val SKIP_SECONDS = 30

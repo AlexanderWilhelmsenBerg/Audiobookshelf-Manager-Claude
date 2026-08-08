@@ -7,8 +7,10 @@ import androidx.media3.common.C
 import androidx.media3.common.util.BitmapLoader
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.example.shelfplayer.core.model.playback.BufferPreset
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
@@ -21,7 +23,12 @@ import javax.inject.Inject
  */
 @OptIn(UnstableApi::class)
 interface PlayerFactory {
-    fun create(): ExoPlayer
+    /**
+     * @param buffer PRODUCT_SPEC PLAY-006 — the preset in force when this player is built. A change takes
+     *   effect on the next player, which is what "applied on the next player preparation" means: recreating a
+     *   live player mid-book is the one thing product priority 1 forbids doing for a setting.
+     */
+    fun create(buffer: BufferPreset = BufferPreset.Default): ExoPlayer
 
     /** How the notification and lock screen load cover art. See [DefaultPlayerFactory]. */
     fun bitmapLoader(): BitmapLoader
@@ -42,8 +49,11 @@ internal class DefaultPlayerFactory @Inject constructor(
     private val artwork: BitmapLoader,
 ) : PlayerFactory {
 
-    override fun create(): ExoPlayer = ExoPlayer.Builder(context)
+    override fun create(buffer: BufferPreset): ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+        // PRODUCT_SPEC PLAY-006 — Automatic leaves Media3's own load control alone, which is a different
+        // thing from any particular pair of numbers and is why the enum carries no override for it.
+        .apply { loadControlFor(buffer)?.let(::setLoadControl) }
         // The `true` is `handleAudioFocus`: Media3 requests and releases focus itself.
         .setAudioAttributes(SPEECH_OVER_MEDIA, true)
         // PRODUCT_SPEC PLAY-002 — headphones out pauses, and audio never moves to the phone speaker.
@@ -54,6 +64,26 @@ internal class DefaultPlayerFactory @Inject constructor(
         .build()
 
     override fun bitmapLoader(): BitmapLoader = artwork
+
+    /**
+     * PRODUCT_SPEC PLAY-006 — the preset as a `DefaultLoadControl`, or `null` for Automatic.
+     *
+     * An invalid preset also returns `null` rather than throwing. `DefaultLoadControl.Builder` asserts these
+     * relationships itself and would crash the service on the next play; falling back to Media3's defaults
+     * costs the user their preference and keeps their book playing, which is the right way round
+     * (product priority 1). The presets are checked in a unit test so this path is unreachable in practice.
+     */
+    private fun loadControlFor(buffer: BufferPreset): DefaultLoadControl? {
+        if (buffer == BufferPreset.Automatic || !buffer.isValid) return null
+        return DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                buffer.minimumBuffer.inWholeMilliseconds.toInt(),
+                buffer.maximumBuffer.inWholeMilliseconds.toInt(),
+                buffer.bufferForPlayback.inWholeMilliseconds.toInt(),
+                buffer.bufferForRebuffer.inWholeMilliseconds.toInt(),
+            )
+            .build()
+    }
 
     private companion object {
         /**

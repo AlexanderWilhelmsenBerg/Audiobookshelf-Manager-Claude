@@ -16,10 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,8 +42,6 @@ import coil.compose.AsyncImage
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-001 — what is playing, on every screen.
@@ -69,12 +65,14 @@ fun MiniPlayer(
     onStop: () -> Unit,
     onOpenSleepTimer: () -> Unit,
     onExpand: () -> Unit,
-    onSkipBy: (Duration) -> Unit,
+    skips: SkipControls,
     modifier: Modifier = Modifier,
 ) {
     if (state.bookId == null) return
     val activeTimerLabel = stringResource(R.string.sleep_timer_active, timer.remaining.asShortLabel())
     val openLabel = stringResource(R.string.player_open)
+    val backSeconds = skips.intervals.back.inWholeSeconds.toInt()
+    val forwardSeconds = skips.intervals.forward.inWholeSeconds.toInt()
     Surface(
         modifier = modifier.fillMaxWidth(),
         tonalElevation = 3.dp,
@@ -132,14 +130,15 @@ fun MiniPlayer(
                 if (state.isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 }
-                // PRODUCT_SPEC PLAY-007 — the two skips a listener reaches for without looking.
-                IconButton(onClick = { onSkipBy(-SKIP_INTERVAL) }) {
+                // PRODUCT_SPEC PLAY-007 — the two skips a listener reaches for without looking, at the
+                // configured intervals. The glyph drops its number rather than printing a wrong one.
+                IconButton(onClick = skips.onBack) {
                     Icon(
-                        imageVector = Icons.Filled.Replay30,
+                        imageVector = SkipIcons.back(skips.intervals.back),
                         contentDescription = pluralStringResource(
                             R.plurals.player_skip_back,
-                            SKIP_SECONDS,
-                            SKIP_SECONDS,
+                            backSeconds,
+                            backSeconds,
                         ),
                     )
                 }
@@ -169,13 +168,13 @@ fun MiniPlayer(
                         ),
                     )
                 }
-                IconButton(onClick = { onSkipBy(SKIP_INTERVAL) }) {
+                IconButton(onClick = skips.onForward) {
                     Icon(
-                        imageVector = Icons.Filled.Forward30,
+                        imageVector = SkipIcons.forward(skips.intervals.forward),
                         contentDescription = pluralStringResource(
                             R.plurals.player_skip_forward,
-                            SKIP_SECONDS,
-                            SKIP_SECONDS,
+                            forwardSeconds,
+                            forwardSeconds,
                         ),
                     )
                 }
@@ -234,9 +233,3 @@ private fun MiniPlayerArtwork(state: PlaybackUiState, modifier: Modifier = Modif
 private val BAR_HEIGHT = 112.dp
 
 private val ARTWORK_SIZE = 88.dp
-
-/** PRODUCT_SPEC PLAY-007 — thirty seconds each way, until the setting that configures it exists. */
-private val SKIP_INTERVAL = 30.seconds
-
-/** The same number as an `Int`, for the plural lookups. */
-private const val SKIP_SECONDS = 30

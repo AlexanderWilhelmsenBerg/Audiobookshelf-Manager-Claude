@@ -6,6 +6,7 @@ import androidx.room.RoomDatabase
 import com.example.shelfplayer.core.database.DatabaseTransactionRunner
 import com.example.shelfplayer.core.database.RoomDatabaseTransactionRunner
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.dao.BookPlaybackSettingsDao
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
@@ -57,6 +58,10 @@ interface DatabaseModule {
 
         @Provides
         fun providesLibraryWriteDao(database: ShelfPlayerDatabase): LibraryWriteDao = database.libraryWriteDao()
+
+        @Provides
+        fun providesBookPlaybackSettingsDao(database: ShelfPlayerDatabase): BookPlaybackSettingsDao =
+            database.bookPlaybackSettingsDao()
 
         @Provides
         fun providesProfileDao(database: ShelfPlayerDatabase): ProfileDao = database.profileDao()
