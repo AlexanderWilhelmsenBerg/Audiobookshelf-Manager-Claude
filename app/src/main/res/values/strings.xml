@@ -181,8 +181,12 @@
         <item quantity="one">Forward %1$d second</item>
         <item quantity="other">Forward %1$d seconds</item>
     </plurals>
+    <string name="player_chapters">Chapters</string>
+    <string name="player_chapters_empty">This book has no chapter information.</string>
+    <string name="player_chapter_current">Playing now</string>
+    <!-- %1$d is the chapter's position in the book, for a chapter with no title of its own. -->
+    <string name="player_chapter_number">Chapter %1$d</string>
     <string name="player_speed_later">Playback speed — arrives in a later phase</string>
-    <string name="player_chapters_later">Chapters — arrive in a later phase</string>
     <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
     <string name="player_open">Open the player</string>
     <string name="player_starting">Starting…</string>

@@ -70,4 +70,27 @@ fun SleepTimerOutcome?.label(): String = when (this) {
     null -> stringResource(R.string.sleep_timer_outcome_running)
 }
 
+/**
+ * `1:04:12` on a long book, `12:30` on a short one. Hours only when there are any.
+ *
+ * Shared by the player's elapsed/remaining pair and by the chapter list, so a chapter's start time and
+ * the position you land on after tapping it are formatted by the same function — two formatters would
+ * eventually disagree about rounding, and the user would see a chapter start at `12:30` and the player
+ * land on `12:29`.
+ */
+@Composable
+@ReadOnlyComposable
+fun Duration.asChapterClock(): String {
+    val total = inWholeSeconds.coerceAtLeast(0)
+    val hours = total / SECONDS_PER_HOUR
+    val minutes = (total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE
+    val seconds = total % SECONDS_PER_MINUTE
+    return if (hours > 0) {
+        stringResource(R.string.player_clock_hours, hours, minutes, seconds)
+    } else {
+        stringResource(R.string.player_clock, minutes, seconds)
+    }
+}
+
 private const val SECONDS_PER_MINUTE = 60L
+private const val SECONDS_PER_HOUR = 3_600L

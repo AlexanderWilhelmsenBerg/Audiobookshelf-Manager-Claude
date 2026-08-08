@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackController
@@ -69,6 +70,9 @@ class PlayerViewModel @Inject constructor(
 
     /** PRODUCT_SPEC PLAY-003 — a dragged seek bar, on the book's timeline. */
     fun onSeekTo(position: Duration) = controller.seekTo(position)
+
+    /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from the list. */
+    fun onChapterSelected(chapter: Chapter) = controller.seekToChapter(chapter)
 
     /** PRODUCT_SPEC PLAY-007 — the skip controls. Negative skips back. */
     fun onSkipBy(delta: Duration) = controller.skipBy(delta)

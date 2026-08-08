@@ -163,6 +163,91 @@ class GlobalTimelineTest {
         assertNull(GlobalTimeline.chapterAt(emptyList(), 3.seconds))
     }
 
+    // --- Chapter navigation ------------------------------------------------------------------------
+
+    @Test
+    fun `next chapter goes to the following boundary`() {
+        assertEquals(6.seconds, GlobalTimeline.nextChapterStart(CHAPTERS, 2.seconds))
+    }
+
+    /** Nowhere to go rather than wrapping to the start, which would be a surprise and not a feature. */
+    @Test
+    fun `next chapter in the last chapter has nowhere to go`() {
+        assertNull(GlobalTimeline.nextChapterStart(CHAPTERS, 8.seconds))
+    }
+
+    /**
+     * The behaviour every media player has, and the reason it is not simply "go back one".
+     *
+     * Well into a chapter, "previous" restarts *this* chapter. That is what a listener means when they
+     * press it having missed something.
+     */
+    @Test
+    fun `previous chapter restarts the current one when well into it`() {
+        // The window is passed explicitly rather than left to the default: the fixture book's chapters
+        // are seconds long, so relying on the real three-second window would make this test a statement
+        // about the fixture's proportions instead of about the behaviour.
+        assertEquals(
+            6.seconds,
+            GlobalTimeline.previousChapterStart(CHAPTERS, 9.seconds, restartWithin = 1.seconds),
+        )
+    }
+
+    /**
+     * ...and just after a boundary it goes back one, so two presses move two chapters.
+     *
+     * Without the window, a second press would stick on the boundary it had just moved to.
+     */
+    @Test
+    fun `previous chapter goes back one when just past a boundary`() {
+        assertEquals(
+            Duration.ZERO,
+            GlobalTimeline.previousChapterStart(CHAPTERS, 7.seconds, restartWithin = 5.seconds),
+        )
+    }
+
+    @Test
+    fun `previous chapter at the very start of the book has nowhere to go`() {
+        assertNull(GlobalTimeline.previousChapterStart(CHAPTERS, Duration.ZERO))
+    }
+
+    /** Inside the first chapter it restarts it, rather than reporting nowhere to go. */
+    @Test
+    fun `previous chapter inside the first chapter restarts the book`() {
+        assertEquals(
+            Duration.ZERO,
+            GlobalTimeline.previousChapterStart(CHAPTERS, 4.seconds, restartWithin = 1.seconds),
+        )
+    }
+
+    /** Navigation is by time, so a server that sends chapters unordered cannot change the answer. */
+    @Test
+    fun `navigation reads chapters in time order rather than list order`() {
+        val shuffled = CHAPTERS.reversed()
+
+        assertEquals(
+            GlobalTimeline.nextChapterStart(CHAPTERS, 2.seconds),
+            GlobalTimeline.nextChapterStart(shuffled, 2.seconds),
+        )
+        assertEquals(
+            GlobalTimeline.previousChapterStart(CHAPTERS, 9.seconds, restartWithin = 1.seconds),
+            GlobalTimeline.previousChapterStart(shuffled, 9.seconds, restartWithin = 1.seconds),
+        )
+    }
+
+    @Test
+    fun `the chapter index follows the position`() {
+        assertEquals(0, GlobalTimeline.chapterIndexAt(CHAPTERS, 2.seconds))
+        assertEquals(1, GlobalTimeline.chapterIndexAt(CHAPTERS, 7.seconds))
+        assertNull(GlobalTimeline.chapterIndexAt(emptyList(), 7.seconds))
+    }
+
+    @Test
+    fun `a book with no chapters cannot be navigated by chapter`() {
+        assertNull(GlobalTimeline.nextChapterStart(emptyList(), 3.seconds))
+        assertNull(GlobalTimeline.previousChapterStart(emptyList(), 3.seconds))
+    }
+
     private companion object {
         val BOOK = LibraryItemId("book-1")
         val SERVER = ServerId("server-1")

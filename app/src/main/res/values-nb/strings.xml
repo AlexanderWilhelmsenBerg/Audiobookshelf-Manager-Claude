@@ -166,8 +166,11 @@
         <item quantity="one">%1$d sekund fram</item>
         <item quantity="other">%1$d sekunder fram</item>
     </plurals>
+    <string name="player_chapters">Kapitler</string>
+    <string name="player_chapters_empty">Denne boken har ingen kapittelinformasjon.</string>
+    <string name="player_chapter_current">Spilles nå</string>
+    <string name="player_chapter_number">Kapittel %1$d</string>
     <string name="player_speed_later">Avspillingshastighet — kommer i en senere fase</string>
-    <string name="player_chapters_later">Kapitler — kommer i en senere fase</string>
     <string name="player_bookmark_later">Bokmerke — kommer i en senere fase</string>
     <string name="player_open">Åpne spilleren</string>
     <string name="player_starting">Starter …</string>

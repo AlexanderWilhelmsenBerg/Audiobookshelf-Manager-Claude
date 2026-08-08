@@ -86,17 +86,8 @@ import kotlin.time.Duration.Companion.seconds
  * which is the usual bug with a player reachable from several screens.
  */
 @Composable
-fun FullPlayer(
-    state: PlaybackUiState,
-    timer: SleepTimerState,
-    onTogglePlayPause: () -> Unit,
-    onSeekTo: (Duration) -> Unit,
-    onSkipBy: (Duration) -> Unit,
-    onOpenSleepTimer: () -> Unit,
-    onCollapse: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    BackHandler(onBack = onCollapse)
+fun FullPlayer(state: PlaybackUiState, timer: SleepTimerState, actions: PlayerActions, modifier: Modifier = Modifier) {
+    BackHandler(onBack = actions.onCollapse)
     Surface(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -105,7 +96,11 @@ fun FullPlayer(
                 .safeDrawingPadding()
                 .padding(horizontal = 24.dp),
         ) {
-            TopBar(timer = timer, onCollapse = onCollapse, onOpenSleepTimer = onOpenSleepTimer)
+            TopBar(
+                timer = timer,
+                onCollapse = actions.onCollapse,
+                onOpenSleepTimer = actions.onOpenSleepTimer,
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
             PlayerArtwork(state = state, modifier = Modifier.fillMaxWidth())
@@ -113,14 +108,39 @@ fun FullPlayer(
             Spacer(modifier = Modifier.height(28.dp))
             NowPlaying(state = state)
 
+            Spacer(modifier = Modifier.height(4.dp))
+            // PRODUCT_SPEC PLAY-003 — which chapter, under the title it belongs to.
+            //
+            // Rendered as an empty line when a book has no chapters rather than omitted, so the transport
+            // does not shift up and down between books.
+            Text(
+                text = state.currentChapter?.title.orEmpty(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                minLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
             Spacer(modifier = Modifier.weight(WEIGHT_FILL))
-            SeekBar(state = state, onSeekTo = onSeekTo)
+            SeekBar(state = state, onSeekTo = actions.onSeekTo)
 
             Spacer(modifier = Modifier.height(8.dp))
-            TransportRow(state = state, onTogglePlayPause = onTogglePlayPause, onSkipBy = onSkipBy)
+            TransportRow(
+                state = state,
+                onTogglePlayPause = actions.onTogglePlayPause,
+                onSkipBy = actions.onSkipBy,
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
-            SecondaryRow(timer = timer, onOpenSleepTimer = onOpenSleepTimer)
+            SecondaryRow(
+                state = state,
+                timer = timer,
+                onOpenSleepTimer = actions.onOpenSleepTimer,
+                onOpenChapters = actions.onOpenChapters,
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -264,12 +284,12 @@ private fun SeekBar(state: PlaybackUiState, onSeekTo: (Duration) -> Unit, modifi
             modifier = Modifier.fillMaxWidth(),
         )
         Row(modifier = Modifier.fillMaxWidth()) {
-            TimeLabel(text = shownPosition.asClockLabel())
+            TimeLabel(text = shownPosition.asChapterClock())
             Spacer(modifier = Modifier.weight(WEIGHT_FILL))
             TimeLabel(
                 text = stringResource(
                     R.string.player_remaining,
-                    (state.duration - shownPosition).coerceAtLeast(Duration.ZERO).asClockLabel(),
+                    (state.duration - shownPosition).coerceAtLeast(Duration.ZERO).asChapterClock(),
                 ),
             )
         }
@@ -369,7 +389,13 @@ private fun SkipButton(icon: ImageVector, description: String, onClick: () -> Un
  * that silently does nothing.
  */
 @Composable
-private fun SecondaryRow(timer: SleepTimerState, onOpenSleepTimer: () -> Unit, modifier: Modifier = Modifier) {
+private fun SecondaryRow(
+    state: PlaybackUiState,
+    timer: SleepTimerState,
+    onOpenSleepTimer: () -> Unit,
+    onOpenChapters: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -383,9 +409,12 @@ private fun SecondaryRow(timer: SleepTimerState, onOpenSleepTimer: () -> Unit, m
         )
         SecondaryAction(
             icon = Icons.AutoMirrored.Filled.MenuBook,
-            description = stringResource(R.string.player_chapters_later),
-            enabled = false,
-            onClick = {},
+            description = stringResource(R.string.player_chapters),
+            // PRODUCT_SPEC LIB-004 — disabled on a book with no chapter metadata, which is common in a
+            // self-hosted library. A sheet that opens onto nothing is worse than a control that is
+            // plainly unavailable.
+            enabled = state.chapters.isNotEmpty(),
+            onClick = onOpenChapters,
         )
         SecondaryAction(
             icon = Icons.Filled.Bookmark,
@@ -442,23 +471,6 @@ private fun SleepTimerReadout(timer: SleepTimerState, onClick: () -> Unit, modif
         )
     }
 }
-
-/** `1:04:12` on a long book, `12:30` on a short one. Hours only when there are any. */
-@Composable
-private fun Duration.asClockLabel(): String {
-    val total = inWholeSeconds.coerceAtLeast(0)
-    val hours = total / SECONDS_PER_HOUR
-    val minutes = (total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE
-    val seconds = total % SECONDS_PER_MINUTE
-    return if (hours > 0) {
-        stringResource(R.string.player_clock_hours, hours, minutes, seconds)
-    } else {
-        stringResource(R.string.player_clock, minutes, seconds)
-    }
-}
-
-private const val SECONDS_PER_MINUTE = 60L
-private const val SECONDS_PER_HOUR = 3_600L
 
 private const val WEIGHT_FILL = 1f
 

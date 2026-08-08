@@ -24,8 +24,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.feature.browse.LocalCoverUrls
 import com.example.shelfplayer.feature.browse.coverUrlsFor
+import com.example.shelfplayer.feature.player.ChapterSheet
 import com.example.shelfplayer.feature.player.FullPlayer
 import com.example.shelfplayer.feature.player.MiniPlayer
+import com.example.shelfplayer.feature.player.PlayerActions
 import com.example.shelfplayer.feature.player.PlayerViewModel
 import com.example.shelfplayer.feature.player.SleepTimerSheet
 import com.example.shelfplayer.navigation.ShelfDestinations
@@ -87,6 +89,7 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
     val timer by playerViewModel.timer.collectAsStateWithLifecycle()
     val isExpanded by playerViewModel.isExpanded.collectAsStateWithLifecycle()
     var isTimerSheetOpen by remember { mutableStateOf(false) }
+    var isChapterSheetOpen by remember { mutableStateOf(false) }
     NotificationPermission(hasPlayback = playback.bookId != null)
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -114,11 +117,26 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
         FullPlayer(
             state = playback,
             timer = timer,
-            onTogglePlayPause = playerViewModel::onTogglePlayPause,
-            onSeekTo = playerViewModel::onSeekTo,
-            onSkipBy = playerViewModel::onSkipBy,
-            onOpenSleepTimer = { isTimerSheetOpen = true },
-            onCollapse = playerViewModel::onCollapse,
+            actions = PlayerActions(
+                onTogglePlayPause = playerViewModel::onTogglePlayPause,
+                onSeekTo = playerViewModel::onSeekTo,
+                onSkipBy = playerViewModel::onSkipBy,
+                onOpenSleepTimer = { isTimerSheetOpen = true },
+                onOpenChapters = { isChapterSheetOpen = true },
+                onCollapse = playerViewModel::onCollapse,
+            ),
+        )
+    }
+
+    if (isChapterSheetOpen) {
+        ChapterSheet(
+            chapters = playback.chapters,
+            current = playback.currentChapter,
+            onSelect = { chapter ->
+                playerViewModel.onChapterSelected(chapter)
+                isChapterSheetOpen = false
+            },
+            onDismiss = { isChapterSheetOpen = false },
         )
     }
 
