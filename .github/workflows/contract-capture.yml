@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Not a `services:` block: the server needs its config and metadata directories to exist before
       # it starts, and a plain `docker run` keeps the setup visible in the log rather than hidden in
@@ -159,7 +159,7 @@ jobs:
 
       - name: Upload captured contracts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: captured-contracts
           path: ${{ runner.temp }}/captured/**

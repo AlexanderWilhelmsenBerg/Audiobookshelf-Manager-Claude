@@ -59,3 +59,16 @@ self-hosted audiobook app does with it.
 The endpoint stays a capture target because it is the right source for anything the client cannot
 compute — a server-side recommendation has no local equivalent — and because a captured fixture costs
 nothing to hold.
+
+## Addendum, 2026-08-07 — `rasmuslos/ShelfPlayer` is archived
+
+The upstream of `AlexanderWilhelmsenBerg/ShelfPlayer` was **archived on 2026-07-23** and its author
+announced the project had been sold. The repository is read-only.
+
+Nothing about this ADR changes: the licence is still MPL-2.0, and reading it for API facts is still
+permitted on the same terms. Two practical consequences worth recording:
+
+- **It is frozen.** As a reference for *current* server behaviour it decays from here, so where it and a
+  captured fixture disagree, the fixture was already the authority and now obviously so.
+- **The fork is the surviving copy.** Anyone following the upstream link in that README lands on an
+  archive.

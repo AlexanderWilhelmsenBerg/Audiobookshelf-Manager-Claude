@@ -314,16 +314,48 @@ capture library-personalized GET "/api/libraries/$LIBRARY_ID/personalized" -H "$
 
 # The expanded single item: `LIB-004` and `PLAY-003` need the audio files and chapters, and the list
 # endpoint does not include them.
+#
+# Selected **by title**, not as `results[0]`. Taking the first result was fine while the library held
+# one book and broke the moment it held two: the seeded multi-file book sorted ahead of this one, so
+# `ITEM_ID` became a book with no cover, the cover step's hard failure fired, and the capture aborted
+# with two thirds of the fixtures unwritten — including every playback shape.
+#
+# Naming the book is also what keeps `library-item.json` stable. Every Phase 1 contract test reads that
+# fixture and asserts on The Salt Harbour; a selection that silently followed the server's sort order
+# would swap the subject of those tests without changing a line of them.
 ITEM_ID="$(curl -sS "$BASE_URL/api/libraries/$LIBRARY_ID/items" -H "$AUTH_HEADER" |
-  python3 -c 'import json,sys; r=json.load(sys.stdin).get("results") or []; print(r[0]["id"] if r else "")')"
+  python3 -c '
+import json, sys
+results = json.load(sys.stdin).get("results") or []
+def title(item):
+    return (((item.get("media") or {}).get("metadata")) or {}).get("title") or ""
+match = next((i for i in results if title(i) == "The Salt Harbour"), None)
+print((match or {}).get("id") or "")')"
 
-if [ -n "$ITEM_ID" ]; then
-  capture library-item GET "/api/items/$ITEM_ID?expanded=1&include=progress" -H "$AUTH_HEADER"
-else
-  echo "::error::the library has no items, so the item shape LIB-001 depends on was not captured." >&2
-  echo "::error::Check that the media directory contains an audio file the scanner accepts." >&2
-  exit 1
-fi
+# An id is one line with no spaces in it. Checked rather than assumed, because the failure this guards
+# against has now happened twice and neither time did it look like a failure.
+#
+# The first was a selection that silently picked the wrong book. The second was a missing closing quote
+# in this very assignment, which left the shell consuming the following lines into `$ITEM_ID` — a value
+# that is very much non-empty, so `[ -n ]` was satisfied and the capture went on to request a URL built
+# out of thirty lines of shell script.
+#
+# `bash -n` passes both. Syntax checking cannot see a quoting mistake that still parses, so the check
+# has to be on the value.
+case "$ITEM_ID" in
+  "")
+    echo "::error::no item titled 'The Salt Harbour' in the library, so the shape LIB-001 depends on" >&2
+    echo "::error::was not captured. Check that scripts/seed-contract-media.sh ran and the scan finished." >&2
+    exit 1
+    ;;
+  *[[:space:]]*)
+    echo "::error::ITEM_ID is not an id — it contains whitespace, which means the assignment above" >&2
+    echo "::error::captured more than the id. Check the quoting of the command substitution." >&2
+    exit 1
+    ;;
+esac
+
+capture library-item GET "/api/items/$ITEM_ID?expanded=1&include=progress" -H "$AUTH_HEADER"
 
 # --- Cover art -------------------------------------------------------------------------------------
 #
@@ -470,6 +502,132 @@ else
     -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
     -d '{"currentTime":128.25,"isFinished":false}' >/dev/null || true
   capture socket-event-after-progress GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
+fi
+
+# --- Playback sessions (PLAY-001, PLAY-004, PLAY-005) ---------------------------------------------
+#
+# Phase 2's whole surface, and none of it has ever been captured. `ServerCapability.PlaybackSession`
+# and `LocalSessionSync` are both listed "verified against a server: No" in docs/api-compatibility.md,
+# which under PRODUCT_SPEC 22.5 means nothing may be written against them yet.
+#
+# Three things need establishing before a note of audio can be played:
+#
+#  1. **What a session is.** `POST /api/items/{id}/play` opens one. It is expected to carry the audio
+#     tracks with their content URLs, the chapters, and the position to start from — which is what
+#     `PLAY-003`'s global timeline is built out of. Whether those URLs are absolute or relative, and
+#     whether they carry their own credential, decides how the player is wired to the network stack.
+#  2. **How progress goes back.** `POST /api/session/{id}/sync` is the session-scoped route, as opposed
+#     to `PATCH /api/me/progress/{id}`, which the app already uses and which is captured above.
+#     `PLAY-004` wants a sync roughly every thirty seconds; `PLAY-005` wants a retry to be idempotent.
+#     Both need the request *and* the response observed.
+#  3. **How a session ends.** `POST /api/session/{id}/close`, and what the server then considers the
+#     final position.
+#
+# The device description is sent because the server records it against the session and may vary its
+# answer by it. Every value is deliberately generic — no real device identifier reaches a fixture.
+log "opening a playback session so the Phase 2 shapes can be observed"
+PLAY_BODY='{"deviceInfo":{"clientName":"ShelfPlayer","clientVersion":"0.0.0","deviceId":"capture","manufacturer":"capture","model":"capture","sdkVersion":36},"supportedMimeTypes":["audio/mpeg","audio/mp4","audio/flac"],"mediaPlayer":"exo-player","forceDirectPlay":false,"forceTranscode":false}'
+
+capture item-play POST "/api/items/$ITEM_ID/play" \
+  -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$PLAY_BODY"
+
+# The session id drives the two routes below. Read out of the response this capture already made,
+# rather than fetched again, so the fixtures describe one session rather than three unrelated ones.
+#
+# From the **raw** body, not the fixture: `record` redacts volatile fields, and a session id is the
+# most volatile thing in the response — it is `<volatile>` by the time it reaches `$OUT_DIR`.
+SESSION_ID="$(python3 -c '
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get("id") or "")
+except Exception:
+    print("")
+' "$RAW_DIR/item-play.raw" 2>/dev/null || true)"
+
+if [ -n "$SESSION_ID" ]; then
+  # A position **inside** the book. The first capture sent 63.5 seconds into an eight-second fixture,
+  # and the server did the reasonable thing: clamped to the end and marked the book finished. That
+  # made `me-after-session.json` a recording of the auto-finish path rather than of an ordinary
+  # mid-book sync, which is the case PLAY-004 actually needs to see.
+  log "syncing and closing the session"
+  capture session-sync POST "/api/session/$SESSION_ID/sync" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":4.5,"timeListened":3,"duration":8}'
+
+  # Sent twice on purpose. PLAY-005 requires a retried sync to be idempotent, and "the server took it
+  # twice without the position moving backwards" is a property only a second request can demonstrate.
+  capture session-sync-repeated POST "/api/session/$SESSION_ID/sync" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":4.5,"timeListened":3,"duration":8}'
+
+  capture session-close POST "/api/session/$SESSION_ID/close" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":4.5,"timeListened":3,"duration":8}'
+
+  # --- Offline sessions (PLAY-005) ---------------------------------------------------------------
+  #
+  # The routes the outbox actually needs. `/api/session/{id}/sync` requires an id the server issued,
+  # which an offline session by definition does not have; `/api/session/local` takes a session whose id
+  # the *client* generated and treats an unseen one as new. That is what makes a retry idempotent.
+  #
+  # The id here is a fixed UUIDv4 rather than a generated one, so the capture is deterministic and the
+  # drift check stays meaningful. `record` scrubs it to `<volatile>` on the way out either way.
+  LOCAL_SESSION_ID="1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed"
+  LOCAL_SESSION='{"id":"'"$LOCAL_SESSION_ID"'","libraryItemId":"'"$ITEM_ID"'","episodeId":null,"mediaItemId":"'"$ITEM_ID"'","mediaItemType":"book","displayTitle":"The Salt Harbour","displayAuthor":"Marisol Holt","duration":8,"currentTime":5.5,"timeListening":4,"startedAt":0,"updatedAt":0,"mediaPlayer":"exo-player","deviceInfo":{"clientName":"ShelfPlayer","clientVersion":"0.0.0","deviceId":"capture","manufacturer":"capture","model":"capture","sdkVersion":36}}'
+
+  capture session-local POST /api/session/local \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$LOCAL_SESSION"
+
+  # The same session again. PLAY-005 requires a retry to be idempotent, and the only way to observe
+  # that is to send an id the server has now seen and compare what it says the second time.
+  capture session-local-repeated POST /api/session/local \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$LOCAL_SESSION"
+
+  # The batch drain, which is what an outbox with more than one queued session will use.
+  capture session-local-all POST /api/session/local-all \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"sessions":['"$LOCAL_SESSION"']}'
+
+  # What the account looks like after a session, which is where PLAY-004's conflict resolution reads
+  # from. Captured separately from the pre-session `me.json` so the two can be diffed.
+  capture me-after-session GET /api/me -H "$AUTH_HEADER"
+else
+  # Loud, not silent. No session id means the play route did not answer as expected, and the right
+  # outcome is a visible gap in the fixtures rather than three files full of error bodies.
+  echo "::warning::no session id in item-play.json — session sync and close were not captured"
+fi
+
+# The two-file book, opened as its own session. `startOffset` on a second track is the whole reason
+# this exists — see scripts/seed-contract-media.sh for why one track could not answer it.
+MULTI_ID="$(python3 -c '
+import json, sys
+try:
+    for item in (json.load(open(sys.argv[1])) or {}).get("results") or []:
+        title = (((item.get("media") or {}).get("metadata")) or {}).get("title") or ""
+        if "Tidewatch" in title:
+            print(item.get("id") or "")
+            break
+    else:
+        print("")
+except Exception:
+    print("")
+' "$RAW_DIR/library-items.raw" 2>/dev/null || true)"
+
+case "$MULTI_ID" in
+  *[[:space:]]*)
+    # Same guard as ITEM_ID, same reason. A value with whitespace in it is a quoting mistake, not an id.
+    echo "::warning::MULTI_ID contains whitespace — check the quoting; PLAY-003 stays unverified"
+    MULTI_ID=""
+    ;;
+esac
+
+if [ -n "$MULTI_ID" ]; then
+  capture multi-item-play POST "/api/items/$MULTI_ID/play" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$PLAY_BODY"
+else
+  # Not fatal, and not silent either. Until the seeded two-file book has been scanned, PLAY-003 has no
+  # evidence to be built on and the plan says so rather than guessing at the arithmetic.
+  echo "::warning::no multi-file book found in library-items — PLAY-003's startOffset stays unverified"
 fi
 
 capture logout POST /logout -H "$AUTH_HEADER"

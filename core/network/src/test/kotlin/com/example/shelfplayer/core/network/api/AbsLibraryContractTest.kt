@@ -111,6 +111,7 @@ class AbsLibraryContractTest {
         assertIs<AppResult.Success<LibrarySnapshot>>(result)
         assertEquals(1, server.requestCount, "the catalogue only — no expanded fetch")
         assertEquals(1, batches.size, "the catalogue batch is still written")
+        assertEquals(catalogueSize(), batches.single().size, "and it carries every row")
     }
 
     /**
@@ -123,11 +124,11 @@ class AbsLibraryContractTest {
     @Test
     fun `an item with no known revision is fetched`() = runTest {
         server.enqueue(ContractFixtures.response("library-items"))
-        server.enqueue(ContractFixtures.response("library-item"))
+        enqueueExpansions()
 
         api().listBooks(PROFILE, LIBRARY, onBatch = {})
 
-        assertEquals(2, server.requestCount, "the default predicate re-fetches")
+        assertEquals(1 + catalogueSize(), server.requestCount, "the default predicate re-fetches")
     }
 
     /**
@@ -143,17 +144,17 @@ class AbsLibraryContractTest {
     @Test
     fun `the catalogue is handed over before any item is expanded`() = runTest {
         server.enqueue(ContractFixtures.response("library-items"))
-        server.enqueue(ContractFixtures.response("library-item"))
+        enqueueExpansions()
         val batches = mutableListOf<List<BookSnapshot>>()
 
         api().listBooks(PROFILE, LIBRARY, onBatch = { batch -> batches += batch })
 
         val first = batches.first()
-        assertEquals(1, first.size, "the catalogue response carried one item")
-        assertEquals("The Salt Harbour", first.single().book.title, "browsable straight away")
-        assertTrue(first.single().tracks.isEmpty(), "the list endpoint sends no tracks")
+        assertEquals(catalogueSize(), first.size, "the whole catalogue response, in one batch")
+        assertTrue(first.all { it.tracks.isEmpty() }, "the list endpoint sends no tracks")
+        assertEquals("The Salt Harbour", first.saltHarbour().book.title, "browsable straight away")
         assertTrue(batches.size > 1, "the expansion pass still runs")
-        assertTrue(batches.last().single().tracks.isNotEmpty(), "and it fills the tracks in")
+        assertTrue(batches.last().first().tracks.isNotEmpty(), "and it fills the tracks in")
     }
 
     /**
@@ -230,7 +231,9 @@ class AbsLibraryContractTest {
 
         val hits = assertIs<AppResult.Success<List<BookSnapshot>>>(api().searchBooks(PROFILE, LIBRARY, "salt")).value
 
-        val hit = hits.single()
+        // Two hits now: the query matches both seeded books. Named rather than positional, so the
+        // fixture gaining a third book is not a test failure.
+        val hit = hits.single { it.book.title == "The Salt Harbour" }
         assertEquals("The Salt Harbour", hit.book.title)
         assertTrue(hit.tracks.isNotEmpty(), "expanded, unlike the catalogue response")
         assertEquals(listOf("Marisol Holt"), hit.book.authors.map { it.name }, "structured authors, not a string")
@@ -306,7 +309,7 @@ class AbsLibraryContractTest {
 
         api().listBooks(PROFILE, LIBRARY, onBatch = { batch -> batches += batch })
 
-        val book = batches.first().single().book
+        val book = batches.first().saltHarbour().book
         assertEquals(listOf("Fiction"), book.genres)
         assertEquals(2024, book.publishedYear)
         assertTrue(book.authors.isEmpty(), "no author id in the list response, so no author link")
@@ -408,11 +411,13 @@ class AbsLibraryContractTest {
     @Test
     fun `each item is fetched expanded so the snapshot has tracks and chapters`() = runTest {
         server.enqueue(ContractFixtures.response("library-items"))
-        server.enqueue(ContractFixtures.response("library-item"))
+        enqueueExpansions()
 
         val books = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value.books
 
-        val snapshot = books.single()
+        // Every row is served the same expanded fixture, so they all come back as The Salt Harbour.
+        // The subject is that *an* item was expanded, not which one the catalogue listed first.
+        val snapshot = books.first()
         assertEquals("The Salt Harbour", snapshot.book.title)
         assertEquals(listOf("Marisol Holt"), snapshot.book.authors.map { it.name })
         assertEquals(listOf("Ada Fenwick"), snapshot.book.narrators)
@@ -535,7 +540,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `an item that vanished between the listing and its fetch is omitted, not fatal`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        enqueueOneRowCatalogue()
         server.enqueue(MockResponse().setResponseCode(404))
 
         val snapshot = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value
@@ -548,7 +553,7 @@ class AbsLibraryContractTest {
     /** PRODUCT_SPEC SYNC-001 — a minified item cannot be stored, and says which field is missing. */
     @Test
     fun `an item without tracks is a compatibility error naming the field`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        enqueueOneRowCatalogue()
         server.enqueue(
             MockResponse().setBody(
                 """{"id":"item-1","media":{"metadata":{"title":"A Book"},"numTracks":3}}""",
@@ -572,7 +577,7 @@ class AbsLibraryContractTest {
     /** The captured fixture has no progress, and its absence must be `null` rather than a zero position. */
     @Test
     fun `an item with no server progress carries none`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        enqueueOneRowCatalogue()
         server.enqueue(ContractFixtures.response("library-item"))
 
         val books = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value.books
@@ -583,7 +588,7 @@ class AbsLibraryContractTest {
     /** PRODUCT_SPEC 5.2 — server progress belongs to the profile whose credential fetched it. */
     @Test
     fun `server progress is scoped to the requesting profile`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        enqueueOneRowCatalogue()
         server.enqueue(
             MockResponse().setBody(
                 """
@@ -648,6 +653,35 @@ class AbsLibraryContractTest {
 
         override fun isInProgress(id: LibraryItemId): Boolean = id.value in inProgress
     }
+
+    /**
+     * How many items the committed catalogue fixture holds.
+     *
+     * Read from the fixture rather than written as a number, because the fixture library grows: it held
+     * one book through Phase 1 and gained a second, multi-file one for PLAY-003. A test that hard-coded
+     * `1` was asserting an incidental property of the seed, and would fail on a fixture change that
+     * made it *better* rather than on a regression.
+     */
+    private fun catalogueSize(): Int = ContractFixtures.itemCount("library-items")
+
+    /** Enqueues one expanded-item response per catalogue row, so the sweep never runs out. */
+    private fun enqueueExpansions() {
+        repeat(catalogueSize()) { server.enqueue(ContractFixtures.response("library-item")) }
+    }
+
+    /**
+     * A catalogue of exactly one row, for a test whose subject is the *item* response.
+     *
+     * The committed catalogue fixture grows as the seed library does, and a test that crafts one
+     * expanded response has to enqueue one per row or the sweep runs past the end. Those tests are not
+     * about how many books exist, so they say so rather than tracking the fixture.
+     */
+    private fun enqueueOneRowCatalogue() {
+        server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE],"total":1}"""))
+    }
+
+    /** The book every Phase 1 assertion is about, found by name rather than by position. */
+    private fun List<BookSnapshot>.saltHarbour(): BookSnapshot = single { it.book.title == "The Salt Harbour" }
 
     private class FakeConnectionResolver : ProfileConnectionResolver {
         var serverUrl: String = ""
