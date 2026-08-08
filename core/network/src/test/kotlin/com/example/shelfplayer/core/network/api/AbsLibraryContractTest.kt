@@ -111,6 +111,7 @@ class AbsLibraryContractTest {
         assertIs<AppResult.Success<LibrarySnapshot>>(result)
         assertEquals(1, server.requestCount, "the catalogue only — no expanded fetch")
         assertEquals(1, batches.size, "the catalogue batch is still written")
+        assertEquals(catalogueSize(), batches.single().size, "and it carries every row")
     }
 
     /**
@@ -123,11 +124,11 @@ class AbsLibraryContractTest {
     @Test
     fun `an item with no known revision is fetched`() = runTest {
         server.enqueue(ContractFixtures.response("library-items"))
-        server.enqueue(ContractFixtures.response("library-item"))
+        enqueueExpansions()
 
         api().listBooks(PROFILE, LIBRARY, onBatch = {})
 
-        assertEquals(2, server.requestCount, "the default predicate re-fetches")
+        assertEquals(1 + catalogueSize(), server.requestCount, "the default predicate re-fetches")
     }
 
     /**
@@ -143,17 +144,17 @@ class AbsLibraryContractTest {
     @Test
     fun `the catalogue is handed over before any item is expanded`() = runTest {
         server.enqueue(ContractFixtures.response("library-items"))
-        server.enqueue(ContractFixtures.response("library-item"))
+        enqueueExpansions()
         val batches = mutableListOf<List<BookSnapshot>>()
 
         api().listBooks(PROFILE, LIBRARY, onBatch = { batch -> batches += batch })
 
         val first = batches.first()
-        assertEquals(1, first.size, "the catalogue response carried one item")
-        assertEquals("The Salt Harbour", first.single().book.title, "browsable straight away")
-        assertTrue(first.single().tracks.isEmpty(), "the list endpoint sends no tracks")
+        assertEquals(catalogueSize(), first.size, "the whole catalogue response, in one batch")
+        assertTrue(first.all { it.tracks.isEmpty() }, "the list endpoint sends no tracks")
+        assertEquals("The Salt Harbour", first.saltHarbour().book.title, "browsable straight away")
         assertTrue(batches.size > 1, "the expansion pass still runs")
-        assertTrue(batches.last().single().tracks.isNotEmpty(), "and it fills the tracks in")
+        assertTrue(batches.last().first().tracks.isNotEmpty(), "and it fills the tracks in")
     }
 
     /**
@@ -306,7 +307,7 @@ class AbsLibraryContractTest {
 
         api().listBooks(PROFILE, LIBRARY, onBatch = { batch -> batches += batch })
 
-        val book = batches.first().single().book
+        val book = batches.first().saltHarbour().book
         assertEquals(listOf("Fiction"), book.genres)
         assertEquals(2024, book.publishedYear)
         assertTrue(book.authors.isEmpty(), "no author id in the list response, so no author link")
@@ -648,6 +649,24 @@ class AbsLibraryContractTest {
 
         override fun isInProgress(id: LibraryItemId): Boolean = id.value in inProgress
     }
+
+    /**
+     * How many items the committed catalogue fixture holds.
+     *
+     * Read from the fixture rather than written as a number, because the fixture library grows: it held
+     * one book through Phase 1 and gained a second, multi-file one for PLAY-003. A test that hard-coded
+     * `1` was asserting an incidental property of the seed, and would fail on a fixture change that
+     * made it *better* rather than on a regression.
+     */
+    private fun catalogueSize(): Int = ContractFixtures.itemCount("library-items")
+
+    /** Enqueues one expanded-item response per catalogue row, so the sweep never runs out. */
+    private fun enqueueExpansions() {
+        repeat(catalogueSize()) { server.enqueue(ContractFixtures.response("library-item")) }
+    }
+
+    /** The book every Phase 1 assertion is about, found by name rather than by position. */
+    private fun List<BookSnapshot>.saltHarbour(): BookSnapshot = single { it.book.title == "The Salt Harbour" }
 
     private class FakeConnectionResolver : ProfileConnectionResolver {
         var serverUrl: String = ""

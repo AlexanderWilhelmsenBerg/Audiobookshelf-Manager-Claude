@@ -2,6 +2,7 @@ package com.example.shelfplayer.core.network.api
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.mockwebserver.MockResponse
@@ -33,6 +34,16 @@ internal object ContractFixtures {
 
     /** The recorded body as a raw string, for a test that wants to alter one field before serving it. */
     fun body(name: String): String = bodyOf(envelope(name))
+
+    /**
+     * How many rows a paginated fixture's `results` array holds.
+     *
+     * So a test can say "one expanded response per catalogue row" instead of a number. The fixture
+     * library is not fixed in size — it held one book through Phase 1 and gained a second, multi-file
+     * one so PLAY-003's `startOffset` question could be answered — and a test that hard-codes the count
+     * fails on a *better* fixture rather than on a regression.
+     */
+    fun itemCount(name: String): Int = envelope(name)["body"]?.jsonObject?.get("results")?.jsonArray?.size ?: 0
 
     private fun envelope(name: String): JsonObject {
         val stream = requireNotNull(javaClass.classLoader?.getResourceAsStream("contracts/$name.json")) {

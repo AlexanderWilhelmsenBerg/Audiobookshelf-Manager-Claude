@@ -91,6 +91,13 @@ docker run --rm -v "$MEDIA_DIR:/media" --entrypoint sh "$IMAGE" -c '
     -f lavfi -i anullsrc=r=22050:cl=mono -f ffmetadata -i /tmp/meta2.txt \
     -map 0:a -map_metadata 1 -map_chapters 1 -c:a libmp3lame -b:a 32k -t 4 \
     "/media/'"$MULTI_DIR"'/'"$MULTI_TWO"'"
+  # A cover for this one too. The first run without it made every book in the library a candidate for
+  # the cover capture and one of them a 404, which is a hard failure — so a coverless book in a fixture
+  # library is a tripwire rather than a saving.
+  ffmpeg -nostdin -y -loglevel error \
+    -f lavfi -i color=c=0x3A5F1F:s=512x512 \
+    -frames:v 1 \
+    "/media/'"$MULTI_DIR"'/'"$COVER"'"
   chmod -R a+rw /media
 '
 

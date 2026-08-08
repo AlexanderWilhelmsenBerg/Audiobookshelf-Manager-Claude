@@ -314,8 +314,23 @@ capture library-personalized GET "/api/libraries/$LIBRARY_ID/personalized" -H "$
 
 # The expanded single item: `LIB-004` and `PLAY-003` need the audio files and chapters, and the list
 # endpoint does not include them.
+#
+# Selected **by title**, not as `results[0]`. Taking the first result was fine while the library held
+# one book and broke the moment it held two: the seeded multi-file book sorted ahead of this one, so
+# `ITEM_ID` became a book with no cover, the cover step's hard failure fired, and the capture aborted
+# with two thirds of the fixtures unwritten — including every playback shape.
+#
+# Naming the book is also what keeps `library-item.json` stable. Every Phase 1 contract test reads that
+# fixture and asserts on The Salt Harbour; a selection that silently followed the server's sort order
+# would swap the subject of those tests without changing a line of them.
 ITEM_ID="$(curl -sS "$BASE_URL/api/libraries/$LIBRARY_ID/items" -H "$AUTH_HEADER" |
-  python3 -c 'import json,sys; r=json.load(sys.stdin).get("results") or []; print(r[0]["id"] if r else "")')"
+  python3 -c '
+import json, sys
+results = json.load(sys.stdin).get("results") or []
+def title(item):
+    return (((item.get("media") or {}).get("metadata")) or {}).get("title") or ""
+match = next((i for i in results if title(i) == "The Salt Harbour"), None)
+print((match or {}).get("id") or "")')
 
 if [ -n "$ITEM_ID" ]; then
   capture library-item GET "/api/items/$ITEM_ID?expanded=1&include=progress" -H "$AUTH_HEADER"
