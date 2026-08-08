@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
+import com.example.shelfplayer.core.database.dao.SessionOutboxDao
 import com.example.shelfplayer.core.database.dao.SleepTimerDao
 import com.example.shelfplayer.core.database.dao.SyncStateDao
 import com.example.shelfplayer.core.database.entity.AudioTrackEntity
@@ -18,6 +19,7 @@ import com.example.shelfplayer.core.database.entity.BookSeriesCrossRef
 import com.example.shelfplayer.core.database.entity.ChapterEntity
 import com.example.shelfplayer.core.database.entity.LibraryEntity
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
+import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity
 import com.example.shelfplayer.core.database.entity.SeriesEntity
@@ -49,6 +51,7 @@ import com.example.shelfplayer.core.database.entity.SyncStateEntity
         AudioTrackEntity::class,
         ChapterEntity::class,
         MediaProgressEntity::class,
+        PlaybackSessionEntity::class,
         ProfileVisibleBookEntity::class,
         SyncStateEntity::class,
         SleepTimerSessionEntity::class,
@@ -66,6 +69,8 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
 
     abstract fun progressDao(): ProgressDao
 
+    abstract fun sessionOutboxDao(): SessionOutboxDao
+
     abstract fun sleepTimerDao(): SleepTimerDao
 
     abstract fun syncStateDao(): SyncStateDao
@@ -75,4 +80,4 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
     }
 }
 
-internal const val DATABASE_VERSION = 8
+internal const val DATABASE_VERSION = 9

@@ -263,6 +263,68 @@
     <string name="settings_storage_progress_unsynced">Ikke sendt til serveren</string>
     <string name="settings_storage_progress_unsynced_hint">Alltid 0 til avspilling finnes.</string>
 
+    <string name="settings_section_sync">Fremdriftssynkronisering</string>
+    <string name="settings_sync_body">Lytteøkter denne enheten har registrert, og hva serveren gjorde med dem.</string>
+    <string name="settings_sync_sessions">Økter registrert</string>
+    <string name="settings_sync_sessions_hint">Én per bok som startes, beholdt i sju dager etter opplasting.</string>
+    <string name="settings_sync_pending">Venter på opplasting</string>
+    <string name="settings_sync_pending_hint">Skal falle til 0 innen et minutt med avspilling på nett.</string>
+    <string name="settings_sync_open">Spilles nå</string>
+    <string name="settings_sync_uploaded">Godtatt av serveren</string>
+    <string name="settings_sync_declined">Posisjon avvist som eldre</string>
+    <string name="settings_sync_declined_hint">Ikke en feil. Serveren hadde allerede en nyere posisjon for boken.</string>
+    <string name="settings_sync_last">Sist godtatt</string>
+    <string name="settings_sync_last_never">Ikke ennå</string>
+    <string name="settings_sync_trigger">På grunn av</string>
+    <string name="settings_sync_failure">Siste feil</string>
+    <string name="settings_sync_failure_none">Ingen</string>
+    <string name="settings_sync_clock">Klokkeavvik fra serveren</string>
+    <string name="settings_sync_clock_unknown">Ikke målt ennå</string>
+    <string name="settings_sync_clock_ok">%1$s — nær nok til å stoles på.</string>
+    <string name="settings_sync_clock_warning">%1$s — mer enn fem minutter. Denne enheten vinner fremdriftskonflikter den burde tape.</string>
+
+    <string name="settings_sync_trigger_interval">30-sekunders-takten</string>
+    <string name="settings_sync_trigger_paused">Pause</string>
+    <string name="settings_sync_trigger_seek">Et hopp som landet</string>
+    <string name="settings_sync_trigger_chapter">Kapittelbytte</string>
+    <string name="settings_sync_trigger_track">Filbytte</string>
+    <string name="settings_sync_trigger_book">Bokbytte</string>
+    <string name="settings_sync_trigger_timer">At sovetimeren stoppet</string>
+    <string name="settings_sync_trigger_shutdown">At spilleren ble avsluttet</string>
+    <string name="settings_sync_trigger_background">At appen ble forlatt</string>
+
+    <string name="settings_section_checks">Kontroller etter bølge 3</string>
+    <string name="settings_checks_body">Hver linje sier hva du skal gjøre og hva skjermen da skal vise. Merkes automatisk der appen kan avgjøre det.</string>
+    <string name="settings_check_queue_drains">Spill i ett minutt, og se «Venter på opplasting» nå 0.</string>
+    <string name="settings_check_server_accepts">Bekreft at «Sist godtatt» flytter seg mens en bok spilles.</string>
+    <string name="settings_check_offline_queue">Slå av nettet, spill i ett minutt, pause: «Venter på opplasting» stiger.</string>
+    <string name="settings_check_offline_drains">Slå nettet på igjen: den faller uten at noe må spilles om.</string>
+    <string name="settings_check_kill">Drep appen midt i en bok, åpne den igjen, og kontroller at boken fortsetter innen 10 sekunder fra der den var.</string>
+    <string name="settings_check_rewind">Spol bevisst fem minutter tilbake, vent på en synkronisering, og bekreft at serveren beholder den tidligere posisjonen.</string>
+    <string name="settings_check_clock">Sett enhetsklokken fem minutter fram og bekreft at advarselen nedenfor kommer.</string>
+    <string name="settings_check_second_device">Lytt videre på en annen enhet og bekreft at denne ikke overskriver den.</string>
+    <string name="settings_check_state_pass">Sett</string>
+    <string name="settings_check_state_waiting">Ikke ennå</string>
+    <string name="settings_check_state_manual">Krever en enhet</string>
+
+    <string name="settings_section_notification">Medievarsel</string>
+    <string name="settings_notification_body">PLAY-001 krever et varsel med avspillingskontroller mens en bok spilles. Disse sier om et kan vises.</string>
+    <string name="settings_notification_allowed">Varsler tillatt</string>
+    <string name="settings_notification_allowed_hint">Android 13 og nyere spør om dette første gang en bok spilles. Å avslå skjuler varselet og ingenting annet.</string>
+    <string name="settings_notification_channel">Mediekanal</string>
+    <string name="settings_notification_channel_on">På</string>
+    <string name="settings_notification_channel_off">Dempet</string>
+    <string name="settings_notification_channel_absent">Ikke opprettet ennå</string>
+    <string name="settings_notification_showing">Vises nå</string>
+    <string name="settings_notification_showing_hint">Spill noe, og kom tilbake hit. Ja her og ingenting i varselpanelet er en reell feil.</string>
+    <string name="settings_notification_yes">Ja</string>
+    <string name="settings_notification_no">Nei</string>
+    <string name="settings_notification_open">Åpne varselinnstillinger</string>
+    <string name="settings_check_notification">Spill en bok og dra ned varselpanelet: medievarselet er der med kontroller som virker.</string>
+
+    <string name="player_notifications_blocked">Varsler er av, så denne boken har ingen varsel- eller låseskjermkontroller.</string>
+    <string name="player_notifications_fix">Slå på</string>
+
     <plurals name="home_library_books">
         <item quantity="one">%1$d bok</item>
         <item quantity="other">%1$d bøker</item>

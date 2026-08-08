@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
+import com.example.shelfplayer.core.database.dao.SessionOutboxDao
 import com.example.shelfplayer.core.database.dao.SleepTimerDao
 import com.example.shelfplayer.core.database.dao.SyncStateDao
 import com.example.shelfplayer.core.database.migration.Migrations
@@ -62,6 +63,9 @@ interface DatabaseModule {
 
         @Provides
         fun providesProgressDao(database: ShelfPlayerDatabase): ProgressDao = database.progressDao()
+
+        @Provides
+        fun providesSessionOutboxDao(database: ShelfPlayerDatabase): SessionOutboxDao = database.sessionOutboxDao()
 
         @Provides
         fun providesSleepTimerDao(database: ShelfPlayerDatabase): SleepTimerDao = database.sleepTimerDao()

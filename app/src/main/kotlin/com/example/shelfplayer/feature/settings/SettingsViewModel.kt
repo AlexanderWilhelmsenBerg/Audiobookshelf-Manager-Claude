@@ -6,14 +6,18 @@ import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.playback.NotificationAccess
+import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
+import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
 import com.example.shelfplayer.domain.usecase.ServerDiagnostics
+import com.example.shelfplayer.playback.NotificationAccessReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +57,16 @@ class SettingsViewModel @Inject constructor(
     diagnostics: DiagnosticsRepository,
     private val preferences: PreferencesRepository,
     private val sleepTimer: SleepTimerRepository,
+    sessionSync: SessionSyncRepository,
+    /**
+     * PRODUCT_SPEC PLAY-001 — read directly from `:playback` rather than through a domain repository.
+     *
+     * It is a question about the *device's* notification settings and about Media3's own channel, not about
+     * this account's data, so there is nothing for a repository to mediate. `:app` already reaches into
+     * `:playback` for the controller and the sleep timer, and inventing a repository interface for a two-line
+     * platform read would be the parallel abstraction CLAUDE.md warns about.
+     */
+    private val notifications: NotificationAccessReader,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -63,8 +77,16 @@ class SettingsViewModel @Inject constructor(
         // PRODUCT_SPEC PLAY-008 / SET-002 — the timer's defaults and the history they produced, which
         // are read together: the screen that turns shake-to-restart on is the screen that shows how
         // often it fired.
-        combine(sleepTimer.observeSettings(), sleepTimer.observeRecentSessions(), ::Pair),
-    ) { libraries, stored, server, storage, timer ->
+        //
+        // The session outbox joins them rather than becoming a sixth source: `combine`'s typed overloads
+        // stop at five, and the untyped one loses every parameter's type in the lambda.
+        combine(
+            sleepTimer.observeSettings(),
+            sleepTimer.observeRecentSessions(),
+            sessionSync.observeDiagnostics(),
+            ::Playback,
+        ),
+    ) { libraries, stored, server, storage, playback ->
         SettingsUiState(
             libraries = libraries,
             // PRODUCT_SPEC 6.1 step 9 — resolved against the granted libraries rather than shown raw.
@@ -73,8 +95,13 @@ class SettingsViewModel @Inject constructor(
             defaultLibraryId = stored.defaultLibraryId?.takeIf { id -> libraries.any { it.id == id } },
             server = server,
             storage = storage,
-            sleepTimer = timer.first,
-            sleepTimerHistory = timer.second,
+            sleepTimer = playback.timer,
+            sleepTimerHistory = playback.timerHistory,
+            sessionSync = playback.sessionSync,
+            // Read per emission rather than observed: notification state has no change callback, and this
+            // flow already re-runs whenever anything it depends on moves — which on the About tab is often
+            // enough to be current while somebody is looking at it.
+            notifications = notifications.read(),
             versionName = BuildConfig.VERSION_NAME,
             isLoaded = true,
         )
@@ -108,6 +135,19 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { sleepTimer.setFadeLength(length) }
     }
 
+    /**
+     * The three playback readings, combined before the outer `combine` sees them.
+     *
+     * A named type rather than a `Triple` so the outer lambda reads as what it is. It is private to the
+     * ViewModel because it exists only to get past `combine`'s arity, and nothing outside should depend on the
+     * three travelling together.
+     */
+    private data class Playback(
+        val timer: SleepTimerSettings,
+        val timerHistory: List<SleepTimerSession>,
+        val sessionSync: SessionSyncDiagnostics,
+    )
+
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
@@ -131,6 +171,10 @@ data class SettingsUiState(
     val sleepTimer: SleepTimerSettings = SleepTimerSettings.Default,
     /** PRODUCT_SPEC PLAY-008 — what this device's timers actually did, newest first. */
     val sleepTimerHistory: List<SleepTimerSession> = emptyList(),
+    /** PRODUCT_SPEC PLAY-004 / PLAY-005 — the session outbox, as counts and timings. */
+    val sessionSync: SessionSyncDiagnostics = SessionSyncDiagnostics(),
+    /** PRODUCT_SPEC PLAY-001 — whether the media notification can appear, and whether it has. */
+    val notifications: NotificationAccess = NotificationAccess(),
     val versionName: String = "",
     val isLoaded: Boolean = false,
 )

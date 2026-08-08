@@ -7,7 +7,9 @@ import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
+import com.example.shelfplayer.core.database.entity.SessionOutboxState
 import com.example.shelfplayer.core.database.entity.SleepTimerSessionEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -312,6 +314,81 @@ class MigrationTest {
     }
 
     /**
+     * PRODUCT_SPEC PLAY-004 / PLAY-005 — version 9 adds the session outbox and takes nothing away.
+     *
+     * The written row is the point rather than the empty read: every column is populated, so a column the
+     * migration spelled differently or made nullable would pass a read and fail this insert.
+     */
+    @Test
+    fun `version 9 adds the session outbox without disturbing the cached books`() = runTest {
+        createVersion(8)
+
+        val migrated = openWithMigrations()
+
+        val book = assertNotNull(migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first())
+        assertEquals("The Salt Harbour", book.book.title)
+        assertEquals(0, migrated.sessionOutboxDao().observeCount(PROFILE_ID).first())
+
+        migrated.sessionOutboxDao().upsert(outboxRow())
+
+        assertEquals(1, migrated.sessionOutboxDao().observeCount(PROFILE_ID).first())
+        assertEquals(
+            1,
+            migrated.sessionOutboxDao()
+                .pending(PROFILE_ID, SessionOutboxState.SYNCED, limit = 10)
+                .size,
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC AUTH-002 — removing a profile takes its listening sessions with it.
+     *
+     * The same check the sleep-timer cascade gets, and for the same reason: SQLite accepts a table with no
+     * constraint and Room compares the *declared* schema rather than enforcement, so a forgotten foreign key
+     * in a hand-written migration surfaces as orphaned rows much later.
+     */
+    @Test
+    fun `removing a profile removes its listening sessions`() = runTest {
+        createVersion(8)
+        val migrated = openWithMigrations()
+        migrated.openHelper.writableDatabase.execSQL("PRAGMA foreign_keys = ON")
+        migrated.sessionOutboxDao().upsert(outboxRow())
+
+        migrated.openHelper.writableDatabase.execSQL(
+            "DELETE FROM profiles WHERE profileId = ?",
+            arrayOf<Any>(PROFILE_ID),
+        )
+
+        assertEquals(0, migrated.sessionOutboxDao().observeCount(PROFILE_ID).first())
+    }
+
+    private fun outboxRow(
+        sessionId: String = "session-1",
+        state: String = SessionOutboxState.PENDING,
+        syncedAt: Long? = null,
+        wasProgressApplied: Boolean? = null,
+    ) = PlaybackSessionEntity(
+        sessionId = sessionId,
+        profileId = PROFILE_ID,
+        serverId = SERVER_ID,
+        bookKey = BOOK_KEY,
+        remoteBookId = "book-1",
+        remoteSessionId = "remote-session-1",
+        title = "The Salt Harbour",
+        author = "A. Writer",
+        state = state,
+        positionMillis = 61_000,
+        durationMillis = 3_600_000,
+        timeListenedMillis = 61_000,
+        startedAt = 1_000,
+        updatedAt = 62_000,
+        syncedAt = syncedAt,
+        wasProgressApplied = wasProgressApplied,
+        attempts = 0,
+        lastErrorCode = null,
+    )
+
+    /**
      * Room validates the migrated schema against the one it expects and throws if they differ. Reading
      * through a DAO is what forces that validation to run, so this fails loudly on a migration that
      * produced a *nearly* correct schema — a missing default, a wrong nullability.
@@ -412,6 +489,7 @@ class MigrationTest {
         VERSION_5 -> seedVersion5(db)
         VERSION_6 -> seedVersion6(db)
         VERSION_7 -> seedVersion7(db)
+        VERSION_8 -> seedVersion8(db)
         else -> error("no seed data defined for schema version $version")
     }
 
@@ -522,6 +600,8 @@ class MigrationTest {
     /** Version 7 added a nullable column and no new table, so version 6's rows still describe it. */
     private fun seedVersion7(db: SupportSQLiteDatabase) = seedVersion6(db)
 
+    private fun seedVersion8(db: SupportSQLiteDatabase) = seedVersion6(db)
+
     /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
     private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
         db.execSQL(
@@ -564,6 +644,7 @@ class MigrationTest {
         const val VERSION_5 = 5
         const val VERSION_6 = 6
         const val VERSION_7 = 7
+        const val VERSION_8 = 8
         const val PROFILE_ID = "prf_test"
         const val LIBRARY_KEY = "srv_test:library-1"
         const val BOOK_KEY = "srv_test:item-1"

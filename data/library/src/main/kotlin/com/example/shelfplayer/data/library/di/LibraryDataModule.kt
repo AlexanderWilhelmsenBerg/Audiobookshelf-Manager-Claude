@@ -4,10 +4,12 @@ import com.example.shelfplayer.data.library.DefaultLibraryRepository
 import com.example.shelfplayer.data.library.DefaultPlaybackRepository
 import com.example.shelfplayer.data.library.DefaultProfileRepository
 import com.example.shelfplayer.data.library.DefaultRealtimeUpdates
+import com.example.shelfplayer.data.library.DefaultSessionSyncRepository
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -33,4 +35,8 @@ interface LibraryDataModule {
     @Binds
     @Singleton
     fun bindsPlaybackRepository(impl: DefaultPlaybackRepository): PlaybackRepository
+
+    @Binds
+    @Singleton
+    fun bindsSessionSyncRepository(impl: DefaultSessionSyncRepository): SessionSyncRepository
 }

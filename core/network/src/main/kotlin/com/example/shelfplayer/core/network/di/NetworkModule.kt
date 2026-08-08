@@ -2,6 +2,7 @@ package com.example.shelfplayer.core.network.di
 
 import com.example.shelfplayer.core.network.http.AuthorizationInterceptor
 import com.example.shelfplayer.core.network.http.RedactingHttpLoggingInterceptor
+import com.example.shelfplayer.core.network.http.ServerClockInterceptor
 import com.example.shelfplayer.core.network.http.UserAgentInterceptor
 import dagger.Module
 import dagger.Provides
@@ -97,10 +98,12 @@ interface NetworkModule {
             authorization: AuthorizationInterceptor,
             userAgent: UserAgentInterceptor,
             logging: RedactingHttpLoggingInterceptor,
+            serverClock: ServerClockInterceptor,
         ): OkHttpClient = baseClient()
             .addInterceptor(userAgent)
             .addInterceptor(authorization)
             .addInterceptor(logging)
+            .addInterceptor(serverClock)
             .build()
 
         /**
@@ -120,9 +123,11 @@ interface NetworkModule {
         fun providesUnauthenticatedClient(
             userAgent: UserAgentInterceptor,
             logging: RedactingHttpLoggingInterceptor,
+            serverClock: ServerClockInterceptor,
         ): OkHttpClient = baseClient()
             .addInterceptor(userAgent)
             .addInterceptor(logging)
+            .addInterceptor(serverClock)
             .build()
 
         private fun baseClient(): OkHttpClient.Builder = OkHttpClient.Builder()

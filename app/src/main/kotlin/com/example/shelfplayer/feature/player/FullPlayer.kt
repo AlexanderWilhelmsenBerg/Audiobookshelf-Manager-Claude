@@ -1,5 +1,7 @@
 package com.example.shelfplayer.feature.player
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -86,7 +90,13 @@ import kotlin.time.Duration.Companion.seconds
  * which is the usual bug with a player reachable from several screens.
  */
 @Composable
-fun FullPlayer(state: PlaybackUiState, timer: SleepTimerState, actions: PlayerActions, modifier: Modifier = Modifier) {
+fun FullPlayer(
+    state: PlaybackUiState,
+    timer: SleepTimerState,
+    actions: PlayerActions,
+    modifier: Modifier = Modifier,
+    isNotificationBlocked: Boolean = false,
+) {
     BackHandler(onBack = actions.onCollapse)
     Surface(modifier = modifier.fillMaxSize()) {
         Column(
@@ -101,6 +111,12 @@ fun FullPlayer(state: PlaybackUiState, timer: SleepTimerState, actions: PlayerAc
                 onCollapse = actions.onCollapse,
                 onOpenSleepTimer = actions.onOpenSleepTimer,
             )
+
+            // PRODUCT_SPEC PLAY-001 — the requirement is a notification with transport controls, and on
+            // Android 13+ the user can decline it. Saying so here is the difference between a missing
+            // notification and a *silently* missing one: the app cannot grant itself the permission, but it can
+            // stop pretending the feature is working.
+            if (isNotificationBlocked) NotificationBlockedNotice()
 
             Spacer(modifier = Modifier.height(8.dp))
             PlayerArtwork(state = state, modifier = Modifier.fillMaxWidth())
@@ -162,6 +178,42 @@ private fun playerBackground(): Brush = Brush.verticalGradient(
         MaterialTheme.colorScheme.surface,
     ),
 )
+
+/**
+ * PRODUCT_SPEC PLAY-001 — one line and one action, shown only while something is blocking the notification.
+ *
+ * The action leaves the app, because the runtime permission cannot be asked for twice: once declined,
+ * `launch` silently does nothing, and the system settings page is the only route back. Deep-linked to this
+ * app's own page rather than the general list — a user who has to find the app among two hundred will not.
+ */
+@Composable
+private fun NotificationBlockedNotice(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.player_notifications_blocked),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(WEIGHT_FILL),
+        )
+        TextButton(
+            onClick = {
+                context.startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                )
+            },
+        ) {
+            Text(text = stringResource(R.string.player_notifications_fix))
+        }
+    }
+}
 
 @Composable
 private fun TopBar(

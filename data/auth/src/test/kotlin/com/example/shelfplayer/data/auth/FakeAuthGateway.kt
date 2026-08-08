@@ -18,6 +18,9 @@ import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.OfflineSession
+import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
@@ -127,6 +130,23 @@ internal class FakeAuthGateway :
     override val playback: PlaybackApi = object : PlaybackApi {
         override suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
             unsupported()
+
+        override suspend fun syncSession(
+            profileId: ProfileId,
+            sessionId: String,
+            progress: SessionProgress,
+        ): AppResult<Unit> = unsupported()
+
+        override suspend fun closeSession(
+            profileId: ProfileId,
+            sessionId: String,
+            progress: SessionProgress,
+        ): AppResult<Unit> = unsupported()
+
+        override suspend fun syncOfflineSessions(
+            profileId: ProfileId,
+            sessions: List<OfflineSession>,
+        ): AppResult<List<OfflineSessionResult>> = unsupported()
     }
 
     internal data class SignIn(val serverUrl: String, val username: String, val password: String)

@@ -14,6 +14,9 @@ import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.OfflineSession
+import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import kotlinx.coroutines.flow.Flow
@@ -49,10 +52,9 @@ interface AudiobookshelfGateway {
 /**
  * PRODUCT_SPEC PLAY-001 — opening a playback session.
  *
- * Only [openSession] so far. `POST /api/session/{id}/sync`, `/close` and the offline routes are
- * captured (`session-sync.json`, `session-close.json`, `session-local-all.json`) and belong to wave 3's
- * outbox; declaring them here before that code exists would suggest the app already sends progress back
- * over the session route, which it does not.
+ * Four routes, all captured. What is **not** here is `POST /api/session/local`: it is captured too, and
+ * it is the wrong route for a queue — it answers `200` with an empty body, so a drain cannot tell an
+ * accepted session from an ignored one. [syncOfflineSessions] uses the batch route even for one session.
  */
 interface PlaybackApi {
     /**
@@ -68,6 +70,36 @@ interface PlaybackApi {
      * escaping this boundary is a path waiting to be resolved against the wrong one.
      */
     suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession>
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — sends a position against a session the server opened.
+     *
+     * `AppResult<Unit>` because the server answers `200` with a `text/plain` `OK` and nothing else. There
+     * is no confirmation to reconcile against: success means accepted, and what the server actually
+     * *stored* is a separate read of `/api/me`.
+     */
+    suspend fun syncSession(profileId: ProfileId, sessionId: String, progress: SessionProgress): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — the last position, and the session is finished.
+     *
+     * Separate from [syncSession] rather than a flag on it: closing is what the server counts as the end
+     * of a listening session, and a caller that muddled the two would either never close one or close it
+     * on every tick.
+     */
+    suspend fun closeSession(profileId: ProfileId, sessionId: String, progress: SessionProgress): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC PLAY-005 — uploads sessions recorded while offline, and reports each one's fate.
+     *
+     * The batch route even for a single session, because the single-session route reports nothing a queue
+     * can act on. Each [OfflineSessionResult] separates "stored" from "position applied", and only the
+     * first is what an outbox may drain on.
+     */
+    suspend fun syncOfflineSessions(
+        profileId: ProfileId,
+        sessions: List<OfflineSession>,
+    ): AppResult<List<OfflineSessionResult>>
 }
 
 /**

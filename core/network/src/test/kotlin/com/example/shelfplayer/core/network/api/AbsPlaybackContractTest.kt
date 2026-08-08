@@ -11,6 +11,9 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.OfflineSession
+import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.network.gateway.PlaybackDevice
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
@@ -18,6 +21,7 @@ import com.example.shelfplayer.core.network.http.NetworkErrorMapper
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
@@ -26,10 +30,12 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -292,6 +298,128 @@ class AbsPlaybackContractTest {
         assertTrue(logged.contains("tracks"), "the counts are there: $logged")
     }
 
+    // --- Syncing an open session (PLAY-004) --------------------------------------------------------
+
+    /**
+     * PRODUCT_SPEC 22.5 — the sync body is the one the capture sent, in **seconds**.
+     *
+     * The units are the trap this pins. The models carry `Duration`; the wire carries fractional seconds.
+     * A position sent in milliseconds would be read by the server as a position a thousand times further
+     * into the book, which on a ten-hour book is "finished" every time (product priority 2).
+     */
+    @Test
+    fun `a session sync sends the position in seconds`() = runTest {
+        server.enqueue(ContractFixtures.response("session-sync"))
+
+        val result = api().syncSession(PROFILE, SESSION, progress())
+
+        assertIs<AppResult.Success<Unit>>(result)
+        val request = server.takeRequest()
+        assertEquals("/api/session/$SESSION/sync", request.path)
+        val body = json.parseToJsonElement(request.body.readUtf8()).jsonObject
+        assertEquals("4.5", body.getValue("currentTime").jsonPrimitive.content)
+        assertEquals("3", body.getValue("timeListened").jsonPrimitive.content)
+        assertEquals("8.0", body.getValue("duration").jsonPrimitive.content)
+    }
+
+    /**
+     * The response is `text/plain`, and that must not read as a failure.
+     *
+     * `session-sync.json` records a `200` whose body is the word `OK`. A method typed to a JSON body
+     * would fail to convert it and report a successful sync as an error — which is why the service
+     * declares `Response<Unit>`, and why this test serves the recorded response rather than an empty one.
+     */
+    @Test
+    fun `a plain-text OK is a success rather than a parse failure`() = runTest {
+        server.enqueue(ContractFixtures.response("session-close"))
+
+        val result = api().closeSession(PROFILE, SESSION, progress())
+
+        assertIs<AppResult.Success<Unit>>(result)
+        assertEquals("/api/session/$SESSION/close", server.takeRequest().path)
+    }
+
+    @Test
+    fun `a rejected sync is reported rather than swallowed`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(HTTP_UNAVAILABLE))
+
+        val result = api().syncSession(PROFILE, SESSION, progress())
+
+        assertIs<AppResult.Failure>(result)
+    }
+
+    // --- The offline outbox (PLAY-005) -------------------------------------------------------------
+
+    /**
+     * PRODUCT_SPEC PLAY-005 — the queued session carries **our** id, and the server's answer is per
+     * session.
+     *
+     * The id is what makes a retry idempotent: the second attempt carries the same one and is recognised
+     * as the same session rather than duplicated. A server-generated id could not exist for a session
+     * recorded with no network.
+     */
+    @Test
+    fun `an offline session is uploaded under the id this device gave it`() = runTest {
+        server.enqueue(ContractFixtures.response("session-local-all"))
+
+        val result = api().syncOfflineSessions(PROFILE, listOf(offlineSession()))
+
+        assertIs<AppResult.Success<List<OfflineSessionResult>>>(result)
+        val request = server.takeRequest()
+        assertEquals("/api/session/local-all", request.path)
+        val sent = json.parseToJsonElement(request.body.readUtf8())
+            .jsonObject.getValue("sessions").jsonArray.single().jsonObject
+        assertEquals(OFFLINE_ID, sent.getValue("id").jsonPrimitive.content)
+        assertEquals("book", sent.getValue("mediaItemType").jsonPrimitive.content)
+        // The honest moment the position was recorded. The server resolves conflicts on this value, so a
+        // default or an upload-time "now" would let a stale session win.
+        assertEquals("1000", sent.getValue("updatedAt").jsonPrimitive.content)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — "accepted" and "progress applied" are different answers.
+     *
+     * The recorded fixture is the interesting case: `success: true` with `progressSynced: false`, which
+     * the capture produced by sending an `updatedAt` older than what the server held. An outbox drains on
+     * the first flag; treating the second as a failure would retry a session the server had deliberately
+     * declined, forever.
+     */
+    @Test
+    fun `a session the server accepted but whose progress it declined is not a failure`() = runTest {
+        server.enqueue(ContractFixtures.response("session-local-all"))
+
+        val result = api().syncOfflineSessions(PROFILE, listOf(offlineSession()))
+
+        val uploaded = assertIs<AppResult.Success<List<OfflineSessionResult>>>(result).value.single()
+        assertTrue(uploaded.wasAccepted, "the session was stored")
+        assertFalse(uploaded.wasProgressApplied, "and its position was declined, which is the server's rule")
+    }
+
+    /** An empty queue is a success with nothing in it, not a request the server has to answer. */
+    @Test
+    fun `draining an empty outbox makes no request`() = runTest {
+        val result = api().syncOfflineSessions(PROFILE, emptyList())
+
+        assertEquals(emptyList(), assertIs<AppResult.Success<List<OfflineSessionResult>>>(result).value)
+        assertEquals(0, server.requestCount)
+    }
+
+    private fun progress() = SessionProgress(
+        position = 4_500.milliseconds,
+        duration = 8.seconds,
+        timeListened = 3.seconds,
+    )
+
+    private fun offlineSession() = OfflineSession(
+        id = OFFLINE_ID,
+        bookId = BOOK,
+        title = "The Salt Harbour",
+        author = "Marisol Holt",
+        progress = progress(),
+        startedAt = Instant.ofEpochMilli(0),
+        updatedAt = Instant.ofEpochMilli(1_000),
+    )
+
     private class FakeConnectionResolver : ProfileConnectionResolver {
         var serverUrl: String = ""
         var hasConnection: Boolean = true
@@ -310,6 +438,8 @@ class AbsPlaybackContractTest {
 
     private companion object {
         const val TOKEN = "that-profiles-token"
+        const val SESSION = "a-server-session-id"
+        const val OFFLINE_ID = "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed"
         const val HTTP_UNAVAILABLE = 503
         val PROFILE = ProfileId("profile-1")
         val SERVER = ServerId("server-1")

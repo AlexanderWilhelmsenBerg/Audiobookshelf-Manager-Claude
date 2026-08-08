@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerState
+import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.SleepTimerMath
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -67,6 +68,7 @@ import kotlin.time.Duration.Companion.seconds
 class SleepTimerController @Inject constructor(
     private val repository: SleepTimerRepository,
     private val shakes: ShakeDetector,
+    private val sessionSync: SessionSyncCoordinator,
     private val clock: AppClock,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
@@ -270,6 +272,11 @@ class SleepTimerController @Inject constructor(
         restorePlayerVolume()
         _state.value = SleepTimerState.Idle
         current.sessionId?.let { id -> repository.recordEnded(id, outcome) }
+        // PRODUCT_SPEC PLAY-004 — "sleep-timer stop" is one of the moments a position must reach the server.
+        // It is the moment that matters most of the list: a listener who fell asleep is not coming back to
+        // press anything, and the next thing this device does may be nothing at all for eight hours.
+        sessionSync.request(SyncTrigger.SleepTimerStopped)
+        sessionSync.drain()
     }
 
     /**

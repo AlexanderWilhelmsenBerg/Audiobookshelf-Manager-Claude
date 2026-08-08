@@ -26,6 +26,9 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.map
+import com.example.shelfplayer.core.model.playback.OfflineSession
+import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.network.fixture.FixtureMapper
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -125,6 +128,37 @@ class FakeAudiobookshelfGateway @Inject constructor(
                 missingCapability = "playback",
             ),
         )
+
+    /**
+     * PRODUCT_SPEC PLAY-004 / PLAY-005 — the demo document has no server to sync to.
+     *
+     * Typed failures rather than a silent success. A fake that pretended to have uploaded progress would
+     * make the outbox's retry path unreachable in tests, which is the one path that must not be
+     * accidentally correct.
+     */
+    override suspend fun syncSession(
+        profileId: ProfileId,
+        sessionId: String,
+        progress: SessionProgress,
+    ): AppResult<Unit> = noServer()
+
+    override suspend fun closeSession(
+        profileId: ProfileId,
+        sessionId: String,
+        progress: SessionProgress,
+    ): AppResult<Unit> = noServer()
+
+    override suspend fun syncOfflineSessions(
+        profileId: ProfileId,
+        sessions: List<OfflineSession>,
+    ): AppResult<List<OfflineSessionResult>> = noServer()
+
+    private fun <T> noServer(): AppResult<T> = AppResult.Failure(
+        AppError.ApiCompatibility(
+            summary = "This build is showing the bundled demo library and has no server to sync with.",
+            missingCapability = "playback",
+        ),
+    )
 
     private fun <T> unsupported(): AppResult<T> = AppResult.Failure(
         AppError.ApiCompatibility(

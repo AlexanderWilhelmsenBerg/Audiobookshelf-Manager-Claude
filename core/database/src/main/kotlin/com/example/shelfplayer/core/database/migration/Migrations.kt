@@ -225,6 +225,60 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-004 / PLAY-005 — adds `playback_sessions`, the session outbox.
+     *
+     * Additive, like every migration here: a new table and its three indices, and nothing touched. An
+     * upgrade from version 8 keeps every book, position and timer it had.
+     *
+     * The column list is written out rather than generated, and `wasProgressApplied` is the one worth
+     * reading twice: it is `INTEGER` and **nullable**, because `null` ("the server has not answered") and
+     * `0` ("the server declined this position as older than its own") are different facts and only one of
+     * them means the row is still queued.
+     */
+    private val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `playback_sessions` (
+                    `sessionId` TEXT NOT NULL,
+                    `profileId` TEXT NOT NULL,
+                    `serverId` TEXT NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `remoteBookId` TEXT NOT NULL,
+                    `remoteSessionId` TEXT,
+                    `title` TEXT NOT NULL,
+                    `author` TEXT,
+                    `state` TEXT NOT NULL,
+                    `positionMillis` INTEGER NOT NULL,
+                    `durationMillis` INTEGER NOT NULL,
+                    `timeListenedMillis` INTEGER NOT NULL,
+                    `startedAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    `syncedAt` INTEGER,
+                    `wasProgressApplied` INTEGER,
+                    `attempts` INTEGER NOT NULL,
+                    `lastErrorCode` TEXT,
+                    PRIMARY KEY(`sessionId`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_playback_sessions_profileId` " +
+                    "ON `playback_sessions` (`profileId`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_playback_sessions_state` ON `playback_sessions` (`state`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_playback_sessions_updatedAt` " +
+                    "ON `playback_sessions` (`updatedAt`)",
+            )
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -233,5 +287,6 @@ object Migrations {
         MIGRATION_5_6,
         MIGRATION_6_7,
         MIGRATION_7_8,
+        MIGRATION_8_9,
     )
 }
