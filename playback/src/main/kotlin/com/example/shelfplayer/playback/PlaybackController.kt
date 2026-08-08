@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.GlobalTimeline
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.google.common.util.concurrent.MoreExecutors
@@ -64,6 +65,7 @@ class PlaybackController @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val playbackRepository: PlaybackRepository,
     private val sleepTimer: SleepTimerController,
+    private val sessionSync: SessionSyncCoordinator,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
@@ -85,6 +87,15 @@ class PlaybackController @Inject constructor(
      * outlive the book it describes.
      */
     private var chapters: List<Chapter> = emptyList()
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — the chapter the last publish saw, so a crossing can be detected.
+     *
+     * The chapter list only exists in this process, so this is the only place a chapter change *can* be
+     * noticed. With the app gone the service's thirty-second cadence covers the same ground half a minute
+     * later, which is the honest limit of putting the list here rather than in the playlist.
+     */
+    private var lastChapter: Chapter? = null
 
     /**
      * PRODUCT_SPEC PLAY-001 — opens a session and starts it at the position the server reported.
@@ -113,7 +124,12 @@ class PlaybackController @Inject constructor(
         // travel here rather than in the playlist because a long book's chapter list in every
         // `MediaItem`'s extras would be tens of kilobytes across the binder to answer one question.
         sleepTimer.onBookChanged(session.chapters)
+        // PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox row is written here, before a byte of audio has been
+        // fetched. A session recorded only once playback succeeded would lose the listening of a book that
+        // started and then hit a network error.
+        sessionSync.onSessionOpened(session)
         chapters = session.chapters
+        lastChapter = null
         val queue = MediaItems.queueFor(session)
         media.setMediaItems(queue.items, queue.startIndex, queue.startPositionMs)
         media.prepare()
@@ -226,6 +242,7 @@ class PlaybackController @Inject constructor(
         controller?.release()
         controller = null
         chapters = emptyList()
+        lastChapter = null
         _state.value = PlaybackUiState.Idle
     }
 
@@ -316,6 +333,9 @@ class PlaybackController @Inject constructor(
     private fun publish(media: MediaController) {
         val item: MediaItem? = media.currentMediaItem
         val position = item?.let { MediaItems.globalPositionOf(it, media.currentPosition) } ?: Duration.ZERO
+        val chapter = if (item == null) null else GlobalTimeline.chapterAt(chapters, position)
+        if (hasCrossedInto(chapter)) sessionSync.request(SyncTrigger.ChapterChanged)
+        lastChapter = chapter
         _state.value = PlaybackUiState(
             bookId = item?.let(MediaItems::bookIdOf),
             title = item?.mediaMetadata?.title?.toString().orEmpty(),
@@ -326,8 +346,20 @@ class PlaybackController @Inject constructor(
             position = position,
             duration = item?.let(MediaItems::bookDurationOf) ?: Duration.ZERO,
             chapters = if (item == null) emptyList() else GlobalTimeline.ordered(chapters),
-            currentChapter = if (item == null) null else GlobalTimeline.chapterAt(chapters, position),
+            currentChapter = chapter,
         )
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — "chapter change", detected by comparison rather than by counting.
+     *
+     * A seek can cross several chapters at once and that is still one crossing to report. Both `null` cases are
+     * excluded deliberately: the first publish of a book has no previous chapter to have left, and a book with
+     * no chapter metadata has nothing to cross.
+     */
+    private fun hasCrossedInto(chapter: Chapter?): Boolean {
+        val previous = lastChapter ?: return false
+        return chapter != null && chapter != previous
     }
 
     private inner class ControllerEvents : Player.Listener {

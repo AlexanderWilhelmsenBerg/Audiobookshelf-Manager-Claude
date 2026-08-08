@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -177,6 +178,14 @@ private fun LazyListScope.aboutTab(uiState: SettingsUiState) {
         storageRows(uiState.storage)
     } else {
         item { Hint(text = stringResource(R.string.settings_storage_loading)) }
+    }
+
+    // PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox's readings, then the checks they exist to settle. In
+    // that order: a checklist above the numbers it is judged by would send the reader scrolling.
+    if (uiState.isLoaded) {
+        item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+        sessionSyncRows(uiState.sessionSync)
+        syncCheckRows(uiState.sessionSync)
     }
 }
 

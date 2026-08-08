@@ -568,6 +568,38 @@ The capture should send a realistic `updatedAt` next time so the *accepted* path
 rejected path is worth keeping regardless — it is the only fixture that shows what a declined sync
 looks like.
 
+### What wave 3 built on this, and the one thing it had to leave unsettled
+
+Everything above is captured and is now load-bearing in `AbsPlaybackApi` and
+`DefaultSessionSyncRepository`. Two things went in as *stated assumptions* rather than as observed
+behaviour, and both are listed on the app's own Settings → About → Testing screen so a device run settles
+them rather than a code review guessing:
+
+**1. `timeListened` on the live sync route.** The capture cannot tell an accumulating counter from an
+idempotent one, because both syncs sent the same value (noted above). Wave 3 sends the **delta since the
+previous sync** on `POST /api/session/{id}/sync`, and the **session total** on the offline route, whose
+field is named `timeListening` and whose payload is a whole session. The delta is the conservative
+choice: against a server that accumulates it is correct, and against one that replaces it is a small
+under-report of one interval rather than a large over-report of the whole session. `ListenedTime` keeps
+the two readings apart so the answer can change without changing what either route sends today
+(PRODUCT_SPEC 22.5).
+
+Nothing about a **position** depends on this. `currentTime` is set rather than accumulated, which the
+capture *did* settle.
+
+**2. The `Date` response header as the clock-skew source.** Not an Audiobookshelf behaviour — it is
+HTTP's own field (RFC 9110 §6.6.1) — so it needs no fixture. `ServerClockInterceptor` reads it on every
+response and a missing header records **nothing** rather than zero, because "we do not know" and "the
+clocks agree" must not look the same in diagnostics. The reading includes the round trip, which is why
+PLAY-005's threshold being five minutes matters: the question is not whether the clocks are in sync but
+whether this device is wrong enough to corrupt a conflict.
+
+### The route wave 3 does not use
+
+`POST /api/session/local` is captured and deliberately unused, for the reason two sections up: it cannot
+report a per-session verdict. `PlaybackService` (the Retrofit interface) has no method for it, so the
+absence is structural rather than a convention.
+
 ## `startOffset` is global — settled 2026-08-07 (PLAY-003)
 
 `multi-item-play.json`, from a two-file book of six seconds then four:

@@ -303,6 +303,62 @@
     <string name="settings_storage_progress_unsynced_hint">Always 0 until playback exists.</string>
 
     <!--
+      PRODUCT_SPEC PLAY-004 / PLAY-005 / SET-002 — the readings that make wave 3 checkable on a device.
+
+      Counts and timings only, and no book titles: the screen exists to show that listening is queued and
+      accepted, which naming the books would not make more convincing (PRODUCT_SPEC 14.5).
+    -->
+    <string name="settings_section_sync">Progress sync</string>
+    <string name="settings_sync_body">Listening sessions this device recorded, and what the server did with them.</string>
+    <string name="settings_sync_sessions">Sessions recorded</string>
+    <string name="settings_sync_sessions_hint">One per book started, kept for seven days after upload.</string>
+    <string name="settings_sync_pending">Waiting to upload</string>
+    <string name="settings_sync_pending_hint">Should fall to 0 within a minute of playing while online.</string>
+    <string name="settings_sync_open">Playing now</string>
+    <string name="settings_sync_uploaded">Accepted by the server</string>
+    <string name="settings_sync_declined">Position declined as older</string>
+    <string name="settings_sync_declined_hint">Not a failure. The server already held a newer position for that book.</string>
+    <string name="settings_sync_last">Last accepted</string>
+    <string name="settings_sync_last_never">Not yet</string>
+    <string name="settings_sync_trigger">Because of</string>
+    <string name="settings_sync_failure">Last error</string>
+    <string name="settings_sync_failure_none">None</string>
+    <string name="settings_sync_clock">Clock offset from server</string>
+    <string name="settings_sync_clock_unknown">Not measured yet</string>
+    <string name="settings_sync_clock_ok">%1$s — close enough to be trusted.</string>
+    <string name="settings_sync_clock_warning">%1$s — more than five minutes. This device will win progress conflicts it should lose.</string>
+
+    <string name="settings_sync_trigger_interval">The 30-second cadence</string>
+    <string name="settings_sync_trigger_paused">Pausing</string>
+    <string name="settings_sync_trigger_seek">A seek landing</string>
+    <string name="settings_sync_trigger_chapter">A chapter change</string>
+    <string name="settings_sync_trigger_track">A file change</string>
+    <string name="settings_sync_trigger_book">A book change</string>
+    <string name="settings_sync_trigger_timer">The sleep timer stopping</string>
+    <string name="settings_sync_trigger_shutdown">The player shutting down</string>
+    <string name="settings_sync_trigger_background">Leaving the app</string>
+
+    <!--
+      The wave-3 checks, with the reading each one is judged by where the app can judge it.
+
+      Written as things to do rather than as facts, because that is what they are: three of them need a
+      device, a server and a second phone, and no reading on this screen can stand in for them.
+    -->
+    <string name="settings_section_checks">Checks after wave 3</string>
+    <string name="settings_checks_body">Each line says what to do and what this screen should then show. Marked automatically where the app can tell.</string>
+    <string name="settings_check_queue_drains">Play a minute, then watch “Waiting to upload” reach 0.</string>
+    <string name="settings_check_server_accepts">Confirm “Last accepted” moves while a book plays.</string>
+    <string name="settings_check_offline_queue">Turn off the network, play a minute, pause: “Waiting to upload” rises.</string>
+    <string name="settings_check_offline_drains">Turn the network back on: it falls again without replaying anything.</string>
+    <string name="settings_check_kill">Kill the app mid-book, reopen it, and check the book resumes within 10 seconds of where it was.</string>
+    <string name="settings_check_rewind">Rewind five minutes deliberately, wait for a sync, and confirm the server keeps the earlier position.</string>
+    <string name="settings_check_clock">Set the device clock five minutes ahead and confirm the warning below appears.</string>
+    <string name="settings_check_second_device">With a second device, listen further there and confirm this one does not overwrite it.</string>
+    <string name="settings_check_state_pass">Seen</string>
+    <string name="settings_check_state_waiting">Not yet</string>
+    <string name="settings_check_state_manual">Needs a device</string>
+
+    <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.
 
       English needs two forms, but the languages this will be translated into do not all agree on

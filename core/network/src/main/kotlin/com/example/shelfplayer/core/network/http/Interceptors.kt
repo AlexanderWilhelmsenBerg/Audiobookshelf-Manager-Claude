@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.time.AppClock
+import com.example.shelfplayer.core.common.time.ServerClock
 import okhttp3.Interceptor
 import okhttp3.Response
 import javax.inject.Inject
@@ -112,6 +113,34 @@ class RedactingHttpLoggingInterceptor @Inject constructor(private val logger: Lo
             LogField.Public("status", response.code),
             LogField.Millis("elapsed", elapsed.inWholeMilliseconds),
         )
+        return response
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-005 — measures this device's clock against the server's, on every response.
+ *
+ * The `Date` header is HTTP's own (RFC 9110 §6.6.1) and OkHttp already parses it into a `java.util.Date`,
+ * so this costs one field read per exchange and no extra request. A response without the header — which the
+ * spec permits for a server with no reliable clock — records nothing rather than recording zero, because
+ * "we do not know" and "the clocks agree" must not look the same in diagnostics.
+ *
+ * ### Why this is not the retry or auth chain's business
+ *
+ * It observes and returns the response untouched. An interceptor that measured *and* acted — refusing a
+ * request from a badly-skewed device, say — would fail a listener whose clock is wrong through no fault of
+ * theirs, and losing progress to protect a timestamp is the wrong trade (product priority 2).
+ */
+class ServerClockInterceptor @Inject constructor(private val serverClock: ServerClock, private val clock: AppClock) :
+    Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val response = chain.proceed(chain.request())
+        // Read before returning, and read from the response we are handing back. `headers.getDate` returns
+        // null for a missing *or* unparseable value, which is the same answer for our purposes: no reading.
+        val serverDate = response.headers.getDate("Date")
+        if (serverDate != null) {
+            serverClock.record(serverTime = serverDate.toInstant(), deviceTime = clock.now())
+        }
         return response
     }
 }

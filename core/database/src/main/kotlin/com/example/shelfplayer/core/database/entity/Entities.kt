@@ -442,3 +442,79 @@ data class SleepTimerSessionEntity(
     val outcome: String?,
     val restarts: Int,
 )
+
+/**
+ * PRODUCT_SPEC PLAY-004 / PLAY-005 — one listening session, and the outbox row that gets it to the server.
+ *
+ * ### One table, not two
+ *
+ * An "active session" table plus an "outbox" table would need a hand-off between them, and the hand-off is
+ * exactly where a session gets lost: the process dies between the delete and the insert and nobody ever
+ * knows the listener was there. One row per session, transitioning through [state], has no hand-off.
+ *
+ * ### [sessionId] is ours, always
+ *
+ * A UUIDv4 this device generated (PLAY-005). It is the id the offline route uploads under, and reusing it on
+ * a retry is what makes the retry idempotent rather than duplicating the session. [remoteSessionId] is the
+ * *separate* id the server issued when the session was opened online, and it is `null` for a session that
+ * has never been to the server — which is the whole reason the two are not one column.
+ *
+ * ### No foreign key to books
+ *
+ * As with `sleep_timer_sessions`, and for the same reason: an outbox row must survive the book leaving the
+ * library, or a server-side deletion would silently discard listening the user has not uploaded yet
+ * (PLAY-005 — "a sync conflict never deletes local playback history silently"). The profile key does
+ * cascade: removing an account removes what it did.
+ *
+ * ### [title] and [author] are stored, and that is deliberate
+ *
+ * The offline route sends `displayTitle`/`displayAuthor`, which is what makes the session legible in the
+ * server's own listening history. Resolving them at upload time would fail for exactly the book that left
+ * the library, so they are copied when the session opens.
+ *
+ * @property state `Open`, `Pending` or `Synced` — see `SessionOutboxState`.
+ * @property timeListenedMillis audio actually played, accumulated across the session. Not a position delta:
+ *   a seek moves the position without anybody having listened to the difference.
+ * @property updatedAt the honest moment [positionMillis] was recorded. The server resolves conflicts on
+ *   this, so it is never rounded, defaulted or stamped at upload time.
+ * @property wasProgressApplied what the server said about the *position* — `null` until it has answered.
+ *   `false` is not a failure: it means the server held something newer (PLAY-004's conflict rule).
+ * @property attempts upload attempts, for diagnostics. Not a retry limit: an outbox that gives up loses
+ *   progress, which product priority 2 forbids.
+ */
+@Entity(
+    tableName = "playback_sessions",
+    foreignKeys = [
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["profileId"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("profileId"), Index("state"), Index("updatedAt")],
+)
+data class PlaybackSessionEntity(
+    @PrimaryKey val sessionId: String,
+    val profileId: String,
+    val serverId: String,
+    val bookKey: String,
+    /** The server's own item id, which is what the upload carries. `bookKey` is scoped and local. */
+    val remoteBookId: String,
+    /** `null` for a session that was never opened against the server. */
+    val remoteSessionId: String?,
+    val title: String,
+    val author: String?,
+    val state: String,
+    val positionMillis: Long,
+    val durationMillis: Long,
+    val timeListenedMillis: Long,
+    val startedAt: Long,
+    val updatedAt: Long,
+    /** `null` until the server has accepted the row. */
+    val syncedAt: Long?,
+    val wasProgressApplied: Boolean?,
+    val attempts: Int,
+    /** The last failure's error code, or `null`. A code, never a message — a message can carry a host. */
+    val lastErrorCode: String?,
+)

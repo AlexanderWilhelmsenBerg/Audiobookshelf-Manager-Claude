@@ -6,10 +6,12 @@ import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
+import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
@@ -53,6 +55,7 @@ class SettingsViewModel @Inject constructor(
     diagnostics: DiagnosticsRepository,
     private val preferences: PreferencesRepository,
     private val sleepTimer: SleepTimerRepository,
+    sessionSync: SessionSyncRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -63,8 +66,16 @@ class SettingsViewModel @Inject constructor(
         // PRODUCT_SPEC PLAY-008 / SET-002 — the timer's defaults and the history they produced, which
         // are read together: the screen that turns shake-to-restart on is the screen that shows how
         // often it fired.
-        combine(sleepTimer.observeSettings(), sleepTimer.observeRecentSessions(), ::Pair),
-    ) { libraries, stored, server, storage, timer ->
+        //
+        // The session outbox joins them rather than becoming a sixth source: `combine`'s typed overloads
+        // stop at five, and the untyped one loses every parameter's type in the lambda.
+        combine(
+            sleepTimer.observeSettings(),
+            sleepTimer.observeRecentSessions(),
+            sessionSync.observeDiagnostics(),
+            ::Playback,
+        ),
+    ) { libraries, stored, server, storage, playback ->
         SettingsUiState(
             libraries = libraries,
             // PRODUCT_SPEC 6.1 step 9 — resolved against the granted libraries rather than shown raw.
@@ -73,8 +84,9 @@ class SettingsViewModel @Inject constructor(
             defaultLibraryId = stored.defaultLibraryId?.takeIf { id -> libraries.any { it.id == id } },
             server = server,
             storage = storage,
-            sleepTimer = timer.first,
-            sleepTimerHistory = timer.second,
+            sleepTimer = playback.timer,
+            sleepTimerHistory = playback.timerHistory,
+            sessionSync = playback.sessionSync,
             versionName = BuildConfig.VERSION_NAME,
             isLoaded = true,
         )
@@ -108,6 +120,19 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { sleepTimer.setFadeLength(length) }
     }
 
+    /**
+     * The three playback readings, combined before the outer `combine` sees them.
+     *
+     * A named type rather than a `Triple` so the outer lambda reads as what it is. It is private to the
+     * ViewModel because it exists only to get past `combine`'s arity, and nothing outside should depend on the
+     * three travelling together.
+     */
+    private data class Playback(
+        val timer: SleepTimerSettings,
+        val timerHistory: List<SleepTimerSession>,
+        val sessionSync: SessionSyncDiagnostics,
+    )
+
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
@@ -131,6 +156,8 @@ data class SettingsUiState(
     val sleepTimer: SleepTimerSettings = SleepTimerSettings.Default,
     /** PRODUCT_SPEC PLAY-008 — what this device's timers actually did, newest first. */
     val sleepTimerHistory: List<SleepTimerSession> = emptyList(),
+    /** PRODUCT_SPEC PLAY-004 / PLAY-005 — the session outbox, as counts and timings. */
+    val sessionSync: SessionSyncDiagnostics = SessionSyncDiagnostics(),
     val versionName: String = "",
     val isLoaded: Boolean = false,
 )

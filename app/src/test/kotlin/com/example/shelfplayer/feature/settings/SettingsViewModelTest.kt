@@ -18,10 +18,13 @@ import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
+import com.example.shelfplayer.core.model.playback.SessionProgress
+import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
+import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import com.example.shelfplayer.core.testing.MainDispatcherRule
@@ -30,6 +33,7 @@ import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
@@ -65,6 +69,7 @@ class SettingsViewModelTest {
     private val diagnostics = FakeDiagnostics()
     private val capabilities = FakeCapabilities()
     private val sleepTimer = FakeSleepTimers()
+    private val sessionSync = FakeSessionSync()
 
     private fun viewModel() = SettingsViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
@@ -72,6 +77,7 @@ class SettingsViewModelTest {
         diagnostics = diagnostics,
         preferences = preferences,
         sleepTimer = sleepTimer,
+        sessionSync = sessionSync,
     )
 
     /**
@@ -326,6 +332,43 @@ class SettingsViewModelTest {
  * A fake rather than a mock, per PRODUCT_SPEC 17.1. It stores what it is told, so a test can assert
  * that the ViewModel wrote what the user asked for rather than that a method was called.
  */
+/** PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox's readings, as the About tab receives them. */
+internal class FakeSessionSync : SessionSyncRepository {
+    private val diagnostics = MutableStateFlow(SessionSyncDiagnostics())
+
+    override fun observeDiagnostics(): Flow<SessionSyncDiagnostics> = diagnostics
+
+    fun emit(reading: SessionSyncDiagnostics) {
+        diagnostics.value = reading
+    }
+
+    override suspend fun openSession(
+        bookId: com.example.shelfplayer.core.model.LibraryItemId,
+        remoteSessionId: String?,
+        title: String,
+        author: String?,
+        position: kotlin.time.Duration,
+        duration: kotlin.time.Duration,
+        startedAt: java.time.Instant,
+    ): AppResult<String> = AppResult.Success("session-1")
+
+    override suspend fun syncOpenSession(
+        sessionId: String,
+        progress: SessionProgress,
+        updatedAt: java.time.Instant,
+        trigger: SyncTrigger,
+    ): AppResult<Unit> = AppResult.Success(Unit)
+
+    override suspend fun closeSession(
+        sessionId: String,
+        progress: SessionProgress,
+        updatedAt: java.time.Instant,
+        trigger: SyncTrigger,
+    ): AppResult<Unit> = AppResult.Success(Unit)
+
+    override suspend fun drainOutbox(): AppResult<Int> = AppResult.Success(0)
+}
+
 internal class FakeSleepTimers : SleepTimerRepository {
     private val settings = MutableStateFlow(SleepTimerSettings.Default)
     private val sessions = MutableStateFlow<List<SleepTimerSession>>(emptyList())

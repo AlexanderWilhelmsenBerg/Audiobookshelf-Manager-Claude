@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.feature.browse.LocalCoverUrls
@@ -91,6 +95,7 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
     var isTimerSheetOpen by remember { mutableStateOf(false) }
     var isChapterSheetOpen by remember { mutableStateOf(false) }
     NotificationPermission(hasPlayback = playback.bookId != null)
+    SyncOnBackground(onBackgrounded = playerViewModel::onAppBackgrounded)
 
     Column(modifier = Modifier.fillMaxSize()) {
         ShelfPlayerNavHost(
@@ -149,6 +154,27 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
             },
             onDismiss = { isTimerSheetOpen = false },
         )
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-004 — "app background transition when possible".
+ *
+ * `ON_STOP` rather than `ON_PAUSE`: pausing happens for a dialog too, and a sync per dialog is a lot of
+ * requests for no new information. Stopping is the app actually leaving the foreground.
+ *
+ * The observer is removed in `onDispose`, which is what stops a recomposition from leaving a second one
+ * registered — the classic version of this bug syncs twice per background transition after a rotation.
+ */
+@Composable
+private fun SyncOnBackground(onBackgrounded: () -> Unit) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) onBackgrounded()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 }
 

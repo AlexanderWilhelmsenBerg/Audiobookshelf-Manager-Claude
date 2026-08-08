@@ -7,8 +7,10 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerState
+import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.playback.PlaybackController
 import com.example.shelfplayer.playback.PlaybackUiState
+import com.example.shelfplayer.playback.SessionSyncCoordinator
 import com.example.shelfplayer.playback.SleepTimerController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +34,7 @@ import kotlin.time.Duration
 class PlayerViewModel @Inject constructor(
     private val controller: PlaybackController,
     private val sleepTimer: SleepTimerController,
+    private val sessionSync: SessionSyncCoordinator,
     private val surface: PlayerSurface,
 ) : ViewModel() {
 
@@ -100,6 +103,23 @@ class PlayerViewModel @Inject constructor(
             val result = sleepTimer.start(mode)
             if (result is AppResult.Failure) _message.value = result.error.summary
         }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — "app background transition when possible".
+     *
+     * Called from the composition's lifecycle rather than from an `Activity` override, because this is the
+     * lifecycle the player surface actually shares. It reaches the service's session directly:
+     * `SessionSyncCoordinator` is a `@Singleton` and the service declares no `android:process`, so there is
+     * one of it and both halves of the app hold the same one.
+     *
+     * A rotation also stops the activity, so this can fire without the app having gone anywhere. That costs a
+     * request the server would have had thirty seconds later anyway, and the alternative — inferring a real
+     * background transition from state — is the kind of guess that misses the case it exists for.
+     */
+    fun onAppBackgrounded() {
+        sessionSync.request(SyncTrigger.AppBackgrounded)
+        sessionSync.drain()
     }
 
     fun onMessageShown() {

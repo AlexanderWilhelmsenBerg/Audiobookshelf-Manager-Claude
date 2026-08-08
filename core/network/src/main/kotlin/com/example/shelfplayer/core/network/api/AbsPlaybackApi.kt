@@ -3,12 +3,16 @@ package com.example.shelfplayer.core.network.api
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.OfflineSession
+import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.network.gateway.PlaybackDevice
@@ -93,6 +97,134 @@ internal class AbsPlaybackApi @Inject constructor(
         )
     }
 
+    override suspend fun syncSession(
+        profileId: ProfileId,
+        sessionId: String,
+        progress: SessionProgress,
+    ): AppResult<Unit> = send(profileId, "syncSession") { service, bearer ->
+        service.sync(bearer, sessionId, progress.toRequest())
+    }
+
+    override suspend fun closeSession(
+        profileId: ProfileId,
+        sessionId: String,
+        progress: SessionProgress,
+    ): AppResult<Unit> = send(profileId, "closeSession") { service, bearer ->
+        service.close(bearer, sessionId, progress.toRequest())
+    }
+
+    override suspend fun syncOfflineSessions(
+        profileId: ProfileId,
+        sessions: List<OfflineSession>,
+    ): AppResult<List<OfflineSessionResult>> {
+        // An empty drain is a success with nothing in it, not a request. A queue that emptied between
+        // being read and being sent must not produce a call the server has to answer.
+        if (sessions.isEmpty()) return AppResult.Success(emptyList())
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+        val transported = resultOf(onError = errors::fromThrowable) {
+            val device = identity.describe()
+            services.playbackService(connection.serverUrl).syncLocalSessions(
+                bearer = bearerOf(connection.accessToken.value),
+                request = LocalSessionBatchDto(sessions.map { session -> session.toDto(device) }),
+            )
+        }
+        return when (transported) {
+            is AppResult.Failure -> AppResult.Failure(transported.error)
+            is AppResult.Success -> resultsFrom(transported.value, sent = sessions.size)
+        }
+    }
+
+    private fun resultsFrom(
+        response: Response<LocalSessionBatchResponseDto>,
+        sent: Int,
+    ): AppResult<List<OfflineSessionResult>> {
+        if (!response.isSuccessful) return AppResult.Failure(errors.fromStatus(response.code()))
+        // A result with no id cannot be matched to a queued session, so it is dropped rather than guessed at.
+        // The row it belonged to stays queued, which is the safe direction: the drain sends it again.
+        val results = response.body()?.results.orEmpty().mapNotNull { result ->
+            val id = result.id?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            OfflineSessionResult(
+                id = id,
+                wasAccepted = result.success,
+                wasProgressApplied = result.progressSynced,
+            )
+        }
+        logger.info(
+            LogCategory.Playback,
+            "Uploaded sessions recorded on this device",
+            LogField.Count("sent", sent),
+            LogField.Count("accepted", results.count { it.wasAccepted }),
+            // Not a failure. A session older than what the server holds is accepted with its progress
+            // declined, which is PLAY-004's conflict rule working — see `LocalSessionResultDto`.
+            LogField.Count("progressDeclined", results.count { it.wasAccepted && !it.wasProgressApplied }),
+        )
+        return AppResult.Success(results)
+    }
+
+    /**
+     * The two routes that answer `200` with `OK` and nothing else.
+     *
+     * Shared because they are the same call with a different path, and because the one thing worth
+     * getting right — that a `text/plain` body is not treated as a failed JSON parse — should be written
+     * once. `Response<Unit>` is what makes that true: Retrofit does not attempt to convert the body.
+     */
+    private suspend fun send(
+        profileId: ProfileId,
+        operation: String,
+        call: suspend (PlaybackService, String) -> Response<Unit>,
+    ): AppResult<Unit> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+        val transported = resultOf(onError = errors::fromThrowable) {
+            call(services.playbackService(connection.serverUrl), bearerOf(connection.accessToken.value))
+        }
+        val response = when (transported) {
+            is AppResult.Failure -> return AppResult.Failure(transported.error)
+            is AppResult.Success -> transported.value
+        }
+        if (!response.isSuccessful) {
+            val retryAfter = response.headers()["Retry-After"]?.toLongOrNull()
+            return AppResult.Failure(errors.fromStatus(response.code(), retryAfterSeconds = retryAfter))
+        }
+        logger.debug(LogCategory.Playback, "Session progress accepted", LogField.Public("call", operation))
+        return AppResult.Success(Unit)
+    }
+
+    /** Seconds on the wire, as the capture sent them. `Duration` everywhere else. */
+    private fun SessionProgress.toRequest() = SessionSyncRequestDto(
+        currentTime = position.inWholeMilliseconds / MILLIS_PER_SECOND,
+        timeListened = timeListened.inWholeSeconds,
+        duration = duration.inWholeMilliseconds / MILLIS_PER_SECOND,
+    )
+
+    private fun OfflineSession.toDto(device: PlaybackDevice) = LocalSessionDto(
+        id = id,
+        libraryItemId = bookId.value,
+        mediaItemId = bookId.value,
+        // The capture sent `book`, and this app plays books. A podcast episode is a different shape and
+        // a different route (PRODUCT_SPEC 22.4).
+        mediaItemType = MEDIA_ITEM_TYPE_BOOK,
+        displayTitle = title,
+        displayAuthor = author,
+        duration = progress.duration.inWholeMilliseconds / MILLIS_PER_SECOND,
+        currentTime = progress.position.inWholeMilliseconds / MILLIS_PER_SECOND,
+        timeListening = progress.timeListened.inWholeSeconds,
+        startedAt = startedAt.toEpochMilli(),
+        // The honest moment the position was recorded. The server resolves conflicts on this, so a value
+        // rounded, defaulted or taken from "now at upload time" would let a stale session win.
+        updatedAt = updatedAt.toEpochMilli(),
+        mediaPlayer = MEDIA_PLAYER,
+        deviceInfo = PlayDeviceInfoDto(
+            clientName = device.clientName,
+            clientVersion = device.clientVersion,
+            deviceId = device.deviceId,
+            manufacturer = device.manufacturer,
+            model = device.model,
+            sdkVersion = device.sdkVersion,
+        ),
+    )
+
     /**
      * The request the fixtures were captured with, field for field.
      *
@@ -122,5 +254,10 @@ internal class AbsPlaybackApi @Inject constructor(
 
         /** What the server records as the player; the official app and the capture both send this. */
         const val MEDIA_PLAYER = "exo-player"
+
+        const val MEDIA_ITEM_TYPE_BOOK = "book"
+
+        /** The wire is seconds and the models are `Duration`; this is the only place the two meet. */
+        const val MILLIS_PER_SECOND = 1_000.0
     }
 }
