@@ -2,6 +2,28 @@
 
 Written against `PRODUCT_SPEC` PLAY-001 … PLAY-009 and the Phase 2 exit criteria, with Phase 1 merged.
 
+## Where Phase 2 actually stands — 2026-08-07
+
+**Roughly one wave of six.** There is no `:playback` module, no `MediaLibraryService`, no ExoPlayer
+dependency and no playback method on the gateway. Against the deliverables PRODUCT_SPEC lists for the
+phase:
+
+| Deliverable | State |
+| --- | --- |
+| MediaLibraryService | Not started |
+| Remote playback session | Contract captured; no code |
+| ExoPlayer | Not started |
+| Global timeline | Not started, and blocked — see wave 2 |
+| Progress sync | Phase 1's storage and `/api/me` read exist; session sync not started |
+| Notification / lockscreen / headset | Not started |
+| Speed / skip | Not started |
+| Buffer presets | Not started |
+| Audio focus / noisy handling | Not started |
+
+What exists is wave 0: the contracts, and the design decisions the contracts forced. That is the
+correct order — Phase 1 showed twice that a fixture changes the implementation — but it should not be
+mistaken for progress against the exit criteria, all four of which need a device and a running player.
+
 ## Exit criteria, and what each one actually demands
 
 PRODUCT_SPEC names four. None of them is a unit test, and that shapes the whole plan:
@@ -16,7 +38,7 @@ PRODUCT_SPEC names four. None of them is a unit test, and that shapes the whole 
 All four are hardware. What the repository can carry is everything that makes them *pass on the first
 try* — and, per Phase 1's lesson, the thing that decides that is fixtures.
 
-## Wave 0 — the capture ✅ **run on 2026-08-07**
+## Wave 0 — the capture ✅ **mostly run on 2026-08-07**
 
 Five fixtures committed. What they settled is in `docs/api-compatibility.md`; the three consequences
 for the waves below are:
@@ -33,8 +55,17 @@ for the waves below are:
 
 One accident worth keeping: the capture synced a position past the fixture book's duration, and the
 server clamped it and marked the book finished. That records a real behaviour — **a session sync can
-mark a book finished without being asked** — which collides with PLAY-004's own 95% threshold, and wave
-3 has to decide which wins.
+mark a book finished without being asked** — and the reason turned out to be a library setting we had
+captured in Phase 1 and never read. See wave 3.
+
+### Still to capture
+
+| Route | Blocks |
+| --- | --- |
+| `POST /api/items/{id}/play` on the two-file book | Wave 2 — `startOffset` is still unverified |
+| `POST /api/session/local` | Wave 3 — the offline outbox |
+| `POST /api/session/local-all` | Wave 3 — the batch drain |
+| `GET /api/session/{id}` | Resuming an open session rather than opening a second one |
 
 ## Wave 1 — the vertical slice: one book, one track, play and pause
 
@@ -65,15 +96,48 @@ wave 0.
 
 ## Wave 3 — progress, and not losing it
 
-PLAY-004 and PLAY-005. The requirements product priority 2 exists for.
+PLAY-004 and PLAY-005. The requirements product priority 2 exists for. **Revised after reading the
+server's session manager** — the original plan had a structural hole in it.
+
+### The hole, and what fills it
+
+The plan had the outbox retrying `POST /api/session/{id}/sync` per session. That cannot work for an
+offline session: the route needs an id the *server* issued, and a session recorded on a train has never
+been to the server. There was no route by which an offline session could ever have been uploaded.
+
+`POST /api/session/local` is the one built for it — the **client** generates the id, and the server
+treats an unseen id as a new session. That is what PLAY-005's "every offline listening session has a
+UUIDv4 identifier" is for, and it is what makes a retry idempotent: the second attempt carries the same
+id and is recognised as the same session rather than duplicated.
+
+`POST /api/session/local-all` takes `{"sessions": [...]}` and answers with a per-session result, so an
+outbox drains in one request rather than N.
+
+### What wave 3 builds
 
 - Remote sync every ~30 s plus on pause, seek completion, chapter change, book change, timer stop,
-  service shutdown and background transition.
+  service shutdown and background transition — over `POST /api/session/{id}/sync` while online.
 - Position survives process death with under 10 s lost.
-- Session outbox: UUIDv4 per session, idempotent retry, seven-day retention, then compaction.
-- Conflict resolution that **never blindly takes the maximum position** — an intentional rewind is data,
-  not noise. Clock skew over five minutes is detected and surfaced in diagnostics.
-- Finished threshold at 95%, configurable 90–99%.
+- Session outbox: UUIDv4 per session, drained through `/api/session/local-all`, retried until the
+  per-session result says `success`, seven-day retention, then compaction.
+- **Conflict resolution is the server's**, and the app's job is not to fight it. The server takes the
+  newer `updatedAt` and lets progress move backwards, which is exactly PLAY-004's "never blindly
+  chooses the maximum position". So the app must send an honest `updatedAt` and must **not** clamp its
+  own position to the maximum before sending, which would defeat a rule the server implements
+  correctly.
+- Clock-skew detection stops being hygiene and becomes load-bearing: the server trusts `updatedAt`, so
+  a device five minutes fast wins every conflict it takes part in.
+
+### The finished threshold needs a decision, not an implementation
+
+PLAY-004 fixes the app's threshold at 95%, configurable 90–99%. The **server** marks a book finished
+from the library's own `markAsFinishedTimeRemaining` and `markAsFinishedPercentComplete` — already in
+the committed `libraries.json`, at ten seconds remaining and null respectively.
+
+Ten seconds remaining on a ten-hour book is 99.97%. The two rules will disagree constantly, and the
+symptom a user sees is a book that will not stay finished. The recommendation is to read the library's
+thresholds and prefer them, with the app's setting as the fallback for a server reporting none — but
+that is a deviation from PLAY-004's literal wording and wants an ADR before it is coded.
 
 ## Wave 4 — the controls a listener expects
 

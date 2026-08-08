@@ -564,6 +564,30 @@ if [ -n "$SESSION_ID" ]; then
     -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
     -d '{"currentTime":4.5,"timeListened":3,"duration":8}'
 
+  # --- Offline sessions (PLAY-005) ---------------------------------------------------------------
+  #
+  # The routes the outbox actually needs. `/api/session/{id}/sync` requires an id the server issued,
+  # which an offline session by definition does not have; `/api/session/local` takes a session whose id
+  # the *client* generated and treats an unseen one as new. That is what makes a retry idempotent.
+  #
+  # The id here is a fixed UUIDv4 rather than a generated one, so the capture is deterministic and the
+  # drift check stays meaningful. `record` scrubs it to `<volatile>` on the way out either way.
+  LOCAL_SESSION_ID="1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed"
+  LOCAL_SESSION='{"id":"'"$LOCAL_SESSION_ID"'","libraryItemId":"'"$ITEM_ID"'","episodeId":null,"mediaItemId":"'"$ITEM_ID"'","mediaItemType":"book","displayTitle":"The Salt Harbour","displayAuthor":"Marisol Holt","duration":8,"currentTime":5.5,"timeListening":4,"startedAt":0,"updatedAt":0,"mediaPlayer":"exo-player","deviceInfo":{"clientName":"ShelfPlayer","clientVersion":"0.0.0","deviceId":"capture","manufacturer":"capture","model":"capture","sdkVersion":36}}'
+
+  capture session-local POST /api/session/local \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$LOCAL_SESSION"
+
+  # The same session again. PLAY-005 requires a retry to be idempotent, and the only way to observe
+  # that is to send an id the server has now seen and compare what it says the second time.
+  capture session-local-repeated POST /api/session/local \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$LOCAL_SESSION"
+
+  # The batch drain, which is what an outbox with more than one queued session will use.
+  capture session-local-all POST /api/session/local-all \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"sessions":['"$LOCAL_SESSION"']}'
+
   # What the account looks like after a session, which is where PLAY-004's conflict resolution reads
   # from. Captured separately from the pre-session `me.json` so the two can be diffed.
   capture me-after-session GET /api/me -H "$AUTH_HEADER"

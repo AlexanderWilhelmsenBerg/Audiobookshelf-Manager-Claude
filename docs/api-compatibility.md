@@ -453,3 +453,76 @@ two can disagree — and the app has to decide which wins rather than discover i
 nothing about a listening **session** — `timeListened`, the device that produced it, or the identity a
 retry has to match on. PLAY-005's outbox is built on session identity, so the session route has to be
 observed even though a simpler one already works.
+
+## Offline sessions — the endpoints Phase 2's outbox should use (PLAY-005)
+
+Found by reading the server's own route table and session manager, and by the fact that the official
+Android app relies on the same behaviour. **Not yet captured**, so nothing may be built on the shapes
+below until fixtures exist (22.5) — but they change the design enough that wave 3 should be planned
+around them rather than retrofitted.
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/session/local` | Sync **one** client-generated session |
+| `POST /api/session/local-all` | Sync **many** — `{"sessions": [...]}` → `{"results": [...]}` |
+| `GET /api/session/{id}` | Fetch an open session rather than opening a new one |
+| `POST /api/items/{id}/play/{episodeId}` | The podcast-episode variant of the play route |
+
+### Why this matters more than it looks
+
+The plan had wave 3's outbox retrying `POST /api/session/{id}/sync` per session. **That cannot work for
+an offline session**, and the reason is structural: `/api/session/{id}/sync` needs a session id the
+server issued, and a session recorded on a train has never been to the server. There was no route in
+the plan by which an offline session could ever be uploaded.
+
+`POST /api/session/local` is the answer, and it is built for exactly this: the **client** generates the
+id, and the server treats an id it has never seen as a new session. That is why PLAY-005 says "every
+offline listening session has a UUIDv4 identifier" — the identifier is the client's, and it is what
+makes a retry idempotent, because the second attempt carries the same id and is recognised as the same
+session.
+
+`POST /api/session/local-all` takes an array and answers with a per-session result, which is an outbox
+drain in one request instead of N.
+
+Fields the server reads from a local session: `id`, `libraryItemId`, `episodeId`, `currentTime`,
+`timeListening`, `updatedAt`, `displayTitle`. Response per session: `{id, success, error?,
+progressSynced}`.
+
+### Conflict resolution is already what PLAY-004 asks for
+
+The server compares the incoming `updatedAt` against the stored progress's and takes the newer.
+**Progress can move backwards.** PLAY-004's "conflict resolution never blindly chooses the maximum
+position" is therefore satisfied by the protocol rather than fought against — an intentional rewind
+survives, provided the client sends an honest `updatedAt`.
+
+Two consequences for the app:
+
+- It must never clamp its own position to the maximum before sending, or it defeats a rule the server
+  is already implementing correctly.
+- PLAY-005's clock-skew detection stops being hygiene and becomes load-bearing. The server trusts
+  `updatedAt`, so a device five minutes fast wins every conflict it takes part in.
+
+## The finished threshold is the server's, and it is already in a committed fixture (PLAY-004)
+
+`syncSession` marks a book finished using **library settings**, not a constant:
+`markAsFinishedTimeRemaining` and `markAsFinishedPercentComplete`. Both are already in
+`libraries.json`, captured since Phase 1 and never read:
+
+```json
+"markAsFinishedPercentComplete": null,
+"markAsFinishedTimeRemaining": 10
+```
+
+This explains the `me-after-session.json` artefact completely. The capture synced a position past an
+eight-second book; the position clamped to the end; zero seconds remained, which is under the library's
+ten-second rule; the server marked it finished. Not a quirk — the library's configured policy.
+
+**It also creates a conflict PLAY-004 does not anticipate.** The requirement fixes the app's finished
+threshold at 95%, configurable 90–99%. This library's rule is "ten seconds remaining", which on a
+ten-hour book is 99.97%. The two will disagree constantly, and a book the app calls unfinished can come
+back from the server marked finished.
+
+The app should **read the library's thresholds and prefer them**, treating its own setting as the
+fallback for a server that reports none. Disagreeing with the server about whether a book is finished
+is a bug the user sees as a book that will not stay finished. Recorded here rather than decided
+unilaterally: it is a deviation from PLAY-004's literal wording and wants an ADR.
