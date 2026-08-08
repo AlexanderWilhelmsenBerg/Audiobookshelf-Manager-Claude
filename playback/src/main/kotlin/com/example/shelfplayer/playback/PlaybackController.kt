@@ -19,6 +19,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.domain.playback.GlobalTimeline
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -113,6 +114,43 @@ class PlaybackController @Inject constructor(
         applicationScope.launch(mainDispatcher) {
             val media = connect() ?: return@launch
             if (media.isPlaying) media.pause() else media.play()
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — seeks to a position on the **book's** timeline.
+     *
+     * The conversion goes through [GlobalTimeline], on a track list rebuilt from the playlist's own
+     * metadata. That is deliberate rather than convenient: the resume seek uses the same function, so a
+     * dragged seek bar and a resumed book cannot disagree about where a position is — which on a
+     * multi-file book is the difference between landing in the right chapter and the wrong file.
+     *
+     * Clamped by [GlobalTimeline] at both ends, so a bar dragged to its extreme lands on a real
+     * position rather than past the last track.
+     */
+    fun seekTo(position: Duration) {
+        applicationScope.launch(mainDispatcher) {
+            val media = controller ?: return@launch
+            if (media.mediaItemCount == 0) return@launch
+            val items = (0 until media.mediaItemCount).map(media::getMediaItemAt)
+            val cursor = GlobalTimeline.cursorFor(MediaItems.tracksOf(items), position)
+            media.seekTo(cursor.index, cursor.offset.inWholeMilliseconds)
+            publish(media)
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-007 — skips [delta] along the book, forwards or backwards.
+     *
+     * Expressed as a seek on the **book's** timeline rather than as `Player.seekForward`, because
+     * Media3's own skip is per-item: thirty seconds forward from twenty seconds before the end of a
+     * track would stop at the boundary instead of crossing into the next file.
+     */
+    fun skipBy(delta: Duration) {
+        applicationScope.launch(mainDispatcher) {
+            val media = controller ?: return@launch
+            val item = media.currentMediaItem ?: return@launch
+            seekTo(MediaItems.globalPositionOf(item, media.currentPosition) + delta)
         }
     }
 

@@ -155,6 +155,19 @@
     <string name="player_resume">Fortsett</string>
     <string name="player_pause">Pause</string>
     <string name="player_stop">Stopp avspilling</string>
+    <string name="player_collapse">Lukk spilleren</string>
+    <string name="player_remaining">−%1$s</string>
+    <string name="player_clock">%1$d:%2$02d</string>
+    <string name="player_clock_hours">%1$d:%2$02d:%3$02d</string>
+    <plurals name="player_skip_back">
+        <item quantity="one">%1$d sekund tilbake</item>
+        <item quantity="other">%1$d sekunder tilbake</item>
+    </plurals>
+    <plurals name="player_skip_forward">
+        <item quantity="one">%1$d sekund fram</item>
+        <item quantity="other">%1$d sekunder fram</item>
+    </plurals>
+    <string name="player_open">Åpne spilleren</string>
     <string name="player_starting">Starter …</string>
     <!-- %1$s er posisjonen boken fortsetter fra, for eksempel "2 t 14 min". -->
     <string name="player_resume_at">Fortsett fra %1$s</string>

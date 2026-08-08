@@ -166,6 +166,23 @@
     <string name="player_pause">Pause</string>
     <string name="player_stop">Stop playback</string>
     <!-- Shown on the book screen while the server is being asked to open a session. -->
+    <string name="player_collapse">Close the player</string>
+    <!-- %1$s is a remaining time such as "1:04:12". -->
+    <string name="player_remaining">−%1$s</string>
+    <!-- %1$d minutes, %2$02d seconds. -->
+    <string name="player_clock">%1$d:%2$02d</string>
+    <!-- %1$d hours, %2$02d minutes, %3$02d seconds. -->
+    <string name="player_clock_hours">%1$d:%2$02d:%3$02d</string>
+    <!-- %1$d is a whole number of seconds. Plurals, so a one-second skip does not read "1 seconds". -->
+    <plurals name="player_skip_back">
+        <item quantity="one">Back %1$d second</item>
+        <item quantity="other">Back %1$d seconds</item>
+    </plurals>
+    <plurals name="player_skip_forward">
+        <item quantity="one">Forward %1$d second</item>
+        <item quantity="other">Forward %1$d seconds</item>
+    </plurals>
+    <string name="player_open">Open the player</string>
     <string name="player_starting">Starting…</string>
     <!-- %1$s is the position a book will resume from, such as "2 h 14 min". -->
     <string name="player_resume_at">Resume at %1$s</string>

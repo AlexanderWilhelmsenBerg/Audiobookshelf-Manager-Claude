@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC PLAY-001 — the screens' view of playback.
@@ -30,6 +31,7 @@ import javax.inject.Inject
 class PlayerViewModel @Inject constructor(
     private val controller: PlaybackController,
     private val sleepTimer: SleepTimerController,
+    private val surface: PlayerSurface,
 ) : ViewModel() {
 
     val playback: StateFlow<PlaybackUiState> = controller.state
@@ -37,21 +39,47 @@ class PlayerViewModel @Inject constructor(
     /** PRODUCT_SPEC PLAY-008 — the running timer, straight from the object that owns it. */
     val timer: StateFlow<SleepTimerState> = sleepTimer.state
 
+    /** PRODUCT_SPEC PLAY-001 — whether the full-screen player is showing. */
+    val isExpanded: StateFlow<Boolean> = surface.isExpanded
+
     private val _message = MutableStateFlow<String?>(null)
 
     /** The last failure worth showing, or `null`. Cleared by [onMessageShown]. */
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    /**
+     * PRODUCT_SPEC PLAY-001 — starts a book and opens the player over it.
+     *
+     * Expanding only on success. A play that failed leaves the user on the book screen with a message,
+     * which is where they can do something about it; a full-screen player showing nothing would hide
+     * both the message and the way back.
+     */
     fun onPlay(bookId: LibraryItemId) {
         viewModelScope.launch {
-            val result = controller.play(bookId)
-            if (result is AppResult.Failure) _message.value = result.error.summary
+            when (val result = controller.play(bookId)) {
+                is AppResult.Failure -> _message.value = result.error.summary
+                is AppResult.Success -> surface.expand()
+            }
         }
     }
 
+    fun onExpand() = surface.expand()
+
+    fun onCollapse() = surface.collapse()
+
+    /** PRODUCT_SPEC PLAY-003 — a dragged seek bar, on the book's timeline. */
+    fun onSeekTo(position: Duration) = controller.seekTo(position)
+
+    /** PRODUCT_SPEC PLAY-007 — the skip controls. Negative skips back. */
+    fun onSkipBy(delta: Duration) = controller.skipBy(delta)
+
     fun onTogglePlayPause() = controller.togglePlayPause()
 
-    fun onStop() = controller.stop()
+    /** Stopping closes the player as well: there is nothing left for it to show. */
+    fun onStop() {
+        surface.collapse()
+        controller.stop()
+    }
 
     /**
      * PRODUCT_SPEC PLAY-008 — sets a timer, or turns one off when [mode] is `null`.
