@@ -167,6 +167,8 @@
     <string name="sleep_timer_end_of_chapter">Slutten av kapittelet</string>
     <string name="sleep_timer_minutes">%1$d min</string>
     <string name="sleep_timer_seconds">%1$d s</string>
+    <!-- Nedtelling: %1$d minutter og %2$02d sekunder, for eksempel "29:31". -->
+    <string name="sleep_timer_countdown">%1$d:%2$02d</string>
     <string name="sleep_timer_restart">Start sovetiden på nytt</string>
 
     <string name="sleep_timer_settings">Standardverdier</string>
@@ -190,6 +192,7 @@
         <item quantity="other">Startet på nytt %1$d ganger</item>
     </plurals>
     <string name="settings_tab_sleep">Sovetid</string>
+    <string name="book_download_later">Last ned — kommer i en senere fase</string>
     <string name="navigate_back">Tilbake</string>
 
     <string name="settings_title">Innstillinger</string>

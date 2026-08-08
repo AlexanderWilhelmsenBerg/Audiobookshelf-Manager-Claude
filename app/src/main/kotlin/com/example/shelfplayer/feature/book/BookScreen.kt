@@ -3,16 +3,24 @@ package com.example.shelfplayer.feature.book
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -23,9 +31,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,6 +46,7 @@ import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.feature.browse.BookCover
 import com.example.shelfplayer.feature.player.PlayerViewModel
 import com.example.shelfplayer.playback.PlaybackUiState
 import java.time.Instant
@@ -137,6 +149,18 @@ private fun BookDetails(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // PRODUCT_SPEC LIB-004 / PLAY-001 — the cover, with the two actions beside it.
+        //
+        // Top-**right** of the cover rather than under the metadata: play is what this screen is for,
+        // and a button below a description is a button the reader has to scroll to on any book whose
+        // description is longer than a paragraph.
+        BookHeader(
+            book = book,
+            playback = playback,
+            onPlay = onPlay,
+            onTogglePlayPause = onTogglePlayPause,
+        )
+
         book.subtitle?.let { subtitle ->
             Text(text = subtitle, style = MaterialTheme.typography.titleSmall)
         }
@@ -191,18 +215,57 @@ private fun BookDetails(
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-
-        PlayButton(
-            book = book,
-            playback = playback,
-            onPlay = onPlay,
-            onTogglePlayPause = onTogglePlayPause,
-        )
     }
 }
 
 /**
- * PRODUCT_SPEC PLAY-001 — one button, whose meaning depends on what the session is already doing.
+ * PRODUCT_SPEC LIB-004 / PLAY-001 — the cover, and the two things you can do with the book.
+ *
+ * The actions sit at the **top right of the cover**, in the order a hand reaches them: download on the
+ * left, play on the right, play being the one pressed every time and download the one pressed once.
+ *
+ * Download is a placeholder and says so: it is disabled, and its content description names the phase it
+ * arrives in rather than implying a button that silently does nothing. A control that looks live and is
+ * not is worse than one that admits it (PRODUCT_SPEC 21).
+ */
+@Composable
+private fun BookHeader(
+    book: Book,
+    playback: PlaybackUiState,
+    onPlay: (LibraryItemId) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        BookCover(book = book, modifier = Modifier.width(COVER_WIDTH))
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalIconButton(onClick = {}, enabled = false) {
+                    Icon(
+                        imageVector = Icons.Filled.Download,
+                        contentDescription = stringResource(R.string.book_download_later),
+                    )
+                }
+                PlayIconButton(
+                    book = book,
+                    playback = playback,
+                    onPlay = onPlay,
+                    onTogglePlayPause = onTogglePlayPause,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-001 — one icon button, whose meaning depends on what the session is already doing.
  *
  * Three states rather than a separate play and pause control:
  *
@@ -218,7 +281,7 @@ private fun BookDetails(
  * book you are eight hours into does not say what is about to happen.
  */
 @Composable
-private fun PlayButton(
+private fun PlayIconButton(
     book: Book,
     playback: PlaybackUiState,
     onPlay: (LibraryItemId) -> Unit,
@@ -226,21 +289,36 @@ private fun PlayButton(
     modifier: Modifier = Modifier,
 ) {
     val isCurrent = playback.bookId == book.id
+    val isPlayingThis = isCurrent && playback.isPlaying
     val resumeAt = book.progress?.position?.takeIf { it > Duration.ZERO && book.progress?.isFinished != true }
-    Button(
+    val startingLabel = stringResource(R.string.player_starting)
+    FilledIconButton(
         onClick = { if (isCurrent) onTogglePlayPause() else onPlay(book.id) },
         enabled = !playback.isLoading,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
     ) {
-        Text(
-            text = when {
-                playback.isLoading -> stringResource(R.string.player_starting)
-                isCurrent && playback.isPlaying -> stringResource(R.string.player_pause)
-                isCurrent -> stringResource(R.string.player_resume)
-                resumeAt != null -> stringResource(R.string.player_resume_at, resumeAt.formatted())
-                else -> stringResource(R.string.player_play)
-            },
-        )
+        if (playback.isLoading) {
+            // The spinner replaces the icon, so it has to carry the icon's label — a progress indicator
+            // with no description announces nothing at all to a screen reader.
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(20.dp)
+                    .semantics { contentDescription = startingLabel },
+            )
+        } else {
+            Icon(
+                imageVector = if (isPlayingThis) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                // An icon-only control carries its whole label here, so the description says what will
+                // happen — including *where it will resume from* on a part-finished book, which the icon
+                // cannot show and which is the one thing a listener wants confirmed before pressing.
+                contentDescription = when {
+                    isPlayingThis -> stringResource(R.string.player_pause)
+                    isCurrent -> stringResource(R.string.player_resume)
+                    resumeAt != null -> stringResource(R.string.player_resume_at, resumeAt.formatted())
+                    else -> stringResource(R.string.player_play)
+                },
+            )
+        }
     }
 }
 
@@ -394,3 +472,6 @@ private fun Duration.formatted(): String {
 }
 
 private const val MINUTES_PER_HOUR = 60
+
+/** Wide enough to read a cover's title at arm's length, narrow enough to leave room for the actions. */
+private val COVER_WIDTH = 140.dp

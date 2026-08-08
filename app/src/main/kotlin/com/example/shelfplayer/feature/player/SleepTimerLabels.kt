@@ -31,6 +31,27 @@ fun Duration.asShortLabel(): String {
     return stringResource(R.string.sleep_timer_minutes, minutes.toInt())
 }
 
+/**
+ * `29:31`, ticking every second.
+ *
+ * The minutes-only label reads as **stuck**: it changes once a minute, so a listener watching it for a
+ * few seconds sees a number that does not move and concludes the timer is not running. A countdown has
+ * to be seen to count, which means seconds on the face of it.
+ *
+ * Hours are folded into the minutes — `90:00` rather than `1:30:00` — because the longest preset is
+ * ninety minutes and a three-part clock for that is harder to read at a glance than a two-part one.
+ */
+@Composable
+@ReadOnlyComposable
+fun Duration.asCountdownLabel(): String {
+    val total = inWholeSeconds.coerceAtLeast(0)
+    return stringResource(
+        R.string.sleep_timer_countdown,
+        total / SECONDS_PER_MINUTE,
+        total % SECONDS_PER_MINUTE,
+    )
+}
+
 @Composable
 @ReadOnlyComposable
 fun SleepTimerMode.label(): String = when (this) {

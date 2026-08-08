@@ -180,6 +180,8 @@
     <!-- %1$d is a whole number of minutes. -->
     <string name="sleep_timer_minutes">%1$d min</string>
     <string name="sleep_timer_seconds">%1$d s</string>
+    <!-- A ticking countdown: %1$d minutes and %2$02d seconds, e.g. "29:31". -->
+    <string name="sleep_timer_countdown">%1$d:%2$02d</string>
     <string name="sleep_timer_restart">Restart the timer</string>
 
     <!-- SET-002 (Playback) — the sleep timer's settings. -->
@@ -207,6 +209,7 @@
         <item quantity="other">Restarted %1$d times</item>
     </plurals>
     <string name="settings_tab_sleep">Sleep</string>
+    <string name="book_download_later">Download — arrives in a later phase</string>
     <string name="navigate_back">Back</string>
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->

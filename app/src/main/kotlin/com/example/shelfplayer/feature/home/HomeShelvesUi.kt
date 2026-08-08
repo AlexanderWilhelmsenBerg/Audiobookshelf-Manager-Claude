@@ -12,9 +12,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -174,24 +176,36 @@ private fun ShelfCard(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             cover()
+            // PRODUCT_SPEC 4 — every card in a row is the same height.
+            //
+            // `minLines` as well as `maxLines`: a one-line title reserves the second line rather than
+            // letting the card shrink. A shelf whose cards differ in height by a text line has covers
+            // that do not line up, and the eye reads that as the row being crooked rather than as the
+            // titles being different lengths.
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
-                maxLines = 2,
+                minLines = TITLE_LINES,
+                maxLines = TITLE_LINES,
                 overflow = TextOverflow.Ellipsis,
             )
-            subtitle?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            progress?.let {
-                LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth())
-            }
+            // Always drawn, blank when unknown. An absent author must cost the same height as a present
+            // one, or a book with no author sits a line higher than its neighbours.
+            Text(
+                text = subtitle.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                minLines = 1,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            // The progress lane is reserved whether or not there is progress, for the same reason.
+            LinearProgressIndicator(
+                progress = { progress ?: 0f },
+                modifier = Modifier.fillMaxWidth(),
+                color = if (progress == null) Color.Transparent else ProgressIndicatorDefaults.linearColor,
+                trackColor = if (progress == null) Color.Transparent else ProgressIndicatorDefaults.linearTrackColor,
+            )
         }
     }
 }
@@ -207,3 +221,6 @@ private fun ShelfHeading(text: String, modifier: Modifier = Modifier) {
 
 /** PRODUCT_SPEC 21 — sized in `dp` so it grows with the display density but not with the font scale. */
 private val SHELF_CARD_WIDTH = 160.dp
+
+/** Two lines, always. See `ShelfCard` for why the second one is reserved rather than earned. */
+private const val TITLE_LINES = 2

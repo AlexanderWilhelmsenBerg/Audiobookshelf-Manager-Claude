@@ -98,7 +98,7 @@ fun MiniPlayer(
                 IconButton(onClick = onOpenSleepTimer) {
                     if (timer.isActive) {
                         Text(
-                            text = timer.remaining.asShortLabel(),
+                            text = timer.remaining.asCountdownLabel(),
                             style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.semantics {
                                 contentDescription = activeTimerLabel
