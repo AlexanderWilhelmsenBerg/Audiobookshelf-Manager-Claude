@@ -330,15 +330,32 @@ results = json.load(sys.stdin).get("results") or []
 def title(item):
     return (((item.get("media") or {}).get("metadata")) or {}).get("title") or ""
 match = next((i for i in results if title(i) == "The Salt Harbour"), None)
-print((match or {}).get("id") or "")')
+print((match or {}).get("id") or "")')"
 
-if [ -n "$ITEM_ID" ]; then
-  capture library-item GET "/api/items/$ITEM_ID?expanded=1&include=progress" -H "$AUTH_HEADER"
-else
-  echo "::error::the library has no items, so the item shape LIB-001 depends on was not captured." >&2
-  echo "::error::Check that the media directory contains an audio file the scanner accepts." >&2
-  exit 1
-fi
+# An id is one line with no spaces in it. Checked rather than assumed, because the failure this guards
+# against has now happened twice and neither time did it look like a failure.
+#
+# The first was a selection that silently picked the wrong book. The second was a missing closing quote
+# in this very assignment, which left the shell consuming the following lines into `$ITEM_ID` — a value
+# that is very much non-empty, so `[ -n ]` was satisfied and the capture went on to request a URL built
+# out of thirty lines of shell script.
+#
+# `bash -n` passes both. Syntax checking cannot see a quoting mistake that still parses, so the check
+# has to be on the value.
+case "$ITEM_ID" in
+  "")
+    echo "::error::no item titled 'The Salt Harbour' in the library, so the shape LIB-001 depends on" >&2
+    echo "::error::was not captured. Check that scripts/seed-contract-media.sh ran and the scan finished." >&2
+    exit 1
+    ;;
+  *[[:space:]]*)
+    echo "::error::ITEM_ID is not an id — it contains whitespace, which means the assignment above" >&2
+    echo "::error::captured more than the id. Check the quoting of the command substitution." >&2
+    exit 1
+    ;;
+esac
+
+capture library-item GET "/api/items/$ITEM_ID?expanded=1&include=progress" -H "$AUTH_HEADER"
 
 # --- Cover art -------------------------------------------------------------------------------------
 #
@@ -571,6 +588,14 @@ try:
 except Exception:
     print("")
 ' "$RAW_DIR/library-items.raw" 2>/dev/null || true)"
+
+case "$MULTI_ID" in
+  *[[:space:]]*)
+    # Same guard as ITEM_ID, same reason. A value with whitespace in it is a quoting mistake, not an id.
+    echo "::warning::MULTI_ID contains whitespace — check the quoting; PLAY-003 stays unverified"
+    MULTI_ID=""
+    ;;
+esac
 
 if [ -n "$MULTI_ID" ]; then
   capture multi-item-play POST "/api/items/$MULTI_ID/play" \
