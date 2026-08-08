@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,4 +24,5 @@ internal class AbsAudiobookshelfGateway @Inject constructor(
     override val auth: AuthApi,
     override val capabilities: CapabilityResolver,
     override val library: LibraryApi,
+    override val playback: PlaybackApi,
 ) : AudiobookshelfGateway

@@ -33,6 +33,8 @@ dependencies {
     implementation(projects.data.library)
     implementation(projects.data.settings)
     implementation(projects.domain)
+    // PRODUCT_SPEC PLAY-001 — the media service and the controller the screens drive it through.
+    implementation(projects.playback)
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

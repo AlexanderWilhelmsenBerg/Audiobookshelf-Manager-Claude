@@ -150,7 +150,14 @@
     <string name="book_isbn">ISBN: %1$s</string>
     <string name="book_asin">ASIN: %1$s</string>
     <string name="book_size">Størrelse: %1$s</string>
-    <string name="book_playback_unavailable">Avspilling kommer i neste fase</string>
+    <!-- PRODUCT_SPEC PLAY-001 — avspillingskontrollene. -->
+    <string name="player_play">Spill av</string>
+    <string name="player_resume">Fortsett</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_stop">Stopp avspilling</string>
+    <string name="player_starting">Starter …</string>
+    <!-- %1$s er posisjonen boken fortsetter fra, for eksempel "2 t 14 min". -->
+    <string name="player_resume_at">Fortsett fra %1$s</string>
     <string name="navigate_back">Tilbake</string>
 
     <string name="settings_title">Innstillinger</string>

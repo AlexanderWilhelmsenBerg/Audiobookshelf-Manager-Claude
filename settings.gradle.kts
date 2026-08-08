@@ -50,3 +50,6 @@ include(":data:auth")
 include(":data:library")
 include(":data:settings")
 include(":domain")
+// PRODUCT_SPEC 9.2 / PLAY-001 — the media service, added in Phase 2 wave 1. It is the only module that
+// may name ExoPlayer or a `MediaSession`, which is what makes "one player, one session" structural.
+include(":playback")

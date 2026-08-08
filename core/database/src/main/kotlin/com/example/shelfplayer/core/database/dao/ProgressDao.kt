@@ -24,6 +24,16 @@ interface ProgressDao {
     @Query("SELECT * FROM media_progress WHERE profileId = :profileId AND bookKey = :bookKey")
     fun observeProgress(profileId: String, bookKey: String): Flow<MediaProgressEntity?>
 
+    /**
+     * PRODUCT_SPEC PLAY-004 — one book's row, for the write path that runs every few seconds.
+     *
+     * [findProgressFor] would answer the same question by reading the profile's whole listening history
+     * and filtering it in memory. That is fine once per sync and wrong on a timer: a listener with a
+     * thousand books would deserialize a thousand rows every five seconds for the life of a session.
+     */
+    @Query("SELECT * FROM media_progress WHERE profileId = :profileId AND bookKey = :bookKey")
+    suspend fun findProgress(profileId: String, bookKey: String): MediaProgressEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertProgress(progress: List<MediaProgressEntity>)
 

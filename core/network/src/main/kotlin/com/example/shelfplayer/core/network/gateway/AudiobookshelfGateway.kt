@@ -13,6 +13,7 @@ import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import kotlinx.coroutines.flow.Flow
@@ -27,10 +28,10 @@ import kotlinx.coroutines.flow.StateFlow
  * ### What exists and what does not
  *
  * PRODUCT_SPEC 22.4 forbids inventing endpoints, and PRODUCT_SPEC 22.5 requires a contract fixture
- * before relying on a response shape. Only the three sub-APIs whose contracts are captured are declared:
- * [auth], [capabilities] and [library].
+ * before relying on a response shape. Only the sub-APIs whose contracts are captured are declared:
+ * [auth], [capabilities], [library] and [playback].
  *
- * The remaining sub-APIs listed in PRODUCT_SPEC 10.4 — `PlaybackApi`, `ProgressApi`, `DownloadApi`,
+ * The remaining sub-APIs listed in PRODUCT_SPEC 10.4 — `ProgressApi`, `DownloadApi`,
  * `ManagementApi`, `UsersApi`, `EventApi` — are added in the phase that implements them, together
  * with the captured fixtures and MockWebServer contract tests that prove their shape. Declaring them
  * now as empty interfaces would look like coverage the repository does not have.
@@ -41,7 +42,59 @@ interface AudiobookshelfGateway {
     val capabilities: CapabilityResolver
 
     val library: LibraryApi
+
+    val playback: PlaybackApi
 }
+
+/**
+ * PRODUCT_SPEC PLAY-001 — opening a playback session.
+ *
+ * Only [openSession] so far. `POST /api/session/{id}/sync`, `/close` and the offline routes are
+ * captured (`session-sync.json`, `session-close.json`, `session-local-all.json`) and belong to wave 3's
+ * outbox; declaring them here before that code exists would suggest the app already sends progress back
+ * over the session route, which it does not.
+ */
+interface PlaybackApi {
+    /**
+     * Asks the server to open a session for [bookId] and tells us how to play it.
+     *
+     * The profile is explicit for the reason every gateway call's is: the session is recorded against a
+     * user account on a server, and opening one for the wrong profile would attribute a stranger's
+     * listening to them (PRODUCT_SPEC 5.2).
+     *
+     * The returned [com.example.shelfplayer.core.model.library.PlaybackSession] carries **absolute**
+     * track URLs. Resolution happens here rather than in the player because the server sends a
+     * server-relative path and only the gateway knows which server the profile is on; a relative path
+     * escaping this boundary is a path waiting to be resolved against the wrong one.
+     */
+    suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession>
+}
+
+/**
+ * PRODUCT_SPEC PLAY-001 / 14.5 — how this install describes itself when it opens a session.
+ *
+ * The server records the description against the session and shows it back to the user, so the values
+ * are the ones a person would use to recognise their own phone — and nothing more. There is no
+ * advertising id, no `ANDROID_ID` and no hardware serial here: [PlaybackDevice.deviceId] is a random
+ * value this install generated for itself.
+ *
+ * An interface in `:core:network` implemented in `:data:settings`, for the same reason
+ * [ProfileConnectionResolver] is: the id is persisted, and PRODUCT_SPEC 9.3 does not let this module
+ * name a store.
+ */
+fun interface PlaybackDeviceIdentity {
+    suspend fun describe(): PlaybackDevice
+}
+
+/** @property deviceId a random per-install identifier — see [PlaybackDeviceIdentity]. */
+data class PlaybackDevice(
+    val clientName: String,
+    val clientVersion: String,
+    val deviceId: String,
+    val manufacturer: String,
+    val model: String,
+    val sdkVersion: Int,
+)
 
 /**
  * PRODUCT_SPEC SYNC-002 / LIB-001 — events the server pushes, when it can.

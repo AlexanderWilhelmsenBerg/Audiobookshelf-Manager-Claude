@@ -1,6 +1,7 @@
 package com.example.shelfplayer.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -23,8 +24,12 @@ import com.example.shelfplayer.feature.settings.SettingsRoute
  * a start destination captured at first composition never would.
  */
 @Composable
-fun ShelfPlayerNavHost(startDestination: String, navController: NavHostController = rememberNavController()) {
-    NavHost(navController = navController, startDestination = startDestination) {
+fun ShelfPlayerNavHost(
+    startDestination: String,
+    modifier: Modifier = Modifier,
+    navController: NavHostController = rememberNavController(),
+) {
+    NavHost(navController = navController, startDestination = startDestination, modifier = modifier) {
         composable(
             route = ShelfDestinations.SIGN_IN,
             arguments = listOf(

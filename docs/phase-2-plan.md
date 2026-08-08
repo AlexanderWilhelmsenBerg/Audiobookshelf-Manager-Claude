@@ -2,27 +2,27 @@
 
 Written against `PRODUCT_SPEC` PLAY-001 … PLAY-009 and the Phase 2 exit criteria, with Phase 1 merged.
 
-## Where Phase 2 actually stands — 2026-08-07
+## Where Phase 2 actually stands — 2026-08-08
 
-**Roughly one wave of six.** There is no `:playback` module, no `MediaLibraryService`, no ExoPlayer
-dependency and no playback method on the gateway. Against the deliverables PRODUCT_SPEC lists for the
-phase:
+**Two waves of six.** `:playback` exists, with a `MediaLibraryService`, ExoPlayer on the app's
+authenticated client, a media notification and a mini player. Against the deliverables PRODUCT_SPEC
+lists for the phase:
 
 | Deliverable | State |
 | --- | --- |
-| MediaLibraryService | Not started |
-| Remote playback session | Contract captured; no code |
-| ExoPlayer | Not started |
-| Global timeline | Not started, and blocked — see wave 2 |
-| Progress sync | Phase 1's storage and `/api/me` read exist; session sync not started |
-| Notification / lockscreen / headset | Not started |
-| Speed / skip | Not started |
-| Buffer presets | Not started |
-| Audio focus / noisy handling | Not started |
+| MediaLibraryService | **Built** — one session, foreground `mediaPlayback` type |
+| Remote playback session | **Built** — `PlaybackApi.openSession`, 13 contract tests |
+| ExoPlayer | **Built** — on the `@AuthenticatedClient` OkHttp data source |
+| Global timeline | **Arithmetic built and tested**; seeking and chapter navigation are wave 2 |
+| Progress sync | Journaled locally every 5 s; **session sync is wave 3** |
+| Notification / lockscreen / headset | Notification and lock screen built; **headset resume untested on hardware** |
+| Speed / skip | Not started — wave 4 |
+| Buffer presets | Not started — wave 4 |
+| Audio focus / noisy handling | **Built** — pause-on-transient via speech content type, becoming-noisy on |
 
-What exists is wave 0: the contracts, and the design decisions the contracts forced. That is the
-correct order — Phase 1 showed twice that a fixture changes the implementation — but it should not be
-mistaken for progress against the exit criteria, all four of which need a device and a running player.
+What that table does **not** say is that any of it works on a device. Nothing here has played a second
+of audio outside a unit test: every assertion is over a semantics tree, a Room row or a MockWebServer
+exchange. The four exit criteria all need hardware, and none of them has been attempted.
 
 ## Exit criteria, and what each one actually demands
 
@@ -71,25 +71,56 @@ captured in Phase 1 and never read. See wave 3.
 Still uncaptured, and not blocking: `GET /api/session/{id}` (resuming an open session) and
 `POST /api/items/{id}/play/{episodeId}` (podcast episodes, out of Phase 2 scope).
 
-## Wave 1 — the vertical slice: one book, one track, play and pause
-
-The smallest thing that is genuinely Phase 2 rather than scaffolding.
+## Wave 1 — the vertical slice ✅ **built, 2026-08-08 (untested on hardware)**
 
 - `MediaLibraryService` with the media-playback foreground-service type and the permissions PLAY-001
-  names. **One** session, enforced structurally rather than by convention.
-- ExoPlayer behind the gateway's session, streaming a single-file book.
-- Media notification with cover, title, author, progress and transport controls.
+  names. **One** session, enforced structurally: the player and the session are private to the service,
+  the service is the only one in the module, and the module is the only one that can name either type.
+- ExoPlayer behind the gateway's session, over the app's **authenticated** OkHttp client — the server
+  sends credential-free track URLs, so the `Authorization` header is what fetches the audio and
+  PRODUCT_SPEC 14.5's no-token-in-a-URL rule is met by the server's own design.
+- Media notification with cover, title, author, progress and transport controls. Artwork loads through
+  the same authenticated stack, for the reason `ImageModule` already records.
 - Audio focus through Media3, default-to-pause on transient loss (PLAY-002), and the becoming-noisy
-  receiver — headphones out pauses, and playback never jumps to the phone speaker.
-- Progress journaled locally every five seconds (PLAY-004).
+  receiver. The pause-rather-than-duck behaviour comes from declaring `AUDIO_CONTENT_TYPE_SPEECH`:
+  Media3's focus manager ducks music and pauses speech, so the requirement is met by describing the
+  content honestly rather than by intercepting focus callbacks.
+- Progress journaled locally every five seconds (PLAY-004), plus on pause, track change, end of book
+  and player error. The last write goes on the application scope so it survives the service's own
+  destruction.
+- A play button on the book screen and a mini player above every screen, both driven through a
+  `MediaController` — the same client a headset and Android Auto are, so a book started from any of
+  them renders identically.
 
-Deliberately deferred out of wave 1: multi-track, chapters, speed, sleep timer. Each is a real
-requirement and none of them is needed to prove the service works.
+**What wave 1 deliberately does not do**, and where each lands:
+
+| Deferred | Where |
+| --- | --- |
+| Seeking across a track boundary, chapter navigation | Wave 2 |
+| Sending progress back to the server | Wave 3 |
+| Speed, skip, sleep timer, buffer presets, auto-rewind | Wave 4 |
+| A browse tree for Android Auto and Wear | Later; `onGetLibraryRoot` rejects, honestly, rather than returning an empty root |
+| Reading the library's own `markAsFinishedTimeRemaining` | Wave 3 — ADR-0013's `max(...)` half; the app's flat 30 s is in force |
+
+### What is testable off a device, and what is not
+
+Everything in wave 1 that can be asserted without hardware is asserted: 13 contract tests over the two
+play fixtures, 14 over the timeline arithmetic, 10 over the playlist construction, 7 over the progress
+journal against a real database, and 7 over the mini player's semantics tree.
+
+**None of that plays audio.** Whether the service actually holds a foreground notification, whether the
+focus behaviour is what Media3's documentation says, whether the stream survives doze — those are wave
+5's, and the first device run is where they will be found.
 
 ## Wave 2 — the global timeline
 
 PLAY-003, and the wave with the most arithmetic in it. **Unblocked** — `multi-item-play.json` settled
-`startOffset`.
+`startOffset` — and **partly done**: `GlobalTimeline` converts in both directions and is tested against
+the six-then-four-second fixture book, because wave 1's resume seek needed it and a player that resumed
+into the wrong file on a multi-file book would have been shipping a known bug.
+
+What is left is the interactive half: seeking across a boundary *during* playback, chapter navigation,
+and the UI that drives both.
 
 The server has already globalised both track offsets and chapter times, so neither needs deriving by
 summing durations. What still needs arithmetic is the other direction: Media3 plays a **playlist** and

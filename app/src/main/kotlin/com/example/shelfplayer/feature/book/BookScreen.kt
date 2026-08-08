@@ -32,8 +32,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.feature.player.PlayerViewModel
+import com.example.shelfplayer.playback.PlaybackUiState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -43,14 +46,34 @@ import kotlin.math.roundToInt
 import kotlin.time.Duration
 
 @Composable
-fun BookRoute(onNavigateUp: () -> Unit, modifier: Modifier = Modifier, viewModel: BookViewModel = hiltViewModel()) {
+fun BookRoute(
+    onNavigateUp: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: BookViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    BookScreen(uiState = uiState, onNavigateUp = onNavigateUp, modifier = modifier)
+    val playback by playerViewModel.playback.collectAsStateWithLifecycle()
+    BookScreen(
+        uiState = uiState,
+        playback = playback,
+        onPlay = playerViewModel::onPlay,
+        onTogglePlayPause = playerViewModel::onTogglePlayPause,
+        onNavigateUp = onNavigateUp,
+        modifier = modifier,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookScreen(uiState: BookUiState, onNavigateUp: () -> Unit, modifier: Modifier = Modifier) {
+fun BookScreen(
+    uiState: BookUiState,
+    playback: PlaybackUiState,
+    onPlay: (LibraryItemId) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onNavigateUp: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -89,13 +112,25 @@ fun BookScreen(uiState: BookUiState, onNavigateUp: () -> Unit, modifier: Modifie
                 modifier = content,
             )
 
-            is BookUiState.Loaded -> BookDetails(book = uiState.book, modifier = content)
+            is BookUiState.Loaded -> BookDetails(
+                book = uiState.book,
+                playback = playback,
+                onPlay = onPlay,
+                onTogglePlayPause = onTogglePlayPause,
+                modifier = content,
+            )
         }
     }
 }
 
 @Composable
-private fun BookDetails(book: Book, modifier: Modifier = Modifier) {
+private fun BookDetails(
+    book: Book,
+    playback: PlaybackUiState,
+    onPlay: (LibraryItemId) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -157,9 +192,55 @@ private fun BookDetails(book: Book, modifier: Modifier = Modifier) {
             )
         }
 
-        Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-            Text(text = stringResource(R.string.book_playback_unavailable))
-        }
+        PlayButton(
+            book = book,
+            playback = playback,
+            onPlay = onPlay,
+            onTogglePlayPause = onTogglePlayPause,
+        )
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-001 — one button, whose meaning depends on what the session is already doing.
+ *
+ * Three states rather than a separate play and pause control:
+ *
+ *  - **this** book is playing — pause it;
+ *  - **this** book is loaded but paused — resume it, without opening a second session;
+ *  - anything else — open a session for this book.
+ *
+ * The middle case is the one worth spelling out. Pressing play again on a book already in the player
+ * would otherwise ask the server for a new session, which records a second listening entry for one
+ * uninterrupted listen and throws away the buffer.
+ *
+ * The label says where it will resume from when the book has a stored position, because "Play" on a
+ * book you are eight hours into does not say what is about to happen.
+ */
+@Composable
+private fun PlayButton(
+    book: Book,
+    playback: PlaybackUiState,
+    onPlay: (LibraryItemId) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isCurrent = playback.bookId == book.id
+    val resumeAt = book.progress?.position?.takeIf { it > Duration.ZERO && book.progress?.isFinished != true }
+    Button(
+        onClick = { if (isCurrent) onTogglePlayPause() else onPlay(book.id) },
+        enabled = !playback.isLoading,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = when {
+                playback.isLoading -> stringResource(R.string.player_starting)
+                isCurrent && playback.isPlaying -> stringResource(R.string.player_pause)
+                isCurrent -> stringResource(R.string.player_resume)
+                resumeAt != null -> stringResource(R.string.player_resume_at, resumeAt.formatted())
+                else -> stringResource(R.string.player_play)
+            },
+        )
     }
 }
 
