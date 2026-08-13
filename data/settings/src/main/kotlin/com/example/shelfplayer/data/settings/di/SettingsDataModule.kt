@@ -3,9 +3,11 @@ package com.example.shelfplayer.data.settings.di
 import com.example.shelfplayer.core.network.gateway.PlaybackDeviceIdentity
 import com.example.shelfplayer.data.settings.DefaultDiagnosticsRepository
 import com.example.shelfplayer.data.settings.DefaultPlaybackDeviceIdentity
+import com.example.shelfplayer.data.settings.DefaultPlaybackSettingsRepository
 import com.example.shelfplayer.data.settings.DefaultPreferencesRepository
 import com.example.shelfplayer.data.settings.DefaultSleepTimerRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
+import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import dagger.Binds
@@ -18,6 +20,10 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 interface SettingsDataModule {
+    @Binds
+    @Singleton
+    fun bindsPlaybackSettingsRepository(impl: DefaultPlaybackSettingsRepository): PlaybackSettingsRepository
+
     @Binds
     @Singleton
     fun bindsDiagnosticsRepository(impl: DefaultDiagnosticsRepository): DiagnosticsRepository

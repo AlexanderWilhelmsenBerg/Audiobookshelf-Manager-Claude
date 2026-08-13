@@ -170,7 +170,6 @@
     <string name="player_chapters_empty">Denne boken har ingen kapittelinformasjon.</string>
     <string name="player_chapter_current">Spilles nå</string>
     <string name="player_chapter_number">Kapittel %1$d</string>
-    <string name="player_speed_later">Avspillingshastighet — kommer i en senere fase</string>
     <string name="player_bookmark_later">Bokmerke — kommer i en senere fase</string>
     <string name="player_open">Åpne spilleren</string>
     <string name="player_starting">Starter …</string>
@@ -183,6 +182,8 @@
     <string name="sleep_timer_active">Sovetid: %1$s igjen</string>
     <string name="sleep_timer_off">Av</string>
     <string name="sleep_timer_end_of_chapter">Slutten av kapittelet</string>
+    <string name="sleep_timer_custom">Egendefinert</string>
+    <string name="sleep_timer_start_custom">Start denne timeren</string>
     <string name="sleep_timer_minutes">%1$d min</string>
     <string name="sleep_timer_seconds">%1$d s</string>
     <!-- Nedtelling: %1$d minutter og %2$02d sekunder, for eksempel "29:31". -->
@@ -324,6 +325,48 @@
 
     <string name="player_notifications_blocked">Varsler er av, så denne boken har ingen varsel- eller låseskjermkontroller.</string>
     <string name="player_notifications_fix">Slå på</string>
+
+    <string name="player_speed_title">Avspillingshastighet</string>
+    <string name="player_speed_value">%1$s×</string>
+    <string name="player_speed_faster">Raskere</string>
+    <string name="player_speed_slower">Saktere</string>
+    <string name="player_speed_hint">Denne hastigheten huskes for denne boken. Andre bøker bruker standarden fra Innstillinger.</string>
+    <string name="player_speed_reset">Bruk standardhastigheten</string>
+
+    <string name="player_rewind_undo">Angre</string>
+    <plurals name="player_rewind_applied">
+        <item quantity="one">Spolte tilbake %1$d sekund</item>
+        <item quantity="other">Spolte tilbake %1$d sekunder</item>
+    </plurals>
+
+    <string name="settings_tab_playback">Avspilling</string>
+    <string name="settings_section_speed">Hastighet</string>
+    <string name="settings_speed_default">Standardhastighet</string>
+    <string name="settings_speed_hint">Brukes av alle bøker som ikke har fått sin egen hastighet i spilleren.</string>
+    <string name="settings_section_skip">Hoppknapper</string>
+    <string name="settings_skip_back">Tilbake</string>
+    <string name="settings_skip_forward">Fram</string>
+    <string name="settings_skip_hint">Knappene viser tallet der det finnes et ikon for det, og lengden leses alltid opp.</string>
+    <string name="settings_section_rewind">Spol tilbake etter pause</string>
+    <string name="settings_rewind_enabled">Spol tilbake når avspilling fortsetter</string>
+    <string name="settings_rewind_hint">Av som standard. Krysser aldri en kapittelstart, brukes aldri etter at du selv har flyttet posisjonen, og aldri etter en samtale eller en navigasjonsbeskjed.</string>
+    <string name="settings_rewind_short">Pauset under 2 minutter</string>
+    <string name="settings_rewind_medium">2 til 10 minutter</string>
+    <string name="settings_rewind_long">10 til 60 minutter</string>
+    <string name="settings_rewind_very_long">Over en time</string>
+    <string name="settings_section_buffer">Strømmebuffer</string>
+    <string name="settings_buffer_hint">Bare strømmede bøker; en nedlastet bok bruker spillerens egne standarder. En større buffer tåler dårligere forbindelse og bruker mer minne og mobildata. Trer i kraft neste gang en bok starter.</string>
+    <string name="settings_buffer_automatic">Automatisk</string>
+    <string name="settings_buffer_low">Lav</string>
+    <string name="settings_buffer_standard">Standard</string>
+    <string name="settings_buffer_high">Høy</string>
+    <string name="settings_buffer_very_high">Svært høy</string>
+    <plurals name="settings_buffer_range">
+        <item quantity="one">%1$d–%2$d sekund framover</item>
+        <item quantity="other">%1$d–%2$d sekunder framover</item>
+    </plurals>
+    <string name="settings_buffer_automatic_range">Det spilleren bestemmer</string>
+    <string name="settings_seconds">%1$d s</string>
 
     <plurals name="home_library_books">
         <item quantity="one">%1$d bok</item>

@@ -1,7 +1,23 @@
 package com.example.shelfplayer.feature.player
 
 import androidx.compose.runtime.Immutable
+import com.example.shelfplayer.core.model.playback.SkipIntervals
 import kotlin.time.Duration
+
+/**
+ * PRODUCT_SPEC PLAY-007 — the skip buttons: how far they go, and what they call.
+ *
+ * The interval travels with the callbacks because the two must not disagree. A button labelled from one
+ * value and wired to another is the bug this bundle makes unrepresentable — and it is the bug a configurable
+ * interval invites, because the label and the action are read from different places in the tree.
+ */
+@Immutable
+data class SkipControls(val intervals: SkipIntervals, val onBack: () -> Unit, val onForward: () -> Unit) {
+    companion object {
+        /** For a preview or a test that is not exercising the skips. */
+        val Inert = SkipControls(SkipIntervals.Default, onBack = {}, onForward = {})
+    }
+}
 
 /**
  * What the full player can do, as one parameter.
@@ -17,7 +33,8 @@ import kotlin.time.Duration
 data class PlayerActions(
     val onTogglePlayPause: () -> Unit,
     val onSeekTo: (Duration) -> Unit,
-    val onSkipBy: (Duration) -> Unit,
+    /** PRODUCT_SPEC PLAY-007 — opens the speed chooser. */
+    val onOpenSpeed: () -> Unit,
     val onOpenSleepTimer: () -> Unit,
     val onOpenChapters: () -> Unit,
     val onCollapse: () -> Unit,

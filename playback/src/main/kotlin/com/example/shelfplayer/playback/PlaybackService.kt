@@ -28,6 +28,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.FinishedThreshold
 import com.example.shelfplayer.domain.repository.PlaybackRepository
+import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.AndroidEntryPoint
@@ -37,8 +38,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 import kotlin.time.Duration
 
@@ -75,6 +78,18 @@ class PlaybackService : MediaLibraryService() {
     internal lateinit var sessionSync: SessionSyncCoordinator
 
     @Inject
+    internal lateinit var autoRewind: AutoRewindController
+
+    @Inject
+    internal lateinit var bookRemaining: BookRemaining
+
+    @Inject
+    internal lateinit var notifications: BookNotificationProvider
+
+    @Inject
+    internal lateinit var playbackSettings: PlaybackSettingsRepository
+
+    @Inject
     internal lateinit var logger: Logger
 
     @Inject
@@ -101,7 +116,11 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
-        val exoPlayer = players.create().also { player = it }
+        // PRODUCT_SPEC PLAY-006 — the preset in force when this player is built. Read blocking on the
+        // service's own creation rather than observed: a load control is a construction argument, and the
+        // requirement is that a change applies to the *next* player rather than to this one.
+        val exoPlayer = players.create(buffer = runBlocking { playbackSettings.observeSettings().first().buffer })
+            .also { player = it }
         exoPlayer.addListener(PlayerEvents())
         session = MediaLibrarySession.Builder(this, exoPlayer, LibraryCallback())
             .setBitmapLoader(players.bitmapLoader())
@@ -112,10 +131,16 @@ class PlaybackService : MediaLibraryService() {
             .build()
         // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
         // singleton in this process, so it is the same object the app's UI drives.
+        // PRODUCT_SPEC PLAY-001 — the notification's second line carries the *book's* remaining time. Set
+        // before the session is built, so the first notification already has it rather than gaining it a
+        // minute later.
+        setMediaNotificationProvider(notifications)
+        bookRemaining.attach(exoPlayer)
         sleepTimer.attach(exoPlayer)
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
         sessionSync.attach(exoPlayer)
+        autoRewind.attach(exoPlayer)
         startJournal()
         observeSleepTimer()
         logger.info(LogCategory.Playback, "Playback service started")
@@ -164,6 +189,9 @@ class PlaybackService : MediaLibraryService() {
         // coordinator, because `scope` is cancelled two lines below.
         sessionSync.onShutdown()
         sessionSync.attach(null)
+        autoRewind.attach(null)
+        bookRemaining.attach(null)
+        notifications.release()
         sleepTimer.attach(null)
         journal?.cancel()
         sleepTimerWatch?.cancel()
@@ -191,6 +219,9 @@ class PlaybackService : MediaLibraryService() {
             while (isActive) {
                 delay(JOURNAL_INTERVAL_MS)
                 recordPosition()
+                // PRODUCT_SPEC PLAY-001 — piggybacked on the journal rather than given a timer of its own.
+                // The label is minute-granular, so this is a no-op on eleven ticks out of twelve.
+                notifications.refreshIfChanged()
             }
         }
     }
@@ -257,10 +288,29 @@ class PlaybackService : MediaLibraryService() {
             // The listening-time interval closes before the sync reads it, or a pause would report less
             // listening than happened.
             sessionSync.onPlayingChanged(isPlaying)
-            if (!isPlaying) {
+            if (isPlaying) {
+                // PRODUCT_SPEC PLAY-009 — before anything else on the resume path: a rewind that landed after
+                // playback had started would be audible as a stutter.
+                autoRewind.onResumed()
+            } else {
                 scope.launch { recordPosition() }
                 sessionSync.request(SyncTrigger.Paused)
             }
+        }
+
+        /**
+         * PRODUCT_SPEC PLAY-009 — why playback stopped, which decides whether a rewind may follow.
+         *
+         * `onIsPlayingChanged` does not carry a reason, and the reason is the requirement: an audio-focus loss
+         * is not a pause the listener asked for, and rewinding out of one would replay ten seconds every time
+         * a satnav spoke.
+         */
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (playWhenReady) return
+            autoRewind.onPaused(
+                wasUserInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
+                    reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE,
+            )
         }
 
         /**
@@ -288,6 +338,9 @@ class PlaybackService : MediaLibraryService() {
             if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                 reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
             ) {
+                // PRODUCT_SPEC PLAY-009 — "rewind is not applied after a user seek". A listener who chose a
+                // position chose it; moving it afterwards is the app overruling them.
+                autoRewind.onSeeked()
                 scope.launch { recordPosition() }
                 sessionSync.request(SyncTrigger.SeekCompleted)
             }

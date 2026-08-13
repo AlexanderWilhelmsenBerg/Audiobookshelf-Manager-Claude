@@ -279,6 +279,33 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-007 — adds `book_playback_settings`, the per-book speed override.
+     *
+     * Additive, like every migration here. One table, one index, nothing touched.
+     */
+    private val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `book_playback_settings` (
+                    `settingsKey` TEXT NOT NULL,
+                    `profileId` TEXT NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `speedHundredths` INTEGER NOT NULL,
+                    PRIMARY KEY(`settingsKey`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_book_playback_settings_profileId` " +
+                    "ON `book_playback_settings` (`profileId`)",
+            )
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -288,5 +315,6 @@ object Migrations {
         MIGRATION_6_7,
         MIGRATION_7_8,
         MIGRATION_8_9,
+        MIGRATION_9_10,
     )
 }

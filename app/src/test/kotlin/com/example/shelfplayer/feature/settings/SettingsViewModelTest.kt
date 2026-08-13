@@ -18,9 +18,14 @@ import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
+import com.example.shelfplayer.core.model.playback.AutoRewind
+import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.NotificationAccess
+import com.example.shelfplayer.core.model.playback.PlaybackSettings
+import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
+import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
@@ -33,6 +38,7 @@ import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
@@ -75,6 +81,7 @@ class SettingsViewModelTest {
 
     /** PRODUCT_SPEC PLAY-001 — a platform read, so the ViewModel test supplies the answer rather than a device. */
     private val notifications = NotificationAccessReader { NotificationAccess() }
+    private val playbackSettings = FakePlaybackSettings()
 
     private fun viewModel() = SettingsViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
@@ -84,6 +91,7 @@ class SettingsViewModelTest {
         sleepTimer = sleepTimer,
         sessionSync = sessionSync,
         notifications = notifications,
+        playbackSettings = playbackSettings,
     )
 
     /**
@@ -339,6 +347,44 @@ class SettingsViewModelTest {
  * that the ViewModel wrote what the user asked for rather than that a method was called.
  */
 /** PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox's readings, as the About tab receives them. */
+/** PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls, as the Playback tab receives them. */
+internal class FakePlaybackSettings : PlaybackSettingsRepository {
+    private val controls = MutableStateFlow(PlaybackSettings.Default)
+
+    override fun observeSettings(): Flow<PlaybackSettings> = controls
+
+    override suspend fun setDefaultSpeed(speed: PlaybackSpeed): AppResult<Unit> {
+        controls.value = controls.value.copy(defaultSpeed = speed)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setSkipIntervals(skips: SkipIntervals): AppResult<Unit> {
+        controls.value = controls.value.copy(skips = skips)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setAutoRewind(rewind: AutoRewind): AppResult<Unit> {
+        controls.value = controls.value.copy(autoRewind = rewind)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setBufferPreset(preset: BufferPreset): AppResult<Unit> {
+        controls.value = controls.value.copy(buffer = preset)
+        return AppResult.Success(Unit)
+    }
+
+    override fun observeSpeedFor(bookId: com.example.shelfplayer.core.model.LibraryItemId): Flow<PlaybackSpeed?> =
+        MutableStateFlow(null)
+
+    override suspend fun speedFor(bookId: com.example.shelfplayer.core.model.LibraryItemId): PlaybackSpeed =
+        controls.value.defaultSpeed
+
+    override suspend fun setSpeedFor(
+        bookId: com.example.shelfplayer.core.model.LibraryItemId,
+        speed: PlaybackSpeed?,
+    ): AppResult<Unit> = AppResult.Success(Unit)
+}
+
 internal class FakeSessionSync : SessionSyncRepository {
     private val diagnostics = MutableStateFlow(SessionSyncDiagnostics())
 

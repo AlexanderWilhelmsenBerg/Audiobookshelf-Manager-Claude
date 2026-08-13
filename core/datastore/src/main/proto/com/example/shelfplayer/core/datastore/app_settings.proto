@@ -77,6 +77,39 @@ message AppSettings {
 
   // PRODUCT_SPEC PLAY-008 — "requires explicit opt-in". `false` by default, which proto3 gives free.
   bool sleep_timer_shake_to_restart = 13;
+
+  // PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls.
+  //
+  // Device-wide rather than per profile, for the same reason the sleep timer is: how fast somebody
+  // listens and how far a skip jumps are properties of the person holding the phone, not of whichever
+  // account is signed in. A profile switch that silently reset the speed to 1.0x would be a bug the user
+  // could not explain.
+  //
+  // Zero means "not chosen" throughout, and the reader substitutes the model's default. That is what lets
+  // a default change in a later build reach a user who never opened the setting — and it is why the speed
+  // is stored in hundredths as an int rather than as a float, where 0.0 and "unset" would be the same
+  // bits and a rounding error could persist forever.
+  int32 default_speed_hundredths = 14;
+  int32 skip_back_seconds = 15;
+  int32 skip_forward_seconds = 16;
+
+  // PRODUCT_SPEC PLAY-009 — "disabled by default". The four amounts are still stored while disabled, so
+  // turning it back on restores what the user chose rather than the factory bands.
+  bool auto_rewind_enabled = 17;
+  int32 auto_rewind_short_seconds = 18;
+  int32 auto_rewind_medium_seconds = 19;
+  int32 auto_rewind_long_seconds = 20;
+  int32 auto_rewind_very_long_seconds = 21;
+
+  // A `BufferPreset` name rather than an enum defined here, for the reason `library_sort_order` gives: an
+  // enum would have to be kept in step across a module boundary and a renumbered constant reads back as a
+  // different preset, silently. A name that no longer resolves falls back to Automatic.
+  string buffer_preset = 22;
+
+  // PRODUCT_SPEC PLAY-009 — the four amounts are meaningless without knowing whether the user has ever
+  // touched them. Proto3 cannot distinguish "stored 0" from "never written" for an int, and 0 seconds is
+  // a legitimate choice for the short bucket, so this flag carries what the zeros cannot.
+  bool auto_rewind_configured = 23;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

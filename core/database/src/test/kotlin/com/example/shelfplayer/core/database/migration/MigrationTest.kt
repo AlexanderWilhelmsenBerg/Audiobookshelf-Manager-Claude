@@ -7,6 +7,8 @@ import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.entity.BookPlaybackSettingsEntity
+import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.SessionOutboxState
@@ -389,6 +391,60 @@ class MigrationTest {
     )
 
     /**
+     * PRODUCT_SPEC PLAY-007 — version 10 adds the per-book speed override and takes nothing away.
+     *
+     * The written row is the point rather than the empty read: every column is populated, so a column the
+     * migration spelled differently would pass a read and fail this insert.
+     */
+    @Test
+    fun `version 10 adds the per-book speed without disturbing the cached books`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        val book = assertNotNull(migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first())
+        assertEquals("The Salt Harbour", book.book.title)
+        assertEquals(0, migrated.bookPlaybackSettingsDao().observeCount(PROFILE_ID).first())
+
+        migrated.bookPlaybackSettingsDao().upsert(
+            BookPlaybackSettingsEntity(
+                settingsKey = EntityKey.scoped(PROFILE_ID, BOOK_KEY),
+                profileId = PROFILE_ID,
+                bookKey = BOOK_KEY,
+                speedHundredths = 150,
+            ),
+        )
+
+        assertEquals(
+            150,
+            assertNotNull(migrated.bookPlaybackSettingsDao().find(PROFILE_ID, BOOK_KEY)).speedHundredths,
+        )
+    }
+
+    /** PRODUCT_SPEC AUTH-002 — removing a profile takes its per-book speeds with it. */
+    @Test
+    fun `removing a profile removes its per-book speeds`() = runTest {
+        createVersion(9)
+        val migrated = openWithMigrations()
+        migrated.openHelper.writableDatabase.execSQL("PRAGMA foreign_keys = ON")
+        migrated.bookPlaybackSettingsDao().upsert(
+            BookPlaybackSettingsEntity(
+                settingsKey = EntityKey.scoped(PROFILE_ID, BOOK_KEY),
+                profileId = PROFILE_ID,
+                bookKey = BOOK_KEY,
+                speedHundredths = 200,
+            ),
+        )
+
+        migrated.openHelper.writableDatabase.execSQL(
+            "DELETE FROM profiles WHERE profileId = ?",
+            arrayOf<Any>(PROFILE_ID),
+        )
+
+        assertEquals(0, migrated.bookPlaybackSettingsDao().observeCount(PROFILE_ID).first())
+    }
+
+    /**
      * Room validates the migrated schema against the one it expects and throws if they differ. Reading
      * through a DAO is what forces that validation to run, so this fails loudly on a migration that
      * produced a *nearly* correct schema — a missing default, a wrong nullability.
@@ -490,6 +546,7 @@ class MigrationTest {
         VERSION_6 -> seedVersion6(db)
         VERSION_7 -> seedVersion7(db)
         VERSION_8 -> seedVersion8(db)
+        VERSION_9 -> seedVersion9(db)
         else -> error("no seed data defined for schema version $version")
     }
 
@@ -602,6 +659,8 @@ class MigrationTest {
 
     private fun seedVersion8(db: SupportSQLiteDatabase) = seedVersion6(db)
 
+    private fun seedVersion9(db: SupportSQLiteDatabase) = seedVersion6(db)
+
     /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
     private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
         db.execSQL(
@@ -645,6 +704,7 @@ class MigrationTest {
         const val VERSION_6 = 6
         const val VERSION_7 = 7
         const val VERSION_8 = 8
+        const val VERSION_9 = 9
         const val PROFILE_ID = "prf_test"
         const val LIBRARY_KEY = "srv_test:library-1"
         const val BOOK_KEY = "srv_test:item-1"

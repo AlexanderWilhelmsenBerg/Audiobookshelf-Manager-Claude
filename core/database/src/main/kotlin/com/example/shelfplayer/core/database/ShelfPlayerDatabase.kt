@@ -4,6 +4,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.example.shelfplayer.core.database.converter.StringListConverters
+import com.example.shelfplayer.core.database.dao.BookPlaybackSettingsDao
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
@@ -15,6 +16,7 @@ import com.example.shelfplayer.core.database.entity.AudioTrackEntity
 import com.example.shelfplayer.core.database.entity.AuthorEntity
 import com.example.shelfplayer.core.database.entity.BookAuthorCrossRef
 import com.example.shelfplayer.core.database.entity.BookEntity
+import com.example.shelfplayer.core.database.entity.BookPlaybackSettingsEntity
 import com.example.shelfplayer.core.database.entity.BookSeriesCrossRef
 import com.example.shelfplayer.core.database.entity.ChapterEntity
 import com.example.shelfplayer.core.database.entity.LibraryEntity
@@ -55,6 +57,7 @@ import com.example.shelfplayer.core.database.entity.SyncStateEntity
         ProfileVisibleBookEntity::class,
         SyncStateEntity::class,
         SleepTimerSessionEntity::class,
+        BookPlaybackSettingsEntity::class,
     ],
     version = DATABASE_VERSION,
     exportSchema = true,
@@ -73,6 +76,8 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
 
     abstract fun sleepTimerDao(): SleepTimerDao
 
+    abstract fun bookPlaybackSettingsDao(): BookPlaybackSettingsDao
+
     abstract fun syncStateDao(): SyncStateDao
 
     companion object {
@@ -80,4 +85,4 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
     }
 }
 
-internal const val DATABASE_VERSION = 9
+internal const val DATABASE_VERSION = 10

@@ -166,6 +166,16 @@ three causes with three different fixes, so this build now says which.
 4. Check the transport controls in the notification work, and that the sleep-timer countdown appears there
    while a timer runs.
 
+5. Look at the notification's **second line**.
+
+**Expect:** the author, then the book's remaining time — "Marisol Holt · 3 h 24 min left". It updates once a
+minute while playing.
+
+**Watch for:** a number that matches the progress bar's own remaining time. The bar and the two clocks either
+side of it are Media3's, and they describe the **current audio file** — on a book with a file per chapter that
+reads as time left in the chapter. The second line is the whole book, so on any book longer than one file the
+two should *differ*. If they agree, the book is a single file and both are right.
+
 ## 10. The checklist
 
 1. Scroll to **Checks after wave 3**.

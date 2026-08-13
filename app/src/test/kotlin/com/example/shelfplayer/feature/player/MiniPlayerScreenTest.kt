@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
@@ -53,7 +54,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -71,7 +72,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -95,7 +96,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -113,7 +114,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -139,7 +140,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = { expands++ },
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -152,10 +153,10 @@ class MiniPlayerScreenTest {
         assertEquals(1, expands, "the button's press did not also open the player")
     }
 
-    /** PRODUCT_SPEC PLAY-007 — both skips report their direction in seconds. */
+    /** PRODUCT_SPEC PLAY-007 — both skips report their direction. */
     @Test
     fun `the skip controls report their direction`() {
-        val skips = mutableListOf<Long>()
+        val skips = mutableListOf<String>()
         composeRule.setContent {
             MiniPlayer(
                 state = playing(),
@@ -164,14 +165,45 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = { delta -> skips += delta.inWholeSeconds },
+                skips = SkipControls(
+                    intervals = SkipIntervals.Default,
+                    onBack = { skips += "back" },
+                    onForward = { skips += "forward" },
+                ),
             )
         }
 
         composeRule.onNodeWithContentDescription("Back 30 seconds").performClick()
         composeRule.onNodeWithContentDescription("Forward 30 seconds").performClick()
 
-        assertEquals(listOf(-30L, 30L), skips)
+        assertEquals(listOf("back", "forward"), skips)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-007 — the labels follow the configured interval.
+     *
+     * The number is the part a screen reader announces and, where Material has a glyph for it, the part
+     * drawn on the button. A control that says thirty and jumps forty-five is worse than one with no
+     * number: the user has no reason to distrust it.
+     */
+    @Test
+    fun `the skip labels follow the configured interval`() {
+        composeRule.setContent {
+            MiniPlayer(
+                state = playing(),
+                timer = SleepTimerState.Idle,
+                onTogglePlayPause = {},
+                onStop = {},
+                onOpenSleepTimer = {},
+                onExpand = {},
+                skips = SkipControls.Inert.copy(
+                    intervals = SkipIntervals.of(back = 10.seconds, forward = 45.seconds),
+                ),
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("Back 10 seconds").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Forward 45 seconds").assertIsDisplayed()
     }
 
     @Test
@@ -186,7 +218,7 @@ class MiniPlayerScreenTest {
                 onStop = { stops++ },
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -208,7 +240,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -238,7 +270,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -265,7 +297,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -283,7 +315,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 
@@ -301,7 +333,7 @@ class MiniPlayerScreenTest {
                 onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                onSkipBy = {},
+                skips = SkipControls.Inert,
             )
         }
 

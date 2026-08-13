@@ -6,6 +6,11 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.playback.AutoRewind
+import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.PlaybackSettings
+import com.example.shelfplayer.core.model.playback.PlaybackSpeed
+import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.settings.ProfilePreferences
 import kotlinx.coroutines.flow.Flow
@@ -199,5 +204,87 @@ class AppSettingsDataSource @Inject constructor(
         dataStore.updateData { current -> current.toBuilder().setSleepTimerShakeToRestart(enabled).build() }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls.
+     *
+     * Every read clamps and every unset value falls back to the model's default, for the reason
+     * [sleepTimer] gives: a build that changes a default should reach a user who never opened the setting,
+     * and a value written by an older build must not be able to produce an unplayable one.
+     */
+    val playback: Flow<PlaybackSettings> = settings.map { stored ->
+        PlaybackSettings(
+            defaultSpeed = stored.defaultSpeedHundredths.takeIf { it > 0 }
+                ?.let { PlaybackSpeed.of(it / HUNDREDTHS) }
+                ?: PlaybackSettings.Default.defaultSpeed,
+            skips = SkipIntervals.of(
+                back = stored.skipBackSeconds.takeIf { it > 0 }?.seconds ?: SkipIntervals.Default.back,
+                forward = stored.skipForwardSeconds.takeIf { it > 0 }?.seconds
+                    ?: SkipIntervals.Default.forward,
+            ),
+            autoRewind = stored.autoRewind(),
+            buffer = BufferPreset.byNameOrDefault(stored.bufferPreset.takeIf(String::isNotBlank)),
+        )
+    }
+
+    /**
+     * The four amounts, or the requirement's own bands if the user has never set them.
+     *
+     * `autoRewindConfigured` carries what the zeros cannot: proto3 gives no way to tell a stored `0` from
+     * an unwritten field, and zero seconds is a legitimate choice for the short bucket. Without the flag,
+     * a user who deliberately set every band to zero would have the defaults restored under them.
+     */
+    private fun AppSettings.autoRewind(): AutoRewind = if (!autoRewindConfigured) {
+        AutoRewind.Default.copy(isEnabled = autoRewindEnabled)
+    } else {
+        AutoRewind(
+            isEnabled = autoRewindEnabled,
+            afterShortPause = autoRewindShortSeconds.seconds.coerceIn(AutoRewind.Range),
+            afterMediumPause = autoRewindMediumSeconds.seconds.coerceIn(AutoRewind.Range),
+            afterLongPause = autoRewindLongSeconds.seconds.coerceIn(AutoRewind.Range),
+            afterVeryLongPause = autoRewindVeryLongSeconds.seconds.coerceIn(AutoRewind.Range),
+        )
+    }
+
+    suspend fun setDefaultSpeed(speed: PlaybackSpeed) {
+        // Stored in hundredths so the grid PLAY-007 defines survives a round trip. A float would come back
+        // as 1.8499999 and the next increment would land off-grid and stay there.
+        val hundredths = (speed.value * HUNDREDTHS).toInt()
+        dataStore.updateData { current -> current.toBuilder().setDefaultSpeedHundredths(hundredths).build() }
+    }
+
+    suspend fun setSkipIntervals(skips: SkipIntervals) {
+        val clamped = SkipIntervals.of(skips.back, skips.forward)
+        dataStore.updateData { current ->
+            current.toBuilder()
+                .setSkipBackSeconds(clamped.back.inWholeSeconds.toInt())
+                .setSkipForwardSeconds(clamped.forward.inWholeSeconds.toInt())
+                .build()
+        }
+    }
+
+    suspend fun setAutoRewind(rewind: AutoRewind) {
+        dataStore.updateData { current ->
+            current.toBuilder()
+                .setAutoRewindEnabled(rewind.isEnabled)
+                .setAutoRewindConfigured(true)
+                .setAutoRewindShortSeconds(rewind.afterShortPause.coerceIn(AutoRewind.Range).inWholeSeconds.toInt())
+                .setAutoRewindMediumSeconds(rewind.afterMediumPause.coerceIn(AutoRewind.Range).inWholeSeconds.toInt())
+                .setAutoRewindLongSeconds(rewind.afterLongPause.coerceIn(AutoRewind.Range).inWholeSeconds.toInt())
+                .setAutoRewindVeryLongSeconds(
+                    rewind.afterVeryLongPause.coerceIn(AutoRewind.Range).inWholeSeconds.toInt(),
+                )
+                .build()
+        }
+    }
+
+    suspend fun setBufferPreset(preset: BufferPreset) {
+        dataStore.updateData { current -> current.toBuilder().setBufferPreset(preset.name).build() }
+    }
+
     suspend fun current(): AppSettings = dataStore.updateData { it }
+
+    private companion object {
+        /** The speed's storage unit. One place, so the write and the read cannot disagree. */
+        const val HUNDREDTHS = 100f
+    }
 }
