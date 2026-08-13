@@ -147,6 +147,13 @@ internal class FakeAuthGateway :
             profileId: ProfileId,
             sessions: List<OfflineSession>,
         ): AppResult<List<OfflineSessionResult>> = unsupported()
+
+        override suspend fun setFinished(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            isFinished: Boolean,
+            position: kotlin.time.Duration,
+        ): AppResult<Unit> = unsupported()
     }
 
     internal data class SignIn(val serverUrl: String, val username: String, val password: String)

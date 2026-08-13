@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -166,6 +167,7 @@ fun FullPlayer(
                 onOpenSleepTimer = actions.onOpenSleepTimer,
                 onOpenChapters = actions.onOpenChapters,
                 onOpenSpeed = actions.onOpenSpeed,
+                onOpenHistory = actions.onOpenHistory,
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -645,6 +647,7 @@ private fun SecondaryRow(
     onOpenSleepTimer: () -> Unit,
     onOpenChapters: () -> Unit,
     onOpenSpeed: () -> Unit,
+    onOpenHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -661,6 +664,14 @@ private fun SecondaryRow(
             // plainly unavailable.
             enabled = state.chapters.isNotEmpty(),
             onClick = onOpenChapters,
+        )
+        // PRODUCT_SPEC PLAY-003 — the jumps this book has seen, and the way back from any of them. Next to
+        // Chapters because both answer "where am I and where else could I be".
+        SecondaryAction(
+            icon = Icons.Filled.History,
+            description = stringResource(R.string.player_history),
+            enabled = true,
+            onClick = onOpenHistory,
         )
         SecondaryAction(
             icon = Icons.Filled.Bookmark,

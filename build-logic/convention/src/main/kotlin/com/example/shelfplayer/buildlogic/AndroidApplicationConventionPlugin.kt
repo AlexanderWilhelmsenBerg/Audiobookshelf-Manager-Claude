@@ -59,10 +59,10 @@ private fun ApplicationExtension.configureDefaultConfig(project: Project) {
         applicationId = "com.example.shelfplayer"
         minSdk = project.libs.intVersion("minSdk")
         targetSdk = project.libs.intVersion("targetSdk")
-        versionCode = 25
+        versionCode = 26
         // The build under acceptance test names the phase it is being tested against
         // (`docs/phase-1-acceptance.md`), so a result recorded against an APK can be traced to one.
-        versionName = "0.5.1-one-timeline"
+        versionName = "0.6.0-phase2-closeout"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }

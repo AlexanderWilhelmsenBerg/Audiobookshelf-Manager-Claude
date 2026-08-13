@@ -37,6 +37,8 @@ data class PlayerActions(
     val onOpenSpeed: () -> Unit,
     val onOpenSleepTimer: () -> Unit,
     val onOpenChapters: () -> Unit,
+    /** PRODUCT_SPEC PLAY-003 — opens the history pane. */
+    val onOpenHistory: () -> Unit = {},
     val onCollapse: () -> Unit,
     /** PRODUCT_SPEC PLAY-001 — what the listener presses when playback stopped on an error. */
     val onRetry: () -> Unit = {},

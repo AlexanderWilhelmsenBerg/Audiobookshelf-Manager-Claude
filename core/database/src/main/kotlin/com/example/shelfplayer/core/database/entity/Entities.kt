@@ -562,3 +562,56 @@ data class BookPlaybackSettingsEntity(
      */
     val speedHundredths: Int,
 )
+
+/**
+ * PRODUCT_SPEC PLAY-003 — where the listener jumped from, and to.
+ *
+ * ### What this is for
+ *
+ * A device run produced the report this exists to answer: *"when seeking the multifile book back and forth
+ * it stopped"* — and after that, no way to get back to where the listening had actually been. A seek is the
+ * one playback action with no undo: the position it replaced is gone the instant it lands, and on a
+ * thirty-hour book "somewhere around eleven hours" is not a position.
+ *
+ * Every jump is therefore written down with both ends, so any of them can be undone by tapping it.
+ *
+ * ### Only jumps
+ *
+ * Ordinary playback is not history — it is a line, and recording it would be recording a clock. What goes in
+ * here is a **discontinuity**: a seek, a chapter jump, a skip button, an auto-rewind, the resume position a
+ * session opened at. Those are the moments a listener can be surprised by, and the only ones they would ever
+ * want to reverse.
+ *
+ * ### Retention
+ *
+ * Capped per book by `PlaybackHistoryDao.prune`, not by age. A book listened to for a year should still be
+ * able to show its last few jumps, and a book seeked around for an hour should not carry six hundred rows
+ * forever. The profile foreign key cascades, so removing a profile takes its history with it
+ * (PRODUCT_SPEC 5.2).
+ */
+@Entity(
+    tableName = "playback_history",
+    foreignKeys = [
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["profileId"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index("profileId"),
+        Index(value = ["profileId", "bookKey", "at"]),
+    ],
+)
+data class PlaybackHistoryEntity(
+    @PrimaryKey val entryId: String,
+    val profileId: String,
+    val bookKey: String,
+    /** Where the listener was. `null` for the position a session opened at — there was no "before". */
+    val fromMillis: Long?,
+    val toMillis: Long,
+    /** A `PlaybackJump` name; an unrecognized value reads back as `Seek` (PRODUCT_SPEC SYNC-001). */
+    val reason: String,
+    val at: Long,
+)

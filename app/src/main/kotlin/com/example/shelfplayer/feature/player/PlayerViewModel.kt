@@ -5,11 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Chapter
+import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
+import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.playback.AutoRewindController
 import com.example.shelfplayer.playback.NotificationAccessReader
@@ -18,10 +20,15 @@ import com.example.shelfplayer.playback.PlaybackUiState
 import com.example.shelfplayer.playback.SessionSyncCoordinator
 import com.example.shelfplayer.playback.SleepTimerController
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -37,6 +44,7 @@ import kotlin.time.Duration
  * The only state it does own is [message]: the failure from the last attempt to start something, which
  * belongs to the screen that asked rather than to the session.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val controller: PlaybackController,
@@ -44,6 +52,7 @@ class PlayerViewModel @Inject constructor(
     private val sessionSync: SessionSyncCoordinator,
     private val notifications: NotificationAccessReader,
     private val autoRewind: AutoRewindController,
+    private val playbackHistory: PlaybackHistoryRepository,
     playbackSettings: PlaybackSettingsRepository,
     private val surface: PlayerSurface,
 ) : ViewModel() {
@@ -70,6 +79,25 @@ class PlayerViewModel @Inject constructor(
 
     /** PRODUCT_SPEC PLAY-009 — "applied rewind is visible briefly and can be undone". */
     val rewind: StateFlow<AutoRewindController.Applied?> = autoRewind.lastApplied
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — the playing book's jumps, for the history pane.
+     *
+     * Keyed off whatever is playing rather than off a book id the screen passes in: the pane is part of the
+     * player, and the player follows the session. `flatMapLatest` so switching book switches the list
+     * instead of leaving the previous book's on screen.
+     */
+    val history: StateFlow<List<PlaybackHistoryEntry>> = controller.state
+        .map { it.bookId }
+        .distinctUntilChanged()
+        .flatMapLatest { bookId ->
+            if (bookId == null) flowOf(emptyList()) else playbackHistory.observe(bookId)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = emptyList(),
+        )
 
     /**
      * PRODUCT_SPEC PLAY-001 — whether the notification this book should have is being blocked.

@@ -193,6 +193,23 @@
       the visible bar is a shape, and a shape says nothing to a screen reader.
     -->
     <string name="player_chapter_progress">%1$s, %2$s left in this chapter</string>
+    <!-- PRODUCT_SPEC PLAY-003 — the history pane: every jump, and the way back from it. -->
+    <string name="player_history">History</string>
+    <string name="player_history_body">Every jump you have made in this book. Tap one to go back to where it started.</string>
+    <string name="player_history_empty">No jumps yet. Seeking, skipping or changing chapter will appear here.</string>
+    <!-- %1$s is where the jump started, %2$s where it landed. -->
+    <string name="player_history_jump">%1$s → %2$s</string>
+    <!-- %1$s is where the book resumed. -->
+    <string name="player_history_from_start">Started at %1$s</string>
+    <!-- %1$s is the kind of jump, %2$s where it started, %3$s where it landed. -->
+    <string name="player_history_return_to">%1$s from %2$s to %3$s. Tap to return to %2$s.</string>
+    <!-- %1$s is the kind of jump, %2$s the position. -->
+    <string name="player_history_started_at">%1$s at %2$s</string>
+    <string name="player_history_seek">Seek</string>
+    <string name="player_history_skip">Skip</string>
+    <string name="player_history_chapter">Chapter</string>
+    <string name="player_history_rewind">Rewind after a pause</string>
+    <string name="player_history_resume">Started listening</string>
     <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
     <!-- PRODUCT_SPEC PLAY-001 / PLAY-003 — playback stopped on an error and will not restart on its own. -->
     <string name="player_failed">Playback stopped. The server or the connection may be unavailable.</string>
