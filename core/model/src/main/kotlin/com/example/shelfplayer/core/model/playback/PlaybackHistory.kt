@@ -58,11 +58,31 @@ enum class PlaybackEvent {
      * explains a five-minute jump and one that leaves somebody wondering.
      */
     SleepTimerRewind,
+
+    /**
+     * PRODUCT_SPEC PLAY-004 / SYNC-002 — the server moved this book, and this device did not.
+     *
+     * The device report asked for it: *"The history should also show the latest changes from the server."*
+     * A book listened to in the web player, or on another phone, arrives here as a position that appeared
+     * without anybody touching this device — which without a row is indistinguishable from the app losing
+     * somebody's place. [PlaybackHistoryEntry.from] is where this device was, [PlaybackHistoryEntry.to] is
+     * where the server says it is, and [PlaybackHistoryEntry.at] is the server's own timestamp rather than
+     * the moment the refresh noticed, so the row sits in the timeline where it actually happened.
+     */
+    RemoteProgress,
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — the book was marked finished, or un-marked, somewhere else.
+     *
+     * Split from [RemoteProgress] because it is a different thing to read. A position arriving from another
+     * device is ordinary; a book turning up finished when you did not finish it is the kind of surprise a
+     * history exists to explain.
+     */
+    RemoteFinished,
     ;
 
-    /** `true` for the kinds that replaced a position, which is the set that has something to undo. */
-    val isJump: Boolean
-        get() = this == Seek || this == Skip || this == Chapter || this == AutoRewind || this == SleepTimerRewind
+    /** `true` for the events that come from somewhere other than this device. */
+    val isRemote: Boolean get() = this == RemoteProgress || this == RemoteFinished
 
     companion object {
         /** PRODUCT_SPEC SYNC-001 — an unrecognized stored value reads back as the commonest kind. */

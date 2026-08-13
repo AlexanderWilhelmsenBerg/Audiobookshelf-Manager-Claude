@@ -9,6 +9,8 @@ import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.example.shelfplayer.core.network.di.AuthenticatedClient
+import com.example.shelfplayer.playback.CarReadinessReader
+import com.example.shelfplayer.playback.DefaultCarReadinessReader
 import com.example.shelfplayer.playback.DefaultNotificationAccessReader
 import com.example.shelfplayer.playback.DefaultPlayerFactory
 import com.example.shelfplayer.playback.MediaDataSource
@@ -51,6 +53,10 @@ internal interface PlaybackModule {
     @Binds
     @Singleton
     fun bindsNotificationAccessReader(impl: DefaultNotificationAccessReader): NotificationAccessReader
+
+    @Binds
+    @Singleton
+    fun bindsCarReadinessReader(impl: DefaultCarReadinessReader): CarReadinessReader
 
     companion object {
         @Provides

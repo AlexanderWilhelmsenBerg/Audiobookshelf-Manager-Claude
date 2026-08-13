@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -33,12 +35,19 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
+import com.example.shelfplayer.domain.playback.GlobalTimeline
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlin.time.Duration
 
 /**
- * PRODUCT_SPEC PLAY-003 — where this book has been, and a way back to any of it.
+ * PRODUCT_SPEC PLAY-003 / PLAY-004 — where this book has been, and a way back to any of it.
  *
  * ### Why a seek needs an undo
  *
@@ -47,19 +56,29 @@ import kotlin.time.Duration
  * the thing they were looking for has lost their place with no recourse. A device run put it plainly:
  * *"when seeking the multifile book back and forth it stopped"*, and there was nothing to return to.
  *
- * Every jump is listed with **both ends**, and tapping one goes back to where it started. That is the whole
+ * Every row is listed with **both ends**, and tapping one goes back to where it started. That is the whole
  * feature: the list is a record, and the record is the undo.
  *
- * ### Only jumps
+ * ### Everything, not only this phone
  *
- * Ordinary listening is a line and is not written down — recording it would be recording a clock. What is
- * here is the set of moments the position moved without the listener hearing the gap: seeks, skips, chapter
- * jumps, an auto-rewind, and where the session opened.
+ * The third device run asked for two things: *"The history should also show the latest changes from the
+ * server, and even more detailed on the local history. Combine them."* Both are here, and they are the same
+ * list rather than two tabs, because the question a listener has — "why is my place not where I left it" —
+ * is answered by the order things happened in, and a split list destroys exactly that.
+ *
+ * The server's side arrives as [PlaybackEvent.RemoteProgress] and [PlaybackEvent.RemoteFinished], written
+ * when a refresh finds a position this device did not produce, and stamped with the server's own time so it
+ * sorts where it belongs.
+ *
+ * The detail is three additions: the **wall-clock time** each row happened at, the **chapter** the position
+ * falls in, and a **day heading** above each group. Together they turn "At 4:12:30" — which is a number —
+ * into "21:04 · The Flood", which is a memory.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistorySheet(
     entries: List<PlaybackHistoryEntry>,
+    chapters: List<Chapter>,
     onReturnTo: (Duration) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -90,19 +109,78 @@ fun HistorySheet(
                 )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                    items(entries, key = { it.id }) { entry ->
-                        HistoryRow(
-                            entry = entry,
-                            onReturnTo = { position ->
-                                onReturnTo(position)
-                                onDismiss()
-                            },
-                        )
+                    items(rowsFor(entries), key = { it.key }) { row ->
+                        when (row) {
+                            is HistoryRowItem.Day -> DayHeading(row.date)
+                            is HistoryRowItem.Event -> HistoryRow(
+                                entry = row.entry,
+                                chapters = chapters,
+                                onReturnTo = { position ->
+                                    onReturnTo(position)
+                                    onDismiss()
+                                },
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * The list as it is drawn: events with a heading above each new day.
+ *
+ * Built here rather than in the ViewModel because it is a *rendering* decision — a list grouped by day is
+ * one list with headings, not a different set of events — and because the grouping depends on the device's
+ * own zone, which is a display concern and changes without the data changing.
+ */
+internal sealed interface HistoryRowItem {
+    val key: String
+
+    data class Day(val date: LocalDate) : HistoryRowItem {
+        override val key: String get() = "day-$date"
+    }
+
+    data class Event(val entry: PlaybackHistoryEntry) : HistoryRowItem {
+        override val key: String get() = entry.id
+    }
+}
+
+internal fun rowsFor(entries: List<PlaybackHistoryEntry>, zone: ZoneId = ZoneId.systemDefault()): List<HistoryRowItem> {
+    val rows = mutableListOf<HistoryRowItem>()
+    var lastDay: LocalDate? = null
+    entries.forEach { entry ->
+        val day = entry.at.atZone(zone).toLocalDate()
+        if (day != lastDay) {
+            rows += HistoryRowItem.Day(day)
+            lastDay = day
+        }
+        rows += HistoryRowItem.Event(entry)
+    }
+    return rows
+}
+
+/**
+ * `Today`, `Yesterday`, or the date.
+ *
+ * Named days for the two that a listener thinks in, and a date for everything older. "Tuesday" on its own
+ * would be ambiguous the moment a list spans more than a week, which one that keeps 120 events easily does.
+ */
+@Composable
+private fun DayHeading(date: LocalDate, modifier: Modifier = Modifier) {
+    val today = LocalDate.now()
+    val label = when (date) {
+        today -> stringResource(R.string.player_history_today)
+        today.minusDays(1) -> stringResource(R.string.player_history_yesterday)
+        else -> DATE_FORMAT.format(date)
+    }
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
+    )
 }
 
 /**
@@ -112,13 +190,25 @@ fun HistorySheet(
  * rather than a control, on the grounds that a resume has nowhere to go back *to* — but a listener does not
  * want to go back to where a marker came from, they want to go back to *where it is*. "Take me to where I
  * fell asleep" is the single most useful thing this list does, and it is a marker that answers it.
+ *
+ * Three lines now rather than two: the positions, then what happened, then when and where in the book. The
+ * third is the one the device run asked for, and it is the one that makes a row identifiable — a listener
+ * remembers "just before I fell asleep, in the chapter about the harbour", not "4:12:30".
  */
 @Composable
-private fun HistoryRow(entry: PlaybackHistoryEntry, onReturnTo: (Duration) -> Unit, modifier: Modifier = Modifier) {
+private fun HistoryRow(
+    entry: PlaybackHistoryEntry,
+    chapters: List<Chapter>,
+    onReturnTo: (Duration) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val from = entry.from
     val label = stringResource(entry.event.labelRes())
     val detail = entry.detail?.let { stringResource(R.string.player_history_detail, label, it.asShortLabel()) }
     val caption = detail ?: label
+    val chapter = GlobalTimeline.chapterAt(chapters, entry.to)?.title?.takeIf(String::isNotBlank)
+    val time = entry.at.asWallClock()
+    val whenAndWhere = chapter?.let { stringResource(R.string.player_history_when_chapter, time, it) } ?: time
     val spoken = if (from == null) {
         stringResource(R.string.player_history_started_at, caption, entry.to.asChapterClock())
     } else {
@@ -134,14 +224,20 @@ private fun HistoryRow(entry: PlaybackHistoryEntry, onReturnTo: (Duration) -> Un
             .fillMaxWidth()
             .clickable { onReturnTo(entry.returnTo) }
             .padding(horizontal = 24.dp, vertical = 12.dp)
-            .semantics(mergeDescendants = true) { contentDescription = spoken },
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$spoken $whenAndWhere"
+            },
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = entry.event.icon(),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = if (entry.event.isRemote) {
+                MaterialTheme.colorScheme.tertiary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
             modifier = Modifier.size(20.dp),
         )
         Column(modifier = Modifier.weight(WEIGHT_FILL)) {
@@ -157,6 +253,11 @@ private fun HistoryRow(entry: PlaybackHistoryEntry, onReturnTo: (Duration) -> Un
             )
             Text(
                 text = caption,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = whenAndWhere,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -182,6 +283,8 @@ private fun PlaybackEvent.labelRes(): Int = when (this) {
     PlaybackEvent.SleepTimerExtended -> R.string.player_history_timer_extended
     PlaybackEvent.SleepTimerExpired -> R.string.player_history_timer_expired
     PlaybackEvent.SleepTimerRewind -> R.string.player_history_timer_rewind
+    PlaybackEvent.RemoteProgress -> R.string.player_history_remote
+    PlaybackEvent.RemoteFinished -> R.string.player_history_remote_finished
 }
 
 private fun PlaybackEvent.icon(): ImageVector = when (this) {
@@ -196,7 +299,22 @@ private fun PlaybackEvent.icon(): ImageVector = when (this) {
     PlaybackEvent.SleepTimerStarted -> Icons.Filled.Bedtime
     PlaybackEvent.SleepTimerExtended -> Icons.Filled.Bedtime
     PlaybackEvent.SleepTimerExpired -> Icons.Filled.Bedtime
+    PlaybackEvent.RemoteProgress -> Icons.Filled.CloudSync
+    PlaybackEvent.RemoteFinished -> Icons.Filled.CloudDone
 }
+
+/**
+ * The time of day the event happened, in the device's zone.
+ *
+ * Minutes, not seconds. This is the field a listener matches against their own memory of the evening, and
+ * `21:04:37` is three characters of noise on a line that is already carrying a chapter name.
+ */
+private fun Instant.asWallClock(): String = TIME_FORMAT.format(atZone(ZoneId.systemDefault()))
+
+private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+/** Localised, because a date is the one thing on this sheet whose order differs by country. */
+private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
 
 private const val WEIGHT_FILL = 1f
 

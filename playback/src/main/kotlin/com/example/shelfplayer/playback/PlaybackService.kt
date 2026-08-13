@@ -104,6 +104,10 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var bookChanges: BookChanges
 
+    /** PRODUCT_SPEC ROUTE-002 — so Settings can say whether a car has ever reached this app. */
+    @Inject
+    internal lateinit var carConnections: CarConnections
+
     @Inject
     internal lateinit var logger: Logger
 
@@ -546,8 +550,12 @@ class PlaybackService : MediaLibraryService() {
      *
      * A browse item has a media id and no URI: the tree is built from cached rows, and the track URLs come
      * from a session the server has to open. This is where that happens.
+     *
+     * An item that is **already** complete is returned untouched — see [MediaItems.isReadyToPlay], which is
+     * where the reasoning for that lives, because it is the part worth testing.
      */
-    private suspend fun resolvePlayable(item: MediaItem): MediaItem? = resolveQueue(item)?.item
+    private suspend fun resolvePlayable(item: MediaItem): MediaItem? =
+        if (MediaItems.isReadyToPlay(item)) item else resolveQueue(item)?.item
 
     private suspend fun resolveQueue(item: MediaItem): MediaItems.Queue? {
         val target = AutoLibrary.resolve(item.mediaId) ?: return null
@@ -725,14 +733,19 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * PRODUCT_SPEC PLAY-001 / 11.1 — a car tapped something in the tree.
+         * PRODUCT_SPEC PLAY-001 / 11.1 — something asked the session to load an item.
          *
-         * The item a browser hands back carries only the media id this app put in it, which is why the id
-         * encodes the whole instruction (see [AutoLibrary]). Resolving it means opening a real session, so
-         * this is where a browse tap becomes a network call.
+         * Two kinds of caller arrive here and they need opposite treatment. A **browser** — a car, an
+         * assistant — hands back only the media id this app put in its tree, so the id has to be resolved
+         * into an open session before anything can play (see [AutoLibrary]). The **app itself** hands back an
+         * item it built from a session it already opened, and the only correct thing to do with that is to
+         * give it straight back.
          *
-         * Returning an empty list rather than the unresolvable item is deliberate: Media3 would otherwise
-         * hand the player an item with no URI, and the player would report an error the driver cannot act on.
+         * Wave 5 added this override for the first case and, in doing so, broke the second.
+         * [MediaItems.isReadyToPlay] is the distinction it was missing.
+         *
+         * An item that is neither is dropped rather than passed on: Media3 would hand the player an item with
+         * no URI and no tracks, and the player would report an error a driver cannot act on.
          */
         override fun onAddMediaItems(
             session: MediaSession,
@@ -750,17 +763,34 @@ class PlaybackService : MediaLibraryService() {
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
             // "Play <something>" arrives as an item with no media id and a search query on it, which is a
-            // different question from "play this id" and has to be answered before the id lookup.
+            // different question from "play this id" and has to be answered before either of the others.
             val spoken = mediaItems.firstNotNullOfOrNull { item ->
                 item.requestMetadata.searchQuery?.let { query -> auto.search(query).firstOrNull() }
             }
-            val queue = spoken?.let { resolveQueue(it) }
-                ?: mediaItems.firstNotNullOfOrNull { item -> resolveQueue(item) }
-            if (queue == null) {
-                MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
-            } else {
-                MediaSession.MediaItemsWithStartPosition(listOf(queue.item), 0, queue.startPositionMs)
+            when {
+                spoken != null -> resolveQueue(spoken).asItems(startIndex, startPositionMs)
+
+                // The app's own call. The index and the position are the caller's — it opened the session and
+                // knows where the book resumes — and the list is handed back whole rather than collapsed to
+                // one item, because this callback is not the place to decide what a queue contains.
+                mediaItems.isNotEmpty() && mediaItems.all(MediaItems::isReadyToPlay) ->
+                    MediaSession.MediaItemsWithStartPosition(mediaItems.toList(), startIndex, startPositionMs)
+
+                else -> mediaItems.firstNotNullOfOrNull { item -> resolveQueue(item) }
+                    .asItems(startIndex, startPositionMs)
             }
+        }
+
+        /**
+         * A resolved browse target as Media3's answer, or an empty one when nothing resolved.
+         *
+         * The resolved queue brings its own start position — that is the whole content of an `at/…` id, and
+         * of a book resumed from its stored progress — so the caller's is used only for the empty case, where
+         * it is what Media3 handed in and echoing it back is the least surprising thing to do.
+         */
+        private fun MediaItems.Queue?.asItems(startIndex: Int, startPositionMs: Long) = when (this) {
+            null -> MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
+            else -> MediaSession.MediaItemsWithStartPosition(listOf(item), 0, this.startPositionMs)
         }
 
         /**
@@ -795,6 +825,21 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
+            // PRODUCT_SPEC PLAY-001 / 14.5 — who bound to the session, and when.
+            //
+            // A package name, which is the one fact about a controller that is safe to write down: it names
+            // an app, not a book. Two device runs reported the app missing from a car with no way to tell a
+            // discovery problem from a browse-tree one, and this is the line that separates them — if
+            // `gearhead` never appears here, Android Auto never reached the app at all and nothing in the
+            // tree can be at fault. See `CarReadiness`.
+            if (controller.isCar()) {
+                carConnections.onConnected()
+                logger.info(
+                    LogCategory.Playback,
+                    "A car connected to the media session",
+                    LogField.Public("controller", controller.packageName),
+                )
+            }
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
                 .buildUpon()
                 .add(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))

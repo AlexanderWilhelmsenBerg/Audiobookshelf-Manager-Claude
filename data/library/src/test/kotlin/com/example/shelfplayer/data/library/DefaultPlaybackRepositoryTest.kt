@@ -18,6 +18,7 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.testing.RecordingLogSink
@@ -25,6 +26,7 @@ import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -94,6 +96,7 @@ class DefaultPlaybackRepositoryTest {
                 transaction = com.example.shelfplayer.core.database.RoomDatabaseTransactionRunner(database),
                 libraryWriteDao = database.libraryWriteDao(),
                 progressDao = database.progressDao(),
+                historyDao = database.playbackHistoryDao(),
             ),
             clock = TestAppClock(),
             logger = logger,
@@ -256,6 +259,93 @@ class DefaultPlaybackRepositoryTest {
         assertTrue(!sink.text.contains(BOOK.value), "and it names no book")
     }
 
+    // --- Positions that arrived from somewhere else (PLAY-004 / SYNC-002) --------------------------
+
+    /**
+     * The device report: *"The history should also show the latest changes from the server."*
+     *
+     * A position that moved without this device moving it goes into the same history the seeks go into,
+     * with **this device's** position as the "from" so the row is an undo, and with the **server's**
+     * timestamp so it sorts where it happened rather than where the refresh noticed.
+     *
+     * The "before" is the fixture's own position for this book, which is what a real second device would be
+     * arriving on top of.
+     */
+    @Test
+    fun `a position that moved on another device becomes a history entry`() = runTest {
+        remoteProgress(position = 50.minutes, updatedAt = LATER)
+
+        val entry = historyEntries(BOOK).single()
+        assertEquals(PlaybackEvent.RemoteProgress.name, entry.reason)
+        assertEquals(FIXTURE_POSITION.inWholeMilliseconds, entry.fromMillis, "tapping it goes back to where we were")
+        assertEquals(50.minutes.inWholeMilliseconds, entry.toMillis)
+        assertEquals(LATER.toEpochMilli(), entry.at, "the server's moment, not the refresh's")
+    }
+
+    /**
+     * The first position for a book is not news.
+     *
+     * The first sync of a library writes a position for every book the account has ever played. Recording
+     * those would fill a pane that has never been opened with rows describing nothing that happened.
+     */
+    @Test
+    fun `the first position for a book writes no history`() = runTest {
+        remoteProgress(bookId = UNPLAYED, position = 10.minutes, updatedAt = LATER)
+
+        assertEquals(emptyList(), historyEntries(UNPLAYED))
+    }
+
+    /**
+     * This device's own position, echoed back by the server, is not another device.
+     *
+     * The journal writes every five seconds and the sync every thirty, so the copy the server returns can
+     * legitimately be half a minute behind the local one while being the same listening. The tolerance is
+     * what stops an evening of ordinary playback writing a "moved on another device" row every refresh.
+     */
+    @Test
+    fun `a position that barely moved writes no history`() = runTest {
+        remoteProgress(position = FIXTURE_POSITION + 20.seconds, updatedAt = LATER)
+
+        assertEquals(emptyList(), historyEntries(BOOK))
+    }
+
+    /**
+     * The finished flag is exempt from that tolerance, because it is not a position change at all.
+     *
+     * A book turning up finished when you did not finish it is the most surprising thing the server can do
+     * to a listener, and it is exactly what a history exists to explain.
+     */
+    @Test
+    fun `a book finished elsewhere is recorded even though the position hardly moved`() = runTest {
+        remoteProgress(position = FIXTURE_POSITION, updatedAt = LATER, isFinished = true)
+
+        assertEquals(PlaybackEvent.RemoteFinished.name, historyEntries(BOOK).single().reason)
+    }
+
+    private suspend fun remoteProgress(
+        position: kotlin.time.Duration,
+        updatedAt: Instant,
+        bookId: LibraryItemId = BOOK,
+        isFinished: Boolean = false,
+    ) {
+        libraryRepository.writeProgress(
+            profileId,
+            listOf(
+                AccountProgress(
+                    bookId = bookId,
+                    position = position,
+                    duration = 11.hours,
+                    isFinished = isFinished,
+                    updatedAt = updatedAt,
+                ),
+            ),
+        )
+    }
+
+    private suspend fun historyEntries(bookId: LibraryItemId) = database.playbackHistoryDao()
+        .observe(profileId.value, EntityKey.of(SERVER, bookId.value), limit = 50)
+        .first()
+
     private suspend fun storedProgress(): MediaProgressEntity =
         requireNotNull(database.progressDao().findProgress(profileId.value, EntityKey.of(SERVER, BOOK.value))) {
             "no progress row was written"
@@ -279,5 +369,19 @@ class DefaultPlaybackRepositoryTest {
 
         /** A book the fixture library actually holds, so the row has something to attach to. */
         val BOOK = LibraryItemId("book-voyage-1")
+
+        /** The position `demo-library.json` gives [BOOK]: the "before" a remote change lands on top of. */
+        val FIXTURE_POSITION = 12_480.seconds
+
+        /** A book in the same library that the fixture gives no progress at all. */
+        val UNPLAYED = LibraryItemId("book-voyage-2")
+
+        /**
+         * Later than every timestamp in the fixture.
+         *
+         * `writeProgress` refuses a position older than the one it holds, which is the rule that stops a
+         * stale read rewinding a book — so a test about *newer* server data has to actually be newer.
+         */
+        val LATER: Instant = Instant.ofEpochMilli(1_800_000_000_000)
     }
 }

@@ -668,17 +668,26 @@ fi
 #
 # `PATCH /api/me/progress/{id}` is already captured, and the app now uses it to mark a book finished and
 # to un-mark it. What the earlier capture exercised was `isFinished: false` only, so `true` was a value
-# the app sent that no fixture had ever seen come back — recorded in docs/api-compatibility.md as an
-# assumption rather than a fact. These two calls settle it.
+# the app sent that no fixture had ever seen come back.
+#
+# The 2026-08-13 run settled `true` and left `false` open, because of a mistake in this script that is
+# worth naming so it is not repeated. The un-finish probe sent `currentTime: 42.5` to a book **eight
+# seconds long** and threw the response away with `>/dev/null`. What came back from the read afterwards
+# was still `isFinished: true`, and the capture cannot say whether the server rejected an out-of-range
+# position or re-derived the flag from a clamped progress of 1.
+#
+# Two changes fix that. The position is now **inside** the duration, so nothing is being clamped; and the
+# PATCH responses are captured rather than discarded, so a rejection is visible as a status code instead
+# of being invisible behind a later GET.
 if [ -n "$ITEM_ID" ]; then
-  curl -sS -X PATCH "$BASE_URL/api/me/progress/$ITEM_ID" \
+  capture media-progress-set-finished PATCH "/api/me/progress/$ITEM_ID" \
     -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
-    -d '{"currentTime":8,"isFinished":true}' >/dev/null || true
+    -d '{"currentTime":8,"isFinished":true}'
   capture media-progress-finished GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
 
-  curl -sS -X PATCH "$BASE_URL/api/me/progress/$ITEM_ID" \
+  capture media-progress-set-unfinished PATCH "/api/me/progress/$ITEM_ID" \
     -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
-    -d '{"currentTime":42.5,"isFinished":false}' >/dev/null || true
+    -d '{"currentTime":2,"isFinished":false}'
   capture media-progress-unfinished GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
 fi
 

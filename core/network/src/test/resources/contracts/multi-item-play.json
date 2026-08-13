@@ -125,8 +125,8 @@
     ],
     "coverPath": "/audiobooks/Marisol Holt/The Tidewatch Cycle/cover.jpg",
     "currentTime": 0,
-    "date": "2026-08-08",
-    "dayOfWeek": "Saturday",
+    "date": "<volatile>",
+    "dayOfWeek": "<volatile>",
     "deviceInfo": {
       "clientName": "ShelfPlayer",
       "clientVersion": "0.0.0",

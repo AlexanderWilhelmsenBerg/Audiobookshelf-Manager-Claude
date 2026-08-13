@@ -12,6 +12,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
@@ -192,6 +193,61 @@ class MediaItemsTest {
         val queue = MediaItems.queueFor(session(tracks = emptyList()))
 
         assertEquals(emptyList(), MediaItems.tracksOf(queue.item))
+    }
+
+    // --- Which items a session callback may hand straight to the player ----------------------------
+
+    /**
+     * The regression test for the defect that stopped book switching working at all.
+     *
+     * A `MediaController` — which is how the app itself talks to its own session — routes `setMediaItem`
+     * through `MediaSession.Callback`, the same callback a car goes through. Wave 5 answered that callback
+     * by resolving browse ids only, so the app's own item was dropped, the player received an empty list,
+     * and the book already playing carried on. If this assertion ever goes false again, pressing a second
+     * book does nothing.
+     */
+    @Test
+    fun `the app's own item is ready to play as it stands`() {
+        assertTrue(MediaItems.isReadyToPlay(MediaItems.queueFor(session()).item))
+    }
+
+    /**
+     * The same item after a round trip that kept the metadata and lost the URI.
+     *
+     * Media3 has two bundlings for a `MediaItem` and only one of them carries `localConfiguration`. The
+     * track list is the app's own answer, and it is the one [BookMediaSourceFactory] actually reads, so a
+     * book stays playable either way rather than depending on which bundling something chose.
+     */
+    @Test
+    fun `an item that kept its tracks but lost its uri is still ready to play`() {
+        val withoutUri = MediaItems.queueFor(session()).item.buildUpon().setUri(null as android.net.Uri?).build()
+
+        assertNull(withoutUri.localConfiguration)
+        assertTrue(MediaItems.isReadyToPlay(withoutUri))
+    }
+
+    /**
+     * A browse row is not ready: it is an id and a title, and the URLs behind it need a session opening.
+     *
+     * Passing one to the player would produce an error a driver cannot act on, which is why the callback
+     * resolves these rather than forwarding them.
+     */
+    @Test
+    fun `a browse row is not ready to play`() {
+        val browsed = MediaItem.Builder()
+            .setMediaId("book/${BOOK.value}")
+            .setMediaMetadata(MediaMetadata.Builder().setTitle("The Tidewatch Cycle").build())
+            .build()
+
+        assertFalse(MediaItems.isReadyToPlay(browsed))
+    }
+
+    /** Anything with a URI is somebody else's business and is forwarded, which is Media3's own default. */
+    @Test
+    fun `an item from somewhere else with a uri is ready to play`() {
+        val foreign = MediaItem.fromUri("https://elsewhere.example/clip.mp3")
+
+        assertTrue(MediaItems.isReadyToPlay(foreign))
     }
 
     private companion object {

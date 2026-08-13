@@ -1,0 +1,11 @@
+{
+  "body": {
+    "createdAt": 0,
+    "libraryItemId": "<volatile>",
+    "time": 31,
+    "title": "A line worth keeping"
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

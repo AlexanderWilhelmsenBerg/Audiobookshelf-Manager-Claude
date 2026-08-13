@@ -112,6 +112,32 @@ object MediaItems {
     }
 
     /**
+     * Whether [item] can be handed to the player as it stands, with nothing left to look up.
+     *
+     * ### The guard whose absence broke book switching
+     *
+     * A `MediaSession` callback sees two kinds of caller. A **browser** — Android Auto, an assistant — hands
+     * back only the media id the app put in its browse tree, and that id has to be resolved into an open
+     * session before anything can play. The **app itself** hands back an item [queueFor] built from a session
+     * it has already opened, and the only correct thing to do with that is to give it straight back.
+     *
+     * Wave 5 added a callback for the first case that answered the second with `null`: the browse tree's
+     * `resolve` knows `book/…` and `at/…`, an app item's id is the bare book id, so every app-initiated play
+     * resolved to nothing, the player was handed an empty list, and it kept playing what it already had. The
+     * device report was *"I press book b, but book A continues"*.
+     *
+     * ### Why these two conditions
+     *
+     * `localConfiguration != null` is Media3's own test, not an invention: the default
+     * `MediaSession.Callback.onAddMediaItems` passes a list through unchanged exactly when every item has one,
+     * and fails otherwise. That default is what carried this app until an override replaced it, so matching it
+     * restores the behaviour that worked. The track list is checked as well because it is what
+     * [BookMediaSourceFactory] actually reads — a book whose extras describe its tracks is playable whether or
+     * not anything kept the URI.
+     */
+    fun isReadyToPlay(item: MediaItem): Boolean = item.localConfiguration != null || tracksOf(item).isNotEmpty()
+
+    /**
      * The book's duration, summed from its tracks.
      *
      * Only used before the player has prepared — once it has, `player.duration` is the same number and is the

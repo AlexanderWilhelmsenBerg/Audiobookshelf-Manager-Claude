@@ -210,8 +210,11 @@ private fun LazyListScope.aboutTab(uiState: SettingsUiState, onOpenEventLog: () 
     if (uiState.isLoaded) {
         item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
         notificationRows(uiState.notifications)
+        // PRODUCT_SPEC PLAY-001 / ROUTE-002 — beside the notification block because it answers the same
+        // shape of question: a control surface the app cannot see, and the reasons it might not be there.
+        carRows(uiState.car)
         sessionSyncRows(uiState.sessionSync)
-        syncCheckRows(uiState.sessionSync, uiState.notifications)
+        syncCheckRows(uiState.sessionSync, uiState.notifications, uiState.car)
     }
 }
 

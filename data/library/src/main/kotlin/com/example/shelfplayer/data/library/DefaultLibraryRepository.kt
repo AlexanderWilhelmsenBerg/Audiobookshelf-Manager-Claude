@@ -310,7 +310,10 @@ class DefaultLibraryRepository @Inject constructor(
                     else -> ProgressMappers.toEntity(profileId, serverId, bookKey, remote)
                 }
             }
-            progressDao.upsertProgress(rows)
+            // PRODUCT_SPEC PLAY-004 — the write and the history it produces, in one transaction. The
+            // writer owns it for the same reason it owns the snapshot: this is the module's write path, and
+            // the profile it writes for is the one passed in rather than whoever is signed in right now.
+            writer.writeProgress(profileId, rows, existing)
             logger.info(
                 LogCategory.Sync,
                 "Refreshed positions without re-reading the library",

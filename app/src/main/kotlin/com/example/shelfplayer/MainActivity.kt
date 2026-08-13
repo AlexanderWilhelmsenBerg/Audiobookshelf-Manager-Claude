@@ -157,6 +157,10 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
     if (isHistorySheetOpen) {
         HistorySheet(
             entries = history,
+            // PRODUCT_SPEC PLAY-003 — so a row can say which chapter it happened in. The player already
+            // holds the list; the history repository deliberately does not, because a chapter name stored
+            // beside every event would be the same forty strings written down a hundred times.
+            chapters = playback.chapters,
             onReturnTo = playerViewModel::onSeekTo,
             onDismiss = { isHistorySheetOpen = false },
         )

@@ -62,6 +62,7 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
         from: Duration?,
         to: Duration,
         detail: Duration?,
+        at: Instant?,
     ) = withContext(ioDispatcher) {
         val profileId = profileRepository.activeProfileId() ?: return@withContext
         val profile = profileDao.findProfile(profileId.value) ?: return@withContext
@@ -74,7 +75,9 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
                 toMillis = to.inWholeMilliseconds.coerceAtLeast(0),
                 reason = event.name,
                 detailMillis = detail?.inWholeMilliseconds?.coerceAtLeast(0),
-                at = clock.now().toEpochMilli(),
+                // The caller's moment when it has one — a change the server made happened when the server
+                // says it did, not when the refresh that found it ran.
+                at = (at ?: clock.now()).toEpochMilli(),
             ),
             keep = PlaybackHistoryRepository.DEFAULT_LIMIT,
         )

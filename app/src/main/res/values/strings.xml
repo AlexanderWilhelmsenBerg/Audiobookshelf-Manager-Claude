@@ -195,8 +195,8 @@
     <string name="player_chapter_progress">%1$s, %2$s left in this chapter</string>
     <!-- PRODUCT_SPEC PLAY-003 — the history pane: every jump, and the way back from it. -->
     <string name="player_history">History</string>
-    <string name="player_history_body">Every jump you have made in this book. Tap one to go back to where it started.</string>
-    <string name="player_history_empty">No jumps yet. Seeking, skipping or changing chapter will appear here.</string>
+    <string name="player_history_body">Everything that has happened in this book, here and on your other devices. Tap a row to go back to where it started.</string>
+    <string name="player_history_empty">Nothing yet. Playing, seeking, changing chapter or setting a sleep timer will appear here.</string>
     <!-- %1$s is where the jump started, %2$s where it landed. -->
     <string name="player_history_jump">%1$s → %2$s</string>
     <!-- %1$s is where the book resumed. -->
@@ -219,6 +219,20 @@
     <string name="player_history_timer_extended">Sleep timer extended</string>
     <string name="player_history_timer_expired">Sleep timer ended playback</string>
     <string name="player_history_timer_rewind">Rewound after the sleep timer</string>
+    <!--
+      PRODUCT_SPEC PLAY-004 / SYNC-002 — a change that arrived from the server rather than from this phone.
+
+      Worded as "another device" rather than "the server", because that is what happened from the listener's
+      point of view: they were not here, so somebody or something else was. The finished one is separate
+      because a book turning up finished is a different surprise from a position moving.
+    -->
+    <string name="player_history_remote">Moved on another device</string>
+    <string name="player_history_remote_finished">Finished on another device</string>
+    <!-- The day a group of rows happened on, above them. -->
+    <string name="player_history_today">Today</string>
+    <string name="player_history_yesterday">Yesterday</string>
+    <!-- %1$s is a wall-clock time such as "21:04", %2$s the chapter the position falls in. -->
+    <string name="player_history_when_chapter">%1$s · %2$s</string>
     <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
     <!-- PRODUCT_SPEC PLAY-001 / PLAY-003 — playback stopped on an error and will not restart on its own. -->
     <string name="player_failed">Playback stopped. The server or the connection may be unavailable.</string>
@@ -447,6 +461,28 @@
     <string name="settings_notification_no">No</string>
     <string name="settings_notification_open">Open notification settings</string>
     <string name="settings_check_notification">Play a book, pull down the shade: the media notification is there with working controls.</string>
+
+    <!--
+      PRODUCT_SPEC PLAY-001 / ROUTE-002 — why the app is, or is not, in the car's list of media apps.
+
+      Two device runs reported it missing. The first had a cause in the APK and it is fixed; the second one
+      does not, so everything left is on the phone. These rows ask the platform the same questions Android
+      Auto asks, in the order they rule things out: the build first, then the phone.
+    -->
+    <string name="settings_section_car_check">Android Auto</string>
+    <string name="settings_car_body">Auto lists media apps by what they declare, not by what they can play. The first two rows are this build; the rest are the phone.</string>
+    <string name="settings_car_declared">Declared as a car app</string>
+    <string name="settings_car_declared_hint">The manifest entry Auto enumerates media apps by. No here means the app cannot appear in any car.</string>
+    <string name="settings_car_browser">Browser service reachable</string>
+    <string name="settings_car_browser_hint">An exported service answering the media-browse action. This is what a head unit binds to.</string>
+    <string name="settings_car_installed">Android Auto installed</string>
+    <string name="settings_car_installed_hint">The phone half of Android Auto. Without it there is nothing to list the app.</string>
+    <string name="settings_car_installer">Installed by</string>
+    <string name="settings_car_installer_sideloaded">Sideloaded — no installing app</string>
+    <string name="settings_car_unknown_sources">Android Auto hides apps it did not get from Play. In the Android Auto app: tap the version ten times to unlock Developer settings, then turn on Unknown sources — unlocking developer settings does not turn it on by itself. Force-stop Android Auto afterwards so it rebuilds its list.</string>
+    <string name="settings_car_last_connection">Last car connection</string>
+    <string name="settings_car_last_connection_never">Never, since the app started</string>
+    <string name="settings_check_car">Connect a head unit: ShelfPlayer is in the media app list and browses. If Last car connection still says never, no car ever reached the app.</string>
 
     <!-- PRODUCT_SPEC PLAY-001 — shown over the player when the notification cannot appear. -->
     <string name="player_notifications_blocked">Notifications are off, so this book has no notification or lock-screen controls.</string>

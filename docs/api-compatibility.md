@@ -660,3 +660,75 @@ harness so that the *next* run settles them:
 Until those fixtures exist, **bookmarks stay unbuilt** (PRODUCT_SPEC 22.4/22.5) and the finished flag's
 `true` value stays an assumption — a narrow one, since it is the same field on the same route whose
 `false` value round-trips, but an assumption recorded rather than forgotten.
+
+Both were captured the same day; the section below is what they said.
+
+## Bookmarks and the finished flag — captured 2026-08-13, Audiobookshelf 2.36.0
+
+The owner ran the harness again with the two probes the section above added. Six new fixtures. One
+question is fully answered, one is answered halfway, and the half that is missing is missing because of a
+mistake in the script rather than anything the server did.
+
+### Bookmarks — settled, and buildable (PRODUCT_SPEC 11.1)
+
+| Request | Response |
+| --- | --- |
+| `POST /api/me/item/{id}/bookmark` `{"time":31,"title":"…"}` | `200` — the bookmark: `{createdAt, libraryItemId, time, title}` |
+| `GET /api/me` | the bookmark appears in a top-level **`bookmarks`** array on the user |
+| `PATCH /api/me/item/{id}/bookmark` `{"time":31,"title":"…"}` | `200` — the whole updated bookmark |
+| `DELETE /api/me/item/{id}/bookmark/31` | `200`, `text/plain`, body `OK` |
+
+Three things a client written from memory would get wrong, and all three are now pinned by
+`CapturedShapesTest`:
+
+1. **A bookmark has no id.** It is keyed by its `time` in whole seconds, which is why the delete route
+   ends in `31` rather than in a UUID. Two bookmarks at the same second are therefore not expressible.
+2. **Bookmarks live on the user, not on the item.** They arrive as one flat array across every book, so a
+   client showing one book's bookmarks filters by `libraryItemId` itself. No bookmark endpoint says this;
+   only reading `me` back after a create does, which is why the capture does exactly that.
+3. **Delete answers with plain text**, not JSON and not `204`. A client that parses the success case as
+   JSON throws the first time a user deletes something.
+
+This clears the block PRODUCT_SPEC 22.4/22.5 placed on the feature. Bookmarks are the top remaining
+Phase 2 recommendation in `docs/phase-2-gaps.md` and can now be built against a recorded shape.
+
+### `isFinished: true` — settled
+
+`PATCH /api/me/progress/{id}` with `{"currentTime": 8, "isFinished": true}` on an eight-second book reads
+back as:
+
+```
+"currentTime": 8, "duration": 8, "progress": 1, "isFinished": true
+```
+
+The server takes the position it was given and derives `progress` from it. The app already sends the end
+of the book when a listener ticks *Finished*, so that behaviour is confirmed rather than assumed.
+
+### `isFinished: false` — **not** settled, and the probe is why
+
+The un-finish probe sent `{"currentTime": 42.5, "isFinished": false}` — to a book **eight seconds long** —
+and threw the PATCH response away with `>/dev/null`. The read afterwards came back:
+
+```
+"currentTime": 0, "duration": 8, "progress": 1, "isFinished": true
+```
+
+Two explanations fit and this capture cannot separate them:
+
+- the server **rejected** a position past the duration, so nothing was applied and what we are looking at
+  is the previous state; or
+- the server **clamped** it, re-derived `progress` as 1, and re-derived `isFinished` from that, ignoring
+  the `false` it was sent.
+
+**The risk is real either way.** If the second explanation is the true one, the app's *Finished* checkbox
+un-ticks locally and silently fails to un-tick on the server, and PLAY-004's "marking finished is
+explicit, in both directions" is only half true. The local row is authoritative for every screen and
+carries `hasUnsyncedChanges`, so nothing is lost on the device — but a second device would still see the
+book as finished.
+
+`scripts/capture-contracts.sh` now sends `currentTime: 2`, which is inside the duration, and captures the
+two PATCH responses as `media-progress-set-finished` and `media-progress-set-unfinished` rather than
+discarding them. A rejection then shows up as a status code instead of being invisible behind a later
+`GET`. `CapturedShapesTest` asserts what was actually observed — including the un-finished fixture still
+saying `true` — so the next capture makes that test fail, which is the reminder that the question was
+open.

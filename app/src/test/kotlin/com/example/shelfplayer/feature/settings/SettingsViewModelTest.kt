@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.CarReadiness
 import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -44,6 +45,7 @@ import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
+import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.NotificationAccessReader
 import com.example.shelfplayer.testing.FakePreferences
 import kotlinx.coroutines.flow.Flow
@@ -81,6 +83,16 @@ class SettingsViewModelTest {
 
     /** PRODUCT_SPEC PLAY-001 — a platform read, so the ViewModel test supplies the answer rather than a device. */
     private val notifications = NotificationAccessReader { NotificationAccess() }
+
+    /**
+     * PRODUCT_SPEC ROUTE-002 — the same trick for the car reading, which is four package-manager queries.
+     *
+     * A correctly declared build that no car has ever reached: the state the About tab is most often read
+     * in, and the one the device reports have all been about.
+     */
+    private val car = CarReadinessReader {
+        CarReadiness(isDeclared = true, hasBrowserService = true, isAndroidAutoInstalled = true)
+    }
     private val playbackSettings = FakePlaybackSettings()
 
     private fun viewModel() = SettingsViewModel(
@@ -91,6 +103,7 @@ class SettingsViewModelTest {
         sleepTimer = sleepTimer,
         sessionSync = sessionSync,
         notifications = notifications,
+        car = car,
         playbackSettings = playbackSettings,
     )
 

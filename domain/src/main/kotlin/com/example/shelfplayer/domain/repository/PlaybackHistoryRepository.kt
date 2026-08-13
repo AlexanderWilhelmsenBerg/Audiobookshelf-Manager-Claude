@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import kotlinx.coroutines.flow.Flow
+import java.time.Instant
 import kotlin.time.Duration
 
 /**
@@ -26,6 +27,10 @@ interface PlaybackHistoryRepository {
      *
      * @param from where the listener was before, for the kinds that moved them; `null` for a marker.
      * @param detail a second duration the event carries — a sleep timer's length, say. `null` otherwise.
+     * @param at when it happened, for an event that did not happen *now*. The only caller that supplies it
+     *   is the one recording a change the **server** made: the row belongs where the change happened, not
+     *   where the refresh that noticed it happened, and a sync after a night's sleep would otherwise stack a
+     *   week of other devices' listening at the top of the list. `null` means the clock.
      */
     suspend fun record(
         bookId: LibraryItemId,
@@ -33,6 +38,7 @@ interface PlaybackHistoryRepository {
         from: Duration?,
         to: Duration,
         detail: Duration? = null,
+        at: Instant? = null,
     )
 
     suspend fun clear(bookId: LibraryItemId)

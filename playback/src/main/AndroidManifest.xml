@@ -29,6 +29,21 @@
     -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!--
+      PRODUCT_SPEC ROUTE-002 / SET-002 — permission to *ask* whether Android Auto is installed.
+
+      From API 30 an app cannot see another package unless it declares it here; `getPackageInfo` on an
+      undeclared package raises `NameNotFoundException` whether or not it is installed. Settings → About
+      reports "Android Auto installed" as part of explaining why the app might be missing from a car
+      dashboard, and without this line that row would confidently say *no* on a phone that has it.
+
+      One package, named explicitly, which is the narrowest form the platform offers. This grants no
+      ability to read anything about Android Auto beyond its existence.
+    -->
+    <queries>
+        <package android:name="com.google.android.projection.gearhead" />
+    </queries>
+
     <application>
         <!--
           `exported="true"` is required, not incidental: media buttons, Bluetooth headsets, Android Auto

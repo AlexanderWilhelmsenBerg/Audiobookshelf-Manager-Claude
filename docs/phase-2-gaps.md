@@ -19,7 +19,7 @@ Legend: ✅ built · ⚠️ partial · ❌ absent · 🔬 needs hardware
 | Playback runs in a `MediaLibraryService` | ✅ |
 | Closing the activity does not stop playback | ✅ |
 | Lock screen, notification, Bluetooth, wired headset, system controls | ✅ |
-| **Android Auto** can play, pause, seek, skip, stop | ✅ *wave 5 closeout* — three tabs, voice search, and the `automotive_app_desc` metadata without which the app never appeared 🔬 untested in a car |
+| **Android Auto** can play, pause, seek, skip, stop | ⚠️ built — three tabs, voice search, the `automotive_app_desc` metadata — but **two device runs have failed to see the app in a car**. Everything in the APK is verified correct; 0.8.0 adds the readings that say what is not (defect 17) |
 | Notification shows cover, title, author, progress | ✅ — the progress became the *book's* in wave 5 |
 | Notification has play/pause, **backward and forward** | ✅ — wave 5 replaced skip-to-previous/next, which restarted the book |
 | Foreground-service type and permissions declared | ✅ |
@@ -61,9 +61,15 @@ Complete for a streaming client. The three remaining criteria are about download
 | Remote sync ~30 s plus the seven named triggers | ✅ all seven |
 | Survives process death, ≤10 s lost | ✅ by construction 🔬 unproven on hardware |
 | Finished threshold 95%, configurable 90–99% | ⚠️ the threshold is 95% and **not configurable** |
-| **Marking finished is explicit** | ✅ *fixed this round* — a checkbox, both directions |
+| **Marking finished is explicit** | ⚠️ a checkbox, both directions locally — but *un-finishing on the server is unconfirmed*, see below |
 | Rewinding preserved; conflict never blindly takes the maximum | ✅ |
 | **`markAsFinishedTimeRemaining` from library settings** | ❌ ADR-0013's other half |
+
+The 2026-08-13 capture settled `isFinished: true` and left `false` open: the probe sent a position past
+the end of an eight-second book and the read came back still finished, which is consistent both with the
+server rejecting the request and with it re-deriving the flag from a clamped progress. The local row is
+authoritative for every screen and carries `hasUnsyncedChanges`, so nothing is lost on the device — but a
+second device could still see an un-finished book as finished. The harness now probes it properly.
 
 ### PLAY-005 Offline session synchronization
 
@@ -161,7 +167,9 @@ starts playback automatically at all. The three-way profile setting does not exi
 | 14 | Shake-to-extend left no history entry | ✅ *wave 5 closeout* |
 | 15 | No way to turn the sleep-timer fade **off** | ✅ *wave 5 closeout* |
 | 16 | No rewind when the sleep timer stops playback | ✅ *wave 5 closeout* |
-| 17 | **The app did not appear in Android Auto at all** | ✅ *wave 5 closeout* — the missing `automotive_app_desc` metadata |
+| 17 | **The app did not appear in Android Auto at all** | ⚠️ *0.7.0 added the missing `automotive_app_desc` metadata, and the app is still not listed* — see below |
+| 18 | **Pressing a second book left the first one playing** | ✅ *0.8.0* — the session callbacks dropped the app's own items |
+| 19 | History showed only this device, and no time or chapter | ✅ *0.8.0* — server changes, wall-clock times, chapter names, day headings |
 
 ### Defect 6, because it is the instructive one
 
@@ -173,6 +181,43 @@ reported.
 It is fixed in three places, deliberately: the service retries transient errors itself, the play button
 prepares whenever the player is idle so pressing play always means something, and when the retries are
 exhausted the player says so and offers a button. One of those alone would leave a hole.
+
+### Defect 17, and what is actually left of it
+
+The 0.6.0 run found the app missing from the car entirely, and the cause was real: Android Auto enumerates
+media apps by the `com.google.android.gms.car.application` metadata and nothing else, and the app did not
+declare it. 0.7.0 added it. **The 0.8.0 report is that the app is still not listed**, so the fix was
+necessary and not sufficient.
+
+What the APK contains was checked against the shipped binary rather than the source manifest — `aapt2
+dump xmltree` on `app-debug.apk` — and all three declarations are present and correct: the car metadata
+pointing at `@xml/automotive_app_desc`, that resource containing `<automotiveApp><uses name="media"/>`,
+and an exported service answering `android.media.browse.MediaBrowserService`. There is nothing left in the
+build to fix.
+
+Everything remaining is on the phone, and none of it is visible from a car seat, so 0.8.0 stops guessing
+and asks the platform instead. **Settings → About → Testing → Android Auto** now reports the two things
+the build controls and the three that it does not, including **Installed by** — Android Auto hides media
+apps it did not get from Play unless *Unknown sources* is on in its developer settings, and unlocking
+developer settings does not turn that on — and **Last car connection**, which is written whenever a
+controller from `gearhead` binds to the session. If that still says *never* after a drive, no car ever
+reached the app and the browse tree cannot be at fault.
+
+### Defect 18, and why no test caught it
+
+Wave 5 overrode `onAddMediaItems` and `onSetMediaItems` so a car could turn a browse id into a playing
+book. Both overrides resolved through `AutoLibrary`, which knows `book/…` and `at/…` and nothing else —
+and the app's own items carry a bare book id. So every app-initiated play resolved to nothing, the player
+was handed an empty list, and whatever was already playing carried on. The device report described it
+exactly: *"I press book b, but book A continues."*
+
+The override replaced a Media3 default that was doing real work. `MediaSession.Callback.onAddMediaItems`
+passes a list straight through when every item has a `localConfiguration`, and that default is what
+carried the app through waves 1–4. Overriding it without reproducing that clause removed it.
+
+No test caught this because nothing in the suite goes through a `MediaSession`, and the callbacks are
+inner classes of a `Service`. The decision now lives in `MediaItems.isReadyToPlay`, which is a pure
+function with the regression pinned in `MediaItemsTest`.
 
 ### Defect 13, and what a history is for
 
@@ -189,11 +234,11 @@ pause and a play every few seconds and buried everything else.
 
 ## What is left, in the order it should be done
 
-1. **Bookmarks.** PLAY-001's Auto criterion and PRODUCT_SPEC 11.1's responsibility. The
-   owner's "car mode" is this.
-   PRODUCT_SPEC 11.1 lists the custom command; the player has carried a disabled button since wave 2. The
-   2026-08-13 capture re-run did not include the endpoints, so `scripts/capture-contracts.sh` now probes
-   them — create, read back off `user.bookmarks`, update, delete — and the next run unblocks this.
+1. **Bookmarks — now unblocked.** PRODUCT_SPEC 11.1 lists the custom command and the player has carried a
+   disabled button since wave 2. It was blocked on 22.4/22.5: no capture had produced the shape. The
+   2026-08-13 capture has, and all four endpoints are recorded and pinned by `CapturedShapesTest` — create,
+   where a bookmark is stored (`user.bookmarks`, keyed by its `time` in seconds, with no id), update, and a
+   delete that answers plain-text `OK`. See `docs/api-compatibility.md`. This is the next slice.
 2. **The small ones:** `markAsFinishedTimeRemaining`, a configurable finished threshold, rebuffer count and
    startup latency in diagnostics, and the duck-vs-pause setting.
 3. **The exit criteria on hardware:** the two-hour soak, process death, progress against the server.

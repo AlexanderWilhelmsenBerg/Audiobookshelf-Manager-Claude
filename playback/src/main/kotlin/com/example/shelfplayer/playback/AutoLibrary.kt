@@ -275,6 +275,8 @@ class AutoLibrary @Inject constructor(
         PlaybackEvent.SleepTimerExtended -> "Sleep timer extended"
         PlaybackEvent.SleepTimerExpired -> "Sleep timer ended"
         PlaybackEvent.SleepTimerRewind -> "Rewound after the sleep timer"
+        PlaybackEvent.RemoteProgress -> "Moved on another device"
+        PlaybackEvent.RemoteFinished -> "Finished on another device"
     }
 
     companion object {
