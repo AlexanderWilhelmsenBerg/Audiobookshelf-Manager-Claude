@@ -30,6 +30,14 @@ interface SleepTimerRepository {
     suspend fun setShakeToRestart(enabled: Boolean): AppResult<Unit>
 
     /**
+     * PRODUCT_SPEC PLAY-008 / PLAY-009 — how far to rewind when the timer stops the book. Zero is off.
+     *
+     * Its own setting rather than a reuse of the auto-rewind bands, because the question is different:
+     * those ask "how long was the pause", and a sleep timer's answer is always "you were asleep".
+     */
+    suspend fun setRewindOnStop(length: Duration): AppResult<Unit>
+
+    /**
      * The most recent [limit] timers this profile set, newest first.
      *
      * Empty with no active profile rather than a failure: a history nobody is signed in to read is not

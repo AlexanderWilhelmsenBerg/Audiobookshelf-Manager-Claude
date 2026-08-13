@@ -212,6 +212,10 @@ internal class FakeLibraryRepository(books: List<Book> = emptyList(), libraries:
     override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
         storedBooks.map { all -> all.firstOrNull { it.id == bookId } }
 
+    /** No chapters in the fake library. Nothing in `:domain`'s tests reads them. */
+    override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId) =
+        kotlinx.coroutines.flow.flowOf(emptyList<com.example.shelfplayer.core.model.library.Chapter>())
+
     override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
         MutableStateFlow(SyncState.idle(TEST_SERVER, profileId))
 

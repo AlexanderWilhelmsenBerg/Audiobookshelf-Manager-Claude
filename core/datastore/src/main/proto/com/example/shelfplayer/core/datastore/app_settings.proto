@@ -73,6 +73,10 @@ message AppSettings {
   // reader substitutes `SleepTimerSettings.Default`. That is what lets a default change in a later
   // build reach a user who never opened the setting.
   int32 sleep_timer_default_minutes = 11;
+  // Seconds, 5–30 (PLAY-008). Zero is "never chosen" and reads back as the product default; **-1 is off**,
+  // which the requirement's word *optional* asks for and which zero cannot express because zero is already
+  // taken. One field with a sentinel rather than a second boolean, because there are only two states to
+  // distinguish and the sentinel is checked in exactly one place.
   int32 sleep_timer_fade_seconds = 12;
 
   // PRODUCT_SPEC PLAY-008 — "requires explicit opt-in". `false` by default, which proto3 gives free.
@@ -110,6 +114,25 @@ message AppSettings {
   // touched them. Proto3 cannot distinguish "stored 0" from "never written" for an int, and 0 seconds is
   // a legitimate choice for the short bucket, so this flag carries what the zeros cannot.
   bool auto_rewind_configured = 23;
+
+  // PRODUCT_SPEC PLAY-008 / PLAY-009 — how far to rewind when the *sleep timer* stopped playback.
+  //
+  // Separate from the auto-rewind bands above, and deliberately so. Those answer "you paused and came
+  // back"; this answers "you fell asleep", and the honest amount for the second is minutes rather than
+  // seconds — a listener who dozed off does not know when, only that the last thing they remember was a
+  // while before the timer fired.
+  //
+  // Zero means off, and off is also the default, so unlike the auto-rewind bands this needs no companion
+  // "configured" flag: "never set" and "set to off" want the same behaviour and always will. A feature
+  // that moves a listener's position without being asked cannot acquire a non-zero default later.
+  int32 sleep_timer_rewind_seconds = 24;
+
+  // PRODUCT_SPEC ROUTE-001 / ROUTE-003 — whether a car head unit connecting should start the last book.
+  //
+  // Off by default, and it is the only setting in this file that can cause audio to begin without anyone
+  // pressing anything. ROUTE-002 says auto-play "requires explicit user selection"; until per-device
+  // policy exists this is the single global switch, and the UI has to say what it does.
+  bool auto_play_on_car_connect = 26;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

@@ -16,7 +16,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
-import com.example.shelfplayer.core.model.playback.PlaybackJump
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.domain.playback.GlobalTimeline
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
@@ -132,7 +132,7 @@ class PlaybackController @Inject constructor(
         media.prepare()
         media.play()
         // PRODUCT_SPEC PLAY-003 — the one history entry with no "from": there was no before.
-        applicationScope.launch { history.record(session.bookId, PlaybackJump.Resume, null, session.startAt) }
+        applicationScope.launch { history.record(session.bookId, PlaybackEvent.Resume, null, session.startAt) }
         AppResult.Success(Unit)
     }
 
@@ -195,7 +195,7 @@ class PlaybackController @Inject constructor(
      * Clamped by [GlobalTimeline] at both ends, so a bar dragged to its extreme lands on a real
      * position rather than past the last track.
      */
-    fun seekTo(position: Duration) = seekTo(position, PlaybackJump.Seek)
+    fun seekTo(position: Duration) = seekTo(position, PlaybackEvent.Seek)
 
     /**
      * The seek every other jump goes through, carrying **why**.
@@ -204,7 +204,7 @@ class PlaybackController @Inject constructor(
      * listener even though they are the same call — and it is recorded here rather than at each call site so
      * that no route can move the position without leaving a trace.
      */
-    private fun seekTo(position: Duration, jump: PlaybackJump) {
+    private fun seekTo(position: Duration, event: PlaybackEvent) {
         applicationScope.launch(mainDispatcher) {
             val media = controller ?: return@launch
             if (media.mediaItemCount == 0) return@launch
@@ -217,7 +217,7 @@ class PlaybackController @Inject constructor(
             publish(media)
             // After the seek, never before: a jump that did not happen is not history. Launched rather than
             // awaited because a database write must not sit between a finger and a position.
-            if (bookId != null) applicationScope.launch { history.record(bookId, jump, from, to) }
+            if (bookId != null) applicationScope.launch { history.record(bookId, event, from, to) }
         }
     }
 
@@ -234,19 +234,19 @@ class PlaybackController @Inject constructor(
     fun skipToNextChapter() {
         applicationScope.launch(mainDispatcher) {
             val target = GlobalTimeline.nextChapterStart(chapters, currentPosition() ?: return@launch)
-            target?.let { seekTo(it, PlaybackJump.Chapter) }
+            target?.let { seekTo(it, PlaybackEvent.Chapter) }
         }
     }
 
     fun skipToPreviousChapter() {
         applicationScope.launch(mainDispatcher) {
             val target = GlobalTimeline.previousChapterStart(chapters, currentPosition() ?: return@launch)
-            target?.let { seekTo(it, PlaybackJump.Chapter) }
+            target?.let { seekTo(it, PlaybackEvent.Chapter) }
         }
     }
 
     /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from a list. */
-    fun seekToChapter(chapter: Chapter) = seekTo(chapter.start, PlaybackJump.Chapter)
+    fun seekToChapter(chapter: Chapter) = seekTo(chapter.start, PlaybackEvent.Chapter)
 
     /**
      * PRODUCT_SPEC PLAY-007 — sets the speed for the book playing now, and remembers it for that book.
@@ -303,7 +303,7 @@ class PlaybackController @Inject constructor(
         applicationScope.launch(mainDispatcher) {
             val media = controller ?: return@launch
             media.currentMediaItem ?: return@launch
-            seekTo(media.bookPosition() + delta, PlaybackJump.Skip)
+            seekTo(media.bookPosition() + delta, PlaybackEvent.Skip)
         }
     }
 

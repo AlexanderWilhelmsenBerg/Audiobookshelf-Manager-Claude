@@ -113,13 +113,44 @@ data class SleepTimerSettings(
      * requirement: an opt-in that then polls the accelerometer all day is not what was asked for.
      */
     val shakeToRestart: Boolean,
+    /**
+     * PRODUCT_SPEC PLAY-008 / PLAY-009 — how far to rewind when the timer stops the book.
+     *
+     * [Duration.ZERO] is off, and off is the default. A listener who fell asleep does not know when they
+     * stopped following, only that it was a while before the timer fired — so the useful amounts here are
+     * minutes, where auto-rewind's are seconds. The two are separate settings for that reason.
+     */
+    val rewindOnStop: Duration,
 ) {
+    /** Whether a fade happens at all. PLAY-008 calls the fade "optional", and zero is how it is declined. */
+    val isFadeEnabled: Boolean get() = fadeLength > Duration.ZERO
+
+    val isRewindOnStopEnabled: Boolean get() = rewindOnStop > Duration.ZERO
+
     companion object {
         /** PLAY-008's option list. `null` in the UI's custom slot. */
         val Presets: List<Duration> = listOf(5, 10, 15, 30, 45, 60, 90).map { it.minutes }
 
-        /** PLAY-008: "optional fade-out occurs over 5–30 seconds". */
+        /**
+         * PLAY-008: "**optional** fade-out occurs over 5–30 seconds".
+         *
+         * The range is what a fade may be; [Duration.ZERO] is the separate answer "do not fade", which the
+         * word *optional* requires and which the first build had no way to express — the chips started at
+         * five seconds, so a fade always happened.
+         */
         val FadeRange: ClosedRange<Duration> = 5.seconds..30.seconds
+
+        /**
+         * PLAY-008 / PLAY-009 — what the rewind-on-stop chooser offers, with zero for off.
+         *
+         * Up to ten minutes. Longer than any auto-rewind band by design: this is the one the owner asked
+         * for by example — *"I can set rewind time for five minutes and it will rewind five minutes"*.
+         */
+        val RewindOnStopPresets: List<Duration> =
+            listOf(Duration.ZERO) + listOf(1, 2, 5, 10).map { it.minutes }
+
+        /** A rewind that is not off still has to be sane. Ten minutes is the longest preset. */
+        val RewindOnStopRange: ClosedRange<Duration> = 1.minutes..10.minutes
 
         /** A custom length still has to be a length. An hour and a half is the longest preset. */
         val LengthRange: ClosedRange<Duration> = 1.minutes..(8 * 60).minutes
@@ -128,6 +159,7 @@ data class SleepTimerSettings(
             defaultLength = 30.minutes,
             fadeLength = 10.seconds,
             shakeToRestart = false,
+            rewindOnStop = Duration.ZERO,
         )
     }
 }

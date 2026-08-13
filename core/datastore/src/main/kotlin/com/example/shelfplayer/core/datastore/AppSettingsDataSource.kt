@@ -30,6 +30,16 @@ import kotlin.time.Duration.Companion.seconds
  * PRODUCT_SPEC 22.9 asks for: no caller can hand out a mutable stream, and every write goes through
  * a named operation that a test can assert on.
  */
+/*
+ * `TooManyFunctions` is suppressed, and it is the right call for this one class.
+ *
+ * It is the settings store: one reader per group and one writer per setting, and the count grows by one
+ * every time the product gains a preference. The alternatives are both worse — splitting it leaves two
+ * classes writing the same `DataStore` with no owner of the file, and a partial split leaves a reader
+ * guessing which half a setting is in. The rule is protecting against a class that does many *kinds* of
+ * thing; this one does one kind, many times.
+ */
+@Suppress("TooManyFunctions")
 @Singleton
 class AppSettingsDataSource @Inject constructor(
     private val dataStore: DataStore<AppSettings>,
@@ -183,10 +193,20 @@ class AppSettingsDataSource @Inject constructor(
             defaultLength = stored.sleepTimerDefaultMinutes.takeIf { it > 0 }?.minutes
                 ?.coerceIn(SleepTimerSettings.LengthRange)
                 ?: SleepTimerSettings.Default.defaultLength,
-            fadeLength = stored.sleepTimerFadeSeconds.takeIf { it > 0 }?.seconds
-                ?.coerceIn(SleepTimerSettings.FadeRange)
-                ?: SleepTimerSettings.Default.fadeLength,
+            // -1 is "off", 0 is "never chosen". See the proto comment: PLAY-008 calls the fade optional,
+            // and zero was already spoken for by the never-chosen convention every other field here uses.
+            fadeLength = when {
+                stored.sleepTimerFadeSeconds < 0 -> Duration.ZERO
+                stored.sleepTimerFadeSeconds > 0 ->
+                    stored.sleepTimerFadeSeconds.seconds.coerceIn(SleepTimerSettings.FadeRange)
+                else -> SleepTimerSettings.Default.fadeLength
+            },
             shakeToRestart = stored.sleepTimerShakeToRestart,
+            // Zero is off *and* never-chosen, which are the same thing here and always will be — the app
+            // does not acquire a default that moves a position nobody asked it to move.
+            rewindOnStop = stored.sleepTimerRewindSeconds.takeIf { it > 0 }?.seconds
+                ?.coerceIn(SleepTimerSettings.RewindOnStopRange)
+                ?: Duration.ZERO,
         )
     }
 
@@ -196,8 +216,22 @@ class AppSettingsDataSource @Inject constructor(
     }
 
     suspend fun setSleepTimerFadeLength(length: Duration) {
-        val seconds = length.coerceIn(SleepTimerSettings.FadeRange).inWholeSeconds.toInt()
+        val seconds = if (length <= Duration.ZERO) {
+            FADE_OFF
+        } else {
+            length.coerceIn(SleepTimerSettings.FadeRange).inWholeSeconds.toInt()
+        }
         dataStore.updateData { current -> current.toBuilder().setSleepTimerFadeSeconds(seconds).build() }
+    }
+
+    /** PRODUCT_SPEC PLAY-008 / PLAY-009 — how far to rewind when the timer stops the book. Zero is off. */
+    suspend fun setSleepTimerRewindOnStop(length: Duration) {
+        val seconds = if (length <= Duration.ZERO) {
+            0
+        } else {
+            length.coerceIn(SleepTimerSettings.RewindOnStopRange).inWholeSeconds.toInt()
+        }
+        dataStore.updateData { current -> current.toBuilder().setSleepTimerRewindSeconds(seconds).build() }
     }
 
     suspend fun setSleepTimerShakeToRestart(enabled: Boolean) {
@@ -222,6 +256,7 @@ class AppSettingsDataSource @Inject constructor(
                     ?: SkipIntervals.Default.forward,
             ),
             autoRewind = stored.autoRewind(),
+            autoPlayOnCarConnect = stored.autoPlayOnCarConnect,
             buffer = BufferPreset.byNameOrDefault(stored.bufferPreset.takeIf(String::isNotBlank)),
         )
     }
@@ -281,10 +316,23 @@ class AppSettingsDataSource @Inject constructor(
         dataStore.updateData { current -> current.toBuilder().setBufferPreset(preset.name).build() }
     }
 
+    /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */
+    suspend fun setAutoPlayOnCarConnect(enabled: Boolean) {
+        dataStore.updateData { current -> current.toBuilder().setAutoPlayOnCarConnect(enabled).build() }
+    }
+
     suspend fun current(): AppSettings = dataStore.updateData { it }
 
     private companion object {
         /** The speed's storage unit. One place, so the write and the read cannot disagree. */
         const val HUNDREDTHS = 100f
+
+        /**
+         * The stored value that means "do not fade at all".
+         *
+         * A sentinel rather than a second boolean field: zero already means "never chosen" for every
+         * numeric setting in this file, and PLAY-008's *optional* fade needs a third state.
+         */
+        const val FADE_OFF = -1
     }
 }

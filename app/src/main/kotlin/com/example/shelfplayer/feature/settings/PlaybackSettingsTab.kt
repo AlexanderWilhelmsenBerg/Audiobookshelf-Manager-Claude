@@ -100,7 +100,49 @@ internal fun LazyListScope.playbackTab(settings: PlaybackSettings, actions: Play
     item { SectionHeader(text = stringResource(R.string.settings_section_buffer)) }
     item { Hint(text = stringResource(R.string.settings_buffer_hint)) }
     items(BufferPreset.entries, settings.buffer, onBufferChanged)
+
+    carSection(settings.autoPlayOnCarConnect, actions.onAutoPlayChanged)
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) }
+}
+
+/**
+ * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — what happens when the phone meets a car.
+ *
+ * One switch, and it is the only one in this app that can make audio begin with nobody pressing anything.
+ * The hint says what the car will show either way, because "ShelfPlayer appears in Android Auto" is a fact a
+ * user cannot discover from the phone.
+ */
+private fun LazyListScope.carSection(autoPlay: Boolean, onAutoPlayChanged: (Boolean) -> Unit) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_car)) }
+    item { Hint(text = stringResource(R.string.settings_car_hint)) }
+    item {
+        SwitchRow(
+            label = stringResource(R.string.settings_car_autoplay),
+            checked = autoPlay,
+            onCheckedChange = onAutoPlayChanged,
+        )
+    }
+}
+
+/** A labelled switch. The playback tab's only boolean until the car section arrived; now it has two. */
+@Composable
+private fun SwitchRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = null)
+    }
 }
 
 /**
@@ -116,6 +158,8 @@ data class PlaybackSettingsActions(
     val onSkipsChanged: (SkipIntervals) -> Unit,
     val onAutoRewindChanged: (AutoRewind) -> Unit,
     val onBufferChanged: (BufferPreset) -> Unit,
+    /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. */
+    val onAutoPlayChanged: (Boolean) -> Unit,
 )
 
 /** PRODUCT_SPEC PLAY-009 — the four bands, with the requirement's own boundaries as their labels. */

@@ -176,7 +176,8 @@
     <string name="player_history_body">Alle hoppene du har gjort i denne boka. Trykk på ett for å gå tilbake dit det startet.</string>
     <string name="player_history_empty">Ingen hopp ennå. Spoling, hopp og kapittelbytter vises her.</string>
     <string name="player_history_jump">%1$s → %2$s</string>
-    <string name="player_history_from_start">Startet på %1$s</string>
+    <string name="player_history_at">På %1$s</string>
+    <string name="player_history_detail">%1$s · %2$s</string>
     <string name="player_history_return_to">%1$s fra %2$s til %3$s. Trykk for å gå tilbake til %2$s.</string>
     <string name="player_history_started_at">%1$s på %2$s</string>
     <string name="player_history_seek">Spoling</string>
@@ -184,6 +185,12 @@
     <string name="player_history_chapter">Kapittel</string>
     <string name="player_history_rewind">Tilbakespoling etter pause</string>
     <string name="player_history_resume">Begynte å lytte</string>
+    <string name="player_history_play">Spilte av</string>
+    <string name="player_history_pause">Satte på pause</string>
+    <string name="player_history_timer_started">Sovetid satt</string>
+    <string name="player_history_timer_extended">Sovetid forlenget</string>
+    <string name="player_history_timer_expired">Sovetiden stoppet avspillingen</string>
+    <string name="player_history_timer_rewind">Spolte tilbake etter sovetiden</string>
     <string name="player_bookmark_later">Bokmerke — kommer i en senere fase</string>
     <string name="player_failed">Avspillingen stoppet. Tjeneren eller tilkoblingen kan være utilgjengelig.</string>
     <string name="player_failed_retry">Prøv igjen</string>
@@ -206,8 +213,13 @@
     <string name="sleep_timer_countdown">%1$d:%2$02d</string>
     <string name="sleep_timer_restart">Start sovetiden på nytt</string>
 
+    <string name="settings_section_car">I bilen</string>
+    <string name="settings_car_hint">ShelfPlayer vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på.</string>
+    <string name="settings_car_autoplay">Start avspilling når en bil kobles til</string>
     <string name="sleep_timer_settings">Standardverdier</string>
     <string name="sleep_timer_default_length">Standard lengde</string>
+    <string name="sleep_timer_rewind">Spol tilbake når sovetiden stopper avspillingen</string>
+    <string name="sleep_timer_rewind_hint">Hvis du sovner, spoles boka tilbake så mye at du kan ta opp tråden et sted du husker. Av som standard.</string>
     <string name="sleep_timer_fade">Ton ut over</string>
     <string name="sleep_timer_shake">Rist for å starte sovetiden på nytt</string>
     <string name="sleep_timer_shake_hint">Av som standard. Når den er på, måler appen bevegelse bare mens sovetiden går — aldri ellers.</string>

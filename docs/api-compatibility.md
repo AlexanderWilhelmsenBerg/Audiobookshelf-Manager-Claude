@@ -626,3 +626,37 @@ done it. What still needs arithmetic is the other direction: Media3 plays a **pl
 position is per-item, so a global book position has to be mapped to a window index and an offset within
 it. `startOffset` is what makes that mapping exact rather than accumulated, and an accumulated one would
 drift on a book whose durations are not whole seconds.
+
+## Re-run — 2026-08-13, Audiobookshelf 2.36.0
+
+The owner re-ran `scripts/capture-contracts.sh` against the same server five days after the wave-A
+capture and supplied all thirty-one fixtures. **Twenty-nine were byte-identical.** The two that differed —
+`item-play.json` and `multi-item-play.json` — differed in exactly two fields:
+
+```
+- "date": "2026-08-08",  "dayOfWeek": "Saturday"
++ "date": "2026-08-13",  "dayOfWeek": "Thursday"
+```
+
+That is the capture's own wall clock, not the contract. Neither field is read by any mapper. Both are now
+in the harness's `VOLATILE_KEYS`, for the reason `lastScan` and `startedAt` are already there: a drift
+check that reports a difference on every run teaches its reader to ignore it, and here it very nearly hid
+the actual result — **five days of the same server produced no change in the contract at all.**
+
+The committed fixtures were left as they are. Re-committing two files to move a date would be churn, and
+the next capture will stabilise both fields anyway.
+
+### What the re-run did *not* settle
+
+It was a re-run of the same script, so it captured the same thirty-one endpoints. Two things this
+document has been recording as unverified therefore remain unverified, and both are now probed by the
+harness so that the *next* run settles them:
+
+| Unverified | Now captured by |
+| --- | --- |
+| The bookmark endpoints — create, read back off `user.bookmarks`, update, delete | `bookmark-create`, `me-with-bookmark`, `bookmark-update`, `bookmark-delete` |
+| `PATCH /api/me/progress/{id}` with **`isFinished: true`** — the app sends it, no fixture has seen it return | `media-progress-finished`, `media-progress-unfinished` |
+
+Until those fixtures exist, **bookmarks stay unbuilt** (PRODUCT_SPEC 22.4/22.5) and the finished flag's
+`true` value stays an assumption — a narrow one, since it is the same field on the same route whose
+`false` value round-trips, but an assumption recorded rather than forgotten.

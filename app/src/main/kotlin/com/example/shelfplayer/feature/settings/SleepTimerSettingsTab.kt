@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -52,9 +53,7 @@ import java.time.Duration as JavaDuration
 internal fun LazyListScope.sleepTimerTab(
     settings: SleepTimerSettings,
     history: List<SleepTimerSession>,
-    onDefaultChanged: (Duration) -> Unit,
-    onFadeChanged: (Duration) -> Unit,
-    onShakeChanged: (Boolean) -> Unit,
+    actions: SleepTimerSettingsActions,
 ) {
     item { SectionHeader(text = stringResource(R.string.sleep_timer_settings)) }
     item {
@@ -62,7 +61,7 @@ internal fun LazyListScope.sleepTimerTab(
             label = stringResource(R.string.sleep_timer_default_length),
             options = SleepTimerSettings.Presets,
             selected = settings.defaultLength,
-            onSelected = onDefaultChanged,
+            onSelected = actions.onDefaultChanged,
             format = { it.inWholeMinutes.toInt() to R.string.sleep_timer_minutes },
         )
     }
@@ -71,15 +70,28 @@ internal fun LazyListScope.sleepTimerTab(
             label = stringResource(R.string.sleep_timer_fade),
             options = FADE_OPTIONS,
             selected = settings.fadeLength,
-            onSelected = onFadeChanged,
+            onSelected = actions.onFadeChanged,
             format = { it.inWholeSeconds.toInt() to R.string.sleep_timer_seconds },
         )
     }
+    // PRODUCT_SPEC PLAY-008 / PLAY-009 — the owner asked for this by example: *"if I set on a sleep timer I
+    // can set rewind time for five minutes and it will rewind five minutes"*. Under the fade, because both
+    // are about what happens as the timer ends.
+    item {
+        DurationChoice(
+            label = stringResource(R.string.sleep_timer_rewind),
+            options = SleepTimerSettings.RewindOnStopPresets,
+            selected = settings.rewindOnStop,
+            onSelected = actions.onRewindOnStopChanged,
+            format = { it.inWholeMinutes.toInt() to R.string.sleep_timer_minutes },
+        )
+    }
+    item { Hint(text = stringResource(R.string.sleep_timer_rewind_hint)) }
     item {
         SwitchRow(
             label = stringResource(R.string.sleep_timer_shake),
             checked = settings.shakeToRestart,
-            onCheckedChange = onShakeChanged,
+            onCheckedChange = actions.onShakeChanged,
         )
     }
     item { Hint(text = stringResource(R.string.sleep_timer_shake_hint)) }
@@ -94,13 +106,17 @@ internal fun LazyListScope.sleepTimerTab(
 }
 
 /**
- * PLAY-008: "optional fade-out occurs over 5–30 seconds".
+ * PLAY-008: "**optional** fade-out occurs over 5–30 seconds".
  *
  * Five discrete choices rather than a slider. A slider over a 25-second range gives a listener the
  * ability to pick 17 seconds, which is not a decision anyone has an opinion about, and makes the value
  * impossible to hit twice.
+ *
+ * `Duration.ZERO` leads, and it is the word *optional* in the requirement. The first build had no way to
+ * decline the fade at all — the chips started at five seconds, so a timer always faded — which a device run
+ * noticed as a missing setting rather than as a missing option.
  */
-private val FADE_OPTIONS: List<Duration> = listOf(5, 10, 15, 20, 30).map { it.seconds }
+private val FADE_OPTIONS: List<Duration> = listOf(Duration.ZERO) + listOf(5, 10, 15, 20, 30).map { it.seconds }
 
 @Composable
 private fun DurationChoice(
@@ -118,11 +134,19 @@ private fun DurationChoice(
         Text(text = label, style = MaterialTheme.typography.bodyLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { option ->
-                val (amount, res) = format(option)
                 FilterChip(
                     selected = option == selected,
                     onClick = { onSelected(option) },
-                    label = { Text(text = stringResource(res, amount)) },
+                    label = {
+                        // Zero is not "0 min", it is "Off". Every chooser here that offers zero means the
+                        // same thing by it, so the word lives in one place rather than in each caller.
+                        if (option <= Duration.ZERO) {
+                            Text(text = stringResource(R.string.sleep_timer_off))
+                        } else {
+                            val (amount, res) = format(option)
+                            Text(text = stringResource(res, amount))
+                        }
+                    },
                 )
             }
         }
@@ -212,3 +236,21 @@ private val DATE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter
     .withZone(ZoneId.systemDefault())
 
 private fun Instant.asDateTime(): String = DATE_TIME_FORMAT.format(this)
+
+/**
+ * PRODUCT_SPEC SET-002 — what the Sleep tab can change, as one parameter.
+ *
+ * The same shape `PlaybackSettingsActions` uses, and it arrived for the same reason: the tab grew a fourth
+ * callback and pushed `SettingsScreen`'s signature past detekt's limit. Bundling them also means the screen
+ * passes one object rather than four lambdas it does nothing with but forward.
+ *
+ * Public because `SettingsScreen` is.
+ */
+@Immutable
+data class SleepTimerSettingsActions(
+    val onDefaultChanged: (Duration) -> Unit,
+    val onFadeChanged: (Duration) -> Unit,
+    val onShakeChanged: (Boolean) -> Unit,
+    /** PRODUCT_SPEC PLAY-008 / PLAY-009 — how far to rewind when the timer stops the book. Zero is off. */
+    val onRewindOnStopChanged: (Duration) -> Unit,
+)

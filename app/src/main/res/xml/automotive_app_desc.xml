@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC PLAY-001 / 11.1 — what makes this app appear in Android Auto at all.
+
+  A device run found the app missing from the dashboard entirely, and this file is why: Android Auto
+  enumerates apps by this metadata, not by the media-browser intent filter. A `MediaLibraryService` with a
+  perfect browse tree and no `automotive_app_desc` is an app the car has never heard of.
+
+  `media` is the only use declared. `template` would claim the Car App Library, which this app does not use
+  and which would make the car look for an activity that does not exist.
+-->
+<automotiveApp>
+    <uses name="media" />
+</automotiveApp>

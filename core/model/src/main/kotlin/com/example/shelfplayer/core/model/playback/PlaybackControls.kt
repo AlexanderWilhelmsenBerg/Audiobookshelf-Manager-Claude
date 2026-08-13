@@ -234,6 +234,19 @@ data class PlaybackSettings(
     val skips: SkipIntervals = SkipIntervals.Default,
     val autoRewind: AutoRewind = AutoRewind.Default,
     val buffer: BufferPreset = BufferPreset.Default,
+    /**
+     * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — whether connecting to a car should start the last book.
+     *
+     * **Off by default, and it is the only setting in this app that can make audio begin with nobody
+     * pressing anything.** ROUTE-002 says auto-play "requires explicit user selection"; until per-device
+     * policy exists this is one global switch rather than a policy per head unit, and the setting's own
+     * wording has to say so.
+     *
+     * With it off, a car still *opens* on the last book — it is simply paused until the driver presses
+     * play, which is ROUTE-002's `Arm only` and the sane default for a feature that can talk to a whole
+     * vehicle.
+     */
+    val autoPlayOnCarConnect: Boolean = false,
 ) {
     companion object {
         val Default = PlaybackSettings()

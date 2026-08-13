@@ -64,6 +64,12 @@
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
+                <!--
+                  PRODUCT_SPEC 11.1 — voice search, which Android Auto requires of a media app and which
+                  is the only way to ask for a book while driving. Media3 routes the action to the session,
+                  which resolves the query through `onSearch` / `onGetSearchResult`.
+                -->
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
             </intent-filter>
         </service>
     </application>

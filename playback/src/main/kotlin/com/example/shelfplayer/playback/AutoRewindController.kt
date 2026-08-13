@@ -9,7 +9,7 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.AutoRewind
-import com.example.shelfplayer.core.model.playback.PlaybackJump
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.domain.playback.AutoRewindMath
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
@@ -147,7 +147,7 @@ class AutoRewindController @Inject constructor(
         // The transient undo notice lasts seconds; this outlives it, which matters for a rewind somebody only
         // notices two chapters later.
         media.currentMediaItem?.let(MediaItems::bookIdOf)?.let { bookId ->
-            applicationScope.launch { history.record(bookId, PlaybackJump.AutoRewind, from, resumeAt) }
+            applicationScope.launch { history.record(bookId, PlaybackEvent.AutoRewind, from, resumeAt) }
         }
         logger.info(
             LogCategory.Playback,

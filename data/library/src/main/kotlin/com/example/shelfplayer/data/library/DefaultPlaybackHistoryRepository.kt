@@ -8,8 +8,8 @@ import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
-import com.example.shelfplayer.core.model.playback.PlaybackJump
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -27,7 +27,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * PRODUCT_SPEC PLAY-003 / 5.2 — a book's jumps, scoped to the profile that made them.
+ * PRODUCT_SPEC PLAY-003 / 5.2 — a book's events, scoped to the profile they happened to.
  *
  * Profile-scoped for the same reason progress is: two people on one server share a library and do not share
  * where they have been in it. The foreign key cascades, so removing a profile removes its history with it.
@@ -56,23 +56,29 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
             }
         }
 
-    override suspend fun record(bookId: LibraryItemId, jump: PlaybackJump, from: Duration?, to: Duration) =
-        withContext(ioDispatcher) {
-            val profileId = profileRepository.activeProfileId() ?: return@withContext
-            val profile = profileDao.findProfile(profileId.value) ?: return@withContext
-            history.record(
-                entry = PlaybackHistoryEntity(
-                    entryId = UUID.randomUUID().toString(),
-                    profileId = profileId.value,
-                    bookKey = EntityKey.of(profile.serverId, bookId.value),
-                    fromMillis = from?.inWholeMilliseconds?.coerceAtLeast(0),
-                    toMillis = to.inWholeMilliseconds.coerceAtLeast(0),
-                    reason = jump.name,
-                    at = clock.now().toEpochMilli(),
-                ),
-                keep = PlaybackHistoryRepository.DEFAULT_LIMIT,
-            )
-        }
+    override suspend fun record(
+        bookId: LibraryItemId,
+        event: PlaybackEvent,
+        from: Duration?,
+        to: Duration,
+        detail: Duration?,
+    ) = withContext(ioDispatcher) {
+        val profileId = profileRepository.activeProfileId() ?: return@withContext
+        val profile = profileDao.findProfile(profileId.value) ?: return@withContext
+        history.record(
+            entry = PlaybackHistoryEntity(
+                entryId = UUID.randomUUID().toString(),
+                profileId = profileId.value,
+                bookKey = EntityKey.of(profile.serverId, bookId.value),
+                fromMillis = from?.inWholeMilliseconds?.coerceAtLeast(0),
+                toMillis = to.inWholeMilliseconds.coerceAtLeast(0),
+                reason = event.name,
+                detailMillis = detail?.inWholeMilliseconds?.coerceAtLeast(0),
+                at = clock.now().toEpochMilli(),
+            ),
+            keep = PlaybackHistoryRepository.DEFAULT_LIMIT,
+        )
+    }
 
     override suspend fun clear(bookId: LibraryItemId) = withContext(ioDispatcher) {
         val profileId = profileRepository.activeProfileId() ?: return@withContext
@@ -83,8 +89,9 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
 
 private fun PlaybackHistoryEntity.toDomain() = PlaybackHistoryEntry(
     id = entryId,
-    jump = PlaybackJump.parse(reason),
+    event = PlaybackEvent.parse(reason),
     from = fromMillis?.milliseconds,
     to = toMillis.milliseconds,
+    detail = detailMillis?.milliseconds,
     at = Instant.ofEpochMilli(at),
 )

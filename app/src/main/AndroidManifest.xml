@@ -11,8 +11,28 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      PRODUCT_SPEC 11.1 — two Android Auto lint checks are suppressed here, and both are false positives
+      this module can prove.
+
+      `MissingMediaBrowserServiceIntentFilter` and `MissingIntentFilterForMediaSearch` look for those two
+      actions on a service declared in *this* module's manifest. The service is `PlaybackService` in
+      `:playback`, which is where PLAY-001 requires it to live — the module boundary is what keeps "one
+      media session" structural — so the checks cannot see it.
+
+      Both actions are present in the merged manifest that ships. To confirm rather than trust:
+
+          grep -n "MediaBrowserService\|MEDIA_PLAY_FROM_SEARCH" \
+            app/build/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml
+
+      They are declared in `playback/src/main/AndroidManifest.xml`, and both are implemented —
+      `onGetLibraryRoot`/`onGetChildren` for browsing and `onSearch`/`onGetSearchResult` for the spoken
+      query. A suppression for something unimplemented would be the wrong call; this one is for a check
+      that is looking in the wrong module.
+    -->
     <application
         android:name=".ShelfPlayerApplication"
+        tools:ignore="MissingMediaBrowserServiceIntentFilter,MissingIntentFilterForMediaSearch"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -26,6 +46,20 @@
 
         <!-- No android:label: the activity inherits the application's, and repeating it is the
              RedundantLabel lint error. -->
+        <!--
+          PRODUCT_SPEC PLAY-001 / 11.1 — declares this app to Android Auto.
+
+          A device run found the app missing from the car's dashboard entirely, and this is why: Auto
+          enumerates apps by this metadata, not by the media-browser intent filter the service already
+          declares. Without it a perfect browse tree is a tree nobody can reach.
+
+          In `:app` rather than beside the service in `:playback`, because Auto reads it from the installed
+          application, and keeping it here puts the declaration with the thing that is actually installed.
+        -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

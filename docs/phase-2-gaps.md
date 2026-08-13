@@ -19,14 +19,14 @@ Legend: ✅ built · ⚠️ partial · ❌ absent · 🔬 needs hardware
 | Playback runs in a `MediaLibraryService` | ✅ |
 | Closing the activity does not stop playback | ✅ |
 | Lock screen, notification, Bluetooth, wired headset, system controls | ✅ |
-| **Android Auto** can play, pause, seek, skip, stop | ❌ no browse tree — `onGetLibraryRoot` rejects |
+| **Android Auto** can play, pause, seek, skip, stop | ✅ *wave 5 closeout* — three tabs, voice search, and the `automotive_app_desc` metadata without which the app never appeared 🔬 untested in a car |
 | Notification shows cover, title, author, progress | ✅ — the progress became the *book's* in wave 5 |
 | Notification has play/pause, **backward and forward** | ✅ — wave 5 replaced skip-to-previous/next, which restarted the book |
 | Foreground-service type and permissions declared | ✅ |
 | Only one local audio media session | ✅ structurally: the module is the only one that can name the types |
-| **A process restart restores the last playable item, paused** | ❌ — the position is in Room, nothing restores the item |
+| **A process restart restores the last playable item, paused** | ✅ *wave 5 closeout* — `onPlaybackResumption` returns the last unfinished book at its stored position |
 
-Two gaps, and the second is also ROUTE-001's.
+Both closed in the wave 5 closeout. Neither has been seen in a car.
 
 ### PLAY-002 Audio focus and route handling
 
@@ -100,20 +100,32 @@ Every criterion built: the seven lengths plus end-of-chapter and custom, 5–30 
 shows in notification and player, notification action extends, shake opt-in and sensor only while a timer
 runs, expiry pauses and syncs, malformed chapters handled.
 
+The wave 5 closeout added two things the requirement implies and the first build did not offer: the fade can
+be turned **off** (PLAY-008 calls it *optional*, and the chips started at five seconds so a timer always
+faded), and a **rewind when the timer stops playback** — the owner's *"set rewind time for five minutes and
+it will rewind five minutes"*, which auto-rewind's seconds-scale bands cannot express.
+
 ### PLAY-009 Auto-rewind after pause
 
 Every criterion built: off by default, four configurable bands, clamped to chapter start, not after a user
 seek or a focus interruption, visible and undoable.
 
-### ROUTE-001 Media-button resume — ❌ **entirely absent, and an exit criterion**
+### ROUTE-001 Media-button resume — ✅ **built in the wave 5 closeout** 🔬 untested on hardware
 
-No `MediaSession.Callback.onPlaybackResumption`. A headset play button against a dead process does nothing,
-and no resumption metadata is published to the system. This is the largest single gap in the phase.
+`onPlaybackResumption` returns the most recently played **unfinished** book at its stored position, which is
+what a headset play button against a dead process now gets. Finished books are excluded on purpose: pressing
+play the morning after finishing something should not start it again from the end. With nothing to resume it
+does nothing and logs a non-fatal diagnostic, which is the requirement's own second clause.
 
-### ROUTE-002 Per-device playback policy — ❌ absent
+### ROUTE-002 Per-device playback policy — ⚠️ one global switch instead of a policy per device
 
-Eleven acceptance criteria, none built. Large: a device registry, four policies, a permission story, and
-rules about locked profiles and speakers.
+Eleven acceptance criteria. The closeout built the *behaviour* the policies select between — a car connecting
+either starts the last book or opens on it paused — as one setting under Settings → Playback → In the car,
+off by default. What is missing is the **registry**: `Never react` / `Arm only` / `Auto-play` / `Ask` chosen
+per head unit, the last-seen dates, the locked-profile and speaker rules.
+
+That is a phase's worth of work about device identity rather than about playing a book, and PRODUCT_SPEC's
+own Phase 2 deliverable list does not name it — only ROUTE-001 appears, as an exit criterion.
 
 ### ROUTE-003 Startup mode — ⚠️ partly true by accident
 
@@ -126,7 +138,7 @@ starts playback automatically at all. The three-way profile setting does not exi
 | --- | --- |
 | Two-hour streaming soak | 🔬 not run |
 | Process/activity recreation | 🔬 not run — rotation is covered by tests, process death is not |
-| **Media-button resume** | ❌ unbuilt (ROUTE-001) |
+| **Media-button resume** | ✅ built 🔬 needs a headset and a killed process |
 | Progress verified against server | ⚠️ verified by capture, not by a device run |
 
 ## Defects the device runs found
@@ -144,7 +156,12 @@ starts playback automatically at all. The three-way profile setting does not exi
 | 9 | Book marked finished with no way to undo | ✅ *this round* |
 | 10 | Play button squeezing the row below it | ✅ *this round* — 88 dp → 72 dp |
 | 11 | Synopsis not collapsed | ✅ *this round* — three lines and a Show more |
-| 12 | No history pane on the player | ✅ *this round* — every jump, tap one to go back |
+| 12 | No history pane on the player | ✅ — every jump, tap one to go back |
+| 13 | History showed only seeks and starts — no play, pause or sleep timer | ✅ *wave 5 closeout* — see below |
+| 14 | Shake-to-extend left no history entry | ✅ *wave 5 closeout* |
+| 15 | No way to turn the sleep-timer fade **off** | ✅ *wave 5 closeout* |
+| 16 | No rewind when the sleep timer stops playback | ✅ *wave 5 closeout* |
+| 17 | **The app did not appear in Android Auto at all** | ✅ *wave 5 closeout* — the missing `automotive_app_desc` metadata |
 
 ### Defect 6, because it is the instructive one
 
@@ -157,18 +174,34 @@ It is fixed in three places, deliberately: the service retries transient errors 
 prepares whenever the player is idle so pressing play always means something, and when the retries are
 exhausted the player says so and offers a button. One of those alone would leave a hole.
 
+### Defect 13, and what a history is for
+
+The first version recorded five kinds of position change and nothing else, on the reasoning that ordinary
+playback is a line and writing it down would be writing down a clock. The reasoning was right about the clock
+and **wrong about what a history is for**: a listener does not open it to audit position arithmetic, they open
+it to answer "what happened, and can I get back to before it". "I paused here" and "I set a timer here" are
+answers to that.
+
+So the model widened from `PlaybackJump` to `PlaybackEvent`: play, pause, sleep timer set, extended, expired
+and the rewind it applies, alongside the five jumps. Play and pause are recorded from **`playWhenReady`, not
+`isPlaying`** — `isPlaying` goes false on every buffer, so a book on a slow connection would have written a
+pause and a play every few seconds and buried everything else.
+
 ## What is left, in the order it should be done
 
-1. **Media-button resume (ROUTE-001).** An exit criterion, and the phase cannot close without it.
-2. **Android Auto browse tree.** PLAY-001's Auto criterion and PRODUCT_SPEC 11.1's responsibility. The
+1. **Bookmarks.** PLAY-001's Auto criterion and PRODUCT_SPEC 11.1's responsibility. The
    owner's "car mode" is this.
-3. **Bookmarks.** PRODUCT_SPEC 11.1 lists the custom command; the player has carried a disabled button
-   since wave 2. Needs a capture first (22.4/22.5).
-4. **The small ones:** `markAsFinishedTimeRemaining`, a configurable finished threshold, rebuffer count and
+   PRODUCT_SPEC 11.1 lists the custom command; the player has carried a disabled button since wave 2. The
+   2026-08-13 capture re-run did not include the endpoints, so `scripts/capture-contracts.sh` now probes
+   them — create, read back off `user.bookmarks`, update, delete — and the next run unblocks this.
+2. **The small ones:** `markAsFinishedTimeRemaining`, a configurable finished threshold, rebuffer count and
    startup latency in diagnostics, and the duck-vs-pause setting.
-5. **The exit criteria on hardware:** the two-hour soak, process death, progress against the server.
+3. **The exit criteria on hardware:** the two-hour soak, process death, progress against the server.
 
-Items 1 and 2 decide whether Phase 2 is finished. Items 4 and 5 decide whether it is finished *honestly*.
+Every item PRODUCT_SPEC names for Phase 2 is now **built**. What is left is one recommended feature waiting
+on a capture, four small requirement clauses, and the hardware runs — and the hardware runs are the ones that
+decide whether the phase is finished *honestly*, because nothing above has been seen in a car or across a
+two-hour soak.
 
 ## Deliberately not in Phase 2
 

@@ -1,41 +1,51 @@
 package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
-import com.example.shelfplayer.core.model.playback.PlaybackJump
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Duration
 
 /**
- * PRODUCT_SPEC PLAY-003 — the jumps a listener has made in a book.
+ * PRODUCT_SPEC PLAY-003 / PLAY-008 — what has happened to a book, and where.
  *
  * A seek is the one playback action with no undo: the position it replaced is gone the moment it lands, and
- * "somewhere around eleven hours" is not a position on a thirty-hour book. This is what makes it reversible.
+ * "somewhere around eleven hours" is not a position on a thirty-hour book. This is what makes it reversible —
+ * and, since a device run asked for it, what makes a pause and a sleep timer visible too.
  *
- * Nothing here fails in a way the user should see. Recording a jump is a side effect of a jump that has
- * already happened, and the jump must not be undone because a row could not be written (product priority 1).
+ * Nothing here fails in a way the user should see. Recording an event is a side effect of something that has
+ * already happened, and it must not be undone because a row could not be written (product priority 1).
  */
 interface PlaybackHistoryRepository {
 
-    /** This book's jumps, newest first. Empty for a book nobody has moved around in. */
+    /** This book's events, newest first. Empty for a book nobody has played. */
     fun observe(bookId: LibraryItemId, limit: Int = DEFAULT_LIMIT): Flow<List<PlaybackHistoryEntry>>
 
     /**
-     * Writes one jump down.
+     * Writes one event down.
      *
-     * @param from `null` only for [PlaybackJump.Resume]. Everything else has a position it left.
+     * @param from where the listener was before, for the kinds that moved them; `null` for a marker.
+     * @param detail a second duration the event carries — a sleep timer's length, say. `null` otherwise.
      */
-    suspend fun record(bookId: LibraryItemId, jump: PlaybackJump, from: Duration?, to: Duration)
+    suspend fun record(
+        bookId: LibraryItemId,
+        event: PlaybackEvent,
+        from: Duration?,
+        to: Duration,
+        detail: Duration? = null,
+    )
 
     suspend fun clear(bookId: LibraryItemId)
 
     companion object {
         /**
-         * How many jumps a book keeps.
+         * How many events a book keeps.
          *
-         * Enough to cover a session of hunting for a half-remembered passage, few enough that the list is
-         * still readable. Per book, so one restless book does not evict another's.
+         * Raised from forty when play, pause and the sleep timer joined the jumps: an evening of listening
+         * now writes several entries an hour on its own, and a cap that the ordinary use of the app can
+         * exhaust in a night is a cap that deletes the thing somebody came looking for. Per book, so one
+         * restless book does not evict another's.
          */
-        const val DEFAULT_LIMIT = 40
+        const val DEFAULT_LIMIT = 120
     }
 }

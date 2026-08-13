@@ -144,6 +144,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { sleepTimer.setFadeLength(length) }
     }
 
+    /** PRODUCT_SPEC PLAY-008 / PLAY-009 — how far to rewind when the timer stops the book. Zero is off. */
+    fun onSleepTimerRewindChanged(length: kotlin.time.Duration) {
+        viewModelScope.launch { sleepTimer.setRewindOnStop(length) }
+    }
+
     /** PRODUCT_SPEC PLAY-007 — the speed a book uses when it has no override of its own. */
     fun onDefaultSpeedChanged(speed: PlaybackSpeed) {
         viewModelScope.launch { playbackSettings.setDefaultSpeed(speed) }
@@ -160,6 +165,11 @@ class SettingsViewModel @Inject constructor(
 
     fun onBufferPresetChanged(preset: BufferPreset) {
         viewModelScope.launch { playbackSettings.setBufferPreset(preset) }
+    }
+
+    /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless chosen. */
+    fun onAutoPlayOnCarConnectChanged(enabled: Boolean) {
+        viewModelScope.launch { playbackSettings.setAutoPlayOnCarConnect(enabled) }
     }
 
     /**

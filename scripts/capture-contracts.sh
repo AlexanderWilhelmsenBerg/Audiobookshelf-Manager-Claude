@@ -69,6 +69,11 @@ VOLATILE_KEYS = {
     # engine.io's session id. Not secret in the credential sense — it is useless without the
     # connection — but it changes on every handshake, so leaving it in would report drift on every run.
     "sid", "libraryItemId", "episodeId",
+    # A play session carries the calendar day it was opened on. The 2026-08-13 re-run reported drift on
+    # `item-play.json` and `multi-item-play.json` for these two fields and nothing else, which is the
+    # false positive this whole set exists to prevent — and it hid the real result, which was that five
+    # days changed nothing in the contract. Neither field is read by any mapper.
+    "date", "dayOfWeek",
 }
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 
@@ -628,6 +633,53 @@ else
   # Not fatal, and not silent either. Until the seeded two-file book has been scanned, PLAY-003 has no
   # evidence to be built on and the plan says so rather than guessing at the arithmetic.
   echo "::warning::no multi-file book found in library-items — PLAY-003's startOffset stays unverified"
+fi
+
+# --- Bookmarks (PRODUCT_SPEC 11.1, section 8 recommended feature 4) ------------------------------
+#
+# Wave 5's closeout named bookmarks as the one Phase 2 item that needs the *server* before a line of it
+# can be written: PRODUCT_SPEC 22.4/22.5 forbid building on a shape no capture has produced, and the
+# player has carried a disabled bookmark button since wave 2.
+#
+# These four requests are the whole contract. Every one is allowed to fail — `capture` records whatever
+# comes back, including a 404, and a 404 recorded is itself the answer to "does this server have
+# bookmarks". What must not happen is code written against a remembered shape.
+#
+# The order matters: create, then read the user object back (bookmarks live on `user.bookmarks`), then
+# update, then delete. Reading `me` in the middle is what proves where a bookmark is *stored*, which is
+# the part a client has to know and the part no endpoint response states.
+if [ -n "$ITEM_ID" ]; then
+  capture bookmark-create POST "/api/me/item/$ITEM_ID/bookmark" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"time":31,"title":"A line worth keeping"}'
+
+  capture me-with-bookmark GET /api/me -H "$AUTH_HEADER"
+
+  capture bookmark-update PATCH "/api/me/item/$ITEM_ID/bookmark" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"time":31,"title":"A line worth keeping, renamed"}'
+
+  capture bookmark-delete DELETE "/api/me/item/$ITEM_ID/bookmark/31" -H "$AUTH_HEADER"
+else
+  echo "::warning::no ITEM_ID — the bookmark endpoints stay uncaptured and bookmarks stay unbuildable"
+fi
+
+# --- The finished flag, both ways (PLAY-004) -----------------------------------------------------
+#
+# `PATCH /api/me/progress/{id}` is already captured, and the app now uses it to mark a book finished and
+# to un-mark it. What the earlier capture exercised was `isFinished: false` only, so `true` was a value
+# the app sent that no fixture had ever seen come back — recorded in docs/api-compatibility.md as an
+# assumption rather than a fact. These two calls settle it.
+if [ -n "$ITEM_ID" ]; then
+  curl -sS -X PATCH "$BASE_URL/api/me/progress/$ITEM_ID" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":8,"isFinished":true}' >/dev/null || true
+  capture media-progress-finished GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
+
+  curl -sS -X PATCH "$BASE_URL/api/me/progress/$ITEM_ID" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":42.5,"isFinished":false}' >/dev/null || true
+  capture media-progress-unfinished GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
 fi
 
 capture logout POST /logout -H "$AUTH_HEADER"

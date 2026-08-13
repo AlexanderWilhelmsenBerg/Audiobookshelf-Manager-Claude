@@ -13,7 +13,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,8 +33,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
-import com.example.shelfplayer.core.model.playback.PlaybackJump
 import kotlin.time.Duration
 
 /**
@@ -104,22 +106,25 @@ fun HistorySheet(
 }
 
 /**
- * One jump.
+ * One event.
  *
- * **A row with no `from` is not tappable**, and that is the honest thing rather than a limitation: a resume
- * entry has nowhere to go back to, so it is a marker in the list rather than a control. Making it tappable
- * to its own destination would be a button that does nothing, which is worse than none.
+ * **Every row is tappable**, which the first version got wrong. It made a row with no "from" a marker
+ * rather than a control, on the grounds that a resume has nowhere to go back *to* — but a listener does not
+ * want to go back to where a marker came from, they want to go back to *where it is*. "Take me to where I
+ * fell asleep" is the single most useful thing this list does, and it is a marker that answers it.
  */
 @Composable
 private fun HistoryRow(entry: PlaybackHistoryEntry, onReturnTo: (Duration) -> Unit, modifier: Modifier = Modifier) {
     val from = entry.from
-    val label = stringResource(entry.jump.labelRes())
+    val label = stringResource(entry.event.labelRes())
+    val detail = entry.detail?.let { stringResource(R.string.player_history_detail, label, it.asShortLabel()) }
+    val caption = detail ?: label
     val spoken = if (from == null) {
-        stringResource(R.string.player_history_started_at, label, entry.to.asChapterClock())
+        stringResource(R.string.player_history_started_at, caption, entry.to.asChapterClock())
     } else {
         stringResource(
             R.string.player_history_return_to,
-            label,
+            caption,
             from.asChapterClock(),
             entry.to.asChapterClock(),
         )
@@ -127,14 +132,14 @@ private fun HistoryRow(entry: PlaybackHistoryEntry, onReturnTo: (Duration) -> Un
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (from == null) Modifier else Modifier.clickable { onReturnTo(from) })
+            .clickable { onReturnTo(entry.returnTo) }
             .padding(horizontal = 24.dp, vertical = 12.dp)
             .semantics(mergeDescendants = true) { contentDescription = spoken },
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = entry.jump.icon(),
+            imageVector = entry.event.icon(),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp),
@@ -142,7 +147,7 @@ private fun HistoryRow(entry: PlaybackHistoryEntry, onReturnTo: (Duration) -> Un
         Column(modifier = Modifier.weight(WEIGHT_FILL)) {
             Text(
                 text = if (from == null) {
-                    stringResource(R.string.player_history_from_start, entry.to.asChapterClock())
+                    stringResource(R.string.player_history_at, entry.to.asChapterClock())
                 } else {
                     // Both ends, in the order they happened. An arrow rather than a sentence: the list is
                     // scanned, not read, and a column of "11:04:12 → 3:20:00" lines has a shape.
@@ -151,36 +156,46 @@ private fun HistoryRow(entry: PlaybackHistoryEntry, onReturnTo: (Duration) -> Un
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                text = label,
+                text = caption,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (from != null) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.Undo,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.Undo,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
-private fun PlaybackJump.labelRes(): Int = when (this) {
-    PlaybackJump.Seek -> R.string.player_history_seek
-    PlaybackJump.Skip -> R.string.player_history_skip
-    PlaybackJump.Chapter -> R.string.player_history_chapter
-    PlaybackJump.AutoRewind -> R.string.player_history_rewind
-    PlaybackJump.Resume -> R.string.player_history_resume
+private fun PlaybackEvent.labelRes(): Int = when (this) {
+    PlaybackEvent.Seek -> R.string.player_history_seek
+    PlaybackEvent.Skip -> R.string.player_history_skip
+    PlaybackEvent.Chapter -> R.string.player_history_chapter
+    PlaybackEvent.AutoRewind -> R.string.player_history_rewind
+    PlaybackEvent.Resume -> R.string.player_history_resume
+    PlaybackEvent.Play -> R.string.player_history_play
+    PlaybackEvent.Pause -> R.string.player_history_pause
+    PlaybackEvent.SleepTimerStarted -> R.string.player_history_timer_started
+    PlaybackEvent.SleepTimerExtended -> R.string.player_history_timer_extended
+    PlaybackEvent.SleepTimerExpired -> R.string.player_history_timer_expired
+    PlaybackEvent.SleepTimerRewind -> R.string.player_history_timer_rewind
 }
 
-private fun PlaybackJump.icon(): ImageVector = when (this) {
-    PlaybackJump.Seek -> Icons.Filled.FastForward
-    PlaybackJump.Skip -> Icons.Filled.FastForward
-    PlaybackJump.Chapter -> Icons.AutoMirrored.Filled.MenuBook
-    PlaybackJump.AutoRewind -> Icons.Filled.Replay
-    PlaybackJump.Resume -> Icons.Filled.PlayArrow
+private fun PlaybackEvent.icon(): ImageVector = when (this) {
+    PlaybackEvent.Seek -> Icons.Filled.FastForward
+    PlaybackEvent.Skip -> Icons.Filled.FastForward
+    PlaybackEvent.Chapter -> Icons.AutoMirrored.Filled.MenuBook
+    PlaybackEvent.AutoRewind -> Icons.Filled.Replay
+    PlaybackEvent.SleepTimerRewind -> Icons.Filled.Replay
+    PlaybackEvent.Resume -> Icons.Filled.PlayArrow
+    PlaybackEvent.Play -> Icons.Filled.PlayArrow
+    PlaybackEvent.Pause -> Icons.Filled.Pause
+    PlaybackEvent.SleepTimerStarted -> Icons.Filled.Bedtime
+    PlaybackEvent.SleepTimerExtended -> Icons.Filled.Bedtime
+    PlaybackEvent.SleepTimerExpired -> Icons.Filled.Bedtime
 }
 
 private const val WEIGHT_FILL = 1f

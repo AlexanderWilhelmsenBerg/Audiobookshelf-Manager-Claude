@@ -326,6 +326,10 @@ class SettingsViewModelTest {
 
         override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = MutableStateFlow(emptyList())
 
+        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId) =
+
+            kotlinx.coroutines.flow.flowOf(emptyList<com.example.shelfplayer.core.model.library.Chapter>())
+
         override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = MutableStateFlow(null)
 
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
@@ -370,6 +374,11 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
 
     override suspend fun setBufferPreset(preset: BufferPreset): AppResult<Unit> {
         controls.value = controls.value.copy(buffer = preset)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setAutoPlayOnCarConnect(enabled: Boolean): AppResult<Unit> {
+        controls.value = controls.value.copy(autoPlayOnCarConnect = enabled)
         return AppResult.Success(Unit)
     }
 
@@ -434,6 +443,11 @@ internal class FakeSleepTimers : SleepTimerRepository {
 
     override suspend fun setFadeLength(length: kotlin.time.Duration): AppResult<Unit> {
         settings.value = settings.value.copy(fadeLength = length)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setRewindOnStop(length: kotlin.time.Duration): AppResult<Unit> {
+        settings.value = settings.value.copy(rewindOnStop = length)
         return AppResult.Success(Unit)
     }
 

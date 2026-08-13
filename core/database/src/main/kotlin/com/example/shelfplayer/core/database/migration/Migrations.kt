@@ -342,6 +342,18 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-008 — adds `playback_history.detailMillis`, so a sleep-timer entry can say how long.
+     *
+     * Additive and nullable, which is what lets it be added with a single `ALTER TABLE` and no rewrite: every
+     * row written by version 11 was a jump, and a jump has no detail.
+     */
+    private val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `playback_history` ADD COLUMN `detailMillis` INTEGER")
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -353,5 +365,6 @@ object Migrations {
         MIGRATION_8_9,
         MIGRATION_9_10,
         MIGRATION_10_11,
+        MIGRATION_11_12,
     )
 }

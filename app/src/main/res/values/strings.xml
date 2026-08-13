@@ -200,7 +200,10 @@
     <!-- %1$s is where the jump started, %2$s where it landed. -->
     <string name="player_history_jump">%1$s → %2$s</string>
     <!-- %1$s is where the book resumed. -->
-    <string name="player_history_from_start">Started at %1$s</string>
+    <!-- %1$s is a position. Used for an event that marks a spot rather than a jump between two. -->
+    <string name="player_history_at">At %1$s</string>
+    <!-- %1$s is the kind of event, %2$s a length such as "30 min". -->
+    <string name="player_history_detail">%1$s · %2$s</string>
     <!-- %1$s is the kind of jump, %2$s where it started, %3$s where it landed. -->
     <string name="player_history_return_to">%1$s from %2$s to %3$s. Tap to return to %2$s.</string>
     <!-- %1$s is the kind of jump, %2$s the position. -->
@@ -210,6 +213,12 @@
     <string name="player_history_chapter">Chapter</string>
     <string name="player_history_rewind">Rewind after a pause</string>
     <string name="player_history_resume">Started listening</string>
+    <string name="player_history_play">Played</string>
+    <string name="player_history_pause">Paused</string>
+    <string name="player_history_timer_started">Sleep timer set</string>
+    <string name="player_history_timer_extended">Sleep timer extended</string>
+    <string name="player_history_timer_expired">Sleep timer ended playback</string>
+    <string name="player_history_timer_rewind">Rewound after the sleep timer</string>
     <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
     <!-- PRODUCT_SPEC PLAY-001 / PLAY-003 — playback stopped on an error and will not restart on its own. -->
     <string name="player_failed">Playback stopped. The server or the connection may be unavailable.</string>
@@ -236,9 +245,16 @@
     <string name="sleep_timer_restart">Restart the timer</string>
 
     <!-- SET-002 (Playback) — the sleep timer's settings. -->
+    <!-- PRODUCT_SPEC ROUTE-001 / ROUTE-002 — the car section on the Playback tab. -->
+    <string name="settings_section_car">In the car</string>
+    <string name="settings_car_hint">ShelfPlayer appears in Android Auto with three tabs: Continue, Chapters and History. It always opens on the book you were last listening to.</string>
+    <string name="settings_car_autoplay">Start playing when a car connects</string>
     <string name="sleep_timer_settings">Timer defaults</string>
     <string name="sleep_timer_default_length">Default length</string>
     <string name="sleep_timer_fade">Fade out over</string>
+    <!-- PRODUCT_SPEC PLAY-008 / PLAY-009 — how far back to go when the timer stops the book. -->
+    <string name="sleep_timer_rewind">Rewind when the timer stops playback</string>
+    <string name="sleep_timer_rewind_hint">If you fall asleep, the book winds back by this much so you can pick up something you remember. Off by default.</string>
     <string name="sleep_timer_shake">Shake to restart the timer</string>
     <string name="sleep_timer_shake_hint">Off by default. When it is on, the app senses motion only while a timer is running — never at other times.</string>
 

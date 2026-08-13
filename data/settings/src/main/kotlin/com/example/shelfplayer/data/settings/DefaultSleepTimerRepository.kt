@@ -77,6 +77,15 @@ class DefaultSleepTimerRepository @Inject constructor(
         )
     }
 
+    override suspend fun setRewindOnStop(length: Duration): AppResult<Unit> = write {
+        settings.setSleepTimerRewindOnStop(length)
+        logger.info(
+            LogCategory.Settings,
+            "The sleep timer's rewind-on-stop was changed",
+            LogField.Millis("length", length.inWholeMilliseconds),
+        )
+    }
+
     override fun observeRecentSessions(limit: Int): Flow<List<SleepTimerSession>> =
         settings.activeProfileId.flatMapLatest { profileId ->
             if (profileId == null) {

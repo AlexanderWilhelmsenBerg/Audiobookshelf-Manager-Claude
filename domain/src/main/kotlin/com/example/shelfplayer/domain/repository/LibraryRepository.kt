@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.Library
 import kotlinx.coroutines.flow.Flow
 
@@ -37,6 +38,17 @@ interface LibraryRepository {
     fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>>
 
     fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?>
+
+    /**
+     * PRODUCT_SPEC PLAY-003 / 11.1 — a book's chapters from the **cache**, without opening a session.
+     *
+     * The player gets its chapters from the play session, which is the authoritative list and the one it
+     * seeks against. This is for the readers that have no session and must not open one: the Android Auto
+     * browse tree, which is built while the car is idling and a book may not be playing at all.
+     *
+     * Empty for a book whose chapters have never been synced, which is a shorter list rather than an error.
+     */
+    fun observeChapters(profileId: ProfileId, bookId: LibraryItemId): Flow<List<Chapter>>
 
     fun observeSyncState(profileId: ProfileId): Flow<SyncState>
 

@@ -42,7 +42,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Library
-import kotlin.time.Duration
 
 @Composable
 fun SettingsRoute(
@@ -54,14 +53,18 @@ fun SettingsRoute(
     SettingsScreen(
         uiState = uiState,
         onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
-        onSleepTimerDefaultChanged = viewModel::onSleepTimerDefaultChanged,
-        onSleepTimerFadeChanged = viewModel::onSleepTimerFadeChanged,
-        onShakeToRestartChanged = viewModel::onShakeToRestartChanged,
+        sleepTimerActions = SleepTimerSettingsActions(
+            onDefaultChanged = viewModel::onSleepTimerDefaultChanged,
+            onFadeChanged = viewModel::onSleepTimerFadeChanged,
+            onShakeChanged = viewModel::onShakeToRestartChanged,
+            onRewindOnStopChanged = viewModel::onSleepTimerRewindChanged,
+        ),
         playbackActions = PlaybackSettingsActions(
             onSpeedChanged = viewModel::onDefaultSpeedChanged,
             onSkipsChanged = viewModel::onSkipIntervalsChanged,
             onAutoRewindChanged = viewModel::onAutoRewindChanged,
             onBufferChanged = viewModel::onBufferPresetChanged,
+            onAutoPlayChanged = viewModel::onAutoPlayOnCarConnectChanged,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -84,9 +87,7 @@ fun SettingsRoute(
 fun SettingsScreen(
     uiState: SettingsUiState,
     onDefaultLibraryChanged: (LibraryId?) -> Unit,
-    onSleepTimerDefaultChanged: (Duration) -> Unit,
-    onSleepTimerFadeChanged: (Duration) -> Unit,
-    onShakeToRestartChanged: (Boolean) -> Unit,
+    sleepTimerActions: SleepTimerSettingsActions,
     playbackActions: PlaybackSettingsActions,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
@@ -135,9 +136,7 @@ fun SettingsScreen(
                     SettingsTab.Sleep -> sleepTimerTab(
                         settings = uiState.sleepTimer,
                         history = uiState.sleepTimerHistory,
-                        onDefaultChanged = onSleepTimerDefaultChanged,
-                        onFadeChanged = onSleepTimerFadeChanged,
-                        onShakeChanged = onShakeToRestartChanged,
+                        actions = sleepTimerActions,
                     )
 
                     SettingsTab.Playback -> playbackTab(uiState.playback, playbackActions)

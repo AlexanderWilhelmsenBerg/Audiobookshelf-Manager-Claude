@@ -448,6 +448,7 @@ class MigrationTest {
                 fromMillis = null,
                 toMillis = 42_000,
                 reason = "Resume",
+                detailMillis = null,
                 at = 1_000,
             ),
             keep = 10,
@@ -478,6 +479,7 @@ class MigrationTest {
                     fromMillis = index * 1_000L,
                     toMillis = index * 2_000L,
                     reason = "Seek",
+                    detailMillis = null,
                     at = index.toLong(),
                 ),
                 keep = 3,
@@ -487,6 +489,36 @@ class MigrationTest {
         val stored = migrated.playbackHistoryDao().observe(PROFILE_ID, BOOK_KEY, limit = 10).first()
         assertEquals(3, stored.size)
         assertEquals(listOf("entry-4", "entry-3", "entry-2"), stored.map { it.entryId })
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-008 — version 12 adds `detailMillis`, and version 11's rows survive it.
+     *
+     * The nullable column is the point: every row written by version 11 was a jump, and a jump has no
+     * detail, so the migration adds the column without touching a byte of the existing table. Writing a row
+     * that *uses* it afterwards proves the column is real and not just declared.
+     */
+    @Test
+    fun `version 12 adds the event detail without disturbing the history`() = runTest {
+        createVersion(9)
+        val migrated = openWithMigrations()
+        migrated.playbackHistoryDao().record(
+            entry = PlaybackHistoryEntity(
+                entryId = "timer-1",
+                profileId = PROFILE_ID,
+                bookKey = BOOK_KEY,
+                fromMillis = null,
+                toMillis = 90_000,
+                reason = "SleepTimerStarted",
+                detailMillis = 1_800_000,
+                at = 2_000,
+            ),
+            keep = 10,
+        )
+
+        val stored = migrated.playbackHistoryDao().observe(PROFILE_ID, BOOK_KEY, limit = 10).first().single()
+        assertEquals(1_800_000, stored.detailMillis)
+        assertEquals("SleepTimerStarted", stored.reason)
     }
 
     /** PRODUCT_SPEC AUTH-002 — removing a profile takes its per-book speeds with it. */
