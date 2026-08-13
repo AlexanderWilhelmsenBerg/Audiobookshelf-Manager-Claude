@@ -9,9 +9,9 @@ import kotlin.time.Duration
 /**
  * PRODUCT_SPEC 11.3 — one audio file inside a multi-file audiobook.
  *
- * [startOffset] is the track's start on the global book timeline. Phase 2 resolves a global seek to
- * `(track, localOffset)` using this value; Phase 0 stores it so the offline manifest and the player
- * agree from the start rather than being retrofitted.
+ * [startOffset] is the track's start on the global book timeline. Since ADR-0016 the player no longer
+ * converts positions with it — a book is one timeline window — but it is still what tells a file which
+ * part of a book it holds, which is what an offline manifest needs (Phase 3).
  */
 data class AudioTrack(
     val serverId: ServerId,
@@ -78,8 +78,9 @@ data class MediaProgress(
  * makes natural.
  *
  * @property startOffset this track's start on the **global book timeline**, as the server reports it.
- *   `multi-item-play.json` settled that it is global rather than per-file, so a position is never
- *   derived by summing durations — a sum drifts by rounding on every track.
+ *   `multi-item-play.json` settled that it is global rather than per-file. Since ADR-0016 nothing in the
+ *   playback path reads it — the player's own timeline is the book's — but it is server truth about where
+ *   a file sits, and the offline manifest will need it.
  */
 data class PlayableTrack(
     val index: Int,

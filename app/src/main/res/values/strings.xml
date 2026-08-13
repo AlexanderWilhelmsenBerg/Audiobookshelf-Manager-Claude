@@ -186,6 +186,13 @@
     <string name="player_chapter_current">Playing now</string>
     <!-- %1$d is the chapter's position in the book, for a chapter with no title of its own. -->
     <string name="player_chapter_number">Chapter %1$d</string>
+    <!-- PRODUCT_SPEC PLAY-003 — the chapter bar under the book's. %1$d is the chapter, %2$d the total. -->
+    <string name="player_chapter_ordinal">Chapter %1$d of %2$d</string>
+    <!--
+      Spoken for the chapter bar. %1$s is the chapter's title and %2$s a remaining time such as "12:04";
+      the visible bar is a shape, and a shape says nothing to a screen reader.
+    -->
+    <string name="player_chapter_progress">%1$s, %2$s left in this chapter</string>
     <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
     <string name="player_open">Open the player</string>
     <string name="player_starting">Starting…</string>

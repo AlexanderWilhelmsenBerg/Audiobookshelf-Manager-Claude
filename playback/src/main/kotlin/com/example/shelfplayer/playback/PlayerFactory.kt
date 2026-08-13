@@ -9,7 +9,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -47,10 +47,13 @@ internal class DefaultPlayerFactory @Inject constructor(
     @param:ApplicationContext private val context: Context,
     @param:MediaDataSource private val dataSourceFactory: DataSource.Factory,
     private val artwork: BitmapLoader,
+    private val logger: Logger,
 ) : PlayerFactory {
 
     override fun create(buffer: BufferPreset): ExoPlayer = ExoPlayer.Builder(context)
-        .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+        // ADR-0016 — a book is one timeline window, so its item becomes a concatenated source rather
+        // than a playlist. Everything that is not one of our book items falls through to the default.
+        .setMediaSourceFactory(BookMediaSourceFactory(dataSourceFactory, logger))
         // PRODUCT_SPEC PLAY-006 — Automatic leaves Media3's own load control alone, which is a different
         // thing from any particular pair of numbers and is why the enum carries no override for it.
         .apply { loadControlFor(buffer)?.let(::setLoadControl) }

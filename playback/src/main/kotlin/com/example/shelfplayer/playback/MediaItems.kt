@@ -4,126 +4,122 @@ import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.example.shelfplayer.core.model.LibraryItemId
-import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
-import com.example.shelfplayer.domain.playback.GlobalTimeline
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * PRODUCT_SPEC PLAY-001 / PLAY-003 — an open session as a Media3 playlist.
+ * PRODUCT_SPEC PLAY-001 / PLAY-003 — an open session as **one** Media3 item.
  *
- * ### One book is one playlist, and every item carries the same media id
+ * ### A book is one timeline window (ADR-0016)
  *
- * Media3 does not require ids to be unique within a playlist, and making them unique would cost the one
- * property this design depends on: `player.currentMediaItem.mediaId` is the book being listened to, at
- * any moment, in any track. That is what the progress journal reads, and it keeps working after the app
- * process is gone and only the service is left.
+ * Waves 1–4 built this as a playlist, one item per audio file, with each item's extras carrying its offset on
+ * the book's timeline so a global position could be reconstructed. That worked, and it leaked in the one place
+ * the app does not control: Media3 reports the *current item's* position and duration to every controller, so
+ * the notification and the lock screen described the file rather than the book. On a library with a file per
+ * chapter it read as "time left in this chapter".
  *
- * ### Why the offsets travel in `extras`
+ * Now the book is a single [MediaItem] whose extras carry the track list, and [BookMediaSourceFactory] turns
+ * that into a `ConcatenatingMediaSource2` — several sources presented as one period whose duration is the sum.
+ * The player reports book-global positions natively, and nothing in the app converts anything.
  *
- * The service journals a **global** book position, and to compute one from a player position it needs
- * the current track's start on the book's timeline. It cannot ask the app for it: the app may not be
- * running. Putting the value in each item's metadata means the fact travels with the thing it describes,
- * survives the binder, and survives Media3 restoring a playlist after process death.
+ * ### Why the track list travels in extras
+ *
+ * A `MediaController` can only hand the session `MediaItem`s; it cannot hand it a `MediaSource`. Putting the
+ * URLs in the item means the *item* is a complete description of the book, so a controller that has never seen
+ * this app's session types — Android Auto, a headset resume, Media3 restoring after process death — can still
+ * produce a playable book. A back channel from the app to the service would work today and break all three.
  */
 object MediaItems {
 
-    /** Milliseconds. The current track's start on the global book timeline. */
-    const val KEY_TRACK_START_OFFSET_MS = "com.example.shelfplayer.playback.TRACK_START_OFFSET_MS"
-
-    /** Milliseconds. The whole book's duration, which a single track's does not give. */
-    const val KEY_BOOK_DURATION_MS = "com.example.shelfplayer.playback.BOOK_DURATION_MS"
+    /** The track URLs, in play order. Absent or empty means the item is not one of ours. */
+    const val KEY_TRACK_URLS = "com.example.shelfplayer.playback.TRACK_URLS"
 
     /**
-     * Milliseconds. This track's own length.
+     * Each track's length in milliseconds, parallel to [KEY_TRACK_URLS].
      *
-     * Carried so a seek can be resolved without the session: [tracksOf] rebuilds enough of the track
-     * list for [GlobalTimeline] to convert a book position into a window and an offset, using the same
-     * arithmetic the resume seek uses rather than a second copy of it.
+     * `ConcatenatingMediaSource2` needs every duration up front — that is what lets it present one window
+     * without having prepared the sources. A track reporting zero is why [BookMediaSourceFactory] keeps a
+     * fallback.
      */
-    const val KEY_TRACK_DURATION_MS = "com.example.shelfplayer.playback.TRACK_DURATION_MS"
+    const val KEY_TRACK_DURATIONS_MS = "com.example.shelfplayer.playback.TRACK_DURATIONS_MS"
 
-    /** A playlist plus where to start it. */
-    data class Queue(val items: List<MediaItem>, val startIndex: Int, val startPositionMs: Long)
+    /** Each track's mime type, parallel to [KEY_TRACK_URLS]. An entry may be empty when the server sent none. */
+    const val KEY_TRACK_MIME_TYPES = "com.example.shelfplayer.playback.TRACK_MIME_TYPES"
+
+    /** A book plus where to start it. */
+    data class Queue(val item: MediaItem, val startPositionMs: Long)
 
     /**
-     * Builds the playlist for [session], positioned at the resume point the server reported.
+     * Builds the item for [session], positioned at the resume point the server reported.
      *
-     * Excluded tracks are dropped rather than skipped at playback time (PLAY-003): a playlist that does
-     * not contain them cannot play them by accident, and the window indices then line up with the list
-     * the timeline arithmetic was done against.
+     * Excluded tracks are dropped rather than skipped at playback time (PLAY-003): a source that does not
+     * contain a file cannot play it by accident, from any control surface.
+     *
+     * The start position needs no conversion any more — it is a book position and the player's timeline is the
+     * book, which is the whole point of ADR-0016.
      */
     fun queueFor(session: PlaybackSession): Queue {
         val tracks = session.playableTracks
-        val cursor = GlobalTimeline.cursorFor(tracks, session.startAt)
-        val items = tracks.map { track ->
-            val extras = Bundle().apply {
-                putLong(KEY_TRACK_START_OFFSET_MS, track.startOffset.inWholeMilliseconds)
-                putLong(KEY_BOOK_DURATION_MS, session.duration.inWholeMilliseconds)
-                putLong(KEY_TRACK_DURATION_MS, track.duration.inWholeMilliseconds)
-            }
-            MediaItem.Builder()
-                .setMediaId(session.bookId.value)
-                .setUri(track.url)
-                .setMimeType(track.mimeType)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        // The **book's** title and author on every track, not the file's. The
-                        // notification and the lock screen show whatever the current item says, and
-                        // "03 - Tidewatch.mp3" is not what a listener wants to read there.
-                        .setTitle(session.title)
-                        .setArtist(session.author)
-                        .setAlbumTitle(session.title)
-                        .setArtworkUri(session.coverUrl?.let(android.net.Uri::parse))
-                        .setIsBrowsable(false)
-                        .setIsPlayable(true)
-                        .setExtras(extras)
-                        .build(),
-                )
-                .build()
+        val extras = Bundle().apply {
+            putStringArray(KEY_TRACK_URLS, tracks.map { it.url }.toTypedArray())
+            putLongArray(KEY_TRACK_DURATIONS_MS, tracks.map { it.duration.inWholeMilliseconds }.toLongArray())
+            putStringArray(KEY_TRACK_MIME_TYPES, tracks.map { it.mimeType.orEmpty() }.toTypedArray())
         }
-        return Queue(items, cursor.index, cursor.offset.inWholeMilliseconds)
+        val item = MediaItem.Builder()
+            .setMediaId(session.bookId.value)
+            // The first track's URI, so an item that somehow reaches a plain media source factory still plays
+            // *something* of the right book rather than failing to resolve. The concatenation replaces it.
+            .setUri(tracks.firstOrNull()?.url)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(session.title)
+                    .setArtist(session.author)
+                    .setAlbumTitle(session.title)
+                    .setArtworkUri(session.coverUrl?.let(android.net.Uri::parse))
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setExtras(extras)
+                    .build(),
+            )
+            .build()
+        return Queue(item, session.startAt.inWholeMilliseconds.coerceAtLeast(0))
     }
 
     /** The book this item belongs to. */
     fun bookIdOf(item: MediaItem): LibraryItemId = LibraryItemId(item.mediaId)
 
     /**
-     * The global book position for a player position inside [item].
+     * The tracks an item describes, or an empty list when it is not one of ours.
      *
-     * The same arithmetic as [GlobalTimeline.positionOf], reached from the side of the boundary that
-     * holds a [MediaItem] rather than a track list — which is the side the service is on.
+     * Read by [BookMediaSourceFactory]. The three arrays are validated against each other rather than trusted:
+     * a truncated `Bundle` would otherwise index out of bounds inside the factory, which runs on the player's
+     * thread where an exception stops playback rather than surfacing.
      */
-    fun globalPositionOf(item: MediaItem, playerPositionMs: Long): Duration = GlobalTimeline.positionOf(
-        trackStartOffset = item.trackStartOffset(),
-        offset = playerPositionMs.coerceAtLeast(0).milliseconds,
-    )
-
-    /**
-     * The playlist as a track list, for the timeline arithmetic.
-     *
-     * The URL and the mime type are not recreated — nothing that converts a position needs them — so
-     * these are deliberately partial [PlayableTrack]s built from the two facts the items carry. It is
-     * the alternative to holding the session in memory, which the service cannot do after the app
-     * process has gone.
-     */
-    fun tracksOf(items: List<MediaItem>): List<PlayableTrack> = items.mapIndexed { index, item ->
-        PlayableTrack(
-            index = index,
-            url = "",
-            startOffset = item.trackStartOffset(),
-            duration = (item.mediaMetadata.extras?.getLong(KEY_TRACK_DURATION_MS) ?: 0L)
-                .coerceAtLeast(0).milliseconds,
-            mimeType = null,
-            isExcluded = false,
-        )
+    fun tracksOf(item: MediaItem): List<Track> {
+        val extras = item.mediaMetadata.extras ?: return emptyList()
+        val urls = extras.getStringArray(KEY_TRACK_URLS).orEmpty()
+        val durations = extras.getLongArray(KEY_TRACK_DURATIONS_MS) ?: LongArray(0)
+        val mimeTypes = extras.getStringArray(KEY_TRACK_MIME_TYPES).orEmpty()
+        if (urls.isEmpty() || urls.size != durations.size || urls.size != mimeTypes.size) return emptyList()
+        return urls.indices.map { index ->
+            Track(
+                url = urls[index],
+                duration = durations[index].coerceAtLeast(0).milliseconds,
+                mimeType = mimeTypes[index].takeIf(String::isNotBlank),
+            )
+        }
     }
 
-    /** The whole book's duration, or [Duration.ZERO] when the item does not carry one. */
+    /**
+     * The book's duration, summed from its tracks.
+     *
+     * Only used before the player has prepared — once it has, `player.duration` is the same number and is the
+     * one every caller should read. This exists so a UI can show a length for a book that is still loading.
+     */
     fun bookDurationOf(item: MediaItem): Duration =
-        (item.mediaMetadata.extras?.getLong(KEY_BOOK_DURATION_MS) ?: 0L).coerceAtLeast(0).milliseconds
+        tracksOf(item).fold(Duration.ZERO) { total, track -> total + track.duration }
 
-    private fun MediaItem.trackStartOffset(): Duration =
-        (mediaMetadata.extras?.getLong(KEY_TRACK_START_OFFSET_MS) ?: 0L).coerceAtLeast(0).milliseconds
+    /** One audio file, as an item's extras describe it. */
+    data class Track(val url: String, val duration: Duration, val mimeType: String?)
 }

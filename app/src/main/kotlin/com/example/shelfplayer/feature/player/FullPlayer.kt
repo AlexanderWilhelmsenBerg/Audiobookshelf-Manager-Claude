@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -56,6 +57,7 @@ import coil.compose.AsyncImage
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SleepTimerState
+import com.example.shelfplayer.domain.playback.ChapterProgress
 import com.example.shelfplayer.playback.PlaybackUiState
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -368,6 +370,54 @@ private fun SeekBar(state: PlaybackUiState, onSeekTo: (Duration) -> Unit, modifi
                 ),
             )
         }
+
+        // Read from the *shown* position rather than the state's, so the chapter bar follows the finger
+        // during a drag instead of jumping when it lifts.
+        ChapterBar(progress = ChapterProgress.at(state.chapters, shownPosition))
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-003 — the second bar: how far through *this chapter* the listener is.
+ *
+ * The book's bar above answers "how much is left". On a twenty-hour book it barely moves within a
+ * chapter, so it cannot answer the question somebody actually asks before deciding to stop — "can I
+ * finish this bit first?". This one can.
+ *
+ * Thinner and in the secondary colour, deliberately: it is a subordinate reading, and two bars of equal
+ * weight would leave a listener working out which is which.
+ *
+ * Nothing is drawn for a book with no chapter metadata, which is common in a self-hosted library. An
+ * empty bar that will never move is worse than no bar — it reads as a book that is not loading.
+ */
+@Composable
+private fun ChapterBar(progress: ChapterProgress?, modifier: Modifier = Modifier) {
+    if (progress == null) return
+    val remaining = progress.remaining.asChapterClock()
+    val spoken = stringResource(R.string.player_chapter_progress, progress.chapter.title, remaining)
+    Column(modifier = modifier.fillMaxWidth().padding(top = 10.dp)) {
+        LinearProgressIndicator(
+            progress = { progress.fraction },
+            // A bar is a shape, and the only thing Compose gives it by default is a percentage. Naming it
+            // is the difference between "twenty-five percent" and "The Flood, 15:00 left in this chapter".
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(CHAPTER_BAR_HEIGHT)
+                .clip(MaterialTheme.shapes.extraSmall)
+                .semantics { contentDescription = spoken },
+            color = MaterialTheme.colorScheme.secondary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            // The default indicator leaves a gap and a stop dot, which at two dp reads as a rendering
+            // fault rather than as a style.
+            gapSize = 0.dp,
+            drawStopIndicator = {},
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            TimeLabel(text = stringResource(R.string.player_chapter_ordinal, progress.ordinal, progress.count))
+            Spacer(modifier = Modifier.weight(WEIGHT_FILL))
+            TimeLabel(text = stringResource(R.string.player_remaining, remaining))
+        }
     }
 }
 
@@ -547,6 +597,9 @@ private fun SleepTimerReadout(timer: SleepTimerState, onClick: () -> Unit, modif
 }
 
 private const val WEIGHT_FILL = 1f
+
+/** Thin enough to read as subordinate to the book's bar rather than as a second one of equal weight. */
+private val CHAPTER_BAR_HEIGHT = 3.dp
 
 /** Big enough to press without looking, which is the whole point of the hierarchy in the transport row. */
 private val PLAY_BUTTON_SIZE = 88.dp

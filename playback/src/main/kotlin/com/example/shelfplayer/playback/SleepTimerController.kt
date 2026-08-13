@@ -300,9 +300,8 @@ class SleepTimerController @Inject constructor(
 
     private fun remainingToChapterEnd(skip: Int): Duration? {
         val current = player ?: return null
-        val item = current.currentMediaItem ?: return null
-        val position = MediaItems.globalPositionOf(item, current.currentPosition)
-        return SleepTimerMath.remainingToChapterEnd(chapters, position, skip)
+        // ADR-0016 — the player's timeline *is* the book, so its position needs no conversion.
+        return SleepTimerMath.remainingToChapterEnd(chapters, current.bookPosition(), skip)
     }
 
     private fun deadlineFor(mode: SleepTimerMode): Long = when (mode) {

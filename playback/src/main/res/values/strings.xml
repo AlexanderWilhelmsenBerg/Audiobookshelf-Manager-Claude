@@ -13,19 +13,4 @@
     <string name="player_sleep_minutes">%1$d min</string>
     <!-- %1$d is a whole number of seconds, shown only in the final minute. -->
     <string name="player_sleep_seconds">%1$d s</string>
-
-    <!--
-      PRODUCT_SPEC PLAY-001 — how much of the *book* is left, in the notification.
-
-      Media3's own progress bar and times are per media item, and this app's playlist is one item per audio
-      file — so on a book with a file per chapter they read as "time left in this chapter". This line is the
-      whole book, which is the number a listener actually wants.
-    -->
-    <!-- %1$d is whole hours, %2$d is the remaining whole minutes. -->
-    <string name="player_book_remaining_hours">%1$d h %2$d min left</string>
-    <!-- %1$d is a whole number of minutes. -->
-    <string name="player_book_remaining_minutes">%1$d min left</string>
-    <string name="player_book_remaining_moments">Less than a minute left</string>
-    <!-- Joins the author and the remaining time on the notification's second line. -->
-    <string name="player_book_remaining_separator">%1$s · %2$s</string>
 </resources>

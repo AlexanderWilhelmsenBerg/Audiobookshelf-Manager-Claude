@@ -15,7 +15,7 @@ lists for the phase:
 | ExoPlayer | **Built** — on the `@AuthenticatedClient` OkHttp data source |
 | Global timeline | **Built** — offsets, seeking across boundaries, chapter navigation |
 | Progress sync | **Built** — journal every 5 s, remote sync on the cadence PLAY-004 names, and a durable outbox |
-| Notification / lockscreen / headset | Built, with the book's remaining time on it; the bar is still per-file until wave 5 (ADR-0016). **Headset resume untested** |
+| Notification / lockscreen / headset | **Built** — the bar and clocks are the book's since wave 5 (ADR-0016). **Headset resume still unbuilt**, and it is an exit criterion |
 | Speed / skip | **Built** — 0.5–3.0× with a per-book override, and both skips configurable |
 | Buffer presets | **Built** — applied when the player is built, which is the next book rather than mid-chapter |
 | Sleep timer | **Built** — pulled forward from wave 4, plus shake-to-restart and a local history (ADR-0014) |
@@ -313,7 +313,11 @@ PLAY-006 through PLAY-009, each small, each independently testable.
 
 ## Wave 5 — one timeline window, then the exit criteria
 
-### First: a book becomes one timeline window (ADR-0016)
+What is still missing from Phase 2 measured against the clients people actually use is set out in
+`docs/phase-2-closeout.md`, written at the start of this wave. It ranks four gaps; three of them are
+PRODUCT_SPEC requirements that are simply unbuilt, which is why they come before anything a rival has.
+
+### First: a book becomes one timeline window (ADR-0016) ✅ **built, 2026-08-13 (untested on hardware)**
 
 The largest single change left in Phase 2, and it goes **before** the soak because the soak is its test.
 
@@ -347,16 +351,46 @@ boundaries — that half of PLAY-003 is unaffected.
 3. A pass over every position reader — journal, sync, rewind, seek bar, chapter sheet — each of which gets
    *simpler*, and each of which is a chance to get it wrong.
 
-The wave-4 notification text is removed in the same commit that verifies this on a device, not before.
-Shipping both would print the remaining time twice.
+### What the one-window slice actually shipped
+
+| | |
+| --- | --- |
+| `MediaItems` | one `MediaItem` per **book**, carrying the track list in extras — URLs, durations, mime types, validated against each other rather than trusted across the binder |
+| `BookMediaSourceFactory` | builds a `ConcatenatingMediaSource2` from those tracks, and falls back to the plain factory with a logged warning when a track reports no duration |
+| `PlayerPositions` | `Player.bookPosition()` / `bookDuration()`, the one place that knows `C.TIME_UNSET` is not a duration |
+| Deleted | `BookRemaining`, `BookNotificationProvider`, `GlobalTimeline.cursorFor`, both `positionOf` overloads, the wave-4 notification strings |
+| Converted | every position reader — journal, sync, sleep timer, auto-rewind, seek bar |
+
+The wave-4 caption went in the same change rather than after a device run: leaving it would print the
+remaining time twice, once as a bar and once as text, which is worse than either alone.
+
+**Still owed:** the fallback is written to a case no capture has produced — whether Audiobookshelf can report
+a zero track duration is unverified (PRODUCT_SPEC 22.5) — and gapless crossing at speed is a soak question,
+not a unit-test one.
+
+### Also shipped: the chapter progress bar
+
+`docs/phase-2-closeout.md`'s cheap item, and the highest ratio of noticed benefit to risk in the list. The
+full player showed a book bar plus the chapter *title*, so there was no way to see how far through the
+current chapter you were — the question somebody asks before deciding whether to stop. `ChapterProgress`
+does the arithmetic in `:domain`, where the zero-length chapter and the position-past-the-last-chapter cases
+are tested without a screen.
 
 ### Then: the exit criteria
 
 Hardware, plus the three things wave 4 left measured-but-unmeasurable off a device:
 
+- **Media-button resume** (ROUTE-001), which has never been attempted and is an exit criterion in its own
+  right. `MediaSession.Callback.onPlaybackResumption` is the hook; the work is mostly deciding what "the last
+  book" means with two profiles.
+- **The Android Auto browse tree**, which PRODUCT_SPEC 11.1 lists as a responsibility of the service and
+  which `onGetLibraryRoot` currently rejects. Per-profile filtering applies to a head unit exactly as it does
+  to a screen (5.2).
+- **Bookmarks**, starting with a contract capture — the player has carried a disabled bookmark button since
+  wave 2, and 22.4/22.5 forbid building on an uncaptured endpoint.
 - `markAsFinishedTimeRemaining` from the library settings (ADR-0013's unfinished half).
 - Rebuffer count and startup latency in diagnostics (PLAY-006's last criterion).
-- Media-button resume and per-device policy (ROUTE-001/002), which have never been attempted.
+- Per-device policy (ROUTE-002).
 
 A delta test script per build, as in Phase 1, plus the two-hour soak.
 

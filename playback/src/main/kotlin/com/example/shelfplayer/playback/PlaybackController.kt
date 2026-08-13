@@ -135,8 +135,10 @@ class PlaybackController @Inject constructor(
         autoRewind.onBookChanged(session.chapters)
         chapters = session.chapters
         lastChapter = null
+        // ADR-0016 — one item for the whole book, and the resume point is a book position because the
+        // player's timeline is the book. `BookMediaSourceFactory` turns the item into the concatenation.
         val queue = MediaItems.queueFor(session)
-        media.setMediaItems(queue.items, queue.startIndex, queue.startPositionMs)
+        media.setMediaItem(queue.item, queue.startPositionMs)
         // PRODUCT_SPEC PLAY-007 — the book's own speed if it has one, the profile default otherwise, applied
         // before `prepare` so the first second plays at the right rate rather than snapping a moment later.
         media.setPlaybackSpeed(playbackSettings.speedFor(session.bookId).value)
@@ -168,9 +170,9 @@ class PlaybackController @Inject constructor(
         applicationScope.launch(mainDispatcher) {
             val media = controller ?: return@launch
             if (media.mediaItemCount == 0) return@launch
-            val items = (0 until media.mediaItemCount).map(media::getMediaItemAt)
-            val cursor = GlobalTimeline.cursorFor(MediaItems.tracksOf(items), position)
-            media.seekTo(cursor.index, cursor.offset.inWholeMilliseconds)
+            // ADR-0016 — a book position *is* a player position. The clamp that `GlobalTimeline.cursorFor`
+            // used to apply is now Media3's own: it refuses a seek past the window's duration.
+            media.seekTo(position.inWholeMilliseconds.coerceAtLeast(0))
             publish(media)
         }
     }
@@ -242,22 +244,22 @@ class PlaybackController @Inject constructor(
     /** Where the book is now, or `null` when nothing is loaded. Main thread only. */
     private fun currentPosition(): Duration? {
         val media = controller ?: return null
-        val item = media.currentMediaItem ?: return null
-        return MediaItems.globalPositionOf(item, media.currentPosition)
+        media.currentMediaItem ?: return null
+        return media.bookPosition()
     }
 
     /**
      * PRODUCT_SPEC PLAY-007 — skips [delta] along the book, forwards or backwards.
      *
-     * Expressed as a seek on the **book's** timeline rather than as `Player.seekForward`, because
-     * Media3's own skip is per-item: thirty seconds forward from twenty seconds before the end of a
-     * track would stop at the boundary instead of crossing into the next file.
+     * Still expressed as a seek rather than as `Player.seekForward`, even though ADR-0016 removed the
+     * reason it had to be: Media3's own skip uses its configured increment, and PLAY-007's is ours and is
+     * configurable per direction.
      */
     fun skipBy(delta: Duration) {
         applicationScope.launch(mainDispatcher) {
             val media = controller ?: return@launch
-            val item = media.currentMediaItem ?: return@launch
-            seekTo(MediaItems.globalPositionOf(item, media.currentPosition) + delta)
+            media.currentMediaItem ?: return@launch
+            seekTo(media.bookPosition() + delta)
         }
     }
 
@@ -377,7 +379,7 @@ class PlaybackController @Inject constructor(
 
     private fun publish(media: MediaController) {
         val item: MediaItem? = media.currentMediaItem
-        val position = item?.let { MediaItems.globalPositionOf(it, media.currentPosition) } ?: Duration.ZERO
+        val position = if (item == null) Duration.ZERO else media.bookPosition()
         val chapter = if (item == null) null else GlobalTimeline.chapterAt(chapters, position)
         if (hasCrossedInto(chapter)) sessionSync.request(SyncTrigger.ChapterChanged)
         lastChapter = chapter
@@ -389,7 +391,7 @@ class PlaybackController @Inject constructor(
             isPlaying = media.isPlaying,
             isLoading = media.playbackState == Player.STATE_BUFFERING,
             position = position,
-            duration = item?.let(MediaItems::bookDurationOf) ?: Duration.ZERO,
+            duration = if (item == null) Duration.ZERO else media.bookDuration(),
             chapters = if (item == null) emptyList() else GlobalTimeline.ordered(chapters),
             currentChapter = chapter,
             // Read from the player rather than from the settings, so the state always reports what is
