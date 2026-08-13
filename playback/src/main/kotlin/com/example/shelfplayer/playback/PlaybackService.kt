@@ -81,6 +81,12 @@ class PlaybackService : MediaLibraryService() {
     internal lateinit var autoRewind: AutoRewindController
 
     @Inject
+    internal lateinit var bookRemaining: BookRemaining
+
+    @Inject
+    internal lateinit var notifications: BookNotificationProvider
+
+    @Inject
     internal lateinit var playbackSettings: PlaybackSettingsRepository
 
     @Inject
@@ -125,6 +131,11 @@ class PlaybackService : MediaLibraryService() {
             .build()
         // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
         // singleton in this process, so it is the same object the app's UI drives.
+        // PRODUCT_SPEC PLAY-001 — the notification's second line carries the *book's* remaining time. Set
+        // before the session is built, so the first notification already has it rather than gaining it a
+        // minute later.
+        setMediaNotificationProvider(notifications)
+        bookRemaining.attach(exoPlayer)
         sleepTimer.attach(exoPlayer)
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
@@ -179,6 +190,8 @@ class PlaybackService : MediaLibraryService() {
         sessionSync.onShutdown()
         sessionSync.attach(null)
         autoRewind.attach(null)
+        bookRemaining.attach(null)
+        notifications.release()
         sleepTimer.attach(null)
         journal?.cancel()
         sleepTimerWatch?.cancel()
@@ -206,6 +219,9 @@ class PlaybackService : MediaLibraryService() {
             while (isActive) {
                 delay(JOURNAL_INTERVAL_MS)
                 recordPosition()
+                // PRODUCT_SPEC PLAY-001 — piggybacked on the journal rather than given a timer of its own.
+                // The label is minute-granular, so this is a no-op on eleven ticks out of twelve.
+                notifications.refreshIfChanged()
             }
         }
     }

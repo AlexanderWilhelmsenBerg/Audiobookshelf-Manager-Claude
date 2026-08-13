@@ -4,4 +4,9 @@
     <string name="player_sleep_remaining">Sovetid %1$s</string>
     <string name="player_sleep_minutes">%1$d min</string>
     <string name="player_sleep_seconds">%1$d s</string>
+
+    <string name="player_book_remaining_hours">%1$d t %2$d min igjen</string>
+    <string name="player_book_remaining_minutes">%1$d min igjen</string>
+    <string name="player_book_remaining_moments">Mindre enn ett minutt igjen</string>
+    <string name="player_book_remaining_separator">%1$s · %2$s</string>
 </resources>
