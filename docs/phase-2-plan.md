@@ -4,7 +4,7 @@ Written against `PRODUCT_SPEC` PLAY-001 … PLAY-009 and the Phase 2 exit criter
 
 ## Where Phase 2 actually stands — 2026-08-08
 
-**Two waves of six.** `:playback` exists, with a `MediaLibraryService`, ExoPlayer on the app's
+**Three waves of six.** `:playback` exists, with a `MediaLibraryService`, ExoPlayer on the app's
 authenticated client, a media notification and a mini player. Against the deliverables PRODUCT_SPEC
 lists for the phase:
 
@@ -14,7 +14,7 @@ lists for the phase:
 | Remote playback session | **Built** — `PlaybackApi.openSession`, 13 contract tests |
 | ExoPlayer | **Built** — on the `@AuthenticatedClient` OkHttp data source |
 | Global timeline | **Built** — offsets, seeking across boundaries, chapter navigation |
-| Progress sync | Journaled locally every 5 s; **session sync is wave 3** |
+| Progress sync | **Built** — journal every 5 s, remote sync on the cadence PLAY-004 names, and a durable outbox |
 | Notification / lockscreen / headset | Notification and lock screen built; **headset resume untested on hardware** |
 | Speed / skip | Not started — wave 4 |
 | Buffer presets | Not started — wave 4 |
@@ -147,7 +147,7 @@ whose track durations are not whole seconds.
 - The unit tests that belong here rather than on a device: offset conversion both ways, boundary
   seeking, malformed and absent chapter data.
 
-## Wave 3 — progress, and not losing it
+## Wave 3 — progress, and not losing it ✅ **built, 2026-08-08 (untested on hardware)**
 
 PLAY-004 and PLAY-005. The requirements product priority 2 exists for. **Revised after reading the
 server's session manager** — the original plan had a structural hole in it.
@@ -191,12 +191,65 @@ This deviates from PLAY-004's literal "95%, configurable 90–99%", and delibera
 book is half an hour from the end, which is not what anyone means by finished. The requirement's intent
 — a book near its end counts as done, and the user can tune it — is kept; its unit is not.
 
+### What wave 3 actually shipped
+
+- **One table, `playback_sessions`** (database version 9), carrying a session from `Open` through
+  `Pending` to `Synced`. An "active session" table plus a separate outbox would need a hand-off, and the
+  hand-off is exactly where a session is lost: the process dies between the delete and the insert and
+  nobody ever learns the listener was there.
+- **Two id columns, not one.** `sessionId` is a UUIDv4 this device generated and is what the offline
+  route uploads under — which is what makes a retry idempotent. `remoteSessionId` is what the *server*
+  issued, and it is `null` for a session recorded with no connection. Collapsing them is how an offline
+  session ends up with no route by which it could ever be uploaded.
+- **Write first, send second, everywhere.** Every method in `DefaultSessionSyncRepository` stores the
+  position before it touches the network and leaves the row queued when the send fails. A position that
+  was attempted and lost is indistinguishable, afterwards, from one that was never recorded.
+- **No retry ceiling.** `attempts` climbs and the row stays. An outbox that gives up has discarded
+  listening the user did.
+- **The cadence, each trigger from the place that knows it happened**: the thirty-second ticker and the
+  player events from the service, the chapter crossing from `PlaybackController` (the only place that
+  holds the chapter list), the timer stop from `SleepTimerController`, and the background transition from
+  the composition's `ON_STOP`. Nothing infers a trigger from a state change, because a trigger inferred
+  from state is a trigger that fires on rotation.
+- **Clock skew from the `Date` response header**, on every exchange, surfaced under Settings → About.
+- **The readings, on a screen.** Every criterion in PLAY-004 and PLAY-005 is about something that
+  happened *between* the app and the server, and none of it is visible from either side alone: "the queue
+  drained" and "the queue was silently discarded" look identical on a phone. So the About tab now carries
+  the outbox's counts, the last accepted position and its trigger, the last error code, the skew — and a
+  checklist of the wave-3 checks with each one's verdict where the app can judge it, and an explicit
+  "needs a device" where it cannot.
+
+### What wave 3 deliberately did not do
+
+- **`markAsFinishedTimeRemaining` is still unread**, so ADR-0013's `max(30s, library setting)` is still
+  half-implemented and the app's flat thirty seconds is in force. It needs the library setting modelled,
+  which is a Phase 1 fixture the app has never parsed. Carried to wave 4.
+- **`timeListened`'s accumulate-or-replace question is stated rather than answered** — see
+  `docs/api-compatibility.md`. It affects a statistic, never a position, and it is on the checklist.
+- **The outbox is drained by a sync trigger, not by WorkManager.** A book that was listened to offline and
+  then never played again keeps its row until the next play. PLAY-005 does not ask for a constrained
+  background drain and Phase 4's download work brings WorkManager into playback anyway; adding a worker
+  now would be a second scheduler for one queue.
+
+### Tests
+
+- 19 contract tests over the play, sync, close and `local-all` fixtures (6 new).
+- 11 over the outbox's SQL against a real database — including that compaction removes uploaded rows by
+  `syncedAt` and leaves an *older* queued row alone, which is the one query that could silently destroy
+  listening.
+- 14 over the repository: a failed sync leaves a durable row, an offline session is uploadable at all, a
+  retry carries the same id, a declined position is recorded rather than retried, a session the batch did
+  not mention stays queued, and no book title reaches the log.
+- 13 over `ListenedTime`, 10 over `ServerClock`, 8 over the checklist's verdicts, 2 over the migration.
+
 ## Wave 4 — the controls a listener expects
 
 PLAY-006 through PLAY-009, each small, each independently testable.
 
 - Speed 0.5×–3.0× in 0.05 steps, pitch preserved, per-book override, persisting across local and
   streamed copies.
+- **Carried in from wave 3**: read the library's `markAsFinishedTimeRemaining` and prefer it over the
+  app's flat thirty seconds (ADR-0013's unfinished half).
 - Skip back/forward, independently configurable 5–120 s, defaulting to 15 and 30.
 - Buffer presets, remote streams only, with the invalid combinations rejected rather than clamped.
 - ~~Sleep timer with end-of-chapter, fade-out, notification extension, surviving recreation.~~ **Built

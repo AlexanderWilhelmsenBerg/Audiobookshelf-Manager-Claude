@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
 import androidx.annotation.OptIn
@@ -24,6 +25,7 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.playback.SleepTimerState
+import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.FinishedThreshold
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.google.common.util.concurrent.Futures
@@ -54,8 +56,7 @@ import kotlin.time.Duration
  *
  * No browse tree — Android Auto and Wear reach a [MediaLibraryService] through `onGetLibraryRoot`, and
  * the default rejects it. That is the honest answer for wave 1 rather than a stub returning an empty
- * root, which would look supported and browse to nothing. No session sync either: progress is journaled
- * locally and wave 3 adds the outbox that sends it back to the server.
+ * root, which would look supported and browse to nothing.
  */
 @OptIn(UnstableApi::class)
 @AndroidEntryPoint
@@ -69,6 +70,9 @@ class PlaybackService : MediaLibraryService() {
 
     @Inject
     internal lateinit var sleepTimer: SleepTimerController
+
+    @Inject
+    internal lateinit var sessionSync: SessionSyncCoordinator
 
     @Inject
     internal lateinit var logger: Logger
@@ -101,13 +105,40 @@ class PlaybackService : MediaLibraryService() {
         exoPlayer.addListener(PlayerEvents())
         session = MediaLibrarySession.Builder(this, exoPlayer, LibraryCallback())
             .setBitmapLoader(players.bitmapLoader())
+            // PRODUCT_SPEC PLAY-001 — tapping the notification opens the app. Without this the media
+            // notification has no `contentIntent` at all, so a tap does nothing: a listener who reaches for
+            // the notification to see where they are gets no response and no explanation.
+            .apply { launchIntent()?.let(::setSessionActivity) }
             .build()
         // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
         // singleton in this process, so it is the same object the app's UI drives.
         sleepTimer.attach(exoPlayer)
+        // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
+        // player rather than owning one, for the same reason the timer is: there is exactly one.
+        sessionSync.attach(exoPlayer)
         startJournal()
         observeSleepTimer()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    /**
+     * A pending intent that opens the app, resolved from the package manager rather than from a class name.
+     *
+     * `:playback` cannot name the app's activity — it does not depend on `:app`, and it must not, or the
+     * module boundary that keeps `MediaSession` in one place would run backwards. Asking the package manager
+     * for the launch intent gets the same activity without naming it, and returns `null` on the one build
+     * where there is no launcher activity at all (an instrumentation run), where a session activity would be
+     * meaningless anyway.
+     */
+    private fun launchIntent(): PendingIntent? {
+        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return null
+        return PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            // `IMMUTABLE` because nothing may add extras to it, and required from API 31 regardless.
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
@@ -129,6 +160,10 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         flushProgress()
+        // PRODUCT_SPEC PLAY-004 — "service shutdown callback". On the application scope inside the
+        // coordinator, because `scope` is cancelled two lines below.
+        sessionSync.onShutdown()
+        sessionSync.attach(null)
         sleepTimer.attach(null)
         journal?.cancel()
         sleepTimerWatch?.cancel()
@@ -219,15 +254,50 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class PlayerEvents : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (!isPlaying) scope.launch { recordPosition() }
+            // The listening-time interval closes before the sync reads it, or a pause would report less
+            // listening than happened.
+            sessionSync.onPlayingChanged(isPlaying)
+            if (!isPlaying) {
+                scope.launch { recordPosition() }
+                sessionSync.request(SyncTrigger.Paused)
+            }
         }
 
+        /**
+         * A track boundary. `ChapterChanged` is reported by `PlaybackController`, which is the only place that
+         * holds the chapter list — the service deliberately does not, because a long book's chapters in every
+         * `MediaItem`'s extras would be tens of kilobytes across the binder to answer one question.
+         */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             scope.launch { recordPosition() }
+            sessionSync.request(SyncTrigger.TrackChanged)
+        }
+
+        /**
+         * PRODUCT_SPEC PLAY-004 — "seek completion".
+         *
+         * `onPositionDiscontinuity` with `DISCONTINUITY_REASON_SEEK_ADJUSTMENT` or `_SEEK` is the seek having
+         * landed, which is the moment worth syncing: syncing when the seek was *requested* would send the
+         * position the listener left rather than the one they chose.
+         */
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK ||
+                reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
+            ) {
+                scope.launch { recordPosition() }
+                sessionSync.request(SyncTrigger.SeekCompleted)
+            }
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
-            if (playbackState == Player.STATE_ENDED) scope.launch { recordPosition() }
+            if (playbackState == Player.STATE_ENDED) {
+                scope.launch { recordPosition() }
+                sessionSync.request(SyncTrigger.BookChanged)
+            }
         }
 
         /**

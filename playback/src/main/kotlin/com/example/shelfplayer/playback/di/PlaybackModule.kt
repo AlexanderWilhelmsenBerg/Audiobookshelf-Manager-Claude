@@ -9,8 +9,10 @@ import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.example.shelfplayer.core.network.di.AuthenticatedClient
+import com.example.shelfplayer.playback.DefaultNotificationAccessReader
 import com.example.shelfplayer.playback.DefaultPlayerFactory
 import com.example.shelfplayer.playback.MediaDataSource
+import com.example.shelfplayer.playback.NotificationAccessReader
 import com.example.shelfplayer.playback.PlayerFactory
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.Binds
@@ -45,6 +47,10 @@ internal interface PlaybackModule {
     @Binds
     @Singleton
     fun bindsPlayerFactory(impl: DefaultPlayerFactory): PlayerFactory
+
+    @Binds
+    @Singleton
+    fun bindsNotificationAccessReader(impl: DefaultNotificationAccessReader): NotificationAccessReader
 
     companion object {
         @Provides

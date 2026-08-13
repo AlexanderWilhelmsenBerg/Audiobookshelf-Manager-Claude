@@ -11,9 +11,9 @@ import retrofit2.http.Path
  *
  * `item-play.json` and `multi-item-play.json` are what this signature was written against.
  *
- * Only the one route so far. `POST /api/session/{id}/sync`, `/close`, `/api/session/local` and
- * `/local-all` are captured and belong to wave 3's outbox — declaring them here now would put four
- * unused methods in the way of reading what the app actually sends.
+ * `/api/session/local` is deliberately **absent**. It is captured, and it is the wrong route for a queue:
+ * it answers `200` with an empty body, so a drain cannot tell an accepted session from an ignored one.
+ * `local-all` reports per-session results and is used even for a single session.
  */
 internal interface PlaybackService {
     /**
@@ -29,4 +29,37 @@ internal interface PlaybackService {
         @Path("itemId") itemId: String,
         @Body request: PlaySessionRequestDto,
     ): Response<PlaybackSessionDto>
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — sends a position against an **open** session.
+     *
+     * `Response<Unit>` because the server answers `200` with `OK` as `text/plain`. Declaring a JSON body
+     * would make the converter fail on a successful response.
+     */
+    @POST("api/session/{sessionId}/sync")
+    suspend fun sync(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("sessionId") sessionId: String,
+        @Body request: SessionSyncRequestDto,
+    ): Response<Unit>
+
+    /** PRODUCT_SPEC PLAY-004 — the last position, and the session is done. Same shape as [sync]. */
+    @POST("api/session/{sessionId}/close")
+    suspend fun close(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("sessionId") sessionId: String,
+        @Body request: SessionSyncRequestDto,
+    ): Response<Unit>
+
+    /**
+     * PRODUCT_SPEC PLAY-005 — the outbox drain, with a per-session result.
+     *
+     * Used for one session as readily as for ten: the single-session route reports nothing a queue can
+     * act on. See `LocalSessionResultDto`.
+     */
+    @POST("api/session/local-all")
+    suspend fun syncLocalSessions(
+        @Header(AUTHORIZATION) bearer: String,
+        @Body request: LocalSessionBatchDto,
+    ): Response<LocalSessionBatchResponseDto>
 }
