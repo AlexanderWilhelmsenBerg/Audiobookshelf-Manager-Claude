@@ -368,6 +368,22 @@ remaining time twice, once as a bar and once as text, which is worse than either
 a zero track duration is unverified (PRODUCT_SPEC 22.5) — and gapless crossing at speed is a soak question,
 not a unit-test one.
 
+### What the first device run found — build 0.5.0, fixed in 0.5.1
+
+Multi-file playback itself was correct. Four things around it were not, and the first is the one that
+matters:
+
+| Reported | Cause | Fix |
+| --- | --- | --- |
+| A 34-hour book showed as **527 hours** in the notification, and tens of thousands of hours in the app; the bar sat at the end | `ConcatenatingMediaSource2.Builder.add` takes a placeholder duration in **milliseconds** and converts with `Util.msToUs` itself. The first build passed microseconds — every book a thousand times too long, then truncated to 32 bits somewhere in the system UI: 33.93 h × 1000 = 122,156,284,288 ms, low 32 bits = 1,897,200,000 ms = **527 h** exactly | milliseconds, with `BookMediaSourceFactoryTest` reading the built timeline back so the unit cannot drift again |
+| **Back on the notification restarted the whole book** | With one timeline window there is no previous item, so Media3's default skip-to-previous seeks to zero | the app publishes its own ±skip buttons into `SLOT_BACK`/`SLOT_FORWARD` (`NotificationButtons`), following the configured intervals |
+| The seek bar was **too thick**, and its thumb was a bar rather than a dot | Material 3's default slider: a sixteen-dp track and a pill thumb | one `ThinSlider` shape for both bars — four-dp track, round thumb, no gap or stop indicator |
+| The chapter bar could not be **seeked** | It was a `LinearProgressIndicator` | it is a slider, and it seeks *within the chapter* — roughly a hundred times finer than dragging the book's bar |
+
+The duration defect is the instructive one. It was invisible to every test written for the change, because
+all of them asserted on the *type* of source built rather than on the timeline it produces — and a device
+run reads the timeline. The regression test now reads it too.
+
 ### Also shipped: the chapter progress bar
 
 `docs/phase-2-closeout.md`'s cheap item, and the highest ratio of noticed benefit to risk in the list. The

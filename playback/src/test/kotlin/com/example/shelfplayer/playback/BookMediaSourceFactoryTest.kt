@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.source.ConcatenatingMediaSource2
@@ -52,6 +53,25 @@ class BookMediaSourceFactoryTest {
 
         assertIs<ConcatenatingMediaSource2>(source)
         assertEquals(BOOK.value, source.mediaItem.mediaId)
+    }
+
+    /**
+     * The unit, read back off the timeline the source actually builds.
+     *
+     * The first version of this factory passed **microseconds** to a builder that takes milliseconds and
+     * converts with `Util.msToUs` itself. Every book came out a thousand times longer than it is: a device
+     * run showed a 34-hour book as 527 hours in the notification — the product of the 1000× error and a
+     * 32-bit truncation somewhere in the system UI — and the bar and clocks were meaningless.
+     *
+     * Asserting on the built timeline rather than on the argument is the point: it is the number the
+     * player, the notification and the lock screen will all read.
+     */
+    @Test
+    fun `the window is as long as the book, in milliseconds`() {
+        val source = factory.createMediaSource(MediaItems.queueFor(session()).item)
+
+        val window = (source as ConcatenatingMediaSource2).initialTimeline!!.getWindow(0, Timeline.Window())
+        assertEquals(10_000L, window.durationMs)
     }
 
     @Test

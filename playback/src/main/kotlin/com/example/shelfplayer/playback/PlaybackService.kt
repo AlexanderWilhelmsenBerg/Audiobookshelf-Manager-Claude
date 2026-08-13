@@ -24,6 +24,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.FinishedThreshold
@@ -98,6 +99,11 @@ class PlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
     private var journal: Job? = null
     private var sleepTimerWatch: Job? = null
+    private var skipWatch: Job? = null
+
+    /** The two inputs to the notification's own buttons. Main thread only, like everything that reads them. */
+    private var skips: SkipIntervals = SkipIntervals.Default
+    private var sleepTimerState: SleepTimerState = SleepTimerState.Idle
 
     /**
      * The service's own scope, on the main thread because every [Player] read has to be.
@@ -132,6 +138,7 @@ class PlaybackService : MediaLibraryService() {
         autoRewind.attach(exoPlayer)
         startJournal()
         observeSleepTimer()
+        observeSkipIntervals()
         logger.info(LogCategory.Playback, "Playback service started")
     }
 
@@ -182,6 +189,7 @@ class PlaybackService : MediaLibraryService() {
         sleepTimer.attach(null)
         journal?.cancel()
         sleepTimerWatch?.cancel()
+        skipWatch?.cancel()
         session?.release()
         session = null
         player?.release()
@@ -357,36 +365,106 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * PRODUCT_SPEC PLAY-008 — the remaining time, in the notification.
+     * PRODUCT_SPEC PLAY-001 / PLAY-007 / PLAY-008 — everything in the notification that is ours.
      *
-     * Media3's notification is built from the session, so the way to put anything of our own in it is a
-     * custom-layout button. This one carries the countdown as its **display name** and extends the timer
-     * when pressed, which is both of PLAY-008's notification requirements in a single control: "displays
-     * remaining time in notification" and "a notification action extends the timer".
+     * Three buttons, republished whenever either input changes:
      *
-     * The button disappears when no timer is running rather than sitting there greyed out. A control
-     * that does nothing is a control a half-asleep listener will press anyway.
+     *  - **back and forward**, in the slots Media3 would otherwise fill with skip-to-previous and
+     *    skip-to-next. See [NotificationButtons] for why that substitution is not optional.
+     *  - **the sleep timer**, carrying its countdown as its display name and extending the timer when
+     *    pressed — both of PLAY-008's notification requirements in one control. It disappears when no timer
+     *    is running rather than sitting there greyed out: a control that does nothing is a control a
+     *    half-asleep listener will press anyway.
+     *
+     * The skip intervals are observed rather than read once, so a change in Settings reaches the
+     * notification immediately. The in-app buttons and the notification's must never disagree about how far
+     * they jump — that is the whole reason `SkipControls` bundles a label with its callbacks.
      */
     private fun observeSleepTimer() {
         sleepTimerWatch = scope.launch {
-            sleepTimer.state.collect { timer -> publishSleepTimerButton(timer) }
+            sleepTimer.state.collect { timer ->
+                sleepTimerState = timer
+                publishMediaButtons()
+            }
         }
     }
 
-    private fun publishSleepTimerButton(timer: SleepTimerState) {
+    private fun observeSkipIntervals() {
+        skipWatch = scope.launch {
+            playbackSettings.observeSettings().collect { settings ->
+                skips = settings.skips
+                publishMediaButtons()
+            }
+        }
+    }
+
+    private fun publishMediaButtons() {
         val current = session ?: return
-        val buttons = if (!timer.isActive) {
-            emptyList()
-        } else {
-            listOf(
+        current.setMediaButtonPreferences(mediaButtons())
+    }
+
+    private fun mediaButtons(): List<CommandButton> = buildList {
+        add(
+            skipButton(
+                icon = NotificationButtons.backIcon(skips.back),
+                action = NotificationButtons.ACTION_SKIP_BACK,
+                label = resources.getQuantityString(
+                    R.plurals.player_notification_skip_back,
+                    skips.back.inWholeSeconds.toInt(),
+                    skips.back.inWholeSeconds.toInt(),
+                ),
+                slot = CommandButton.SLOT_BACK,
+            ),
+        )
+        add(
+            skipButton(
+                icon = NotificationButtons.forwardIcon(skips.forward),
+                action = NotificationButtons.ACTION_SKIP_FORWARD,
+                label = resources.getQuantityString(
+                    R.plurals.player_notification_skip_forward,
+                    skips.forward.inWholeSeconds.toInt(),
+                    skips.forward.inWholeSeconds.toInt(),
+                ),
+                slot = CommandButton.SLOT_FORWARD,
+            ),
+        )
+        val timer = sleepTimerState
+        if (timer.isActive) {
+            add(
                 CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
                     .setDisplayName(getString(R.string.player_sleep_remaining, timer.remaining.asMinutesLabel()))
-                    .setSessionCommand(SessionCommand(ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+                    .setSessionCommand(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+                    // Not a transport control, so it goes where the extra actions go rather than displacing
+                    // one of the two a listener reaches for without looking.
+                    .setSlots(CommandButton.SLOT_OVERFLOW)
                     .setEnabled(true)
                     .build(),
             )
         }
-        current.setCustomLayout(buttons)
+    }
+
+    private fun skipButton(icon: Int, action: String, label: String, slot: Int): CommandButton =
+        CommandButton.Builder(icon)
+            .setDisplayName(label)
+            .setSessionCommand(SessionCommand(action, Bundle.EMPTY))
+            .setSlots(slot)
+            .setEnabled(true)
+            .build()
+
+    /**
+     * PRODUCT_SPEC PLAY-007 — the notification's skip, which is the app's skip.
+     *
+     * Expressed as a seek rather than as `Player.seekForward` for the same reason `PlaybackController` does:
+     * Media3's own skip uses the increment fixed when the player was built, and PLAY-007's is configurable
+     * per direction while the player is running.
+     *
+     * Media3 clamps the top end at the window's duration; the bottom is clamped here, because a negative
+     * seek would be silently accepted as zero by some controllers and rejected by others.
+     */
+    private fun skipBy(delta: Duration) {
+        val current = player ?: return
+        if (current.mediaItemCount == 0) return
+        current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))
     }
 
     /**
@@ -404,12 +482,12 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * Connections and transport controls, plus the sleep timer's own command. No browse tree.
+     * Connections and transport controls, plus the three commands the notification's own buttons carry.
+     * No browse tree.
      *
      * `MediaLibrarySession.Callback`'s defaults accept a connection with the standard command set and
      * reject `onGetLibraryRoot`, which is the accurate answer until a browse tree exists. The custom
-     * command has to be granted here, or the button in the notification would be rendered and then
-     * rejected when pressed.
+     * commands have to be granted here, or the buttons would be rendered and then rejected when pressed.
      */
     private inner class LibraryCallback : MediaLibrarySession.Callback {
         override fun onConnect(
@@ -418,10 +496,13 @@ class PlaybackService : MediaLibraryService() {
         ): MediaSession.ConnectionResult {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
                 .buildUpon()
-                .add(SessionCommand(ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+                .add(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+                .add(SessionCommand(NotificationButtons.ACTION_SKIP_BACK, Bundle.EMPTY))
+                .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
+                .setMediaButtonPreferences(mediaButtons())
                 .build()
         }
 
@@ -431,11 +512,13 @@ class PlaybackService : MediaLibraryService() {
             customCommand: SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
-            if (customCommand.customAction != ACTION_EXTEND_SLEEP_TIMER) {
-                return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+            when (customCommand.customAction) {
+                // PLAY-008 says the notification action *extends*; the shake *restarts*. See ADR-0014.
+                NotificationButtons.ACTION_EXTEND_SLEEP_TIMER -> sleepTimer.extend()
+                NotificationButtons.ACTION_SKIP_BACK -> skipBy(-skips.back)
+                NotificationButtons.ACTION_SKIP_FORWARD -> skipBy(skips.forward)
+                else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
-            // PLAY-008 says the notification action *extends*; the shake *restarts*. See ADR-0014.
-            sleepTimer.extend()
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
     }
@@ -445,8 +528,5 @@ class PlaybackService : MediaLibraryService() {
         const val JOURNAL_INTERVAL_MS = 5_000L
 
         const val SECONDS_PER_MINUTE = 60L
-
-        /** PRODUCT_SPEC PLAY-008 — the notification action. Namespaced, as a session command must be. */
-        const val ACTION_EXTEND_SLEEP_TIMER = "com.example.shelfplayer.playback.EXTEND_SLEEP_TIMER"
     }
 }

@@ -36,13 +36,13 @@ ecosystem settled on afterwards — so this compares against the clients people 
 | **Android Auto / CarPlay** | ✅ | ✅ | ✅ | ❌ |
 | **Bookmarks** | ✅ | ✅ | — | ❌ (button present, disabled) |
 | Offline downloads | ✅ | ✅ | ✅ | — Phase 3 |
-| Widgets | — | ✅ | ✅ | — Phase 6 |
-| Listening statistics | ✅ | ✅ | ✅ | — |
-| Equaliser | — | ✅ | — | — not in spec |
+| Widgets | — | ✅ | ✅ | — wanted, later phase: always the latest played book |
+| Listening statistics | ✅ | ✅ | ✅ | — wanted, later phase |
+| Equaliser | — | ✅ | — | — wanted, later phase |
 | Chromecast | ✅ | ✅ | — | — not in spec |
 | Auto-play next in a series | — | ✅ | — | — Phase 4 |
-| Queue / up-next, drag to reorder | — | — | — (SoundLeaf) | — not in spec |
-| Car mode (oversized controls) | — | ✅ | — | — not in spec |
+| Queue / up-next, drag to reorder | — | — | — (SoundLeaf) | — reframed as smart download, Phase 3 (ADR-0017) |
+| Car mode (oversized controls) | — | ✅ | — | — the owner means Android Auto; see that row |
 
 ## The four gaps worth closing, in order
 
@@ -113,15 +113,40 @@ through the current chapter you are — the question somebody asks before decidi
 additive UI, no new data: `GlobalTimeline.chapterAt` already gives the bounds. ✅ **Built in wave 5
 alongside item 1**, because it is small and it is the highest ratio of noticed-benefit to risk in the list.
 
-## What is deliberately not recommended
+## What the owner decided, 2026-08-13
 
-- **Equaliser, Chromecast, car mode, widgets, listening statistics.** Real features in rival apps, none of them
-  in PRODUCT_SPEC, and none of them Phase 2. Adding scope the spec does not ask for while an exit criterion is
-  unmet would be the wrong trade.
-- **Queue / up-next.** Only SoundLeaf has it, and an audiobook is not a playlist. Phase 4's "auto-play next in
-  a series" covers the case people actually mean.
-- **Skip silence / volume boost.** Not in the spec, and not offered by the clients compared here either — the
-  earlier impression that Absorb had them was wrong; its feature list does not mention either.
+This document originally declined equaliser, car mode, widgets, statistics and a queue as scope PRODUCT_SPEC
+does not ask for. The owner's answer was to **want all of them**, and to place them:
+
+> Else I also do want equaliser, car mode, widgets, statistics and a queue. For carmode I want android auto,
+> widgets should always display the latest played book, and the queue should just start the next book in the
+> series. … equaliser, car mode, widgets, statistics neither has to start now, they can come in a later
+> phase.
+
+Where each one lands:
+
+| Feature | Phase | What was decided |
+| --- | --- | --- |
+| **Car mode = Android Auto** | **2** | Not oversized on-screen controls — the head unit. Already gap 3 above, and already a PRODUCT_SPEC 11.1 responsibility, so nothing moves. |
+| **Queue = smart download** | **3** | Not a reorderable list: prefetch the next book in the series. Conditions recorded in [ADR-0017](adr/0017-smart-download-drives-the-series-queue.md) — over halfway, book over an hour, setting on, Wi-Fi only. |
+| **Widgets** | later | Always showing the **latest played book**, which makes it a home-screen resume button rather than a second player. |
+| **Listening statistics** | later | See the note below — it is the only one with a "start now" argument, and the argument does not survive. |
+| **Equaliser** | later | Media3 has `AudioProcessor`; nothing about it constrains the player built here. |
+
+### The one "does it have to start now?" question, and its answer
+
+Only **statistics** has an argument for starting early, and it is not about the screen: statistics needs
+*history*, and a feature that arrives in Phase 5 cannot invent data Phase 2 threw away. The app's
+`playback_sessions` outbox compacts synced rows after seven days, which is right for a sync queue and wrong
+for an archive.
+
+It still does not force work into Phase 2, because **the history is the server's**. Audiobookshelf keeps
+listening sessions itself, and reading them back is a request rather than a schema. What that costs is a
+capture rather than a migration, and PRODUCT_SPEC 22.4/22.5 mean the capture has to come before anyone
+relies on the shape — the same discipline bookmarks needs.
+
+So: nothing is pulled into Phase 2 by any of these. The only Phase 2 item among them is Android Auto, and it
+was already on the list.
 
 ## Revised wave 5
 

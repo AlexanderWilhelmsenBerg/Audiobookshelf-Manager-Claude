@@ -13,4 +13,19 @@
     <string name="player_sleep_minutes">%1$d min</string>
     <!-- %1$d is a whole number of seconds, shown only in the final minute. -->
     <string name="player_sleep_seconds">%1$d s</string>
+
+    <!--
+      PRODUCT_SPEC PLAY-001 / PLAY-007 — the notification's two side buttons.
+
+      A screen reader announces these, and on a numberless glyph they are the only place the amount is
+      stated at all. Plurals so a one-second skip does not read "1 seconds".
+    -->
+    <plurals name="player_notification_skip_back">
+        <item quantity="one">Back %1$d second</item>
+        <item quantity="other">Back %1$d seconds</item>
+    </plurals>
+    <plurals name="player_notification_skip_forward">
+        <item quantity="one">Forward %1$d second</item>
+        <item quantity="other">Forward %1$d seconds</item>
+    </plurals>
 </resources>

@@ -1,9 +1,13 @@
 package com.example.shelfplayer.feature.player
 
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Chapter
@@ -14,6 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlin.test.assertEquals
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -75,14 +80,46 @@ class FullPlayerScreenTest {
         composeRule.onNodeWithText("Chapter 1 of 1").assertDoesNotExist()
     }
 
-    private fun render(state: PlaybackUiState) {
+    /**
+     * PRODUCT_SPEC PLAY-003 — the chapter bar seeks, and it seeks *inside the chapter*.
+     *
+     * The device report asked for it and the arithmetic is the part worth pinning: half way along a bar
+     * that spans a chapter running from thirty to fifty minutes is **forty** minutes into the book, not
+     * halfway through the book. Getting this wrong would send a listener an hour away from where they
+     * pointed, from a control that looks precise.
+     */
+    @Test
+    fun `dragging the chapter bar seeks inside the chapter`() {
+        var seeked: Duration? = null
+        render(playing(position = 35.minutes), onSeekTo = { seeked = it })
+
+        composeRule.onNodeWithContentDescription("The Flood, 15:00 left in this chapter")
+            .performSemanticsAction(SemanticsActions.SetProgress) { set -> set(0.5f) }
+
+        assertEquals(40.minutes, seeked)
+    }
+
+    /** And the book's bar still spans the book, so the two cannot have been wired to the same range. */
+    @Test
+    fun `dragging the book bar seeks across the whole book`() {
+        var seeked: Duration? = null
+        render(playing(position = 35.minutes), onSeekTo = { seeked = it })
+
+        composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress), useUnmergedTree = false)
+            .onFirst()
+            .performSemanticsAction(SemanticsActions.SetProgress) { set -> set(0.5f) }
+
+        assertEquals(1.hours, seeked)
+    }
+
+    private fun render(state: PlaybackUiState, onSeekTo: (Duration) -> Unit = {}) {
         composeRule.setContent {
             FullPlayer(
                 state = state,
                 timer = SleepTimerState.Idle,
                 actions = PlayerActions(
                     onTogglePlayPause = {},
-                    onSeekTo = {},
+                    onSeekTo = onSeekTo,
                     onOpenSpeed = {},
                     onOpenSleepTimer = {},
                     onOpenChapters = {},

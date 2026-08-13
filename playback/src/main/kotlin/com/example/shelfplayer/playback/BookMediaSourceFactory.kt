@@ -89,7 +89,11 @@ internal class BookMediaSourceFactory(private val dataSourceFactory: DataSource.
                 .setUri(track.url)
                 .setMimeType(track.mimeType)
                 .build()
-            builder.add(part, track.duration.inWholeMicroseconds())
+            // Milliseconds. `ConcatenatingMediaSource2.Builder.add` converts with `Util.msToUs` itself, and
+            // the first build of this passed microseconds — which made every book a thousand times longer
+            // than it is and rendered the notification's bar and clocks meaningless. `BookMediaSourceFactoryTest`
+            // reads the built timeline back so the unit cannot drift again.
+            builder.add(part, track.duration.inWholeMilliseconds)
         }
         logger.info(
             LogCategory.Playback,
@@ -98,12 +102,5 @@ internal class BookMediaSourceFactory(private val dataSourceFactory: DataSource.
             LogField.Millis("duration", tracks.sumOf { it.duration.inWholeMilliseconds }),
         )
         return builder.build()
-    }
-
-    /** `ConcatenatingMediaSource2` counts in microseconds; every other duration in this app is a `Duration`. */
-    private fun Duration.inWholeMicroseconds(): Long = inWholeMilliseconds * MICROS_PER_MILLI
-
-    private companion object {
-        const val MICROS_PER_MILLI = 1_000L
     }
 }
