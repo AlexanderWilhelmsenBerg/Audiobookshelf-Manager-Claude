@@ -15,7 +15,7 @@ lists for the phase:
 | ExoPlayer | **Built** — on the `@AuthenticatedClient` OkHttp data source |
 | Global timeline | **Built** — offsets, seeking across boundaries, chapter navigation |
 | Progress sync | **Built** — journal every 5 s, remote sync on the cadence PLAY-004 names, and a durable outbox |
-| Notification / lockscreen / headset | Notification and lock screen built; **headset resume untested on hardware** |
+| Notification / lockscreen / headset | Built, with the book's remaining time on it; the bar is still per-file until wave 5 (ADR-0016). **Headset resume untested** |
 | Speed / skip | **Built** — 0.5–3.0× with a per-book override, and both skips configurable |
 | Buffer presets | **Built** — applied when the player is built, which is the next book rather than mid-chapter |
 | Sleep timer | **Built** — pulled forward from wave 4, plus shake-to-restart and a local history (ADR-0014) |
@@ -311,16 +311,54 @@ PLAY-006 through PLAY-009, each small, each independently testable.
 - 2 over migration 9→10, including the profile cascade.
 - 1 more in `MiniPlayerScreenTest`, asserting the skip labels follow the configured interval.
 
-## Wave 5 — the exit criteria
+## Wave 5 — one timeline window, then the exit criteria
+
+### First: a book becomes one timeline window (ADR-0016)
+
+The largest single change left in Phase 2, and it goes **before** the soak because the soak is its test.
+
+Media3 reports the *current media item's* position and duration to every controller, and this app's playlist
+is one item per audio file — so the notification, the lock screen and Android Auto all describe the file
+rather than the book. On a library with a file per chapter that reads as "time left in this chapter". Wave 4
+answered the device report by printing the book's remaining time as text beside it; this replaces the caption
+with the right number.
+
+`ConcatenatingMediaSource2` presents several sources as a single `MediaItem` with one period whose duration is
+the sum of theirs, so the player reports book-global positions natively and nothing converts anything.
+
+**What it removes**, which is most of the work:
+
+| Gone | Because |
+| --- | --- |
+| `KEY_TRACK_START_OFFSET_MS`, `KEY_TRACK_DURATION_MS`, `KEY_BOOK_DURATION_MS` | the player knows the book's duration |
+| `MediaItems.globalPositionOf`, `MediaItems.tracksOf`, `GlobalTimeline.cursorFor` | nothing left to convert |
+| `BookRemaining`, `BookNotificationProvider` | the notification's own clocks describe the book |
+
+`GlobalTimeline`'s **chapter** functions stay. Chapters are the app's own data and still independent of file
+boundaries — that half of PLAY-003 is unaffected.
+
+**What it needs before it can be trusted:**
+
+1. A **fixture for a book with an unknown track duration.** `ConcatenatingMediaSource2` needs each source's
+   duration up front. The server supplies them, but a book that does not must fall back to the playlist — and
+   a fallback nobody tests is a fallback that does not work.
+2. The **soak, at speed, across a file boundary, with a cold buffer.** Whether a concatenated source crosses
+   gaplessly is not a question a unit test can answer.
+3. A pass over every position reader — journal, sync, rewind, seek bar, chapter sheet — each of which gets
+   *simpler*, and each of which is a chance to get it wrong.
+
+The wave-4 notification text is removed in the same commit that verifies this on a device, not before.
+Shipping both would print the remaining time twice.
+
+### Then: the exit criteria
 
 Hardware, plus the three things wave 4 left measured-but-unmeasurable off a device:
 
 - `markAsFinishedTimeRemaining` from the library settings (ADR-0013's unfinished half).
 - Rebuffer count and startup latency in diagnostics (PLAY-006's last criterion).
-- The media notification, if the diagnostics added after the 0.3.0 device run show it is our defect rather
-  than a declined permission.
+- Media-button resume and per-device policy (ROUTE-001/002), which have never been attempted.
 
-Hardware. A delta test script per build, as in Phase 1, plus the soak.
+A delta test script per build, as in Phase 1, plus the two-hour soak.
 
 ## What is carried in from Phase 1
 
