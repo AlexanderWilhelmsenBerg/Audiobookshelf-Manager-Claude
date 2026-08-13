@@ -143,6 +143,7 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
                 onOpenChapters = { isChapterSheetOpen = true },
                 onOpenSpeed = { isSpeedSheetOpen = true },
                 onCollapse = playerViewModel::onCollapse,
+                onRetry = playerViewModel::onRetry,
             ),
         )
     }

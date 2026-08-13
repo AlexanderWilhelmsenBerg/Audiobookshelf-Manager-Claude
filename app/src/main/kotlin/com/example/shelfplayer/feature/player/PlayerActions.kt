@@ -38,4 +38,6 @@ data class PlayerActions(
     val onOpenSleepTimer: () -> Unit,
     val onOpenChapters: () -> Unit,
     val onCollapse: () -> Unit,
+    /** PRODUCT_SPEC PLAY-001 — what the listener presses when playback stopped on an error. */
+    val onRetry: () -> Unit = {},
 )

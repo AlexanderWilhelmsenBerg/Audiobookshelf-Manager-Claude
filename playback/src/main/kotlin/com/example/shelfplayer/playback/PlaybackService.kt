@@ -105,6 +105,9 @@ class PlaybackService : MediaLibraryService() {
     private var skips: SkipIntervals = SkipIntervals.Default
     private var sleepTimerState: SleepTimerState = SleepTimerState.Idle
 
+    /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
+    private val recovery = PlaybackRecovery()
+
     /**
      * The service's own scope, on the main thread because every [Player] read has to be.
      *
@@ -283,6 +286,8 @@ class PlaybackService : MediaLibraryService() {
             // listening than happened.
             sessionSync.onPlayingChanged(isPlaying)
             if (isPlaying) {
+                // Audio is coming out, so whatever went wrong is over and the next failure starts from one.
+                recovery.onPlaying()
                 // PRODUCT_SPEC PLAY-009 — before anything else on the resume path: a rewind that landed after
                 // playback had started would be audible as a stutter.
                 autoRewind.onResumed()
@@ -313,6 +318,7 @@ class PlaybackService : MediaLibraryService() {
          * `MediaItem`'s extras would be tens of kilobytes across the binder to answer one question.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            recovery.onBookChanged()
             scope.launch { recordPosition() }
             sessionSync.request(SyncTrigger.TrackChanged)
         }
@@ -348,19 +354,37 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * PRODUCT_SPEC 14.4 / 14.5 — the error is recorded, and the book it happened to is not.
+         * PRODUCT_SPEC 14.4 / 14.5 / PLAY-001 — the error is recorded, the book it happened to is not, and
+         * the player is put back on its feet.
          *
          * `errorCodeName` is a Media3 constant and says what went wrong. The exception's message can
          * contain the failing URL, which is a path on someone's private server, so it is deliberately
          * not logged.
+         *
+         * **The recovery is the important half.** An errored player is `STATE_IDLE`, and an idle player
+         * ignores `play()` and `seekTo()` — a device run found a book that stopped mid-seek and then could
+         * not be restarted at all. `prepare()` is the only way out, so a transient error takes it, a few
+         * times, with a delay. See [PlaybackRecovery] for what counts as transient and why the count is
+         * bounded.
          */
         override fun onPlayerError(error: PlaybackException) {
+            val retryIn = recovery.onError(error)
             logger.warn(
                 LogCategory.Playback,
-                "Playback stopped on an error",
+                if (retryIn == null) "Playback stopped on an error" else "Playback hit an error and will retry",
                 LogField.Public("errorCode", error.errorCodeName),
+                LogField.Count("attempt", recovery.attemptCount),
             )
             scope.launch { recordPosition() }
+            if (retryIn == null) return
+            scope.launch {
+                delay(retryIn)
+                val current = player ?: return@launch
+                if (current.mediaItemCount == 0) return@launch
+                // `playWhenReady` survives an error, so re-preparing resumes a book that was playing and
+                // leaves a paused one paused. Nothing here decides to start playback that was not running.
+                current.prepare()
+            }
         }
     }
 

@@ -173,6 +173,8 @@
     <string name="player_chapter_ordinal">Kapittel %1$d av %2$d</string>
     <string name="player_chapter_progress">%1$s, %2$s igjen av kapittelet</string>
     <string name="player_bookmark_later">Bokmerke — kommer i en senere fase</string>
+    <string name="player_failed">Avspillingen stoppet. Tjeneren eller tilkoblingen kan være utilgjengelig.</string>
+    <string name="player_failed_retry">Prøv igjen</string>
     <string name="player_open">Åpne spilleren</string>
     <string name="player_starting">Starter …</string>
     <!-- %1$s er posisjonen boken fortsetter fra, for eksempel "2 t 14 min". -->
@@ -213,6 +215,9 @@
         <item quantity="other">Startet på nytt %1$d ganger</item>
     </plurals>
     <string name="settings_tab_sleep">Sovetid</string>
+    <string name="book_mark_finished">Ferdig</string>
+    <string name="book_synopsis_more">Vis mer</string>
+    <string name="book_synopsis_less">Vis mindre</string>
     <string name="book_section_about">Om boken</string>
     <string name="book_download_later">Last ned — kommer i en senere fase</string>
     <string name="navigate_back">Tilbake</string>
@@ -222,7 +227,19 @@
     <string name="settings_tab_about">Om</string>
     <string name="about_section_app">ShelfPlayer</string>
     <string name="about_version">Versjon</string>
-    <string name="about_phase">Under arbeid. Avspilling og nedlastinger er ikke bygget ennå.</string>
+    <string name="about_section_diagnostics">Diagnostikk</string>
+    <string name="event_log_body">En oversikt over hva appen har gjort siden den startet: avspilling, synkronisering, nettverk og feil. Ingenting herfra sendes noe sted, og det tømmes når appen lukkes.</string>
+    <string name="event_log_open">Åpne hendelsesloggen</string>
+    <string name="event_log_title">Hendelseslogg</string>
+    <plurals name="event_log_count">
+        <item quantity="one">%1$d hendelse siden appen startet</item>
+        <item quantity="other">%1$d hendelser siden appen startet</item>
+    </plurals>
+    <string name="event_log_problems_only">Bare problemer (%1$d)</string>
+    <string name="event_log_copy">Kopier</string>
+    <string name="event_log_clear">Tøm</string>
+    <string name="event_log_empty">Ingenting er registrert ennå.</string>
+    <string name="about_phase">Under arbeid. Direkteavspilling, kapitler, sovetid og fremdriftssynkronisering er bygget; nedlastinger og frakoblet avspilling er ikke.</string>
     <string name="about_section_testing">Testing</string>
     <string name="about_testing_body">Avlesninger som brukes til å kontrollere en bygging mot akseptansetestene. Ingenting her endrer hvordan appen oppfører seg.</string>
 

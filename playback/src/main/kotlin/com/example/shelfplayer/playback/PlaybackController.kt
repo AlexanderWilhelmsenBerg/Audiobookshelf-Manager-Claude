@@ -147,13 +147,53 @@ class PlaybackController @Inject constructor(
         AppResult.Success(Unit)
     }
 
-    /** The transport control a mini player and a notification share. */
+    /**
+     * The transport control a mini player and a notification share.
+     *
+     * **The `prepare()` is the fix for a real defect.** A player that has hit an error sits in `STATE_IDLE`,
+     * and an idle player ignores `play()` and `seekTo()` alike — a device run found a book that stopped and
+     * then could not be started, seeked or recovered except by loading a different book. `prepare()` is the
+     * only way out of idle, so the play button now takes it whenever the player is not holding a live
+     * timeline. Pressing play must always mean something (product priority 1).
+     */
     fun togglePlayPause() {
         applicationScope.launch(mainDispatcher) {
             val media = connect() ?: return@launch
-            if (media.isPlaying) media.pause() else media.play()
+            when {
+                media.isPlaying -> media.pause()
+                media.needsPreparing() -> {
+                    media.prepare()
+                    media.play()
+                }
+                else -> media.play()
+            }
         }
     }
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — retry after a failure the service gave up on.
+     *
+     * The service retries a transient error a few times on its own (see [PlaybackRecovery]); this is what
+     * the *user* presses when it has stopped trying. Same two calls, because there is only one way out of
+     * idle — the difference is who decided to take it.
+     */
+    fun retry() {
+        applicationScope.launch(mainDispatcher) {
+            val media = connect() ?: return@launch
+            if (media.mediaItemCount == 0) return@launch
+            media.prepare()
+            media.play()
+        }
+    }
+
+    /**
+     * `true` when the player is idle or holding an error, which are the two states `play()` cannot leave.
+     *
+     * `STATE_IDLE` is reached by a fresh player, a stopped one and a failed one. Only the last is a defect,
+     * but preparing the other two is harmless — Media3 documents `prepare()` on a prepared player as a
+     * no-op — and telling them apart would be a distinction the caller does not need.
+     */
+    private fun MediaController.needsPreparing(): Boolean = playerError != null || playbackState == Player.STATE_IDLE
 
     /**
      * PRODUCT_SPEC PLAY-003 — seeks to a position on the **book's** timeline.
@@ -397,6 +437,10 @@ class PlaybackController @Inject constructor(
             // Read from the player rather than from the settings, so the state always reports what is
             // actually happening — including a speed something else set through the media session.
             speed = PlaybackSpeed.of(media.playbackParameters.speed),
+            // PRODUCT_SPEC PLAY-001 — a stopped book says so. The service retries a transient error a few
+            // times first (`PlaybackRecovery`); by the time this is non-null it has given up, and the only
+            // thing left is to tell the listener and offer the button.
+            hasFailed = media.playerError != null,
         )
     }
 
@@ -452,6 +496,15 @@ data class PlaybackUiState(
     val currentChapter: Chapter? = null,
     /** PRODUCT_SPEC PLAY-007 — what the player is actually running at, not what a setting says. */
     val speed: PlaybackSpeed = PlaybackSpeed.Normal,
+    /**
+     * PRODUCT_SPEC PLAY-001 — playback stopped on an error and the service has stopped retrying.
+     *
+     * A separate flag rather than an [AppError], because the player is the source and Media3's own message
+     * can carry the failing URL — a path on somebody's private server (14.5). What the user needs is that it
+     * stopped and that there is a button; what a *diagnostic* needs is the error code, and that is in the
+     * event log.
+     */
+    val hasFailed: Boolean = false,
 ) {
     /** Fraction in `0.0..1.0`; `0` when the duration is not known yet rather than a division by zero. */
     val fractionComplete: Float

@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.network.api
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 
@@ -62,4 +63,23 @@ internal interface PlaybackService {
         @Header(AUTHORIZATION) bearer: String,
         @Body request: LocalSessionBatchDto,
     ): Response<LocalSessionBatchResponseDto>
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — "marking finished is explicit". This is the explicit route.
+     *
+     * Not a session endpoint. A session says "somebody listened from here to here"; this states a fact about
+     * the book, which is what the user is doing when they tick or untick *Finished*. The two must not be
+     * muddled: marking a book finished from the book screen has to work without opening a session, and
+     * un-marking one must not look like listening.
+     *
+     * `media-progress.json` is the capture. The route and the body shape are exercised by
+     * `scripts/capture-contracts.sh`, which writes `{"currentTime":…,"isFinished":…}` and reads the stored
+     * progress straight back.
+     */
+    @PATCH("api/me/progress/{itemId}")
+    suspend fun updateProgress(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("itemId") itemId: String,
+        @Body request: MediaProgressUpdateDto,
+    ): Response<Unit>
 }

@@ -3,6 +3,7 @@ package com.example.shelfplayer.feature.book
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,12 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -29,14 +32,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,6 +83,7 @@ fun BookRoute(
         playback = playback,
         onPlay = playerViewModel::onPlay,
         onTogglePlayPause = playerViewModel::onTogglePlayPause,
+        onFinishedChanged = viewModel::onFinishedChanged,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
     )
@@ -86,6 +96,7 @@ fun BookScreen(
     playback: PlaybackUiState,
     onPlay: (LibraryItemId) -> Unit,
     onTogglePlayPause: () -> Unit,
+    onFinishedChanged: (Boolean) -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -132,6 +143,7 @@ fun BookScreen(
                 playback = playback,
                 onPlay = onPlay,
                 onTogglePlayPause = onTogglePlayPause,
+                onFinishedChanged = onFinishedChanged,
                 modifier = content,
             )
         }
@@ -144,6 +156,7 @@ private fun BookDetails(
     playback: PlaybackUiState,
     onPlay: (LibraryItemId) -> Unit,
     onTogglePlayPause: () -> Unit,
+    onFinishedChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -166,17 +179,15 @@ private fun BookDetails(
         // kind belong on the same line, and a reader scans a strip faster than they read a list.
         FactStrip(book = book)
 
-        ProgressSummary(book = book, modifier = Modifier.padding(horizontal = 16.dp))
+        ProgressSummary(
+            book = book,
+            onFinishedChanged = onFinishedChanged,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
 
         book.description?.let { description ->
             Section(titleRes = R.string.book_section_about) {
-                Text(
-                    // PRODUCT_SPEC LIB-004: HTML descriptions are sanitized before rendering. This
-                    // strips markup rather than rendering it; a real sanitizing renderer arrives with
-                    // the metadata editor in Phase 5, where untrusted provider content also lands.
-                    text = description.stripHtml(),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                Synopsis(text = description.stripHtml())
             }
         }
 
@@ -197,6 +208,52 @@ private fun BookDetails(
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
+
+/**
+ * PRODUCT_SPEC LIB-004 — the synopsis, three lines at a time.
+ *
+ * A publisher's blurb runs to two or three hundred words, and printed in full it pushes the genres, the
+ * publication facts and the freshness footnote off the bottom of a phone screen. Three lines is enough to
+ * recognise a book you half-remember, which is what somebody on this screen is usually doing; the rest is
+ * one tap away for the one time in ten they want it.
+ *
+ * **The button is only rendered when it would do something.** Compose can only know whether the text
+ * overflowed *after* it has been laid out, so the overflow is captured from the layout result rather than
+ * guessed from the string's length — a two-line blurb on a phone can be four on a small screen at large
+ * font sizes, and a "Show more" that expands nothing is worse than none.
+ */
+@Composable
+private fun Synopsis(text: String, modifier: Modifier = Modifier) {
+    var isExpanded by rememberSaveable(text) { mutableStateOf(false) }
+    var isTruncated by remember(text) { mutableStateOf(false) }
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            // PRODUCT_SPEC LIB-004: HTML descriptions are sanitized before rendering. The caller strips
+            // markup rather than rendering it; a real sanitizing renderer arrives with the metadata editor
+            // in Phase 5, where untrusted provider content also lands.
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = if (isExpanded) Int.MAX_VALUE else SYNOPSIS_LINES,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { result -> isTruncated = result.hasVisualOverflow || isTruncated },
+        )
+        if (isTruncated) {
+            TextButton(
+                onClick = { isExpanded = !isExpanded },
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        if (isExpanded) R.string.book_synopsis_less else R.string.book_synopsis_more,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/** Enough to recognise a book by, which is what this screen is for. */
+private const val SYNOPSIS_LINES = 3
 
 /**
  * A titled block, so the screen reads as sections rather than as a run of paragraphs.
@@ -409,23 +466,58 @@ private fun PlayIconButton(
     }
 }
 
+/**
+ * PRODUCT_SPEC PLAY-004 — how far in, and the one control that says otherwise.
+ *
+ * ### The tick box is a defect fix
+ *
+ * A device run found a book marked finished by the 95% threshold with **no way to undo it**: every write
+ * path or-ed the flag, so once set it was permanent and the book's progress could never be shown again.
+ * PRODUCT_SPEC PLAY-004 says marking finished is explicit; nothing said un-marking it was impossible.
+ *
+ * It is a checkbox rather than a menu item because it is a two-state fact about the book, and because a
+ * user who has just seen the wrong state wants to correct it in one tap from where they saw it.
+ *
+ * ### It renders with no progress row too
+ *
+ * A book nobody has opened has no progress, and marking it finished without listening to it is a real
+ * thing people do with a book they read on paper. So the bar and the percentage are conditional, and the
+ * control is not.
+ */
 @Composable
-private fun ProgressSummary(book: Book, modifier: Modifier = Modifier) {
-    val progress = book.progress ?: return
+private fun ProgressSummary(book: Book, onFinishedChanged: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val progress = book.progress
+    val isFinished = progress?.isFinished == true
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        val percent = (progress.fractionComplete * PERCENT).roundToInt()
-        Text(
-            text = if (progress.isFinished) {
-                stringResource(R.string.book_finished)
-            } else {
-                stringResource(R.string.book_progress, percent)
-            },
-            style = MaterialTheme.typography.labelLarge,
-        )
-        LinearProgressIndicator(
-            progress = { progress.fractionComplete },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (progress != null) {
+            val percent = (progress.fractionComplete * PERCENT).roundToInt()
+            Text(
+                text = if (isFinished) {
+                    stringResource(R.string.book_finished)
+                } else {
+                    stringResource(R.string.book_progress, percent)
+                },
+                style = MaterialTheme.typography.labelLarge,
+            )
+            LinearProgressIndicator(
+                progress = { progress.fractionComplete },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(value = isFinished, role = Role.Checkbox, onValueChange = onFinishedChanged)
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = isFinished, onCheckedChange = null)
+            Text(
+                text = stringResource(R.string.book_mark_finished),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
     }
 }
 

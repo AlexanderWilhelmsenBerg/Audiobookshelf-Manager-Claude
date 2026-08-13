@@ -123,6 +123,14 @@ fun FullPlayer(
             // stop pretending the feature is working.
             if (isNotificationBlocked) NotificationBlockedNotice()
 
+            // PRODUCT_SPEC PLAY-001 — playback stopped and the service has stopped retrying.
+            //
+            // Above the artwork rather than as a transient message: the book is not playing and will not
+            // start on its own, so this is the state of the screen until somebody acts on it. A device run
+            // found a stopped book with no explanation and a play button that did nothing, which is the
+            // exact combination this replaces.
+            if (state.hasFailed) PlaybackFailedNotice(onRetry = actions.onRetry)
+
             Spacer(modifier = Modifier.height(8.dp))
             PlayerArtwork(state = state, modifier = Modifier.fillMaxWidth())
 
@@ -148,10 +156,10 @@ fun FullPlayer(
             Spacer(modifier = Modifier.weight(WEIGHT_FILL))
             SeekBar(state = state, onSeekTo = actions.onSeekTo)
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             TransportRow(state = state, skips = skips, onTogglePlayPause = actions.onTogglePlayPause)
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             SecondaryRow(
                 state = state,
                 timer = timer,
@@ -160,7 +168,7 @@ fun FullPlayer(
                 onOpenSpeed = actions.onOpenSpeed,
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -213,6 +221,37 @@ private fun NotificationBlockedNotice(modifier: Modifier = Modifier) {
             },
         ) {
             Text(text = stringResource(R.string.player_notifications_fix))
+        }
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-001 / PLAY-003 — "playback stops safely and offers repair".
+ *
+ * The error itself is deliberately not shown. Media3's message can carry the failing URL, which is a path
+ * on somebody's private server (14.5), and the code means nothing to a listener anyway — it is in the event
+ * log under Settings → About, which is where a diagnosis belongs.
+ *
+ * What the listener gets instead is the two facts they can act on: it stopped, and this button starts it
+ * again.
+ */
+@Composable
+private fun PlaybackFailedNotice(onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.player_failed),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.weight(WEIGHT_FILL),
+        )
+        TextButton(onClick = onRetry) {
+            Text(text = stringResource(R.string.player_failed_retry))
         }
     }
 }
@@ -687,8 +726,14 @@ private val TRACK_HEIGHT = 4.dp
 /** A dot, not Material's rounded bar. Big enough to see against the track, small enough not to hide it. */
 private val THUMB_SIZE = 14.dp
 
-/** Big enough to press without looking, which is the whole point of the hierarchy in the transport row. */
-private val PLAY_BUTTON_SIZE = 88.dp
+/**
+ * Big enough to press without looking, small enough to leave the rows below it room.
+ *
+ * Was 88 dp, which a device run found squeezing the secondary row off a phone screen — the transport row
+ * and the actions under it were competing for the same vertical space, and the actions lost. 72 dp is still
+ * two and a half times the skip buttons, which is what the hierarchy needs, and gives back sixteen dp.
+ */
+private val PLAY_BUTTON_SIZE = 72.dp
 
 /** Keeps the artwork sane on a tablet, where a full-width square cover would be enormous. */
 private val ARTWORK_MAX = 420.dp

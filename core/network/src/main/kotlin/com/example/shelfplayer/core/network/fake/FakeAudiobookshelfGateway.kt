@@ -41,6 +41,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC 20, Phase 0 — "the app opens a fake library, no real credentials needed".
@@ -152,6 +153,13 @@ class FakeAudiobookshelfGateway @Inject constructor(
         profileId: ProfileId,
         sessions: List<OfflineSession>,
     ): AppResult<List<OfflineSessionResult>> = noServer()
+
+    override suspend fun setFinished(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        isFinished: Boolean,
+        position: Duration,
+    ): AppResult<Unit> = noServer()
 
     private fun <T> noServer(): AppResult<T> = AppResult.Failure(
         AppError.ApiCompatibility(

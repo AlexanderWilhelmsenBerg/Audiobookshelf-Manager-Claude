@@ -24,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -91,6 +92,10 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     var selected by rememberSaveable { mutableStateOf(SettingsTab.Server) }
+    // PRODUCT_SPEC 14.4 — the event log's open/closed state is this screen's, not the caller's. Lifting it
+    // would add a parameter and a callback to a signature that is already at detekt's limit, to describe a
+    // sheet nothing outside this screen can open.
+    var isEventLogOpen by rememberSaveable { mutableStateOf(false) }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -137,11 +142,13 @@ fun SettingsScreen(
 
                     SettingsTab.Playback -> playbackTab(uiState.playback, playbackActions)
 
-                    SettingsTab.About -> aboutTab(uiState)
+                    SettingsTab.About -> aboutTab(uiState, onOpenEventLog = { isEventLogOpen = true })
                 }
             }
         }
     }
+
+    if (isEventLogOpen) EventLogSheet(onDismiss = { isEventLogOpen = false })
 }
 
 /** PRODUCT_SPEC SET-002 — which server, and which of its libraries. */
@@ -171,10 +178,20 @@ private fun LazyListScope.serverTab(uiState: SettingsUiState, onDefaultLibraryCh
  * than through `adb`. It is deliberately grouped and deliberately labelled as such: these are numbers to
  * verify a build against, not settings to change.
  */
-private fun LazyListScope.aboutTab(uiState: SettingsUiState) {
+private fun LazyListScope.aboutTab(uiState: SettingsUiState, onOpenEventLog: () -> Unit) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
     item { TextRow(labelRes = R.string.about_version, value = uiState.versionName) }
     item { Hint(text = stringResource(R.string.about_phase)) }
+
+    // PRODUCT_SPEC 14.4 — before the readings, because this is the one thing on the tab somebody reaches
+    // for while something is wrong rather than while checking a build.
+    item { SectionHeader(text = stringResource(R.string.about_section_diagnostics)) }
+    item { Hint(text = stringResource(R.string.event_log_body)) }
+    item {
+        TextButton(onClick = onOpenEventLog, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(text = stringResource(R.string.event_log_open))
+        }
+    }
 
     item { SectionHeader(text = stringResource(R.string.about_section_testing)) }
     item { Hint(text = stringResource(R.string.about_testing_body)) }

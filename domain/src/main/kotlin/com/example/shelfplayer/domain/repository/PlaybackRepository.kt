@@ -44,4 +44,21 @@ interface PlaybackRepository {
         duration: Duration,
         isFinished: Boolean,
     ): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — "marking finished is explicit", and so is un-marking it.
+     *
+     * The escape hatch [recordPosition] deliberately does not provide. A device run found a book marked
+     * finished by the threshold with **no way to undo it**: every write path or-ed the flag, so the book
+     * was finished for good and its progress could not be shown again. A destructive-feeling state with no
+     * way out is exactly what product priority 5 is about.
+     *
+     * Writes locally first and then tells the server, in that order, for the reason every write in this app
+     * does: the local row is what the UI reads, and a network failure must not lose the user's decision.
+     *
+     * @param position where to leave the listener. Marking finished sends the end of the book; un-marking
+     *   sends where they actually are, so a book coming back from finished does not also come back from the
+     *   beginning.
+     */
+    suspend fun setFinished(bookId: LibraryItemId, isFinished: Boolean, position: Duration): AppResult<Unit>
 }

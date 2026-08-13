@@ -515,6 +515,13 @@ class DefaultSessionSyncRepositoryTest {
             return offlineUpload ?: AppResult.Success(offlineResults(sessions))
         }
 
+        override suspend fun setFinished(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            isFinished: Boolean,
+            position: kotlin.time.Duration,
+        ): AppResult<Unit> = unsupported()
+
         override val auth: AuthApi = object : AuthApi {
             override suspend fun probe(serverUrl: String): AppResult<ServerProbe> = unsupported()
 

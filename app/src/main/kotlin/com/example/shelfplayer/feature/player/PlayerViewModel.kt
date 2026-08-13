@@ -139,6 +139,9 @@ class PlayerViewModel @Inject constructor(
 
     fun onTogglePlayPause() = controller.togglePlayPause()
 
+    /** PRODUCT_SPEC PLAY-001 — re-prepares a player the service gave up on. */
+    fun onRetry() = controller.retry()
+
     /** Stopping closes the player as well: there is nothing left for it to show. */
     fun onStop() {
         surface.collapse()

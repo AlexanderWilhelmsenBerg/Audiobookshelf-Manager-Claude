@@ -194,6 +194,9 @@
     -->
     <string name="player_chapter_progress">%1$s, %2$s left in this chapter</string>
     <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
+    <!-- PRODUCT_SPEC PLAY-001 / PLAY-003 — playback stopped on an error and will not restart on its own. -->
+    <string name="player_failed">Playback stopped. The server or the connection may be unavailable.</string>
+    <string name="player_failed_retry">Try again</string>
     <string name="player_open">Open the player</string>
     <string name="player_starting">Starting…</string>
     <!-- %1$s is the position a book will resume from, such as "2 h 14 min". -->
@@ -240,6 +243,11 @@
         <item quantity="other">Restarted %1$d times</item>
     </plurals>
     <string name="settings_tab_sleep">Sleep</string>
+    <!-- PRODUCT_SPEC LIB-004 — the synopsis is three lines until asked. -->
+    <!-- PRODUCT_SPEC PLAY-004 — the explicit finished flag, which the user can set and clear. -->
+    <string name="book_mark_finished">Finished</string>
+    <string name="book_synopsis_more">Show more</string>
+    <string name="book_synopsis_less">Show less</string>
     <string name="book_section_about">About this book</string>
     <string name="book_download_later">Download — arrives in a later phase</string>
     <string name="navigate_back">Back</string>
@@ -257,7 +265,26 @@
     <string name="settings_tab_about">About</string>
     <string name="about_section_app">ShelfPlayer</string>
     <string name="about_version">Version</string>
-    <string name="about_phase">A work in progress. Playback and downloads are not built yet.</string>
+    <!--
+      PRODUCT_SPEC SET-002 — what this build actually is. Kept current with the phase, because a build
+      that describes itself wrongly makes every other reading on this tab suspect.
+    -->
+    <string name="about_phase">A work in progress. Streaming playback, chapters, the sleep timer and progress sync are built; downloads and offline playback are not.</string>
+    <!-- PRODUCT_SPEC 14.4 — the in-app log. -->
+    <string name="about_section_diagnostics">Diagnostics</string>
+    <string name="event_log_body">A record of what the app has done since it started: playback, sync, network and errors. Nothing here is sent anywhere, and it is cleared when the app closes.</string>
+    <string name="event_log_open">Open the event log</string>
+    <string name="event_log_title">Event log</string>
+    <!-- %1$d is the number of lines held. -->
+    <plurals name="event_log_count">
+        <item quantity="one">%1$d event since the app started</item>
+        <item quantity="other">%1$d events since the app started</item>
+    </plurals>
+    <!-- %1$d is how many of them are warnings or errors. -->
+    <string name="event_log_problems_only">Problems only (%1$d)</string>
+    <string name="event_log_copy">Copy</string>
+    <string name="event_log_clear">Clear</string>
+    <string name="event_log_empty">Nothing has been recorded yet.</string>
     <string name="about_section_testing">Testing</string>
     <string name="about_testing_body">Readings used to check a build against its acceptance cases. Nothing here changes how the app behaves.</string>
 

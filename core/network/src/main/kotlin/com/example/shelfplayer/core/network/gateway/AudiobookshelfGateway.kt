@@ -21,6 +21,7 @@ import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC 10.4 — every Audiobookshelf call goes through this adapter.
@@ -100,6 +101,24 @@ interface PlaybackApi {
         profileId: ProfileId,
         sessions: List<OfflineSession>,
     ): AppResult<List<OfflineSessionResult>>
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — "marking finished is explicit", in both directions.
+     *
+     * Not a session. A session records listening; this states a fact about the book, which is what a user
+     * ticking or unticking *Finished* is doing. It also has to work on a book that is not playing, and
+     * un-marking one must not be recorded as having listened to anything.
+     *
+     * [position] travels with it because the route is a progress PATCH and takes both. Marking finished
+     * sends the book's end; un-marking sends the position the listener is actually at, so a book that comes
+     * back from finished does not also come back from the beginning.
+     */
+    suspend fun setFinished(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        isFinished: Boolean,
+        position: Duration,
+    ): AppResult<Unit>
 }
 
 /**
