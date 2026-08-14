@@ -39,6 +39,15 @@ data class PlayerActions(
     val onOpenChapters: () -> Unit,
     /** PRODUCT_SPEC PLAY-003 — opens the history pane. */
     val onOpenHistory: () -> Unit = {},
+    /** PRODUCT_SPEC 11.1 — opens the bookmark list. */
+    val onOpenBookmarks: () -> Unit = {},
+    /**
+     * PRODUCT_SPEC 11.1 — keeps wherever the listener is, without opening anything.
+     *
+     * A long press on the bookmark control rather than a second button: the row is already five controls
+     * wide, and "keep this spot" and "show me what I kept" are the same idea at two depths.
+     */
+    val onAddBookmark: () -> Unit = {},
     val onCollapse: () -> Unit,
     /** PRODUCT_SPEC PLAY-001 — what the listener presses when playback stopped on an error. */
     val onRetry: () -> Unit = {},

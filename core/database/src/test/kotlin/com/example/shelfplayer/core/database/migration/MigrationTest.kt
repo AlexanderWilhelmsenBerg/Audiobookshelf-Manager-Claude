@@ -8,6 +8,7 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.entity.BookPlaybackSettingsEntity
+import com.example.shelfplayer.core.database.entity.BookmarkEntity
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
@@ -458,6 +459,85 @@ class MigrationTest {
         assertEquals(42_000, stored.toMillis)
         assertEquals(null, stored.fromMillis)
     }
+
+    /**
+     * PRODUCT_SPEC 11.1 — version 13 adds the bookmarks and takes nothing away.
+     *
+     * The written row is the point rather than the empty read: every column is populated, so a column the
+     * hand-written `CREATE TABLE` spelled differently would pass a read and fail this insert.
+     */
+    @Test
+    fun `version 13 adds the bookmarks without disturbing the cached books`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        val book = assertNotNull(migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first())
+        assertEquals("The Salt Harbour", book.book.title)
+        assertEquals(emptyList(), migrated.bookmarkDao().observe(PROFILE_ID, BOOK_KEY).first())
+
+        migrated.bookmarkDao().upsert(listOf(bookmark(atSeconds = 31)))
+
+        val stored = migrated.bookmarkDao().observe(PROFILE_ID, BOOK_KEY).first().single()
+        assertEquals(31, stored.atSeconds)
+        assertEquals("A line worth keeping", stored.title)
+    }
+
+    /**
+     * PRODUCT_SPEC 11.1 — a bookmark deleted offline does not appear in the list while its upload retries.
+     *
+     * The flag is what stops a refresh resurrecting it, and the DAO's reads are where that is enforced. A
+     * read that ignored the flag would argue with a listener who had just deleted something.
+     */
+    @Test
+    fun `a bookmark pending deletion is not listed`() = runTest {
+        createVersion(9)
+        val migrated = openWithMigrations()
+
+        migrated.bookmarkDao().upsert(
+            listOf(
+                bookmark(atSeconds = 31),
+                bookmark(atSeconds = 90, isPendingDelete = true),
+            ),
+        )
+
+        assertEquals(listOf(31L), migrated.bookmarkDao().observe(PROFILE_ID, BOOK_KEY).first().map { it.atSeconds })
+        assertEquals(2, migrated.bookmarkDao().findAllFor(PROFILE_ID).size, "but the refresh can still see it")
+    }
+
+    /**
+     * PRODUCT_SPEC AUTH-002 — removing a profile takes its bookmarks with it.
+     *
+     * The same check the sleep-timer and session cascades get, and for the same reason: SQLite accepts a
+     * table with no constraint and Room compares the *declared* schema rather than enforcement, so a
+     * forgotten foreign key in a hand-written migration surfaces as orphaned rows much later — and these
+     * rows carry a listener's own words.
+     */
+    @Test
+    fun `removing a profile removes its bookmarks`() = runTest {
+        createVersion(9)
+        val migrated = openWithMigrations()
+        migrated.openHelper.writableDatabase.execSQL("PRAGMA foreign_keys = ON")
+        migrated.bookmarkDao().upsert(listOf(bookmark(atSeconds = 31)))
+
+        migrated.openHelper.writableDatabase.execSQL(
+            "DELETE FROM profiles WHERE profileId = ?",
+            arrayOf<Any>(PROFILE_ID),
+        )
+
+        assertEquals(emptyList(), migrated.bookmarkDao().findAllFor(PROFILE_ID))
+    }
+
+    private fun bookmark(atSeconds: Long, isPendingDelete: Boolean = false) = BookmarkEntity(
+        bookmarkId = "${EntityKey.scoped(PROFILE_ID, BOOK_KEY)}:$atSeconds",
+        profileId = PROFILE_ID,
+        bookKey = BOOK_KEY,
+        atSeconds = atSeconds,
+        title = "A line worth keeping",
+        createdAt = 1_000,
+        hasUnsyncedChanges = false,
+        isPendingDelete = isPendingDelete,
+    )
 
     /**
      * PRODUCT_SPEC PLAY-003 — the cap is per book, and it keeps the newest.

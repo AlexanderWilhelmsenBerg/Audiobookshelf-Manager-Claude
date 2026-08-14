@@ -49,7 +49,29 @@ data class AccountState(
      * "unknown" — a server that answered has told us everything it has.
      */
     val progress: List<AccountProgress> = emptyList(),
+    /**
+     * PRODUCT_SPEC 11.1 — every bookmark this account has, across every book.
+     *
+     * Here for exactly the reason [progress] is: it is already in the response. `bookmarks` is a
+     * top-level array on the user object in both `authorize.json` and `me.json`, so the app's existing
+     * cold-start exchange and its existing permission refresh both carry the whole set — and there is no
+     * per-book read route to add, because the server does not have one.
+     *
+     * Empty means the account has no bookmarks, which is a real state and not "unknown".
+     */
+    val bookmarks: List<AccountBookmark> = emptyList(),
 )
+
+/**
+ * One bookmark, as the server reports it (`contracts/me-with-bookmark.json`).
+ *
+ * Deliberately not `Bookmark`: the difference is `at`. The wire carries **whole seconds** and this type
+ * keeps them as the server sent them, because they are the bookmark's identity — the delete route is
+ * addressed to the number. `Bookmark` presents a `Duration` for the rest of the app to work in, and the
+ * repository is the single place that converts, for the same reason [AccountProgress] is not
+ * `MediaProgress`.
+ */
+data class AccountBookmark(val bookId: LibraryItemId, val atSeconds: Long, val title: String, val createdAt: Instant)
 
 /**
  * One position, as the server reports it (`contracts/media-progress.json`).

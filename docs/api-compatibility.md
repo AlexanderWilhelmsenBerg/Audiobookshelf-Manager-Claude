@@ -689,8 +689,13 @@ Three things a client written from memory would get wrong, and all three are now
 3. **Delete answers with plain text**, not JSON and not `204`. A client that parses the success case as
    JSON throws the first time a user deletes something.
 
-This clears the block PRODUCT_SPEC 22.4/22.5 placed on the feature. Bookmarks are the top remaining
-Phase 2 recommendation in `docs/phase-2-gaps.md` and can now be built against a recorded shape.
+This cleared the block PRODUCT_SPEC 22.4/22.5 placed on the feature, and it is **built** — `AbsBookmarkApi`,
+a `bookmarks` table at database version 13, and `AbsBookmarkContractTest` covering all three writes.
+
+One design consequence is worth stating here rather than only in the code, because it is the kind of thing a
+future reader will assume is a local shortcut: **the local primary key is `(profile, book, seconds)`**, with
+no generated id. That is not a simplification of the server's model, it *is* the server's model, and a
+locally-minted id would be an identifier the server could never be asked about.
 
 ### `isFinished: true` — settled
 

@@ -2,6 +2,7 @@ package com.example.shelfplayer.core.network.api
 
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
+import com.example.shelfplayer.core.network.gateway.BookmarkApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
@@ -25,4 +26,5 @@ internal class AbsAudiobookshelfGateway @Inject constructor(
     override val capabilities: CapabilityResolver,
     override val library: LibraryApi,
     override val playback: PlaybackApi,
+    override val bookmarks: BookmarkApi,
 ) : AudiobookshelfGateway

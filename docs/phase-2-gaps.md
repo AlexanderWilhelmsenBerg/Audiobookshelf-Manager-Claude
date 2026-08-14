@@ -75,6 +75,12 @@ of ADR-0013 in the row above. Demonstrating un-finishing in a fixture needs a se
 threshold, which moves the duration in a dozen committed fixtures — so it belongs with that work rather than
 with the capture, and the work has to read the setting anyway.
 
+### 11.1 Bookmarks — ✅ **built in 0.9.0**
+
+Four routes, three of them writes; the read rides on `GET /api/me` because that is where the server keeps
+them. The custom session command is included, so a car or a headset can keep a spot with no note — which is
+exactly what a driver means by the button. See the note below on what the API does not do.
+
 ### PLAY-005 Offline session synchronization
 
 Every criterion built: UUIDv4 ids, idempotent retry, 7-day retention then compaction, latest-trustworthy-
@@ -174,6 +180,7 @@ starts playback automatically at all. The three-way profile setting does not exi
 | 17 | **The app did not appear in Android Auto at all** | ⚠️ *0.7.0 added the missing `automotive_app_desc` metadata, and the app is still not listed* — see below |
 | 18 | **Pressing a second book left the first one playing** | ✅ *0.8.0* — the session callbacks dropped the app's own items |
 | 19 | History showed only this device, and no time or chapter | ✅ *0.8.0* — server changes, wall-clock times, chapter names, day headings |
+| 20 | The bookmark button had been a disabled placeholder since wave 2 | ✅ *0.9.0* — bookmarks, including the session command |
 
 ### Defect 6, because it is the instructive one
 
@@ -185,6 +192,30 @@ reported.
 It is fixed in three places, deliberately: the service retries transient errors itself, the play button
 prepares whenever the player is idle so pressing play always means something, and when the retries are
 exhausted the player says so and offers a button. One of those alone would leave a hole.
+
+### Bookmarks, and the three things the API does not do
+
+Built in 0.9.0, and every one of these would have been got wrong by a client written from memory:
+
+- **A bookmark has no id.** The server keys it by its `time` in whole seconds — the delete route ends in the
+  number — so `(book, second)` is the identity in the model, in the table's primary key and on the wire.
+  Two bookmarks in the same second are one bookmark, and the app agrees with that rather than showing a row
+  that vanishes at the next refresh.
+- **Bookmarks live on the user, not the item.** `GET /api/me` returns one flat array across every book, so
+  there is no per-book read to add — and `SyncAccountUseCase` already makes that call on every resume and
+  every profile switch, which is where they refresh.
+- **`DELETE` answers `200 text/plain OK`.** A client that parsed the success case as JSON would throw the
+  first time somebody deleted something.
+
+Writes are local-first with the same rule progress follows: the row lands before the server is called and a
+failure is **not** rolled back. Two flags carry the difference — `hasUnsyncedChanges` so a refresh cannot
+discard a bookmark made offline, and `isPendingDelete` so one deleted offline cannot come back on the next
+refresh. Database version 13.
+
+**Not in this slice, deliberately:** the book screen does not list bookmarks. It would need its own flow
+keyed by the route's book rather than by what is playing, and a list there that could not start playback at
+a bookmark would be decoration. The player's sheet is the whole feature; the book screen is a convenience,
+and it is a follow-up rather than a silent omission.
 
 ### Defect 17, and what is actually left of it
 
@@ -238,11 +269,8 @@ pause and a play every few seconds and buried everything else.
 
 ## What is left, in the order it should be done
 
-1. **Bookmarks — now unblocked.** PRODUCT_SPEC 11.1 lists the custom command and the player has carried a
-   disabled button since wave 2. It was blocked on 22.4/22.5: no capture had produced the shape. The
-   2026-08-13 capture has, and all four endpoints are recorded and pinned by `CapturedShapesTest` — create,
-   where a bookmark is stored (`user.bookmarks`, keyed by its `time` in seconds, with no id), update, and a
-   delete that answers plain-text `OK`. See `docs/api-compatibility.md`. This is the next slice.
+1. ~~**Bookmarks.**~~ ✅ **Built** — see below. PRODUCT_SPEC 11.1's custom command included, so a car or a
+   headset can keep a spot.
 2. **The small ones:** `markAsFinishedTimeRemaining`, a configurable finished threshold, rebuffer count and
    startup latency in diagnostics, and the duck-vs-pause setting.
 3. **The exit criteria on hardware:** the two-hour soak, process death, progress against the server.

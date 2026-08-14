@@ -233,7 +233,31 @@
     <string name="player_history_yesterday">Yesterday</string>
     <!-- %1$s is a wall-clock time such as "21:04", %2$s the chapter the position falls in. -->
     <string name="player_history_when_chapter">%1$s · %2$s</string>
-    <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
+    <!--
+      PRODUCT_SPEC 11.1 / section 8 item 4 — bookmarks.
+
+      "Bookmark this" rather than "Add bookmark": the button marks where the listener is, and the position
+      is the whole of what it does. The rename dialog names the position in its heading because a bookmark
+      *is* its position — the server keys them by the second — so it cannot be edited.
+    -->
+    <string name="player_bookmark_add">Bookmark this spot</string>
+    <string name="player_bookmarks">Bookmarks</string>
+    <string name="player_bookmarks_body">Places you kept in this book. Tap one to go back to it.</string>
+    <string name="player_bookmarks_empty">No bookmarks yet. The bookmark button keeps wherever you are.</string>
+    <!-- %1$s is the bookmark\'s position, such as "2:41:07". -->
+    <string name="player_bookmark_rename">Rename the bookmark at %1$s</string>
+    <string name="player_bookmark_delete">Delete the bookmark at %1$s</string>
+    <string name="player_bookmark_note_at">Note for %1$s</string>
+    <string name="player_bookmark_note">Note</string>
+    <string name="player_bookmark_note_save">Save</string>
+    <string name="player_bookmark_note_cancel">Cancel</string>
+    <!-- Shown briefly after the button is pressed, because the sheet is not opened. -->
+    <string name="player_bookmark_added">Bookmarked at %1$s</string>
+    <string name="book_section_bookmarks">Bookmarks</string>
+    <plurals name="book_bookmark_count">
+        <item quantity="one">%1$d bookmark</item>
+        <item quantity="other">%1$d bookmarks</item>
+    </plurals>
     <!-- PRODUCT_SPEC PLAY-001 / PLAY-003 — playback stopped on an error and will not restart on its own. -->
     <string name="player_failed">Playback stopped. The server or the connection may be unavailable.</string>
     <string name="player_failed_retry">Try again</string>

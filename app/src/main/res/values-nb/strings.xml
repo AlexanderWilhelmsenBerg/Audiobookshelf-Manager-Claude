@@ -196,7 +196,22 @@
     <string name="player_history_today">I dag</string>
     <string name="player_history_yesterday">I går</string>
     <string name="player_history_when_chapter">%1$s · %2$s</string>
-    <string name="player_bookmark_later">Bokmerke — kommer i en senere fase</string>
+    <string name="player_bookmark_add">Bokmerk dette stedet</string>
+    <string name="player_bookmarks">Bokmerker</string>
+    <string name="player_bookmarks_body">Steder du har tatt vare på i denne boka. Trykk på ett for å gå tilbake dit.</string>
+    <string name="player_bookmarks_empty">Ingen bokmerker ennå. Bokmerkeknappen tar vare på der du er.</string>
+    <string name="player_bookmark_rename">Gi nytt navn til bokmerket på %1$s</string>
+    <string name="player_bookmark_delete">Slett bokmerket på %1$s</string>
+    <string name="player_bookmark_note_at">Notat for %1$s</string>
+    <string name="player_bookmark_note">Notat</string>
+    <string name="player_bookmark_note_save">Lagre</string>
+    <string name="player_bookmark_note_cancel">Avbryt</string>
+    <string name="player_bookmark_added">Bokmerket på %1$s</string>
+    <string name="book_section_bookmarks">Bokmerker</string>
+    <plurals name="book_bookmark_count">
+        <item quantity="one">%1$d bokmerke</item>
+        <item quantity="other">%1$d bokmerker</item>
+    </plurals>
     <string name="player_failed">Avspillingen stoppet. Tjeneren eller tilkoblingen kan være utilgjengelig.</string>
     <string name="player_failed_retry">Prøv igjen</string>
     <string name="player_open">Åpne spilleren</string>

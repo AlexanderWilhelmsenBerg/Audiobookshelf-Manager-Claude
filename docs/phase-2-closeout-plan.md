@@ -15,7 +15,7 @@ decision, recorded below.
 
 | # | Branch | Requirement | Size | Why here |
 | --- | --- | --- | --- | --- |
-| 1 | `claude/phase-2-bookmarks` | 11.1 | L | A disabled button since wave 2; the capture that unblocked it is in |
+| ~~1~~ | `claude/phase-2-bookmarks` | 11.1 | L | ✅ **done** — a disabled button since wave 2; the capture that unblocked it is in |
 | 2 | `claude/phase-2-finished-threshold` | PLAY-004 | M | Two clauses of one requirement, and one of them is a live defect |
 | 3 | `claude/phase-2-duck-or-pause` | PLAY-002 | S | One setting, one branch in the player |
 | 4 | `claude/phase-2-buffer-diagnostics` | PLAY-006 | S | Two readings the buffer work already half-collects |

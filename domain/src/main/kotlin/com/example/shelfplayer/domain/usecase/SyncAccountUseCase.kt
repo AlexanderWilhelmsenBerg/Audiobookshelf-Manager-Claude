@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import javax.inject.Inject
@@ -13,9 +14,9 @@ import javax.inject.Inject
  * PRODUCT_SPEC LIB-001 / 5.2 / AUTH-004 — one cheap request that keeps three things current.
  *
  * `POST /api/authorize` answers with the account's permissions, its role, whether it is still enabled,
- * **and** every listening position it has. A capture against a real server confirmed the last of those
- * (`contracts/me.json`); before it, the app re-read the entire library to find out that one number had
- * changed.
+ * every listening position it has, **and every bookmark**. Captures against a real server confirmed the
+ * last two (`contracts/me.json`, `contracts/me-with-bookmark.json`); before the first of them, the app
+ * re-read the entire library to find out that one number had changed.
  *
  * So this replaces three separate problems with one call:
  *
@@ -41,6 +42,14 @@ class SyncAccountUseCase @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val authRepository: AuthRepository,
     private val libraryRepository: LibraryRepository,
+    /**
+     * PRODUCT_SPEC 11.1 — bookmarks ride on the same response, so they refresh on the same schedule.
+     *
+     * There is no per-book bookmark read on the server: they live on the user object. So this call is not
+     * merely a convenient place to refresh them, it is the *only* place, and a profile switch or a resume
+     * is exactly when a listener would notice a bookmark made on another device was missing.
+     */
+    private val bookmarkRepository: BookmarkRepository,
 ) {
     /**
      * Returns the number of positions written, or the failure that stopped it.
@@ -58,7 +67,7 @@ class SyncAccountUseCase @Inject constructor(
         if (account is AppResult.Failure && account.error is AppError.Authentication) {
             return renewAndRetry(profileId, original = account)
         }
-        return account.storeProgress(profileId)
+        return account.store(profileId)
     }
 
     /**
@@ -77,17 +86,25 @@ class SyncAccountUseCase @Inject constructor(
         val renewed = authRepository.renewSession(profileId)
         val active = renewed is AppResult.Success && renewed.value == SessionStatus.Active
         if (!active) return AppResult.Failure(original.error)
-        return authRepository.refreshPermissions(profileId).storeProgress(profileId)
+        return authRepository.refreshPermissions(profileId).store(profileId)
     }
 
     /**
-     * The permissions were stored by `refreshPermissions` itself; only the positions are left, and they
-     * are written by the layer that owns the rows.
+     * The permissions were stored by `refreshPermissions` itself; the positions and the bookmarks are left,
+     * and each is written by the layer that owns its rows.
+     *
+     * The **count returned is the positions**, unchanged, because that is what every caller of this use case
+     * already reports. A bookmark write that failed would not be visible in it — but it also cannot fail in a
+     * way the positions did not, since both come from one response and one profile lookup, and the bookmark
+     * write is a local replace with no second network call.
      */
-    private suspend fun AppResult<com.example.shelfplayer.core.model.auth.AccountState>.storeProgress(
+    private suspend fun AppResult<com.example.shelfplayer.core.model.auth.AccountState>.store(
         profileId: ProfileId,
     ): AppResult<Int> = when (this) {
         is AppResult.Failure -> AppResult.Failure(error)
-        is AppResult.Success -> libraryRepository.writeProgress(profileId, value.progress)
+        is AppResult.Success -> {
+            bookmarkRepository.writeAccountBookmarks(profileId, value.bookmarks)
+            libraryRepository.writeProgress(profileId, value.progress)
+        }
     }
 }

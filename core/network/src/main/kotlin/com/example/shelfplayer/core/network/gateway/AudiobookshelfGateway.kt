@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.library.BookSnapshot
+import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.PlaybackSession
@@ -33,7 +34,8 @@ import kotlin.time.Duration
  *
  * PRODUCT_SPEC 22.4 forbids inventing endpoints, and PRODUCT_SPEC 22.5 requires a contract fixture
  * before relying on a response shape. Only the sub-APIs whose contracts are captured are declared:
- * [auth], [capabilities], [library] and [playback].
+ * [auth], [capabilities], [library], [playback] and [bookmarks] — the last of those joined the list on
+ * 2026-08-13, when a capture finally produced the shape it had been waiting on since wave 2.
  *
  * The remaining sub-APIs listed in PRODUCT_SPEC 10.4 — `ProgressApi`, `DownloadApi`,
  * `ManagementApi`, `UsersApi`, `EventApi` — are added in the phase that implements them, together
@@ -48,6 +50,35 @@ interface AudiobookshelfGateway {
     val library: LibraryApi
 
     val playback: PlaybackApi
+
+    val bookmarks: BookmarkApi
+}
+
+/**
+ * PRODUCT_SPEC 11.1 — the three bookmark writes. There is no read, and that is not an omission.
+ *
+ * Audiobookshelf stores bookmarks on the **user**, so `GET /api/me` and `POST /api/authorize` both return
+ * every one of them across every book, and both are calls the app already makes. They arrive as
+ * [com.example.shelfplayer.core.model.auth.AccountState.bookmarks]; adding a read route here would be a
+ * second path to the same data with nothing to gain by it.
+ *
+ * ### A bookmark is its position
+ *
+ * There is no id on the wire. `DELETE /api/me/item/{id}/bookmark/{seconds}` is addressed to the number of
+ * seconds, so [at] is the identity in every method here — which also means two bookmarks in the same
+ * second cannot both exist, and [create] on an occupied second overwrites rather than failing.
+ */
+interface BookmarkApi {
+    /** Creates a bookmark at [at] and returns what the server actually stored. */
+    suspend fun create(profileId: ProfileId, bookId: LibraryItemId, at: Duration, title: String): AppResult<Bookmark>
+
+    /**
+     * Renames the bookmark at [at]. The position does not move — a bookmark *is* its position, so
+     * changing one means deleting and creating.
+     */
+    suspend fun rename(profileId: ProfileId, bookId: LibraryItemId, at: Duration, title: String): AppResult<Bookmark>
+
+    suspend fun remove(profileId: ProfileId, bookId: LibraryItemId, at: Duration): AppResult<Unit>
 }
 
 /**

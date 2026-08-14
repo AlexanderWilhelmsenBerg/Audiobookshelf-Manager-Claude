@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.auth.AccountBookmark
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
@@ -86,6 +87,7 @@ internal object AuthMapper {
                     hasAllTagAccess = user.permissions?.accessAllTags ?: false,
                 ),
                 progress = user.mediaProgress.mapNotNull(::toProgress),
+                bookmarks = user.bookmarks.mapNotNull(::toBookmark),
             ),
         )
     }
@@ -123,6 +125,27 @@ internal object AuthMapper {
             duration = dto.duration.seconds,
             isFinished = dto.isFinished,
             updatedAt = Instant.ofEpochMilli(dto.lastUpdate ?: 0L),
+        )
+    }
+
+    /**
+     * `null` for an entry that names no book or no position.
+     *
+     * Both are required rather than defaulted, and for the same reason: the pair *is* the bookmark's
+     * identity, so an entry missing either cannot be stored, shown or deleted. A default of zero would
+     * put a bookmark at the start of an arbitrary book.
+     *
+     * The title is allowed to be blank — a bookmark with no note is a perfectly ordinary bookmark, and
+     * the UI shows its position instead.
+     */
+    private fun toBookmark(dto: BookmarkDto): AccountBookmark? {
+        val bookId = dto.libraryItemId?.takeIf(String::isNotBlank) ?: return null
+        val at = dto.time ?: return null
+        return AccountBookmark(
+            bookId = LibraryItemId(bookId),
+            atSeconds = at.coerceAtLeast(0),
+            title = dto.title.orEmpty(),
+            createdAt = Instant.ofEpochMilli(dto.createdAt ?: 0L),
         )
     }
 

@@ -49,6 +49,14 @@ internal data class UserDto(
      * the element shape below is `contracts/media-progress.json`, observed 2026-08-06.
      */
     val mediaProgress: List<MediaProgressDto> = emptyList(),
+    /**
+     * PRODUCT_SPEC 11.1 — every bookmark this account has, across every book.
+     *
+     * Flat rather than nested under an item: the server stores bookmarks on the user, so a client that
+     * wants one book's filters by `libraryItemId` itself. Present as `[]` in `authorize.json` and
+     * `me.json`, and populated in `me-with-bookmark.json`, which is the capture that settled the shape.
+     */
+    val bookmarks: List<BookmarkDto> = emptyList(),
 )
 
 /**
