@@ -1,5 +1,6 @@
 package com.example.shelfplayer.data.library.di
 
+import com.example.shelfplayer.data.library.DefaultBookmarkRepository
 import com.example.shelfplayer.data.library.DefaultLibraryRepository
 import com.example.shelfplayer.data.library.DefaultPlaybackHistoryRepository
 import com.example.shelfplayer.data.library.DefaultPlaybackRepository
@@ -7,6 +8,7 @@ import com.example.shelfplayer.data.library.DefaultProfileRepository
 import com.example.shelfplayer.data.library.DefaultRealtimeUpdates
 import com.example.shelfplayer.data.library.DefaultSessionSyncRepository
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
+import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
@@ -42,6 +44,11 @@ interface LibraryDataModule {
     @Binds
     @Singleton
     fun bindsPlaybackHistoryRepository(impl: DefaultPlaybackHistoryRepository): PlaybackHistoryRepository
+
+    /** PRODUCT_SPEC 11.1 — the positions a listener wanted to keep, and their own words about them. */
+    @Binds
+    @Singleton
+    fun bindsBookmarkRepository(impl: DefaultBookmarkRepository): BookmarkRepository
 
     @Binds
     @Singleton

@@ -28,6 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.feature.browse.LocalCoverUrls
 import com.example.shelfplayer.feature.browse.coverUrlsFor
+import com.example.shelfplayer.feature.player.BookmarkAddedNotice
+import com.example.shelfplayer.feature.player.BookmarkSheet
 import com.example.shelfplayer.feature.player.ChapterSheet
 import com.example.shelfplayer.feature.player.FullPlayer
 import com.example.shelfplayer.feature.player.HistorySheet
@@ -100,6 +102,8 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
     val playbackSettings by playerViewModel.settings.collectAsStateWithLifecycle()
     val rewind by playerViewModel.rewind.collectAsStateWithLifecycle()
     val history by playerViewModel.history.collectAsStateWithLifecycle()
+    val bookmarks by playerViewModel.bookmarkList.collectAsStateWithLifecycle()
+    val bookmarkAdded by playerViewModel.bookmarkAdded.collectAsStateWithLifecycle()
     val skipControls = SkipControls(
         intervals = playbackSettings.skips,
         onBack = playerViewModel::onSkipBack,
@@ -109,6 +113,7 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
     var isChapterSheetOpen by remember { mutableStateOf(false) }
     var isSpeedSheetOpen by remember { mutableStateOf(false) }
     var isHistorySheetOpen by remember { mutableStateOf(false) }
+    var isBookmarkSheetOpen by remember { mutableStateOf(false) }
     NotificationPermission(hasPlayback = playback.bookId != null)
     SyncOnBackground(onBackgrounded = playerViewModel::onAppBackgrounded)
 
@@ -148,6 +153,8 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
                 onCollapse = playerViewModel::onCollapse,
                 onRetry = playerViewModel::onRetry,
                 onOpenHistory = { isHistorySheetOpen = true },
+                onOpenBookmarks = { isBookmarkSheetOpen = true },
+                onAddBookmark = playerViewModel::onAddBookmark,
             ),
         )
     }
@@ -164,6 +171,27 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
             onReturnTo = playerViewModel::onSeekTo,
             onDismiss = { isHistorySheetOpen = false },
         )
+    }
+
+    // PRODUCT_SPEC 11.1 — the places this listener kept in this book.
+    if (isBookmarkSheetOpen) {
+        BookmarkSheet(
+            bookmarks = bookmarks,
+            // The chapter a bookmark falls in, for the same reason the history pane gets it: the player
+            // holds the chapter list and the bookmark table deliberately does not.
+            chapters = playback.chapters,
+            // PRODUCT_SPEC 11.1 — the sheet offers "New bookmark at …", so it needs to know where the book
+            // is. Read from the same state the seek bar draws, so the label and the write agree.
+            position = playback.position,
+            actions = playerViewModel.bookmarkActions,
+            onDismiss = { isBookmarkSheetOpen = false },
+        )
+    }
+
+    // PRODUCT_SPEC 11.1 / 21 — a long press keeps a spot without opening anything, so something has to
+    // say it worked. The position is in the message because that is what a listener would check.
+    bookmarkAdded?.let { at ->
+        BookmarkAddedNotice(at = at, onDismiss = playerViewModel::onBookmarkAddedShown)
     }
 
     if (isChapterSheetOpen) {

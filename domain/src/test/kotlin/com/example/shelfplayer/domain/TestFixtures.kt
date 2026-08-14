@@ -14,12 +14,14 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
+import com.example.shelfplayer.core.model.auth.AccountBookmark
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
@@ -27,6 +29,7 @@ import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
@@ -35,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Instant
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
 internal val TEST_SERVER = ServerId("server-1")
@@ -180,6 +184,35 @@ internal class FakeProfileRepository(active: Profile? = profile()) : ProfileRepo
 
     fun signOut() {
         activeProfile.value = null
+    }
+}
+
+/**
+ * PRODUCT_SPEC 11.1 — a bookmark store that records the sets a refresh handed it.
+ *
+ * `SyncAccountUseCase` writes the account's bookmarks alongside its positions, so a test of that use case
+ * needs somewhere for them to land. Recording the sets rather than storing them is enough: what the tests
+ * check is that the response's bookmarks reached the layer that owns the rows.
+ */
+internal class FakeBookmarkRepository : BookmarkRepository {
+    val written = mutableListOf<List<AccountBookmark>>()
+
+    override fun observe(bookId: LibraryItemId): Flow<List<Bookmark>> = MutableStateFlow(emptyList())
+
+    override suspend fun add(bookId: LibraryItemId, at: Duration, title: String): AppResult<Unit> =
+        AppResult.Success(Unit)
+
+    override suspend fun rename(bookId: LibraryItemId, at: Duration, title: String): AppResult<Unit> =
+        AppResult.Success(Unit)
+
+    override suspend fun remove(bookId: LibraryItemId, at: Duration): AppResult<Unit> = AppResult.Success(Unit)
+
+    override suspend fun writeAccountBookmarks(
+        profileId: ProfileId,
+        bookmarks: List<AccountBookmark>,
+    ): AppResult<Int> {
+        written += bookmarks
+        return AppResult.Success(bookmarks.size)
     }
 }
 

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
@@ -11,6 +12,7 @@ import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
+import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.playback.AutoRewindController
@@ -44,6 +46,24 @@ import kotlin.time.Duration
  * The only state it does own is [message]: the failure from the last attempt to start something, which
  * belongs to the screen that asked rather than to the session.
  */
+/*
+ * `TooManyFunctions` is suppressed, and the reasoning is the same as `AppSettingsDataSource`'s.
+ *
+ * This is the player's façade: one method per control the player offers, each a single line delegating to
+ * the object that owns the behaviour. The count therefore tracks the number of controls, and it crossed the
+ * threshold when bookmarks arrived — nineteen before, twenty after, with three of the four bookmark methods
+ * already folded into `bookmarkActions` because the sheet wants them as a bundle anyway.
+ *
+ * The alternatives are worse. Splitting it would give the player two view models over one media session,
+ * which is how a play button and a lock screen end up disagreeing about what is playing. Inventing more
+ * bundles purely to get under a number would group methods by arithmetic rather than by meaning.
+ *
+ * The rule protects against a class that does many *kinds* of thing. This one does one kind — forward a
+ * user action to the session — many times. If it should be split, the split is by *screen* (the mini player
+ * and the full player want different subsets), and that is a change to make deliberately rather than as a
+ * side effect of adding a feature.
+ */
+@Suppress("TooManyFunctions")
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
@@ -53,6 +73,7 @@ class PlayerViewModel @Inject constructor(
     private val notifications: NotificationAccessReader,
     private val autoRewind: AutoRewindController,
     private val playbackHistory: PlaybackHistoryRepository,
+    private val bookmarks: BookmarkRepository,
     playbackSettings: PlaybackSettingsRepository,
     private val surface: PlayerSurface,
 ) : ViewModel() {
@@ -100,6 +121,25 @@ class PlayerViewModel @Inject constructor(
         )
 
     /**
+     * PRODUCT_SPEC 11.1 — the playing book's bookmarks.
+     *
+     * Keyed off whatever is playing, like [history] and for the same reason: the sheet is part of the
+     * player, and the player follows the session. `flatMapLatest` so switching book switches the list
+     * instead of leaving the previous book's on screen.
+     */
+    val bookmarkList: StateFlow<List<Bookmark>> = controller.state
+        .map { it.bookId }
+        .distinctUntilChanged()
+        .flatMapLatest { bookId ->
+            if (bookId == null) flowOf(emptyList()) else bookmarks.observe(bookId)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = emptyList(),
+        )
+
+    /**
      * PRODUCT_SPEC PLAY-001 — whether the notification this book should have is being blocked.
      *
      * Re-read when the player opens rather than observed: notification state has no change callback, and the
@@ -109,6 +149,16 @@ class PlayerViewModel @Inject constructor(
     private val _isNotificationBlocked = MutableStateFlow(false)
 
     val isNotificationBlocked: StateFlow<Boolean> = _isNotificationBlocked.asStateFlow()
+
+    /**
+     * Where the last bookmark landed, so the button can confirm without opening anything.
+     *
+     * A position rather than a boolean: "Bookmarked at 2:41:07" tells a listener the thing they would check
+     * for themselves, and a bare "Bookmarked" leaves them opening the sheet to find out.
+     */
+    private val _bookmarkAdded = MutableStateFlow<Duration?>(null)
+
+    val bookmarkAdded: StateFlow<Duration?> = _bookmarkAdded.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
 
@@ -208,6 +258,61 @@ class PlayerViewModel @Inject constructor(
     fun onAppBackgrounded() {
         sessionSync.request(SyncTrigger.AppBackgrounded)
         sessionSync.drain()
+    }
+
+    /**
+     * PRODUCT_SPEC 11.1 — keeps wherever the listener is, with no note.
+     *
+     * The note comes later, from the sheet, and that ordering is the point: a listener presses this because
+     * they just heard something, and a dialog between the button and the bookmark is a dialog that loses the
+     * moment. The confirmation says where it landed, because the sheet does not open.
+     *
+     * The position is truncated to the second by [Bookmark.roundedFrom] — the server keys bookmarks by it,
+     * so a finer position is one the app could never ask to delete.
+     */
+    fun onAddBookmark() {
+        val state = playback.value
+        val bookId = state.bookId ?: return
+        val at = Bookmark.roundedFrom(state.position)
+        viewModelScope.launch {
+            when (val result = bookmarks.add(bookId, at, title = "")) {
+                is AppResult.Failure -> _message.value = result.error.summary
+                is AppResult.Success -> _bookmarkAdded.value = at
+            }
+        }
+    }
+
+    fun onBookmarkAddedShown() {
+        _bookmarkAdded.value = null
+    }
+
+    /**
+     * PRODUCT_SPEC 11.1 — what a bookmark row can do, in the shape the sheet asks for.
+     *
+     * A property rather than three methods, and not only to keep this class under detekt's function count:
+     * `BookmarkSheet` takes a [BookmarkActions] bundle, so building it anywhere else means a caller
+     * assembling three references that only ever travel together. Going to a bookmark is a seek, so it is
+     * the same [onSeekTo] every other jump uses — a bookmark is a position, not a special kind of playback.
+     */
+    val bookmarkActions: BookmarkActions = BookmarkActions(
+        onAdd = ::onAddBookmark,
+        onGoTo = ::onSeekTo,
+        onRename = { at, title -> withBookmark { bookId -> bookmarks.rename(bookId, at, title) } },
+        onRemove = { at -> withBookmark { bookId -> bookmarks.remove(bookId, at) } },
+    )
+
+    /**
+     * Runs a bookmark write against the playing book, surfacing a failure as a message.
+     *
+     * Silent with nothing playing: the sheet is part of the player, so there is no route to it without a
+     * book, and a message about a book that is not there would be a message about nothing.
+     */
+    private fun withBookmark(write: suspend (LibraryItemId) -> AppResult<Unit>) {
+        val bookId = playback.value.bookId ?: return
+        viewModelScope.launch {
+            val result = write(bookId)
+            if (result is AppResult.Failure) _message.value = result.error.summary
+        }
     }
 
     fun onMessageShown() {

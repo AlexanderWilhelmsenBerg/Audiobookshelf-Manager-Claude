@@ -564,6 +564,65 @@ data class BookPlaybackSettingsEntity(
 )
 
 /**
+ * PRODUCT_SPEC 11.1 / section 8 item 4 — a position in a book the listener wanted to keep, with a note.
+ *
+ * ### The primary key is the position, because the server has no id
+ *
+ * `bookmark-create.json` and `me-with-bookmark.json` (Audiobookshelf 2.36.0) return
+ * `{createdAt, libraryItemId, time, title}` and nothing else, and the delete route is addressed to the
+ * **number of seconds**. So the server's identity for a bookmark is (book, second), and this table uses the
+ * same one rather than minting a local id the server could never be asked about.
+ *
+ * The consequence is deliberate and has to be visible in the UI: **two bookmarks in the same second are one
+ * bookmark.** The server overwrites, so a local table that allowed both would show a row that disappears at
+ * the next refresh — which is worse than saying so.
+ *
+ * ### A cache of the user's array, plus what has not reached it yet
+ *
+ * Bookmarks live on the *user* server-side, so `GET /api/me` returns the whole set for every book and the
+ * app already makes that call on every profile refresh. This table is therefore a cache of that array —
+ * except for [hasUnsyncedChanges] and [isPendingDelete], which are the two local facts a refresh must not
+ * trample:
+ *
+ *  - a bookmark made offline has not been seen by the server, so a refresh that replaced the table wholesale
+ *    would delete it (product priority 2 applies to a listener's notes as much as to their position);
+ *  - a bookmark *deleted* offline must not come back on the next refresh, which is exactly what would
+ *    happen if the delete were only a local row removal.
+ *
+ * The profile foreign key cascades, so removing a profile takes its bookmarks with it (PRODUCT_SPEC 5.2).
+ */
+@Entity(
+    tableName = "bookmarks",
+    foreignKeys = [
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["profileId"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index("profileId"),
+        Index(value = ["profileId", "bookKey", "atSeconds"]),
+    ],
+)
+data class BookmarkEntity(
+    /** `EntityKey.scoped(profileId, bookKey)` plus the second, so the row is addressable by what it is. */
+    @PrimaryKey val bookmarkId: String,
+    val profileId: String,
+    val bookKey: String,
+    /** Whole seconds from the start of the book. The bookmark's identity, on the wire and here. */
+    val atSeconds: Long,
+    /** The listener's own words. May be empty — a bookmark with no note is an ordinary bookmark. */
+    val title: String,
+    val createdAt: Long,
+    /** Written locally and not yet accepted by the server. A refresh must not overwrite such a row. */
+    val hasUnsyncedChanges: Boolean,
+    /** Deleted locally and not yet accepted by the server. A refresh must not resurrect such a row. */
+    val isPendingDelete: Boolean,
+)
+
+/**
  * PRODUCT_SPEC PLAY-003 — where the listener jumped from, and to.
  *
  * ### What this is for

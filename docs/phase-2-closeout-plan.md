@@ -4,8 +4,13 @@ Written after PR #12 merged, at the owner's request: *"make a plan to fill all t
 each gap as it's own pull request."*
 
 `docs/phase-2-gaps.md` is the checklist. This is the order it gets closed in, and what each pull request
-owns. **Six pull requests, two hardware runs.** The two runs cannot be a pull request — nobody can merge a
-drive — so they are listed last as what they are.
+owns. **Seven pull requests, one hardware run.** The run cannot be a pull request — nobody can merge a drive — so
+it is listed last as what it is.
+
+Updated 2026-08-14, after the drive. Two of the three things this plan was waiting on hardware for came back
+**passing**: Android Auto discovery and media-button resume. The third — the two-hour soak — has not been
+run. And the drive produced one new pull request, because an app that is finally *in* the car turns out to
+show the wrong thing in it.
 
 Sequencing is value first: the feature with a dead button in the UI since wave 2, then the four small
 requirement clauses, then the two device-policy requirements. Both ROUTE items are in scope by the owner's
@@ -15,13 +20,14 @@ decision, recorded below.
 
 | # | Branch | Requirement | Size | Why here |
 | --- | --- | --- | --- | --- |
-| 1 | `claude/phase-2-bookmarks` | 11.1 | L | A disabled button since wave 2; the capture that unblocked it is in |
+| ~~1~~ | `claude/phase-2-bookmarks` | 11.1 | L | ✅ **done** — a disabled button since wave 2; the capture that unblocked it is in |
 | 2 | `claude/phase-2-finished-threshold` | PLAY-004 | M | Two clauses of one requirement, and one of them is a live defect |
 | 3 | `claude/phase-2-duck-or-pause` | PLAY-002 | S | One setting, one branch in the player |
 | 4 | `claude/phase-2-buffer-diagnostics` | PLAY-006 | S | Two readings the buffer work already half-collects |
 | 5 | `claude/phase-2-route-002` | ROUTE-002 | L | Eleven criteria about device identity |
 | 6 | `claude/phase-2-route-003` | ROUTE-003 | S | Three-way startup setting; two thirds true by accident today |
-| — | *no branch* | exit criteria | — | The soak and the car. Hardware, not code |
+| 7 | `claude/phase-2-auto-library` | PLAY-001, 11.1 | M | **New.** The app is in the car now; what it shows there is wrong |
+| — | *no branch* | exit criterion | — | The two-hour soak. Hardware, not code |
 
 Each pull request is a draft, carries its own device-test section where one is needed, and updates
 `docs/phase-2-gaps.md` for the rows it closes. No pull request depends on another except where stated.
@@ -78,19 +84,45 @@ The 2026-08-13 capture is the reason this is second rather than fifth: the CI se
 setting has been *observed*. The app does not read it, so a library configured with a two-minute threshold
 gets the app's 95% instead — books marked finished at the wrong moment, in both directions.
 
+**No capture is needed, and the plan was wrong to say one was.** `GET /api/libraries` already carries a
+`settings` object, and the committed `libraries.json` has held both fields since the wave A capture:
+
+```
+"markAsFinishedTimeRemaining": 10,
+"markAsFinishedPercentComplete": null
+```
+
+So this implements a decision that is **already recorded** rather than making one. ADR-0013 states the rule
+in full, including why it is a `max`:
+
+```
+finishedWhenRemaining = max(the user's setting, library.markAsFinishedTimeRemaining ?: 0s)
+```
+
+The asymmetry is the design: the app must never be the one calling a book unfinished that the server has
+finished, because the two rules then disagree and the book oscillates every time either syncs. And ADR-0013
+already names the configurable range as a **duration, 5–120 seconds** — PLAY-004's literal 90–99% was
+deviated from deliberately, because 95% of a ten-hour book is half an hour from the end.
+
 **Scope**
 
-- Capture the library-settings endpoint **first**, in the same pull request, and build only on what it
-  returns (22.4/22.5). If it does not expose the value, the pull request says so and ships the configurable
-  threshold alone rather than guessing.
-- `FinishedThreshold` gains the library's time-remaining rule beside the percentage, and the percentage
-  becomes a setting with the spec's 90–99% range.
-- **Lengthen the seeded contract book past the threshold**, so un-finishing becomes demonstrable in a
-  fixture at all. This moves a duration in about a dozen committed fixtures, which is churn — and it
-  belongs here, because this is the pull request that cares about the number.
+- `LibraryDto` gains `settings`; `Library` carries the rule; Room's `library` table gains two nullable
+  columns. **Additive migration, version 14.**
+- `FinishedThreshold` stops being a constant and takes the library's rule and the user's setting.
+- The **caller** changes shape too, and this is the part worth doing carefully. `PlaybackService` currently
+  computes `isFinished` itself and passes it to `recordPosition`, which means the service needs the rule. It
+  should not: the repository already resolves the profile and the book on every write, so it is the one place
+  that can resolve the library's setting as well. Moving the decision there leaves one place that knows.
+- The setting itself: 5–120 seconds under Settings → Playback, defaulting to ADR-0013's 30.
 
-**Tests.** A threshold table test at the range's ends; the un-finish round trip, which only becomes
-possible once the seeded book is long enough.
+**Tests.** A table test over the `max`, including a library more eager than the user's setting and one less
+eager; the unknown-duration case, which must never be finished; and the service no longer being able to get
+it wrong, because it no longer decides.
+
+**Not in scope, and previously mis-scheduled here:** lengthening the seeded contract book. That was for
+demonstrating the un-finish round trip in a fixture, which the threshold work does not depend on — the
+threshold is unit-tested against synthetic durations. It stays outstanding, noted in
+`docs/api-compatibility.md`.
 
 ---
 
@@ -161,19 +193,74 @@ consequential thing on the list.
 
 ---
 
-## The two that cannot be pull requests
+---
+
+## PR 7 — what the car actually shows (PLAY-001, 11.1)
+
+**New, and it exists because the drive happened.** Two rounds were spent on whether the app appeared in a
+car at all. It does now — and the first screen reads **"no books"**, while voice search finds them.
+
+### The empty tab, diagnosed
+
+`AutoLibrary.continueListening()` filters on `book.progress?.isFinished == false`. A book that has never
+been played has no progress, so `progress?.isFinished` is `null`, the comparison is false, and the book is
+excluded. The Continue tab therefore contains only books that have been *started and not finished* — on a
+fresh library, none of them. Search is unaffected because it reads the whole list.
+
+One line fixes the emptiness. It is also the least interesting part of the request.
+
+### What was actually asked for
+
+*"I would like the same library setup as the app. And the same player when playing."*
+
+The app's shelf is several shelves — Continue listening, Continue a series, Recently added, Listen again,
+Discover — plus browse by series, author and genre. The car has one filtered list and two panes about the
+playing book. So this is not a bug fix, it is the browse tree growing to match the library the app already
+models.
+
+**Scope**
+
+- The root's tabs become the app's structure rather than a player's: **Continue** (fixed, and falling back
+  to recently-added when nothing is in progress, so a fresh library is never empty), **Library** browsing by
+  series / author / genre through the nodes `LibraryRepository` already exposes, and the two panes that are
+  about the playing book — Chapters and History — kept.
+- Paging is already in place (`onGetChildren` takes `page` and `pageSize`); the new nodes have to respect it,
+  because a 490-book library in one binder transaction is a transaction a head unit refuses.
+- The grant filter stays where it is: every read goes through `observeAccessibleBooks`, so a library this
+  profile has lost cannot appear on a dashboard (PRODUCT_SPEC 5.2).
+
+**"The same player when playing" needs stating carefully.** An app cannot draw a player in a car — Auto
+renders its own from the media session and the metadata, and there is no surface for a custom view. What
+*can* be matched is everything that feeds it: cover art, title, author, chapter as the current metadata,
+the configured skip amounts on the transport, and the speed and sleep-timer commands as custom actions.
+That is the honest reading of the request and it is what the pull request should deliver; promising a
+ShelfPlayer-looking screen in a car would be promising something the platform does not allow.
+
+**Tests.** `AutoLibrary`'s tree is testable without a car — its id protocol and root are already on the
+companion for that reason — so each new node gets a test, and the fresh-library case gets one specifically:
+**a library with no progress must not produce an empty Continue tab.**
+
+**Risks.** This is the surface with the longest feedback loop in the project: every mistake costs a drive.
+The tests should therefore cover the *shape* of the tree exhaustively, so what a drive is checking is
+rendering rather than logic.
+
+---
+
+## The one that cannot be a pull request
 
 **The two-hour streaming soak.** An exit criterion. It needs two hours of real audio over a real network,
 and what it is looking for is the thing no unit test reaches: whether a `ConcatenatingMediaSource2` crosses
 file boundaries gaplessly at 1.5× on a cold buffer, whether the journal drifts, whether the outbox grows.
 `docs/phase-2-gaps.md` keeps it as 🔬 until it has been run once and recorded.
 
-**Android Auto in a car.** Two device runs have failed to find the app. Everything the APK controls is
-verified correct against the shipped binary, and 0.8.0 added the five readings that say what is not —
-including **Installed by** and **Last car connection**. The next attempt is a drive, not a commit. If *Last
-car connection* still reads never afterwards, the next pull request is about discovery; if it reads a time,
-the browse tree is in play and that is a different pull request. **Which one it is cannot be known before
-the drive**, so neither is in this plan.
+### Settled by the 2026-08-14 drive
+
+- **Android Auto discovery** — the app appears, browses and plays. Three rounds; the last two were spent on
+  a build that was already correct, because nothing in the app could report the phone's *Unknown sources*
+  setting. It can now.
+- **Media-button resume (ROUTE-001)** — a headset play against a dead process resumes the last unfinished
+  book, and since 0.8.0 a different book can then replace it. Both halves were needed, and the first hid
+  the second for an entire build.
 
 ## What stays out, and why
 

@@ -27,12 +27,14 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.domain.playback.FinishedThreshold
+import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
@@ -107,6 +109,10 @@ class PlaybackService : MediaLibraryService() {
     /** PRODUCT_SPEC ROUTE-002 — so Settings can say whether a car has ever reached this app. */
     @Inject
     internal lateinit var carConnections: CarConnections
+
+    /** PRODUCT_SPEC 11.1 — "expose custom commands for bookmark". This is what that command writes to. */
+    @Inject
+    internal lateinit var bookmarks: BookmarkRepository
 
     @Inject
     internal lateinit var logger: Logger
@@ -627,6 +633,24 @@ class PlaybackService : MediaLibraryService() {
         return settable
     }
 
+    /**
+     * PRODUCT_SPEC 11.1 — a bookmark at whatever is playing, from a control surface with no keyboard.
+     *
+     * The title is empty, and that is the design rather than a gap: a driver cannot type, and a bookmark
+     * with a position and no note is exactly what they meant — "this bit". The phone's sheet is where a note
+     * gets added afterwards.
+     *
+     * On the application scope rather than the service's, like every other write that must outlive the
+     * moment: a bookmark dropped as a car disconnects is the one most worth keeping.
+     */
+    private fun bookmarkHere() {
+        val current = player ?: return
+        val item = current.currentMediaItem ?: return
+        val bookId = MediaItems.bookIdOf(item)
+        val at = Bookmark.roundedFrom(current.bookPosition())
+        applicationScope.launch { bookmarks.add(bookId, at, title = "") }
+    }
+
     private fun skipBy(delta: Duration) {
         val current = player ?: return
         if (current.mediaItemCount == 0) return
@@ -845,6 +869,7 @@ class PlaybackService : MediaLibraryService() {
                 .add(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
                 .add(SessionCommand(NotificationButtons.ACTION_SKIP_BACK, Bundle.EMPTY))
                 .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
+                .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
@@ -898,6 +923,7 @@ class PlaybackService : MediaLibraryService() {
                 NotificationButtons.ACTION_EXTEND_SLEEP_TIMER -> sleepTimer.extend()
                 NotificationButtons.ACTION_SKIP_BACK -> skipBy(-skips.back)
                 NotificationButtons.ACTION_SKIP_FORWARD -> skipBy(skips.forward)
+                NotificationButtons.ACTION_ADD_BOOKMARK -> bookmarkHere()
                 else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))

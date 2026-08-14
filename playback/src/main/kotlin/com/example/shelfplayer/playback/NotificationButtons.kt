@@ -41,6 +41,17 @@ internal object NotificationButtons {
     /** PRODUCT_SPEC PLAY-008 — the notification action that extends a running sleep timer. */
     const val ACTION_EXTEND_SLEEP_TIMER = "com.example.shelfplayer.playback.EXTEND_SLEEP_TIMER"
 
+    /**
+     * PRODUCT_SPEC 11.1 — "expose custom commands for bookmark": marks the current position.
+     *
+     * A **session** command, like the three above, because that is the only kind a car or a headset can
+     * send and the only kind the notification provider will render. It carries no arguments: the position
+     * is whatever the player is at, which is the whole point — a listener reaching for a button while
+     * driving is marking *now*, and a command that needed a position could only be sent by something with
+     * a screen.
+     */
+    const val ACTION_ADD_BOOKMARK = "com.example.shelfplayer.playback.ADD_BOOKMARK"
+
     fun backIcon(interval: Duration): Int = when (interval.inWholeSeconds) {
         FIVE -> CommandButton.ICON_SKIP_BACK_5
         TEN -> CommandButton.ICON_SKIP_BACK_10

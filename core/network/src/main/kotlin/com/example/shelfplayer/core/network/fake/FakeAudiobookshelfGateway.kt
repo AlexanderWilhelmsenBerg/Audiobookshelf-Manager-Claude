@@ -22,6 +22,7 @@ import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
 import com.example.shelfplayer.core.model.library.BookSnapshot
+import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.PlaybackSession
@@ -33,6 +34,7 @@ import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.network.fixture.FixtureMapper
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
+import com.example.shelfplayer.core.network.gateway.BookmarkApi
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
@@ -67,11 +69,13 @@ class FakeAudiobookshelfGateway @Inject constructor(
     AuthApi,
     CapabilityResolver,
     LibraryApi,
-    PlaybackApi {
+    PlaybackApi,
+    BookmarkApi {
     override val auth: AuthApi get() = this
     override val capabilities: CapabilityResolver get() = this
     override val library: LibraryApi get() = this
     override val playback: PlaybackApi get() = this
+    override val bookmarks: BookmarkApi get() = this
 
     /**
      * The fixture server and profile, for a test that needs the identities the demo document declares.
@@ -160,6 +164,29 @@ class FakeAudiobookshelfGateway @Inject constructor(
         isFinished: Boolean,
         position: Duration,
     ): AppResult<Unit> = noServer()
+
+    /**
+     * PRODUCT_SPEC 11.1 — the demo document has no server, so a bookmark cannot be written to one.
+     *
+     * [noServer] rather than a fixture bookmark, and the distinction matters: the bundled library is a
+     * *read* fixture. Pretending a write succeeded would let a demo build show a bookmark that vanishes
+     * on the next refresh, which is worse than a build that says plainly it has nowhere to put it.
+     */
+    override suspend fun create(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        at: Duration,
+        title: String,
+    ): AppResult<Bookmark> = noServer()
+
+    override suspend fun rename(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        at: Duration,
+        title: String,
+    ): AppResult<Bookmark> = noServer()
+
+    override suspend fun remove(profileId: ProfileId, bookId: LibraryItemId, at: Duration): AppResult<Unit> = noServer()
 
     private fun <T> noServer(): AppResult<T> = AppResult.Failure(
         AppError.ApiCompatibility(

@@ -354,6 +354,46 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC 11.1 — adds `bookmarks`.
+     *
+     * A new table, so purely additive: nothing existing is read, rewritten or dropped. The primary key is
+     * the profile-scoped book key plus the position in seconds, because that is the identity the *server*
+     * uses — there is no bookmark id on the wire, and the delete route is addressed to the number.
+     *
+     * See the note on `MIGRATION_7_8` for the three ways a hand-written `CREATE TABLE` fails Room's
+     * validation; all three apply here, and the migration test is what proves they were avoided.
+     */
+    private val MIGRATION_12_13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `bookmarks` (
+                    `bookmarkId` TEXT NOT NULL,
+                    `profileId` TEXT NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `atSeconds` INTEGER NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    `hasUnsyncedChanges` INTEGER NOT NULL,
+                    `isPendingDelete` INTEGER NOT NULL,
+                    PRIMARY KEY(`bookmarkId`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_bookmarks_profileId` " +
+                    "ON `bookmarks` (`profileId`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_bookmarks_profileId_bookKey_atSeconds` " +
+                    "ON `bookmarks` (`profileId`, `bookKey`, `atSeconds`)",
+            )
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -366,5 +406,6 @@ object Migrations {
         MIGRATION_9_10,
         MIGRATION_10_11,
         MIGRATION_11_12,
+        MIGRATION_12_13,
     )
 }

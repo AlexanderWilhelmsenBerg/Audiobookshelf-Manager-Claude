@@ -57,6 +57,12 @@ class AudiobookshelfServiceFactory @Inject constructor(
         retrofitFor(baseUrl, authenticatedClient).create(PlaybackService::class.java)
 
     /**
+     * PRODUCT_SPEC 11.1 — the bookmark writes, on the authenticated stack like every other write.
+     */
+    internal fun bookmarkService(baseUrl: String): BookmarkService =
+        retrofitFor(baseUrl, authenticatedClient).create(BookmarkService::class.java)
+
+    /**
      * Retrofit rejects a base URL that does not end in `/`, and — worse — silently discards the last
      * path segment of one that does not. A server behind a reverse proxy at `https://host/abs` would
      * otherwise resolve `login` against `https://host/`, producing 404s that look like the server is

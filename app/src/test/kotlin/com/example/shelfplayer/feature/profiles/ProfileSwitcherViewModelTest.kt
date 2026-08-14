@@ -12,14 +12,17 @@ import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.asFailure
+import com.example.shelfplayer.core.model.auth.AccountBookmark
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
@@ -30,6 +33,7 @@ import com.example.shelfplayer.testing.FakePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -42,6 +46,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 
 /** PRODUCT_SPEC AUTH-002 / 6.5 — the switcher's states and the actions it exposes. */
 class ProfileSwitcherViewModelTest {
@@ -57,7 +62,12 @@ class ProfileSwitcherViewModelTest {
 
     private fun viewModel() = ProfileSwitcherViewModel(
         profiles,
-        SwitchProfileUseCase(profiles, auth, SyncAccountUseCase(profiles, auth, libraries), backgroundSync),
+        SwitchProfileUseCase(
+            profiles,
+            auth,
+            SyncAccountUseCase(profiles, auth, libraries, StubBookmarks()),
+            backgroundSync,
+        ),
         auth,
         RemoveProfileUseCase(auth, backgroundSync, preferences),
     )
@@ -339,3 +349,26 @@ private val booksServer = Server(
     detectedVersion = "2.36.0",
     isFixture = false,
 )
+
+/**
+ * PRODUCT_SPEC 11.1 — bookmarks are written by the same account sync these tests drive.
+ *
+ * A stub rather than a fake: no test in this file asserts anything about bookmarks, and one that recorded
+ * them would invite a reader to think it did.
+ */
+private class StubBookmarks : BookmarkRepository {
+    override fun observe(bookId: LibraryItemId): Flow<List<Bookmark>> = flowOf(emptyList())
+
+    override suspend fun add(bookId: LibraryItemId, at: Duration, title: String): AppResult<Unit> =
+        AppResult.Success(Unit)
+
+    override suspend fun rename(bookId: LibraryItemId, at: Duration, title: String): AppResult<Unit> =
+        AppResult.Success(Unit)
+
+    override suspend fun remove(bookId: LibraryItemId, at: Duration): AppResult<Unit> = AppResult.Success(Unit)
+
+    override suspend fun writeAccountBookmarks(
+        profileId: ProfileId,
+        bookmarks: List<AccountBookmark>,
+    ): AppResult<Int> = AppResult.Success(bookmarks.size)
+}

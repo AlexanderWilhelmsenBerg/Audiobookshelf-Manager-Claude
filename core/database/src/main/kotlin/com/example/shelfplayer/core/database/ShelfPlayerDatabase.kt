@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.example.shelfplayer.core.database.converter.StringListConverters
 import com.example.shelfplayer.core.database.dao.BookPlaybackSettingsDao
+import com.example.shelfplayer.core.database.dao.BookmarkDao
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.PlaybackHistoryDao
@@ -19,6 +20,7 @@ import com.example.shelfplayer.core.database.entity.BookAuthorCrossRef
 import com.example.shelfplayer.core.database.entity.BookEntity
 import com.example.shelfplayer.core.database.entity.BookPlaybackSettingsEntity
 import com.example.shelfplayer.core.database.entity.BookSeriesCrossRef
+import com.example.shelfplayer.core.database.entity.BookmarkEntity
 import com.example.shelfplayer.core.database.entity.ChapterEntity
 import com.example.shelfplayer.core.database.entity.LibraryEntity
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
@@ -60,6 +62,7 @@ import com.example.shelfplayer.core.database.entity.SyncStateEntity
         SyncStateEntity::class,
         SleepTimerSessionEntity::class,
         PlaybackHistoryEntity::class,
+        BookmarkEntity::class,
         BookPlaybackSettingsEntity::class,
     ],
     version = DATABASE_VERSION,
@@ -81,6 +84,8 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
 
     abstract fun playbackHistoryDao(): PlaybackHistoryDao
 
+    abstract fun bookmarkDao(): BookmarkDao
+
     abstract fun bookPlaybackSettingsDao(): BookPlaybackSettingsDao
 
     abstract fun syncStateDao(): SyncStateDao
@@ -90,4 +95,4 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
     }
 }
 
-internal const val DATABASE_VERSION = 12
+internal const val DATABASE_VERSION = 13

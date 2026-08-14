@@ -4,6 +4,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -161,14 +162,7 @@ fun FullPlayer(
             TransportRow(state = state, skips = skips, onTogglePlayPause = actions.onTogglePlayPause)
 
             Spacer(modifier = Modifier.height(4.dp))
-            SecondaryRow(
-                state = state,
-                timer = timer,
-                onOpenSleepTimer = actions.onOpenSleepTimer,
-                onOpenChapters = actions.onOpenChapters,
-                onOpenSpeed = actions.onOpenSpeed,
-                onOpenHistory = actions.onOpenHistory,
-            )
+            SecondaryRow(state = state, timer = timer, actions = actions)
 
             Spacer(modifier = Modifier.height(8.dp))
         }
@@ -635,19 +629,23 @@ private fun SkipButton(icon: ImageVector, description: String, onClick: () -> Un
 /**
  * The controls used once a session rather than once a minute.
  *
- * Bookmark is still a **disabled placeholder** and says so in its content description rather than looking
- * live — the row is the shape the player will keep, and a slot that admits it does nothing beats one that
- * silently does nothing (PRODUCT_SPEC 21). Speed became real in wave 4 and now shows its own value, because
- * "1.5×" on the button is the fastest way to answer "why does this sound odd".
+ * Bookmark carries **two** actions, which is the only control here that does: a tap opens the list, and a
+ * long press keeps the current spot without opening anything. That is deliberate rather than clever — a
+ * listener presses it because they just heard something, and a sheet between the button and the bookmark is
+ * a sheet that loses the moment. Both are announced, so the long press is not a secret (PRODUCT_SPEC 21).
+ *
+ * Speed shows its own value, because "1.5×" on the button is the fastest way to answer "why does this
+ * sound odd".
+ *
+ * It takes the whole [PlayerActions] bundle rather than six lambdas — the row grew past detekt's parameter
+ * limit as bookmarks arrived, and threading each callback individually through a private composable was
+ * repeating the bundle by hand.
  */
 @Composable
 private fun SecondaryRow(
     state: PlaybackUiState,
     timer: SleepTimerState,
-    onOpenSleepTimer: () -> Unit,
-    onOpenChapters: () -> Unit,
-    onOpenSpeed: () -> Unit,
-    onOpenHistory: () -> Unit,
+    actions: PlayerActions,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -655,7 +653,7 @@ private fun SecondaryRow(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SpeedAction(speed = state.speed, onClick = onOpenSpeed)
+        SpeedAction(speed = state.speed, onClick = actions.onOpenSpeed)
         SecondaryAction(
             icon = Icons.AutoMirrored.Filled.MenuBook,
             description = stringResource(R.string.player_chapters),
@@ -663,7 +661,7 @@ private fun SecondaryRow(
             // self-hosted library. A sheet that opens onto nothing is worse than a control that is
             // plainly unavailable.
             enabled = state.chapters.isNotEmpty(),
-            onClick = onOpenChapters,
+            onClick = actions.onOpenChapters,
         )
         // PRODUCT_SPEC PLAY-003 — the jumps this book has seen, and the way back from any of them. Next to
         // Chapters because both answer "where am I and where else could I be".
@@ -671,14 +669,10 @@ private fun SecondaryRow(
             icon = Icons.Filled.History,
             description = stringResource(R.string.player_history),
             enabled = true,
-            onClick = onOpenHistory,
+            onClick = actions.onOpenHistory,
         )
-        SecondaryAction(
-            icon = Icons.Filled.Bookmark,
-            description = stringResource(R.string.player_bookmark_later),
-            enabled = false,
-            onClick = {},
-        )
+        // PRODUCT_SPEC 11.1 — a tap opens the list, a long press keeps this spot. See the note above.
+        BookmarkAction(onOpenBookmarks = actions.onOpenBookmarks, onAddBookmark = actions.onAddBookmark)
         SecondaryAction(
             icon = Icons.Filled.Bedtime,
             description = if (timer.isActive) {
@@ -687,7 +681,37 @@ private fun SecondaryRow(
                 stringResource(R.string.sleep_timer_open)
             },
             enabled = true,
-            onClick = onOpenSleepTimer,
+            onClick = actions.onOpenSleepTimer,
+        )
+    }
+}
+
+/**
+ * PRODUCT_SPEC 11.1 / 21 — the one control with two actions, and both are announced.
+ *
+ * `combinedClickable` rather than a second `IconButton`, because the row is already five controls wide on a
+ * phone and a sixth would squeeze them the way the 88 dp play button once did. `onLongClickLabel` is what
+ * keeps the long press from being a secret: a screen reader offers it as a named action, and the
+ * accessibility services surface it in their action menu.
+ */
+@Composable
+private fun BookmarkAction(onOpenBookmarks: () -> Unit, onAddBookmark: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .combinedClickable(
+                onClick = onOpenBookmarks,
+                onClickLabel = stringResource(R.string.player_bookmarks),
+                onLongClick = onAddBookmark,
+                onLongClickLabel = stringResource(R.string.player_bookmark_add),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Bookmark,
+            contentDescription = stringResource(R.string.player_bookmarks),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

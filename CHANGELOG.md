@@ -4,6 +4,68 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
 
 ## Unreleased
 
+### Phase 2 — Playback (closing)
+
+Written retrospectively. Five device runs shaped this phase and each one changed the plan, so
+`docs/phase-2-gaps.md` is the authoritative checklist — an audit against acceptance criteria rather than
+against deliverables — and `docs/phase-2-closeout-plan.md` is what remains.
+
+- **Bookmarks** (11.1): four routes, three of them writes; the read rides on `GET /api/me`, because that is
+  where Audiobookshelf keeps them. Three facts no client should guess and this one does not, because a
+  capture settled each: a bookmark has **no id** and is keyed by its position in whole **seconds**, they
+  live on the **user** rather than the item, and `DELETE` answers `200 text/plain OK`. Writes are
+  local-first and never rolled back on a network failure; `hasUnsyncedChanges` stops a refresh discarding
+  one made offline and `isPendingDelete` stops it resurrecting one deleted offline. The custom session
+  command is included, so a car or a headset can keep a spot. Database version 13.
+  The sheet opens with a **New bookmark at …** button, which the first build of this did not have — it
+  offered only a long press on the player's icon, and a device run found the feature unusable as a result.
+  The button follows Audiobookshelf's own client, and disables itself when the current second is already
+  bookmarked rather than disappearing.
+- **A book is one timeline window** (ADR-0016, PLAY-001/PLAY-003): Media3 reports the *current item's*
+  position to every controller, so a playlist of files made the notification describe the file — "time left
+  in this chapter" on a library with a file per chapter. A book is now one `MediaItem` whose extras carry
+  its tracks, turned into a `ConcatenatingMediaSource2`. Mostly deletion: nothing converts positions any
+  more. The 527-hour book a device run found was `add()` taking milliseconds while the first build passed
+  microseconds; the test now reads the built timeline back.
+- **Android Auto** (PLAY-001, 11.1): a browse tree with three tabs — Continue, Chapters, History — voice
+  search over title, author and narrator, and the `automotive_app_desc` metadata Auto enumerates media apps
+  by. Two device runs still failed to find the app in a car with everything in the APK verified correct, so
+  Settings → About reports the five things that decide it, including what installed the build and whether a
+  car has ever bound to the session — which is how the third run found the cause on the phone rather than in
+  the build. **Confirmed working in a car on 2026-08-14.** What the car *shows* is not yet right: the
+  Continue tab opens empty, diagnosed and scheduled as its own pull request.
+- **Media-button resume** (ROUTE-001, an exit criterion): `onPlaybackResumption` returns the most recently
+  played **unfinished** book at its stored position. Finished books are excluded on purpose. **Passed on
+  hardware 2026-08-14**, together with the book switching it depended on.
+- **The player's history pane** (PLAY-003): every event rather than only jumps — play, pause, seeks, chapter
+  changes, sleep-timer set/extended/expired and the rewinds they apply — combined with the changes that
+  arrived from the server, each row carrying a wall-clock time and the chapter it happened in. Play and
+  pause are read from `playWhenReady`, not `isPlaying`, or a book on a slow connection writes one of each
+  every few seconds.
+- **Book switching** (PLAY-001): wave 5's Android Auto callbacks dropped every item they did not recognise,
+  including the app's own, so no book could be started from the app at all. `MediaItems.isReadyToPlay`
+  restores the pass-through Media3's own default performs.
+- **Playback recovery** (PLAY-001): an errored ExoPlayer sits in `STATE_IDLE` and ignores `play()` and
+  `seekTo()` alike. The service retries transient errors, the play button prepares whenever the player is
+  idle, and exhausted retries surface a notice with a button.
+- **Sleep timer** (PLAY-008): the seven lengths, end-of-chapter and custom, a fade that can be turned
+  **off**, extension from the notification and from a shake, and a **rewind when the timer stops playback**
+  — minutes-scale, off by default, applied after the pause.
+- **Speed, skips, auto-rewind, buffer presets** (PLAY-006/PLAY-007/PLAY-009): 0.5×–3.0× with pitch
+  preserved and a per-book override; skips configurable per direction and honoured by the notification's own
+  buttons; auto-rewind with four bands, clamped to the chapter start, visible and undoable; five buffer
+  presets with a memory estimate.
+- **Progress persistence and the offline outbox** (PLAY-004/PLAY-005): journaled every five seconds, synced
+  on a thirty-second cadence plus seven named triggers, UUIDv4 session ids with idempotent retry, seven-day
+  retention, latest-trustworthy-timestamp conflict resolution and clock-skew detection in diagnostics.
+- **Finished, explicitly** (PLAY-004): a checkbox in both directions. The server accepts the un-tick; what
+  can overrule it is the library's own `markAsFinishedTimeRemaining`, which the app does not yet read.
+- **An event log and an error log** (14.4): in memory, fed by a `LogSink` *after* redaction, so a media
+  title cannot reach it. Under Settings → About, which is what turns "it stopped" into an error code.
+- **Contract captures** (22.4/22.5): thirty-nine fixtures from a real Audiobookshelf 2.36.0, with a CI job
+  that fails on drift. `docs/api-compatibility.md` records what each one settled — including two findings
+  that came from reading the *server's* log rather than its responses.
+
 ### Phase 1 — Authentication and cached browsing (in progress)
 
 **Not complete.** `docs/phase-1-remaining.md` is the authoritative list of what is left — an audit

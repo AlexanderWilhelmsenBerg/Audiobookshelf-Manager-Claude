@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.BookSnapshot
+import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.PlaybackSession
@@ -23,6 +24,7 @@ import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
+import com.example.shelfplayer.core.network.gateway.BookmarkApi
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.LibraryApi
@@ -153,6 +155,29 @@ internal class FakeAuthGateway :
             bookId: LibraryItemId,
             isFinished: Boolean,
             position: kotlin.time.Duration,
+        ): AppResult<Unit> = unsupported()
+    }
+
+    /** PRODUCT_SPEC 11.1 — not part of the auth tests; every method says so rather than pretending. */
+    override val bookmarks: BookmarkApi = object : BookmarkApi {
+        override suspend fun create(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            at: kotlin.time.Duration,
+            title: String,
+        ): AppResult<Bookmark> = unsupported()
+
+        override suspend fun rename(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            at: kotlin.time.Duration,
+            title: String,
+        ): AppResult<Bookmark> = unsupported()
+
+        override suspend fun remove(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            at: kotlin.time.Duration,
         ): AppResult<Unit> = unsupported()
     }
 

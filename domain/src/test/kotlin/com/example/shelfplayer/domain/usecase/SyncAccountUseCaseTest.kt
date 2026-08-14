@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.domain.FakeAuthRepository
+import com.example.shelfplayer.domain.FakeBookmarkRepository
 import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.FakeProfileRepository
 import com.example.shelfplayer.domain.TEST_PROFILE
@@ -27,8 +28,9 @@ class SyncAccountUseCaseTest {
     private val profiles = FakeProfileRepository()
     private val auth = FakeAuthRepository()
     private val libraries = FakeLibraryRepository()
+    private val bookmarks = FakeBookmarkRepository()
 
-    private fun useCase() = SyncAccountUseCase(profiles, auth, libraries)
+    private fun useCase() = SyncAccountUseCase(profiles, auth, libraries, bookmarks)
 
     @Test
     fun `positions the server reported are handed to the library layer`() = runTest {
@@ -71,7 +73,7 @@ class SyncAccountUseCaseTest {
      */
     @Test
     fun `no active profile is a no-op`() = runTest {
-        val result = SyncAccountUseCase(FakeProfileRepository(active = null), auth, libraries)()
+        val result = SyncAccountUseCase(FakeProfileRepository(active = null), auth, libraries, bookmarks)()
 
         assertEquals(AppResult.Success(0), result)
         assertTrue(auth.permissionRefreshes.isEmpty())
