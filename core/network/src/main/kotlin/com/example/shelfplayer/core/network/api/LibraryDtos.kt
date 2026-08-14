@@ -37,6 +37,32 @@ internal data class LibraryDto(
     /** Epoch millis of the last server-side scan, or `null` on a library never scanned. */
     val lastScan: Long? = null,
     val lastUpdate: Long? = null,
+    /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — the library's own idea of when a book is finished.
+     *
+     * Present in `libraries.json` since the wave A capture and parsed away until the Phase 2 closeout,
+     * which is the gap ADR-0013 recorded. Nullable because a library the server describes without settings
+     * is a library with no opinion, and inventing one would be inventing a rule.
+     */
+    val settings: LibrarySettingsDto? = null,
+)
+
+/**
+ * The subset of `library.settings` this app reads.
+ *
+ * Only two fields, out of the eleven the capture shows. The rest are the server's own scanning and matching
+ * behaviour — `metadataPrecedence`, `disableWatcher`, `skipMatchingMediaWithAsin` — which a client cannot act
+ * on and should not model (PRODUCT_SPEC 9.3: a DTO describes what this app uses, not what the server sends).
+ *
+ * @property markAsFinishedTimeRemaining **seconds**. `10` on the capture server.
+ * @property markAsFinishedPercentComplete a **percentage**, not a fraction — so `95`, not `0.95`. `null` in
+ *   every fixture ever captured, which is why [com.example.shelfplayer.core.model.library.FinishedRule]
+ *   records the branch as unverified.
+ */
+@Serializable
+internal data class LibrarySettingsDto(
+    val markAsFinishedTimeRemaining: Long? = null,
+    val markAsFinishedPercentComplete: Double? = null,
 )
 
 /**

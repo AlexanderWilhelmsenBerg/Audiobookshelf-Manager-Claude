@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
@@ -258,6 +259,9 @@ class AppSettingsDataSource @Inject constructor(
             autoRewind = stored.autoRewind(),
             autoPlayOnCarConnect = stored.autoPlayOnCarConnect,
             buffer = BufferPreset.byNameOrDefault(stored.bufferPreset.takeIf(String::isNotBlank)),
+            finishedThreshold = stored.finishedThresholdSeconds.takeIf { it > 0 }
+                ?.let { FinishedThreshold.coerce(it.seconds) }
+                ?: PlaybackSettings.Default.finishedThreshold,
         )
     }
 
@@ -314,6 +318,18 @@ class AppSettingsDataSource @Inject constructor(
 
     suspend fun setBufferPreset(preset: BufferPreset) {
         dataStore.updateData { current -> current.toBuilder().setBufferPreset(preset.name).build() }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — how close to the end counts as finished.
+     *
+     * Clamped on the way in as well as on the way out. The write is the cheaper place to be strict — a value
+     * outside the range never reaches disk — and the read stays strict anyway, because a row written by a
+     * build whose range was wider is a row this build still has to open.
+     */
+    suspend fun setFinishedThreshold(threshold: Duration) {
+        val seconds = FinishedThreshold.coerce(threshold).inWholeSeconds.toInt()
+        dataStore.updateData { current -> current.toBuilder().setFinishedThresholdSeconds(seconds).build() }
     }
 
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */

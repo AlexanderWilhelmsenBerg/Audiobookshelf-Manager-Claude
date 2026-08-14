@@ -133,6 +133,18 @@ message AppSettings {
   // pressing anything. ROUTE-002 says auto-play "requires explicit user selection"; until per-device
   // policy exists this is the single global switch, and the UI has to say what it does.
   bool auto_play_on_car_connect = 26;
+
+  // PRODUCT_SPEC PLAY-004 / SET-002 — how close to the end of a book counts as finished, in seconds.
+  //
+  // 5–120 (`FinishedThreshold.Range`), and zero means "never chosen" as it does for every other numeric
+  // setting here, so the reader substitutes ADR-0013's 30. Zero is not a legal choice for this setting —
+  // a threshold of zero seconds would mean a book is only finished at its exact last sample — so unlike
+  // the auto-rewind bands this needs no companion "configured" flag.
+  //
+  // Only the listener's half of the rule. The other half is the book's library's own
+  // `markAsFinishedTimeRemaining`, which belongs to the library rather than to this device and is stored
+  // in Room with the rest of the library's row.
+  int32 finished_threshold_seconds = 27;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

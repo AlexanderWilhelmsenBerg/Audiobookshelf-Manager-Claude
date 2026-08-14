@@ -21,7 +21,7 @@ decision, recorded below.
 | # | Branch | Requirement | Size | Why here |
 | --- | --- | --- | --- | --- |
 | ~~1~~ | `claude/phase-2-bookmarks` | 11.1 | L | ✅ **done** — a disabled button since wave 2; the capture that unblocked it is in |
-| 2 | `claude/phase-2-finished-threshold` | PLAY-004 | M | Two clauses of one requirement, and one of them is a live defect |
+| ~~2~~ | `claude/phase-2-finished-threshold` | PLAY-004 | M | ✅ **done** — both clauses, and the rule moved out of the player |
 | 3 | `claude/phase-2-duck-or-pause` | PLAY-002 | S | One setting, one branch in the player |
 | 4 | `claude/phase-2-buffer-diagnostics` | PLAY-006 | S | Two readings the buffer work already half-collects |
 | 5 | `claude/phase-2-route-002` | ROUTE-002 | L | Eleven criteria about device identity |
@@ -123,6 +123,23 @@ it wrong, because it no longer decides.
 demonstrating the un-finish round trip in a fixture, which the threshold work does not depend on — the
 threshold is unit-tested against synthetic durations. It stays outstanding, noted in
 `docs/api-compatibility.md`.
+
+### Done, 2026-08-14 — and three things the scope above did not say
+
+Merged as build 0.9.2. Everything above shipped. What the plan did not anticipate:
+
+- **The percentage clause shipped too.** ADR-0013 had deferred `markAsFinishedPercentComplete` until a
+  capture produced a value; on building it, that turned out to be the riskier choice, for the ADR's own
+  reason — a library configured on a fraction would finish books this app still showed in progress, and the
+  app has no way to notice. It is honoured, dropped rather than clamped when out of range, and asserted as
+  *sent and null* in `CapturedShapesTest` so the first server that sets it announces itself.
+- **`FinishedThreshold` moved from `:domain` to `:core:model`.** Its range and default now have three
+  readers — the settings model, the settings store's clamp, and the chips — and `:core:datastore` cannot see
+  `:domain`. Two copies of one range is one range and one bug.
+- **The Playback tab names any library that overrules the chosen value.** A `max` the user cannot see is a
+  setting that lies: choose 30 seconds against a library asking for 90 and the tab says so, with both
+  numbers. That is also the one place in the app with a test tag, because three chip rows on that tab offer
+  the same eight labels.
 
 ---
 

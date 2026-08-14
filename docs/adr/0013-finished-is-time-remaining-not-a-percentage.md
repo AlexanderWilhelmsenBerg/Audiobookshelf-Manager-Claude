@@ -70,3 +70,35 @@ which is 56% through.
 The seed now also creates a book long enough to sit mid-progress, so a future capture can record an
 `isFinished: false` state. The *shape* is identical either way, which is what 22.5 requires; only the
 values differ.
+
+## Implemented, 2026-08-14 — and what changed from the decision above
+
+Phase 2 closeout PR 2. Until then this ADR was accepted and **not implemented**: `FinishedThreshold`
+was an `object` with a hard-coded 30 seconds, and `LibraryDto` parsed `settings` away entirely — so the
+`max` had only one operand and the library's rule reached nothing. Both clauses are now real.
+
+Three things the decision above did not say, decided while building it:
+
+- **`markAsFinishedPercentComplete` is applied, not deferred.** The consequence above says it "stays
+  unimplemented until" a capture produces a value. That was the wrong call, and the reasoning is the
+  ADR's own: the asymmetry argument does not depend on having seen a value. A library configured on a
+  percentage would finish books this app still showed as in progress, which is exactly the oscillation
+  the `max` exists to prevent — and there is no way for the app to *notice* that happening. So the
+  branch is written to the documented field, honoured when non-null, and dropped rather than clamped
+  when out of range. It remains **unverified**: `CapturedShapesTest` asserts the field is sent and that
+  no capture has ever given it a value, so the day one does, the assertion is where the news arrives.
+
+- **The decision lives in the repository, not in the player.** `PlaybackService` used to compute
+  `isFinished` and pass it to `recordPosition`, which put the rule in the one place that could see
+  neither half of it. `DefaultPlaybackRepository` already resolves the profile and the book on every
+  write, so it resolves both halves too, and `PlaybackRepository.recordPosition` no longer takes the
+  flag. One place knows the rule.
+
+- **The library's number is shown in Settings.** A `max` that silently overrules the chosen value is a
+  setting that lies. The Playback tab names any library asking for longer than the chosen threshold, and
+  says which number wins.
+
+The setting is 5–120 seconds under Settings → Playback, defaulting to this ADR's 30, stored as
+`finished_threshold_seconds` and clamped on both read and write. The library's half is stored per
+library in Room (schema 14, `finishedTimeRemainingSeconds` and `finishedFractionComplete`) — nullable,
+because a library that has not asked for a rule is not a library asking for zero seconds.

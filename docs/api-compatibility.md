@@ -527,6 +527,25 @@ fallback for a server that reports none. Disagreeing with the server about wheth
 is a bug the user sees as a book that will not stay finished. Recorded here rather than decided
 unilaterally: it is a deviation from PLAY-004's literal wording and wants an ADR.
 
+### Read, as of 2026-08-14
+
+ADR-0013 settled the deviation and Phase 2 closeout PR 2 implemented it. `LibrarySettingsDto` now takes
+both fields, `FinishedRule` converts the server's units once — seconds stay seconds, the percentage becomes
+a fraction — and the rule is stored per library in Room (schema 14). `FinishedThreshold` takes the `max` of
+the library's value and the listener's own setting, so the app is never the one calling a book unfinished
+that the server has finished.
+
+Two notes for anyone reading the fixture:
+
+- **No new endpoint was needed.** The plan for PR 2 opened by naming "capture the library-settings
+  endpoint" as its blocker. There is nothing to capture: `settings` has been nested in the `GET
+  /api/libraries` response since the wave A capture. `CapturedShapesTest` now asserts both fields, so the
+  dependency is pinned to the observation rather than to this paragraph.
+- **`markAsFinishedPercentComplete` is still `null` in every capture ever taken.** The branch is honoured
+  anyway — see ADR-0013's implementation note for why waiting would have been the riskier choice — and the
+  same test asserts the field is present and null, so the first server that sets it announces itself as a
+  failing assertion rather than as a book that will not stay finished.
+
 ## The offline routes, captured 2026-08-07
 
 Four fixtures, and they changed the design of the outbox before a line of it was written.
@@ -734,8 +753,9 @@ So PLAY-004's "marking finished is explicit, in both directions" is **not** at r
 *Finished* checkbox does reach the server. Two consequences worth carrying forward:
 
 1. **`markAsFinishedTimeRemaining` is real, and its default is 10 s.** PLAY-004 requires the app to honour
-   the library's value and it currently does not — this is the first observation of the setting in action,
-   even though the setting's own endpoint has still not been captured.
+   the library's value, and as of 2026-08-14 it does — see the section above. This log line is the first
+   observation of the setting *in action*, which is a stronger fact than reading it in `libraries.json`:
+   it shows the server applying the rule to a write the app made.
 2. **The fixture cannot demonstrate un-finishing.** Doing so needs a seeded book longer than the threshold,
    which changes the duration in a dozen committed fixtures. That belongs with the
    `markAsFinishedTimeRemaining` work rather than bolted onto this capture, and is recorded in

@@ -14,6 +14,14 @@ data class Library(
     val bookCount: Int,
     val remoteUpdatedAt: Instant?,
     val lastFetchedAt: Instant,
+    /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — when this library says a book is finished.
+     *
+     * [FinishedRule.Unset] for a library the server described without settings, and for every row written
+     * before database version 14. `Unset` means "no opinion" rather than "zero", so an un-migrated row
+     * leaves the app's own threshold standing alone rather than silently becoming a different rule.
+     */
+    val finishedRule: FinishedRule = FinishedRule.Unset,
 )
 
 /**

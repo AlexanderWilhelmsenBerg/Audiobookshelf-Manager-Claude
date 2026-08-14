@@ -18,14 +18,22 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.playback.AutoRewind
+import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
+import com.example.shelfplayer.core.model.playback.PlaybackSettings
+import com.example.shelfplayer.core.model.playback.PlaybackSpeed
+import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -38,6 +46,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
@@ -62,6 +71,13 @@ class DefaultPlaybackRepositoryTest {
     private val sink = RecordingLogSink()
     private val profileId = ProfileId("fixture-profile")
 
+    /**
+     * PRODUCT_SPEC SET-002 — the listener's half of the finished rule, settable from a test.
+     *
+     * The whole point of PR 2 is that this is no longer a constant, so the tests have to be able to move it.
+     */
+    private val settings = StubPlaybackSettings()
+
     @Before
     fun setUp() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -81,6 +97,8 @@ class DefaultPlaybackRepositoryTest {
             profileRepository = StubProfileRepository(profileId),
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
+            libraryDao = database.libraryDao(),
+            playbackSettings = settings,
             gateway = gateway,
             clock = TestAppClock(),
             logger = logger,
@@ -145,7 +163,7 @@ class DefaultPlaybackRepositoryTest {
 
     @Test
     fun `a journaled position is stored against the profile that was listening`() = runTest {
-        repository.recordPosition(BOOK, position = 3.minutes, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = 3.minutes, duration = 2.hours)
 
         val stored = storedProgress()
         assertEquals(180_000L, stored.positionMillis)
@@ -162,7 +180,7 @@ class DefaultPlaybackRepositoryTest {
      */
     @Test
     fun `a journaled position is not overwritten by the server's older one`() = runTest {
-        repository.recordPosition(BOOK, position = 40.minutes, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = 40.minutes, duration = 2.hours)
         assertTrue(storedProgress().hasUnsyncedChanges)
 
         libraryRepository.writeProgress(
@@ -189,9 +207,9 @@ class DefaultPlaybackRepositoryTest {
      */
     @Test
     fun `a finished book is not un-finished by replaying the end`() = runTest {
-        repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours, isFinished = true)
+        repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours)
 
-        repository.recordPosition(BOOK, position = 1.hours, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = 1.hours, duration = 2.hours)
 
         val stored = storedProgress()
         assertTrue(stored.isFinished, "still finished")
@@ -206,9 +224,9 @@ class DefaultPlaybackRepositoryTest {
      */
     @Test
     fun `an unknown duration keeps the stored one`() = runTest {
-        repository.recordPosition(BOOK, position = 10.minutes, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = 10.minutes, duration = 2.hours)
 
-        repository.recordPosition(BOOK, position = 11.minutes, duration = kotlin.time.Duration.ZERO, isFinished = false)
+        repository.recordPosition(BOOK, position = 11.minutes, duration = kotlin.time.Duration.ZERO)
 
         assertEquals(2.hours.inWholeMilliseconds, storedProgress().durationMillis)
     }
@@ -216,7 +234,7 @@ class DefaultPlaybackRepositoryTest {
     /** A negative position — a player reporting `-1` for "unset" — is stored as the start, not as -1. */
     @Test
     fun `a negative position is stored as the start`() = runTest {
-        repository.recordPosition(BOOK, position = (-30).seconds, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = (-30).seconds, duration = 2.hours)
 
         assertEquals(0L, storedProgress().positionMillis)
     }
@@ -228,6 +246,8 @@ class DefaultPlaybackRepositoryTest {
             profileRepository = StubProfileRepository(activeProfileId = null),
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
+            libraryDao = database.libraryDao(),
+            playbackSettings = settings,
             gateway = FakeAudiobookshelfGateway(
                 loader = FixtureLibraryLoader(),
                 clock = TestAppClock(),
@@ -243,17 +263,90 @@ class DefaultPlaybackRepositoryTest {
         // that did not change rather than a count of zero.
         val before = database.progressDao().findProgressFor(profileId.value)
 
-        val result = orphaned.recordPosition(BOOK, 5.minutes, 2.hours, isFinished = false)
+        val result = orphaned.recordPosition(BOOK, 5.minutes, 2.hours)
 
         assertIs<AppError.Authentication>(assertIs<AppResult.Failure>(result).error)
         val after = database.progressDao().findProgressFor(profileId.value)
         assertEquals(before, after, "nothing was written")
     }
 
+    // --- The finished rule, both halves (PLAY-004 / ADR-0013) ---------------------------------------
+
+    /**
+     * The default: ADR-0013's thirty seconds, applied by the repository rather than by its caller.
+     *
+     * The fixture libraries carry the capture server's own `markAsFinishedTimeRemaining: 10`, which is *less*
+     * eager than the setting — so the number in force here is the listener's, and this is the case the
+     * `max` resolves in the app's favour.
+     */
+    @Test
+    fun `a book inside the configured threshold is finished`() = runTest {
+        repository.recordPosition(BOOK, position = 2.hours - 20.seconds, duration = 2.hours)
+        assertTrue(storedProgress().isFinished, "twenty seconds left is finished")
+    }
+
+    @Test
+    fun `a book outside the configured threshold is not finished`() = runTest {
+        repository.recordPosition(BOOK, position = 2.hours - 40.seconds, duration = 2.hours)
+        assertFalse(storedProgress().isFinished, "forty seconds left is not")
+    }
+
+    /** PRODUCT_SPEC SET-002 — the setting is what decides, so changing it changes the answer. */
+    @Test
+    fun `the listener's setting moves the line`() = runTest {
+        settings.set(120.seconds)
+
+        repository.recordPosition(BOOK, position = 2.hours - 90.seconds, duration = 2.hours)
+
+        assertTrue(storedProgress().isFinished, "a minute and a half left, against a two-minute threshold")
+    }
+
+    /**
+     * ADR-0013's `max`, from the database — the half that was being parsed away until now.
+     *
+     * The library's rule is written the way a sync writes it, through the same mapper, and then a position
+     * that the *listener's* thirty seconds would leave unfinished is finished because the library asked for
+     * ninety. Without the join in `LibraryDao.finishedRuleFor` this test cannot pass, which is the point:
+     * the book knows its library, and the journal has to be able to get there.
+     */
+    @Test
+    fun `a library more eager than the setting wins`() = runTest {
+        libraryAsksFor(90.seconds)
+
+        repository.recordPosition(BOOK, position = 2.hours - 60.seconds, duration = 2.hours)
+
+        assertTrue(storedProgress().isFinished, "a minute left, against a library asking for ninety seconds")
+    }
+
+    /**
+     * And it does not reach across libraries.
+     *
+     * A rule set on the *other* library must not decide anything about this book. The join is by book, and a
+     * bug that read "any library on this server" would pass every other test in this file.
+     */
+    @Test
+    fun `another library's rule does not apply`() = runTest {
+        libraryAsksFor(90.seconds, libraryId = "lib-nonfiction")
+
+        repository.recordPosition(BOOK, position = 2.hours - 60.seconds, duration = 2.hours)
+
+        assertFalse(storedProgress().isFinished, "the book's own library still asks for ten seconds")
+    }
+
+    /** Writes a library's own finished rule, through the mapper a sync writes it with. */
+    private suspend fun libraryAsksFor(timeRemaining: kotlin.time.Duration, libraryId: String = "lib-fiction") {
+        val existing = requireNotNull(
+            database.libraryDao().observeLibrary(EntityKey.of(SERVER, libraryId)).first(),
+        ) { "the fixture refresh wrote no $libraryId row" }
+        database.libraryWriteDao().upsertLibraries(
+            listOf(existing.copy(finishedTimeRemainingSeconds = timeRemaining.inWholeSeconds)),
+        )
+    }
+
     /** PRODUCT_SPEC 14.5 — the finished-threshold log names no book. */
     @Test
     fun `reaching the finished threshold logs no media title`() = runTest {
-        repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours, isFinished = true)
+        repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours)
 
         assertTrue(sink.text.contains("finished threshold"), "the event is logged: ${sink.text}")
         assertTrue(!sink.text.contains(BOOK.value), "and it names no book")
@@ -362,6 +455,44 @@ class DefaultPlaybackRepositoryTest {
         override suspend fun activeProfileId(): ProfileId? = activeProfileId
 
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+    }
+
+    /**
+     * PRODUCT_SPEC SET-002 — the playback settings, with only the one this repository reads made settable.
+     *
+     * A stub rather than the real `DefaultPlaybackSettingsRepository`: that one needs a `DataStore`, and the
+     * subject here is the rule the repository applies rather than where the number is kept. Everything else
+     * answers with the product default, which is what a test that does not care about it should get.
+     */
+    private class StubPlaybackSettings : PlaybackSettingsRepository {
+        private val state = MutableStateFlow(PlaybackSettings.Default)
+
+        fun set(threshold: kotlin.time.Duration) {
+            state.value = state.value.copy(finishedThreshold = FinishedThreshold.coerce(threshold))
+        }
+
+        override fun observeSettings(): Flow<PlaybackSettings> = state
+
+        override suspend fun setFinishedThreshold(threshold: kotlin.time.Duration): AppResult<Unit> {
+            set(threshold)
+            return AppResult.Success(Unit)
+        }
+
+        override suspend fun setDefaultSpeed(speed: PlaybackSpeed) = AppResult.Success(Unit)
+
+        override suspend fun setSkipIntervals(skips: SkipIntervals) = AppResult.Success(Unit)
+
+        override suspend fun setAutoRewind(rewind: AutoRewind) = AppResult.Success(Unit)
+
+        override suspend fun setBufferPreset(preset: BufferPreset) = AppResult.Success(Unit)
+
+        override suspend fun setAutoPlayOnCarConnect(enabled: Boolean) = AppResult.Success(Unit)
+
+        override fun observeSpeedFor(bookId: LibraryItemId): Flow<PlaybackSpeed?> = flowOf(null)
+
+        override suspend fun speedFor(bookId: LibraryItemId): PlaybackSpeed = state.value.defaultSpeed
+
+        override suspend fun setSpeedFor(bookId: LibraryItemId, speed: PlaybackSpeed?) = AppResult.Success(Unit)
     }
 
     private companion object {

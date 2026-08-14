@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import kotlinx.coroutines.flow.Flow
+import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — how the listener has asked playback to behave.
@@ -27,6 +28,18 @@ interface PlaybackSettingsRepository {
     suspend fun setAutoRewind(rewind: AutoRewind): AppResult<Unit>
 
     suspend fun setBufferPreset(preset: BufferPreset): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC PLAY-004 / SET-002 — how close to the end of a book counts as finished.
+     *
+     * Clamped into `FinishedThreshold.Range` by the store rather than validated here, so that every route
+     * to the setting — this one, and a stored value from a build whose range differed — lands inside it.
+     *
+     * This is only the listener's half of the rule. A book's library may ask for its own threshold, and
+     * `FinishedThreshold` combines the two; there is no setter for that half, because it belongs to the
+     * server.
+     */
+    suspend fun setFinishedThreshold(threshold: Duration): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — whether connecting to a car starts the last book.

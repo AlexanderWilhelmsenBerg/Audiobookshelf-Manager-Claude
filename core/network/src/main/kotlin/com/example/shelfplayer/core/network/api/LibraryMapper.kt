@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Chapter
+import com.example.shelfplayer.core.model.library.FinishedRule
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
@@ -50,6 +51,12 @@ internal object LibraryMapper {
                 bookCount = 0,
                 remoteUpdatedAt = library.lastUpdate?.let(::instantOrNull),
                 lastFetchedAt = fetchedAt,
+                // PRODUCT_SPEC PLAY-004 / ADR-0013 — the library's own finished rule, which the app must
+                // not be less eager than. Absent settings mean no opinion, not zero.
+                finishedRule = FinishedRule.of(
+                    timeRemainingSeconds = library.settings?.markAsFinishedTimeRemaining,
+                    percentComplete = library.settings?.markAsFinishedPercentComplete,
+                ),
             )
         }
         return AppResult.Success(libraries)

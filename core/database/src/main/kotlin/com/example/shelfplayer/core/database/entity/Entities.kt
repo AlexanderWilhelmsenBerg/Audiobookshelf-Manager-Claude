@@ -130,6 +130,21 @@ data class LibraryEntity(
     val remoteUpdatedAt: Long?,
     val lastFetchedAt: Long,
     val isDeleted: Boolean,
+    /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — `markAsFinishedTimeRemaining`, in **seconds**.
+     *
+     * Nullable, and `null` means the library has no opinion rather than zero seconds. Every row written
+     * before version 14 reads `null`, which is the honest value: those syncs parsed the field away.
+     */
+    val finishedTimeRemainingSeconds: Long?,
+    /**
+     * `markAsFinishedPercentComplete`, as a **fraction** in `0.0..1.0` — so 0.95, not 95.
+     *
+     * Named for the unit on purpose. The server sends a percentage and `FinishedRule.of` is the one place
+     * that converts it; storing the percentage here would put the conversion on the way *out* as well, which
+     * is how the two halves of a round trip come to disagree by a factor of a hundred.
+     */
+    val finishedFractionComplete: Double?,
 )
 
 @Entity(tableName = "authors", indices = [Index("serverId")])

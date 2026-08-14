@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls, across two stores.
@@ -84,6 +85,15 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
             LogCategory.Settings,
             "The streaming buffer preset changed",
             LogField.Public("preset", preset.name),
+        )
+    }
+
+    override suspend fun setFinishedThreshold(threshold: Duration): AppResult<Unit> = write {
+        settings.setFinishedThreshold(threshold)
+        logger.info(
+            LogCategory.Settings,
+            "The finished threshold changed",
+            LogField.Millis("threshold", threshold.inWholeMilliseconds),
         )
     }
 

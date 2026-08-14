@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Chapter
+import com.example.shelfplayer.core.model.library.FinishedRule
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
@@ -81,6 +82,12 @@ internal class FixtureMapper(private val document: FixtureLibraryDocument) {
             bookCount = document.books.count { it.libraryId == fixture.id },
             remoteUpdatedAt = null,
             lastFetchedAt = fetchedAt,
+            // The same converter the wire mapper uses, so the fixture cannot express a rule a real server
+            // could not send — and cannot be the one place a percentage stays a percentage.
+            finishedRule = FinishedRule.of(
+                timeRemainingSeconds = fixture.markAsFinishedTimeRemaining,
+                percentComplete = fixture.markAsFinishedPercentComplete,
+            ),
         )
     }
 

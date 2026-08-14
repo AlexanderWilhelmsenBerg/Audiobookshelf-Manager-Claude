@@ -394,6 +394,23 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — adds the library's own finished rule to `libraries`.
+     *
+     * Two nullable columns, so a single `ALTER TABLE` each and no rewrite. Nullable is the *meaning* as well
+     * as the mechanism: `null` is "this library has no opinion", not "zero seconds", and every row written
+     * before this version genuinely had no opinion — the fields were parsed away on the way in.
+     *
+     * The fraction column holds the domain's units rather than the server's percentage. See
+     * `LibraryEntity.finishedFractionComplete` for why that is not an arbitrary choice.
+     */
+    private val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `libraries` ADD COLUMN `finishedTimeRemainingSeconds` INTEGER")
+            db.execSQL("ALTER TABLE `libraries` ADD COLUMN `finishedFractionComplete` REAL")
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -407,5 +424,6 @@ object Migrations {
         MIGRATION_10_11,
         MIGRATION_11_12,
         MIGRATION_12_13,
+        MIGRATION_13_14,
     )
 }

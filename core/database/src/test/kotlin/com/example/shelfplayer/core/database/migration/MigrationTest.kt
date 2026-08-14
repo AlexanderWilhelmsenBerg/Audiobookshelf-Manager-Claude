@@ -625,6 +625,56 @@ class MigrationTest {
     }
 
     /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — version 14 adds the library's finished rule.
+     *
+     * Two assertions, and the first is the one that matters: a library cached by an older build reads back
+     * with **no rule**, not with a rule of zero. `null` means "this library has not asked for anything", and
+     * a migration that defaulted the columns to 0 would silently mark every book in every pre-14 library
+     * finished at its last sample.
+     */
+    @Test
+    fun `version 14 gives a cached library no finished rule rather than a zero one`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        val stored = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
+        assertNull(stored.finishedTimeRemainingSeconds, "no opinion, not zero seconds")
+        assertNull(stored.finishedFractionComplete, "and no fraction either")
+
+        migrated.libraryWriteDao().upsertLibraries(
+            listOf(stored.copy(finishedTimeRemainingSeconds = 60, finishedFractionComplete = 0.95)),
+        )
+
+        val updated = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
+        assertEquals(60L, updated.finishedTimeRemainingSeconds)
+        assertEquals(0.95, updated.finishedFractionComplete)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — the join the progress journal reads the rule through.
+     *
+     * A book's rule comes from *its own* library, and the journal has only a book. This is that query
+     * against a migrated database, which is where a column named differently by the migration than by the
+     * entity would surface — Room validates the schema but not a hand-written `SELECT`'s aliases.
+     */
+    @Test
+    fun `a book's finished rule is found through its library`() = runTest {
+        createVersion(9)
+        val migrated = openWithMigrations()
+        val library = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
+        migrated.libraryWriteDao().upsertLibraries(
+            listOf(library.copy(finishedTimeRemainingSeconds = 45, finishedFractionComplete = null)),
+        )
+
+        val rule = assertNotNull(migrated.libraryDao().finishedRuleFor(BOOK_KEY))
+
+        assertEquals(45L, rule.timeRemainingSeconds)
+        assertNull(rule.fractionComplete)
+        assertNull(migrated.libraryDao().finishedRuleFor("no-such-book"), "an unknown book has no rule")
+    }
+
+    /**
      * Room validates the migrated schema against the one it expects and throws if they differ. Reading
      * through a DAO is what forces that validation to run, so this fails loudly on a migration that
      * produced a *nearly* correct schema — a missing default, a wrong nullability.

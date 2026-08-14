@@ -64,6 +64,7 @@ fun SettingsRoute(
             onSkipsChanged = viewModel::onSkipIntervalsChanged,
             onAutoRewindChanged = viewModel::onAutoRewindChanged,
             onBufferChanged = viewModel::onBufferPresetChanged,
+            onFinishedThresholdChanged = viewModel::onFinishedThresholdChanged,
             onAutoPlayChanged = viewModel::onAutoPlayOnCarConnectChanged,
         ),
         onNavigateUp = onNavigateUp,
@@ -139,7 +140,7 @@ fun SettingsScreen(
                         actions = sleepTimerActions,
                     )
 
-                    SettingsTab.Playback -> playbackTab(uiState.playback, playbackActions)
+                    SettingsTab.Playback -> playbackTab(uiState.playback, uiState.libraries, playbackActions)
 
                     SettingsTab.About -> aboutTab(uiState, onOpenEventLog = { isEventLogOpen = true })
                 }

@@ -17,16 +17,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
+import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls, as a settings tab.
@@ -44,7 +48,11 @@ import com.example.shelfplayer.core.model.playback.SkipIntervals
  * The player's speed sheet has the slider, because that is where a fine adjustment is actually made against
  * audio you can hear.
  */
-internal fun LazyListScope.playbackTab(settings: PlaybackSettings, actions: PlaybackSettingsActions) {
+internal fun LazyListScope.playbackTab(
+    settings: PlaybackSettings,
+    libraries: List<Library>,
+    actions: PlaybackSettingsActions,
+) {
     val onSpeedChanged = actions.onSpeedChanged
     val onSkipsChanged = actions.onSkipsChanged
     val onAutoRewindChanged = actions.onAutoRewindChanged
@@ -101,9 +109,64 @@ internal fun LazyListScope.playbackTab(settings: PlaybackSettings, actions: Play
     item { Hint(text = stringResource(R.string.settings_buffer_hint)) }
     items(BufferPreset.entries, settings.buffer, onBufferChanged)
 
+    finishedSection(settings.finishedThreshold, libraries, actions.onFinishedThresholdChanged)
     carSection(settings.autoPlayOnCarConnect, actions.onAutoPlayChanged)
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) }
 }
+
+/**
+ * PRODUCT_SPEC PLAY-004 / ADR-0013 — when a book counts as finished.
+ *
+ * ### Why the libraries appear here
+ *
+ * ADR-0013's rule is `max(this setting, the library's own markAsFinishedTimeRemaining)`, and without the
+ * second half shown, a listener who chose 30 seconds and then watched a book finish with a minute left has
+ * been given a setting that lies. Only the libraries that actually *win* are named — a library asking for
+ * less than the chosen value changes nothing and saying so would be noise.
+ *
+ * The comparison is against the chosen value rather than against every library, so the note appears and
+ * disappears as the chips are pressed, which is the clearest way to show what the `max` is doing.
+ */
+private fun LazyListScope.finishedSection(
+    threshold: Duration,
+    libraries: List<Library>,
+    onChanged: (Duration) -> Unit,
+) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_finished)) }
+    item { Hint(text = stringResource(R.string.settings_finished_hint)) }
+    item {
+        ChipRow(
+            labelRes = R.string.settings_finished_threshold,
+            options = FinishedThreshold.Presets,
+            selected = threshold,
+            label = { seconds -> stringResource(R.string.settings_seconds, seconds.inWholeSeconds.toInt()) },
+            onSelect = onChanged,
+            // The only test tag in the app, and it earns its place: three chip rows on this tab offer the
+            // *same* eight labels — "5 s" through "120 s" — because the skip intervals and this threshold
+            // share a range on purpose. A test asserting that a listener can press this row's 90 therefore
+            // cannot name it by its text, and PR 1 of this closeout is the record of what happens when a
+            // control goes untested for pressability.
+            modifier = Modifier.testTag(FINISHED_THRESHOLD_CHIPS),
+        )
+    }
+    libraries
+        .mapNotNull { library -> library.finishedRule.timeRemaining?.let { library.name to it } }
+        .filter { (_, asked) -> asked > threshold }
+        .forEach { (name, asked) ->
+            item(key = "finished-override-$name") {
+                Hint(
+                    text = stringResource(
+                        R.string.settings_finished_library_override,
+                        name,
+                        asked.inWholeSeconds.toInt(),
+                    ),
+                )
+            }
+        }
+}
+
+/** See [finishedSection]. Named here so the test and the tab cannot drift apart on a string literal. */
+internal const val FINISHED_THRESHOLD_CHIPS = "finished-threshold-chips"
 
 /**
  * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — what happens when the phone meets a car.
@@ -158,6 +221,8 @@ data class PlaybackSettingsActions(
     val onSkipsChanged: (SkipIntervals) -> Unit,
     val onAutoRewindChanged: (AutoRewind) -> Unit,
     val onBufferChanged: (BufferPreset) -> Unit,
+    /** PRODUCT_SPEC PLAY-004 — how close to the end counts as finished. */
+    val onFinishedThresholdChanged: (Duration) -> Unit,
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. */
     val onAutoPlayChanged: (Boolean) -> Unit,
 )

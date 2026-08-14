@@ -24,8 +24,14 @@
     "RangeDownload"
   ],
   "libraries": [
-    { "id": "lib-fiction", "name": "Fiction", "kind": "book", "displayOrder": 0 },
-    { "id": "lib-nonfiction", "name": "Non-fiction", "kind": "book", "displayOrder": 1 }
+    {
+      "id": "lib-fiction", "name": "Fiction", "kind": "book", "displayOrder": 0,
+      "markAsFinishedTimeRemaining": 10
+    },
+    {
+      "id": "lib-nonfiction", "name": "Non-fiction", "kind": "book", "displayOrder": 1,
+      "markAsFinishedTimeRemaining": 10
+    }
   ],
   "authors": [
     { "id": "author-holt", "name": "Marisol Holt" },

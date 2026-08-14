@@ -555,6 +555,17 @@
     <string name="settings_buffer_automatic_range">Whatever the player decides</string>
     <string name="settings_seconds">%1$d s</string>
 
+    <!-- PRODUCT_SPEC PLAY-004 / ADR-0013 — when a book counts as finished. -->
+    <string name="settings_section_finished">Finished</string>
+    <string name="settings_finished_threshold">Finished with this much left</string>
+    <string name="settings_finished_hint">A book is marked finished when this little is left, so the last few seconds of credits do not leave it looking unread. Marking a book finished by hand always works regardless of this, and starting a finished book from the beginning always un-finishes it.</string>
+    <!--
+      The `max` rule made visible. A library on the server can ask for a longer threshold than the one
+      chosen here, and it wins — otherwise the app and the server would disagree about the same book and
+      it would flip between finished and unfinished on every sync.
+    -->
+    <string name="settings_finished_library_override">%1$s asks for %2$d s, and the longer of the two wins — so books there are finished with %2$d s left.</string>
+
     <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.
 

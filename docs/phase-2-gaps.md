@@ -60,20 +60,29 @@ Complete for a streaming client. The three remaining criteria are about download
 | Journaled at least every 5 s | ✅ |
 | Remote sync ~30 s plus the seven named triggers | ✅ all seven |
 | Survives process death, ≤10 s lost | ✅ by construction 🔬 unproven on hardware |
-| Finished threshold 95%, configurable 90–99% | ⚠️ the threshold is 95% and **not configurable** |
+| Finished threshold 95%, configurable 90–99% | ✅ **configurable 5–120 s**, defaulting to 30 s — a duration rather than a percentage, deviating from the literal wording by ADR-0013 |
 | **Marking finished is explicit** | ✅ a checkbox, both directions — and the un-finish PATCH is confirmed accepted by the server |
 | Rewinding preserved; conflict never blindly takes the maximum | ✅ |
-| **`markAsFinishedTimeRemaining` from library settings** | ❌ ADR-0013's other half — the setting is now *observed* (10 s default) but its endpoint is still uncaptured |
+| **`markAsFinishedTimeRemaining` from library settings** | ✅ **read and applied**, as the `max` with the listener's setting — and `markAsFinishedPercentComplete` with it |
 
 The 2026-08-13 capture settled both directions. `isFinished: true` round-trips, and the un-finish PATCH
 answers `200 OK` — the server accepts it. What made the first probe look like a failure was the server's own
 `markAsFinishedTimeRemaining` rule, default ten seconds, applied to a contract book **eight seconds long**:
 every position in it is inside the last ten, so it can never be un-finished. A real book is not affected.
 
-That is also the **first observation of `markAsFinishedTimeRemaining` in action**, which is the unbuilt half
-of ADR-0013 in the row above. Demonstrating un-finishing in a fixture needs a seeded book longer than the
-threshold, which moves the duration in a dozen committed fixtures — so it belongs with that work rather than
-with the capture, and the work has to read the setting anyway.
+That is also the **first observation of `markAsFinishedTimeRemaining` in action**. Both rows above closed on
+2026-08-14 (build 0.9.2, Phase 2 closeout PR 2): `LibraryDto` no longer parses `settings` away, the rule is
+stored per library in Room, and `FinishedThreshold` takes ADR-0013's `max` of it and the listener's own
+setting. The decision moved out of `PlaybackService` — which had been applying a hard-coded thirty seconds —
+into `DefaultPlaybackRepository`, the one place that resolves both halves.
+
+"Its endpoint is still uncaptured", which this row said for a week, was wrong: `settings` is nested in the
+`GET /api/libraries` response and has been in `libraries.json` since the wave A capture. Nothing needed
+capturing; the fields needed reading. `CapturedShapesTest` now asserts them so the claim cannot rot again.
+
+Still outstanding, and still not a blocker: demonstrating un-finishing in a fixture needs a seeded book longer
+than the threshold, which moves the duration in a dozen committed fixtures. The threshold itself is
+unit-tested against synthetic durations, so it never depended on that.
 
 ### 11.1 Bookmarks — ✅ **built, and passed on hardware 2026-08-14**
 
@@ -298,20 +307,22 @@ pause and a play every few seconds and buried everything else.
 
 1. ~~**Bookmarks.**~~ ✅ **Built** — see below. PRODUCT_SPEC 11.1's custom command included, so a car or a
    headset can keep a spot.
-2. **The small ones:** `markAsFinishedTimeRemaining`, a configurable finished threshold, rebuffer count and
-   startup latency in diagnostics, and the duck-vs-pause setting.
+2. **The small ones:** ~~`markAsFinishedTimeRemaining`~~ ✅ and ~~a configurable finished threshold~~ ✅ (both
+   in PR 2); rebuffer count and startup latency in diagnostics, and the duck-vs-pause setting.
 3. **The exit criteria on hardware:** the two-hour soak, process death, progress against the server.
 
-Every item PRODUCT_SPEC names for Phase 2 is now **built**. What is left is one recommended feature waiting
-on a capture, four small requirement clauses, and the hardware runs — and the hardware runs are the ones that
+Every item PRODUCT_SPEC names for Phase 2 is now **built**. What is left is two small requirement clauses,
+the two ROUTE items the owner asked for on 2026-08-14, and the hardware runs — and the hardware runs are the ones that
 decide whether the phase is finished *honestly*, because nothing above has been seen in a car or across a
 two-hour soak.
 
 ## Deliberately not in Phase 2
 
-Recorded so they are not mistaken for gaps: **ROUTE-002 and ROUTE-003** are a phase's worth of work about
-device policy rather than about playing a book, and PRODUCT_SPEC's own Phase 2 deliverable list does not
-name them — only ROUTE-001 appears, as an exit criterion. **PLAY-006's Advanced buffer mode** is a
+Recorded so they are not mistaken for gaps. **ROUTE-002 and ROUTE-003** were here until 2026-08-14, on the
+grounds that they are about device policy rather than about playing a book and that PRODUCT_SPEC's Phase 2
+deliverable list names only ROUTE-001. The owner decided otherwise once the app reached a car, and they are
+PRs 5 and 6 of `docs/phase-2-closeout-plan.md`. The reasoning above was about *sequencing*, not about whether
+they are worth building — with a head unit in the loop, per-device policy stopped being hypothetical. **PLAY-006's Advanced buffer mode** is a
 five-field form for a preference the presets already cover. **Equaliser, widgets and statistics** are the
 owner's, for a later phase (`docs/phase-2-closeout.md`). **The queue** is smart download and belongs to
 Phase 3 (ADR-0017).
