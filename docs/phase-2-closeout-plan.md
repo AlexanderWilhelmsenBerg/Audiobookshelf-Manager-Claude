@@ -84,19 +84,45 @@ The 2026-08-13 capture is the reason this is second rather than fifth: the CI se
 setting has been *observed*. The app does not read it, so a library configured with a two-minute threshold
 gets the app's 95% instead — books marked finished at the wrong moment, in both directions.
 
+**No capture is needed, and the plan was wrong to say one was.** `GET /api/libraries` already carries a
+`settings` object, and the committed `libraries.json` has held both fields since the wave A capture:
+
+```
+"markAsFinishedTimeRemaining": 10,
+"markAsFinishedPercentComplete": null
+```
+
+So this implements a decision that is **already recorded** rather than making one. ADR-0013 states the rule
+in full, including why it is a `max`:
+
+```
+finishedWhenRemaining = max(the user's setting, library.markAsFinishedTimeRemaining ?: 0s)
+```
+
+The asymmetry is the design: the app must never be the one calling a book unfinished that the server has
+finished, because the two rules then disagree and the book oscillates every time either syncs. And ADR-0013
+already names the configurable range as a **duration, 5–120 seconds** — PLAY-004's literal 90–99% was
+deviated from deliberately, because 95% of a ten-hour book is half an hour from the end.
+
 **Scope**
 
-- Capture the library-settings endpoint **first**, in the same pull request, and build only on what it
-  returns (22.4/22.5). If it does not expose the value, the pull request says so and ships the configurable
-  threshold alone rather than guessing.
-- `FinishedThreshold` gains the library's time-remaining rule beside the percentage, and the percentage
-  becomes a setting with the spec's 90–99% range.
-- **Lengthen the seeded contract book past the threshold**, so un-finishing becomes demonstrable in a
-  fixture at all. This moves a duration in about a dozen committed fixtures, which is churn — and it
-  belongs here, because this is the pull request that cares about the number.
+- `LibraryDto` gains `settings`; `Library` carries the rule; Room's `library` table gains two nullable
+  columns. **Additive migration, version 14.**
+- `FinishedThreshold` stops being a constant and takes the library's rule and the user's setting.
+- The **caller** changes shape too, and this is the part worth doing carefully. `PlaybackService` currently
+  computes `isFinished` itself and passes it to `recordPosition`, which means the service needs the rule. It
+  should not: the repository already resolves the profile and the book on every write, so it is the one place
+  that can resolve the library's setting as well. Moving the decision there leaves one place that knows.
+- The setting itself: 5–120 seconds under Settings → Playback, defaulting to ADR-0013's 30.
 
-**Tests.** A threshold table test at the range's ends; the un-finish round trip, which only becomes
-possible once the seeded book is long enough.
+**Tests.** A table test over the `max`, including a library more eager than the user's setting and one less
+eager; the unknown-duration case, which must never be finished; and the service no longer being able to get
+it wrong, because it no longer decides.
+
+**Not in scope, and previously mis-scheduled here:** lengthening the seeded contract book. That was for
+demonstrating the un-finish round trip in a fixture, which the threshold work does not depend on — the
+threshold is unit-tested against synthetic durations. It stays outstanding, noted in
+`docs/api-compatibility.md`.
 
 ---
 
