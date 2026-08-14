@@ -174,6 +174,7 @@ class MigrationTest {
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = false,
                 hasAllTagAccess = false,
+                canDownload = false,
             ),
         )
 
@@ -752,6 +753,28 @@ class MigrationTest {
                 arrayOf<Any>(finishedSeconds, LIBRARY_KEY),
             )
         }
+    }
+
+    /**
+     * PRODUCT_SPEC DL-001 — version 16 records the download grant, and defaults it to **denied**.
+     *
+     * The direction is the whole test. A profile cached before this column existed has not been observed to
+     * hold the permission, and the safe reading of "unknown" is *no*: offering a download the server will
+     * refuse is worse than withholding one it would allow, and both sign-in and the 403 permission refresh
+     * rewrite the row, so a profile that does hold it corrects itself on next use.
+     *
+     * A migration that defaulted to 1 would look identical on the owner's own root account — which holds
+     * every permission — and would be wrong for every restricted account on the server.
+     */
+    @Test
+    fun `version 16 denies downloading to a profile cached before the grant was recorded`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        val profile = assertNotNull(migrated.profileDao().findProfile(PROFILE_ID))
+        assertFalse(profile.canDownload, "unknown must read as denied, never as permitted")
+        assertEquals("ada", profile.username, "and the row is otherwise untouched")
     }
 
     /**

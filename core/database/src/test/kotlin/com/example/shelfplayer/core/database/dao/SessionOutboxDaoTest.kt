@@ -237,6 +237,7 @@ class SessionOutboxDaoTest {
                     accessibleLibrariesJson = "[]",
                     hasAllLibraryAccess = true,
                     hasAllTagAccess = true,
+                    canDownload = false,
                 ),
             )
         }

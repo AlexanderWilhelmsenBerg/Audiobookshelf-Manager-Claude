@@ -33,6 +33,18 @@ data class LibraryAccess(
      * [reconciles].
      */
     val hasAllTagAccess: Boolean = false,
+    /**
+     * PRODUCT_SPEC DL-001 — whether this account may download at all.
+     *
+     * `user.permissions.download`, observed in `contracts/me.json`. It is **not** about visibility like the
+     * two flags above, and it does not affect [reconciles]: an account that may not download still sees the
+     * same books and still syncs a complete picture. It rides here because it arrives in the same object and
+     * is persisted on the same row, and giving it a type of its own for one boolean would be ceremony.
+     *
+     * DL-001's first criterion is "the download button is visible only when the server grants it", and until
+     * this was persisted that criterion had no plumbing: the field was parsed off the wire and dropped.
+     */
+    val canDownload: Boolean = false,
 ) {
 
     /**

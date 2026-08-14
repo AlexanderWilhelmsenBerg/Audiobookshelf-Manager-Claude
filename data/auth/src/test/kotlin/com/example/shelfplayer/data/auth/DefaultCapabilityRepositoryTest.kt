@@ -209,6 +209,7 @@ class DefaultCapabilityRepositoryTest {
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
                 hasAllTagAccess = true,
+                canDownload = false,
             ),
         )
     }

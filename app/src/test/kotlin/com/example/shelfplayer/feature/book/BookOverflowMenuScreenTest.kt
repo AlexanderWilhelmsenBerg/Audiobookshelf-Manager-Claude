@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -195,11 +196,34 @@ class BookOverflowMenuScreenTest {
         ).assertIsDisplayed()
     }
 
+    /**
+     * PRODUCT_SPEC DL-001 criterion 1 — the download button exists only where the server grants it.
+     *
+     * Both directions are asserted, in two tests because `setContent` runs once per test. Either one alone
+     * would pass against a bug: a gate that hid the button from everybody satisfies the negative case, and a
+     * gate wired to a constant `true` satisfies the positive one.
+     */
+    @Test
+    fun `an account that may download sees the button`() {
+        render(canDownload = true)
+
+        composeRule.onNodeWithContentDescription(DOWNLOAD).assertIsDisplayed()
+    }
+
+    /** Absent, not merely disabled: for this account it will never work, whatever this app ships. */
+    @Test
+    fun `an account that may not download does not see the button`() {
+        render(canDownload = false)
+
+        composeRule.onNodeWithContentDescription(DOWNLOAD).assertDoesNotExist()
+    }
+
     private fun openMenu() = composeRule.onNodeWithTag(BOOK_OVERFLOW_BUTTON).performClick()
 
     private fun render(
         book: Book = book(progress(position = 40.minutes, isFinished = false)),
         webUrl: String? = "https://books.example/item/book-1",
+        canDownload: Boolean = true,
         onFinishedChanged: (Boolean) -> Unit = {},
         onDiscardProgress: () -> Unit = {},
         onOpenWebClient: (String) -> Unit = {},
@@ -218,7 +242,7 @@ class BookOverflowMenuScreenTest {
                     position = Duration.ZERO,
                     duration = Duration.ZERO,
                 ),
-                menu = BookMenuState(webUrl = webUrl),
+                menu = BookMenuState(webUrl = webUrl, canDownload = canDownload),
                 actions = BookActions(
                     onPlay = {},
                     onTogglePlayPause = {},
@@ -273,6 +297,8 @@ class BookOverflowMenuScreenTest {
     )
 
     private companion object {
+        /** The download button's content description, which is how a disabled icon button is found. */
+        const val DOWNLOAD = "Download — arrives in a later phase"
         val SERVER = ServerId("server-1")
         val BOOK = LibraryItemId("book-1")
     }

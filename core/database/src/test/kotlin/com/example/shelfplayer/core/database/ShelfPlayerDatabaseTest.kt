@@ -289,6 +289,7 @@ class ShelfPlayerDatabaseTest {
         accessibleLibrariesJson = "[]",
         hasAllLibraryAccess = true,
         hasAllTagAccess = true,
+        canDownload = false,
     )
 
     private fun bookEntity(remoteId: String = "book-1", title: String = "The Salt Harbour") = BookEntity(

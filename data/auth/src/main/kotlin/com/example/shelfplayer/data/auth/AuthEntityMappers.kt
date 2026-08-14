@@ -90,6 +90,7 @@ internal object AuthEntityMappers {
         accessibleLibrariesJson = accessibleLibrariesJson(access),
         hasAllLibraryAccess = access.hasAllLibraryAccess,
         hasAllTagAccess = access.hasAllTagAccess,
+        canDownload = access.canDownload,
     )
 
     /**
@@ -104,6 +105,7 @@ internal object AuthEntityMappers {
             .filter(String::isNotBlank)
             .map(::LibraryId),
         hasAllTagAccess = entity.hasAllTagAccess,
+        canDownload = entity.canDownload,
     )
 
     fun accessibleLibrariesJson(access: LibraryAccess): String =

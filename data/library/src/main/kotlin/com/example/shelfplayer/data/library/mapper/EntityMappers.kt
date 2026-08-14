@@ -81,6 +81,7 @@ internal object EntityMappers {
         requiresReauthentication = entity.requiresReauthentication,
         lastUsedAt = entity.lastUsedAt?.let(Instant::ofEpochMilli),
         isFixture = entity.isFixture,
+        canDownload = entity.canDownload,
     )
 
     /**
@@ -97,6 +98,7 @@ internal object EntityMappers {
             .filter(String::isNotBlank)
             .map(::LibraryId),
         hasAllTagAccess = entity.hasAllTagAccess,
+        canDownload = entity.canDownload,
     )
 
     // --- Library ----------------------------------------------------------------------------------
