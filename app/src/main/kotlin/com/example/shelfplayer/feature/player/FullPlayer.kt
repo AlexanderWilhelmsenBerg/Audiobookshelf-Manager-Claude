@@ -4,6 +4,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,19 +18,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -56,6 +62,7 @@ import coil.compose.AsyncImage
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SleepTimerState
+import com.example.shelfplayer.domain.playback.ChapterProgress
 import com.example.shelfplayer.playback.PlaybackUiState
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -117,6 +124,14 @@ fun FullPlayer(
             // stop pretending the feature is working.
             if (isNotificationBlocked) NotificationBlockedNotice()
 
+            // PRODUCT_SPEC PLAY-001 — playback stopped and the service has stopped retrying.
+            //
+            // Above the artwork rather than as a transient message: the book is not playing and will not
+            // start on its own, so this is the state of the screen until somebody acts on it. A device run
+            // found a stopped book with no explanation and a play button that did nothing, which is the
+            // exact combination this replaces.
+            if (state.hasFailed) PlaybackFailedNotice(onRetry = actions.onRetry)
+
             Spacer(modifier = Modifier.height(8.dp))
             PlayerArtwork(state = state, modifier = Modifier.fillMaxWidth())
 
@@ -142,19 +157,20 @@ fun FullPlayer(
             Spacer(modifier = Modifier.weight(WEIGHT_FILL))
             SeekBar(state = state, onSeekTo = actions.onSeekTo)
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             TransportRow(state = state, skips = skips, onTogglePlayPause = actions.onTogglePlayPause)
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             SecondaryRow(
                 state = state,
                 timer = timer,
                 onOpenSleepTimer = actions.onOpenSleepTimer,
                 onOpenChapters = actions.onOpenChapters,
                 onOpenSpeed = actions.onOpenSpeed,
+                onOpenHistory = actions.onOpenHistory,
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -207,6 +223,37 @@ private fun NotificationBlockedNotice(modifier: Modifier = Modifier) {
             },
         ) {
             Text(text = stringResource(R.string.player_notifications_fix))
+        }
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-001 / PLAY-003 — "playback stops safely and offers repair".
+ *
+ * The error itself is deliberately not shown. Media3's message can carry the failing URL, which is a path
+ * on somebody's private server (14.5), and the code means nothing to a listener anyway — it is in the event
+ * log under Settings → About, which is where a diagnosis belongs.
+ *
+ * What the listener gets instead is the two facts they can act on: it stopped, and this button starts it
+ * again.
+ */
+@Composable
+private fun PlaybackFailedNotice(onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.player_failed),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.weight(WEIGHT_FILL),
+        )
+        TextButton(onClick = onRetry) {
+            Text(text = stringResource(R.string.player_failed_retry))
         }
     }
 }
@@ -346,17 +393,17 @@ private fun SeekBar(state: PlaybackUiState, onSeekTo: (Duration) -> Unit, modifi
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Slider(
-            value = (inProgress ?: state.fractionComplete).coerceIn(0f, 1f),
-            onValueChange = { value -> dragged = value },
-            onValueChangeFinished = {
+        ThinSlider(
+            fraction = (inProgress ?: state.fractionComplete).coerceIn(0f, 1f),
+            onFractionChange = { value -> dragged = value },
+            onFractionSettled = {
                 dragged?.let { value -> onSeekTo((value * totalMs).toLong().milliseconds) }
                 dragged = null
             },
             // A book whose duration is not known yet cannot be seeked in, and a bar that moves but does
             // nothing is worse than one that is plainly not ready.
             enabled = totalMs > 0,
-            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.primary,
         )
         Row(modifier = Modifier.fillMaxWidth()) {
             TimeLabel(text = shownPosition.asChapterClock())
@@ -368,7 +415,134 @@ private fun SeekBar(state: PlaybackUiState, onSeekTo: (Duration) -> Unit, modifi
                 ),
             )
         }
+
+        // Read from the *shown* position rather than the state's, so the chapter bar follows the finger
+        // during a drag on the book's bar instead of jumping when it lifts.
+        ChapterBar(progress = ChapterProgress.at(state.chapters, shownPosition), onSeekTo = onSeekTo)
     }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-003 — the second bar: where the listener is in *this chapter*, and how to move there.
+ *
+ * The book's bar above answers "how much is left". On a twenty-hour book it barely moves within a chapter,
+ * so it cannot answer the question somebody actually asks before deciding to stop — "can I finish this bit
+ * first?". This one can.
+ *
+ * **It seeks, and that is its second reason to exist.** A chapter is a hundredth of the book's bar, so
+ * finding a spot inside one by dragging the book's bar means moving a thumb by a pixel or two. Dragging
+ * this one spends the whole screen width on the chapter, which is roughly a hundred times finer.
+ *
+ * Same thickness and same thumb as the bar above, in the secondary colour. Two bars of *different*
+ * thickness read as one control and one indicator; two of the same read as two controls, which is what
+ * they now are.
+ *
+ * Nothing is drawn for a book with no chapter metadata, which is common in a self-hosted library. An empty
+ * bar that will never move is worse than no bar — it reads as a book that is not loading.
+ */
+@Composable
+private fun ChapterBar(progress: ChapterProgress?, onSeekTo: (Duration) -> Unit, modifier: Modifier = Modifier) {
+    if (progress == null) return
+    var dragged by remember(progress.chapter.index) { mutableStateOf<Float?>(null) }
+    val inProgress = dragged
+    val length = progress.elapsed + progress.remaining
+    val shownRemaining = if (inProgress == null) {
+        progress.remaining
+    } else {
+        (length * (1.0 - inProgress)).coerceAtLeast(Duration.ZERO)
+    }
+    val remaining = shownRemaining.asChapterClock()
+    val spoken = stringResource(R.string.player_chapter_progress, progress.chapter.title, remaining)
+
+    Column(modifier = modifier.fillMaxWidth().padding(top = 6.dp)) {
+        ThinSlider(
+            fraction = (inProgress ?: progress.fraction).coerceIn(0f, 1f),
+            onFractionChange = { value -> dragged = value },
+            onFractionSettled = {
+                dragged?.let { value -> onSeekTo(progress.chapter.start + length * value.toDouble()) }
+                dragged = null
+            },
+            // A chapter with no length cannot be seeked in, and neither can one on a book still loading.
+            enabled = length > Duration.ZERO,
+            color = MaterialTheme.colorScheme.secondary,
+            // A bar is a shape, and the only thing Compose gives it by default is a percentage. Naming it
+            // is the difference between "twenty-five percent" and "The Flood, 15:00 left in this chapter".
+            contentDescription = spoken,
+        )
+        Row(modifier = Modifier.fillMaxWidth()) {
+            TimeLabel(text = stringResource(R.string.player_chapter_ordinal, progress.ordinal, progress.count))
+            Spacer(modifier = Modifier.weight(WEIGHT_FILL))
+            TimeLabel(text = stringResource(R.string.player_remaining, remaining))
+        }
+    }
+}
+
+/**
+ * The one slider shape both bars use.
+ *
+ * Material 3's default `Slider` draws a sixteen-dp track and a thumb that is a rounded *bar* rather than a
+ * dot. On a screen with two of them stacked that reads as two heavy stripes with two tally marks, and the
+ * owner's device report said exactly that: too thick, and the thumb should be a dot. So the track is thin,
+ * both bars are the same thickness, and the thumb is a circle.
+ *
+ * The gap and the stop indicator Material draws around the thumb go too: at three dp they read as a
+ * rendering fault rather than as a style.
+ *
+ * The component keeps Material's full touch target regardless — the *visual* is thin, the drag area is the
+ * whole row — so a thin bar does not become a thin thing to hit.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ThinSlider(
+    fraction: Float,
+    onFractionChange: (Float) -> Unit,
+    onFractionSettled: () -> Unit,
+    enabled: Boolean,
+    color: Color,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = null,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val colors = SliderDefaults.colors(
+        thumbColor = color,
+        activeTrackColor = color,
+        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+    )
+    Slider(
+        value = fraction,
+        onValueChange = onFractionChange,
+        onValueChangeFinished = onFractionSettled,
+        enabled = enabled,
+        interactionSource = interaction,
+        colors = colors,
+        thumb = {
+            Spacer(
+                modifier = Modifier
+                    .size(THUMB_SIZE)
+                    .background(color = if (enabled) color else colors.disabledThumbColor, shape = CircleShape),
+            )
+        },
+        track = { sliderState ->
+            SliderDefaults.Track(
+                sliderState = sliderState,
+                enabled = enabled,
+                colors = colors,
+                thumbTrackGapSize = 0.dp,
+                trackInsideCornerSize = 0.dp,
+                drawStopIndicator = null,
+                modifier = Modifier.height(TRACK_HEIGHT),
+            )
+        },
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (contentDescription == null) {
+                    Modifier
+                } else {
+                    Modifier.semantics { this.contentDescription = contentDescription }
+                },
+            ),
+    )
 }
 
 @Composable
@@ -473,6 +647,7 @@ private fun SecondaryRow(
     onOpenSleepTimer: () -> Unit,
     onOpenChapters: () -> Unit,
     onOpenSpeed: () -> Unit,
+    onOpenHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -489,6 +664,14 @@ private fun SecondaryRow(
             // plainly unavailable.
             enabled = state.chapters.isNotEmpty(),
             onClick = onOpenChapters,
+        )
+        // PRODUCT_SPEC PLAY-003 — the jumps this book has seen, and the way back from any of them. Next to
+        // Chapters because both answer "where am I and where else could I be".
+        SecondaryAction(
+            icon = Icons.Filled.History,
+            description = stringResource(R.string.player_history),
+            enabled = true,
+            onClick = onOpenHistory,
         )
         SecondaryAction(
             icon = Icons.Filled.Bookmark,
@@ -548,8 +731,20 @@ private fun SleepTimerReadout(timer: SleepTimerState, onClick: () -> Unit, modif
 
 private const val WEIGHT_FILL = 1f
 
-/** Big enough to press without looking, which is the whole point of the hierarchy in the transport row. */
-private val PLAY_BUTTON_SIZE = 88.dp
+/** Both bars. Thin, because Material's sixteen-dp default is a stripe rather than a scrubber. */
+private val TRACK_HEIGHT = 4.dp
+
+/** A dot, not Material's rounded bar. Big enough to see against the track, small enough not to hide it. */
+private val THUMB_SIZE = 14.dp
+
+/**
+ * Big enough to press without looking, small enough to leave the rows below it room.
+ *
+ * Was 88 dp, which a device run found squeezing the secondary row off a phone screen — the transport row
+ * and the actions under it were competing for the same vertical space, and the actions lost. 72 dp is still
+ * two and a half times the skip buttons, which is what the hierarchy needs, and gives back sixteen dp.
+ */
+private val PLAY_BUTTON_SIZE = 72.dp
 
 /** Keeps the artwork sane on a tablet, where a full-width square cover would be enormous. */
 private val ARTWORK_MAX = 420.dp

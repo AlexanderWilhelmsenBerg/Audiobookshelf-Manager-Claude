@@ -78,8 +78,8 @@
     ],
     "coverPath": "/audiobooks/Marisol Holt/The Salt Harbour/cover.jpg",
     "currentTime": 128.25,
-    "date": "2026-08-08",
-    "dayOfWeek": "Saturday",
+    "date": "<volatile>",
+    "dayOfWeek": "<volatile>",
     "deviceInfo": {
       "clientName": "ShelfPlayer",
       "clientVersion": "0.0.0",

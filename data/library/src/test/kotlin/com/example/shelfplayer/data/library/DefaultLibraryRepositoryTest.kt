@@ -71,6 +71,7 @@ class DefaultLibraryRepositoryTest {
             transaction = RoomDatabaseTransactionRunner(database),
             libraryWriteDao = database.libraryWriteDao(),
             progressDao = database.progressDao(),
+            historyDao = database.playbackHistoryDao(),
         )
 
         repository = DefaultLibraryRepository(

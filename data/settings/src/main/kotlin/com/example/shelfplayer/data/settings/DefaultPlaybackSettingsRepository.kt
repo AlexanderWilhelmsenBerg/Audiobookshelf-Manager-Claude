@@ -87,6 +87,15 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
         )
     }
 
+    override suspend fun setAutoPlayOnCarConnect(enabled: Boolean): AppResult<Unit> = write {
+        settings.setAutoPlayOnCarConnect(enabled)
+        logger.info(
+            LogCategory.Settings,
+            "Auto-play on a car connection was changed",
+            LogField.Public("enabled", enabled),
+        )
+    }
+
     override fun observeSpeedFor(bookId: LibraryItemId): Flow<PlaybackSpeed?> =
         settings.activeProfileId.flatMapLatest { profileId ->
             if (profileId == null) {

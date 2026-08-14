@@ -5,20 +5,25 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.usecase.ObserveBookDetailsUseCase
 import com.example.shelfplayer.navigation.ShelfDestinations
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.time.Duration
 
 /** PRODUCT_SPEC LIB-004 — the book detail screen, read entirely from cached state. */
 @HiltViewModel
 class BookViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     observeBookDetails: ObserveBookDetailsUseCase,
+    private val playbackRepository: PlaybackRepository,
 ) : ViewModel() {
 
     private val bookId: LibraryItemId = LibraryItemId(
@@ -36,6 +41,20 @@ class BookViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
             initialValue = BookUiState.Loading,
         )
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — "marking finished is explicit", including un-marking it.
+     *
+     * The position comes from the row rather than from the caller, so un-marking leaves the listener where
+     * they were. Marking finished ignores it — the repository moves the position to the end of the book,
+     * which is the only position a finished book can honestly report.
+     */
+    fun onFinishedChanged(isFinished: Boolean) {
+        viewModelScope.launch {
+            val at = (uiState.first() as? BookUiState.Loaded)?.book?.progress?.position ?: Duration.ZERO
+            playbackRepository.setFinished(bookId, isFinished, at)
+        }
+    }
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L

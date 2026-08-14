@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.dao.BookPlaybackSettingsDao
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
+import com.example.shelfplayer.core.database.dao.PlaybackHistoryDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.dao.SessionOutboxDao
@@ -74,6 +75,10 @@ interface DatabaseModule {
 
         @Provides
         fun providesSleepTimerDao(database: ShelfPlayerDatabase): SleepTimerDao = database.sleepTimerDao()
+
+        @Provides
+        fun providesPlaybackHistoryDao(database: ShelfPlayerDatabase): PlaybackHistoryDao =
+            database.playbackHistoryDao()
 
         @Provides
         fun providesSyncStateDao(database: ShelfPlayerDatabase): SyncStateDao = database.syncStateDao()

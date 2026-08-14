@@ -23,6 +23,7 @@ import com.example.shelfplayer.core.network.http.NetworkErrorMapper
 import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC PLAY-001 — the real [PlaybackApi], against `item-play.json` and `multi-item-play.json`.
@@ -133,6 +134,30 @@ internal class AbsPlaybackApi @Inject constructor(
             is AppResult.Failure -> AppResult.Failure(transported.error)
             is AppResult.Success -> resultsFrom(transported.value, sent = sessions.size)
         }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — the explicit finished flag, on the captured progress route.
+     *
+     * Goes through the same [send] helper as the session calls, so the failure mapping, the `Retry-After`
+     * handling and the redaction are one implementation rather than three. The book id is **not** logged
+     * (14.5); the flag is, because "the user marked something finished and the server refused" is a support
+     * report that needs the direction to be readable.
+     */
+    override suspend fun setFinished(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        isFinished: Boolean,
+        position: Duration,
+    ): AppResult<Unit> = send(profileId, if (isFinished) "markFinished" else "markUnfinished") { service, bearer ->
+        service.updateProgress(
+            bearer = bearer,
+            itemId = bookId.value,
+            request = MediaProgressUpdateDto(
+                currentTime = position.inWholeMilliseconds.coerceAtLeast(0) / MILLIS_PER_SECOND,
+                isFinished = isFinished,
+            ),
+        )
     }
 
     private fun resultsFrom(

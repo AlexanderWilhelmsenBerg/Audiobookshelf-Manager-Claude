@@ -306,6 +306,54 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-003 — adds `playback_history`, the jumps a listener has made in a book.
+     *
+     * Additive, like every migration here. One table, two indices, nothing touched. The composite index is
+     * `(profileId, bookKey, at)` because the only query is "this book's jumps, newest first" and that index
+     * answers it without a sort.
+     */
+    private val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `playback_history` (
+                    `entryId` TEXT NOT NULL,
+                    `profileId` TEXT NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `fromMillis` INTEGER,
+                    `toMillis` INTEGER NOT NULL,
+                    `reason` TEXT NOT NULL,
+                    `at` INTEGER NOT NULL,
+                    PRIMARY KEY(`entryId`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_playback_history_profileId` " +
+                    "ON `playback_history` (`profileId`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_playback_history_profileId_bookKey_at` " +
+                    "ON `playback_history` (`profileId`, `bookKey`, `at`)",
+            )
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-008 — adds `playback_history.detailMillis`, so a sleep-timer entry can say how long.
+     *
+     * Additive and nullable, which is what lets it be added with a single `ALTER TABLE` and no rewrite: every
+     * row written by version 11 was a jump, and a jump has no detail.
+     */
+    private val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `playback_history` ADD COLUMN `detailMillis` INTEGER")
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -316,5 +364,7 @@ object Migrations {
         MIGRATION_7_8,
         MIGRATION_8_9,
         MIGRATION_9_10,
+        MIGRATION_10_11,
+        MIGRATION_11_12,
     )
 }

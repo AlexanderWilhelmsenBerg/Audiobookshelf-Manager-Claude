@@ -9,7 +9,7 @@ import com.example.shelfplayer.core.network.di.RemoteGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.http.UserAgent
 import com.example.shelfplayer.domain.sync.BackgroundSync
-import com.example.shelfplayer.log.AndroidLogSink
+import com.example.shelfplayer.log.FanOutLogSink
 import com.example.shelfplayer.sync.WorkManagerBackgroundSync
 import dagger.Binds
 import dagger.Module
@@ -41,9 +41,12 @@ interface AppModule {
     @Singleton
     fun bindsGateway(@RemoteGateway impl: AudiobookshelfGateway): AudiobookshelfGateway
 
+    /**
+     * PRODUCT_SPEC 14.4 — `logcat` and the in-app event log, from one rendered line. See [FanOutLogSink].
+     */
     @Binds
     @Singleton
-    fun bindsLogSink(impl: AndroidLogSink): LogSink
+    fun bindsLogSink(impl: FanOutLogSink): LogSink
 
     /**
      * PRODUCT_SPEC LIB-002 — the same seam shape as the log sink: a `:core:common` interface so that

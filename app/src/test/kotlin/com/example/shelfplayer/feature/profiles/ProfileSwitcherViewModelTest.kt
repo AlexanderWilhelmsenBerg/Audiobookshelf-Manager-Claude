@@ -307,6 +307,10 @@ class ProfileSwitcherViewModelTest {
 
         override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = error("not part of this fake")
 
+        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId) =
+
+            kotlinx.coroutines.flow.flowOf(emptyList<com.example.shelfplayer.core.model.library.Chapter>())
+
         override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
             error("not part of this fake")
 

@@ -2,17 +2,24 @@ package com.example.shelfplayer.data.library
 
 import com.example.shelfplayer.core.database.DatabaseTransactionRunner
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
+import com.example.shelfplayer.core.database.dao.PlaybackHistoryDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.entity.EntityKey
+import com.example.shelfplayer.core.database.entity.MediaProgressEntity
+import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.data.library.mapper.EntityMappers
+import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.absoluteValue
 
 /**
  * PRODUCT_SPEC LIB-001 — the whole refresh, or none of it.
@@ -33,7 +40,86 @@ class LibrarySnapshotWriter @Inject constructor(
     private val transaction: DatabaseTransactionRunner,
     private val libraryWriteDao: LibraryWriteDao,
     private val progressDao: ProgressDao,
+    private val historyDao: PlaybackHistoryDao,
 ) {
+    /**
+     * PRODUCT_SPEC PLAY-004 / SYNC-002 — positions the server reported, and the history they make.
+     *
+     * ### Two writes that have to be one
+     *
+     * The rows are the account's positions; the history entries say which of them arrived from a device
+     * that is not this one. Written in a single transaction because a crash between them would leave a
+     * position with no explanation, which is the exact confusion the entries exist to prevent.
+     *
+     * ### Why the history needs these at all
+     *
+     * A device run asked for it: *"The history should also show the latest changes from the server."*
+     * Without them the pane is a record of one phone, and a book that jumped four hours because it was
+     * finished in the web player looks exactly like the app losing somebody's place. With them the list
+     * says which.
+     *
+     * ### Which rows count as "somewhere else"
+     *
+     * Three filters, and each removes a specific false positive.
+     *
+     * **A book with no local row is skipped.** The first sync of a library writes a position for everything
+     * the account has ever played, and none of that is news — it is the app learning what the account is,
+     * not a change. Recording it would put a hundred rows in a pane that has never been opened.
+     *
+     * **A position that barely moved is skipped.** This device's own writes go up to the server and come
+     * back, and the echo is a change by `updatedAt` while being the same listening. [REMOTE_TOLERANCE_MS]
+     * is set above the sync cadence so a round trip cannot clear it, and the cost of that choice is stated
+     * plainly: somebody else listening for less than a minute on another device leaves no row.
+     *
+     * **The finished flag is exempt from that tolerance**, because flipping it is not a position change at
+     * all and is the surprise most worth explaining.
+     *
+     * @param rows the positions to write, already filtered by the repository's conflict rules.
+     * @param existing what this device held before, keyed by book, for deciding what is news.
+     */
+    suspend fun writeProgress(
+        profileId: ProfileId,
+        rows: List<MediaProgressEntity>,
+        existing: Map<String, MediaProgressEntity>,
+    ) {
+        transaction {
+            progressDao.upsertProgress(rows)
+            rows.forEach { row -> recordRemoteChange(profileId, row, existing[row.bookKey]) }
+        }
+    }
+
+    private suspend fun recordRemoteChange(
+        profileId: ProfileId,
+        row: MediaProgressEntity,
+        before: MediaProgressEntity?,
+    ) {
+        if (before == null) return
+        val moved = (row.positionMillis - before.positionMillis).absoluteValue >= REMOTE_TOLERANCE_MS
+        val finishedChanged = row.isFinished != before.isFinished
+        if (!moved && !finishedChanged) return
+        historyDao.record(
+            entry = PlaybackHistoryEntity(
+                entryId = UUID.randomUUID().toString(),
+                profileId = profileId.value,
+                bookKey = row.bookKey,
+                // Where this device was, so tapping the row goes back to it. That is the undo a listener
+                // needs when they find themselves somewhere they did not choose to be.
+                fromMillis = before.positionMillis,
+                toMillis = row.positionMillis,
+                reason = if (finishedChanged) {
+                    PlaybackEvent.RemoteFinished.name
+                } else {
+                    PlaybackEvent.RemoteProgress.name
+                },
+                detailMillis = null,
+                // The server's own timestamp. A refresh after a week away would otherwise stamp a week of
+                // another device's listening with this morning.
+                at = row.updatedAt,
+            ),
+            keep = PlaybackHistoryRepository.DEFAULT_LIMIT,
+        )
+    }
+
     /**
      * Returns the number of books written.
      *
@@ -179,5 +265,17 @@ class LibrarySnapshotWriter @Inject constructor(
         val presentKeys = libraries.map { EntityKey.of(it.serverId.value, it.id.value) }
         libraryWriteDao.markMissingLibrariesDeleted(serverId, presentKeys)
         libraryWriteDao.markBooksOutsideLibrariesDeleted(serverId, presentKeys)
+    }
+
+    private companion object {
+        /**
+         * PRODUCT_SPEC PLAY-004 — how far a server position has to move before it is *news*.
+         *
+         * Sixty seconds, chosen against the two cadences it has to clear. The journal writes every five
+         * seconds and the remote sync every thirty, so this device's own position can be up to half a minute
+         * ahead of the copy the server echoes back — and every one of those echoes is a change by timestamp
+         * while being nobody else's listening. A minute clears that with room to spare.
+         */
+        const val REMOTE_TOLERANCE_MS = 60_000L
     }
 }

@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.entity.BookPlaybackSettingsEntity
 import com.example.shelfplayer.core.database.entity.EntityKey
+import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.SessionOutboxState
@@ -419,6 +420,105 @@ class MigrationTest {
             150,
             assertNotNull(migrated.bookPlaybackSettingsDao().find(PROFILE_ID, BOOK_KEY)).speedHundredths,
         )
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — version 11 adds the playback history and takes nothing away.
+     *
+     * The written row is the point rather than the empty read: every column is populated, so a column the
+     * migration spelled differently would pass a read and fail this insert. `fromMillis` is deliberately
+     * nullable and deliberately written as `null` here, because the resume entry is the one that has no
+     * position it came from.
+     */
+    @Test
+    fun `version 11 adds the playback history without disturbing the cached books`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        val book = assertNotNull(migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first())
+        assertEquals("The Salt Harbour", book.book.title)
+        assertEquals(emptyList(), migrated.playbackHistoryDao().observe(PROFILE_ID, BOOK_KEY, limit = 10).first())
+
+        migrated.playbackHistoryDao().record(
+            entry = PlaybackHistoryEntity(
+                entryId = "entry-1",
+                profileId = PROFILE_ID,
+                bookKey = BOOK_KEY,
+                fromMillis = null,
+                toMillis = 42_000,
+                reason = "Resume",
+                detailMillis = null,
+                at = 1_000,
+            ),
+            keep = 10,
+        )
+
+        val stored = migrated.playbackHistoryDao().observe(PROFILE_ID, BOOK_KEY, limit = 10).first().single()
+        assertEquals(42_000, stored.toMillis)
+        assertEquals(null, stored.fromMillis)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — the cap is per book, and it keeps the newest.
+     *
+     * Pruning is what stops a book somebody scrubbed around for an hour carrying hundreds of rows forever.
+     * Keeping the *newest* is the part worth pinning: a cap that kept the oldest would freeze the list at
+     * whatever happened first and never show the jump somebody is actually trying to undo.
+     */
+    @Test
+    fun `the history keeps the newest entries and drops the rest`() = runTest {
+        createVersion(9)
+        val migrated = openWithMigrations()
+        repeat(5) { index ->
+            migrated.playbackHistoryDao().record(
+                entry = PlaybackHistoryEntity(
+                    entryId = "entry-$index",
+                    profileId = PROFILE_ID,
+                    bookKey = BOOK_KEY,
+                    fromMillis = index * 1_000L,
+                    toMillis = index * 2_000L,
+                    reason = "Seek",
+                    detailMillis = null,
+                    at = index.toLong(),
+                ),
+                keep = 3,
+            )
+        }
+
+        val stored = migrated.playbackHistoryDao().observe(PROFILE_ID, BOOK_KEY, limit = 10).first()
+        assertEquals(3, stored.size)
+        assertEquals(listOf("entry-4", "entry-3", "entry-2"), stored.map { it.entryId })
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-008 — version 12 adds `detailMillis`, and version 11's rows survive it.
+     *
+     * The nullable column is the point: every row written by version 11 was a jump, and a jump has no
+     * detail, so the migration adds the column without touching a byte of the existing table. Writing a row
+     * that *uses* it afterwards proves the column is real and not just declared.
+     */
+    @Test
+    fun `version 12 adds the event detail without disturbing the history`() = runTest {
+        createVersion(9)
+        val migrated = openWithMigrations()
+        migrated.playbackHistoryDao().record(
+            entry = PlaybackHistoryEntity(
+                entryId = "timer-1",
+                profileId = PROFILE_ID,
+                bookKey = BOOK_KEY,
+                fromMillis = null,
+                toMillis = 90_000,
+                reason = "SleepTimerStarted",
+                detailMillis = 1_800_000,
+                at = 2_000,
+            ),
+            keep = 10,
+        )
+
+        val stored = migrated.playbackHistoryDao().observe(PROFILE_ID, BOOK_KEY, limit = 10).first().single()
+        assertEquals(1_800_000, stored.detailMillis)
+        assertEquals("SleepTimerStarted", stored.reason)
     }
 
     /** PRODUCT_SPEC AUTH-002 — removing a profile takes its per-book speeds with it. */

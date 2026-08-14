@@ -626,3 +626,124 @@ done it. What still needs arithmetic is the other direction: Media3 plays a **pl
 position is per-item, so a global book position has to be mapped to a window index and an offset within
 it. `startOffset` is what makes that mapping exact rather than accumulated, and an accumulated one would
 drift on a book whose durations are not whole seconds.
+
+## Re-run — 2026-08-13, Audiobookshelf 2.36.0
+
+The owner re-ran `scripts/capture-contracts.sh` against the same server five days after the wave-A
+capture and supplied all thirty-one fixtures. **Twenty-nine were byte-identical.** The two that differed —
+`item-play.json` and `multi-item-play.json` — differed in exactly two fields:
+
+```
+- "date": "2026-08-08",  "dayOfWeek": "Saturday"
++ "date": "2026-08-13",  "dayOfWeek": "Thursday"
+```
+
+That is the capture's own wall clock, not the contract. Neither field is read by any mapper. Both are now
+in the harness's `VOLATILE_KEYS`, for the reason `lastScan` and `startedAt` are already there: a drift
+check that reports a difference on every run teaches its reader to ignore it, and here it very nearly hid
+the actual result — **five days of the same server produced no change in the contract at all.**
+
+The committed fixtures were left as they are. Re-committing two files to move a date would be churn, and
+the next capture will stabilise both fields anyway.
+
+### What the re-run did *not* settle
+
+It was a re-run of the same script, so it captured the same thirty-one endpoints. Two things this
+document has been recording as unverified therefore remain unverified, and both are now probed by the
+harness so that the *next* run settles them:
+
+| Unverified | Now captured by |
+| --- | --- |
+| The bookmark endpoints — create, read back off `user.bookmarks`, update, delete | `bookmark-create`, `me-with-bookmark`, `bookmark-update`, `bookmark-delete` |
+| `PATCH /api/me/progress/{id}` with **`isFinished: true`** — the app sends it, no fixture has seen it return | `media-progress-finished`, `media-progress-unfinished` |
+
+Until those fixtures exist, **bookmarks stay unbuilt** (PRODUCT_SPEC 22.4/22.5) and the finished flag's
+`true` value stays an assumption — a narrow one, since it is the same field on the same route whose
+`false` value round-trips, but an assumption recorded rather than forgotten.
+
+Both were captured the same day; the section below is what they said.
+
+## Bookmarks and the finished flag — captured 2026-08-13, Audiobookshelf 2.36.0
+
+The owner ran the harness again with the two probes the section above added. Six new fixtures. One
+question is fully answered, one is answered halfway, and the half that is missing is missing because of a
+mistake in the script rather than anything the server did.
+
+### Bookmarks — settled, and buildable (PRODUCT_SPEC 11.1)
+
+| Request | Response |
+| --- | --- |
+| `POST /api/me/item/{id}/bookmark` `{"time":31,"title":"…"}` | `200` — the bookmark: `{createdAt, libraryItemId, time, title}` |
+| `GET /api/me` | the bookmark appears in a top-level **`bookmarks`** array on the user |
+| `PATCH /api/me/item/{id}/bookmark` `{"time":31,"title":"…"}` | `200` — the whole updated bookmark |
+| `DELETE /api/me/item/{id}/bookmark/31` | `200`, `text/plain`, body `OK` |
+
+Three things a client written from memory would get wrong, and all three are now pinned by
+`CapturedShapesTest`:
+
+1. **A bookmark has no id.** It is keyed by its `time` in whole seconds, which is why the delete route
+   ends in `31` rather than in a UUID. Two bookmarks at the same second are therefore not expressible.
+2. **Bookmarks live on the user, not on the item.** They arrive as one flat array across every book, so a
+   client showing one book's bookmarks filters by `libraryItemId` itself. No bookmark endpoint says this;
+   only reading `me` back after a create does, which is why the capture does exactly that.
+3. **Delete answers with plain text**, not JSON and not `204`. A client that parses the success case as
+   JSON throws the first time a user deletes something.
+
+This clears the block PRODUCT_SPEC 22.4/22.5 placed on the feature. Bookmarks are the top remaining
+Phase 2 recommendation in `docs/phase-2-gaps.md` and can now be built against a recorded shape.
+
+### `isFinished: true` — settled
+
+`PATCH /api/me/progress/{id}` with `{"currentTime": 8, "isFinished": true}` on an eight-second book reads
+back as:
+
+```
+"currentTime": 8, "duration": 8, "progress": 1, "isFinished": true
+```
+
+The server takes the position it was given and derives `progress` from it. The app already sends the end
+of the book when a listener ticks *Finished*, so that behaviour is confirmed rather than assumed.
+
+### `isFinished: false` — accepted, then overruled by the server's own threshold
+
+The first probe was badly built: it sent `{"currentTime": 42.5, "isFinished": false}` to a book **eight
+seconds long** and discarded the PATCH response with `>/dev/null`. The fixed probe sends `currentTime: 2`
+and records the response, and the CI run answers the question outright.
+
+**The PATCH is accepted** — `200`, `text/plain`, body `OK`, same as the bookmark delete. So the server does
+not reject an un-finish, which was the worrying of the two possibilities.
+
+What overrules it is the server's own rule, and the container log names it:
+
+```
+[MediaProgress] Marking media progress as finished because time remaining (8)
+                is less than 10 seconds (media item …)
+```
+
+That is **`markAsFinishedTimeRemaining`**, default ten seconds. The contract library's book is eight
+seconds long, so *every* position in it is inside the last ten and it can never be anything but finished.
+This is a property of the fixture, not of the API: a real thirty-hour book at two seconds is nowhere near
+its last ten.
+
+So PLAY-004's "marking finished is explicit, in both directions" is **not** at risk, and the app's
+*Finished* checkbox does reach the server. Two consequences worth carrying forward:
+
+1. **`markAsFinishedTimeRemaining` is real, and its default is 10 s.** PLAY-004 requires the app to honour
+   the library's value and it currently does not — this is the first observation of the setting in action,
+   even though the setting's own endpoint has still not been captured.
+2. **The fixture cannot demonstrate un-finishing.** Doing so needs a seeded book longer than the threshold,
+   which changes the duration in a dozen committed fixtures. That belongs with the
+   `markAsFinishedTimeRemaining` work rather than bolted onto this capture, and is recorded in
+   `docs/phase-2-gaps.md` as such.
+
+### Two fixtures that were only ever capture noise
+
+The drift check was red on every commit of this branch for two reasons, neither of them the server:
+
+- **`library-personalized`'s shelves were arriving in a different order.** "Recently added" sorts by
+  `addedAt`, both books are added by the same scan in the same second, and the tie is broken arbitrarily.
+  The harness now sorts `entities` by title — the same treatment `VOLATILE_KEYS` gives a timestamp, and for
+  the same reason: a check that goes red on every run is a check its reader learns to ignore, and this one
+  was hiding the two genuinely new fixtures underneath it.
+- **`media-progress-set-finished` and `media-progress-set-unfinished` had never been committed**, which is
+  the expected state of the pull request that adds a capture target. They are committed now.

@@ -170,7 +170,35 @@
     <string name="player_chapters_empty">Denne boken har ingen kapittelinformasjon.</string>
     <string name="player_chapter_current">Spilles nå</string>
     <string name="player_chapter_number">Kapittel %1$d</string>
+    <string name="player_chapter_ordinal">Kapittel %1$d av %2$d</string>
+    <string name="player_chapter_progress">%1$s, %2$s igjen av kapittelet</string>
+    <string name="player_history">Historikk</string>
+    <string name="player_history_body">Alt som har skjedd i denne boka, her og på de andre enhetene dine. Trykk på en rad for å gå tilbake dit den startet.</string>
+    <string name="player_history_empty">Ingenting ennå. Avspilling, spoling, kapittelbytter og sovetimere vises her.</string>
+    <string name="player_history_jump">%1$s → %2$s</string>
+    <string name="player_history_at">På %1$s</string>
+    <string name="player_history_detail">%1$s · %2$s</string>
+    <string name="player_history_return_to">%1$s fra %2$s til %3$s. Trykk for å gå tilbake til %2$s.</string>
+    <string name="player_history_started_at">%1$s på %2$s</string>
+    <string name="player_history_seek">Spoling</string>
+    <string name="player_history_skip">Hopp</string>
+    <string name="player_history_chapter">Kapittel</string>
+    <string name="player_history_rewind">Tilbakespoling etter pause</string>
+    <string name="player_history_resume">Begynte å lytte</string>
+    <string name="player_history_play">Spilte av</string>
+    <string name="player_history_pause">Satte på pause</string>
+    <string name="player_history_timer_started">Sovetid satt</string>
+    <string name="player_history_timer_extended">Sovetid forlenget</string>
+    <string name="player_history_timer_expired">Sovetiden stoppet avspillingen</string>
+    <string name="player_history_timer_rewind">Spolte tilbake etter sovetiden</string>
+    <string name="player_history_remote">Flyttet på en annen enhet</string>
+    <string name="player_history_remote_finished">Fullført på en annen enhet</string>
+    <string name="player_history_today">I dag</string>
+    <string name="player_history_yesterday">I går</string>
+    <string name="player_history_when_chapter">%1$s · %2$s</string>
     <string name="player_bookmark_later">Bokmerke — kommer i en senere fase</string>
+    <string name="player_failed">Avspillingen stoppet. Tjeneren eller tilkoblingen kan være utilgjengelig.</string>
+    <string name="player_failed_retry">Prøv igjen</string>
     <string name="player_open">Åpne spilleren</string>
     <string name="player_starting">Starter …</string>
     <!-- %1$s er posisjonen boken fortsetter fra, for eksempel "2 t 14 min". -->
@@ -190,8 +218,13 @@
     <string name="sleep_timer_countdown">%1$d:%2$02d</string>
     <string name="sleep_timer_restart">Start sovetiden på nytt</string>
 
+    <string name="settings_section_car">I bilen</string>
+    <string name="settings_car_hint">ShelfPlayer vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på.</string>
+    <string name="settings_car_autoplay">Start avspilling når en bil kobles til</string>
     <string name="sleep_timer_settings">Standardverdier</string>
     <string name="sleep_timer_default_length">Standard lengde</string>
+    <string name="sleep_timer_rewind">Spol tilbake når sovetiden stopper avspillingen</string>
+    <string name="sleep_timer_rewind_hint">Hvis du sovner, spoles boka tilbake så mye at du kan ta opp tråden et sted du husker. Av som standard.</string>
     <string name="sleep_timer_fade">Ton ut over</string>
     <string name="sleep_timer_shake">Rist for å starte sovetiden på nytt</string>
     <string name="sleep_timer_shake_hint">Av som standard. Når den er på, måler appen bevegelse bare mens sovetiden går — aldri ellers.</string>
@@ -211,6 +244,9 @@
         <item quantity="other">Startet på nytt %1$d ganger</item>
     </plurals>
     <string name="settings_tab_sleep">Sovetid</string>
+    <string name="book_mark_finished">Ferdig</string>
+    <string name="book_synopsis_more">Vis mer</string>
+    <string name="book_synopsis_less">Vis mindre</string>
     <string name="book_section_about">Om boken</string>
     <string name="book_download_later">Last ned — kommer i en senere fase</string>
     <string name="navigate_back">Tilbake</string>
@@ -220,7 +256,19 @@
     <string name="settings_tab_about">Om</string>
     <string name="about_section_app">ShelfPlayer</string>
     <string name="about_version">Versjon</string>
-    <string name="about_phase">Under arbeid. Avspilling og nedlastinger er ikke bygget ennå.</string>
+    <string name="about_section_diagnostics">Diagnostikk</string>
+    <string name="event_log_body">En oversikt over hva appen har gjort siden den startet: avspilling, synkronisering, nettverk og feil. Ingenting herfra sendes noe sted, og det tømmes når appen lukkes.</string>
+    <string name="event_log_open">Åpne hendelsesloggen</string>
+    <string name="event_log_title">Hendelseslogg</string>
+    <plurals name="event_log_count">
+        <item quantity="one">%1$d hendelse siden appen startet</item>
+        <item quantity="other">%1$d hendelser siden appen startet</item>
+    </plurals>
+    <string name="event_log_problems_only">Bare problemer (%1$d)</string>
+    <string name="event_log_copy">Kopier</string>
+    <string name="event_log_clear">Tøm</string>
+    <string name="event_log_empty">Ingenting er registrert ennå.</string>
+    <string name="about_phase">Under arbeid. Direkteavspilling, kapitler, sovetid og fremdriftssynkronisering er bygget; nedlastinger og frakoblet avspilling er ikke.</string>
     <string name="about_section_testing">Testing</string>
     <string name="about_testing_body">Avlesninger som brukes til å kontrollere en bygging mot akseptansetestene. Ingenting her endrer hvordan appen oppfører seg.</string>
 
@@ -322,6 +370,21 @@
     <string name="settings_notification_no">Nei</string>
     <string name="settings_notification_open">Åpne varselinnstillinger</string>
     <string name="settings_check_notification">Spill en bok og dra ned varselpanelet: medievarselet er der med kontroller som virker.</string>
+
+    <string name="settings_section_car_check">Android Auto</string>
+    <string name="settings_car_body">Auto lister medieapper etter hva de erklærer, ikke etter hva de kan spille. De to første radene gjelder denne bygget; resten gjelder telefonen.</string>
+    <string name="settings_car_declared">Erklært som bilapp</string>
+    <string name="settings_car_declared_hint">Manifestoppføringen Auto finner medieapper med. Nei her betyr at appen ikke kan vises i noen bil.</string>
+    <string name="settings_car_browser">Browser-tjeneste tilgjengelig</string>
+    <string name="settings_car_browser_hint">En eksportert tjeneste som svarer på medie-browse-handlingen. Det er denne en bilskjerm kobler seg til.</string>
+    <string name="settings_car_installed">Android Auto installert</string>
+    <string name="settings_car_installed_hint">Telefonhalvdelen av Android Auto. Uten den er det ingenting som kan liste appen.</string>
+    <string name="settings_car_installer">Installert av</string>
+    <string name="settings_car_installer_sideloaded">Sideloadet — ingen installerende app</string>
+    <string name="settings_car_unknown_sources">Android Auto skjuler apper den ikke har fått fra Play. I Android Auto-appen: trykk på versjonen ti ganger for å låse opp Utviklerinnstillinger, og slå så på Ukjente kilder — å låse opp utviklerinnstillingene slår det ikke på av seg selv. Tvangsavslutt Android Auto etterpå så listen bygges på nytt.</string>
+    <string name="settings_car_last_connection">Siste bilkobling</string>
+    <string name="settings_car_last_connection_never">Aldri, siden appen startet</string>
+    <string name="settings_check_car">Koble til en bilskjerm: ShelfPlayer er i listen over medieapper og lar seg bla i. Står Siste bilkobling fortsatt til aldri, nådde ingen bil frem til appen.</string>
 
     <string name="player_notifications_blocked">Varsler er av, så denne boken har ingen varsel- eller låseskjermkontroller.</string>
     <string name="player_notifications_fix">Slå på</string>

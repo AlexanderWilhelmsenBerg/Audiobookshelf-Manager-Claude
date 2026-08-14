@@ -158,3 +158,19 @@ internal data class LocalSessionResultDto(
 
 @Serializable
 internal data class LocalSessionBatchResponseDto(val results: List<LocalSessionResultDto> = emptyList())
+
+/**
+ * PRODUCT_SPEC PLAY-004 — the body of `PATCH /api/me/progress/{id}`.
+ *
+ * Exactly the two fields `scripts/capture-contracts.sh` writes and `media-progress.json` reads back. The
+ * server merges rather than replaces — a PATCH carrying only these two leaves `startedAt`, `duration` and
+ * the rest of the row as they were, which is what makes marking a book finished safe without first knowing
+ * everything else the server holds about it.
+ *
+ * @property currentTime seconds, as every position on this API is.
+ * @property isFinished the flag the user is actually setting. The capture exercises `false`; `true` is the
+ *   same field on the same route, and `docs/api-compatibility.md` records that the *value* has not been
+ *   round-tripped by a capture yet.
+ */
+@Serializable
+internal data class MediaProgressUpdateDto(val currentTime: Double, val isFinished: Boolean)

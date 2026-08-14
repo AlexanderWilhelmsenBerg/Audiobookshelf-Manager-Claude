@@ -69,6 +69,11 @@ VOLATILE_KEYS = {
     # engine.io's session id. Not secret in the credential sense — it is useless without the
     # connection — but it changes on every handshake, so leaving it in would report drift on every run.
     "sid", "libraryItemId", "episodeId",
+    # A play session carries the calendar day it was opened on. The 2026-08-13 re-run reported drift on
+    # `item-play.json` and `multi-item-play.json` for these two fields and nothing else, which is the
+    # false positive this whole set exists to prevent — and it hid the real result, which was that five
+    # days changed nothing in the contract. Neither field is read by any mapper.
+    "date", "dayOfWeek",
 }
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 
@@ -126,11 +131,35 @@ def socket_frames(raw):
 # the shape of the URL is the contract, the number in it is not.
 FILE_ID_PATH = re.compile(r"(/file/)\d+")
 
+# Arrays whose order the server does not actually fix, sorted so a tie cannot flip between captures.
+#
+# `library-personalized`'s shelves are the case that forced this. "Recently added" sorts by `addedAt`, and
+# both books in the contract library are added by the same scan in the same second — so the tie is broken
+# arbitrarily, and the drift check reported the two books swapping places as though the contract had
+# changed. It cost a red check on every run of this branch and hid the two genuinely new fixtures beneath
+# it, which is the same false-positive trap `VOLATILE_KEYS` exists to close.
+#
+# Sorted by title rather than by id, because the ids are `<volatile>` by the time this runs. The order is
+# not part of any contract this app relies on: the shelf's *contents* are, and `LibraryRepository` sorts
+# for display itself.
+UNORDERED_ARRAY_KEYS = {"entities"}
+
+
+def sort_key(item):
+    """A stable, human-meaningful key for an entity, whatever kind of entity it is."""
+    if not isinstance(item, dict):
+        return ("", "")
+    media = item.get("media") or {}
+    metadata = media.get("metadata") or {}
+    return (str(metadata.get("title") or item.get("name") or ""), str(item.get("relPath") or ""))
+
+
 def scrub(node, key=None):
     if isinstance(node, dict):
         return {k: scrub(v, k) for k, v in node.items()}
     if isinstance(node, list):
-        return [scrub(v, key) for v in node]
+        scrubbed = [scrub(v, key) for v in node]
+        return sorted(scrubbed, key=sort_key) if key in UNORDERED_ARRAY_KEYS else scrubbed
     if key in SECRET_KEYS and node not in (None, "", False, True):
         return "<redacted-secret>"
     if key in VOLATILE_KEYS and isinstance(node, str):
@@ -628,6 +657,62 @@ else
   # Not fatal, and not silent either. Until the seeded two-file book has been scanned, PLAY-003 has no
   # evidence to be built on and the plan says so rather than guessing at the arithmetic.
   echo "::warning::no multi-file book found in library-items — PLAY-003's startOffset stays unverified"
+fi
+
+# --- Bookmarks (PRODUCT_SPEC 11.1, section 8 recommended feature 4) ------------------------------
+#
+# Wave 5's closeout named bookmarks as the one Phase 2 item that needs the *server* before a line of it
+# can be written: PRODUCT_SPEC 22.4/22.5 forbid building on a shape no capture has produced, and the
+# player has carried a disabled bookmark button since wave 2.
+#
+# These four requests are the whole contract. Every one is allowed to fail — `capture` records whatever
+# comes back, including a 404, and a 404 recorded is itself the answer to "does this server have
+# bookmarks". What must not happen is code written against a remembered shape.
+#
+# The order matters: create, then read the user object back (bookmarks live on `user.bookmarks`), then
+# update, then delete. Reading `me` in the middle is what proves where a bookmark is *stored*, which is
+# the part a client has to know and the part no endpoint response states.
+if [ -n "$ITEM_ID" ]; then
+  capture bookmark-create POST "/api/me/item/$ITEM_ID/bookmark" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"time":31,"title":"A line worth keeping"}'
+
+  capture me-with-bookmark GET /api/me -H "$AUTH_HEADER"
+
+  capture bookmark-update PATCH "/api/me/item/$ITEM_ID/bookmark" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"time":31,"title":"A line worth keeping, renamed"}'
+
+  capture bookmark-delete DELETE "/api/me/item/$ITEM_ID/bookmark/31" -H "$AUTH_HEADER"
+else
+  echo "::warning::no ITEM_ID — the bookmark endpoints stay uncaptured and bookmarks stay unbuildable"
+fi
+
+# --- The finished flag, both ways (PLAY-004) -----------------------------------------------------
+#
+# `PATCH /api/me/progress/{id}` is already captured, and the app now uses it to mark a book finished and
+# to un-mark it. What the earlier capture exercised was `isFinished: false` only, so `true` was a value
+# the app sent that no fixture had ever seen come back.
+#
+# The 2026-08-13 run settled `true` and left `false` open, because of a mistake in this script that is
+# worth naming so it is not repeated. The un-finish probe sent `currentTime: 42.5` to a book **eight
+# seconds long** and threw the response away with `>/dev/null`. What came back from the read afterwards
+# was still `isFinished: true`, and the capture cannot say whether the server rejected an out-of-range
+# position or re-derived the flag from a clamped progress of 1.
+#
+# Two changes fix that. The position is now **inside** the duration, so nothing is being clamped; and the
+# PATCH responses are captured rather than discarded, so a rejection is visible as a status code instead
+# of being invisible behind a later GET.
+if [ -n "$ITEM_ID" ]; then
+  capture media-progress-set-finished PATCH "/api/me/progress/$ITEM_ID" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":8,"isFinished":true}'
+  capture media-progress-finished GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
+
+  capture media-progress-set-unfinished PATCH "/api/me/progress/$ITEM_ID" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"currentTime":2,"isFinished":false}'
+  capture media-progress-unfinished GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
 fi
 
 capture logout POST /logout -H "$AUTH_HEADER"

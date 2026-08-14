@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.CarReadiness
 import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -23,6 +24,7 @@ import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
 import com.example.shelfplayer.domain.usecase.ServerDiagnostics
+import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.NotificationAccessReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -73,6 +75,14 @@ class SettingsViewModel @Inject constructor(
      * platform read would be the parallel abstraction CLAUDE.md warns about.
      */
     private val notifications: NotificationAccessReader,
+    /**
+     * PRODUCT_SPEC PLAY-001 / ROUTE-002 — why the app is, or is not, in a car's app list.
+     *
+     * Here for the same reason [notifications] is: it is a question about the *device* — what Android Auto is
+     * installed, what installed this build — rather than about this account's data, so there is nothing for a
+     * repository to mediate.
+     */
+    private val car: CarReadinessReader,
     private val playbackSettings: PlaybackSettingsRepository,
 ) : ViewModel() {
 
@@ -111,6 +121,9 @@ class SettingsViewModel @Inject constructor(
             // flow already re-runs whenever anything it depends on moves — which on the About tab is often
             // enough to be current while somebody is looking at it.
             notifications = notifications.read(),
+            // Read per emission for the reason above it: neither the installed set of apps nor "has a car
+            // connected yet" has a change callback, and this flow re-runs often enough to be current.
+            car = car.read(),
             versionName = BuildConfig.VERSION_NAME,
             isLoaded = true,
         )
@@ -144,6 +157,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { sleepTimer.setFadeLength(length) }
     }
 
+    /** PRODUCT_SPEC PLAY-008 / PLAY-009 — how far to rewind when the timer stops the book. Zero is off. */
+    fun onSleepTimerRewindChanged(length: kotlin.time.Duration) {
+        viewModelScope.launch { sleepTimer.setRewindOnStop(length) }
+    }
+
     /** PRODUCT_SPEC PLAY-007 — the speed a book uses when it has no override of its own. */
     fun onDefaultSpeedChanged(speed: PlaybackSpeed) {
         viewModelScope.launch { playbackSettings.setDefaultSpeed(speed) }
@@ -160,6 +178,11 @@ class SettingsViewModel @Inject constructor(
 
     fun onBufferPresetChanged(preset: BufferPreset) {
         viewModelScope.launch { playbackSettings.setBufferPreset(preset) }
+    }
+
+    /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless chosen. */
+    fun onAutoPlayOnCarConnectChanged(enabled: Boolean) {
+        viewModelScope.launch { playbackSettings.setAutoPlayOnCarConnect(enabled) }
     }
 
     /**
@@ -203,6 +226,8 @@ data class SettingsUiState(
     val sessionSync: SessionSyncDiagnostics = SessionSyncDiagnostics(),
     /** PRODUCT_SPEC PLAY-001 — whether the media notification can appear, and whether it has. */
     val notifications: NotificationAccess = NotificationAccess(),
+    /** PRODUCT_SPEC PLAY-001 / ROUTE-002 — why the app is, or is not, in the car's list of media apps. */
+    val car: CarReadiness = CarReadiness(),
     /** PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — speed, skips, auto-rewind and the buffer. */
     val playback: PlaybackSettings = PlaybackSettings.Default,
     val versionName: String = "",

@@ -234,13 +234,11 @@ class SessionSyncCoordinator @Inject constructor(
      */
     private fun snapshot(): Snapshot? {
         val media = player ?: return null
-        val item = media.currentMediaItem ?: return null
+        media.currentMediaItem ?: return null
         val positionMs = media.currentPosition
-        if (positionMs <= 0L && media.currentMediaItemIndex == 0) return null
-        return Snapshot(
-            position = MediaItems.globalPositionOf(item, positionMs),
-            duration = MediaItems.bookDurationOf(item),
-        )
+        if (positionMs <= 0L) return null
+        // ADR-0016 — one window per book, so both numbers are the book's and neither is converted.
+        return Snapshot(position = media.bookPosition(), duration = media.bookDuration())
     }
 
     private data class Active(val sessionId: String, val bookId: LibraryItemId)

@@ -1,32 +1,27 @@
 package com.example.shelfplayer.playback
 
-import android.content.ComponentName
-import android.content.Context
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
-import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
-import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.GlobalTimeline
+import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
-import com.google.common.util.concurrent.MoreExecutors
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -36,12 +31,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ExecutionException
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.coroutines.resume
 import kotlin.time.Duration
 
 /**
@@ -64,12 +56,11 @@ import kotlin.time.Duration
  */
 @Singleton
 class PlaybackController @Inject constructor(
-    @param:ApplicationContext private val context: Context,
+    private val connector: SessionConnector,
     private val playbackRepository: PlaybackRepository,
-    private val sleepTimer: SleepTimerController,
-    private val sessionSync: SessionSyncCoordinator,
-    private val autoRewind: AutoRewindController,
+    private val bookChanges: BookChanges,
     private val playbackSettings: PlaybackSettingsRepository,
+    private val history: PlaybackHistoryRepository,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
@@ -124,34 +115,74 @@ class PlaybackController @Inject constructor(
         val media = connect() ?: return@withContext AppResult.Failure(
             AppError.Playback(summary = "The player could not be started.", isRetryable = true),
         )
-        // PRODUCT_SPEC PLAY-008 — the timer needs the chapters, and this is where they exist. They
-        // travel here rather than in the playlist because a long book's chapter list in every
-        // `MediaItem`'s extras would be tens of kilobytes across the binder to answer one question.
-        sleepTimer.onBookChanged(session.chapters)
-        // PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox row is written here, before a byte of audio has been
-        // fetched. A session recorded only once playback succeeded would lose the listening of a book that
-        // started and then hit a network error.
-        sessionSync.onSessionOpened(session)
-        autoRewind.onBookChanged(session.chapters)
+        // PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — the sleep timer, the outbox and auto-rewind all need
+        // to know, in that order. See [BookChanges]; the chapters travel to them here rather than in the
+        // playlist, because a long book's list in every `MediaItem`'s extras would be tens of kilobytes
+        // across the binder to answer one question.
+        bookChanges.onBookOpened(session)
         chapters = session.chapters
         lastChapter = null
+        // ADR-0016 — one item for the whole book, and the resume point is a book position because the
+        // player's timeline is the book. `BookMediaSourceFactory` turns the item into the concatenation.
         val queue = MediaItems.queueFor(session)
-        media.setMediaItems(queue.items, queue.startIndex, queue.startPositionMs)
+        media.setMediaItem(queue.item, queue.startPositionMs)
         // PRODUCT_SPEC PLAY-007 — the book's own speed if it has one, the profile default otherwise, applied
         // before `prepare` so the first second plays at the right rate rather than snapping a moment later.
         media.setPlaybackSpeed(playbackSettings.speedFor(session.bookId).value)
         media.prepare()
         media.play()
+        // PRODUCT_SPEC PLAY-003 — the one history entry with no "from": there was no before.
+        applicationScope.launch { history.record(session.bookId, PlaybackEvent.Resume, null, session.startAt) }
         AppResult.Success(Unit)
     }
 
-    /** The transport control a mini player and a notification share. */
+    /**
+     * The transport control a mini player and a notification share.
+     *
+     * **The `prepare()` is the fix for a real defect.** A player that has hit an error sits in `STATE_IDLE`,
+     * and an idle player ignores `play()` and `seekTo()` alike — a device run found a book that stopped and
+     * then could not be started, seeked or recovered except by loading a different book. `prepare()` is the
+     * only way out of idle, so the play button now takes it whenever the player is not holding a live
+     * timeline. Pressing play must always mean something (product priority 1).
+     */
     fun togglePlayPause() {
         applicationScope.launch(mainDispatcher) {
             val media = connect() ?: return@launch
-            if (media.isPlaying) media.pause() else media.play()
+            when {
+                media.isPlaying -> media.pause()
+                media.needsPreparing() -> {
+                    media.prepare()
+                    media.play()
+                }
+                else -> media.play()
+            }
         }
     }
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — retry after a failure the service gave up on.
+     *
+     * The service retries a transient error a few times on its own (see [PlaybackRecovery]); this is what
+     * the *user* presses when it has stopped trying. Same two calls, because there is only one way out of
+     * idle — the difference is who decided to take it.
+     */
+    fun retry() {
+        applicationScope.launch(mainDispatcher) {
+            val media = connect() ?: return@launch
+            if (media.mediaItemCount == 0) return@launch
+            media.prepare()
+            media.play()
+        }
+    }
+
+    /**
+     * `true` when the player is idle or holding an error, which are the two states `play()` cannot leave.
+     *
+     * `STATE_IDLE` is reached by a fresh player, a stopped one and a failed one. Only the last is a defect,
+     * but preparing the other two is harmless — Media3 documents `prepare()` on a prepared player as a
+     * no-op — and telling them apart would be a distinction the caller does not need.
+     */
+    private fun MediaController.needsPreparing(): Boolean = playerError != null || playbackState == Player.STATE_IDLE
 
     /**
      * PRODUCT_SPEC PLAY-003 — seeks to a position on the **book's** timeline.
@@ -164,14 +195,29 @@ class PlaybackController @Inject constructor(
      * Clamped by [GlobalTimeline] at both ends, so a bar dragged to its extreme lands on a real
      * position rather than past the last track.
      */
-    fun seekTo(position: Duration) {
+    fun seekTo(position: Duration) = seekTo(position, PlaybackEvent.Seek)
+
+    /**
+     * The seek every other jump goes through, carrying **why**.
+     *
+     * The reason is what makes the history pane readable — "chapter" and "back 30" are different events to a
+     * listener even though they are the same call — and it is recorded here rather than at each call site so
+     * that no route can move the position without leaving a trace.
+     */
+    private fun seekTo(position: Duration, event: PlaybackEvent) {
         applicationScope.launch(mainDispatcher) {
             val media = controller ?: return@launch
             if (media.mediaItemCount == 0) return@launch
-            val items = (0 until media.mediaItemCount).map(media::getMediaItemAt)
-            val cursor = GlobalTimeline.cursorFor(MediaItems.tracksOf(items), position)
-            media.seekTo(cursor.index, cursor.offset.inWholeMilliseconds)
+            val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf)
+            val from = media.bookPosition()
+            // ADR-0016 — a book position *is* a player position. The clamp that `GlobalTimeline.cursorFor`
+            // used to apply is now Media3's own: it refuses a seek past the window's duration.
+            val to = position.coerceAtLeast(Duration.ZERO)
+            media.seekTo(to.inWholeMilliseconds)
             publish(media)
+            // After the seek, never before: a jump that did not happen is not history. Launched rather than
+            // awaited because a database write must not sit between a finger and a position.
+            if (bookId != null) applicationScope.launch { history.record(bookId, event, from, to) }
         }
     }
 
@@ -188,19 +234,19 @@ class PlaybackController @Inject constructor(
     fun skipToNextChapter() {
         applicationScope.launch(mainDispatcher) {
             val target = GlobalTimeline.nextChapterStart(chapters, currentPosition() ?: return@launch)
-            target?.let(::seekTo)
+            target?.let { seekTo(it, PlaybackEvent.Chapter) }
         }
     }
 
     fun skipToPreviousChapter() {
         applicationScope.launch(mainDispatcher) {
             val target = GlobalTimeline.previousChapterStart(chapters, currentPosition() ?: return@launch)
-            target?.let(::seekTo)
+            target?.let { seekTo(it, PlaybackEvent.Chapter) }
         }
     }
 
     /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from a list. */
-    fun seekToChapter(chapter: Chapter) = seekTo(chapter.start)
+    fun seekToChapter(chapter: Chapter) = seekTo(chapter.start, PlaybackEvent.Chapter)
 
     /**
      * PRODUCT_SPEC PLAY-007 — sets the speed for the book playing now, and remembers it for that book.
@@ -242,22 +288,22 @@ class PlaybackController @Inject constructor(
     /** Where the book is now, or `null` when nothing is loaded. Main thread only. */
     private fun currentPosition(): Duration? {
         val media = controller ?: return null
-        val item = media.currentMediaItem ?: return null
-        return MediaItems.globalPositionOf(item, media.currentPosition)
+        media.currentMediaItem ?: return null
+        return media.bookPosition()
     }
 
     /**
      * PRODUCT_SPEC PLAY-007 — skips [delta] along the book, forwards or backwards.
      *
-     * Expressed as a seek on the **book's** timeline rather than as `Player.seekForward`, because
-     * Media3's own skip is per-item: thirty seconds forward from twenty seconds before the end of a
-     * track would stop at the boundary instead of crossing into the next file.
+     * Still expressed as a seek rather than as `Player.seekForward`, even though ADR-0016 removed the
+     * reason it had to be: Media3's own skip uses its configured increment, and PLAY-007's is ours and is
+     * configurable per direction.
      */
     fun skipBy(delta: Duration) {
         applicationScope.launch(mainDispatcher) {
             val media = controller ?: return@launch
-            val item = media.currentMediaItem ?: return@launch
-            seekTo(MediaItems.globalPositionOf(item, media.currentPosition) + delta)
+            media.currentMediaItem ?: return@launch
+            seekTo(media.bookPosition() + delta, PlaybackEvent.Skip)
         }
     }
 
@@ -299,63 +345,12 @@ class PlaybackController @Inject constructor(
      */
     private suspend fun connect(): MediaController? {
         controller?.let { return it }
-        val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        val built = awaitController(token) ?: return null
+        val built = connector.connect() ?: return null
         built.addListener(ControllerEvents())
         controller = built
         publish(built)
         startTicker()
         return built
-    }
-
-    /**
-     * Bridges Media3's `ListenableFuture` to a suspending call.
-     *
-     * The two exceptions are caught by name rather than through a `runCatching`, which would swallow
-     * cancellation as well (ADR-0003, and the "no broad catch" rule). `ExecutionException` is what a
-     * failed session build arrives as; `InterruptedException` is the executor being torn down, and the
-     * interrupt is reasserted rather than eaten.
-     */
-    private suspend fun awaitController(token: SessionToken): MediaController? =
-        suspendCancellableCoroutine { continuation ->
-            val future = MediaController.Builder(context, token).buildAsync()
-            future.addListener(
-                {
-                    val media = try {
-                        future.get()
-                    } catch (failure: ExecutionException) {
-                        connectionFailed(failure)
-                        null
-                    } catch (failure: InterruptedException) {
-                        Thread.currentThread().interrupt()
-                        connectionFailed(failure)
-                        null
-                    }
-                    if (continuation.isActive) continuation.resume(media)
-                },
-                MoreExecutors.directExecutor(),
-            )
-            continuation.invokeOnCancellation {
-                // The returned flag says whether the build was still in flight. Either answer is fine —
-                // the continuation is already gone and nothing is waiting for a controller — but it is
-                // worth a debug line when a connection is abandoned this way.
-                val wasPending = future.cancel(true)
-                logger.debug(
-                    LogCategory.Playback,
-                    "Abandoned a pending session connection",
-                    LogField.Public("wasPending", wasPending),
-                )
-            }
-        }
-
-    private fun connectionFailed(failure: Throwable) {
-        // The cause's class, not its message: a session-build failure can carry a component name and a
-        // package, and PRODUCT_SPEC 14.5 keeps that out of a log the user might share.
-        logger.warn(
-            LogCategory.Playback,
-            "Could not connect to the playback session",
-            LogField.Public("cause", failure.javaClass.simpleName),
-        )
     }
 
     /**
@@ -377,9 +372,9 @@ class PlaybackController @Inject constructor(
 
     private fun publish(media: MediaController) {
         val item: MediaItem? = media.currentMediaItem
-        val position = item?.let { MediaItems.globalPositionOf(it, media.currentPosition) } ?: Duration.ZERO
+        val position = if (item == null) Duration.ZERO else media.bookPosition()
         val chapter = if (item == null) null else GlobalTimeline.chapterAt(chapters, position)
-        if (hasCrossedInto(chapter)) sessionSync.request(SyncTrigger.ChapterChanged)
+        if (hasCrossedInto(chapter)) bookChanges.onChapterCrossed()
         lastChapter = chapter
         _state.value = PlaybackUiState(
             bookId = item?.let(MediaItems::bookIdOf),
@@ -389,12 +384,16 @@ class PlaybackController @Inject constructor(
             isPlaying = media.isPlaying,
             isLoading = media.playbackState == Player.STATE_BUFFERING,
             position = position,
-            duration = item?.let(MediaItems::bookDurationOf) ?: Duration.ZERO,
+            duration = if (item == null) Duration.ZERO else media.bookDuration(),
             chapters = if (item == null) emptyList() else GlobalTimeline.ordered(chapters),
             currentChapter = chapter,
             // Read from the player rather than from the settings, so the state always reports what is
             // actually happening — including a speed something else set through the media session.
             speed = PlaybackSpeed.of(media.playbackParameters.speed),
+            // PRODUCT_SPEC PLAY-001 — a stopped book says so. The service retries a transient error a few
+            // times first (`PlaybackRecovery`); by the time this is non-null it has given up, and the only
+            // thing left is to tell the listener and offer the button.
+            hasFailed = media.playerError != null,
         )
     }
 
@@ -450,6 +449,15 @@ data class PlaybackUiState(
     val currentChapter: Chapter? = null,
     /** PRODUCT_SPEC PLAY-007 — what the player is actually running at, not what a setting says. */
     val speed: PlaybackSpeed = PlaybackSpeed.Normal,
+    /**
+     * PRODUCT_SPEC PLAY-001 — playback stopped on an error and the service has stopped retrying.
+     *
+     * A separate flag rather than an [AppError], because the player is the source and Media3's own message
+     * can carry the failing URL — a path on somebody's private server (14.5). What the user needs is that it
+     * stopped and that there is a button; what a *diagnostic* needs is the error code, and that is in the
+     * event log.
+     */
+    val hasFailed: Boolean = false,
 ) {
     /** Fraction in `0.0..1.0`; `0` when the duration is not known yet rather than a division by zero. */
     val fractionComplete: Float

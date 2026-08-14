@@ -30,6 +30,7 @@ import com.example.shelfplayer.feature.browse.LocalCoverUrls
 import com.example.shelfplayer.feature.browse.coverUrlsFor
 import com.example.shelfplayer.feature.player.ChapterSheet
 import com.example.shelfplayer.feature.player.FullPlayer
+import com.example.shelfplayer.feature.player.HistorySheet
 import com.example.shelfplayer.feature.player.MiniPlayer
 import com.example.shelfplayer.feature.player.PlayerActions
 import com.example.shelfplayer.feature.player.PlayerViewModel
@@ -98,6 +99,7 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
     val isNotificationBlocked by playerViewModel.isNotificationBlocked.collectAsStateWithLifecycle()
     val playbackSettings by playerViewModel.settings.collectAsStateWithLifecycle()
     val rewind by playerViewModel.rewind.collectAsStateWithLifecycle()
+    val history by playerViewModel.history.collectAsStateWithLifecycle()
     val skipControls = SkipControls(
         intervals = playbackSettings.skips,
         onBack = playerViewModel::onSkipBack,
@@ -106,6 +108,7 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
     var isTimerSheetOpen by remember { mutableStateOf(false) }
     var isChapterSheetOpen by remember { mutableStateOf(false) }
     var isSpeedSheetOpen by remember { mutableStateOf(false) }
+    var isHistorySheetOpen by remember { mutableStateOf(false) }
     NotificationPermission(hasPlayback = playback.bookId != null)
     SyncOnBackground(onBackgrounded = playerViewModel::onAppBackgrounded)
 
@@ -143,7 +146,23 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
                 onOpenChapters = { isChapterSheetOpen = true },
                 onOpenSpeed = { isSpeedSheetOpen = true },
                 onCollapse = playerViewModel::onCollapse,
+                onRetry = playerViewModel::onRetry,
+                onOpenHistory = { isHistorySheetOpen = true },
             ),
+        )
+    }
+
+    // PRODUCT_SPEC PLAY-003 — the jumps this book has seen. Tapping one returns to where it started, which
+    // is the only undo a seek has ever had.
+    if (isHistorySheetOpen) {
+        HistorySheet(
+            entries = history,
+            // PRODUCT_SPEC PLAY-003 — so a row can say which chapter it happened in. The player already
+            // holds the list; the history repository deliberately does not, because a chapter name stored
+            // beside every event would be the same forty strings written down a hundred times.
+            chapters = playback.chapters,
+            onReturnTo = playerViewModel::onSeekTo,
+            onDismiss = { isHistorySheetOpen = false },
         )
     }
 

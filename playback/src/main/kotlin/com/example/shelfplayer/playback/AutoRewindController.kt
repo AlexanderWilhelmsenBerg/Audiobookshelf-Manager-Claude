@@ -9,8 +9,9 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.AutoRewind
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.domain.playback.AutoRewindMath
-import com.example.shelfplayer.domain.playback.GlobalTimeline
+import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +58,7 @@ import kotlin.time.Duration
 class AutoRewindController @Inject constructor(
     private val repository: PlaybackSettingsRepository,
     private val clock: AppClock,
+    private val history: PlaybackHistoryRepository,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
 ) {
@@ -129,8 +131,8 @@ class AutoRewindController @Inject constructor(
         val stoppedAt = pausedAt ?: return
         pausedAt = null
         val media = player ?: return
-        val item = media.currentMediaItem ?: return
-        val from = MediaItems.globalPositionOf(item, media.currentPosition)
+        media.currentMediaItem ?: return
+        val from = media.bookPosition()
         val resumeAt = AutoRewindMath.resumeAt(
             from = from,
             pausedFor = clock.elapsed() - stoppedAt,
@@ -141,6 +143,12 @@ class AutoRewindController @Inject constructor(
         if (applied <= Duration.ZERO) return
         seekTo(media, resumeAt)
         _lastApplied.value = Applied(amount = applied, returnTo = from)
+        // PRODUCT_SPEC PLAY-003 — the app moved the position, so it goes in the history like any other jump.
+        // The transient undo notice lasts seconds; this outlives it, which matters for a rewind somebody only
+        // notices two chapters later.
+        media.currentMediaItem?.let(MediaItems::bookIdOf)?.let { bookId ->
+            applicationScope.launch { history.record(bookId, PlaybackEvent.AutoRewind, from, resumeAt) }
+        }
         logger.info(
             LogCategory.Playback,
             "Rewound after a pause",
@@ -167,12 +175,9 @@ class AutoRewindController @Inject constructor(
         _lastApplied.value = null
     }
 
+    // ADR-0016 — a book position is a player position, so there is nothing left to convert.
     private fun seekTo(media: Player, position: Duration) {
-        val items = (0 until media.mediaItemCount).map(media::getMediaItemAt)
-        // The same conversion every other seek in the app uses, so none of them can disagree about where a
-        // position is on a multi-file book (PLAY-003).
-        val cursor = GlobalTimeline.cursorFor(MediaItems.tracksOf(items), position)
-        media.seekTo(cursor.index, cursor.offset.inWholeMilliseconds)
+        media.seekTo(position.inWholeMilliseconds.coerceAtLeast(0))
     }
 
     /**

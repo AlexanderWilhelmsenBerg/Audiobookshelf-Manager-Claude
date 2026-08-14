@@ -23,6 +23,8 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-001 / PLAY-004 — the playback repository.
@@ -54,7 +56,36 @@ class DefaultPlaybackRepository @Inject constructor(
                     requiresReauthentication = false,
                 ),
             )
-        return gateway.playback.openSession(profileId, bookId)
+        val opened = gateway.playback.openSession(profileId, bookId)
+        if (opened is AppResult.Success) clearFinishedIfRestarting(bookId, opened.value.startAt)
+        return opened
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — starting a finished book from the top un-finishes it.
+     *
+     * The owner's report: a book marked finished by the threshold had no way back, and "even just restarting
+     * a book that is finished should put it into an unfinished state". This is that rule, and it is here
+     * rather than in the player so that every route to playback gets it — the book screen, a media button, a
+     * head unit later.
+     *
+     * **From the top**, not from anywhere. Replaying the last minute of a book you finished is a normal thing
+     * to do — the "Listen again" shelf exists for it — and it must not silently mark the book unread. A
+     * session that opens within the first minute is somebody starting over; one that opens at four hours is
+     * somebody re-listening.
+     *
+     * Failure is swallowed on purpose: this is a side effect of pressing play, and the one thing that must
+     * not happen is a book refusing to start because a flag could not be cleared (product priority 1). The
+     * user can still un-finish it explicitly, which is the path that reports its errors.
+     */
+    private suspend fun clearFinishedIfRestarting(bookId: LibraryItemId, startAt: Duration) {
+        if (startAt > RESTART_WITHIN) return
+        val profileId = profileRepository.activeProfileId() ?: return
+        val profile = profileDao.findProfile(profileId.value) ?: return
+        val stored = progressDao.findProgress(profileId.value, EntityKey.of(profile.serverId, bookId.value))
+        if (stored?.isFinished != true) return
+        logger.info(LogCategory.Playback, "A finished book was restarted, so it is unfinished again")
+        setFinished(bookId, isFinished = false, position = startAt)
     }
 
     /**
@@ -113,5 +144,68 @@ class DefaultPlaybackRepository @Inject constructor(
             )
         }
         AppResult.Success(Unit)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — the explicit flag, in both directions.
+     *
+     * ### Local first, then the server
+     *
+     * The local row is what every screen reads, so it is written first and unconditionally. The server call
+     * follows and its failure is **returned but not undone**: a user who ticked *Finished* on a train has
+     * made a decision, and rolling it back because the network was unavailable would be the app overruling
+     * them. The row carries `hasUnsyncedChanges`, which is the same mechanism that stops an account sync
+     * from reverting a position, so the next successful sync carries the decision up.
+     *
+     * ### Why the position moves too
+     *
+     * The route is a progress PATCH and takes both. Marking finished sends the end of the book, so the
+     * server and the app agree about a finished book's position instead of leaving it at 40% with a
+     * finished flag. Un-marking sends the position the caller supplies, so a book that comes back from
+     * finished does not also come back from the beginning.
+     */
+    override suspend fun setFinished(bookId: LibraryItemId, isFinished: Boolean, position: Duration): AppResult<Unit> =
+        withContext(ioDispatcher) {
+            val profileId = profileRepository.activeProfileId()
+                ?: return@withContext AppResult.Failure(AppError.Authentication())
+            val profile = profileDao.findProfile(profileId.value)
+                ?: return@withContext AppResult.Failure(AppError.Authentication())
+            val bookKey = EntityKey.of(profile.serverId, bookId.value)
+            val stored = progressDao.findProgress(profileId.value, bookKey)
+            val duration = stored?.durationMillis?.milliseconds ?: Duration.ZERO
+            // Finished means the end of the book, when the book's length is known. A book whose duration the
+            // app has never seen keeps the position it had rather than being sent to zero.
+            val at = if (isFinished && duration > Duration.ZERO) duration else position.coerceAtLeast(Duration.ZERO)
+            progressDao.upsertProgress(
+                listOf(
+                    MediaProgressEntity(
+                        progressKey = EntityKey.scoped(profileId.value, bookKey),
+                        profileId = profileId.value,
+                        bookKey = bookKey,
+                        serverId = profile.serverId,
+                        positionMillis = at.inWholeMilliseconds,
+                        durationMillis = duration.inWholeMilliseconds,
+                        isFinished = isFinished,
+                        updatedAt = clock.now().toEpochMilli(),
+                        hasUnsyncedChanges = true,
+                    ),
+                ),
+            )
+            logger.info(
+                LogCategory.Playback,
+                "A book's finished flag was set by the user",
+                LogField.Public("isFinished", isFinished),
+            )
+            gateway.playback.setFinished(profileId, bookId, isFinished, at)
+        }
+
+    private companion object {
+        /**
+         * How far into a book still counts as "starting it again".
+         *
+         * A minute. Long enough to survive an auto-rewind and a stored position a few seconds off zero,
+         * short enough that nobody re-listening to a chapter trips it.
+         */
+        val RESTART_WITHIN: Duration = 60.seconds
     }
 }

@@ -13,12 +13,14 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Chapter
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.SleepTimerMath
+import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +71,7 @@ class SleepTimerController @Inject constructor(
     private val repository: SleepTimerRepository,
     private val shakes: ShakeDetector,
     private val sessionSync: SessionSyncCoordinator,
+    private val history: PlaybackHistoryRepository,
     private val clock: AppClock,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
@@ -151,6 +154,10 @@ class SleepTimerController @Inject constructor(
             deadlineElapsedMs = deadlineFor(mode),
             chapterSkip = 0,
         )
+        // PRODUCT_SPEC PLAY-003 — the device report asked for this: a timer being set is a decision about
+        // the book, and the history is where an evening gets reconstructed. The length travels as the
+        // detail, because "sleep timer" on its own says nothing a listener can use.
+        running?.let { started -> record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(started)) }
         startSensing()
         startTicking()
         publish()
@@ -206,6 +213,10 @@ class SleepTimerController @Inject constructor(
                 LogCategory.Playback,
                 if (restart) "The sleep timer was restarted" else "The sleep timer was extended",
             )
+            // PRODUCT_SPEC PLAY-003 — the device report named this one specifically: *"the shake to extend
+            // won't give an event in history"*. Both routes land here, and both are recorded, because from
+            // the listener's side they are the same event — the timer moved and they want to know when.
+            record(PlaybackEvent.SleepTimerExtended, detail = remainingOf(next))
             publish()
         }
     }
@@ -240,9 +251,12 @@ class SleepTimerController @Inject constructor(
             expire()
             return
         }
+        // PLAY-008's fade is *optional*, and zero is how it is declined. `fadeVolume` would return full
+        // volume for a zero fade anyway; the guard is here so `isFading` cannot be reported true for a
+        // fade that is not happening, which is what the player's UI reads to show its fading state.
         val fade = settings.fadeLength
-        player?.volume = SleepTimerMath.fadeVolume(remaining, fade)
-        publish(remaining, isFading = remaining < fade)
+        player?.volume = if (fade > Duration.ZERO) SleepTimerMath.fadeVolume(remaining, fade) else FULL_VOLUME
+        publish(remaining, isFading = fade > Duration.ZERO && remaining < fade)
     }
 
     /**
@@ -260,7 +274,61 @@ class SleepTimerController @Inject constructor(
             LogField.Public("mode", running?.mode?.let { it::class.simpleName }.orEmpty()),
         )
         player?.pause()
+        record(PlaybackEvent.SleepTimerExpired)
+        rewindAfterStop()
         finish(SleepTimerOutcome.Expired)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-008 / PLAY-009 — winds the book back after the timer stopped it.
+     *
+     * The owner asked for this by example: *"if I set on a sleep timer I can set rewind time for five
+     * minutes and it will rewind five minutes"*. Somebody who fell asleep does not know when they stopped
+     * following, only that it was a while before the timer fired — so the amount is theirs to choose and
+     * the app's job is to apply it exactly.
+     *
+     * **After the pause, not before.** Rewinding a playing book would be audible: five minutes of audio
+     * would start again and then stop. Paused first, moved second, and the listener finds the new position
+     * when they come back.
+     *
+     * Clamped to the start of the book, and **not** to the start of the chapter. Auto-rewind clamps to the
+     * chapter because a few seconds either side of a boundary is ambiguous; five minutes is not, and a
+     * listener who fell asleep across a chapter break wants the part they slept through, not the boundary.
+     *
+     * Off by default. A feature that moves a saved position without being asked is the one thing product
+     * priority 2 does not tolerate.
+     */
+    private fun rewindAfterStop() {
+        val amount = settings.rewindOnStop
+        if (amount <= Duration.ZERO) return
+        val media = player ?: return
+        media.currentMediaItem ?: return
+        val from = media.bookPosition()
+        val to = (from - amount).coerceAtLeast(Duration.ZERO)
+        if (to >= from) return
+        media.seekTo(to.inWholeMilliseconds)
+        logger.info(
+            LogCategory.Playback,
+            "Rewound because the sleep timer stopped playback",
+            LogField.Millis("amount", (from - to).inWholeMilliseconds),
+        )
+        record(PlaybackEvent.SleepTimerRewind, from = from, to = to)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — a timer event, in the book's history.
+     *
+     * The device report that asked for this: *"starting sleep timer doesn't show"*. A timer is a decision
+     * about the book, and the history is where a listener looks to reconstruct an evening.
+     *
+     * Silent when there is no book. Everything here is a side effect of something that already happened,
+     * and none of it may prevent the timer from working (product priority 1).
+     */
+    private fun record(event: PlaybackEvent, from: Duration? = null, to: Duration? = null, detail: Duration? = null) {
+        val media = player ?: return
+        val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf) ?: return
+        val at = to ?: media.bookPosition()
+        applicationScope.launch { history.record(bookId, event, from, at, detail) }
     }
 
     private suspend fun finish(outcome: SleepTimerOutcome) {
@@ -300,9 +368,8 @@ class SleepTimerController @Inject constructor(
 
     private fun remainingToChapterEnd(skip: Int): Duration? {
         val current = player ?: return null
-        val item = current.currentMediaItem ?: return null
-        val position = MediaItems.globalPositionOf(item, current.currentPosition)
-        return SleepTimerMath.remainingToChapterEnd(chapters, position, skip)
+        // ADR-0016 — the player's timeline *is* the book, so its position needs no conversion.
+        return SleepTimerMath.remainingToChapterEnd(chapters, current.bookPosition(), skip)
     }
 
     private fun deadlineFor(mode: SleepTimerMode): Long = when (mode) {

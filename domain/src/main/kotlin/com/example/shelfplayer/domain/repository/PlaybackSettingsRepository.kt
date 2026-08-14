@@ -29,6 +29,14 @@ interface PlaybackSettingsRepository {
     suspend fun setBufferPreset(preset: BufferPreset): AppResult<Unit>
 
     /**
+     * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — whether connecting to a car starts the last book.
+     *
+     * Off unless explicitly chosen. ROUTE-002 will replace this with a policy per device; one global switch
+     * is the honest interim, and the setting says so.
+     */
+    suspend fun setAutoPlayOnCarConnect(enabled: Boolean): AppResult<Unit>
+
+    /**
      * PRODUCT_SPEC PLAY-007 — "per-book speed overrides profile default".
      *
      * `null` means no override, which is a different thing from an override of `1.0×`: the first follows the

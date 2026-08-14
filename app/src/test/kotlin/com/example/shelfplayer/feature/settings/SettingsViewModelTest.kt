@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.CarReadiness
 import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -44,6 +45,7 @@ import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
+import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.NotificationAccessReader
 import com.example.shelfplayer.testing.FakePreferences
 import kotlinx.coroutines.flow.Flow
@@ -81,6 +83,16 @@ class SettingsViewModelTest {
 
     /** PRODUCT_SPEC PLAY-001 — a platform read, so the ViewModel test supplies the answer rather than a device. */
     private val notifications = NotificationAccessReader { NotificationAccess() }
+
+    /**
+     * PRODUCT_SPEC ROUTE-002 — the same trick for the car reading, which is four package-manager queries.
+     *
+     * A correctly declared build that no car has ever reached: the state the About tab is most often read
+     * in, and the one the device reports have all been about.
+     */
+    private val car = CarReadinessReader {
+        CarReadiness(isDeclared = true, hasBrowserService = true, isAndroidAutoInstalled = true)
+    }
     private val playbackSettings = FakePlaybackSettings()
 
     private fun viewModel() = SettingsViewModel(
@@ -91,6 +103,7 @@ class SettingsViewModelTest {
         sleepTimer = sleepTimer,
         sessionSync = sessionSync,
         notifications = notifications,
+        car = car,
         playbackSettings = playbackSettings,
     )
 
@@ -326,6 +339,10 @@ class SettingsViewModelTest {
 
         override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = MutableStateFlow(emptyList())
 
+        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId) =
+
+            kotlinx.coroutines.flow.flowOf(emptyList<com.example.shelfplayer.core.model.library.Chapter>())
+
         override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = MutableStateFlow(null)
 
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> =
@@ -370,6 +387,11 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
 
     override suspend fun setBufferPreset(preset: BufferPreset): AppResult<Unit> {
         controls.value = controls.value.copy(buffer = preset)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setAutoPlayOnCarConnect(enabled: Boolean): AppResult<Unit> {
+        controls.value = controls.value.copy(autoPlayOnCarConnect = enabled)
         return AppResult.Success(Unit)
     }
 
@@ -434,6 +456,11 @@ internal class FakeSleepTimers : SleepTimerRepository {
 
     override suspend fun setFadeLength(length: kotlin.time.Duration): AppResult<Unit> {
         settings.value = settings.value.copy(fadeLength = length)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setRewindOnStop(length: kotlin.time.Duration): AppResult<Unit> {
+        settings.value = settings.value.copy(rewindOnStop = length)
         return AppResult.Success(Unit)
     }
 

@@ -795,6 +795,10 @@ class HomeViewModelTest {
 
         override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = storedBooks
 
+        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId) =
+
+            kotlinx.coroutines.flow.flowOf(emptyList<com.example.shelfplayer.core.model.library.Chapter>())
+
         override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = MutableStateFlow(null)
 
         private val syncState = MutableStateFlow<SyncState?>(null)

@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.playback.CarReadiness
 import com.example.shelfplayer.core.model.playback.ClockSkew
 import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
@@ -153,10 +154,12 @@ internal fun LazyListScope.notificationRows(access: NotificationAccess) {
  * says so rather than sitting unticked forever. A checklist that cannot distinguish "not done" from "not
  * checkable here" is a checklist that reads as failing.
  */
-internal fun LazyListScope.syncCheckRows(sync: SessionSyncDiagnostics, access: NotificationAccess) {
+internal fun LazyListScope.syncCheckRows(sync: SessionSyncDiagnostics, access: NotificationAccess, car: CarReadiness) {
     item { SubHeader(text = stringResource(R.string.settings_section_checks)) }
     item { Hint(text = stringResource(R.string.settings_checks_body)) }
-    items(checksFor(sync) + checkFor(access), key = { it.labelRes }) { check -> SyncCheckRow(check) }
+    items(checksFor(sync) + checkFor(access) + checkFor(car), key = { it.labelRes }) { check ->
+        SyncCheckRow(check)
+    }
 }
 
 /**
@@ -221,6 +224,19 @@ internal fun checksFor(sync: SessionSyncDiagnostics): List<SyncCheck> = listOf(
 internal fun checkFor(access: NotificationAccess): SyncCheck = SyncCheck(
     labelRes = R.string.settings_check_notification,
     state = if (access.isShowing) SyncCheckState.Seen else SyncCheckState.NeedsDevice,
+)
+
+/**
+ * PRODUCT_SPEC PLAY-001 / ROUTE-002 — the Android Auto check, judged by whether a car ever bound.
+ *
+ * `Seen` needs a real connection, not a correct manifest. Two device runs found that an app can declare
+ * everything the platform asks for and still be missing from the dashboard, so a check that ticked on the
+ * declaration would have reported success through both of them. A car reaching the session is the only
+ * evidence that means anything here.
+ */
+internal fun checkFor(car: CarReadiness): SyncCheck = SyncCheck(
+    labelRes = R.string.settings_check_car,
+    state = if (car.lastConnectedAt != null) SyncCheckState.Seen else SyncCheckState.NeedsDevice,
 )
 
 /**
@@ -297,7 +313,7 @@ private fun SyncCheckRow(check: SyncCheck, modifier: Modifier = Modifier) {
  * The value carries the meaning for a screen reader as well as for a glance, which a coloured icon does not.
  */
 @Composable
-private fun YesNoRow(labelRes: Int, value: Boolean, modifier: Modifier = Modifier, hintRes: Int? = null) {
+internal fun YesNoRow(labelRes: Int, value: Boolean, modifier: Modifier = Modifier, hintRes: Int? = null) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -404,7 +420,7 @@ private fun SyncTrigger.labelRes(): Int = when (this) {
  * relative label that only changes once a minute cannot be — which is the same mistake the sleep timer's
  * minutes-only countdown made.
  */
-private fun Instant.asClockTime(): String = TIME_FORMAT.withZone(ZoneId.systemDefault()).format(this)
+internal fun Instant.asClockTime(): String = TIME_FORMAT.withZone(ZoneId.systemDefault()).format(this)
 
 /** Signed, because the sign is the interesting part: `+` means this device is behind the server. */
 private fun Duration.asOffset(): String {

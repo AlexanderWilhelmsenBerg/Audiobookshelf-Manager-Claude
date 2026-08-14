@@ -27,12 +27,14 @@ import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.LibraryAccess
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookSnapshot
+import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.data.library.mapper.EntityMappers
 import com.example.shelfplayer.data.library.mapper.ProgressMappers
+import com.example.shelfplayer.data.library.mapper.toDomain
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -153,6 +155,30 @@ class DefaultLibraryRepository @Inject constructor(
                     relations
                         ?.takeIf { allowedKeys == null || it.book.libraryKey in allowedKeys }
                         ?.let { EntityMappers.toDomain(it, progress) }
+                }
+            }
+        }
+
+    /**
+     * PRODUCT_SPEC PLAY-003 / 11.1 — the cached chapter rows, mapped, in time order.
+     *
+     * Reads the same grant-filtered query [observeBook] does, so a book the profile has lost has no
+     * chapters either — 5.2 has no exception for the surface asking.
+     */
+    override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId): Flow<List<Chapter>> =
+        scopeFlow(profileId).flatMapLatest { scope ->
+            if (scope == null) {
+                flowOf(emptyList())
+            } else {
+                val bookKey = EntityKey.of(scope.serverId.value, bookId.value)
+                val allowedKeys = scope.allowedLibraryKeys()
+                libraryDao.observeBook(profileId.value, bookKey).map { relations ->
+                    relations
+                        ?.takeIf { allowedKeys == null || it.book.libraryKey in allowedKeys }
+                        ?.chapters
+                        ?.sortedBy { it.startMillis }
+                        ?.map { row -> row.toDomain(bookId) }
+                        .orEmpty()
                 }
             }
         }
@@ -284,7 +310,10 @@ class DefaultLibraryRepository @Inject constructor(
                     else -> ProgressMappers.toEntity(profileId, serverId, bookKey, remote)
                 }
             }
-            progressDao.upsertProgress(rows)
+            // PRODUCT_SPEC PLAY-004 — the write and the history it produces, in one transaction. The
+            // writer owns it for the same reason it owns the snapshot: this is the module's write path, and
+            // the profile it writes for is the one passed in rather than whoever is signed in right now.
+            writer.writeProgress(profileId, rows, existing)
             logger.info(
                 LogCategory.Sync,
                 "Refreshed positions without re-reading the library",

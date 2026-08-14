@@ -186,7 +186,57 @@
     <string name="player_chapter_current">Playing now</string>
     <!-- %1$d is the chapter's position in the book, for a chapter with no title of its own. -->
     <string name="player_chapter_number">Chapter %1$d</string>
+    <!-- PRODUCT_SPEC PLAY-003 — the chapter bar under the book's. %1$d is the chapter, %2$d the total. -->
+    <string name="player_chapter_ordinal">Chapter %1$d of %2$d</string>
+    <!--
+      Spoken for the chapter bar. %1$s is the chapter's title and %2$s a remaining time such as "12:04";
+      the visible bar is a shape, and a shape says nothing to a screen reader.
+    -->
+    <string name="player_chapter_progress">%1$s, %2$s left in this chapter</string>
+    <!-- PRODUCT_SPEC PLAY-003 — the history pane: every jump, and the way back from it. -->
+    <string name="player_history">History</string>
+    <string name="player_history_body">Everything that has happened in this book, here and on your other devices. Tap a row to go back to where it started.</string>
+    <string name="player_history_empty">Nothing yet. Playing, seeking, changing chapter or setting a sleep timer will appear here.</string>
+    <!-- %1$s is where the jump started, %2$s where it landed. -->
+    <string name="player_history_jump">%1$s → %2$s</string>
+    <!-- %1$s is where the book resumed. -->
+    <!-- %1$s is a position. Used for an event that marks a spot rather than a jump between two. -->
+    <string name="player_history_at">At %1$s</string>
+    <!-- %1$s is the kind of event, %2$s a length such as "30 min". -->
+    <string name="player_history_detail">%1$s · %2$s</string>
+    <!-- %1$s is the kind of jump, %2$s where it started, %3$s where it landed. -->
+    <string name="player_history_return_to">%1$s from %2$s to %3$s. Tap to return to %2$s.</string>
+    <!-- %1$s is the kind of jump, %2$s the position. -->
+    <string name="player_history_started_at">%1$s at %2$s</string>
+    <string name="player_history_seek">Seek</string>
+    <string name="player_history_skip">Skip</string>
+    <string name="player_history_chapter">Chapter</string>
+    <string name="player_history_rewind">Rewind after a pause</string>
+    <string name="player_history_resume">Started listening</string>
+    <string name="player_history_play">Played</string>
+    <string name="player_history_pause">Paused</string>
+    <string name="player_history_timer_started">Sleep timer set</string>
+    <string name="player_history_timer_extended">Sleep timer extended</string>
+    <string name="player_history_timer_expired">Sleep timer ended playback</string>
+    <string name="player_history_timer_rewind">Rewound after the sleep timer</string>
+    <!--
+      PRODUCT_SPEC PLAY-004 / SYNC-002 — a change that arrived from the server rather than from this phone.
+
+      Worded as "another device" rather than "the server", because that is what happened from the listener's
+      point of view: they were not here, so somebody or something else was. The finished one is separate
+      because a book turning up finished is a different surprise from a position moving.
+    -->
+    <string name="player_history_remote">Moved on another device</string>
+    <string name="player_history_remote_finished">Finished on another device</string>
+    <!-- The day a group of rows happened on, above them. -->
+    <string name="player_history_today">Today</string>
+    <string name="player_history_yesterday">Yesterday</string>
+    <!-- %1$s is a wall-clock time such as "21:04", %2$s the chapter the position falls in. -->
+    <string name="player_history_when_chapter">%1$s · %2$s</string>
     <string name="player_bookmark_later">Bookmark — arrives in a later phase</string>
+    <!-- PRODUCT_SPEC PLAY-001 / PLAY-003 — playback stopped on an error and will not restart on its own. -->
+    <string name="player_failed">Playback stopped. The server or the connection may be unavailable.</string>
+    <string name="player_failed_retry">Try again</string>
     <string name="player_open">Open the player</string>
     <string name="player_starting">Starting…</string>
     <!-- %1$s is the position a book will resume from, such as "2 h 14 min". -->
@@ -209,9 +259,16 @@
     <string name="sleep_timer_restart">Restart the timer</string>
 
     <!-- SET-002 (Playback) — the sleep timer's settings. -->
+    <!-- PRODUCT_SPEC ROUTE-001 / ROUTE-002 — the car section on the Playback tab. -->
+    <string name="settings_section_car">In the car</string>
+    <string name="settings_car_hint">ShelfPlayer appears in Android Auto with three tabs: Continue, Chapters and History. It always opens on the book you were last listening to.</string>
+    <string name="settings_car_autoplay">Start playing when a car connects</string>
     <string name="sleep_timer_settings">Timer defaults</string>
     <string name="sleep_timer_default_length">Default length</string>
     <string name="sleep_timer_fade">Fade out over</string>
+    <!-- PRODUCT_SPEC PLAY-008 / PLAY-009 — how far back to go when the timer stops the book. -->
+    <string name="sleep_timer_rewind">Rewind when the timer stops playback</string>
+    <string name="sleep_timer_rewind_hint">If you fall asleep, the book winds back by this much so you can pick up something you remember. Off by default.</string>
     <string name="sleep_timer_shake">Shake to restart the timer</string>
     <string name="sleep_timer_shake_hint">Off by default. When it is on, the app senses motion only while a timer is running — never at other times.</string>
 
@@ -233,6 +290,11 @@
         <item quantity="other">Restarted %1$d times</item>
     </plurals>
     <string name="settings_tab_sleep">Sleep</string>
+    <!-- PRODUCT_SPEC LIB-004 — the synopsis is three lines until asked. -->
+    <!-- PRODUCT_SPEC PLAY-004 — the explicit finished flag, which the user can set and clear. -->
+    <string name="book_mark_finished">Finished</string>
+    <string name="book_synopsis_more">Show more</string>
+    <string name="book_synopsis_less">Show less</string>
     <string name="book_section_about">About this book</string>
     <string name="book_download_later">Download — arrives in a later phase</string>
     <string name="navigate_back">Back</string>
@@ -250,7 +312,26 @@
     <string name="settings_tab_about">About</string>
     <string name="about_section_app">ShelfPlayer</string>
     <string name="about_version">Version</string>
-    <string name="about_phase">A work in progress. Playback and downloads are not built yet.</string>
+    <!--
+      PRODUCT_SPEC SET-002 — what this build actually is. Kept current with the phase, because a build
+      that describes itself wrongly makes every other reading on this tab suspect.
+    -->
+    <string name="about_phase">A work in progress. Streaming playback, chapters, the sleep timer and progress sync are built; downloads and offline playback are not.</string>
+    <!-- PRODUCT_SPEC 14.4 — the in-app log. -->
+    <string name="about_section_diagnostics">Diagnostics</string>
+    <string name="event_log_body">A record of what the app has done since it started: playback, sync, network and errors. Nothing here is sent anywhere, and it is cleared when the app closes.</string>
+    <string name="event_log_open">Open the event log</string>
+    <string name="event_log_title">Event log</string>
+    <!-- %1$d is the number of lines held. -->
+    <plurals name="event_log_count">
+        <item quantity="one">%1$d event since the app started</item>
+        <item quantity="other">%1$d events since the app started</item>
+    </plurals>
+    <!-- %1$d is how many of them are warnings or errors. -->
+    <string name="event_log_problems_only">Problems only (%1$d)</string>
+    <string name="event_log_copy">Copy</string>
+    <string name="event_log_clear">Clear</string>
+    <string name="event_log_empty">Nothing has been recorded yet.</string>
     <string name="about_section_testing">Testing</string>
     <string name="about_testing_body">Readings used to check a build against its acceptance cases. Nothing here changes how the app behaves.</string>
 
@@ -380,6 +461,28 @@
     <string name="settings_notification_no">No</string>
     <string name="settings_notification_open">Open notification settings</string>
     <string name="settings_check_notification">Play a book, pull down the shade: the media notification is there with working controls.</string>
+
+    <!--
+      PRODUCT_SPEC PLAY-001 / ROUTE-002 — why the app is, or is not, in the car's list of media apps.
+
+      Two device runs reported it missing. The first had a cause in the APK and it is fixed; the second one
+      does not, so everything left is on the phone. These rows ask the platform the same questions Android
+      Auto asks, in the order they rule things out: the build first, then the phone.
+    -->
+    <string name="settings_section_car_check">Android Auto</string>
+    <string name="settings_car_body">Auto lists media apps by what they declare, not by what they can play. The first two rows are this build; the rest are the phone.</string>
+    <string name="settings_car_declared">Declared as a car app</string>
+    <string name="settings_car_declared_hint">The manifest entry Auto enumerates media apps by. No here means the app cannot appear in any car.</string>
+    <string name="settings_car_browser">Browser service reachable</string>
+    <string name="settings_car_browser_hint">An exported service answering the media-browse action. This is what a head unit binds to.</string>
+    <string name="settings_car_installed">Android Auto installed</string>
+    <string name="settings_car_installed_hint">The phone half of Android Auto. Without it there is nothing to list the app.</string>
+    <string name="settings_car_installer">Installed by</string>
+    <string name="settings_car_installer_sideloaded">Sideloaded — no installing app</string>
+    <string name="settings_car_unknown_sources">Android Auto hides apps it did not get from Play. In the Android Auto app: tap the version ten times to unlock Developer settings, then turn on Unknown sources — unlocking developer settings does not turn it on by itself. Force-stop Android Auto afterwards so it rebuilds its list.</string>
+    <string name="settings_car_last_connection">Last car connection</string>
+    <string name="settings_car_last_connection_never">Never, since the app started</string>
+    <string name="settings_check_car">Connect a head unit: ShelfPlayer is in the media app list and browses. If Last car connection still says never, no car ever reached the app.</string>
 
     <!-- PRODUCT_SPEC PLAY-001 — shown over the player when the notification cannot appear. -->
     <string name="player_notifications_blocked">Notifications are off, so this book has no notification or lock-screen controls.</string>
