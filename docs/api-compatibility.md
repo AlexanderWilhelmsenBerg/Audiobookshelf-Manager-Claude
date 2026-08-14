@@ -530,7 +530,7 @@ unilaterally: it is a deviation from PLAY-004's literal wording and wants an ADR
 ### Read, as of 2026-08-14
 
 ADR-0013 settled the deviation and Phase 2 closeout PR 2 implemented it. `LibrarySettingsDto` takes
-`markAsFinishedTimeRemaining`, it is stored per library in Room in the server's own unit — seconds, schema 14
+`markAsFinishedTimeRemaining`, it is stored per library in Room in the server's own unit — seconds, schema 15
 — and **the app inherits it**: where a library sets it, that number is the rule for its books, and the
 listener's own setting applies only to a library that sets none.
 

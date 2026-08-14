@@ -143,6 +143,16 @@ What the `max` protected against is still handled, just not here:
 
 So the app still cannot contradict the server in either direction.
 
+### A note on the database version, because it cost a start-up crash
+
+Removing `finishedFractionComplete` was done, at first, by editing **version 14's** schema in place — on the
+reasoning that version 14 had not shipped. It had: build 0.9.2 carried it to the owner's phone an hour
+earlier. Room stores a version's identity hash and compares it on open, so the next build crashed at startup
+on that one device and would have on no other. Version 14 is now left exactly as it shipped, with both
+columns, and **version 15** removes the column by the table rebuild SQLite requires before 3.35.
+`MigrationTest` opens a database shaped as 0.9.2 left it, so the mistake is a failing test now rather than a
+failing phone.
+
 The listener's setting keeps its 5–120 second range and its 30-second default, and the Playback tab now
 lists **every** library with what it actually uses — the inherited seconds, or a line saying it has none and
 follows the setting. An earlier build listed only libraries that differed from the chosen value, which

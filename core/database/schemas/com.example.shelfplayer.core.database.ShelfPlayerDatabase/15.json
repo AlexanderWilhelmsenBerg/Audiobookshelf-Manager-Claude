@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 14,
-    "identityHash": "5f67e6df230a15c6f20e9654faed4f13",
+    "version": 15,
+    "identityHash": "fa663ed707773fe13e3f563708330b13",
     "entities": [
       {
         "tableName": "servers",
@@ -181,7 +181,7 @@
       },
       {
         "tableName": "libraries",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`libraryKey` TEXT NOT NULL, `serverId` TEXT NOT NULL, `remoteId` TEXT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `displayOrder` INTEGER NOT NULL, `remoteUpdatedAt` INTEGER, `lastFetchedAt` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL, `finishedTimeRemainingSeconds` INTEGER, `finishedFractionComplete` REAL, PRIMARY KEY(`libraryKey`), FOREIGN KEY(`serverId`) REFERENCES `servers`(`serverId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`libraryKey` TEXT NOT NULL, `serverId` TEXT NOT NULL, `remoteId` TEXT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `displayOrder` INTEGER NOT NULL, `remoteUpdatedAt` INTEGER, `lastFetchedAt` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL, `finishedTimeRemainingSeconds` INTEGER, PRIMARY KEY(`libraryKey`), FOREIGN KEY(`serverId`) REFERENCES `servers`(`serverId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "libraryKey",
@@ -240,11 +240,6 @@
             "fieldPath": "finishedTimeRemainingSeconds",
             "columnName": "finishedTimeRemainingSeconds",
             "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "finishedFractionComplete",
-            "columnName": "finishedFractionComplete",
-            "affinity": "REAL"
           }
         ],
         "primaryKey": {
@@ -1612,7 +1607,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5f67e6df230a15c6f20e9654faed4f13')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fa663ed707773fe13e3f563708330b13')"
     ]
   }
 }

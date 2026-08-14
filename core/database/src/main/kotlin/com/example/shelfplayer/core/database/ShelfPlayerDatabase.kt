@@ -43,6 +43,20 @@ import com.example.shelfplayer.core.database.entity.SyncStateEntity
  *
  * When bumping [DATABASE_VERSION], also update `databaseVersion` in `core/database/build.gradle.kts`
  * so `verifyRoomSchemas` checks the new file.
+ *
+ * ### Never edit a committed schema. Bump instead.
+ *
+ * A `schemas/…/N.json` that has been built into an APK is **a fact about somebody's phone**, not a working
+ * file. Room stores each version's identity hash in `room_master_table` and compares it on open; change a
+ * version's schema in place and the app crashes at startup on exactly the devices that ran the previous
+ * build, with a hash it has no migration to reach. It is invisible on a fresh install and on every test that
+ * starts from an older version, which is what makes it easy to ship.
+ *
+ * This happened on 2026-08-14: version 14 shipped in build 0.9.2, the next commit removed a column and left
+ * the version at 14 on the reasoning that 14 "had not shipped", and the owner's phone would not start.
+ * `MigrationTest` now opens a database shaped as that build left it, so the mistake fails a test rather than
+ * a device. "Has it been built into an APK?" is the only question that matters, and if the answer is unclear
+ * the answer is yes.
  */
 @Database(
     entities = [
@@ -95,4 +109,4 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
     }
 }
 
-internal const val DATABASE_VERSION = 14
+internal const val DATABASE_VERSION = 15

@@ -31,9 +31,10 @@ against deliverables — and `docs/phase-2-closeout-plan.md` is what remains.
   `markAsFinishedPercentComplete` is deliberately **not** read: a percentage of a long book is a long time,
   and 95% of a hundred-hour book leaves five hours to go. The decision moved from the media service into
   `DefaultPlaybackRepository`, which already resolved the profile and the book and is therefore the one place
-  that can resolve the rule; `recordPosition` no longer takes an `isFinished` flag. Database version 14, one
-  nullable column in the server's own unit — nullable because a library that has set no rule is not a library
-  asking for zero seconds. No new capture was needed: `settings` has been nested in `GET /api/libraries` since
+  that can resolve the rule; `recordPosition` no longer takes an `isFinished` flag. Database version 14 adds
+  the column and **version 15** removes the percentage column 14 had briefly carried — 14 shipped in build
+  0.9.2 and editing it in place crashed that build's device at startup, so it is left exactly as it shipped.
+  Nullable, because a library that has set no rule is not a library asking for zero seconds. No new capture was needed: `settings` has been nested in `GET /api/libraries` since
   the wave A capture.
 - **A book is one timeline window** (ADR-0016, PLAY-001/PLAY-003): Media3 reports the *current item's*
   position to every controller, so a playlist of files made the notification describe the file — "time left
