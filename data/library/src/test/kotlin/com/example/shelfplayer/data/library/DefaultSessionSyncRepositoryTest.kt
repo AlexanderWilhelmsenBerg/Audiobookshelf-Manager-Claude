@@ -39,6 +39,8 @@ import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.BookmarkApi
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
+import com.example.shelfplayer.core.network.gateway.DownloadApi
+import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
@@ -57,6 +59,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
+import java.io.OutputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -491,6 +494,26 @@ class DefaultSessionSyncRepositoryTest {
         override val playback: PlaybackApi get() = this
 
         /** PRODUCT_SPEC 11.1 — not part of these tests; every method reports so rather than pretending. */
+        /**
+         * PRODUCT_SPEC DL-001 — not exercised by this test, and refusing rather than pretending.
+         *
+         * A fake that produced bytes would let a test believe a download had happened, which is precisely the
+         * belief the download layer exists to make impossible.
+         */
+        override val downloads: DownloadApi = object : DownloadApi {
+            override suspend fun fetchFile(
+                profileId: ProfileId,
+                bookId: LibraryItemId,
+                fileId: String,
+                sink: (Boolean) -> OutputStream,
+                resumeFrom: Long,
+                validator: String?,
+                onProgress: (Long) -> Unit,
+            ): AppResult<FileTransfer> = AppResult.Failure(
+                AppError.ApiCompatibility(summary = "This fake serves no audio files."),
+            )
+        }
+
         override val bookmarks: BookmarkApi = object : BookmarkApi {
             override suspend fun create(
                 profileId: ProfileId,

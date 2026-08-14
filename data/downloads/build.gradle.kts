@@ -25,6 +25,7 @@ dependencies {
     api(projects.domain)
     implementation(projects.core.common)
     implementation(projects.core.database)
+    implementation(projects.core.network)
 
     testImplementation(projects.core.testing)
     // The manifest tests build a real database, because what is worth testing is what SQLite does with the
@@ -34,4 +35,5 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
     testImplementation(libs.turbine)
+    testImplementation(libs.okhttp.mockwebserver)
 }

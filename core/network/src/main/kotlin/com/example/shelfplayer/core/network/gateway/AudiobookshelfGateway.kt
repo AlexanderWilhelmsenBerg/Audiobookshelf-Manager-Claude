@@ -37,10 +37,13 @@ import kotlin.time.Duration
  * [auth], [capabilities], [library], [playback] and [bookmarks] — the last of those joined the list on
  * 2026-08-13, when a capture finally produced the shape it had been waiting on since wave 2.
  *
- * The remaining sub-APIs listed in PRODUCT_SPEC 10.4 — `ProgressApi`, `DownloadApi`,
- * `ManagementApi`, `UsersApi`, `EventApi` — are added in the phase that implements them, together
- * with the captured fixtures and MockWebServer contract tests that prove their shape. Declaring them
- * now as empty interfaces would look like coverage the repository does not have.
+ * [downloads] joined on 2026-08-14, when the capture of `/api/items/{id}/file/{fileId}` answered the
+ * questions the downloader needed — ranges, validators, and what an unauthenticated request gets.
+ *
+ * The remaining sub-APIs listed in PRODUCT_SPEC 10.4 — `ProgressApi`, `ManagementApi`, `UsersApi`,
+ * `EventApi` — are added in the phase that implements them, together with the captured fixtures and
+ * MockWebServer contract tests that prove their shape. Declaring them now as empty interfaces would look
+ * like coverage the repository does not have.
  */
 interface AudiobookshelfGateway {
     val auth: AuthApi
@@ -52,6 +55,16 @@ interface AudiobookshelfGateway {
     val playback: PlaybackApi
 
     val bookmarks: BookmarkApi
+
+    /**
+     * PRODUCT_SPEC DL-001 — fetching audio files, added in the phase that implements them.
+     *
+     * The list above says a sub-API arrives "together with the captured fixtures and MockWebServer
+     * contract tests that prove their shape". `contracts/item-file.json` was captured on 2026-08-14 and
+     * settled the three questions the downloader is built on: ranges are honoured, an `ETag` is sent, and
+     * an unauthenticated request is refused.
+     */
+    val downloads: DownloadApi
 }
 
 /**
