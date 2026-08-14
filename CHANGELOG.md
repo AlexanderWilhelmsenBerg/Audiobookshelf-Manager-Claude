@@ -40,6 +40,18 @@ against deliverables — and `docs/phase-2-closeout-plan.md` is what remains.
   0.9.2 and editing it in place crashed that build's device at startup, so it is left exactly as it shipped.
   Nullable, because a library that has set no rule is not a library asking for zero seconds. No new capture was needed: `settings` has been nested in `GET /api/libraries` since
   the wave A capture.
+- **A three-dot menu on the book screen** (LIB-004, PLAY-003, PLAY-004): download, play, and then the
+  overflow, in the order a hand reaches them. Inside: **History** for this book, with the chapter each entry
+  falls in; **Mark as finished** — which replaces the checkbox that used to sit in the middle of the reading
+  surface, and whose label names the state it would put the book *into*; **Discard progress**, which asks
+  first and whose confirmation says what it does *not* do, because "discard progress" could as easily mean
+  deleting the download; **Go to web client**, which opens the item in the server's own web interface in a
+  browser rather than a WebView, because a WebView would ask for a sign-in inside an app that already holds a
+  token it must not hand over; and **More info**, the identifiers and file facts the screen has no room for.
+  *Manage local files* and *Delete local item* are shown disabled with **(Phase 3)** in the label — a control
+  that looks live and does nothing is worse than one that admits it. *Add to playlist* is absent rather than
+  disabled: nothing in any planned phase builds playlists, so a greyed row would promise something that is
+  not coming.
 - **A book is one timeline window** (ADR-0016, PLAY-001/PLAY-003): Media3 reports the *current item's*
   position to every controller, so a playlist of files made the notification describe the file — "time left
   in this chapter" on a library with a file per chapter. A book is now one `MediaItem` whose extras carry

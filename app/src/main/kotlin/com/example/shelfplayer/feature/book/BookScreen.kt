@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.book
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -13,14 +14,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -35,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,13 +43,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
@@ -59,6 +60,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.feature.browse.BookCover
+import com.example.shelfplayer.feature.player.HistorySheet
 import com.example.shelfplayer.feature.player.PlayerViewModel
 import com.example.shelfplayer.playback.PlaybackUiState
 import java.time.Instant
@@ -78,12 +80,23 @@ fun BookRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val playback by playerViewModel.playback.collectAsStateWithLifecycle()
+    val menu by viewModel.menu.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     BookScreen(
         uiState = uiState,
         playback = playback,
-        onPlay = playerViewModel::onPlay,
-        onTogglePlayPause = playerViewModel::onTogglePlayPause,
-        onFinishedChanged = viewModel::onFinishedChanged,
+        menu = menu,
+        actions = BookActions(
+            onPlay = playerViewModel::onPlay,
+            onTogglePlayPause = playerViewModel::onTogglePlayPause,
+            onFinishedChanged = viewModel::onFinishedChanged,
+            onDiscardProgress = viewModel::onDiscardProgress,
+            // The browser, not a WebView. This is the user's own server in their own session, and a WebView
+            // would ask them to sign in again inside an app that already holds a token it must not hand over.
+            onOpenWebClient = { url ->
+                context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+            },
+        ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
     )
@@ -94,12 +107,14 @@ fun BookRoute(
 fun BookScreen(
     uiState: BookUiState,
     playback: PlaybackUiState,
-    onPlay: (LibraryItemId) -> Unit,
-    onTogglePlayPause: () -> Unit,
-    onFinishedChanged: (Boolean) -> Unit,
+    menu: BookMenuState,
+    actions: BookActions,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Which of the menu's three surfaces is open. `rememberSaveable` so a rotation with the history open
+    // comes back to the history rather than to the screen behind it.
+    var openSurface by rememberSaveable { mutableStateOf(BookSurface.None) }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -141,22 +156,78 @@ fun BookScreen(
             is BookUiState.Loaded -> BookDetails(
                 book = uiState.book,
                 playback = playback,
-                onPlay = onPlay,
-                onTogglePlayPause = onTogglePlayPause,
-                onFinishedChanged = onFinishedChanged,
+                actions = actions,
+                // Which surface opens is this screen's own business, so those three callbacks are assembled
+                // here rather than being three more parameters the caller has to know about.
+                menuActions = BookMenuActions(
+                    onOpenHistory = { openSurface = BookSurface.History },
+                    onFinishedChanged = actions.onFinishedChanged,
+                    onDiscardRequested = { openSurface = BookSurface.DiscardConfirmation },
+                    onOpenWebClient = actions.onOpenWebClient,
+                    onOpenInfo = { openSurface = BookSurface.Info },
+                    webUrl = menu.webUrl,
+                ),
                 modifier = content,
             )
         }
     }
+
+    val book = (uiState as? BookUiState.Loaded)?.book
+    when {
+        book == null -> Unit
+
+        openSurface == BookSurface.History -> HistorySheet(
+            entries = menu.history,
+            chapters = menu.chapters,
+            // Read-only here, unlike the player's copy of this sheet. The player is *at* a position and can
+            // return to one; this screen may be showing a book that is not playing, and a row that started
+            // playback from a tap meant for a record would move a listener without being asked. Playing from
+            // a history entry is worth having and is worth its own decision, not a side effect of this menu.
+            onReturnTo = {},
+            onDismiss = { openSurface = BookSurface.None },
+        )
+
+        openSurface == BookSurface.Info -> BookInfoSheet(
+            book = book,
+            onDismiss = { openSurface = BookSurface.None },
+        )
+
+        openSurface == BookSurface.DiscardConfirmation -> DiscardProgressDialog(
+            onConfirm = {
+                openSurface = BookSurface.None
+                actions.onDiscardProgress()
+            },
+            onDismiss = { openSurface = BookSurface.None },
+        )
+    }
 }
+
+/** Which of the overflow menu's surfaces is showing. Saveable, so it survives a rotation. */
+private enum class BookSurface { None, History, Info, DiscardConfirmation }
+
+/**
+ * What this screen can do that only its callers can perform.
+ *
+ * A bundle rather than five parameters, for the reason detekt's limit exists: `BookScreen` reached ten
+ * parameters when the menu arrived, and a composable with ten has an argument order somebody will get wrong.
+ * The menu's own three callbacks are *not* here — which surface opens is the screen's business, and putting
+ * them in this type would make every caller supply state it does not own.
+ */
+@Immutable
+data class BookActions(
+    val onPlay: (LibraryItemId) -> Unit,
+    val onTogglePlayPause: () -> Unit,
+    val onFinishedChanged: (Boolean) -> Unit,
+    val onDiscardProgress: () -> Unit,
+    val onOpenWebClient: (String) -> Unit,
+)
 
 @Composable
 private fun BookDetails(
     book: Book,
     playback: PlaybackUiState,
-    onPlay: (LibraryItemId) -> Unit,
-    onTogglePlayPause: () -> Unit,
-    onFinishedChanged: (Boolean) -> Unit,
+    actions: BookActions,
+    menuActions: BookMenuActions,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -171,19 +242,16 @@ private fun BookDetails(
         BookHeader(
             book = book,
             playback = playback,
-            onPlay = onPlay,
-            onTogglePlayPause = onTogglePlayPause,
+            onPlay = actions.onPlay,
+            onTogglePlayPause = actions.onTogglePlayPause,
+            actions = menuActions,
         )
 
         // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
         // kind belong on the same line, and a reader scans a strip faster than they read a list.
         FactStrip(book = book)
 
-        ProgressSummary(
-            book = book,
-            onFinishedChanged = onFinishedChanged,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
+        ProgressSummary(book = book, modifier = Modifier.padding(horizontal = 16.dp))
 
         book.description?.let { description ->
             Section(titleRes = R.string.book_section_about) {
@@ -315,6 +383,7 @@ private fun BookHeader(
     playback: PlaybackUiState,
     onPlay: (LibraryItemId) -> Unit,
     onTogglePlayPause: () -> Unit,
+    actions: BookMenuActions,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -353,6 +422,7 @@ private fun BookHeader(
                     onPlay = onPlay,
                     onTogglePlayPause = onTogglePlayPause,
                 )
+                BookOverflowMenu(book = book, actions = actions)
             }
 
             // Title, author, narrator, series — in the order a reader wants them, at descending weight.
@@ -485,39 +555,20 @@ private fun PlayIconButton(
  * control is not.
  */
 @Composable
-private fun ProgressSummary(book: Book, onFinishedChanged: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    val progress = book.progress
-    val isFinished = progress?.isFinished == true
+private fun ProgressSummary(book: Book, modifier: Modifier = Modifier) {
+    val progress = book.progress ?: return
+    val isFinished = progress.isFinished
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (progress != null) {
-            val percent = (progress.fractionComplete * PERCENT).roundToInt()
-            Text(
-                text = if (isFinished) {
-                    stringResource(R.string.book_finished)
-                } else {
-                    stringResource(R.string.book_progress, percent)
-                },
-                style = MaterialTheme.typography.labelLarge,
-            )
-            LinearProgressIndicator(
-                progress = { progress.fractionComplete },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .toggleable(value = isFinished, role = Role.Checkbox, onValueChange = onFinishedChanged)
-                .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(checked = isFinished, onCheckedChange = null)
-            Text(
-                text = stringResource(R.string.book_mark_finished),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
+        val percent = (progress.fractionComplete * PERCENT).roundToInt()
+        Text(
+            text = if (isFinished) {
+                stringResource(R.string.book_finished)
+            } else {
+                stringResource(R.string.book_progress, percent)
+            },
+            style = MaterialTheme.typography.labelLarge,
+        )
+        LinearProgressIndicator(progress = { progress.fractionComplete }, modifier = Modifier.fillMaxWidth())
     }
 }
 

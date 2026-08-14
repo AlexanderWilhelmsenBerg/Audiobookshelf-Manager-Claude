@@ -136,6 +136,37 @@
     <string name="book_position">%1$s inn · %2$s igjen · %3$s · %4$d %%</string>
     <string name="book_length">%1$s</string>
     <string name="book_finished_of">Fullført · %1$s</string>
+    <!-- PRODUCT_SPEC LIB-004 / PLAY-003 / PLAY-004 — trepunktsmenyen på bokskjermen. -->
+    <string name="book_more_actions">Flere handlinger for denne boka</string>
+    <string name="book_menu_history">Historikk</string>
+    <string name="book_menu_finished">Merk som ferdig</string>
+    <string name="book_menu_unfinished">Merk som ikke ferdig</string>
+    <string name="book_menu_discard">Forkast fremdrift</string>
+    <string name="book_menu_local_files">Håndter lokale filer (fase 3)</string>
+    <string name="book_menu_delete_local">Slett lokal kopi (fase 3)</string>
+    <string name="book_menu_web_client">Gå til nettklienten</string>
+    <string name="book_menu_more_info">Mer informasjon</string>
+
+    <!-- PRODUCT_SPEC 21 — den destruktive handlingen beskriver hva den faktisk gjør. -->
+    <string name="book_discard_title">Forkaste fremdriften din?</string>
+    <string name="book_discard_body">Dette sender boka tilbake til begynnelsen, både på denne enheten og på serveren din. Ingen lydfiler slettes, ingenting fjernes fra biblioteket ditt, og en eventuell nedlasting blir liggende. Du kan begynne å høre igjen hvor som helst.</string>
+    <string name="book_discard_confirm">Forkast fremdrift</string>
+    <string name="book_discard_cancel">Behold den</string>
+
+    <string name="book_info_title">Tittel</string>
+    <string name="book_info_subtitle">Undertittel</string>
+    <string name="book_info_publisher">Forlag</string>
+    <string name="book_info_published">Utgitt</string>
+    <string name="book_info_language">Språk</string>
+    <string name="book_info_isbn">ISBN</string>
+    <string name="book_info_asin">ASIN</string>
+    <string name="book_info_flags">Merket</string>
+    <string name="book_info_explicit">Eksplisitt</string>
+    <string name="book_info_abridged">Forkortet</string>
+    <string name="book_info_tracks">Lydfiler</string>
+    <string name="book_info_item_id">Element-ID på serveren din</string>
+    <string name="book_info_description_none">Alt her kommer fra metadataene på din egen server. Et tomt felt er et felt serveren ikke har fylt ut.</string>
+
     <string name="book_finished">Fullført</string>
     <string name="book_not_downloaded">Ikke nedlastet</string>
     <string name="book_download_partial">Nedlastingen er ufullstendig</string>
@@ -256,7 +287,6 @@
         <item quantity="other">Startet på nytt %1$d ganger</item>
     </plurals>
     <string name="settings_tab_sleep">Sovetid</string>
-    <string name="book_mark_finished">Ferdig</string>
     <string name="book_synopsis_more">Vis mer</string>
     <string name="book_synopsis_less">Vis mindre</string>
     <string name="book_section_about">Om boken</string>
