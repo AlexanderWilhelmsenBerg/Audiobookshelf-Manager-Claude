@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.database.di
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.dao.BookPlaybackSettingsDao
 import com.example.shelfplayer.core.database.dao.BookmarkDao
+import com.example.shelfplayer.core.database.dao.DownloadDao
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.PlaybackHistoryDao
@@ -57,6 +58,9 @@ object DaoModule {
 
     @Provides
     fun providesBookmarkDao(database: ShelfPlayerDatabase): BookmarkDao = database.bookmarkDao()
+
+    @Provides
+    fun providesDownloadDao(database: ShelfPlayerDatabase): DownloadDao = database.downloadDao()
 
     @Provides
     fun providesSyncStateDao(database: ShelfPlayerDatabase): SyncStateDao = database.syncStateDao()

@@ -9,6 +9,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.entity.BookPlaybackSettingsEntity
 import com.example.shelfplayer.core.database.entity.BookmarkEntity
+import com.example.shelfplayer.core.database.entity.DownloadRequestEntity
+import com.example.shelfplayer.core.database.entity.DownloadedBookEntity
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
@@ -778,6 +780,70 @@ class MigrationTest {
     }
 
     /**
+     * PRODUCT_SPEC DL-002 / DL-003 — version 17 adds the offline manifest, and adds it **empty**.
+     *
+     * A migration that invented rows would be claiming this device has downloads it does not have, and the
+     * start-up verifier would then look for files nobody wrote. Three tables arrive; all three are empty.
+     */
+    @Test
+    fun `version 17 adds an empty offline manifest`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        assertEquals(emptyList(), migrated.downloadDao().observeAll().first())
+        assertEquals(0L, migrated.downloadDao().observeTotalBytes().first())
+        assertEquals(emptyList(), migrated.downloadDao().unreferencedBookKeys())
+    }
+
+    /**
+     * PRODUCT_SPEC DL-003 criterion 5 — the reference count decrements when a profile is deleted, in a
+     * database that got here by migrating rather than by being created fresh.
+     *
+     * A cascade is part of a table's `CREATE`, so a hand-written migration can produce a table that looks
+     * right in `PRAGMA table_info` and enforces nothing. `the migrated schema is the one Room expects`
+     * would not catch it either — Room's validation compares columns and indices, not foreign-key actions.
+     * This exercises the behaviour, which is the only thing that does.
+     */
+    @Test
+    fun `the migrated manifest cascades from profiles`() = runTest {
+        createVersion(9)
+        val migrated = openWithMigrations()
+        val downloads = migrated.downloadDao()
+        downloads.upsertBook(
+            DownloadedBookEntity(
+                bookKey = "$SERVER_IDbook-1",
+                serverId = SERVER_ID,
+                remoteItemId = "book-1",
+                state = "Complete",
+                storageTreeUri = null,
+                coverUri = null,
+                failureSummary = null,
+                createdAt = 0,
+                updatedAt = 0,
+            ),
+        )
+        downloads.addRequest(
+            DownloadRequestEntity(
+                bookKey = "$SERVER_IDbook-1",
+                profileId = PROFILE_ID,
+                requestedAt = 0,
+                isPinned = false,
+            ),
+        )
+        assertEquals(1, downloads.referenceCount("$SERVER_IDbook-1"))
+
+        migrated.profileDao().deleteProfile(PROFILE_ID)
+
+        assertEquals(0, downloads.referenceCount("$SERVER_IDbook-1"))
+        assertEquals(
+            listOf("$SERVER_IDbook-1"),
+            downloads.unreferencedBookKeys(),
+            "and the copy is findable afterwards, so its files can still be deleted",
+        )
+    }
+
+    /**
      * Room validates the migrated schema against the one it expects and throws if they differ. Reading
      * through a DAO is what forces that validation to run, so this fails loudly on a migration that
      * produced a *nearly* correct schema — a missing default, a wrong nullability.
@@ -1053,6 +1119,7 @@ class MigrationTest {
         const val VERSION_14 = 14
         const val PROFILE_ID = "prf_test"
         const val LIBRARY_KEY = "srv_test:library-1"
+
         const val BOOK_KEY = "srv_test:item-1"
 
         /** Room's placeholder for the table name in an exported `createSql`. */

@@ -490,6 +490,98 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC DL-002 / DL-003 — the offline manifest.
+     *
+     * Three tables, added together because they are one thing: the physical copy, its files, and the
+     * profiles that asked for it. Splitting them across versions would leave a released build able to record
+     * a download nobody references, which is a state DL-003's reference counting has no rule for.
+     *
+     * `downloaded_books` deliberately has **no foreign key onto `books`**. A download outlives the catalogue
+     * row that described it — a library the profile loses access to, a server row rebuilt by a sync, a book
+     * deleted upstream — and a cascade would silently delete files the user can still play. DL-003 requires
+     * the opposite: logging out does not delete downloads, and removing a server offers a choice. Deletion
+     * has to be a decision, never a side effect of a join.
+     *
+     * Written as explicit SQL rather than generated, like every migration here, and matched against the
+     * exported schema by `MigrationTest`. The `NOT NULL` and index sets have to agree with Room's own
+     * `CREATE TABLE` exactly or the identity hash differs and the app will not open.
+     */
+    private val MIGRATION_16_17 = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            createDownloadedBooks(db)
+            createDownloadedFiles(db)
+            createDownloadRequests(db)
+        }
+    }
+
+    private fun createDownloadedBooks(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `downloaded_books` (
+                `bookKey` TEXT NOT NULL,
+                `serverId` TEXT NOT NULL,
+                `remoteItemId` TEXT NOT NULL,
+                `state` TEXT NOT NULL,
+                `storageTreeUri` TEXT,
+                `coverUri` TEXT,
+                `failureSummary` TEXT,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`bookKey`)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloaded_books_serverId` ON `downloaded_books` (`serverId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloaded_books_state` ON `downloaded_books` (`state`)")
+    }
+
+    private fun createDownloadedFiles(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `downloaded_files` (
+                `bookKey` TEXT NOT NULL,
+                `remoteFileId` TEXT NOT NULL,
+                `fileIndex` INTEGER NOT NULL,
+                `uri` TEXT NOT NULL,
+                `state` TEXT NOT NULL,
+                `expectedBytes` INTEGER,
+                `downloadedBytes` INTEGER NOT NULL,
+                `mimeType` TEXT,
+                `durationMillis` INTEGER,
+                `eTag` TEXT,
+                `lastModified` TEXT,
+                PRIMARY KEY(`bookKey`, `remoteFileId`),
+                FOREIGN KEY(`bookKey`) REFERENCES `downloaded_books`(`bookKey`)
+                    ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloaded_files_bookKey` ON `downloaded_files` (`bookKey`)")
+    }
+
+    private fun createDownloadRequests(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `download_requests` (
+                `bookKey` TEXT NOT NULL,
+                `profileId` TEXT NOT NULL,
+                `requestedAt` INTEGER NOT NULL,
+                `isPinned` INTEGER NOT NULL,
+                PRIMARY KEY(`bookKey`, `profileId`),
+                FOREIGN KEY(`bookKey`) REFERENCES `downloaded_books`(`bookKey`)
+                    ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`)
+                    ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_download_requests_bookKey` ON `download_requests` (`bookKey`)")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_download_requests_profileId` ON `download_requests` (`profileId`)",
+        )
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -506,5 +598,6 @@ object Migrations {
         MIGRATION_13_14,
         MIGRATION_14_15,
         MIGRATION_15_16,
+        MIGRATION_16_17,
     )
 }

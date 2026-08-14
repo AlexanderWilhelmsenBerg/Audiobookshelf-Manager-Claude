@@ -30,6 +30,7 @@ dependencies {
     implementation(projects.core.model)
     implementation(projects.core.network)
     implementation(projects.data.auth)
+    implementation(projects.data.downloads)
     implementation(projects.data.library)
     implementation(projects.data.settings)
     implementation(projects.domain)
