@@ -23,6 +23,8 @@ import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.BookmarkApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
+import com.example.shelfplayer.core.network.gateway.DownloadApi
+import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
@@ -41,6 +43,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.OutputStream
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -294,6 +297,26 @@ class DefaultBookmarkRepositoryTest {
         var fails: Boolean = false
         val created = mutableListOf<Long>()
         val removed = mutableListOf<Long>()
+
+        /**
+         * PRODUCT_SPEC DL-001 — not exercised by this test, and refusing rather than pretending.
+         *
+         * A fake that produced bytes would let a test believe a download had happened, which is precisely the
+         * belief the download layer exists to make impossible.
+         */
+        override val downloads: DownloadApi = object : DownloadApi {
+            override suspend fun fetchFile(
+                profileId: ProfileId,
+                bookId: LibraryItemId,
+                fileId: String,
+                sink: (Boolean) -> OutputStream,
+                resumeFrom: Long,
+                validator: String?,
+                onProgress: (Long) -> Unit,
+            ): AppResult<FileTransfer> = AppResult.Failure(
+                AppError.ApiCompatibility(summary = "This fake serves no audio files."),
+            )
+        }
 
         override val bookmarks: BookmarkApi get() = this
 

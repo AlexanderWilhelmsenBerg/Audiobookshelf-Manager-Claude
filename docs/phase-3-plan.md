@@ -39,6 +39,25 @@ journal, PLAY-005's outbox, the single-`MediaItem` book timeline (ADR-0016), the
 with its token provider, WorkManager wiring, and `LocalAvailability` as a model the UI already renders. The
 download work is genuinely additive rather than a rewrite.
 
+## Progress
+
+| Slice | State |
+| --- | --- |
+| 1 — the download permission becomes real | **merged** (#18) |
+| 2 — the storage layout and the manifest | **merged** (#19) |
+| 3 — one file downloads, verified, atomically | **open** (#20), and it absorbed slice 6's resume |
+| 4 — a whole book, and playing it offline | not started — **this is where Phase 3 becomes visible** |
+| 5 — network policy | not started |
+| 6 — resume | folded into slice 3; the `RangeDownload` capability gate is still outstanding |
+| 7 — verification and cleanup | not started |
+| 8 — smart download | not started |
+
+Nothing in slices 1–3 is reachable from the UI yet. The book screen's download button is gated on the
+server's permission and is otherwise still a disabled placeholder; `FileDownloader` has no caller. Slice 4 is
+what joins them.
+
+---
+
 ## The slices, in the order they should be done
 
 Each ends with something that works and is tested. Ranked by value per unit of risk.

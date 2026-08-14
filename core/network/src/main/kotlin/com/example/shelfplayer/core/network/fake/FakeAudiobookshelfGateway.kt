@@ -37,6 +37,8 @@ import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.BookmarkApi
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
+import com.example.shelfplayer.core.network.gateway.DownloadApi
+import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import kotlinx.coroutines.CoroutineDispatcher
@@ -70,12 +72,33 @@ class FakeAudiobookshelfGateway @Inject constructor(
     CapabilityResolver,
     LibraryApi,
     PlaybackApi,
-    BookmarkApi {
+    BookmarkApi,
+    DownloadApi {
     override val auth: AuthApi get() = this
     override val capabilities: CapabilityResolver get() = this
     override val library: LibraryApi get() = this
     override val playback: PlaybackApi get() = this
     override val bookmarks: BookmarkApi get() = this
+    override val downloads: DownloadApi get() = this
+
+    /**
+     * PRODUCT_SPEC DL-001 — the demo library has no files to fetch, and says so.
+     *
+     * The fixture document describes books; there are no bytes behind them. A fake that invented some
+     * would let a test believe a download had happened, which is the failure this whole layer is built to
+     * make impossible. Same reasoning as [signIn]'s deliberate refusal.
+     */
+    override suspend fun fetchFile(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        fileId: String,
+        sink: (Boolean) -> java.io.OutputStream,
+        resumeFrom: Long,
+        validator: String?,
+        onProgress: (Long) -> Unit,
+    ): AppResult<FileTransfer> = AppResult.Failure(
+        AppError.ApiCompatibility(summary = "The bundled demo library has no audio files to download."),
+    )
 
     /**
      * The fixture server and profile, for a test that needs the identities the demo document declares.

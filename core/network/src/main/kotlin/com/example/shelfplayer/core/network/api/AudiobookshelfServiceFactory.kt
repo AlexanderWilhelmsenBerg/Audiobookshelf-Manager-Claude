@@ -63,6 +63,16 @@ class AudiobookshelfServiceFactory @Inject constructor(
         retrofitFor(baseUrl, authenticatedClient).create(BookmarkService::class.java)
 
     /**
+     * PRODUCT_SPEC DL-001 — the audio file endpoint, on the authenticated stack.
+     *
+     * The same client the player streams over, deliberately: a download and a stream fetch the same bytes
+     * from the same host, and sharing the connection pool means a download that starts while a book is
+     * playing reuses the connection rather than opening a second one to the same server.
+     */
+    internal fun downloadService(baseUrl: String): DownloadService =
+        retrofitFor(baseUrl, authenticatedClient).create(DownloadService::class.java)
+
+    /**
      * Retrofit rejects a base URL that does not end in `/`, and — worse — silently discards the last
      * path segment of one that does not. A server behind a reverse proxy at `https://host/abs` would
      * otherwise resolve `login` against `https://host/`, producing 404s that look like the server is
