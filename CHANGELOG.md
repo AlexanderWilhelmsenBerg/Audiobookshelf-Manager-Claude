@@ -52,6 +52,15 @@ against deliverables — and `docs/phase-2-closeout-plan.md` is what remains.
   that looks live and does nothing is worse than one that admits it. *Add to playlist* is absent rather than
   disabled: nothing in any planned phase builds playlists, so a greyed row would promise something that is
   not coming.
+- **The car shows the phone's shelves** (PLAY-001, LIB-002): a device run found Android Auto saying "no books"
+  about a full library, while a voice search found everything. The cause was not a filter — *Continue* was the
+  car's only tab, and a library with nothing in progress has nothing to put in it, which is every account on its
+  first day. The browse tree now reads the **same `ObserveHomeShelvesUseCase` the home screen reads**: Continue,
+  Recently added, Listen again and Discover, empty ones omitted exactly as the phone omits them, plus Chapters
+  and History which are about whatever is playing and so always offered. A library with nothing at all says so
+  in one unplayable row rather than showing a blank screen, because a blank browse screen in a car is
+  indistinguishable from a broken app. Media-button resume deliberately does **not** share that list: ROUTE-001
+  is "resume what was playing", so a book with no stored position must never be offered to a headset press.
 - **A book is one timeline window** (ADR-0016, PLAY-001/PLAY-003): Media3 reports the *current item's*
   position to every controller, so a playlist of files made the notification describe the file — "time left
   in this chapter" on a library with a file per chapter. A book is now one `MediaItem` whose extras carry
