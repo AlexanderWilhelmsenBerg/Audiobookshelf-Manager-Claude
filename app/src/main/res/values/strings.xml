@@ -253,11 +253,6 @@
     <string name="player_bookmark_note_cancel">Cancel</string>
     <!-- Shown briefly after the button is pressed, because the sheet is not opened. -->
     <string name="player_bookmark_added">Bookmarked at %1$s</string>
-    <string name="book_section_bookmarks">Bookmarks</string>
-    <plurals name="book_bookmark_count">
-        <item quantity="one">%1$d bookmark</item>
-        <item quantity="other">%1$d bookmarks</item>
-    </plurals>
     <!-- PRODUCT_SPEC PLAY-001 / PLAY-003 — playback stopped on an error and will not restart on its own. -->
     <string name="player_failed">Playback stopped. The server or the connection may be unavailable.</string>
     <string name="player_failed_retry">Try again</string>

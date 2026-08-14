@@ -207,11 +207,6 @@
     <string name="player_bookmark_note_save">Lagre</string>
     <string name="player_bookmark_note_cancel">Avbryt</string>
     <string name="player_bookmark_added">Bokmerket på %1$s</string>
-    <string name="book_section_bookmarks">Bokmerker</string>
-    <plurals name="book_bookmark_count">
-        <item quantity="one">%1$d bokmerke</item>
-        <item quantity="other">%1$d bokmerker</item>
-    </plurals>
     <string name="player_failed">Avspillingen stoppet. Tjeneren eller tilkoblingen kan være utilgjengelig.</string>
     <string name="player_failed_retry">Prøv igjen</string>
     <string name="player_open">Åpne spilleren</string>
