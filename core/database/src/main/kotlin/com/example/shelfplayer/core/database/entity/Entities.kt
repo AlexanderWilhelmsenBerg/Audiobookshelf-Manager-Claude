@@ -710,3 +710,119 @@ data class PlaybackHistoryEntity(
     val detailMillis: Long?,
     val at: Long,
 )
+
+/**
+ * PRODUCT_SPEC DL-002 / DL-003 — the offline manifest's book half: one physical copy on this device.
+ *
+ * Keyed by `bookKey`, so **one copy per (server, item)** rather than one per profile. That is the owner's
+ * decision 6 — *"I want progress to stay per user and not have to download per user"* — and DL-003 criteria
+ * 4 and 5, which allow a blob to be referenced by several profiles and delete it only when none reference it.
+ * Which profiles those are is [DownloadRequestEntity]; progress stays where it already lives, on
+ * `media_progress`, which is keyed by profile.
+ *
+ * Deliberately **not** a foreign key onto `books`. A download outlives the catalogue row that described it:
+ * a library the profile loses access to, a server row rebuilt by a sync, or a book deleted upstream all
+ * remove the `books` row, and cascading would silently delete files the user downloaded and can still play.
+ * DL-003's own criteria say the opposite — logging out does not delete downloads, and removing a server
+ * offers a choice — so the deletion has to be a decision somebody made, never a side effect of a join.
+ */
+@Entity(
+    tableName = "downloaded_books",
+    indices = [Index("serverId"), Index("state")],
+)
+data class DownloadedBookEntity(
+    @PrimaryKey val bookKey: String,
+    val serverId: String,
+    val remoteItemId: String,
+    /** A `DownloadState` name; an unrecognized value reads back as `Failed`, which is the safe direction. */
+    val state: String,
+    /** `StorageRoot`: the empty string for app-private, a tree URI for a folder the user picked. */
+    val storageTreeUri: String?,
+    /** Where the cover was written, or `null`. An absent cover does not make a download incomplete. */
+    val coverUri: String?,
+    /** Why the last attempt stopped, for the storage screen. Never a URL and never a token. */
+    val failureSummary: String?,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+/**
+ * PRODUCT_SPEC DL-002 — the offline manifest's file half.
+ *
+ * One row per audio file, carrying everything the requirement lists: the server's file id, the path, the
+ * size, the MIME type, the duration, the completion state, and the validators the capture found
+ * (`contracts/item-file.json` records both an `ETag` and a `Last-Modified`).
+ *
+ * `expectedBytes` is nullable because `Content-Length` is a thing a server *may* send. A resume without one
+ * still works — it just has no total to report — and storing zero would be a lie a progress bar would show.
+ */
+@Entity(
+    tableName = "downloaded_files",
+    primaryKeys = ["bookKey", "remoteFileId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = DownloadedBookEntity::class,
+            parentColumns = ["bookKey"],
+            childColumns = ["bookKey"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("bookKey")],
+)
+data class DownloadedFileEntity(
+    val bookKey: String,
+    val remoteFileId: String,
+    /** Playback order, from the server. Not the filesystem's order, which is alphabetical and wrong. */
+    val fileIndex: Int,
+    val uri: String,
+    val state: String,
+    val expectedBytes: Long?,
+    val downloadedBytes: Long,
+    val mimeType: String?,
+    val durationMillis: Long?,
+    val eTag: String?,
+    val lastModified: String?,
+)
+
+/**
+ * PRODUCT_SPEC DL-003 criteria 4–5 — which profiles asked for a copy, as a reference count with names on it.
+ *
+ * The physical files go when the last row for a book goes, and not before. Two profiles on one device that
+ * both want the same book cost one download; removing one of them leaves the other's copy alone.
+ *
+ * The profile foreign key cascades, so deleting a profile decrements the count without anybody remembering
+ * to — which is criterion 5 expressed as a constraint rather than as code that could be forgotten. Deleting
+ * the *files* is still a deliberate step afterwards, because a cascade cannot touch a filesystem.
+ */
+@Entity(
+    tableName = "download_requests",
+    primaryKeys = ["bookKey", "profileId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = DownloadedBookEntity::class,
+            parentColumns = ["bookKey"],
+            childColumns = ["bookKey"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["profileId"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("bookKey"), Index("profileId")],
+)
+data class DownloadRequestEntity(
+    val bookKey: String,
+    val profileId: String,
+    val requestedAt: Long,
+    /**
+     * PRODUCT_SPEC DL-006 — a download the automatic cleanup may not remove.
+     *
+     * Decision 7 turns cleanup on as an option ("delete finished books after N days", "delete the previous
+     * book when the next arrives"), and a pin is how a listener says *not this one*. Per profile rather than
+     * per book, because it is one person's decision about their own copy.
+     */
+    val isPinned: Boolean,
+)

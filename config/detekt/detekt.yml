@@ -46,6 +46,10 @@ complexity:
     thresholdInFiles: 20
     thresholdInClasses: 20
     thresholdInInterfaces: 20
+    # Same 20 as the rest. Left at detekt's default of 11 until it started reporting `DaoModule`, whose
+    # every function is `database.someDao()` — a file that grows one mechanical line per table and is
+    # supposed to. A rule that fires on that is measuring the number of tables, not complexity.
+    thresholdInObjects: 20
     ignorePrivate: true
     ignoreOverridden: true
     ignoreAnnotatedFunctions:
