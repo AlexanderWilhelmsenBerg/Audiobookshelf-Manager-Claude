@@ -1,6 +1,6 @@
 # ADR-0017 — The "queue" is smart download, and it belongs to Phase 3
 
-- **Status:** Accepted, scheduled for Phase 3
+- **Status:** Superseded in part by ADR-0018 (the trigger)
 - **Date:** 2026-08-13
 - **Requirements:** to be assigned when Phase 3's requirements are written. Relates to PRODUCT_SPEC section
   8's recommended features and to Phase 4's "auto-play next in a series".
@@ -64,3 +64,14 @@ boundary), and it is **not already downloaded**.
 - **Storage policy interacts with it.** A feature that downloads books nobody asked for needs an answer to
   what deletes them. That answer belongs with Phase 3's retention rules rather than here, but it cannot be
   left out of them.
+
+
+## Superseded in part, 2026-08-14
+
+The **trigger** described here is not the one being built. It disagreed with PRODUCT_SPEC's DL-005, which was
+flagged as a conflict in `docs/phase-3-plan.md`, and the owner settled it: smart download fires when the
+current book crosses **50%**, and fetches the next book in its series. ADR-0018 records that, together with
+the toggle and the network choice it now carries.
+
+What this ADR decided that still stands: smart download belongs to Phase 3 rather than Phase 4, and it is
+driven by the series relationship rather than by a hand-managed queue.

@@ -283,20 +283,20 @@ class DefaultPlaybackRepositoryTest {
     }
 
     /**
-     * Where the library has said nothing, ADR-0013's thirty seconds applies.
+     * Where the library has said nothing, the server's own default of ten seconds applies (ADR-0013).
      *
      * `null` on the library row has to mean "no rule" rather than "zero seconds", or a library the app has not
      * synced since before database version 14 would finish nothing at all.
      */
     @Test
-    fun `a library with no rule falls back to thirty seconds`() = runTest {
+    fun `a library with no rule falls back to the server's own default`() = runTest {
         libraryRule(null)
 
-        repository.recordPosition(BOOK, position = 2.hours - 40.seconds, duration = 2.hours)
-        assertFalse(storedProgress().isFinished, "forty seconds left is outside the fallback")
-
         repository.recordPosition(BOOK, position = 2.hours - 20.seconds, duration = 2.hours)
-        assertTrue(storedProgress().isFinished, "twenty seconds left is inside it")
+        assertFalse(storedProgress().isFinished, "twenty seconds left is outside the fallback")
+
+        repository.recordPosition(BOOK, position = 2.hours - 5.seconds, duration = 2.hours)
+        assertTrue(storedProgress().isFinished, "five seconds left is inside it")
     }
 
     /**

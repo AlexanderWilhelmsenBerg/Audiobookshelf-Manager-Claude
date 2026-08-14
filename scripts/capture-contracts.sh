@@ -433,6 +433,98 @@ with open(out_path, "w") as handle:
     handle.write("\n")
 ' "$OUT_DIR/item-cover.json" "$COVER_META" "$COVER_ANON_STATUS"
 
+# --- The audio file endpoint: range support and validators (DL-001, DL-002, SYNC-001) ------------
+#
+# Phase 3 cannot be designed without these three answers, and PRODUCT_SPEC 22.4 will not let them be
+# assumed:
+#
+#  1. **Does the server honour a `Range` request?** DL-001 criterion 5 makes resume conditional on it and
+#     SYNC-001 gates it behind a `RangeDownload` capability. A 206 with a `Content-Range` means a download
+#     interrupted at 90% continues; a 200 means it starts that file again.
+#  2. **Does it send a validator — `ETag` or `Last-Modified`?** DL-002 criterion 2 says persist and validate
+#     one when the server provides it, and the owner's "repair" action is specified as comparing a checksum
+#     against the server's copy. Without a validator, verification is limited to length and readability, and
+#     repair can only offer a re-download rather than a comparison.
+#  3. **Does it require authentication?** It decides whether a download can be handed to a plain URL fetcher
+#     or has to go through the app's authenticated client — the same question the cover capture asks.
+#
+# Headers only. The bytes are somebody's audio and are never committed; `Content-Length` is recorded because
+# DL-002 criterion 1 validates against it, and its *presence* is the contract rather than its value.
+log "recording the audio file endpoint's range and validator behaviour (headers only, never the audio)"
+
+FILE_PATH="$(curl -sS "$BASE_URL/api/items/$ITEM_ID?expanded=1" -H "$AUTH_HEADER" |
+  python3 -c 'import json,sys; d=json.load(sys.stdin); t=(d.get("media") or {}).get("tracks") or []; print(t[0].get("contentUrl","") if t else "")')"
+
+if [ -z "$FILE_PATH" ]; then
+  echo "::error::the expanded item reported no tracks, so the file endpoint could not be probed." >&2
+  echo "::error::Check that scripts/seed-contract-media.sh placed audio and that the library rescanned." >&2
+  exit 1
+fi
+
+# Full request: the validators and whether ranges are advertised at all.
+FILE_FULL="$(curl -sS -o /dev/null "$BASE_URL$FILE_PATH" -H "$AUTH_HEADER" \
+  -w '%{http_code}|%{content_type}|%{size_download}')"
+FILE_HEADERS="$(curl -sS -o /dev/null -D - "$BASE_URL$FILE_PATH" -H "$AUTH_HEADER" | tr -d '\r')"
+
+# Range request: the answer DL-001's resume depends on. 206 with `Content-Range` is support; 200 is not.
+FILE_RANGE="$(curl -sS -o /dev/null -r 0-1023 "$BASE_URL$FILE_PATH" -H "$AUTH_HEADER" \
+  -w '%{http_code}|%{size_download}')"
+FILE_RANGE_HEADERS="$(curl -sS -o /dev/null -D - -r 0-1023 "$BASE_URL$FILE_PATH" -H "$AUTH_HEADER" | tr -d '\r')"
+
+FILE_ANON_STATUS="$(curl -sS -o /dev/null "$BASE_URL$FILE_PATH" -w '%{http_code}')"
+
+python3 -c '
+import json, sys
+
+out_path, full, full_headers, ranged, range_headers, anon = sys.argv[1:7]
+
+def header(blob, name):
+    """The last value for a header, case-insensitively. `curl -D` prints one block per response."""
+    found = None
+    for line in blob.splitlines():
+        key, _, value = line.partition(":")
+        if key.strip().lower() == name:
+            found = value.strip()
+    return found
+
+full_status, full_type, full_size = full.split("|")
+range_status, range_size = ranged.split("|")
+
+accept_ranges = header(full_headers, "accept-ranges")
+content_range = header(range_headers, "content-range")
+supports_range = range_status == "206" and content_range is not None
+
+envelope = {
+    "status": int(full_status or 0),
+    "contentType": (full_type or "").split(";")[0] or None,
+    "unauthenticatedStatus": int(anon or 0),
+    "bodyKind": "binary-not-recorded",
+    # Presence, not value: the length differs per seeded file and the drift check compares byte for byte.
+    "hasContentLength": header(full_headers, "content-length") is not None,
+    "acceptRanges": accept_ranges,
+    "range": {
+        "requested": "bytes=0-1023",
+        "status": int(range_status or 0),
+        "hasContentRange": content_range is not None,
+        "returnedRequestedLength": range_size == "1024",
+        "supported": supports_range,
+    },
+    # The two validators DL-002 can persist. Recorded as present/absent rather than literally: an ETag is
+    # derived from the file and would differ between captures, which is drift-check noise, not signal.
+    "validators": {
+        "hasETag": header(full_headers, "etag") is not None,
+        "hasLastModified": header(full_headers, "last-modified") is not None,
+    },
+    "note": (
+        "GET /api/items/{id}/file/{fileId}. Bytes deliberately not committed; the shape, the range "
+        "behaviour and the presence of validators are the contract. See DL-001, DL-002, SYNC-001."
+    ),
+}
+with open(out_path, "w") as handle:
+    json.dump(envelope, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+' "$OUT_DIR/item-file.json" "$FILE_FULL" "$FILE_HEADERS" "$FILE_RANGE" "$FILE_RANGE_HEADERS" "$FILE_ANON_STATUS"
+
 # --- Media progress -------------------------------------------------------------------------------
 #
 # PRODUCT_SPEC LIB-001 / SYNC-002 and acceptance case TC-10: progress played on another device does not

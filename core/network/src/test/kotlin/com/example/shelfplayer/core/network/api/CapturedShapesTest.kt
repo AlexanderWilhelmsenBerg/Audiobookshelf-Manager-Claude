@@ -192,6 +192,69 @@ class CapturedShapesTest {
         }
     }
 
+    // --- The audio file endpoint (PRODUCT_SPEC DL-001, DL-002, SYNC-001) --------------------------
+
+    /**
+     * `GET /api/items/{id}/file/{fileId}` honours a `Range` request, which is what makes a resumed
+     * download possible at all (Phase 3 slice 6, ADR-0018 decision 2).
+     *
+     * The alternative — restarting a file from zero after a dropped connection — is correct but wasteful, and
+     * on a long book over a metered link it is the difference between finishing and not. Pinned here because
+     * the downloader will be written assuming 206, and a server that stopped honouring it would otherwise show
+     * up as duplicated bytes rather than as a failed test.
+     */
+    @Test
+    fun `the file endpoint answers range requests`() {
+        val file = json.parseToJsonElement(rawEnvelope("item-file")).jsonObject
+
+        assertEquals("bytes", file.getValue("acceptRanges").jsonPrimitive.content)
+        val range = file.getValue("range").jsonObject
+        assertEquals(206, range.getValue("status").jsonPrimitive.content.toInt())
+        assertTrue(range.getValue("hasContentRange").jsonPrimitive.content.toBoolean(), "a Content-Range came back")
+        assertTrue(
+            range.getValue("returnedRequestedLength").jsonPrimitive.content.toBoolean(),
+            "1024 bytes were asked for and 1024 came back, so the range was honoured rather than ignored",
+        )
+    }
+
+    /**
+     * The server sends `ETag` and `Last-Modified` — a **validator**, which is not a checksum.
+     *
+     * The distinction decides what the *Repair* action in Phase 3 may claim. An ETag is only guaranteed to
+     * change when the file changes; nothing requires it to be a hash of the bytes, and Audiobookshelf does not
+     * document how it derives one. So a comparison answers *"your copy is stale"* and cannot answer *"your
+     * bytes are intact"*. Integrity of what was downloaded comes from hashing it locally before it is
+     * committed (DL-002 criterion 1).
+     *
+     * It is also what makes a resume safe: `If-Range` with this value turns "the file changed mid-download"
+     * into a plain 200 that starts over, instead of half an old file joined to half a new one.
+     */
+    @Test
+    fun `the file endpoint sends validators, and a length to resume against`() {
+        val file = json.parseToJsonElement(rawEnvelope("item-file")).jsonObject
+        val validators = file.getValue("validators").jsonObject
+
+        assertTrue(validators.getValue("hasETag").jsonPrimitive.content.toBoolean(), "an ETag is sent")
+        assertTrue(
+            validators.getValue("hasLastModified").jsonPrimitive.content.toBoolean(),
+            "and a Last-Modified, which is the fallback when a server omits the ETag",
+        )
+        assertTrue(file.getValue("hasContentLength").jsonPrimitive.content.toBoolean(), "and a total to resume against")
+    }
+
+    /**
+     * PRODUCT_SPEC 5.1 — the audio itself is behind authentication, not merely the metadata.
+     *
+     * Worth pinning rather than assuming: a server that served media anonymously would make every download URL
+     * a public link to the owner's library, and the app would have no way to notice.
+     */
+    @Test
+    fun `the file endpoint refuses an unauthenticated request`() {
+        val file = json.parseToJsonElement(rawEnvelope("item-file")).jsonObject
+
+        assertEquals(401, file.getValue("unauthenticatedStatus").jsonPrimitive.content.toInt())
+    }
+
     private fun rawEnvelope(fixture: String): String {
         val stream = requireNotNull(javaClass.classLoader?.getResourceAsStream("contracts/$fixture.json")) {
             "no committed fixture named contracts/$fixture.json. Run scripts/capture-contracts.sh."

@@ -67,14 +67,21 @@ data class FinishedThreshold(
 
     companion object {
         /**
-         * ADR-0013's number, used only where a library reports no rule of its own.
+         * **The server's own default**, used only where a library reports no rule of its own.
          *
          * Not a setting, and not a default anybody can see or change. Every Audiobookshelf library has
-         * `markAsFinishedTimeRemaining` set — the server's own default is ten seconds — so in practice this
-         * covers a library whose settings this app has not read yet: a row cached before database version 14,
-         * or one written by a sync that predates the field being parsed.
+         * `markAsFinishedTimeRemaining` set, so in practice this covers a library whose settings this app has
+         * not read yet: a row cached before database version 14, or one written by a sync that predates the
+         * field being parsed.
+         *
+         * Ten seconds because that is what Audiobookshelf itself uses, twice over: `contracts/libraries.json`
+         * records `markAsFinishedTimeRemaining: 10` on a library nobody configured, and the server logs its own
+         * decision as *"time remaining (3.5) is less than 10 seconds"*. It was 30 until the capture was read
+         * carefully, which made the fallback three times looser than the thing it was standing in for — the one
+         * case where the app's answer could differ from the server's, in a design whose whole point is that
+         * they agree.
          */
-        val Default: Duration = 30.seconds
+        val Default: Duration = 10.seconds
 
         /**
          * A library's `markAsFinishedTimeRemaining`, in the server's unit, as a rule this app can hold.

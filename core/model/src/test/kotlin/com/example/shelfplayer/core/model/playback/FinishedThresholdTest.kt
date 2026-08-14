@@ -22,17 +22,17 @@ import kotlin.time.Duration.Companion.seconds
  */
 class FinishedThresholdTest {
 
-    /** A library that has told the app nothing, which falls back to ADR-0013's thirty seconds. */
+    /** A library that has told the app nothing, which falls back to the server's own ten seconds. */
     private val fallback = FinishedThreshold()
 
     @Test
-    fun `a book with thirty seconds left is finished`() {
-        assertTrue(fallback.isFinished(position = 9.minutes + 30.seconds, duration = 10.minutes))
+    fun `a book with ten seconds left is finished`() {
+        assertTrue(fallback.isFinished(position = 9.minutes + 50.seconds, duration = 10.minutes))
     }
 
     @Test
-    fun `a book with thirty-one seconds left is not`() {
-        assertFalse(fallback.isFinished(position = 9.minutes + 29.seconds, duration = 10.minutes))
+    fun `a book with eleven seconds left is not`() {
+        assertFalse(fallback.isFinished(position = 9.minutes + 49.seconds, duration = 10.minutes))
     }
 
     /**
@@ -82,9 +82,13 @@ class FinishedThresholdTest {
      * finished — which is exactly what the Audiobookshelf web interface would say about the same book. Two
      * earlier builds disagreed with the server here: one used a hard-coded thirty seconds, the next took the
      * `max` of thirty and ten. Both finished the book twenty seconds early.
+     *
+     * It now happens to equal [FinishedThreshold.Default], which is the point of revision 4 rather than a
+     * coincidence — so the case that proves the library's number is *read* rather than ignored is the one
+     * below, at ninety seconds.
      */
     @Test
-    fun `the library's ten seconds is the rule, not the fallback's thirty`() {
+    fun `the capture server's ten seconds is honoured literally`() {
         val threshold = FinishedThreshold(library = 10.seconds)
 
         assertEquals(10.seconds, threshold.effective)
@@ -102,10 +106,17 @@ class FinishedThresholdTest {
         assertFalse(threshold.isFinished(position = 8.minutes + 29.seconds, duration = 10.minutes))
     }
 
-    /** A library that has said nothing gets the fallback — `null` is not "finish at 0 s left". */
+    /**
+     * A library that has said nothing gets the fallback — `null` is not "finish at 0 s left".
+     *
+     * Ten seconds, which is what the server itself would have used: `contracts/libraries.json` shows
+     * `markAsFinishedTimeRemaining: 10` on an unconfigured library. Pinned as a number rather than as
+     * `FinishedThreshold.Default` on purpose — the assertion is that the fallback *matches the server*, and
+     * comparing the constant to itself could not fail.
+     */
     @Test
     fun `a library with no rule falls back rather than finishing at zero`() {
-        assertEquals(30.seconds, FinishedThreshold(library = null).effective)
+        assertEquals(10.seconds, FinishedThreshold(library = null).effective)
         assertFalse(FinishedThreshold(library = null).isFinished(position = 5.minutes, duration = 10.minutes))
     }
 
