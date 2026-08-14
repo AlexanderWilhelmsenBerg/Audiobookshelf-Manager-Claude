@@ -1,0 +1,20 @@
+{
+  "acceptRanges": "bytes",
+  "bodyKind": "binary-not-recorded",
+  "contentType": "audio/mpeg",
+  "hasContentLength": true,
+  "note": "GET /api/items/{id}/file/{fileId}. Bytes deliberately not committed; the shape, the range behaviour and the presence of validators are the contract. See DL-001, DL-002, SYNC-001.",
+  "range": {
+    "hasContentRange": true,
+    "requested": "bytes=0-1023",
+    "returnedRequestedLength": true,
+    "status": 206,
+    "supported": true
+  },
+  "status": 200,
+  "unauthenticatedStatus": 401,
+  "validators": {
+    "hasETag": true,
+    "hasLastModified": true
+  }
+}

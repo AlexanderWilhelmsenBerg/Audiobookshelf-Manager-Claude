@@ -51,7 +51,7 @@ Worth recording, because the permission was given on a false premise: the captur
 **throwaway Audiobookshelf container in CI**, not against the owner's server. No request has ever been pointed
 at their installation by this project, and none is needed to answer this.
 
-### 3. Whether the server sends a checksum — **still open, and now measurable**
+### 3. Whether the server sends a checksum — **answered by capture: yes, a validator, not a checksum**
 
 The owner added contract captures hoping to answer it. They could not: the existing envelopes record status
 and content type and **no response headers at all**, so no committed fixture could ever have shown an `ETag`.
@@ -60,10 +60,36 @@ The harness now records, for the audio file endpoint: `Accept-Ranges`, whether a
 with a `Content-Range`, and whether `ETag` and `Last-Modified` are present. Presence rather than value —
 an ETag differs between captures and would be drift-check noise.
 
-**This is the one decision still waiting on evidence, and the next CI capture produces it.** It matters twice
-over: DL-002 criterion 2 persists a validator when one exists, and decision 8's *repair* action is specified
-as comparing a checksum against the server's copy. If the server sends no validator, repair cannot compare —
-it can only offer a re-download, and the button must say so rather than implying a check it did not perform.
+The capture ran on 2026-08-14 against Audiobookshelf 2.36.0 and is committed as
+`core/network/src/test/resources/contracts/item-file.json`:
+
+| Question | What the server answered |
+| --- | --- |
+| `Accept-Ranges` | `bytes` |
+| `Range: bytes=0-1023` | `206`, with a `Content-Range`, and exactly 1024 bytes back |
+| `ETag` | present |
+| `Last-Modified` | present |
+| `Content-Length` | present |
+| Unauthenticated request | `401` |
+
+Three things follow, and each is a slice's design decided rather than guessed.
+
+**Resumable partial downloads are viable** (decision 2, slice 6). Range is real, so a transfer interrupted at
+byte *n* resumes at byte *n*, and `Content-Length` on the full request gives the total to resume against.
+
+**The validator is an `ETag`, which is not a checksum, and the difference is the honest wording of *repair*.**
+An ETag is a token whose only guaranteed property is that it changes when the file changes; it is not
+required to be a hash of the bytes, and Audiobookshelf does not document how it derives one. So the app can
+say *"this file is no longer the file the server had"* with certainty, and cannot say *"the bytes on disk are
+correct"* from the ETag alone. Repair therefore compares the stored ETag against the server's current one and
+offers a re-download; that is a **staleness check**, and decision 8's button must be labelled as one.
+Integrity of the bytes *as downloaded* is a separate guarantee, and it comes from hashing what was written
+before committing it (DL-002 criterion 1), not from the server.
+
+**A resumed transfer must be validator-guarded.** `If-Range` with the stored ETag turns "the file changed
+under me" from silent corruption — the first half of the old file glued to the second half of the new one —
+into a plain `200` that restarts the download. This is the one case where skipping a header produces a file
+that passes every local check and is wrong.
 
 ### 4. App storage by default, with a selectable folder and SD card
 

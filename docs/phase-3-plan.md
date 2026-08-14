@@ -81,9 +81,11 @@ Ends with **exit criterion 1**.
 DL-004's three settings blocks, Android's metering state as the source of truth, pause on a disallowed
 network switch, debounced prompts. Needs decision 5.
 
-### Slice 6 — resume across network loss and restart *(needs a capture, medium)*
+### Slice 6 — resume across network loss and restart *(buildable now, medium)*
 
-Range requests, and the `RangeDownload` capability gate. Ends with **exit criterion 2**.
+Range requests, guarded by `If-Range` against the stored `ETag`, and the `RangeDownload` capability gate. The
+capture has answered decision 3: range works, and the validator exists to guard the resume with. Ends with
+**exit criterion 2**.
 
 ### Slice 7 — verification and cleanup *(buildable now, medium)*
 
@@ -91,12 +93,19 @@ DL-002's incremental start-up verifier, the full-verification diagnostics action
 never remove the playing book, one with unsynced progress, or a pinned download. The database already supports
 the second — `hasUnsyncedChanges` is on every progress row.
 
+Plus decision 7's two opt-in switches: delete finished books after N days, and — when smart download is on —
+delete the previous book in a series once the next one has arrived.
+
+### Slice 8 — smart download *(buildable now, medium)*
+
+Decision 1: at **50% of the current book**, download the next book in the same series. Its own toggle and its
+own network choice, both in settings. Depends on slices 4 and 5 being done, which is why it is last.
+
 ### Not in these slices
 
-**DL-005, smart download.** PRODUCT_SPEC assigns it to **Phase 4**; ADR-0017 (your decision, 2026-08-13)
-assigns it to **Phase 3** *and* gives it a different trigger than DL-005 documents. That is a genuine conflict
-in the project's own records and it needs decision 1 before a line of it is written. ADR-0017 also requires a
-contract capture first.
+Nothing. DL-005's Phase 3/Phase 4 conflict — PRODUCT_SPEC assigns smart download to Phase 4, ADR-0017 moved it
+to Phase 3 with a different trigger — is resolved by decision 1: **Phase 3, at the halfway mark**. ADR-0018
+records it as a deliberate deviation rather than an oversight.
 
 ---
 
@@ -109,23 +118,32 @@ PRODUCT_SPEC. In brief:
 | --- | --- | --- |
 | 1 | Smart download stays in Phase 3, triggered at **50% of the current book**, fetching the next in the series. A toggle, with its own network choice | New slice 8; supersedes ADR-0017's trigger |
 | 2 | Range requests may be probed; **partial downloads wanted, verified at the end** | Slice 6 unblocked; verification is unconditional |
-| 3 | Checksum/ETag — **still open**, and the harness now measures it | Slice 7 and the repair button depend on the answer |
+| 3 | Checksum/ETag — **answered by capture**: range works, `ETag` and `Last-Modified` are both sent | Slice 6 unblocked; repair is a staleness check, not a byte check |
 | 4 | App folder by default, **plus a selectable folder and SD card** | Slice 2 grows: SAF tree URIs, not just a mandated path |
 | 5 | **Wi-Fi always allowed; cellular a per-category toggle.** Streaming both by default, downloads and smart download Wi-Fi only | Slice 5 simplifies to one boolean per category |
 | 6 | One copy per device, progress per profile; a storage screen listing everything | Slice 2; see ADR-0018 on the profile-boundary modification |
 | 7 | Cleanup opt-in: delete finished books after N days, and optionally the previous book in a series | Slice 7 grows two switches |
 | 8 | Per-file delete plus **Repair**, comparing against the server where it can | Depends on decision 3 |
 
-### The one still open, and why it is not blocking
+### Decision 3, now answered
 
-Decision 3 — does the server send an `ETag` or `Last-Modified` for an audio file — could not be answered from
-the committed fixtures, because the capture envelopes record status and content type and **no response headers
-at all**. No fixture could ever have shown an ETag. The harness now records them for
-`/api/items/{id}/file/{fileId}`, along with whether a `Range` request is honoured, so the next capture run
-answers both at once.
+It could not be answered from the committed fixtures, because the capture envelopes recorded status and
+content type and **no response headers at all**. No fixture could ever have shown an ETag. The harness was
+extended to record them for `/api/items/{id}/file/{fileId}`, and the run on 2026-08-14 against Audiobookshelf
+2.36.0 came back:
 
-Nothing waits on it except the repair button's wording and DL-002's validator clause. Slices 1, 2, 4, 5 and 7
-are unaffected either way.
+- `Accept-Ranges: bytes`, and `Range: bytes=0-1023` really answers `206` with a `Content-Range` and 1024 bytes.
+- **`ETag` and `Last-Modified` are both present**, and so is `Content-Length`.
+- An unauthenticated request is refused with `401`.
+
+Committed as `contracts/item-file.json` and asserted in `CapturedShapesTest`.
+
+The consequence worth stating plainly: **an ETag is a validator, not a checksum.** It changes when the file
+changes, which is all HTTP guarantees, and Audiobookshelf does not document deriving it from the bytes. So
+*Repair* compares the stored ETag against the server's current one and tells you whether your copy is
+**stale**; it cannot tell you the bytes on disk are intact. Integrity of what was downloaded comes from
+hashing it before it is committed to storage — which the app does either way — not from the server. The button
+will say "check for changes on the server", because that is what it does.
 
 ### Two consequences of the answers, recorded rather than discovered later
 

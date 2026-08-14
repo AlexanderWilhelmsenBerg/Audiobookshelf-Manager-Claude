@@ -211,3 +211,23 @@ is being used, and states where the value is changed — the web interface, unde
 A screen that dropped the subject entirely would leave the app's most surprising behaviour unexplained. A
 listener who watches a book finish with a minute left has to be able to find out that their library asked for
 a minute.
+
+---
+
+## Revision 4 (2026-08-14) — the fallback is the server's own default, ten seconds
+
+The fallback stayed at thirty seconds through all three revisions above, because it started as the ADR's
+chosen threshold and was never re-examined once it stopped being one. Reading the capture carefully while
+answering a Phase 3 question made the inconsistency plain: `contracts/libraries.json` records
+`markAsFinishedTimeRemaining: 10` on a library nobody configured, and the server's own log line reads
+*"Marking media progress as finished because time remaining (3.5) is less than 10 seconds"*. Ten is
+Audiobookshelf's default, not thirty.
+
+So `FinishedThreshold.Default` is now **ten seconds**. The reasoning is the same one that removed the setting:
+in a design whose entire point is that the app and the web interface never disagree, the fallback is the app
+standing in for the server, and it should stand in for what the server would actually have done. Thirty made
+it three times looser in the one case the app has to answer alone — a library cached before database version
+14, or one written by a sync predating the field being parsed.
+
+It changes nothing on a normally synced library, since every real library carries the field and the fallback
+is not consulted. That is also why it survived unnoticed.

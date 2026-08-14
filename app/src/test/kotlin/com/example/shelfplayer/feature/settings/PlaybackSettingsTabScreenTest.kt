@@ -58,7 +58,7 @@ class PlaybackSettingsTabScreenTest {
     fun `a library with no value names the fallback in force`() {
         render(libraries = listOf(library("Fiction", null)))
 
-        val note = "Fiction: your server has not said, so 30 s is used until it does"
+        val note = "Fiction: your server has not said, so 10 s is used until it does"
         scrollTo(note)
         composeRule.onNodeWithText(note).assertIsDisplayed()
     }
