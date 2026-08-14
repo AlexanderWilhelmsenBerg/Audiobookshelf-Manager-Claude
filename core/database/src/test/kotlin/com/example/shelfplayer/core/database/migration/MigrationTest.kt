@@ -49,6 +49,20 @@ import kotlin.test.assertTrue
  *
  * Robolectric, because the subject is SQLite behaviour.
  */
+/*
+ * `LargeClass` is suppressed, and it is a deliberate choice rather than a deferral.
+ *
+ * This file grows by one test and one seed every time the database gains a version, and both halves have to
+ * stay next to each other: a seed is the *data* a version's tests describe, and a seed in another file is a
+ * seed that drifts from the assertions about it. Splitting by version would duplicate the harness —
+ * `createVersion`, `openWithMigrations`, the schema reader — into every piece, and a harness copied is a
+ * harness that stops agreeing with itself.
+ *
+ * The honest fix when this next grows is to extract the harness into a class both halves use, which is a
+ * change worth making on its own rather than while unblocking a start-up crash. Recorded here so the next
+ * reader knows it is a decision.
+ */
+@Suppress("LargeClass")
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class MigrationTest {
@@ -625,6 +639,122 @@ class MigrationTest {
     }
 
     /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — version 14 adds the library's finished rule.
+     *
+     * Two assertions, and the first is the one that matters: a library cached by an older build reads back
+     * with **no rule**, not with a rule of zero. `null` means "this library has not set one", and a migration
+     * that defaulted the column to 0 would silently mark every book in every pre-14 library finished at its
+     * last sample.
+     */
+    @Test
+    fun `version 14 gives a cached library no finished rule rather than a zero one`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        val stored = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
+        assertNull(stored.finishedTimeRemainingSeconds, "no rule, not zero seconds")
+
+        migrated.libraryWriteDao().upsertLibraries(listOf(stored.copy(finishedTimeRemainingSeconds = 60)))
+
+        val updated = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
+        assertEquals(60L, updated.finishedTimeRemainingSeconds)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — the join the progress journal reads the rule through.
+     *
+     * A book's rule comes from *its own* library, and the journal has only a book. This is that query
+     * against a migrated database, which is where a column named differently by the migration than by the
+     * entity would surface — Room validates the schema but not a hand-written `SELECT`.
+     */
+    @Test
+    fun `a book's finished rule is found through its library`() = runTest {
+        createVersion(9)
+        val migrated = openWithMigrations()
+        val library = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
+        migrated.libraryWriteDao().upsertLibraries(listOf(library.copy(finishedTimeRemainingSeconds = 45)))
+
+        assertEquals(45L, migrated.libraryDao().finishedSecondsFor(BOOK_KEY))
+        assertNull(migrated.libraryDao().finishedSecondsFor("no-such-book"), "an unknown book has no rule")
+    }
+
+    /**
+     * **The regression test for a crash that reached a device.**
+     *
+     * Build 0.9.2 shipped database version 14 with two columns on `libraries`:
+     * `finishedTimeRemainingSeconds` and `finishedFractionComplete`. The next build dropped the second one
+     * and **kept the version number at 14**, on the reasoning that 14 "had not shipped". It had — to the
+     * owner's phone, an hour earlier. Room stores version 14's identity hash in `room_master_table`, compares
+     * it on open, finds a hash it has no migration to reach, and throws. The app crashed at startup on
+     * exactly the device that had installed the previous build, and on no other.
+     *
+     * So this opens a database shaped **as 0.9.2 left it** — built from the committed `14.json`, which is
+     * that shipped schema — and requires that it migrates and validates. It fails if anybody edits version
+     * 14's schema again, which is the mistake, rather than checking the symptom.
+     *
+     * The rows are asserted afterwards because the 14 → 15 step is a **table rebuild** — SQLite before 3.35
+     * has no `DROP COLUMN` — and a rebuild that copied the columns in the wrong order would validate against
+     * Room's schema perfectly while silently moving every library's data one field along.
+     */
+    @Test
+    fun `a database left at version 14 by build 0-9-2 still opens`() = runTest {
+        createVersion(14)
+
+        val migrated = openWithMigrations()
+
+        val library = assertNotNull(
+            migrated.libraryDao().observeLibrary(LIBRARY_KEY).first(),
+            "the library row was lost by the rebuild",
+        )
+        assertEquals("Fiction", library.name)
+        assertEquals(SERVER_ID, library.serverId)
+        assertEquals("library-1", library.remoteId)
+        assertFalse(library.isDeleted)
+        assertNull(library.finishedTimeRemainingSeconds, "and the surviving column keeps its meaning")
+
+        val book = assertNotNull(migrated.libraryDao().observeBook(PROFILE_ID, BOOK_KEY).first())
+        assertEquals("The Salt Harbour", book.book.title, "dropping the parent table did not cascade")
+    }
+
+    /**
+     * The rebuild carries a value across rather than only a null.
+     *
+     * `createVersion` writes the column as null, so the test above cannot tell a copy from a fresh column. This
+     * one writes a rule at version 14 — the state of any library synced by 0.9.2 — and requires it to survive.
+     */
+    @Test
+    fun `version 14's finished rule survives the rebuild`() = runTest {
+        createVersion(14)
+        writeAtVersion14(finishedSeconds = 45)
+
+        val migrated = openWithMigrations()
+
+        val library = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
+        assertEquals(45L, library.finishedTimeRemainingSeconds)
+    }
+
+    /** Sets `libraries.finishedTimeRemainingSeconds` on the un-migrated file, as version 14 would have. */
+    private fun writeAtVersion14(finishedSeconds: Long) {
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(databaseFile.path)
+                .callback(object : SupportSQLiteOpenHelper.Callback(14) {
+                    override fun onCreate(db: SupportSQLiteDatabase) = Unit
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                })
+                .build(),
+        )
+        helper.writableDatabase.use { db ->
+            db.execSQL(
+                "UPDATE `libraries` SET `finishedTimeRemainingSeconds` = ? WHERE `libraryKey` = ?",
+                arrayOf<Any>(finishedSeconds, LIBRARY_KEY),
+            )
+        }
+    }
+
+    /**
      * Room validates the migrated schema against the one it expects and throws if they differ. Reading
      * through a DAO is what forces that validation to run, so this fails loudly on a migration that
      * produced a *nearly* correct schema — a missing default, a wrong nullability.
@@ -727,6 +857,7 @@ class MigrationTest {
         VERSION_7 -> seedVersion7(db)
         VERSION_8 -> seedVersion8(db)
         VERSION_9 -> seedVersion9(db)
+        VERSION_14 -> seedVersion14(db)
         else -> error("no seed data defined for schema version $version")
     }
 
@@ -841,6 +972,15 @@ class MigrationTest {
 
     private fun seedVersion9(db: SupportSQLiteDatabase) = seedVersion6(db)
 
+    /**
+     * Version 14's rows, which are version 9's: everything between added columns and tables rather than
+     * changing the ones these inserts name.
+     *
+     * Seeded at 14 specifically because that is the version **build 0.9.2 left on a device**, and the
+     * migration off it is a table rebuild rather than an `ALTER TABLE`. See the test that uses it.
+     */
+    private fun seedVersion14(db: SupportSQLiteDatabase) = seedVersion9(db)
+
     /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
     private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
         db.execSQL(
@@ -885,6 +1025,9 @@ class MigrationTest {
         const val VERSION_7 = 7
         const val VERSION_8 = 8
         const val VERSION_9 = 9
+
+        /** The version build 0.9.2 shipped, and the one the 14 → 15 rebuild starts from. */
+        const val VERSION_14 = 14
         const val PROFILE_ID = "prf_test"
         const val LIBRARY_KEY = "srv_test:library-1"
         const val BOOK_KEY = "srv_test:item-1"

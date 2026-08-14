@@ -38,6 +38,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
@@ -81,6 +82,7 @@ class DefaultPlaybackRepositoryTest {
             profileRepository = StubProfileRepository(profileId),
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
+            libraryDao = database.libraryDao(),
             gateway = gateway,
             clock = TestAppClock(),
             logger = logger,
@@ -145,7 +147,7 @@ class DefaultPlaybackRepositoryTest {
 
     @Test
     fun `a journaled position is stored against the profile that was listening`() = runTest {
-        repository.recordPosition(BOOK, position = 3.minutes, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = 3.minutes, duration = 2.hours)
 
         val stored = storedProgress()
         assertEquals(180_000L, stored.positionMillis)
@@ -162,7 +164,7 @@ class DefaultPlaybackRepositoryTest {
      */
     @Test
     fun `a journaled position is not overwritten by the server's older one`() = runTest {
-        repository.recordPosition(BOOK, position = 40.minutes, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = 40.minutes, duration = 2.hours)
         assertTrue(storedProgress().hasUnsyncedChanges)
 
         libraryRepository.writeProgress(
@@ -189,9 +191,9 @@ class DefaultPlaybackRepositoryTest {
      */
     @Test
     fun `a finished book is not un-finished by replaying the end`() = runTest {
-        repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours, isFinished = true)
+        repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours)
 
-        repository.recordPosition(BOOK, position = 1.hours, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = 1.hours, duration = 2.hours)
 
         val stored = storedProgress()
         assertTrue(stored.isFinished, "still finished")
@@ -206,9 +208,9 @@ class DefaultPlaybackRepositoryTest {
      */
     @Test
     fun `an unknown duration keeps the stored one`() = runTest {
-        repository.recordPosition(BOOK, position = 10.minutes, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = 10.minutes, duration = 2.hours)
 
-        repository.recordPosition(BOOK, position = 11.minutes, duration = kotlin.time.Duration.ZERO, isFinished = false)
+        repository.recordPosition(BOOK, position = 11.minutes, duration = kotlin.time.Duration.ZERO)
 
         assertEquals(2.hours.inWholeMilliseconds, storedProgress().durationMillis)
     }
@@ -216,7 +218,7 @@ class DefaultPlaybackRepositoryTest {
     /** A negative position — a player reporting `-1` for "unset" — is stored as the start, not as -1. */
     @Test
     fun `a negative position is stored as the start`() = runTest {
-        repository.recordPosition(BOOK, position = (-30).seconds, duration = 2.hours, isFinished = false)
+        repository.recordPosition(BOOK, position = (-30).seconds, duration = 2.hours)
 
         assertEquals(0L, storedProgress().positionMillis)
     }
@@ -228,6 +230,7 @@ class DefaultPlaybackRepositoryTest {
             profileRepository = StubProfileRepository(activeProfileId = null),
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
+            libraryDao = database.libraryDao(),
             gateway = FakeAudiobookshelfGateway(
                 loader = FixtureLibraryLoader(),
                 clock = TestAppClock(),
@@ -243,17 +246,89 @@ class DefaultPlaybackRepositoryTest {
         // that did not change rather than a count of zero.
         val before = database.progressDao().findProgressFor(profileId.value)
 
-        val result = orphaned.recordPosition(BOOK, 5.minutes, 2.hours, isFinished = false)
+        val result = orphaned.recordPosition(BOOK, 5.minutes, 2.hours)
 
         assertIs<AppError.Authentication>(assertIs<AppResult.Failure>(result).error)
         val after = database.progressDao().findProgressFor(profileId.value)
         assertEquals(before, after, "nothing was written")
     }
 
+    // --- The finished rule, both halves (PLAY-004 / ADR-0013) ---------------------------------------
+
+    /**
+     * The library's rule wins, which is what *"inherit from the web interface"* means.
+     *
+     * The fixture libraries carry the capture server's own `markAsFinishedTimeRemaining: 10` against a
+     * default setting of 30. So a book with twenty seconds left is **not** finished here — because the
+     * Audiobookshelf web interface would not call it finished either. An earlier build took the `max` and
+     * finished it, which is the disagreement this replaced.
+     */
+    @Test
+    fun `the library's own rule is what decides`() = runTest {
+        repository.recordPosition(BOOK, position = 2.hours - 20.seconds, duration = 2.hours)
+        assertFalse(storedProgress().isFinished, "twenty seconds left, against the library's ten")
+
+        repository.recordPosition(BOOK, position = 2.hours - 8.seconds, duration = 2.hours)
+        assertTrue(storedProgress().isFinished, "eight seconds left is inside the library's rule")
+    }
+
+    /** A library that asks for longer is honoured just as literally, through the same join. */
+    @Test
+    fun `a library asking for longer finishes the book earlier`() = runTest {
+        libraryRule(90.seconds)
+
+        repository.recordPosition(BOOK, position = 2.hours - 60.seconds, duration = 2.hours)
+
+        assertTrue(storedProgress().isFinished, "a minute left, against a library asking for ninety seconds")
+    }
+
+    /**
+     * Where the library has said nothing, ADR-0013's thirty seconds applies.
+     *
+     * `null` on the library row has to mean "no rule" rather than "zero seconds", or a library the app has not
+     * synced since before database version 14 would finish nothing at all.
+     */
+    @Test
+    fun `a library with no rule falls back to thirty seconds`() = runTest {
+        libraryRule(null)
+
+        repository.recordPosition(BOOK, position = 2.hours - 40.seconds, duration = 2.hours)
+        assertFalse(storedProgress().isFinished, "forty seconds left is outside the fallback")
+
+        repository.recordPosition(BOOK, position = 2.hours - 20.seconds, duration = 2.hours)
+        assertTrue(storedProgress().isFinished, "twenty seconds left is inside it")
+    }
+
+    /**
+     * The rule comes through the join, and the join is by book.
+     *
+     * A rule set on the *other* library must not decide anything about this book. A query that read "any
+     * library on this server" would pass every other test in this file.
+     */
+    @Test
+    fun `another library's rule does not apply`() = runTest {
+        libraryRule(null)
+        libraryRule(90.seconds, libraryId = "lib-nonfiction")
+
+        repository.recordPosition(BOOK, position = 2.hours - 60.seconds, duration = 2.hours)
+
+        assertFalse(storedProgress().isFinished, "this book's own library sets nothing, so the fallback applies")
+    }
+
+    /** Writes a library's own finished rule — or clears it — the way a sync writes one. */
+    private suspend fun libraryRule(timeRemaining: kotlin.time.Duration?, libraryId: String = "lib-fiction") {
+        val existing = requireNotNull(
+            database.libraryDao().observeLibrary(EntityKey.of(SERVER, libraryId)).first(),
+        ) { "the fixture refresh wrote no $libraryId row" }
+        database.libraryWriteDao().upsertLibraries(
+            listOf(existing.copy(finishedTimeRemainingSeconds = timeRemaining?.inWholeSeconds)),
+        )
+    }
+
     /** PRODUCT_SPEC 14.5 — the finished-threshold log names no book. */
     @Test
     fun `reaching the finished threshold logs no media title`() = runTest {
-        repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours, isFinished = true)
+        repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours)
 
         assertTrue(sink.text.contains("finished threshold"), "the event is logged: ${sink.text}")
         assertTrue(!sink.text.contains(BOOK.value), "and it names no book")

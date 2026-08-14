@@ -33,17 +33,21 @@ interface PlaybackRepository {
      * server is wave 3's session outbox; until that exists the position survives a process death and
      * reaches the server the next time the app writes progress by the route Phase 1 already built.
      *
+     * ### Whether the book is finished is decided here, not by the caller
+     *
+     * Until PR 2 of the Phase 2 closeout this took an `isFinished` flag, and the media service computed it
+     * from a hard-coded thirty seconds. That put the rule in the one place that could not see either half of
+     * it: ADR-0013's threshold is a *setting*, and the book's library gets a say through
+     * `markAsFinishedTimeRemaining`. The implementation already resolves the profile and the book on every
+     * write, so it is the only place that can resolve both halves — and one place that knows the rule cannot
+     * disagree with itself.
+     *
+     * A book already finished stays finished: this call moves a position, and un-finishing is a decision the
+     * user makes through [setFinished], not a side effect of the last few seconds playing again.
+     *
      * @param position on the **global** book timeline, not a position within a file.
-     * @param isFinished when the listener has reached the end — see ADR-0013 for what "the end" means.
-     *   Never `false` for a book already finished: this call moves a position, and un-finishing a book
-     *   is a decision the user makes, not a side effect of the last few seconds playing again.
      */
-    suspend fun recordPosition(
-        bookId: LibraryItemId,
-        position: Duration,
-        duration: Duration,
-        isFinished: Boolean,
-    ): AppResult<Unit>
+    suspend fun recordPosition(bookId: LibraryItemId, position: Duration, duration: Duration): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC PLAY-004 — "marking finished is explicit", and so is un-marking it.

@@ -1,6 +1,7 @@
 package com.example.shelfplayer.core.network.api
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -145,6 +146,39 @@ class CapturedShapesTest {
             after.getValue("isFinished").jsonPrimitive.content.toBoolean(),
             "and an eight-second book is always within ten seconds of its end",
         )
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — the library's own finished rule, in the capture that has always had it.
+     *
+     * `libraries.json` has carried `settings.markAsFinishedTimeRemaining: 10` since the wave A capture, and
+     * the app parsed it away until the Phase 2 closeout. The plan for PR 2 opened by naming a new capture as
+     * its blocker; reading the committed fixture showed there was nothing to capture. This assertion is what
+     * stops that gap reopening: the field the app inherits its rule from is pinned to the observation, and a
+     * server version that stopped sending it would fail the build rather than quietly restore a constant.
+     *
+     * The second half asserts a **deliberate omission**. `markAsFinishedPercentComplete` is sent, it is
+     * `null` in every capture ever taken, and this app does not read it: the project owner rejected the unit,
+     * because a percentage of a long book is a long time and 95% of a hundred-hour book leaves five hours to
+     * go. Pinning "sent, and not read" is what stops a later reader finding the field in the fixture and
+     * concluding the app forgot it.
+     */
+    @Test
+    fun `a library carries its own finished rule, and a percentage the app does not read`() {
+        val libraries = json.parseToJsonElement(ContractFixtures.body("libraries")).jsonObject
+            .getValue("libraries").jsonArray
+        assertTrue(libraries.isNotEmpty(), "the capture has at least one library")
+
+        libraries.forEach { library ->
+            val settings = assertNotNull(library.jsonObject["settings"]).jsonObject
+            assertEquals(10, settings.getValue("markAsFinishedTimeRemaining").jsonPrimitive.content.toInt())
+            assertTrue(settings.containsKey("markAsFinishedPercentComplete"), "the percentage is sent")
+            assertEquals(
+                null,
+                settings.getValue("markAsFinishedPercentComplete").jsonPrimitive.contentOrNull,
+                "null in every capture, and unread either way — see ADR-0013",
+            )
+        }
     }
 
     /** Both progress writes answer plain text, like the bookmark delete and unlike everything else. */

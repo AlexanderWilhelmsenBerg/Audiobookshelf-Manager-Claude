@@ -23,6 +23,7 @@ import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import java.time.Instant
 import kotlin.time.Duration.Companion.seconds
 
@@ -81,6 +82,9 @@ internal class FixtureMapper(private val document: FixtureLibraryDocument) {
             bookCount = document.books.count { it.libraryId == fixture.id },
             remoteUpdatedAt = null,
             lastFetchedAt = fetchedAt,
+            // The same converter the wire mapper uses, so the fixture cannot express a rule a real server
+            // could not send.
+            finishedWhenRemaining = FinishedThreshold.libraryRule(fixture.markAsFinishedTimeRemaining),
         )
     }
 

@@ -201,6 +201,31 @@ interface LibraryDao {
         """,
     )
     suspend fun inProgressBookIds(profileId: String, libraryKey: String): List<String>
+
+    /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — `markAsFinishedTimeRemaining`, in **seconds**, for the library that
+     * holds [bookKey].
+     *
+     * A join rather than two reads, because the caller is the progress journal: it runs every five seconds
+     * while a book plays, and the thing it has in hand is a book. Asking it to find a library first would put
+     * a second round trip on the hot path for one nullable number.
+     *
+     * One column rather than the whole row, for the same reason. The journal has no use for the library's
+     * name, and a projection cannot accidentally grow a dependency on one.
+     *
+     * `null` covers two cases — no such book, and a library that has set no rule — and they want identical
+     * behaviour: the listener's own setting applies. A book whose library has not been synced since before
+     * version 14 is the second, and it does not matter that this cannot tell it from the first.
+     */
+    @Query(
+        """
+        SELECT libraries.finishedTimeRemainingSeconds
+        FROM libraries
+        INNER JOIN books ON books.libraryKey = libraries.libraryKey
+        WHERE books.bookKey = :bookKey
+        """,
+    )
+    suspend fun finishedSecondsFor(bookKey: String): Long?
 }
 
 /** One already-expanded book: its server id and the `updatedAt` the server reported when it was stored. */

@@ -133,6 +133,17 @@ message AppSettings {
   // pressing anything. ROUTE-002 says auto-play "requires explicit user selection"; until per-device
   // policy exists this is the single global switch, and the UI has to say what it does.
   bool auto_play_on_car_connect = 26;
+
+  // Field 27 held `finished_threshold_seconds`, a per-device finished threshold. It is gone: the rule is
+  // the library's `markAsFinishedTimeRemaining`, read from the server, and this app keeps no competing
+  // number. There is nothing on the server to synchronise a per-listener value with — the user object has
+  // no settings field at all — so a device-local one could only ever disagree with the web interface.
+  // See ADR-0013.
+  //
+  // Reserved, not reused. Build 0.9.2 wrote this field on a device, and a new field numbered 27 would read
+  // those bytes as its own.
+  reserved 27;
+  reserved "finished_threshold_seconds";
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

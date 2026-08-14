@@ -394,6 +394,83 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — adds the library's own finished rule to `libraries`.
+     *
+     * Two nullable columns, so a single `ALTER TABLE` each and no rewrite. Nullable is the *meaning* as well
+     * as the mechanism: `null` is "this library has set no rule", not "zero seconds", and every row written
+     * before this version genuinely had none — the fields were parsed away on the way in.
+     *
+     * ### Why the second column is here when nothing reads it
+     *
+     * `finishedFractionComplete` held `markAsFinishedPercentComplete`, and the app **no longer reads it** — see
+     * ADR-0013 for why a percentage is not a threshold anybody wants on an audiobook. It stays in this
+     * migration because **version 14 shipped**, in build 0.9.2, and a device that ran it has a `libraries`
+     * table with both columns and version 14's identity hash stored.
+     *
+     * Editing this migration to add only one column — which is what an earlier version of this branch did —
+     * makes a build whose version 14 is *not* the version 14 that shipped. Room compares the stored hash on
+     * open, finds a mismatch it has no migration for, and throws: the app crashes at startup on exactly the
+     * device that installed the previous build. It did, and this comment is why the column is still here.
+     *
+     * [MIGRATION_14_15] is where it goes, by the only route SQLite offers before 3.35.
+     */
+    private val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `libraries` ADD COLUMN `finishedTimeRemainingSeconds` INTEGER")
+            db.execSQL("ALTER TABLE `libraries` ADD COLUMN `finishedFractionComplete` REAL")
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — removes the percentage column version 14 added.
+     *
+     * ### Why a table rebuild
+     *
+     * `ALTER TABLE … DROP COLUMN` arrived in SQLite 3.35, which is Android 12. This app supports API 26, where
+     * SQLite is 3.18, so the only way to remove a column is the four-step rebuild: create the table as it
+     * should be, copy the rows, drop the old one, rename. Room's own generated migrations do exactly this.
+     *
+     * ### Why bother at all
+     *
+     * A dead nullable column is nearly free, and leaving it would have been defensible. What is not free is the
+     * *entity* keeping a field nothing reads: `EntityMappers` would have to write something for it, and a
+     * future reader would have to work out that "something" means "nothing". One column removed once is
+     * cheaper than that question being asked every time somebody opens the file.
+     *
+     * ### The dance, in order, and why each step
+     *
+     * Foreign keys are **not** disabled here: Room turns them off around the whole migration and back on
+     * afterwards, so `DROP TABLE libraries` cannot cascade into `books`. Doing it by hand inside a transaction
+     * would be the dangerous version — `PRAGMA foreign_keys` is a no-op inside one, so it would look like it
+     * had worked.
+     *
+     * The index is recreated because dropping a table drops its indices, and Room compares them.
+     */
+    private val MIGRATION_14_15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `libraries_new` (" +
+                    "`libraryKey` TEXT NOT NULL, `serverId` TEXT NOT NULL, `remoteId` TEXT NOT NULL, " +
+                    "`name` TEXT NOT NULL, `kind` TEXT NOT NULL, `displayOrder` INTEGER NOT NULL, " +
+                    "`remoteUpdatedAt` INTEGER, `lastFetchedAt` INTEGER NOT NULL, " +
+                    "`isDeleted` INTEGER NOT NULL, `finishedTimeRemainingSeconds` INTEGER, " +
+                    "PRIMARY KEY(`libraryKey`), FOREIGN KEY(`serverId`) REFERENCES `servers`(`serverId`) " +
+                    "ON UPDATE NO ACTION ON DELETE CASCADE )",
+            )
+            db.execSQL(
+                "INSERT INTO `libraries_new` (`libraryKey`, `serverId`, `remoteId`, `name`, `kind`, " +
+                    "`displayOrder`, `remoteUpdatedAt`, `lastFetchedAt`, `isDeleted`, " +
+                    "`finishedTimeRemainingSeconds`) SELECT `libraryKey`, `serverId`, `remoteId`, `name`, " +
+                    "`kind`, `displayOrder`, `remoteUpdatedAt`, `lastFetchedAt`, `isDeleted`, " +
+                    "`finishedTimeRemainingSeconds` FROM `libraries`",
+            )
+            db.execSQL("DROP TABLE `libraries`")
+            db.execSQL("ALTER TABLE `libraries_new` RENAME TO `libraries`")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_libraries_serverId` ON `libraries` (`serverId`)")
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -407,5 +484,7 @@ object Migrations {
         MIGRATION_10_11,
         MIGRATION_11_12,
         MIGRATION_12_13,
+        MIGRATION_13_14,
+        MIGRATION_14_15,
     )
 }

@@ -527,6 +527,33 @@ fallback for a server that reports none. Disagreeing with the server about wheth
 is a bug the user sees as a book that will not stay finished. Recorded here rather than decided
 unilaterally: it is a deviation from PLAY-004's literal wording and wants an ADR.
 
+### Read, as of 2026-08-14
+
+ADR-0013 settled the deviation and Phase 2 closeout PR 2 implemented it. `LibrarySettingsDto` takes
+`markAsFinishedTimeRemaining`, it is stored per library in Room in the server's own unit — seconds, schema 15
+— and **the app inherits it**: where a library sets it, that number is the rule for its books, and the
+listener's own setting applies only to a library that sets none.
+
+Three notes for anyone reading the fixture:
+
+- **The app keeps no threshold of its own, and does not write the library's back.** Two earlier builds of the
+  same day did keep one — a setting, then a `max` of the setting and the library's value — and both could
+  disagree with the web interface. The setting is gone. There is nothing on the server to synchronise a
+  per-listener value with: **`me.json`'s user object has no `settings` key at all**, so the only writable copy
+  is `library.settings`, which is shared by every account and which this app models one field of out of twelve.
+  Nothing captured says whether a partial settings PATCH merges or replaces, so writing it back could discard
+  eleven settings — including the ordered `metadataPrecedence` — on somebody else's library. ADR-0013 records
+  the decision and the fact that it widens the deviation from PLAY-004, which asks for a configurable value.
+- **`markAsFinishedPercentComplete` is sent, is `null` in every capture ever taken, and is deliberately not
+  read.** The owner rejected the unit: 95% of a hundred-hour book leaves five hours to go. `CapturedShapesTest`
+  pins it as *sent and unread*, so a later reader finding it in the fixture does not mistake the omission for
+  an oversight. A library configured on a percentage alone will not be honoured by this app — the one place it
+  knowingly diverges from the server.
+- **No new endpoint was needed.** The plan for PR 2 opened by naming "capture the library-settings endpoint"
+  as its blocker. There is nothing to capture: `settings` has been nested in the `GET /api/libraries` response
+  since the wave A capture. The test asserts it, so the dependency is pinned to the observation rather than to
+  this paragraph.
+
 ## The offline routes, captured 2026-08-07
 
 Four fixtures, and they changed the design of the outbox before a line of it was written.
@@ -734,8 +761,9 @@ So PLAY-004's "marking finished is explicit, in both directions" is **not** at r
 *Finished* checkbox does reach the server. Two consequences worth carrying forward:
 
 1. **`markAsFinishedTimeRemaining` is real, and its default is 10 s.** PLAY-004 requires the app to honour
-   the library's value and it currently does not — this is the first observation of the setting in action,
-   even though the setting's own endpoint has still not been captured.
+   the library's value, and as of 2026-08-14 it does — see the section above. This log line is the first
+   observation of the setting *in action*, which is a stronger fact than reading it in `libraries.json`:
+   it shows the server applying the rule to a write the app made.
 2. **The fixture cannot demonstrate un-finishing.** Doing so needs a seeded book longer than the threshold,
    which changes the duration in a dozen committed fixtures. That belongs with the
    `markAsFinishedTimeRemaining` work rather than bolted onto this capture, and is recorded in

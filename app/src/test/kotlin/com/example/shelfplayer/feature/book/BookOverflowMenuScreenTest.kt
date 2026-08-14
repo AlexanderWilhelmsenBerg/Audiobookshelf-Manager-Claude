@@ -1,0 +1,279 @@
+package com.example.shelfplayer.feature.book
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.core.model.library.MediaProgress
+import com.example.shelfplayer.playback.PlaybackUiState
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.time.Instant
+import kotlin.test.assertEquals
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
+
+/**
+ * PRODUCT_SPEC LIB-004 / PLAY-004 / 21 — the overflow menu, as a hand reaches it.
+ *
+ * Screen assertions rather than ViewModel ones, deliberately. PR 1 of this closeout shipped a complete,
+ * well-tested bookmark feature with **no visible way to make a bookmark**, because every test asked whether a
+ * bookmark could be stored and none asked whether one could be made. Every case here is "can this be found
+ * and pressed", including the two that must *not* be pressable.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], qualifiers = "w411dp-h891dp")
+class BookOverflowMenuScreenTest {
+
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    /** Everything the owner asked for is in the menu, in the order they asked for it. */
+    @Test
+    fun `the menu offers every action`() {
+        render()
+        openMenu()
+
+        listOf(
+            "History",
+            "Mark as finished",
+            "Discard progress",
+            "Manage local files (Phase 3)",
+            "Delete local item (Phase 3)",
+            "Go to web client",
+            "More info",
+        ).forEach { label ->
+            composeRule.onNodeWithText(label).assertIsDisplayed()
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC 21 — the two Phase 3 rows are visible, disabled, and name their phase.
+     *
+     * Shown rather than hidden so the menu does not look complete when it is not; disabled rather than live so
+     * nothing looks pressable that does nothing.
+     */
+    @Test
+    fun `the phase three rows are disabled`() {
+        render()
+        openMenu()
+
+        composeRule.onNodeWithText("Manage local files (Phase 3)").assertIsNotEnabled()
+        composeRule.onNodeWithText("Delete local item (Phase 3)").assertIsNotEnabled()
+    }
+
+    /** The label names the state it would put the book into, so it flips on a finished book. */
+    @Test
+    fun `a finished book offers to un-finish it`() {
+        render(book = book(progress(position = 11.hours, isFinished = true)))
+        openMenu()
+
+        composeRule.onNodeWithText("Mark as not finished").assertIsDisplayed()
+        composeRule.onNodeWithText("Mark as finished").assertDoesNotExist()
+    }
+
+    /** And pressing it reports the state it named rather than the one it was in. */
+    @Test
+    fun `marking finished reports true`() {
+        val reported = mutableListOf<Boolean>()
+        render(onFinishedChanged = { reported += it })
+        openMenu()
+
+        composeRule.onNodeWithText("Mark as finished").performClick()
+
+        assertEquals(listOf(true), reported)
+    }
+
+    /**
+     * PRODUCT_SPEC 21 — discarding asks first, and the question says what it will actually do.
+     *
+     * The three claims in the body are the point: the position goes, the audio does not, and the server is
+     * told too. "Discard progress" alone could mean deleting the download.
+     */
+    @Test
+    fun `discarding progress asks first, and says what it does`() {
+        var discarded = 0
+        render(onDiscardProgress = { discarded++ })
+        openMenu()
+
+        composeRule.onNodeWithText("Discard progress").performClick()
+
+        composeRule.onNodeWithText("Discard your progress?").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "This sends the book back to the beginning, on this device and on your server. No audio files " +
+                "are deleted, nothing is removed from your library, and any download stays where it is. " +
+                "You can start listening again from anywhere.",
+        ).assertIsDisplayed()
+        assertEquals(0, discarded, "nothing happens until it is confirmed")
+
+        composeRule.onNodeWithText("Keep it").performClick()
+        assertEquals(0, discarded, "and declining does nothing at all")
+    }
+
+    /** Confirming is what performs it. */
+    @Test
+    fun `confirming discards`() {
+        var discarded = 0
+        render(onDiscardProgress = { discarded++ })
+        openMenu()
+        composeRule.onNodeWithText("Discard progress").performClick()
+
+        composeRule.onNodeWithText("Discard progress").performClick()
+
+        assertEquals(1, discarded)
+    }
+
+    /**
+     * A book nobody has started has nothing to discard, and the row says so by being disabled.
+     *
+     * A destructive-sounding control whose effect is nothing at all is worse than no control.
+     */
+    @Test
+    fun `a book with no progress cannot discard it`() {
+        render(book = book(progress = null))
+        openMenu()
+
+        composeRule.onNodeWithText("Discard progress").assertIsNotEnabled()
+    }
+
+    /** The web client needs an address, and without one the row is disabled rather than a dead tap. */
+    @Test
+    fun `the web client row needs a server address`() {
+        render(webUrl = null)
+        openMenu()
+        composeRule.onNodeWithText("Go to web client").assertIsNotEnabled()
+
+        composeRule.onNodeWithText("Keep it").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the web client row opens the url it was given`() {
+        val opened = mutableListOf<String>()
+        render(webUrl = "https://books.example/item/book-1", onOpenWebClient = { opened += it })
+        openMenu()
+
+        composeRule.onNodeWithText("Go to web client").assertIsEnabled().performClick()
+
+        assertEquals(listOf("https://books.example/item/book-1"), opened)
+    }
+
+    /** More info shows the identifiers the screen itself has no room for. */
+    @Test
+    fun `more info shows the identifiers`() {
+        render()
+        openMenu()
+
+        composeRule.onNodeWithText("More info").performClick()
+
+        composeRule.onNodeWithText("9780000000001").assertIsDisplayed()
+        composeRule.onNodeWithText("book-1").assertIsDisplayed()
+    }
+
+    /** The history opens, and an empty one says so rather than showing a blank sheet. */
+    @Test
+    fun `history opens`() {
+        render()
+        openMenu()
+
+        composeRule.onNodeWithText("History").performClick()
+
+        composeRule.onNodeWithText(
+            "Nothing yet. Playing, seeking, changing chapter or setting a sleep timer will appear here.",
+        ).assertIsDisplayed()
+    }
+
+    private fun openMenu() = composeRule.onNodeWithTag(BOOK_OVERFLOW_BUTTON).performClick()
+
+    private fun render(
+        book: Book = book(progress(position = 40.minutes, isFinished = false)),
+        webUrl: String? = "https://books.example/item/book-1",
+        onFinishedChanged: (Boolean) -> Unit = {},
+        onDiscardProgress: () -> Unit = {},
+        onOpenWebClient: (String) -> Unit = {},
+    ) {
+        composeRule.setContent {
+            BookScreen(
+                uiState = BookUiState.Loaded(book),
+                // Nothing playing, which is how this screen is most often read.
+                playback = PlaybackUiState(
+                    bookId = null,
+                    title = "",
+                    author = null,
+                    artworkUri = null,
+                    isPlaying = false,
+                    isLoading = false,
+                    position = Duration.ZERO,
+                    duration = Duration.ZERO,
+                ),
+                menu = BookMenuState(webUrl = webUrl),
+                actions = BookActions(
+                    onPlay = {},
+                    onTogglePlayPause = {},
+                    onFinishedChanged = onFinishedChanged,
+                    onDiscardProgress = onDiscardProgress,
+                    onOpenWebClient = onOpenWebClient,
+                ),
+                onNavigateUp = {},
+            )
+        }
+    }
+
+    private fun progress(position: Duration, isFinished: Boolean) = MediaProgress(
+        serverId = SERVER,
+        profileId = ProfileId("profile-1"),
+        bookId = BOOK,
+        position = position,
+        duration = 11.hours,
+        isFinished = isFinished,
+        updatedAt = Instant.ofEpochMilli(1_000),
+        hasUnsyncedChanges = false,
+    )
+
+    private fun book(progress: MediaProgress?) = Book(
+        serverId = SERVER,
+        id = BOOK,
+        libraryId = LibraryId("lib-fiction"),
+        title = "The Salt Harbour",
+        subtitle = null,
+        authors = emptyList(),
+        narrators = emptyList(),
+        seriesMemberships = emptyList(),
+        duration = 11.hours,
+        description = null,
+        genres = emptyList(),
+        tags = emptyList(),
+        publishedYear = 2019,
+        publisher = "Northgate",
+        language = "English",
+        isbn = "9780000000001",
+        asin = null,
+        isExplicit = false,
+        isAbridged = false,
+        coverPath = null,
+        trackCount = 12,
+        sizeBytes = 1_000,
+        remoteUpdatedAt = null,
+        addedAt = null,
+        lastFetchedAt = Instant.ofEpochMilli(0),
+        progress = progress,
+        localAvailability = LocalAvailability.NotDownloaded,
+    )
+
+    private companion object {
+        val SERVER = ServerId("server-1")
+        val BOOK = LibraryItemId("book-1")
+    }
+}

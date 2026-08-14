@@ -145,6 +145,47 @@
     <string name="book_position">%1$s in · %2$s left · %3$s · %4$d%%</string>
     <string name="book_length">%1$s</string>
     <string name="book_finished_of">Finished · %1$s</string>
+    <!--
+      PRODUCT_SPEC LIB-004 / PLAY-003 / PLAY-004 — the book screen's overflow menu.
+
+      The two Phase 3 rows name their phase in the label, because they are shown disabled rather than
+      hidden: a control that looks live and does nothing is worse than one that admits it.
+    -->
+    <string name="book_more_actions">More actions for this book</string>
+    <string name="book_menu_history">History</string>
+    <string name="book_menu_finished">Mark as finished</string>
+    <string name="book_menu_unfinished">Mark as not finished</string>
+    <string name="book_menu_discard">Discard progress</string>
+    <string name="book_menu_local_files">Manage local files (Phase 3)</string>
+    <string name="book_menu_delete_local">Delete local item (Phase 3)</string>
+    <string name="book_menu_web_client">Go to web client</string>
+    <string name="book_menu_more_info">More info</string>
+
+    <!--
+      PRODUCT_SPEC 21 — the destructive action describes what it actually does.
+
+      All three claims must survive: that the position goes, that no audio is touched, and that the server is
+      told too. "Discard progress" alone could mean deleting the download or removing the book.
+    -->
+    <string name="book_discard_title">Discard your progress?</string>
+    <string name="book_discard_body">This sends the book back to the beginning, on this device and on your server. No audio files are deleted, nothing is removed from your library, and any download stays where it is. You can start listening again from anywhere.</string>
+    <string name="book_discard_confirm">Discard progress</string>
+    <string name="book_discard_cancel">Keep it</string>
+
+    <string name="book_info_title">Title</string>
+    <string name="book_info_subtitle">Subtitle</string>
+    <string name="book_info_publisher">Publisher</string>
+    <string name="book_info_published">Published</string>
+    <string name="book_info_language">Language</string>
+    <string name="book_info_isbn">ISBN</string>
+    <string name="book_info_asin">ASIN</string>
+    <string name="book_info_flags">Marked</string>
+    <string name="book_info_explicit">Explicit</string>
+    <string name="book_info_abridged">Abridged</string>
+    <string name="book_info_tracks">Audio files</string>
+    <string name="book_info_item_id">Item ID on your server</string>
+    <string name="book_info_description_none">Everything here comes from your own server\'s metadata. A blank field is one the server has not filled in.</string>
+
     <string name="book_finished">Finished</string>
     <string name="book_not_downloaded">Not downloaded</string>
     <string name="book_download_partial">Download incomplete</string>
@@ -314,7 +355,6 @@
     <string name="settings_tab_sleep">Sleep</string>
     <!-- PRODUCT_SPEC LIB-004 — the synopsis is three lines until asked. -->
     <!-- PRODUCT_SPEC PLAY-004 — the explicit finished flag, which the user can set and clear. -->
-    <string name="book_mark_finished">Finished</string>
     <string name="book_synopsis_more">Show more</string>
     <string name="book_synopsis_less">Show less</string>
     <string name="book_section_about">About this book</string>
@@ -554,6 +594,19 @@
     </plurals>
     <string name="settings_buffer_automatic_range">Whatever the player decides</string>
     <string name="settings_seconds">%1$d s</string>
+
+    <!--
+      PRODUCT_SPEC PLAY-004 / ADR-0013 — when a book counts as finished.
+
+      A reading rather than a control. The rule belongs to the library on the server, so this section reports
+      what each library uses and says where to change it. See ADR-0013 for why the app keeps no number of its
+      own and does not write the library's settings back.
+    -->
+    <string name="settings_section_finished">Finished</string>
+    <string name="settings_finished_hint">A book is marked finished when a little of it is left, so the last few seconds of credits do not leave it looking unread. How little is your server\'s decision, set per library — in the Audiobookshelf web interface, under that library\'s settings, as “mark as finished when time remaining is”. ShelfPlayer follows it rather than keeping a second opinion. Marking a book finished by hand always works either way, and starting a finished book from the beginning always un-finishes it.</string>
+    <string name="settings_finished_inherited">%1$s: finished with %2$d s left</string>
+    <string name="settings_finished_inherited_none">%1$s: your server has not said, so %2$d s is used until it does</string>
+    <string name="settings_finished_no_libraries">No libraries have been read from your server yet, so nothing here can be shown.</string>
 
     <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.

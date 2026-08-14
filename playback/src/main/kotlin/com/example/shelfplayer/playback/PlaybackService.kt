@@ -33,7 +33,6 @@ import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.model.resultOf
-import com.example.shelfplayer.domain.playback.FinishedThreshold
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
@@ -257,7 +256,6 @@ class PlaybackService : MediaLibraryService() {
             bookId = snapshot.bookId,
             position = snapshot.position,
             duration = snapshot.duration,
-            isFinished = FinishedThreshold.isFinished(snapshot.position, snapshot.duration),
         )
     }
 
@@ -275,7 +273,6 @@ class PlaybackService : MediaLibraryService() {
                 bookId = snapshot.bookId,
                 position = snapshot.position,
                 duration = snapshot.duration,
-                isFinished = FinishedThreshold.isFinished(snapshot.position, snapshot.duration),
             )
         }
     }

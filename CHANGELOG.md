@@ -21,6 +21,46 @@ against deliverables — and `docs/phase-2-closeout-plan.md` is what remains.
   offered only a long press on the player's icon, and a device run found the feature unusable as a result.
   The button follows Audiobookshelf's own client, and disables itself when the current second is already
   bookmarked rather than disappearing.
+- **The finished threshold comes from the server, and the app keeps none** (PLAY-004, ADR-0013): a book is
+  finished when little enough of it remains, and **the library on the server decides how little**. Until now
+  the threshold was a hard-coded thirty seconds inside `PlaybackService` and `LibraryDto` parsed the library's
+  own `markAsFinishedTimeRemaining` away entirely. Now the library's value *is* the rule for its books, and
+  thirty seconds applies only to a library whose settings have not been read yet. There is **no setting in the
+  app**: nothing on the server would match it — the user object has no settings field — so a per-device number
+  could only ever disagree with the web interface. The app also does not write the library's settings back:
+  that object has twelve fields, this app models one, and nothing captured says whether a partial PATCH merges
+  or replaces. Settings → Playback keeps a **Finished** section as a *reading* — every library, the number in
+  force for its books, and where to change it. This widens the deviation from PLAY-004, which asks for a
+  configurable value; ADR-0013 owns it.
+  `markAsFinishedPercentComplete` is deliberately **not** read: a percentage of a long book is a long time,
+  and 95% of a hundred-hour book leaves five hours to go. The decision moved from the media service into
+  `DefaultPlaybackRepository`, which already resolved the profile and the book and is therefore the one place
+  that can resolve the rule; `recordPosition` no longer takes an `isFinished` flag. Database version 14 adds
+  the column and **version 15** removes the percentage column 14 had briefly carried — 14 shipped in build
+  0.9.2 and editing it in place crashed that build's device at startup, so it is left exactly as it shipped.
+  Nullable, because a library that has set no rule is not a library asking for zero seconds. No new capture was needed: `settings` has been nested in `GET /api/libraries` since
+  the wave A capture.
+- **A three-dot menu on the book screen** (LIB-004, PLAY-003, PLAY-004): download, play, and then the
+  overflow, in the order a hand reaches them. Inside: **History** for this book, with the chapter each entry
+  falls in; **Mark as finished** — which replaces the checkbox that used to sit in the middle of the reading
+  surface, and whose label names the state it would put the book *into*; **Discard progress**, which asks
+  first and whose confirmation says what it does *not* do, because "discard progress" could as easily mean
+  deleting the download; **Go to web client**, which opens the item in the server's own web interface in a
+  browser rather than a WebView, because a WebView would ask for a sign-in inside an app that already holds a
+  token it must not hand over; and **More info**, the identifiers and file facts the screen has no room for.
+  *Manage local files* and *Delete local item* are shown disabled with **(Phase 3)** in the label — a control
+  that looks live and does nothing is worse than one that admits it. *Add to playlist* is absent rather than
+  disabled: nothing in any planned phase builds playlists, so a greyed row would promise something that is
+  not coming.
+- **The car shows the phone's shelves** (PLAY-001, LIB-002): a device run found Android Auto saying "no books"
+  about a full library, while a voice search found everything. The cause was not a filter — *Continue* was the
+  car's only tab, and a library with nothing in progress has nothing to put in it, which is every account on its
+  first day. The browse tree now reads the **same `ObserveHomeShelvesUseCase` the home screen reads**: Continue,
+  Recently added, Listen again and Discover, empty ones omitted exactly as the phone omits them, plus Chapters
+  and History which are about whatever is playing and so always offered. A library with nothing at all says so
+  in one unplayable row rather than showing a blank screen, because a blank browse screen in a car is
+  indistinguishable from a broken app. Media-button resume deliberately does **not** share that list: ROUTE-001
+  is "resume what was playing", so a book with no stored position must never be offered to a headset press.
 - **A book is one timeline window** (ADR-0016, PLAY-001/PLAY-003): Media3 reports the *current item's*
   position to every controller, so a playlist of files made the notification describe the file — "time left
   in this chapter" on a library with a file per chapter. A book is now one `MediaItem` whose extras carry

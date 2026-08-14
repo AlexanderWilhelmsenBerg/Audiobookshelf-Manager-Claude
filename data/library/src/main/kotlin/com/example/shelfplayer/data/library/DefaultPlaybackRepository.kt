@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.time.AppClock
+import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.entity.EntityKey
@@ -15,6 +16,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -42,6 +44,7 @@ class DefaultPlaybackRepository @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val profileDao: ProfileDao,
     private val progressDao: ProgressDao,
+    private val libraryDao: LibraryDao,
     private val gateway: AudiobookshelfGateway,
     private val clock: AppClock,
     private val logger: Logger,
@@ -97,9 +100,16 @@ class DefaultPlaybackRepository @Inject constructor(
      * true. Setting it here is therefore what stops an account sync — which runs on a timer and carries
      * the server's *older* position — from rewinding a book the user is listening to right now.
      *
+     * ### Whether the book is finished is worked out here
+     *
+     * ADR-0013's rule has two halves — the listener's setting and the book's library's own
+     * `markAsFinishedTimeRemaining` — and this is the only place that holds both. The caller is a media
+     * service reacting to a timer; it has no library and no settings, and when it did have a rule the rule
+     * was a hard-coded constant that ignored the server entirely.
+     *
      * ### Never un-finishing
      *
-     * [isFinished] is or-ed with what is already stored. A book the user marked finished, or that the
+     * The decision is or-ed with what is already stored. A book the user marked finished, or that the
      * server reported finished, stays finished even though replaying the last minute puts the position
      * back below the threshold. Un-finishing is a thing the user does deliberately; it is not something
      * the last few seconds of audio should be able to do on its own.
@@ -108,7 +118,6 @@ class DefaultPlaybackRepository @Inject constructor(
         bookId: LibraryItemId,
         position: Duration,
         duration: Duration,
-        isFinished: Boolean,
     ): AppResult<Unit> = withContext(ioDispatcher) {
         val profileId = profileRepository.activeProfileId()
             ?: return@withContext AppResult.Failure(AppError.Authentication())
@@ -117,6 +126,7 @@ class DefaultPlaybackRepository @Inject constructor(
         val bookKey = EntityKey.of(profile.serverId, bookId.value)
         val progressKey = EntityKey.scoped(profileId.value, bookKey)
         val stored = progressDao.findProgress(profileId.value, bookKey)
+        val isFinished = thresholdFor(bookKey).isFinished(position = position, duration = duration)
         val now = clock.now()
         progressDao.upsertProgress(
             listOf(
@@ -198,6 +208,20 @@ class DefaultPlaybackRepository @Inject constructor(
             )
             gateway.playback.setFinished(profileId, bookId, isFinished, at)
         }
+
+    /**
+     * ADR-0013 — the rule in force for one book: its own library's, read fresh on every write.
+     *
+     * Not cached. The value changes when the server's library settings change, and it is one nullable number
+     * behind an indexed key — a cache would buy nothing measurable and would hold a stale rule for exactly as
+     * long as nobody noticed.
+     *
+     * A book whose library predates database version 14, or that has no row at all, reads `null` and falls
+     * back to `FinishedThreshold.Default`. That is the honest answer rather than a guess: a library the app
+     * has never read settings for has not asked for anything.
+     */
+    private suspend fun thresholdFor(bookKey: String): FinishedThreshold =
+        FinishedThreshold(library = FinishedThreshold.libraryRule(libraryDao.finishedSecondsFor(bookKey)))
 
     private companion object {
         /**
