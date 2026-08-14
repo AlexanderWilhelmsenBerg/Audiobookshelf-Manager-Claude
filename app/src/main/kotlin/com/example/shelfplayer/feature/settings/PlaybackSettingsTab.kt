@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
@@ -50,6 +51,7 @@ internal fun LazyListScope.playbackTab(
     settings: PlaybackSettings,
     libraries: List<Library>,
     actions: PlaybackSettingsActions,
+    networkPolicy: NetworkPolicy = NetworkPolicy.Default,
 ) {
     val onSpeedChanged = actions.onSpeedChanged
     val onSkipsChanged = actions.onSkipsChanged
@@ -108,6 +110,7 @@ internal fun LazyListScope.playbackTab(
     items(BufferPreset.entries, settings.buffer, onBufferChanged)
 
     finishedSection(libraries)
+    networkSection(networkPolicy, actions.onNetworkPolicyChanged)
     carSection(settings.autoPlayOnCarConnect, actions.onAutoPlayChanged)
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) }
 }
@@ -170,6 +173,50 @@ private fun LazyListScope.finishedSection(libraries: List<Library>) {
  * The hint says what the car will show either way, because "ShelfPlayer appears in Android Auto" is a fact a
  * user cannot discover from the phone.
  */
+/**
+ * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — what each kind of traffic may spend cellular data on.
+ *
+ * ### Three switches, not three pickers
+ *
+ * The owner's words: *"you should be able to turn cellular on for downloads and smart download, but you
+ * can't turn off wifi."* Wi-Fi is therefore not on this screen at all — a category with no allowed network
+ * is not a preference anybody holds — and each row is the single question that remains.
+ *
+ * The hint says so out loud, because a screen with three switches and no mention of Wi-Fi invites the
+ * reading that Wi-Fi is off.
+ *
+ * ### Streaming is the one that is on
+ *
+ * A chapter costs a few megabytes; a book costs hundreds. Somebody pressing play on a train wants it to
+ * work, and somebody who taps *Download* on a train usually did not mean to spend a gigabyte. The defaults
+ * carry that difference so most people never open this screen.
+ */
+private fun LazyListScope.networkSection(policy: NetworkPolicy, onChanged: (NetworkPolicy) -> Unit) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_network)) }
+    item { Hint(text = stringResource(R.string.settings_network_hint)) }
+    item {
+        SwitchRow(
+            label = stringResource(R.string.settings_network_streaming),
+            checked = policy.streamingOnCellular,
+            onCheckedChange = { onChanged(policy.copy(streamingOnCellular = it)) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = stringResource(R.string.settings_network_downloads),
+            checked = policy.downloadsOnCellular,
+            onCheckedChange = { onChanged(policy.copy(downloadsOnCellular = it)) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = stringResource(R.string.settings_network_smart_downloads),
+            checked = policy.smartDownloadsOnCellular,
+            onCheckedChange = { onChanged(policy.copy(smartDownloadsOnCellular = it)) },
+        )
+    }
+}
+
 private fun LazyListScope.carSection(autoPlay: Boolean, onAutoPlayChanged: (Boolean) -> Unit) {
     item { SectionHeader(text = stringResource(R.string.settings_section_car)) }
     item { Hint(text = stringResource(R.string.settings_car_hint)) }
@@ -218,6 +265,8 @@ data class PlaybackSettingsActions(
     val onBufferChanged: (BufferPreset) -> Unit,
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. */
     val onAutoPlayChanged: (Boolean) -> Unit,
+    /** PRODUCT_SPEC DL-004 — which categories may spend cellular data. */
+    val onNetworkPolicyChanged: (NetworkPolicy) -> Unit = {},
 )
 
 /** PRODUCT_SPEC PLAY-009 — the four bands, with the requirement's own boundaries as their labels. */

@@ -144,6 +144,29 @@ message AppSettings {
   // those bytes as its own.
   reserved 27;
   reserved "finished_threshold_seconds";
+
+  // PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — what each kind of traffic may use.
+  //
+  // Wi-Fi is always allowed and is not a setting: turning it off would leave a category with no network at
+  // all, which is not a preference anybody has. So each category is one boolean — *may this also use
+  // cellular* — which is exactly the owner's words: "you should be able to turn cellular on for downloads
+  // and smart download, but you can't turn off wifi".
+  //
+  // The defaults differ, and the difference is the point. Streaming a chapter costs a few megabytes and
+  // somebody pressing play on a train wants it to work; downloading a book costs hundreds and is almost
+  // always something they meant to do at home. So:
+  //
+  //   streaming        — cellular ON by default
+  //   manual downloads — cellular OFF by default
+  //   smart downloads  — cellular OFF by default
+  //
+  // Stored as *disable* flags for the one that defaults to on, and *enable* flags for the two that default
+  // to off, so that a zero-valued proto — a device that has never opened this screen — reads back as the
+  // product default. That is proto3's only way to distinguish "unset" from "set to false", and getting it
+  // wrong would silently flip a default for every existing install.
+  bool streaming_cellular_disabled = 28;
+  bool downloads_cellular_enabled = 29;
+  bool smart_downloads_cellular_enabled = 30;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

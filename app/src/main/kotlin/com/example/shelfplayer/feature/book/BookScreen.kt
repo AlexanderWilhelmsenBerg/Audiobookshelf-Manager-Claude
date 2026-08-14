@@ -17,24 +17,25 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,11 +82,14 @@ fun BookRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val playback by playerViewModel.playback.collectAsStateWithLifecycle()
     val menu by viewModel.menu.collectAsStateWithLifecycle()
+    val message by viewModel.message.collectAsStateWithLifecycle()
     val context = LocalContext.current
     BookScreen(
         uiState = uiState,
         playback = playback,
         menu = menu,
+        message = message,
+        onMessageShown = viewModel::onMessageShown,
         actions = BookActions(
             onPlay = playerViewModel::onPlay,
             onTogglePlayPause = playerViewModel::onTogglePlayPause,
@@ -96,6 +100,8 @@ fun BookRoute(
             onOpenWebClient = { url ->
                 context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
             },
+            onDownloadClicked = viewModel::onDownloadClicked,
+            onRemoveDownload = viewModel::onRemoveDownload,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -111,12 +117,29 @@ fun BookScreen(
     actions: BookActions,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * PRODUCT_SPEC 21 — the one-line reason an action did not happen, or `null`.
+     *
+     * Every refusal on this screen is silent without it, and the download button has three that a user will
+     * actually meet: no space, a permission the server revoked, and a book whose files the catalogue does
+     * not know about. A control that appears to do nothing is the worst of the available outcomes.
+     */
+    message: String? = null,
+    onMessageShown: () -> Unit = {},
 ) {
     // Which of the menu's three surfaces is open. `rememberSaveable` so a rotation with the history open
     // comes back to the history rather than to the screen behind it.
     var openSurface by rememberSaveable { mutableStateOf(BookSurface.None) }
+    val snackbars = remember { SnackbarHostState() }
+    // Keyed by the message, so two different failures in a row show two snackbars rather than one.
+    LaunchedEffect(message) {
+        val text = message ?: return@LaunchedEffect
+        snackbars.showSnackbar(text)
+        onMessageShown()
+    }
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             TopAppBar(
                 title = {
@@ -166,8 +189,21 @@ fun BookScreen(
                     onOpenWebClient = actions.onOpenWebClient,
                     onOpenInfo = { openSurface = BookSurface.Info },
                     webUrl = menu.webUrl,
+                    isDownloaded = menu.download is DownloadButtonState.Downloaded,
+                    onRemoveDownload = { openSurface = BookSurface.RemoveDownloadConfirmation },
                 ),
-                canDownload = menu.canDownload,
+                download = DownloadControl(
+                    isPermitted = menu.canDownload,
+                    state = menu.download,
+                    onClick = {
+                        // The one state that asks first: removing is the only tap here that deletes files.
+                        if (menu.download is DownloadButtonState.Downloaded) {
+                            openSurface = BookSurface.RemoveDownloadConfirmation
+                        } else {
+                            actions.onDownloadClicked(menu.download)
+                        }
+                    },
+                ),
                 modifier = content,
             )
         }
@@ -200,11 +236,32 @@ fun BookScreen(
             },
             onDismiss = { openSurface = BookSurface.None },
         )
+
+        openSurface == BookSurface.RemoveDownloadConfirmation -> RemoveDownloadDialog(
+            onConfirm = {
+                openSurface = BookSurface.None
+                actions.onRemoveDownload()
+            },
+            onDismiss = { openSurface = BookSurface.None },
+        )
     }
 }
 
-/** Which of the overflow menu's surfaces is showing. Saveable, so it survives a rotation. */
-private enum class BookSurface { None, History, Info, DiscardConfirmation }
+/**
+ * PRODUCT_SPEC DL-001 — the download control, as one argument.
+ *
+ * Three values that are only ever used together, bundled for the reason detekt's parameter limit exists:
+ * `BookHeader` reached nine when the control arrived, and a composable with nine has an argument order
+ * somebody will eventually get wrong. It is also the honest grouping — whether the control exists, what it
+ * shows, and what a tap does are one decision.
+ *
+ * @property isPermitted DL-001 criterion 1. `false` hides the control entirely rather than disabling it.
+ */
+@Immutable
+internal data class DownloadControl(val isPermitted: Boolean, val state: DownloadButtonState, val onClick: () -> Unit)
+
+/** Which of the screen's dialogs or sheets is showing. Saveable, so it survives a rotation. */
+private enum class BookSurface { None, History, Info, DiscardConfirmation, RemoveDownloadConfirmation }
 
 /**
  * What this screen can do that only its callers can perform.
@@ -221,6 +278,10 @@ data class BookActions(
     val onFinishedChanged: (Boolean) -> Unit,
     val onDiscardProgress: () -> Unit,
     val onOpenWebClient: (String) -> Unit,
+    /** PRODUCT_SPEC DL-001 — a tap on the download control, carrying the state it was showing. */
+    val onDownloadClicked: (DownloadButtonState) -> Unit = {},
+    /** The confirmed half of *remove*, which is the only tap on this screen that deletes files. */
+    val onRemoveDownload: () -> Unit = {},
 )
 
 @Composable
@@ -229,7 +290,7 @@ private fun BookDetails(
     playback: PlaybackUiState,
     actions: BookActions,
     menuActions: BookMenuActions,
-    canDownload: Boolean,
+    download: DownloadControl,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -247,7 +308,7 @@ private fun BookDetails(
             onPlay = actions.onPlay,
             onTogglePlayPause = actions.onTogglePlayPause,
             actions = menuActions,
-            canDownload = canDownload,
+            download = download,
         )
 
         // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
@@ -388,7 +449,7 @@ private fun BookHeader(
     onPlay: (LibraryItemId) -> Unit,
     onTogglePlayPause: () -> Unit,
     actions: BookMenuActions,
-    canDownload: Boolean,
+    download: DownloadControl,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -418,16 +479,9 @@ private fun BookHeader(
                 // PRODUCT_SPEC DL-001 criterion 1 — "visible only when the server grants download
                 // permission". Absent rather than disabled for an account without the grant: a greyed
                 // control is a promise that pressing it might one day work, and for this account it will
-                // not, whatever this app ships. Still disabled where the grant exists, because Phase 3 has
-                // not built the download itself yet, and its description names the phase rather than
-                // implying a button that silently does nothing (PRODUCT_SPEC 21).
-                if (canDownload) {
-                    FilledTonalIconButton(onClick = {}, enabled = false) {
-                        Icon(
-                            imageVector = Icons.Filled.Download,
-                            contentDescription = stringResource(R.string.book_download_later),
-                        )
-                    }
+                // not, whatever this app ships.
+                if (download.isPermitted) {
+                    DownloadButton(state = download.state, onClick = download.onClick)
                 }
                 PlayIconButton(
                     book = book,

@@ -17,12 +17,16 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.download.OfflineBook
+import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -84,6 +88,11 @@ class DefaultPlaybackRepositoryTest {
             progressDao = database.progressDao(),
             libraryDao = database.libraryDao(),
             gateway = gateway,
+            offlineSessions = OfflineSessionBuilder(
+                libraryDao = database.libraryDao(),
+                progressDao = database.progressDao(),
+                downloads = NoDownloads,
+            ),
             clock = TestAppClock(),
             logger = logger,
             ioDispatcher = dispatcher,
@@ -237,6 +246,11 @@ class DefaultPlaybackRepositoryTest {
                 clock = TestAppClock(),
                 logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default)),
                 ioDispatcher = UnconfinedTestDispatcher(),
+            ),
+            offlineSessions = OfflineSessionBuilder(
+                libraryDao = database.libraryDao(),
+                progressDao = database.progressDao(),
+                downloads = NoDownloads,
             ),
             clock = TestAppClock(),
             logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default)),
@@ -438,6 +452,60 @@ class DefaultPlaybackRepositoryTest {
         override suspend fun activeProfileId(): ProfileId? = activeProfileId
 
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+    }
+
+    /**
+     * PRODUCT_SPEC DL-001 — a device with nothing downloaded, which is what every case in this file assumes.
+     *
+     * The offline path has its own tests. Here the point is that a repository with no local copy behaves
+     * exactly as it did before downloads existed, and a stub that answers `null` is what asserts that.
+     */
+    private object NoDownloads : DownloadRepository {
+        override fun observeAll(): Flow<List<OfflineBook>> = flowOf(emptyList())
+        override fun observe(serverId: ServerId, itemId: LibraryItemId): Flow<OfflineBook?> = flowOf(null)
+        override fun observeCompletedFor(profileId: ProfileId): Flow<Set<LibraryItemId>> = flowOf(emptySet())
+        override fun observeTotalBytes(): Flow<Long> = flowOf(0)
+        override suspend fun freeBytes(): Long = Long.MAX_VALUE
+        override suspend fun request(
+            serverId: ServerId,
+            itemId: LibraryItemId,
+            profileId: ProfileId,
+            files: List<OfflineFile>,
+        ): AppResult<OfflineBook> = unsupported()
+
+        override suspend fun updateFile(
+            serverId: ServerId,
+            itemId: LibraryItemId,
+            file: OfflineFile,
+        ): AppResult<Unit> = unsupported()
+
+        override suspend fun markComplete(
+            serverId: ServerId,
+            itemId: LibraryItemId,
+            coverUri: String?,
+        ): AppResult<OfflineBook> = unsupported()
+
+        override suspend fun markFailed(serverId: ServerId, itemId: LibraryItemId, summary: String): AppResult<Unit> =
+            unsupported()
+
+        override suspend fun setPinned(
+            serverId: ServerId,
+            itemId: LibraryItemId,
+            profileId: ProfileId,
+            isPinned: Boolean,
+        ): AppResult<Unit> = unsupported()
+
+        override suspend fun release(
+            serverId: ServerId,
+            itemId: LibraryItemId,
+            profileId: ProfileId,
+        ): AppResult<Boolean> = unsupported()
+
+        override suspend fun unreferenced(): AppResult<List<OfflineBook>> = unsupported()
+        override suspend fun forget(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = unsupported()
+
+        private fun <T> unsupported(): AppResult<T> =
+            AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this test"))
     }
 
     private companion object {

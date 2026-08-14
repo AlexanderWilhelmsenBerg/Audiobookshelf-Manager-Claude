@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.StorageDiagnostics
+import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
@@ -102,6 +103,9 @@ class SettingsViewModel @Inject constructor(
             sleepTimer.observeRecentSessions(),
             sessionSync.observeDiagnostics(),
             playbackSettings.observeSettings(),
+            // PRODUCT_SPEC DL-004 — the network policy rides with the playback settings because it comes
+            // from the same store and is rendered on the same tab.
+            playbackSettings.observeNetworkPolicy(),
             ::Playback,
         ),
     ) { libraries, stored, server, storage, playback ->
@@ -117,6 +121,7 @@ class SettingsViewModel @Inject constructor(
             sleepTimerHistory = playback.timerHistory,
             sessionSync = playback.sessionSync,
             playback = playback.controls,
+            networkPolicy = playback.network,
             // Read per emission rather than observed: notification state has no change callback, and this
             // flow already re-runs whenever anything it depends on moves — which on the About tab is often
             // enough to be current while somebody is looking at it.
@@ -142,6 +147,18 @@ class SettingsViewModel @Inject constructor(
      */
     fun onDefaultLibraryChanged(libraryId: LibraryId?) {
         viewModelScope.launch { preferences.setDefaultLibrary(libraryId) }
+    }
+
+    /**
+     * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — which categories may spend cellular data.
+     *
+     * Takes effect on the *next* enqueue rather than retroactively. A download already waiting for Wi-Fi
+     * keeps its constraint, because WorkManager fixes constraints at enqueue time — so a user who turns
+     * cellular on to unstick a waiting download has to tap the button again. That is worth knowing and is
+     * not worth cancelling and re-enqueueing every queued job to avoid.
+     */
+    fun onNetworkPolicyChanged(policy: NetworkPolicy) {
+        viewModelScope.launch { playbackSettings.setNetworkPolicy(policy) }
     }
 
     /** PRODUCT_SPEC PLAY-008 — "requires explicit opt-in". This toggle is that opt-in. */
@@ -197,6 +214,7 @@ class SettingsViewModel @Inject constructor(
         val timerHistory: List<SleepTimerSession>,
         val sessionSync: SessionSyncDiagnostics,
         val controls: PlaybackSettings,
+        val network: NetworkPolicy,
     )
 
     private companion object {
@@ -230,6 +248,8 @@ data class SettingsUiState(
     val car: CarReadiness = CarReadiness(),
     /** PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — speed, skips, auto-rewind and the buffer. */
     val playback: PlaybackSettings = PlaybackSettings.Default,
+    /** PRODUCT_SPEC DL-004 — which categories may spend cellular data. */
+    val networkPolicy: NetworkPolicy = NetworkPolicy.Default,
     val versionName: String = "",
     val isLoaded: Boolean = false,
 )

@@ -10,6 +10,18 @@
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+      PRODUCT_SPEC DL-001 — "download continues in background with a progress notification".
+
+      A transfer that stopped when the user left the app would make the feature useless: a book is
+      downloaded precisely so somebody can put the phone in a pocket and walk away. `dataSync` is the type
+      Android requires a network transfer to declare from API 34, and `POST_NOTIFICATIONS` is what the
+      progress notification needs from API 33 — without it the download still runs and is simply invisible,
+      which is why the app does not treat a refusal as an error.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
       PRODUCT_SPEC 11.1 — two Android Auto lint checks are suppressed here, and both are false positives
@@ -71,6 +83,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!--
+          PRODUCT_SPEC DL-001 — WorkManager's own foreground service, told what kind of work it hosts.
+
+          `tools:node="merge"` rather than a fresh declaration: the service belongs to `androidx.work`,
+          which already declares it. From API 34 a foreground service must state its type or `setForeground`
+          throws — on the newest devices only, which is exactly the failure that reaches a user before it
+          reaches a test.
+        -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
         <!--
           PRODUCT_SPEC SYNC-003 — the app provides WorkManager's configuration itself, so that workers
           can be constructed with injected dependencies. Leaving the default initializer in place would

@@ -1,8 +1,10 @@
 package com.example.shelfplayer.data.downloads.di
 
 import com.example.shelfplayer.data.downloads.AndroidMediaContainerVerifier
+import com.example.shelfplayer.data.downloads.BookDownloader
 import com.example.shelfplayer.data.downloads.DefaultDownloadRepository
 import com.example.shelfplayer.data.downloads.MediaContainerVerifier
+import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import dagger.Binds
 import dagger.Module
@@ -28,4 +30,9 @@ interface DownloadsDataModule {
     @Binds
     @Singleton
     fun bindsMediaContainerVerifier(impl: AndroidMediaContainerVerifier): MediaContainerVerifier
+
+    /** PRODUCT_SPEC DL-003 — the filesystem half, kept apart from the manifest half. */
+    @Binds
+    @Singleton
+    fun bindsOfflineFiles(impl: BookDownloader): OfflineFiles
 }

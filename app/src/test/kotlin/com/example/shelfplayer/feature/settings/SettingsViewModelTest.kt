@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
@@ -367,8 +368,16 @@ class SettingsViewModelTest {
 /** PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls, as the Playback tab receives them. */
 internal class FakePlaybackSettings : PlaybackSettingsRepository {
     private val controls = MutableStateFlow(PlaybackSettings.Default)
+    private val network = MutableStateFlow(NetworkPolicy.Default)
 
     override fun observeSettings(): Flow<PlaybackSettings> = controls
+
+    override fun observeNetworkPolicy(): Flow<NetworkPolicy> = network
+
+    override suspend fun setNetworkPolicy(policy: NetworkPolicy): AppResult<Unit> {
+        network.value = policy
+        return AppResult.Success(Unit)
+    }
 
     override suspend fun setDefaultSpeed(speed: PlaybackSpeed): AppResult<Unit> {
         controls.value = controls.value.copy(defaultSpeed = speed)

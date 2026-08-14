@@ -323,6 +323,18 @@
 
     <!-- SET-002 (Playback) — the sleep timer's settings. -->
     <!-- PRODUCT_SPEC ROUTE-001 / ROUTE-002 — the car section on the Playback tab. -->
+    <!--
+      PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — what each kind of traffic may spend cellular data on.
+
+      Wi-Fi is deliberately absent: it is always allowed, and a category with no permitted network is not a
+      preference anybody holds. The hint says so, because three switches with no mention of Wi-Fi invites
+      the reading that Wi-Fi is what they control.
+    -->
+    <string name="settings_section_network">Mobile data</string>
+    <string name="settings_network_hint">Wi-Fi is always used when it is available. These decide what may also use mobile data. Your phone decides what counts as mobile data, so a Wi-Fi network you marked as metered is treated the same way.</string>
+    <string name="settings_network_streaming">Stream over mobile data</string>
+    <string name="settings_network_downloads">Download over mobile data</string>
+    <string name="settings_network_smart_downloads">Download next book over mobile data</string>
     <string name="settings_section_car">In the car</string>
     <string name="settings_car_hint">ShelfPlayer appears in Android Auto with three tabs: Continue, Chapters and History. It always opens on the book you were last listening to.</string>
     <string name="settings_car_autoplay">Start playing when a car connects</string>
@@ -358,7 +370,25 @@
     <string name="book_synopsis_more">Show more</string>
     <string name="book_synopsis_less">Show less</string>
     <string name="book_section_about">About this book</string>
-    <string name="book_download_later">Download — arrives in a later phase</string>
+    <!--
+      PRODUCT_SPEC DL-001 — one control, four states. The label is the content description, and it names
+      what a tap *does* rather than what the book is: "Cancel" and "Remove" are the difference between
+      keeping and losing a partial download, and for somebody using TalkBack the label is the only clue.
+    -->
+    <string name="book_download">Download</string>
+    <string name="book_download_cancel">Cancel the download</string>
+    <string name="book_download_remove">Remove the download</string>
+    <string name="book_download_retry">Retry the download</string>
+    <string name="book_download_remove_title">Remove this download?</string>
+    <string name="book_download_remove_body">The audio files come off this device and the space is freed. Nothing is deleted on your server, your position is kept, and you can download it again whenever you like. If another profile on this phone downloaded the same book, their copy stays.</string>
+    <string name="book_download_remove_confirm">Remove</string>
+    <string name="book_download_remove_cancel">Keep it</string>
+    <!--
+      PRODUCT_SPEC 14.5 — a notification is read on a lock screen and by a car. It names no book.
+    -->
+    <string name="download_notification_channel">Downloads</string>
+    <string name="download_notification_title">Downloading a book</string>
+    <string name="download_notification_progress">%1$d%%</string>
     <string name="navigate_back">Back</string>
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->

@@ -31,4 +31,16 @@ interface NetworkMonitor {
      * latest truth, not replay a queue of transitions it can no longer act on.
      */
     val isOnline: Flow<Boolean>
+
+    /**
+     * PRODUCT_SPEC DL-004 — "Android network metering state is the source of truth".
+     *
+     * `true` for Wi-Fi and Ethernet, `false` for cellular and for a Wi-Fi network the user has marked as
+     * metered — which is the case a naive "is it Wi-Fi" check gets wrong, and the case a tethered phone
+     * produces every time.
+     *
+     * `false` while offline. There is no third value, because every caller's question is *may I spend
+     * bytes*, and the answer with no connection is no either way.
+     */
+    val isUnmetered: Flow<Boolean>
 }

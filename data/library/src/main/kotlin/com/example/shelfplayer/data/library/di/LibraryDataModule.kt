@@ -1,5 +1,6 @@
 package com.example.shelfplayer.data.library.di
 
+import com.example.shelfplayer.data.library.DefaultBookAssetSource
 import com.example.shelfplayer.data.library.DefaultBookmarkRepository
 import com.example.shelfplayer.data.library.DefaultLibraryRepository
 import com.example.shelfplayer.data.library.DefaultPlaybackHistoryRepository
@@ -7,6 +8,7 @@ import com.example.shelfplayer.data.library.DefaultPlaybackRepository
 import com.example.shelfplayer.data.library.DefaultProfileRepository
 import com.example.shelfplayer.data.library.DefaultRealtimeUpdates
 import com.example.shelfplayer.data.library.DefaultSessionSyncRepository
+import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -27,6 +29,16 @@ interface LibraryDataModule {
     @Binds
     @Singleton
     fun bindsRealtimeUpdates(impl: DefaultRealtimeUpdates): RealtimeUpdates
+
+    /**
+     * PRODUCT_SPEC DL-001 — the catalogue's answer to "what is this book made of".
+     *
+     * Bound here rather than in `:data:downloads` because it reads the *library's* tracks, and the two
+     * modules deliberately do not import each other.
+     */
+    @Binds
+    @Singleton
+    fun bindsBookAssetSource(impl: DefaultBookAssetSource): BookAssetSource
 
     @Binds
     @Singleton

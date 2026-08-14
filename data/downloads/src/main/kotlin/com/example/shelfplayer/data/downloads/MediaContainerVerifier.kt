@@ -31,7 +31,7 @@ import javax.inject.Singleton
  * a duration*. It is not a claim that every frame decodes. Nothing available to a client can make the
  * stronger claim — the server sends an `ETag`, which is a validator rather than a checksum (ADR-0018).
  */
-interface MediaContainerVerifier {
+fun interface MediaContainerVerifier {
     /** Whether [file] is something the platform can open as media. */
     fun isReadable(file: File): Boolean
 }
