@@ -50,6 +50,13 @@ data class FixtureLibrary(
     @SerialName("name") val name: String,
     @SerialName("kind") val kind: String,
     @SerialName("displayOrder") val displayOrder: Int = 0,
+    /**
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — the library's own finished rule, in the *server's* unit.
+     *
+     * Seconds, named as the wire names it, so the fixture is readable beside a real `GET /api/libraries`
+     * response. Optional: a fixture library that omits it is a library with no rule, which is what most are.
+     */
+    @SerialName("markAsFinishedTimeRemaining") val markAsFinishedTimeRemaining: Long? = null,
 )
 
 @Serializable

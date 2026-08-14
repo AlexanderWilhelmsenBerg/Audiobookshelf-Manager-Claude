@@ -22,8 +22,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
@@ -44,7 +46,11 @@ import com.example.shelfplayer.core.model.playback.SkipIntervals
  * The player's speed sheet has the slider, because that is where a fine adjustment is actually made against
  * audio you can hear.
  */
-internal fun LazyListScope.playbackTab(settings: PlaybackSettings, actions: PlaybackSettingsActions) {
+internal fun LazyListScope.playbackTab(
+    settings: PlaybackSettings,
+    libraries: List<Library>,
+    actions: PlaybackSettingsActions,
+) {
     val onSpeedChanged = actions.onSpeedChanged
     val onSkipsChanged = actions.onSkipsChanged
     val onAutoRewindChanged = actions.onAutoRewindChanged
@@ -101,8 +107,60 @@ internal fun LazyListScope.playbackTab(settings: PlaybackSettings, actions: Play
     item { Hint(text = stringResource(R.string.settings_buffer_hint)) }
     items(BufferPreset.entries, settings.buffer, onBufferChanged)
 
+    finishedSection(libraries)
     carSection(settings.autoPlayOnCarConnect, actions.onAutoPlayChanged)
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-004 / ADR-0013 — when a book counts as finished. **A reading, not a control.**
+ *
+ * ### Why there is nothing to press here
+ *
+ * The rule is the library's `markAsFinishedTimeRemaining`, read from the server, and this app keeps no
+ * competing number. So this section reports what each library actually uses and says where to change it —
+ * the Audiobookshelf web interface, per library.
+ *
+ * The owner asked for the app's value and the server's to match. There is nothing on the server to
+ * synchronise a per-listener value *with*: the user object has no settings field at all, and the only
+ * writable copy is the library's own configuration, which belongs to the administrator and applies to every
+ * account that can see the library. So the two can only match by the app following the server, which is what
+ * this is. ADR-0013 records the reasoning, including why the app does not write the library's settings back.
+ *
+ * ### Why every library is listed, including the ones with no rule
+ *
+ * Because the alternative is a screen that cannot explain the app's own behaviour. A listener who watches a
+ * book finish with a minute left needs to be able to find out that their library asked for a minute. An
+ * earlier build listed only libraries that differed from a chosen value, which showed nothing on exactly the
+ * server where the explanation was most needed.
+ */
+private fun LazyListScope.finishedSection(libraries: List<Library>) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_finished)) }
+    item { Hint(text = stringResource(R.string.settings_finished_hint)) }
+    if (libraries.isEmpty()) {
+        item { Hint(text = stringResource(R.string.settings_finished_no_libraries)) }
+        return
+    }
+    libraries.forEach { library ->
+        item(key = "finished-library-${library.id.value}") {
+            val inherited = library.finishedWhenRemaining
+            Hint(
+                text = if (inherited == null) {
+                    stringResource(
+                        R.string.settings_finished_inherited_none,
+                        library.name,
+                        FinishedThreshold.Default.inWholeSeconds.toInt(),
+                    )
+                } else {
+                    stringResource(
+                        R.string.settings_finished_inherited,
+                        library.name,
+                        inherited.inWholeSeconds.toInt(),
+                    )
+                },
+            )
+        }
+    }
 }
 
 /**

@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import java.time.Instant
 import kotlin.math.roundToLong
 import kotlin.time.Duration
@@ -50,6 +51,10 @@ internal object LibraryMapper {
                 bookCount = 0,
                 remoteUpdatedAt = library.lastUpdate?.let(::instantOrNull),
                 lastFetchedAt = fetchedAt,
+                // PRODUCT_SPEC PLAY-004 / ADR-0013 — the library's own finished rule, which the app
+                // inherits rather than argues with. Absent settings mean no rule, not zero seconds.
+                finishedWhenRemaining =
+                FinishedThreshold.libraryRule(library.settings?.markAsFinishedTimeRemaining),
             )
         }
         return AppResult.Success(libraries)

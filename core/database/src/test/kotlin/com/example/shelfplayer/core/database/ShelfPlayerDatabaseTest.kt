@@ -201,6 +201,25 @@ class ShelfPlayerDatabaseTest {
         assertEquals("server-b", EntityKey.serverIdOf(second))
     }
 
+    /**
+     * One library, with no finished rule of its own — which is what most libraries have (PLAY-004).
+     *
+     * The null is spelled out rather than defaulted because `LibraryEntity` deliberately has no defaults: a
+     * new column should be a compile error at every writer instead of a silent zero.
+     */
+    private fun library() = LibraryEntity(
+        libraryKey = LIBRARY_KEY,
+        serverId = SERVER_ID,
+        remoteId = "lib-1",
+        name = "Fiction",
+        kind = "Book",
+        displayOrder = 0,
+        remoteUpdatedAt = null,
+        lastFetchedAt = 0,
+        isDeleted = false,
+        finishedTimeRemainingSeconds = null,
+    )
+
     private suspend fun seed() {
         database.profileDao().upsertServer(
             ServerEntity(
@@ -216,21 +235,7 @@ class ShelfPlayerDatabaseTest {
             ),
         )
         database.profileDao().upsertProfile(profileEntity(PROFILE_ID))
-        database.libraryWriteDao().upsertLibraries(
-            listOf(
-                LibraryEntity(
-                    libraryKey = LIBRARY_KEY,
-                    serverId = SERVER_ID,
-                    remoteId = "lib-1",
-                    name = "Fiction",
-                    kind = "Book",
-                    displayOrder = 0,
-                    remoteUpdatedAt = null,
-                    lastFetchedAt = 0,
-                    isDeleted = false,
-                ),
-            ),
-        )
+        database.libraryWriteDao().upsertLibraries(listOf(library()))
         database.libraryWriteDao().upsertAuthors(
             listOf(
                 AuthorEntity(

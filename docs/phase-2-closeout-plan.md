@@ -21,7 +21,7 @@ decision, recorded below.
 | # | Branch | Requirement | Size | Why here |
 | --- | --- | --- | --- | --- |
 | ~~1~~ | `claude/phase-2-bookmarks` | 11.1 | L | ✅ **done** — a disabled button since wave 2; the capture that unblocked it is in |
-| 2 | `claude/phase-2-finished-threshold` | PLAY-004 | M | Two clauses of one requirement, and one of them is a live defect |
+| ~~2~~ | `claude/phase-2-finished-threshold` | PLAY-004 | M | ✅ **done** — both clauses, and the rule moved out of the player |
 | 3 | `claude/phase-2-duck-or-pause` | PLAY-002 | S | One setting, one branch in the player |
 | 4 | `claude/phase-2-buffer-diagnostics` | PLAY-006 | S | Two readings the buffer work already half-collects |
 | 5 | `claude/phase-2-route-002` | ROUTE-002 | L | Eleven criteria about device identity |
@@ -123,6 +123,24 @@ it wrong, because it no longer decides.
 demonstrating the un-finish round trip in a fixture, which the threshold work does not depend on — the
 threshold is unit-tested against synthetic durations. It stays outstanding, noted in
 `docs/api-compatibility.md`.
+
+### Done, 2026-08-14 — and three things the scope above did not say
+
+Merged as build 0.9.2. Everything above shipped. What the plan did not anticipate:
+
+- **No percentage, and the library's value is inherited rather than merged.** Both on the owner's
+  instruction, from the device run on the same build: *"I do not want a percentage… for a 100 hour book it
+  would mark it finished with 5 hours left"*, and *"instead of fighting the server, have them merge — inherit
+  from the web interface."* So `markAsFinishedPercentComplete` is not read at all, and the `max` is gone: a
+  library's `markAsFinishedTimeRemaining` **is** the rule for its books, and the setting is the fallback for a
+  library that sets none. ADR-0013 carries both reversals and why the `max` was the weaker idea.
+- **`FinishedThreshold` moved from `:domain` to `:core:model`.** Its range and default now have three
+  readers — the settings model, the settings store's clamp, and the chips — and `:core:datastore` cannot see
+  `:domain`. Two copies of one range is one range and one bug.
+- **The Playback tab names any library that overrules the chosen value.** A `max` the user cannot see is a
+  setting that lies: choose 30 seconds against a library asking for 90 and the tab says so, with both
+  numbers. That is also the one place in the app with a test tag, because three chip rows on that tab offer
+  the same eight labels.
 
 ---
 

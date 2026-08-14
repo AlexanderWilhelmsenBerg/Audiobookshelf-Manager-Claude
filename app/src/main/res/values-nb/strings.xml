@@ -443,6 +443,13 @@
     <string name="settings_buffer_automatic_range">Det spilleren bestemmer</string>
     <string name="settings_seconds">%1$d s</string>
 
+    <!-- PRODUCT_SPEC PLAY-004 / ADR-0013 — når en bok regnes som ferdig. En visning, ikke en innstilling. -->
+    <string name="settings_section_finished">Ferdig</string>
+    <string name="settings_finished_hint">En bok merkes som ferdig når det er litt igjen av den, slik at de siste sekundene med rulletekst ikke etterlater den som ulest. Hvor lite er serveren din som bestemmer, per bibliotek — i Audiobookshelf-nettgrensesnittet, under innstillingene til biblioteket, som «mark as finished when time remaining is». ShelfPlayer følger den framfor å ha en egen mening. Å merke en bok som ferdig selv virker uansett, og å starte en ferdig bok fra begynnelsen gjør den alltid ulest igjen.</string>
+    <string name="settings_finished_inherited">%1$s: ferdig når %2$d s er igjen</string>
+    <string name="settings_finished_inherited_none">%1$s: serveren din har ikke sagt noe, så %2$d s brukes inntil den gjør det</string>
+    <string name="settings_finished_no_libraries">Ingen bibliotek er lest fra serveren din ennå, så ingenting kan vises her.</string>
+
     <plurals name="home_library_books">
         <item quantity="one">%1$d bok</item>
         <item quantity="other">%1$d bøker</item>
