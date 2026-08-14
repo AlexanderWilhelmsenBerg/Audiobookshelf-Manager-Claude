@@ -47,6 +47,19 @@ interface DownloadRepository {
     fun observeTotalBytes(): Flow<Long>
 
     /**
+     * PRODUCT_SPEC DL-001 — how much room is left where downloads go.
+     *
+     * Here rather than on a storage seam of its own because "where downloads go" is this subsystem's
+     * decision — it moves when the user picks a folder or an SD card — and a caller asking about free space
+     * means *free space for a download*, not for the device.
+     *
+     * Usable space, not free space: the difference is the blocks reserved for root, which this process
+     * cannot have, and on a nearly-full device that difference is exactly the margin that decides whether a
+     * transfer dies halfway.
+     */
+    suspend fun freeBytes(): Long
+
+    /**
      * Records that [profileId] wants this book, creating the manifest if this device has no copy yet.
      *
      * Idempotent in the way that matters: a second request from the same profile does not reset the

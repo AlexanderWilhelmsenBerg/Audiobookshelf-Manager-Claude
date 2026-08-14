@@ -62,17 +62,38 @@ class BookOverflowMenuScreenTest {
     }
 
     /**
-     * PRODUCT_SPEC 21 — the two Phase 3 rows are visible, disabled, and name their phase.
+     * PRODUCT_SPEC 21 — the row that is still a placeholder says which phase it arrives in.
      *
-     * Shown rather than hidden so the menu does not look complete when it is not; disabled rather than live so
-     * nothing looks pressable that does nothing.
+     * Shown rather than hidden so the menu does not look complete when it is not; disabled rather than live
+     * so nothing looks pressable that does nothing.
      */
     @Test
-    fun `the phase three rows are disabled`() {
+    fun `manage local files still names its phase`() {
         render()
         openMenu()
 
         composeRule.onNodeWithText("Manage local files (Phase 3)").assertIsNotEnabled()
+    }
+
+    /**
+     * PRODUCT_SPEC DL-003 — *Delete local item* is live, and only when there is something to delete.
+     *
+     * The owner asked for removal in the menu *and* the download button, and this is one action reached two
+     * ways rather than two that could disagree: both open the same confirmation.
+     */
+    @Test
+    fun `delete local item is live only for a downloaded book`() {
+        render(download = DownloadButtonState.Downloaded)
+        openMenu()
+
+        composeRule.onNodeWithText("Delete local item (Phase 3)").assertIsEnabled()
+    }
+
+    @Test
+    fun `delete local item has nothing to delete on a book that is not downloaded`() {
+        render(download = DownloadButtonState.NotDownloaded)
+        openMenu()
+
         composeRule.onNodeWithText("Delete local item (Phase 3)").assertIsNotEnabled()
     }
 
@@ -207,7 +228,7 @@ class BookOverflowMenuScreenTest {
     fun `an account that may download sees the button`() {
         render(canDownload = true)
 
-        composeRule.onNodeWithContentDescription(DOWNLOAD).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Download").assertIsDisplayed()
     }
 
     /** Absent, not merely disabled: for this account it will never work, whatever this app ships. */
@@ -215,7 +236,76 @@ class BookOverflowMenuScreenTest {
     fun `an account that may not download does not see the button`() {
         render(canDownload = false)
 
-        composeRule.onNodeWithContentDescription(DOWNLOAD).assertDoesNotExist()
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).assertDoesNotExist()
+    }
+
+    /**
+     * PRODUCT_SPEC DL-001 — the control cycles, and each state's label names what a tap *does*.
+     *
+     * The labels are the assertion rather than the icons, because the label is what a TalkBack user hears
+     * and it is the only thing that distinguishes *cancel* — which keeps the partial download — from
+     * *remove*, which deletes it. An icon swap with a stale description would be silently wrong for exactly
+     * the people who cannot see the icon.
+     */
+    @Test
+    fun `a download in flight offers to cancel it`() {
+        render(download = DownloadButtonState.Downloading(progress = 0.4f))
+
+        composeRule.onNodeWithContentDescription("Cancel the download").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Download").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a downloaded book offers to remove it`() {
+        render(download = DownloadButtonState.Downloaded)
+
+        composeRule.onNodeWithContentDescription("Remove the download").assertIsDisplayed()
+    }
+
+    /** A stopped download says so, rather than looking like one that was never started. */
+    @Test
+    fun `a failed download offers a retry`() {
+        render(download = DownloadButtonState.Failed)
+
+        composeRule.onNodeWithContentDescription("Retry the download").assertIsDisplayed()
+    }
+
+    /**
+     * PRODUCT_SPEC 21 — removing is the only tap on this screen that deletes audio, so it asks first.
+     *
+     * The body's four clauses are asserted in full because each one answers a different fear: the files go,
+     * the *server* is untouched, the position survives, and another profile's copy on the same device is not
+     * collateral damage (DL-003 criterion 5).
+     */
+    @Test
+    fun `removing a download asks first, and says what it does`() {
+        var removed = 0
+        render(download = DownloadButtonState.Downloaded, onRemoveDownload = { removed++ })
+
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
+
+        composeRule.onNodeWithText("Remove this download?").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "The audio files come off this device and the space is freed. Nothing is deleted on your " +
+                "server, your position is kept, and you can download it again whenever you like. If another " +
+                "profile on this phone downloaded the same book, their copy stays.",
+        ).assertIsDisplayed()
+        assertEquals(0, removed, "nothing happens until it is confirmed")
+
+        composeRule.onNodeWithText("Remove").performClick()
+        assertEquals(1, removed)
+    }
+
+    /** Every other state acts immediately: only removal is destructive, and only removal asks. */
+    @Test
+    fun `starting a download does not ask`() {
+        val taps = mutableListOf<DownloadButtonState>()
+        render(download = DownloadButtonState.NotDownloaded, onDownloadClicked = { taps += it })
+
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
+
+        assertEquals(listOf<DownloadButtonState>(DownloadButtonState.NotDownloaded), taps)
+        composeRule.onNodeWithText("Remove this download?").assertDoesNotExist()
     }
 
     private fun openMenu() = composeRule.onNodeWithTag(BOOK_OVERFLOW_BUTTON).performClick()
@@ -224,9 +314,12 @@ class BookOverflowMenuScreenTest {
         book: Book = book(progress(position = 40.minutes, isFinished = false)),
         webUrl: String? = "https://books.example/item/book-1",
         canDownload: Boolean = true,
+        download: DownloadButtonState = DownloadButtonState.NotDownloaded,
         onFinishedChanged: (Boolean) -> Unit = {},
         onDiscardProgress: () -> Unit = {},
         onOpenWebClient: (String) -> Unit = {},
+        onDownloadClicked: (DownloadButtonState) -> Unit = {},
+        onRemoveDownload: () -> Unit = {},
     ) {
         composeRule.setContent {
             BookScreen(
@@ -242,13 +335,15 @@ class BookOverflowMenuScreenTest {
                     position = Duration.ZERO,
                     duration = Duration.ZERO,
                 ),
-                menu = BookMenuState(webUrl = webUrl, canDownload = canDownload),
+                menu = BookMenuState(webUrl = webUrl, canDownload = canDownload, download = download),
                 actions = BookActions(
                     onPlay = {},
                     onTogglePlayPause = {},
                     onFinishedChanged = onFinishedChanged,
                     onDiscardProgress = onDiscardProgress,
                     onOpenWebClient = onOpenWebClient,
+                    onDownloadClicked = onDownloadClicked,
+                    onRemoveDownload = onRemoveDownload,
                 ),
                 onNavigateUp = {},
             )
@@ -297,8 +392,6 @@ class BookOverflowMenuScreenTest {
     )
 
     private companion object {
-        /** The download button's content description, which is how a disabled icon button is found. */
-        const val DOWNLOAD = "Download — arrives in a later phase"
         val SERVER = ServerId("server-1")
         val BOOK = LibraryItemId("book-1")
     }

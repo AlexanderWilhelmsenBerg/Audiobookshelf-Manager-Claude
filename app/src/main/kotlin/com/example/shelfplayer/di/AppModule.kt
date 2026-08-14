@@ -8,7 +8,9 @@ import com.example.shelfplayer.core.common.log.LogSink
 import com.example.shelfplayer.core.network.di.RemoteGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.http.UserAgent
+import com.example.shelfplayer.domain.download.DownloadScheduler
 import com.example.shelfplayer.domain.sync.BackgroundSync
+import com.example.shelfplayer.download.WorkManagerDownloadScheduler
 import com.example.shelfplayer.log.FanOutLogSink
 import com.example.shelfplayer.sync.WorkManagerBackgroundSync
 import dagger.Binds
@@ -40,6 +42,14 @@ interface AppModule {
     @Binds
     @Singleton
     fun bindsGateway(@RemoteGateway impl: AudiobookshelfGateway): AudiobookshelfGateway
+
+    /**
+     * PRODUCT_SPEC DL-001 / §12 — the download queue, which is WorkManager for the same reason the sync is:
+     * the transfer has to outlive the screen that started it and survive the process being killed.
+     */
+    @Binds
+    @Singleton
+    fun bindsDownloadScheduler(impl: WorkManagerDownloadScheduler): DownloadScheduler
 
     /**
      * PRODUCT_SPEC 14.4 — `logcat` and the in-app event log, from one rendered line. See [FanOutLogSink].

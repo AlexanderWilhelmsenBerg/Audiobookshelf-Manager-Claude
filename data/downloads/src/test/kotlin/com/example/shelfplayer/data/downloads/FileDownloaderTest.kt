@@ -64,12 +64,13 @@ class FileDownloaderTest {
         database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
             .allowMainThreadQueries()
             .build()
+        storage = DownloadStorage(context)
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
+            storage = storage,
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
-        storage = DownloadStorage(context)
         downloader = FileDownloader(
             downloads = api,
             storage = storage,

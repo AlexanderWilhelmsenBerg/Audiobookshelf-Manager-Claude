@@ -4,22 +4,30 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
+import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.DownloadBookUseCase
 import com.example.shelfplayer.domain.usecase.ObserveBookChaptersUseCase
 import com.example.shelfplayer.domain.usecase.ObserveBookDetailsUseCase
+import com.example.shelfplayer.domain.usecase.RemoveDownloadUseCase
 import com.example.shelfplayer.navigation.ShelfDestinations
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -27,6 +35,7 @@ import javax.inject.Inject
 import kotlin.time.Duration
 
 /** PRODUCT_SPEC LIB-004 — the book detail screen, read entirely from cached state. */
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class BookViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -34,6 +43,9 @@ class BookViewModel @Inject constructor(
     observeChapters: ObserveBookChaptersUseCase,
     history: PlaybackHistoryRepository,
     profiles: ProfileRepository,
+    private val downloads: DownloadRepository,
+    private val downloadBook: DownloadBookUseCase,
+    private val removeDownload: RemoveDownloadUseCase,
     private val playbackRepository: PlaybackRepository,
 ) : ViewModel() {
 
@@ -65,9 +77,16 @@ class BookViewModel @Inject constructor(
         history.observe(bookId),
         observeChapters(bookId),
         profiles.observeServers(),
-        profiles.observeActiveProfile(),
+        // Kotlin's typed `combine` stops at five flows, and the sixth is the manifest. Pairing the profile
+        // with it is not a workaround for the arity — the two are read together everywhere below, because
+        // both the download grant and the download itself belong to the same account.
+        profiles.observeActiveProfile().flatMapLatest { profile ->
+            val manifest = if (profile == null) flowOf(null) else downloads.observe(profile.serverId, bookId)
+            manifest.map { offline -> profile to offline }
+        },
         uiState,
-    ) { entries, chapters, servers, profile, state ->
+    ) { entries, chapters, servers, account, state ->
+        val (profile, offline) = account
         val book = (state as? BookUiState.Loaded)?.book
         BookMenuState(
             history = entries,
@@ -75,6 +94,7 @@ class BookViewModel @Inject constructor(
             // PRODUCT_SPEC DL-001 — the server's grant, not a guess. `false` while no profile is loaded,
             // which is the same safe direction the column defaults to.
             canDownload = profile?.canDownload == true,
+            download = downloadStateOf(offline),
             // ADR note in `BookOverflowMenu`: the web client's own route, not an API endpoint.
             webUrl = book?.let { loaded ->
                 servers.firstOrNull { it.id == loaded.serverId }
@@ -131,6 +151,54 @@ class BookViewModel @Inject constructor(
         }
     }
 
+    /**
+     * PRODUCT_SPEC DL-001 — the one control, and what a tap means in each state.
+     *
+     * The ordering is the *user's* mental model rather than the manifest's: a book that is here is here, even
+     * if the last thing recorded on it was a failure, so `Complete` wins over `Failed`. The alternative would
+     * offer *retry* on a book that is already playable offline.
+     */
+    private fun downloadStateOf(offline: OfflineBook?): DownloadButtonState = when {
+        offline == null -> DownloadButtonState.NotDownloaded
+        offline.isComplete -> DownloadButtonState.Downloaded
+        offline.state == DownloadState.Failed -> DownloadButtonState.Failed
+        else -> DownloadButtonState.Downloading(progress = offline.fractionOrNull())
+    }
+
+    /**
+     * The fraction downloaded, or `null` before the first byte.
+     *
+     * `null` shows an indeterminate ring. A determinate one frozen at zero looks exactly like a download that
+     * never started, and that is precisely the moment a user is deciding whether the button worked.
+     */
+    private fun OfflineBook.fractionOrNull(): Float? {
+        val total = totalBytes
+        if (total <= 0 || downloadedBytes <= 0) return null
+        return (downloadedBytes.toFloat() / total).coerceIn(0f, 1f)
+    }
+
+    /**
+     * PRODUCT_SPEC DL-001 — the tap, dispatched by the state the button was showing.
+     *
+     * Cancelling and removing are deliberately different: cancel leaves the partial files, because they are
+     * what a retry resumes from and a user who stopped a download on a train has not asked to throw away what
+     * they already have. Removing is the destructive one and the screen confirms it first.
+     */
+    fun onDownloadClicked(state: DownloadButtonState) {
+        viewModelScope.launch {
+            when (state) {
+                is DownloadButtonState.NotDownloaded, is DownloadButtonState.Failed -> report(downloadBook(bookId))
+                is DownloadButtonState.Downloading -> report(removeDownload.cancel(bookId))
+                is DownloadButtonState.Downloaded -> Unit
+            }
+        }
+    }
+
+    /** PRODUCT_SPEC 21 — the confirmed half of *remove*, which is the only action here that deletes files. */
+    fun onRemoveDownload() {
+        viewModelScope.launch { report(removeDownload(bookId)) }
+    }
+
     private suspend fun currentBook(): Book? = (uiState.first() as? BookUiState.Loaded)?.book
 
     /**
@@ -161,12 +229,13 @@ data class BookMenuState(
     /**
      * PRODUCT_SPEC DL-001 — whether this account may download from its server.
      *
-     * Decides *which* disabled state the download button shows, not whether it downloads: downloads are
-     * Phase 3 and nothing here starts one. The distinction matters because "not built yet" will change and
-     * "your account may not" will not, and a single message would leave someone waiting for a release that
-     * cannot help them.
+     * Decides whether the control exists at all — DL-001 criterion 1, "visible only when the server grants
+     * download permission". Absent rather than greyed for an account without it: a disabled button is a
+     * promise that pressing it might one day work, and for that account it will not.
      */
     val canDownload: Boolean = false,
+    /** PRODUCT_SPEC DL-001 — what the download control shows, and therefore what a tap does. */
+    val download: DownloadButtonState = DownloadButtonState.NotDownloaded,
     val webUrl: String? = null,
 )
 

@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.data.auth.SessionRestorer
+import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -55,6 +56,17 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var sleepTimers: SleepTimerRepository
 
+    /**
+     * PRODUCT_SPEC DL-001 — removes downloaded files that no manifest claims any more.
+     *
+     * At start-up, once, because that is the only moment at which nothing is writing to the download
+     * directory. A `.part` is deliberately kept after a failure — it is what a retry resumes from — and
+     * that stops being true when the manifest goes: an item deleted upstream, or a crash between the bytes
+     * and the row, leaves files nothing will ever ask for and nothing else would ever find.
+     */
+    @Inject
+    lateinit var offlineFiles: OfflineFiles
+
     @Inject
     lateinit var logger: Logger
 
@@ -66,6 +78,9 @@ class ShelfPlayerApplication :
         }
         applicationScope.launch {
             sleepTimers.closeOrphanedSessions()
+        }
+        applicationScope.launch {
+            offlineFiles.sweepOrphans()
         }
     }
 }

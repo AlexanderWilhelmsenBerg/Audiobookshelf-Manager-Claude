@@ -15,6 +15,9 @@ import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -46,11 +49,37 @@ class DefaultPlaybackRepository @Inject constructor(
     private val progressDao: ProgressDao,
     private val libraryDao: LibraryDao,
     private val gateway: AudiobookshelfGateway,
+    private val offlineSessions: OfflineSessionBuilder,
     private val clock: AppClock,
     private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : PlaybackRepository {
 
+    /**
+     * PRODUCT_SPEC PLAY-001 / DL-001 — a session, from the server where it can be had and from the device
+     * where it cannot.
+     *
+     * ### The server is still asked first, even for a downloaded book
+     *
+     * A server session is what makes listening time land in Audiobookshelf's own statistics and what lets the
+     * web interface show the book as being listened to right now. A downloaded book that skipped the call
+     * would play perfectly and quietly stop appearing on the server, which is a regression a user would only
+     * notice weeks later.
+     *
+     * What the download changes is where the *bytes* come from: [OfflineSessionBuilder.localise] rewrites the
+     * server's track URLs to the committed files. A downloaded book therefore never streams — which is the
+     * whole point — while still being a real session.
+     *
+     * ### And when the server cannot be reached, the download is the session
+     *
+     * This is DL-001's exit criterion: a book downloaded on Wi-Fi plays on a plane. The local session carries
+     * a blank id, which routes its listening through PLAY-005's outbox to be uploaded later
+     * ([OfflineSessionBuilder]).
+     *
+     * The fallback is only taken when the *transport* failed. An authentication failure falls through as
+     * itself: a user whose session expired needs to be told, and silently playing on would hide it until the
+     * next sync lost their progress.
+     */
     override suspend fun openSession(bookId: LibraryItemId): AppResult<PlaybackSession> {
         val profileId = profileRepository.activeProfileId()
             ?: return AppResult.Failure(
@@ -59,9 +88,39 @@ class DefaultPlaybackRepository @Inject constructor(
                     requiresReauthentication = false,
                 ),
             )
+        val serverId = profileDao.findProfile(profileId.value)?.serverId?.let(::ServerId)
+        val manifest = serverId?.let { offlineSessions.manifestFor(it, bookId) }
+
         val opened = gateway.playback.openSession(profileId, bookId)
-        if (opened is AppResult.Success) clearFinishedIfRestarting(bookId, opened.value.startAt)
-        return opened
+        if (opened is AppResult.Success) {
+            clearFinishedIfRestarting(bookId, opened.value.startAt)
+            return AppResult.Success(offlineSessions.localise(opened.value, manifest))
+        }
+
+        val offline = playableOffline(profileId, serverId, bookId, manifest, (opened as AppResult.Failure).error)
+        return offline ?: opened
+    }
+
+    /**
+     * The local session, when there is a complete download and the failure was one a download can answer.
+     *
+     * Only a transport failure qualifies. `AppError.Authentication` means the credential is the problem, and
+     * a listener whose session has expired has to find out — playing on from disk would hide it until the
+     * next sync could not upload their progress.
+     */
+    private suspend fun playableOffline(
+        profileId: ProfileId,
+        serverId: ServerId?,
+        bookId: LibraryItemId,
+        manifest: OfflineBook?,
+        failure: AppError,
+    ): AppResult<PlaybackSession>? {
+        if (serverId == null || manifest?.isComplete != true) return null
+        if (failure is AppError.Authentication || failure is AppError.Authorization) return null
+
+        val session = offlineSessions.build(profileId, serverId, bookId, manifest) ?: return null
+        logger.info(LogCategory.Playback, "A downloaded book is playing without the server")
+        return AppResult.Success(session)
     }
 
     /**

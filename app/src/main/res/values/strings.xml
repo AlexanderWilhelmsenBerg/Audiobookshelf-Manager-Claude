@@ -358,7 +358,25 @@
     <string name="book_synopsis_more">Show more</string>
     <string name="book_synopsis_less">Show less</string>
     <string name="book_section_about">About this book</string>
-    <string name="book_download_later">Download — arrives in a later phase</string>
+    <!--
+      PRODUCT_SPEC DL-001 — one control, four states. The label is the content description, and it names
+      what a tap *does* rather than what the book is: "Cancel" and "Remove" are the difference between
+      keeping and losing a partial download, and for somebody using TalkBack the label is the only clue.
+    -->
+    <string name="book_download">Download</string>
+    <string name="book_download_cancel">Cancel the download</string>
+    <string name="book_download_remove">Remove the download</string>
+    <string name="book_download_retry">Retry the download</string>
+    <string name="book_download_remove_title">Remove this download?</string>
+    <string name="book_download_remove_body">The audio files come off this device and the space is freed. Nothing is deleted on your server, your position is kept, and you can download it again whenever you like. If another profile on this phone downloaded the same book, their copy stays.</string>
+    <string name="book_download_remove_confirm">Remove</string>
+    <string name="book_download_remove_cancel">Keep it</string>
+    <!--
+      PRODUCT_SPEC 14.5 — a notification is read on a lock screen and by a car. It names no book.
+    -->
+    <string name="download_notification_channel">Downloads</string>
+    <string name="download_notification_title">Downloading a book</string>
+    <string name="download_notification_progress">%1$d%%</string>
     <string name="navigate_back">Back</string>
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->

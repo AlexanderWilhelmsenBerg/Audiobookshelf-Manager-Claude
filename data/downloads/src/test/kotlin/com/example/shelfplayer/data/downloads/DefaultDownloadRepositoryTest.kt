@@ -48,6 +48,7 @@ class DefaultDownloadRepositoryTest {
 
     private lateinit var database: ShelfPlayerDatabase
     private lateinit var repository: DefaultDownloadRepository
+    private lateinit var storage: DownloadStorage
 
     @Before
     fun setUp() = runTest {
@@ -55,8 +56,10 @@ class DefaultDownloadRepositoryTest {
         database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
             .allowMainThreadQueries()
             .build()
+        storage = DownloadStorage(context)
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
+            storage = storage,
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )

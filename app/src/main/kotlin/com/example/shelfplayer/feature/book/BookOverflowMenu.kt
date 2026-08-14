@@ -59,9 +59,13 @@ internal const val BOOK_OVERFLOW_BUTTON = "book-overflow-button"
  *
  * ### The two placeholders say which phase they arrive in
  *
- * *Manage local files* and *Delete local item* are Phase 3, and they are shown **disabled with the phase
- * named** rather than hidden. A control that looks live and does nothing is worse than one that admits it
- * (PRODUCT_SPEC 21), and hiding them would make the menu look complete when it is not.
+ * *Delete local item* is live as of Phase 3 slice 4, and it is the same action as the download button's
+ * third state — the owner asked for it in both places, and one action reachable two ways is better than two
+ * that could disagree. It is enabled only when there is a copy to delete.
+ *
+ * *Manage local files* is still Phase 3's storage screen, and is shown **disabled with the phase named**
+ * rather than hidden. A control that looks live and does nothing is worse than one that admits it
+ * (PRODUCT_SPEC 21), and hiding it would make the menu look complete when it is not.
  *
  * *Add to playlist* is absent rather than disabled: this app has no playlists at all, in any phase that is
  * planned, so a disabled row would promise something nothing is building.
@@ -123,10 +127,16 @@ internal fun BookOverflowMenu(book: Book, actions: BookMenuActions, modifier: Mo
             onClick = {},
         )
         MenuRow(
+            // The same action as the download button's third state, reached the other way the owner asked
+            // for it. Enabled only when there is a copy: on a book that was never downloaded this is a
+            // destructive-sounding control whose effect is nothing at all.
             labelRes = R.string.book_menu_delete_local,
             icon = Icons.Filled.Delete,
-            isEnabled = false,
-            onClick = {},
+            isEnabled = actions.isDownloaded,
+            onClick = {
+                isOpen = false
+                actions.onRemoveDownload()
+            },
         )
         MenuRow(
             labelRes = R.string.book_menu_web_client,
@@ -267,4 +277,35 @@ internal data class BookMenuActions(
     val onOpenInfo: () -> Unit,
     /** `null` when the server's address is not known, which disables the row rather than hiding it. */
     val webUrl: String?,
+    /** PRODUCT_SPEC DL-003 — whether *Delete local item* has anything to delete. */
+    val isDownloaded: Boolean = false,
+    val onRemoveDownload: () -> Unit = {},
 )
+
+/**
+ * PRODUCT_SPEC 21 / DL-003 — removing a download, described by what it actually does.
+ *
+ * Four clauses, and each one exists because *"remove the download"* could plausibly mean something worse:
+ *
+ *  - **the files go and the space is freed** — the thing that was asked for;
+ *  - **nothing is deleted on your server** — the fear, and the one this app must never earn. PRODUCT_SPEC
+ *    forbids even *claiming* that a database delete removes media; a local delete certainly does not;
+ *  - **your position is kept** — because `media_progress` is untouched, and a listener who removes a
+ *    finished book to reclaim space must not lose where they were in it;
+ *  - **another profile's copy stays** — DL-003 criterion 5. On a shared device this is the difference
+ *    between freeing your own space and deleting somebody else's book.
+ */
+@Composable
+internal fun RemoveDownloadDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.book_download_remove_title)) },
+        text = { Text(text = stringResource(R.string.book_download_remove_body)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(text = stringResource(R.string.book_download_remove_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.book_download_remove_cancel)) }
+        },
+    )
+}

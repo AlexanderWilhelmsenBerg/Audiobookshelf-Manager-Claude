@@ -290,7 +290,17 @@
     <string name="book_synopsis_more">Vis mer</string>
     <string name="book_synopsis_less">Vis mindre</string>
     <string name="book_section_about">Om boken</string>
-    <string name="book_download_later">Last ned — kommer i en senere fase</string>
+    <string name="book_download">Last ned</string>
+    <string name="book_download_cancel">Avbryt nedlastingen</string>
+    <string name="book_download_remove">Fjern nedlastingen</string>
+    <string name="book_download_retry">Prøv nedlastingen på nytt</string>
+    <string name="book_download_remove_title">Vil du fjerne denne nedlastingen?</string>
+    <string name="book_download_remove_body">Lydfilene fjernes fra denne enheten og plassen frigjøres. Ingenting slettes på serveren din, posisjonen din beholdes, og du kan laste ned boken igjen når du vil. Hvis en annen profil på denne telefonen har lastet ned den samme boken, beholdes deres kopi.</string>
+    <string name="book_download_remove_confirm">Fjern</string>
+    <string name="book_download_remove_cancel">Behold den</string>
+    <string name="download_notification_channel">Nedlastinger</string>
+    <string name="download_notification_title">Laster ned en bok</string>
+    <string name="download_notification_progress">%1$d %%</string>
     <string name="navigate_back">Tilbake</string>
 
     <string name="settings_title">Innstillinger</string>

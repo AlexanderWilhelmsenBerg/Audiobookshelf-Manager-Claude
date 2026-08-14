@@ -1,7 +1,10 @@
 package com.example.shelfplayer.data.downloads
 
 import android.content.Context
+import android.os.storage.StorageManager
 import com.example.shelfplayer.core.model.download.DownloadPaths
+import com.example.shelfplayer.core.model.getOrNull
+import com.example.shelfplayer.core.model.resultOf
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.FileOutputStream
@@ -94,6 +97,75 @@ class DownloadStorage @Inject constructor(@param:ApplicationContext private val 
 
     /** How many bytes of [part] are already on disk, which is where a resume asks the server to continue. */
     fun bytesOnDisk(part: File): Long = if (part.exists()) part.length() else 0
+
+    /**
+     * PRODUCT_SPEC DL-001 — "before queuing, app checks estimated size and free space".
+     *
+     * **Allocatable** bytes, not free ones. Android keeps a large cache it will evict under pressure, so
+     * `File.usableSpace` on a phone that looks full routinely understates what a download can actually have
+     * by gigabytes — and refusing a download the device could easily hold is the wrong kind of wrong.
+     * `StorageManager.getAllocatableBytes` is the number that accounts for it.
+     *
+     * Falls back to `usableSpace` if the platform will not answer. Zero when neither can be read, which
+     * fails the check closed: better to refuse than to fill somebody's phone.
+     */
+    fun usableBytes(): Long = resultOf {
+        val manager = context.getSystemService(StorageManager::class.java)
+        val uuid = manager.getUuidForPath(context.filesDir)
+        manager.getAllocatableBytes(uuid)
+    }.getOrNull() ?: context.filesDir.usableSpace.coerceAtLeast(0)
+
+    /**
+     * PRODUCT_SPEC DL-001 — removes the temporary parts left by downloads that will never finish.
+     *
+     * A `.part` is deliberately kept after a failure, because it is what a retry resumes from. That is right
+     * while the download still exists and wrong once it does not: a cancelled book, an item deleted upstream,
+     * or a crash between writing bytes and writing the manifest all leave a part nothing will ever ask for,
+     * and nothing else in the app would ever find it.
+     *
+     * So the caller supplies the set of item directories that still have a manifest, and everything under
+     * `offline/` outside that set goes. Directory-level rather than file-level: an item with a manifest may
+     * legitimately have parts, and one without cannot.
+     *
+     * @return how many bytes were reclaimed, for the log and for the storage screen.
+     */
+    fun sweepOrphans(keep: Set<Pair<String, String>>): Long {
+        val root = File(context.filesDir, DownloadPaths.ROOT_DIRECTORY)
+        if (!root.isDirectory) return 0
+        val live = keep.mapTo(mutableSetOf()) { (serverId, itemId) ->
+            DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
+        }
+        var reclaimed = 0L
+        root.listFiles().orEmpty().forEach { serverDirectory ->
+            serverDirectory.listFiles().orEmpty().forEach { itemDirectory ->
+                val relative = itemDirectory.relativeTo(context.filesDir).path
+                if (relative !in live) {
+                    reclaimed += itemDirectory.walkBottomUp().filter(File::isFile).sumOf(File::length)
+                    itemDirectory.deleteRecursively()
+                }
+            }
+            // An empty server directory is left behind by the loop above and is pure litter.
+            if (serverDirectory.isDirectory && serverDirectory.listFiles().orEmpty().isEmpty()) {
+                serverDirectory.delete()
+            }
+        }
+        return reclaimed
+    }
+
+    /**
+     * The parts belonging to a book whose manifest is still live but whose files are no longer wanted.
+     *
+     * Used when a download is cancelled *and* the user asked to discard it, which is the one case where a
+     * resumable part should not survive. [sweepOrphans] cannot cover it, because the manifest is still there.
+     */
+    fun deleteParts(serverId: String, itemId: String): Long {
+        val directory =
+            File(context.filesDir, DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
+        if (!directory.isDirectory) return 0
+        return directory.listFiles().orEmpty()
+            .filter { file -> file.isFile && DownloadPaths.isPart(file.name) }
+            .sumOf { file -> file.length().also { file.delete() } }
+    }
 
     private companion object {
         const val PART_SUFFIX = ".part"

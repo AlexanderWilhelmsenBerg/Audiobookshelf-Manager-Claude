@@ -17,13 +17,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -96,6 +94,8 @@ fun BookRoute(
             onOpenWebClient = { url ->
                 context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
             },
+            onDownloadClicked = viewModel::onDownloadClicked,
+            onRemoveDownload = viewModel::onRemoveDownload,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -166,8 +166,21 @@ fun BookScreen(
                     onOpenWebClient = actions.onOpenWebClient,
                     onOpenInfo = { openSurface = BookSurface.Info },
                     webUrl = menu.webUrl,
+                    isDownloaded = menu.download is DownloadButtonState.Downloaded,
+                    onRemoveDownload = { openSurface = BookSurface.RemoveDownloadConfirmation },
                 ),
-                canDownload = menu.canDownload,
+                download = DownloadControl(
+                    isPermitted = menu.canDownload,
+                    state = menu.download,
+                    onClick = {
+                        // The one state that asks first: removing is the only tap here that deletes files.
+                        if (menu.download is DownloadButtonState.Downloaded) {
+                            openSurface = BookSurface.RemoveDownloadConfirmation
+                        } else {
+                            actions.onDownloadClicked(menu.download)
+                        }
+                    },
+                ),
                 modifier = content,
             )
         }
@@ -200,11 +213,32 @@ fun BookScreen(
             },
             onDismiss = { openSurface = BookSurface.None },
         )
+
+        openSurface == BookSurface.RemoveDownloadConfirmation -> RemoveDownloadDialog(
+            onConfirm = {
+                openSurface = BookSurface.None
+                actions.onRemoveDownload()
+            },
+            onDismiss = { openSurface = BookSurface.None },
+        )
     }
 }
 
-/** Which of the overflow menu's surfaces is showing. Saveable, so it survives a rotation. */
-private enum class BookSurface { None, History, Info, DiscardConfirmation }
+/**
+ * PRODUCT_SPEC DL-001 — the download control, as one argument.
+ *
+ * Three values that are only ever used together, bundled for the reason detekt's parameter limit exists:
+ * `BookHeader` reached nine when the control arrived, and a composable with nine has an argument order
+ * somebody will eventually get wrong. It is also the honest grouping — whether the control exists, what it
+ * shows, and what a tap does are one decision.
+ *
+ * @property isPermitted DL-001 criterion 1. `false` hides the control entirely rather than disabling it.
+ */
+@Immutable
+internal data class DownloadControl(val isPermitted: Boolean, val state: DownloadButtonState, val onClick: () -> Unit)
+
+/** Which of the screen's dialogs or sheets is showing. Saveable, so it survives a rotation. */
+private enum class BookSurface { None, History, Info, DiscardConfirmation, RemoveDownloadConfirmation }
 
 /**
  * What this screen can do that only its callers can perform.
@@ -221,6 +255,10 @@ data class BookActions(
     val onFinishedChanged: (Boolean) -> Unit,
     val onDiscardProgress: () -> Unit,
     val onOpenWebClient: (String) -> Unit,
+    /** PRODUCT_SPEC DL-001 — a tap on the download control, carrying the state it was showing. */
+    val onDownloadClicked: (DownloadButtonState) -> Unit = {},
+    /** The confirmed half of *remove*, which is the only tap on this screen that deletes files. */
+    val onRemoveDownload: () -> Unit = {},
 )
 
 @Composable
@@ -229,7 +267,7 @@ private fun BookDetails(
     playback: PlaybackUiState,
     actions: BookActions,
     menuActions: BookMenuActions,
-    canDownload: Boolean,
+    download: DownloadControl,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -247,7 +285,7 @@ private fun BookDetails(
             onPlay = actions.onPlay,
             onTogglePlayPause = actions.onTogglePlayPause,
             actions = menuActions,
-            canDownload = canDownload,
+            download = download,
         )
 
         // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
@@ -388,7 +426,7 @@ private fun BookHeader(
     onPlay: (LibraryItemId) -> Unit,
     onTogglePlayPause: () -> Unit,
     actions: BookMenuActions,
-    canDownload: Boolean,
+    download: DownloadControl,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -418,16 +456,9 @@ private fun BookHeader(
                 // PRODUCT_SPEC DL-001 criterion 1 — "visible only when the server grants download
                 // permission". Absent rather than disabled for an account without the grant: a greyed
                 // control is a promise that pressing it might one day work, and for this account it will
-                // not, whatever this app ships. Still disabled where the grant exists, because Phase 3 has
-                // not built the download itself yet, and its description names the phase rather than
-                // implying a button that silently does nothing (PRODUCT_SPEC 21).
-                if (canDownload) {
-                    FilledTonalIconButton(onClick = {}, enabled = false) {
-                        Icon(
-                            imageVector = Icons.Filled.Download,
-                            contentDescription = stringResource(R.string.book_download_later),
-                        )
-                    }
+                // not, whatever this app ships.
+                if (download.isPermitted) {
+                    DownloadButton(state = download.state, onClick = download.onClick)
                 }
                 PlayIconButton(
                     book = book,

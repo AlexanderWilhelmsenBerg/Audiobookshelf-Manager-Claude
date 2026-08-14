@@ -40,6 +40,7 @@ import javax.inject.Singleton
 @Singleton
 class DefaultDownloadRepository @Inject constructor(
     private val downloadDao: DownloadDao,
+    private val storage: DownloadStorage,
     private val clock: AppClock,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : DownloadRepository {
@@ -56,6 +57,8 @@ class DefaultDownloadRepository @Inject constructor(
         }
 
     override fun observeTotalBytes(): Flow<Long> = downloadDao.observeTotalBytes()
+
+    override suspend fun freeBytes(): Long = withContext(ioDispatcher) { storage.usableBytes() }
 
     override suspend fun request(
         serverId: ServerId,
