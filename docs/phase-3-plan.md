@@ -1,8 +1,8 @@
 # Phase 3 — Downloads and offline playback: plan, and what needs your decision
 
-**Status: not started.** Nothing in this document is built. It exists so the work can be started by anyone
-without re-deriving the scope, and so the eight decisions at the bottom can be made in one sitting rather than
-one at a time as each blocks a slice.
+**Status: not started, and now fully specified.** No code exists yet. The eight decisions this document
+originally asked for were **answered on 2026-08-14** and are recorded in ADR-0018; the summary is below, and
+the original questions are kept underneath it so the answers can be read against what was asked.
 
 ## What Phase 3 is
 
@@ -99,6 +99,46 @@ in the project's own records and it needs decision 1 before a line of it is writ
 contract capture first.
 
 ---
+
+## The eight decisions — **answered 2026-08-14**
+
+All eight are settled. **ADR-0018 records them in full**, including the four places they depart from
+PRODUCT_SPEC. In brief:
+
+| # | Decision | Effect on the slices |
+| --- | --- | --- |
+| 1 | Smart download stays in Phase 3, triggered at **50% of the current book**, fetching the next in the series. A toggle, with its own network choice | New slice 8; supersedes ADR-0017's trigger |
+| 2 | Range requests may be probed; **partial downloads wanted, verified at the end** | Slice 6 unblocked; verification is unconditional |
+| 3 | Checksum/ETag — **still open**, and the harness now measures it | Slice 7 and the repair button depend on the answer |
+| 4 | App folder by default, **plus a selectable folder and SD card** | Slice 2 grows: SAF tree URIs, not just a mandated path |
+| 5 | **Wi-Fi always allowed; cellular a per-category toggle.** Streaming both by default, downloads and smart download Wi-Fi only | Slice 5 simplifies to one boolean per category |
+| 6 | One copy per device, progress per profile; a storage screen listing everything | Slice 2; see ADR-0018 on the profile-boundary modification |
+| 7 | Cleanup opt-in: delete finished books after N days, and optionally the previous book in a series | Slice 7 grows two switches |
+| 8 | Per-file delete plus **Repair**, comparing against the server where it can | Depends on decision 3 |
+
+### The one still open, and why it is not blocking
+
+Decision 3 — does the server send an `ETag` or `Last-Modified` for an audio file — could not be answered from
+the committed fixtures, because the capture envelopes record status and content type and **no response headers
+at all**. No fixture could ever have shown an ETag. The harness now records them for
+`/api/items/{id}/file/{fileId}`, along with whether a `Range` request is honoured, so the next capture run
+answers both at once.
+
+Nothing waits on it except the repair button's wording and DL-002's validator clause. Slices 1, 2, 4, 5 and 7
+are unaffected either way.
+
+### Two consequences of the answers, recorded rather than discovered later
+
+- **A user-chosen folder survives uninstall; the app folder does not.** And an SD card can be removed, so a
+  book on absent media has to read as "not downloaded" and offer a re-download rather than failing as corrupt.
+- **The storage screen cannot show every title.** PRODUCT_SPEC 5.2 keeps one profile's content off another's
+  screen. Everything downloaded is listed and deletable — which is the actual need — but an item the current
+  profile cannot see is listed without its title: *"1 book in a library this profile cannot see — 412 MB"*.
+  Full titles regardless would be a deliberate relaxation of 5.2 and should be its own decision.
+
+---
+
+## The original questions, for the record
 
 ## Challenges and gaps — the eight things that need your decision
 
