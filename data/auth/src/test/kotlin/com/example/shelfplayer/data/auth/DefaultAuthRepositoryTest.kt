@@ -509,6 +509,42 @@ class DefaultAuthRepositoryTest {
         assertEquals("""["lib-nonfiction"]""", stored.accessibleLibrariesJson)
     }
 
+    /**
+     * PRODUCT_SPEC DL-001 — the download permission is persisted at sign-in rather than parsed and dropped.
+     *
+     * `user.permissions.download` has been on the wire since the first capture and reached nothing: the
+     * mapper read it, `LibraryAccess` did not carry it, and no column existed to write it to. DL-001's first
+     * criterion — the download button is visible only when the server grants it — had no plumbing at all.
+     */
+    @Test
+    fun `sign-in records whether the server allows downloading`() = runTest {
+        gateway.signInResult = AppResult.Success(FakeAuthGateway.session(canDownload = true))
+
+        val profile = successfulSignIn()
+
+        assertTrue(assertNotNull(database.profileDao().findProfile(profile.id.value)).canDownload)
+        assertTrue(profile.canDownload, "and the domain model the screens read carries it too")
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 / DL-001 — a permission revoked on the server is revoked here.
+     *
+     * The same path that narrows a library grant, for the same reason: a permission recorded at sign-in and
+     * never asked about again is a permission that outlives its removal. Tested in the revoking direction
+     * because that is the one that matters — a stale *grant* offers an action the server will refuse.
+     */
+    @Test
+    fun `a refresh withdraws a download permission the server has revoked`() = runTest {
+        gateway.signInResult = AppResult.Success(FakeAuthGateway.session(canDownload = true))
+        val profile = successfulSignIn()
+        assertTrue(assertNotNull(database.profileDao().findProfile(profile.id.value)).canDownload)
+
+        gateway.currentAccountResult = AppResult.Success(FakeAuthGateway.account(canDownload = false))
+        assertIs<AppResult.Success<*>>(repository.refreshPermissions(profile.id))
+
+        assertFalse(assertNotNull(database.profileDao().findProfile(profile.id.value)).canDownload)
+    }
+
     /** PRODUCT_SPEC 5.1 — a role changed on the server changes which actions the UI offers. */
     @Test
     fun `a refresh records a role the server has changed`() = runTest {

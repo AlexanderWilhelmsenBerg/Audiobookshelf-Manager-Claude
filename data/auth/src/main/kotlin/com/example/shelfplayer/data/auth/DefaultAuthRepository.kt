@@ -133,6 +133,7 @@ class DefaultAuthRepository @Inject constructor(
             requiresReauthentication = false,
             lastUsedAt = now,
             isFixture = false,
+            canDownload = session.access.canDownload,
         )
 
         transaction {
@@ -251,6 +252,7 @@ class DefaultAuthRepository @Inject constructor(
                     accessibleLibrariesJson = AuthEntityMappers.accessibleLibrariesJson(renewed.value.access),
                     hasAllLibraryAccess = renewed.value.access.hasAllLibraryAccess,
                     hasAllTagAccess = renewed.value.access.hasAllTagAccess,
+                    canDownload = renewed.value.access.canDownload,
                     role = renewed.value.role.name,
                 )
                 logger.info(
@@ -322,6 +324,7 @@ class DefaultAuthRepository @Inject constructor(
                     accessibleLibrariesJson = AuthEntityMappers.accessibleLibrariesJson(access),
                     hasAllLibraryAccess = access.hasAllLibraryAccess,
                     hasAllTagAccess = access.hasAllTagAccess,
+                    canDownload = access.canDownload,
                     role = account.value.role.name,
                 )
                 profileDao.setRequiresReauthentication(profileId.value, required = false)

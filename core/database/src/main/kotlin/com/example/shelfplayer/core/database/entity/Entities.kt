@@ -106,6 +106,19 @@ data class ProfileEntity(
      * item access is unknown adds rows but never deletes them.
      */
     @ColumnInfo(defaultValue = "0") val hasAllTagAccess: Boolean,
+    /**
+     * PRODUCT_SPEC DL-001 — whether the server lets this account download.
+     *
+     * `false` for every row written before version 16, which is the safe direction: a profile whose grant has
+     * not been re-read is offered no download rather than one the server would refuse. Both sign-in and the
+     * `403` permission refresh rewrite this row, so a profile that does have the permission corrects itself
+     * on next use.
+     *
+     * Not nullable, unlike version 14's library rule. There the absence of a value meant "the library has no
+     * opinion", a third state worth keeping; here the server either grants it or does not, and a nullable
+     * column would invite a reader to treat unknown as permitted.
+     */
+    @ColumnInfo(defaultValue = "0") val canDownload: Boolean,
 )
 
 @Entity(

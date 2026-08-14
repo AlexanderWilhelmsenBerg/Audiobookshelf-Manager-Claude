@@ -138,6 +138,7 @@ class DefaultPlaybackRepositoryTest {
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
                 hasAllTagAccess = true,
+                canDownload = false,
             ),
         )
     }

@@ -65,12 +65,16 @@ class BookViewModel @Inject constructor(
         history.observe(bookId),
         observeChapters(bookId),
         profiles.observeServers(),
+        profiles.observeActiveProfile(),
         uiState,
-    ) { entries, chapters, servers, state ->
+    ) { entries, chapters, servers, profile, state ->
         val book = (state as? BookUiState.Loaded)?.book
         BookMenuState(
             history = entries,
             chapters = chapters,
+            // PRODUCT_SPEC DL-001 — the server's grant, not a guess. `false` while no profile is loaded,
+            // which is the same safe direction the column defaults to.
+            canDownload = profile?.canDownload == true,
             // ADR note in `BookOverflowMenu`: the web client's own route, not an API endpoint.
             webUrl = book?.let { loaded ->
                 servers.firstOrNull { it.id == loaded.serverId }
@@ -154,6 +158,15 @@ class BookViewModel @Inject constructor(
 data class BookMenuState(
     val history: List<PlaybackHistoryEntry> = emptyList(),
     val chapters: List<Chapter> = emptyList(),
+    /**
+     * PRODUCT_SPEC DL-001 — whether this account may download from its server.
+     *
+     * Decides *which* disabled state the download button shows, not whether it downloads: downloads are
+     * Phase 3 and nothing here starts one. The distinction matters because "not built yet" will change and
+     * "your account may not" will not, and a single message would leave someone waiting for a release that
+     * cannot help them.
+     */
+    val canDownload: Boolean = false,
     val webUrl: String? = null,
 )
 

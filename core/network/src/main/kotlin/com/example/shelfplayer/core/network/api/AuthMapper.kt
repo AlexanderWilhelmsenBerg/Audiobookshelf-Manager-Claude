@@ -53,6 +53,7 @@ internal object AuthMapper {
                     // Same safe default, and for a sharper reason: an account wrongly believed to see
                     // every item is an account whose sync is allowed to delete another account's books.
                     hasAllTagAccess = user.permissions?.accessAllTags ?: false,
+                    canDownload = user.permissions?.download ?: false,
                 ),
             ),
         )
@@ -85,6 +86,7 @@ internal object AuthMapper {
                     hasAllLibraryAccess = user.permissions?.accessAllLibraries ?: false,
                     accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
                     hasAllTagAccess = user.permissions?.accessAllTags ?: false,
+                    canDownload = user.permissions?.download ?: false,
                 ),
                 progress = user.mediaProgress.mapNotNull(::toProgress),
                 bookmarks = user.bookmarks.mapNotNull(::toBookmark),

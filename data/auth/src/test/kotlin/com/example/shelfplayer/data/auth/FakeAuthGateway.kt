@@ -200,6 +200,7 @@ internal class FakeAuthGateway :
             role: ProfileRole = ProfileRole.Listener,
             accessibleLibraryIds: List<LibraryId> = emptyList(),
             hasAllLibraryAccess: Boolean = true,
+            canDownload: Boolean = false,
         ) = AuthSession(
             accessToken = AuthToken(accessToken),
             refreshToken = refreshToken?.let(::AuthToken),
@@ -209,6 +210,7 @@ internal class FakeAuthGateway :
             access = LibraryAccess(
                 hasAllLibraryAccess = hasAllLibraryAccess,
                 accessibleLibraryIds = accessibleLibraryIds,
+                canDownload = canDownload,
             ),
         )
 
@@ -219,6 +221,7 @@ internal class FakeAuthGateway :
             accessibleLibraryIds: List<LibraryId> = emptyList(),
             hasAllLibraryAccess: Boolean = true,
             hasAllTagAccess: Boolean = true,
+            canDownload: Boolean = false,
         ) = AccountState(
             userId = userId,
             username = username,
@@ -227,6 +230,7 @@ internal class FakeAuthGateway :
                 hasAllLibraryAccess = hasAllLibraryAccess,
                 accessibleLibraryIds = accessibleLibraryIds,
                 hasAllTagAccess = hasAllTagAccess,
+                canDownload = canDownload,
             ),
         )
 

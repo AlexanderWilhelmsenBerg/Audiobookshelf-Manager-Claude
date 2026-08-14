@@ -128,6 +128,7 @@ class DefaultSleepTimerRepositoryTest {
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
                 hasAllTagAccess = true,
+                canDownload = false,
             ),
         )
     }

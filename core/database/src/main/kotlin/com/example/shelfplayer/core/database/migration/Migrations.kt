@@ -471,6 +471,25 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC DL-001 — records whether the server lets an account download.
+     *
+     * One column with a **`DEFAULT 0`**, which is the safe direction and the only defensible one: a profile
+     * whose grant predates this column has not been observed to hold the permission, and offering a download
+     * the server would refuse is worse than withholding one it would allow. Both sign-in and the `403`
+     * permission refresh rewrite the row, so a profile that does hold it corrects itself on next use.
+     *
+     * `NOT NULL DEFAULT 0` rather than nullable, unlike version 14's library rule. There the absence of a
+     * value meant "the library has no opinion", a third state worth keeping. Here there is no third state —
+     * the server either grants it or does not — and a nullable column would invite a reader to treat
+     * unknown as permitted.
+     */
+    private val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `profiles` ADD COLUMN `canDownload` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -486,5 +505,6 @@ object Migrations {
         MIGRATION_12_13,
         MIGRATION_13_14,
         MIGRATION_14_15,
+        MIGRATION_15_16,
     )
 }

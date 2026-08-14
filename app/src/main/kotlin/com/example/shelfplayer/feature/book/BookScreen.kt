@@ -167,6 +167,7 @@ fun BookScreen(
                     onOpenInfo = { openSurface = BookSurface.Info },
                     webUrl = menu.webUrl,
                 ),
+                canDownload = menu.canDownload,
                 modifier = content,
             )
         }
@@ -228,6 +229,7 @@ private fun BookDetails(
     playback: PlaybackUiState,
     actions: BookActions,
     menuActions: BookMenuActions,
+    canDownload: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -245,6 +247,7 @@ private fun BookDetails(
             onPlay = actions.onPlay,
             onTogglePlayPause = actions.onTogglePlayPause,
             actions = menuActions,
+            canDownload = canDownload,
         )
 
         // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
@@ -373,9 +376,10 @@ private const val FACT_SEPARATOR = "  ·  "
  * The actions sit at the **top right of the cover**, in the order a hand reaches them: download on the
  * left, play on the right, play being the one pressed every time and download the one pressed once.
  *
- * Download is a placeholder and says so: it is disabled, and its content description names the phase it
- * arrives in rather than implying a button that silently does nothing. A control that looks live and is
- * not is worse than one that admits it (PRODUCT_SPEC 21).
+ * Download appears only for an account the server lets download (PRODUCT_SPEC DL-001), and where it does
+ * appear it is a placeholder that says so: disabled, with a content description naming the phase it arrives
+ * in rather than implying a button that silently does nothing. A control that looks live and is not is worse
+ * than one that admits it (PRODUCT_SPEC 21).
  */
 @Composable
 private fun BookHeader(
@@ -384,6 +388,7 @@ private fun BookHeader(
     onPlay: (LibraryItemId) -> Unit,
     onTogglePlayPause: () -> Unit,
     actions: BookMenuActions,
+    canDownload: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -410,11 +415,19 @@ private fun BookHeader(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
-                FilledTonalIconButton(onClick = {}, enabled = false) {
-                    Icon(
-                        imageVector = Icons.Filled.Download,
-                        contentDescription = stringResource(R.string.book_download_later),
-                    )
+                // PRODUCT_SPEC DL-001 criterion 1 — "visible only when the server grants download
+                // permission". Absent rather than disabled for an account without the grant: a greyed
+                // control is a promise that pressing it might one day work, and for this account it will
+                // not, whatever this app ships. Still disabled where the grant exists, because Phase 3 has
+                // not built the download itself yet, and its description names the phase rather than
+                // implying a button that silently does nothing (PRODUCT_SPEC 21).
+                if (canDownload) {
+                    FilledTonalIconButton(onClick = {}, enabled = false) {
+                        Icon(
+                            imageVector = Icons.Filled.Download,
+                            contentDescription = stringResource(R.string.book_download_later),
+                        )
+                    }
                 }
                 PlayIconButton(
                     book = book,

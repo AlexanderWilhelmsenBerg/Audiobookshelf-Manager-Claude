@@ -58,6 +58,46 @@ jobs:
       - name: Scan working tree and history
         run: gitleaks detect --source . --redact --verbose --no-banner
 
+  schema-immutability:
+    name: Committed Room schemas are immutable
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # PRODUCT_SPEC 13.1 / 22.11 — the check the "Room schema is committed and current" step below cannot
+      # make, and the one that would have prevented a real crash.
+      #
+      # That step compares the *exported* schema against the committed one, so it catches a schema somebody
+      # forgot to commit. It says nothing about a committed schema being **changed**, because once the change
+      # is committed the working tree is clean and the step is green.
+      #
+      # On 2026-08-14 version 14 shipped in build 0.9.2, the next commit removed a column and left the version
+      # at 14 on the reasoning that 14 "had not shipped", and the owner's phone would not start: Room stores
+      # each version's identity hash in `room_master_table`, compares it on open, and has no migration to a
+      # hash that changed underneath it. Fresh installs and every migration test starting from an older
+      # version are unaffected, which is exactly what makes it easy to ship.
+      #
+      # A modified file under `schemas/` is therefore always wrong. Adding one — a new version — is the only
+      # correct way to change the database.
+      - name: No committed schema may be modified
+        run: |
+          base="origin/${{ github.base_ref }}"
+          modified="$(git diff --diff-filter=MD --name-only "$base"...HEAD -- core/database/schemas)"
+          if [ -n "$modified" ]; then
+            echo "::error::A committed Room schema was modified or deleted. Bump the database version instead."
+            echo "$modified"
+            echo
+            echo "A schema that has been built into an APK is a fact about somebody's phone. Room compares its"
+            echo "identity hash on open, so changing one crashes the app at startup on every device that ran"
+            echo "the previous build. Add a new version and a migration; never edit an existing file."
+            git diff "$base"...HEAD -- core/database/schemas
+            exit 1
+          fi
+          echo "No committed schema was modified."
+
   verify:
     name: verifyDebug
     runs-on: ubuntu-latest

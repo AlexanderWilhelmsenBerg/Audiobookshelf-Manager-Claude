@@ -31,6 +31,18 @@ data class Profile(
     val requiresReauthentication: Boolean,
     val lastUsedAt: Instant?,
     val isFixture: Boolean,
+    /**
+     * PRODUCT_SPEC DL-001 — whether the server lets this account download.
+     *
+     * Here as well as on [com.example.shelfplayer.core.model.auth.LibraryAccess] because the two have
+     * different readers: the grant travels with a sign-in and is what the sync applies, while a screen has a
+     * profile and needs to know whether to offer a button. One column, two readers, rather than a screen
+     * reaching for the sync's type.
+     *
+     * `false` until a sign-in or a permission refresh has said otherwise, which is the safe direction: an
+     * offered download the server refuses is worse than a withheld one it would allow.
+     */
+    val canDownload: Boolean = false,
 )
 
 /**

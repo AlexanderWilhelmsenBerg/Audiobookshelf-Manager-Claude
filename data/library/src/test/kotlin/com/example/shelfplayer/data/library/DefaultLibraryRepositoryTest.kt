@@ -91,6 +91,18 @@ class DefaultLibraryRepositoryTest {
             ioDispatcher = dispatcher,
         )
 
+        seedFixtureAccount()
+    }
+
+    /**
+     * The server and profile every test reads through.
+     *
+     * Apart from [setUp] because a repository test's setup is *building the repository*; the account rows are
+     * a precondition of the read path, not part of assembling it. Keeping them here also means adding a column
+     * to [ProfileEntity] touches one small function rather than lengthening the one that wires eleven
+     * collaborators together.
+     */
+    private suspend fun seedFixtureAccount() {
         database.profileDao().upsertServer(
             ServerEntity(
                 serverId = "fixture-server",
@@ -118,6 +130,7 @@ class DefaultLibraryRepositoryTest {
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
                 hasAllTagAccess = true,
+                canDownload = false,
             ),
         )
     }
@@ -178,6 +191,7 @@ class DefaultLibraryRepositoryTest {
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
                 hasAllTagAccess = true,
+                canDownload = false,
             ),
         )
         val forOther = repository
@@ -234,6 +248,7 @@ class DefaultLibraryRepositoryTest {
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
                 hasAllTagAccess = true,
+                canDownload = false,
             ),
         )
 
@@ -282,6 +297,7 @@ class DefaultLibraryRepositoryTest {
             accessibleLibrariesJson = """["lib-nonfiction"]""",
             hasAllLibraryAccess = false,
             hasAllTagAccess = false,
+            canDownload = false,
         )
 
         assertEquals(
@@ -313,6 +329,7 @@ class DefaultLibraryRepositoryTest {
             accessibleLibrariesJson = "[]",
             hasAllLibraryAccess = false,
             hasAllTagAccess = false,
+            canDownload = false,
         )
 
         assertEquals(emptyList(), repository.observeLibraries(fixtureProfile).first())
@@ -342,6 +359,7 @@ class DefaultLibraryRepositoryTest {
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
                 hasAllTagAccess = true,
+                canDownload = false,
             ),
         )
 

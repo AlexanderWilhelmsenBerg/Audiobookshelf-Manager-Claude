@@ -121,6 +121,7 @@ interface ProfileDao {
         SET accessibleLibrariesJson = :accessibleLibrariesJson,
             hasAllLibraryAccess = :hasAllLibraryAccess,
             hasAllTagAccess = :hasAllTagAccess,
+            canDownload = :canDownload,
             role = :role
         WHERE profileId = :profileId
         """,
@@ -130,6 +131,7 @@ interface ProfileDao {
         accessibleLibrariesJson: String,
         hasAllLibraryAccess: Boolean,
         hasAllTagAccess: Boolean,
+        canDownload: Boolean,
         role: String,
     )
 

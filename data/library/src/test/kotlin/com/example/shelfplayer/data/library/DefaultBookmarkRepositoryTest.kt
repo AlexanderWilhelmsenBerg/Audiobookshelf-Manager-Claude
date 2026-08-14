@@ -277,6 +277,7 @@ class DefaultBookmarkRepositoryTest {
                 accessibleLibrariesJson = "[]",
                 hasAllLibraryAccess = true,
                 hasAllTagAccess = true,
+                canDownload = false,
             ),
         )
     }
