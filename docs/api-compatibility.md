@@ -704,31 +704,46 @@ back as:
 The server takes the position it was given and derives `progress` from it. The app already sends the end
 of the book when a listener ticks *Finished*, so that behaviour is confirmed rather than assumed.
 
-### `isFinished: false` — **not** settled, and the probe is why
+### `isFinished: false` — accepted, then overruled by the server's own threshold
 
-The un-finish probe sent `{"currentTime": 42.5, "isFinished": false}` — to a book **eight seconds long** —
-and threw the PATCH response away with `>/dev/null`. The read afterwards came back:
+The first probe was badly built: it sent `{"currentTime": 42.5, "isFinished": false}` to a book **eight
+seconds long** and discarded the PATCH response with `>/dev/null`. The fixed probe sends `currentTime: 2`
+and records the response, and the CI run answers the question outright.
+
+**The PATCH is accepted** — `200`, `text/plain`, body `OK`, same as the bookmark delete. So the server does
+not reject an un-finish, which was the worrying of the two possibilities.
+
+What overrules it is the server's own rule, and the container log names it:
 
 ```
-"currentTime": 0, "duration": 8, "progress": 1, "isFinished": true
+[MediaProgress] Marking media progress as finished because time remaining (8)
+                is less than 10 seconds (media item …)
 ```
 
-Two explanations fit and this capture cannot separate them:
+That is **`markAsFinishedTimeRemaining`**, default ten seconds. The contract library's book is eight
+seconds long, so *every* position in it is inside the last ten and it can never be anything but finished.
+This is a property of the fixture, not of the API: a real thirty-hour book at two seconds is nowhere near
+its last ten.
 
-- the server **rejected** a position past the duration, so nothing was applied and what we are looking at
-  is the previous state; or
-- the server **clamped** it, re-derived `progress` as 1, and re-derived `isFinished` from that, ignoring
-  the `false` it was sent.
+So PLAY-004's "marking finished is explicit, in both directions" is **not** at risk, and the app's
+*Finished* checkbox does reach the server. Two consequences worth carrying forward:
 
-**The risk is real either way.** If the second explanation is the true one, the app's *Finished* checkbox
-un-ticks locally and silently fails to un-tick on the server, and PLAY-004's "marking finished is
-explicit, in both directions" is only half true. The local row is authoritative for every screen and
-carries `hasUnsyncedChanges`, so nothing is lost on the device — but a second device would still see the
-book as finished.
+1. **`markAsFinishedTimeRemaining` is real, and its default is 10 s.** PLAY-004 requires the app to honour
+   the library's value and it currently does not — this is the first observation of the setting in action,
+   even though the setting's own endpoint has still not been captured.
+2. **The fixture cannot demonstrate un-finishing.** Doing so needs a seeded book longer than the threshold,
+   which changes the duration in a dozen committed fixtures. That belongs with the
+   `markAsFinishedTimeRemaining` work rather than bolted onto this capture, and is recorded in
+   `docs/phase-2-gaps.md` as such.
 
-`scripts/capture-contracts.sh` now sends `currentTime: 2`, which is inside the duration, and captures the
-two PATCH responses as `media-progress-set-finished` and `media-progress-set-unfinished` rather than
-discarding them. A rejection then shows up as a status code instead of being invisible behind a later
-`GET`. `CapturedShapesTest` asserts what was actually observed — including the un-finished fixture still
-saying `true` — so the next capture makes that test fail, which is the reminder that the question was
-open.
+### Two fixtures that were only ever capture noise
+
+The drift check was red on every commit of this branch for two reasons, neither of them the server:
+
+- **`library-personalized`'s shelves were arriving in a different order.** "Recently added" sorts by
+  `addedAt`, both books are added by the same scan in the same second, and the tie is broken arbitrarily.
+  The harness now sorts `entities` by title — the same treatment `VOLATILE_KEYS` gives a timestamp, and for
+  the same reason: a check that goes red on every run is a check its reader learns to ignore, and this one
+  was hiding the two genuinely new fixtures underneath it.
+- **`media-progress-set-finished` and `media-progress-set-unfinished` had never been committed**, which is
+  the expected state of the pull request that adds a capture target. They are committed now.

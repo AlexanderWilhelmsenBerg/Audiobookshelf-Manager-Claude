@@ -131,11 +131,35 @@ def socket_frames(raw):
 # the shape of the URL is the contract, the number in it is not.
 FILE_ID_PATH = re.compile(r"(/file/)\d+")
 
+# Arrays whose order the server does not actually fix, sorted so a tie cannot flip between captures.
+#
+# `library-personalized`'s shelves are the case that forced this. "Recently added" sorts by `addedAt`, and
+# both books in the contract library are added by the same scan in the same second — so the tie is broken
+# arbitrarily, and the drift check reported the two books swapping places as though the contract had
+# changed. It cost a red check on every run of this branch and hid the two genuinely new fixtures beneath
+# it, which is the same false-positive trap `VOLATILE_KEYS` exists to close.
+#
+# Sorted by title rather than by id, because the ids are `<volatile>` by the time this runs. The order is
+# not part of any contract this app relies on: the shelf's *contents* are, and `LibraryRepository` sorts
+# for display itself.
+UNORDERED_ARRAY_KEYS = {"entities"}
+
+
+def sort_key(item):
+    """A stable, human-meaningful key for an entity, whatever kind of entity it is."""
+    if not isinstance(item, dict):
+        return ("", "")
+    media = item.get("media") or {}
+    metadata = media.get("metadata") or {}
+    return (str(metadata.get("title") or item.get("name") or ""), str(item.get("relPath") or ""))
+
+
 def scrub(node, key=None):
     if isinstance(node, dict):
         return {k: scrub(v, k) for k, v in node.items()}
     if isinstance(node, list):
-        return [scrub(v, key) for v in node]
+        scrubbed = [scrub(v, key) for v in node]
+        return sorted(scrubbed, key=sort_key) if key in UNORDERED_ARRAY_KEYS else scrubbed
     if key in SECRET_KEYS and node not in (None, "", False, True):
         return "<redacted-secret>"
     if key in VOLATILE_KEYS and isinstance(node, str):

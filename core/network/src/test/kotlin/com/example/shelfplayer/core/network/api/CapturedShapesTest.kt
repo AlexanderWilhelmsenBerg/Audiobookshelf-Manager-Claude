@@ -115,30 +115,47 @@ class CapturedShapesTest {
     }
 
     /**
-     * **Un-finishing is not settled, and this test says so rather than pretending otherwise.**
+     * **Un-finishing is accepted, and then overruled by the server's own threshold.**
      *
-     * The probe sent `{"currentTime": 42.5, "isFinished": false}` to a book eight seconds long and read
-     * back `isFinished: true`. Two explanations fit and the capture cannot separate them: the server may
-     * have rejected a position past the duration outright, or it may re-derive `isFinished` from a clamped
-     * progress of 1 and ignore the flag it was given.
+     * The un-finish PATCH answers `200 OK` — so the request is not rejected, which was the worrying of the
+     * two possibilities. What happens next is the server's `markAsFinishedTimeRemaining` rule, and the CI
+     * server log names it in as many words:
      *
-     * Either way the app's *Finished* checkbox may not un-tick on the server, which is a real risk to
-     * PLAY-004's "marking finished is explicit, in both directions" and is recorded as such in
-     * `docs/api-compatibility.md`. `scripts/capture-contracts.sh` now sends a position **inside** the
-     * duration and captures the PATCH responses themselves, so the next run separates the two.
+     * ```
+     * [MediaProgress] Marking media progress as finished because time remaining (8)
+     *                 is less than 10 seconds
+     * ```
      *
-     * This test asserts what was observed — not what the app hopes. When a better capture lands it will
-     * fail, and failing is the correct behaviour: it is the reminder that the question was open.
+     * The contract book is **eight seconds long**, so *every* position in it is within ten seconds of the
+     * end and it can never be anything but finished. That is a property of the fixture, not of the API: a
+     * real thirty-hour book at two seconds is nowhere near its last ten.
+     *
+     * So this asserts both halves — the acceptance, which is the contract, and the fixture's own
+     * inescapable finishedness, which is why the fixture cannot demonstrate the rest. Testing un-finishing
+     * properly needs a seeded book longer than the threshold; that belongs with the
+     * `markAsFinishedTimeRemaining` work, which has to read the setting anyway.
      */
     @Test
-    fun `un-finishing a book is unconfirmed and the fixture records why`() {
+    fun `un-finishing is accepted, and then re-finished by the ten-second rule`() {
+        val patch = json.parseToJsonElement(rawEnvelope("media-progress-set-unfinished")).jsonObject
         val after = json.parseToJsonElement(ContractFixtures.body("media-progress-unfinished")).jsonObject
 
+        assertEquals(200, patch.getValue("status").jsonPrimitive.content.toInt(), "the un-finish is accepted")
         assertTrue(
             after.getValue("isFinished").jsonPrimitive.content.toBoolean(),
-            "the 2026-08-13 probe did not un-finish the book; if this now passes as false, the question " +
-                "is settled and docs/api-compatibility.md needs updating",
+            "and an eight-second book is always within ten seconds of its end",
         )
+    }
+
+    /** Both progress writes answer plain text, like the bookmark delete and unlike everything else. */
+    @Test
+    fun `a progress patch answers with plain text`() {
+        listOf("media-progress-set-finished", "media-progress-set-unfinished").forEach { name ->
+            val envelope = json.parseToJsonElement(rawEnvelope(name)).jsonObject
+
+            assertEquals(200, envelope.getValue("status").jsonPrimitive.content.toInt(), name)
+            assertEquals("OK", envelope.getValue("bodyText").jsonPrimitive.content, name)
+        }
     }
 
     private fun rawEnvelope(fixture: String): String {

@@ -88,11 +88,11 @@ deliberately not reported.
 
 - **Bookmarks.** The button is still disabled — but the block is gone: the capture you supplied recorded
   all four endpoints, and `docs/api-compatibility.md` has the shape. This is the next slice.
-- **Un-finishing on the server** is unconfirmed. The checkbox works on the phone; whether the server
-  accepts the un-tick could not be settled from the capture, because the probe sent a position past the
-  end of the book. The harness now sends a valid one, so the next capture answers it.
-- ROUTE-002's per-device policies, a configurable finished threshold, `markAsFinishedTimeRemaining`,
-  rebuffer count and startup latency, duck-instead-of-pause.
+- **`markAsFinishedTimeRemaining`.** The server has a rule — a book within ten seconds of its end is
+  finished whatever you say — and the app does not read the library's value for it. Un-finishing itself is
+  confirmed working; this is the threshold clause of PLAY-004, and it is a planned pull request.
+- ROUTE-002's per-device policies, a configurable finished threshold, rebuffer count and startup latency,
+  duck-instead-of-pause.
 - **The two-hour soak.** Not run.
 - Equaliser, widgets, statistics — later phases, by decision. Downloads and the queue — Phase 3.
 

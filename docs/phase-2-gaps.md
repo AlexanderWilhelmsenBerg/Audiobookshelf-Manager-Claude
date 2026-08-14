@@ -61,15 +61,19 @@ Complete for a streaming client. The three remaining criteria are about download
 | Remote sync ~30 s plus the seven named triggers | ✅ all seven |
 | Survives process death, ≤10 s lost | ✅ by construction 🔬 unproven on hardware |
 | Finished threshold 95%, configurable 90–99% | ⚠️ the threshold is 95% and **not configurable** |
-| **Marking finished is explicit** | ⚠️ a checkbox, both directions locally — but *un-finishing on the server is unconfirmed*, see below |
+| **Marking finished is explicit** | ✅ a checkbox, both directions — and the un-finish PATCH is confirmed accepted by the server |
 | Rewinding preserved; conflict never blindly takes the maximum | ✅ |
-| **`markAsFinishedTimeRemaining` from library settings** | ❌ ADR-0013's other half |
+| **`markAsFinishedTimeRemaining` from library settings** | ❌ ADR-0013's other half — the setting is now *observed* (10 s default) but its endpoint is still uncaptured |
 
-The 2026-08-13 capture settled `isFinished: true` and left `false` open: the probe sent a position past
-the end of an eight-second book and the read came back still finished, which is consistent both with the
-server rejecting the request and with it re-deriving the flag from a clamped progress. The local row is
-authoritative for every screen and carries `hasUnsyncedChanges`, so nothing is lost on the device — but a
-second device could still see an un-finished book as finished. The harness now probes it properly.
+The 2026-08-13 capture settled both directions. `isFinished: true` round-trips, and the un-finish PATCH
+answers `200 OK` — the server accepts it. What made the first probe look like a failure was the server's own
+`markAsFinishedTimeRemaining` rule, default ten seconds, applied to a contract book **eight seconds long**:
+every position in it is inside the last ten, so it can never be un-finished. A real book is not affected.
+
+That is also the **first observation of `markAsFinishedTimeRemaining` in action**, which is the unbuilt half
+of ADR-0013 in the row above. Demonstrating un-finishing in a fixture needs a seeded book longer than the
+threshold, which moves the duration in a dozen committed fixtures — so it belongs with that work rather than
+with the capture, and the work has to read the setting anyway.
 
 ### PLAY-005 Offline session synchronization
 
