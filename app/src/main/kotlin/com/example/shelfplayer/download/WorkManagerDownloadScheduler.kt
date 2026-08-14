@@ -10,12 +10,16 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.example.shelfplayer.core.common.log.LogCategory
+import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.TrafficCategory
 import com.example.shelfplayer.domain.download.DownloadScheduler
+import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,15 +27,17 @@ import javax.inject.Singleton
 /**
  * PRODUCT_SPEC DL-001 / DL-004 / §12 — [DownloadScheduler] against WorkManager.
  *
- * ### Connected, not unmetered — for now
+ * ### The network constraint is the user's setting, not a constant
  *
- * The constraint here is `CONNECTED`, which looks wrong against DL-004's "manual downloads: Wi-Fi only by
- * default". It is deliberate and temporary: the network **policy** is slice 5, and putting an unmetered
- * constraint here first would mean a download that silently never starts on a phone with no Wi-Fi, with
- * nothing in the UI able to say why. A constraint the user cannot see or change is worse than no constraint.
+ * DL-004's default is Wi-Fi only for manual downloads, so the constraint is `UNMETERED` unless the user has
+ * turned cellular on for downloads in Settings (ADR-0018 decision 5). WorkManager then holds the job until
+ * the network qualifies, which is exactly the requirement's "switching from Wi-Fi to cellular during a
+ * disallowed download pauses it" — the platform pauses and resumes it for us, without a wake lock or a
+ * poll of our own.
  *
- * When slice 5 lands, the policy decides this value and the UI explains it. Until then the app does what the
- * user asked, immediately, which is the honest behaviour for a button that was just pressed.
+ * A constraint the user cannot see or change would be worse than none, because a download that silently
+ * never starts is indistinguishable from a broken button. That is why this landed with the setting rather
+ * than before it, and why the book screen reports *waiting for Wi-Fi* rather than showing an idle ring.
  *
  * ### Expedited, with a fallback
  *
@@ -47,10 +53,17 @@ import javax.inject.Singleton
 @Singleton
 class WorkManagerDownloadScheduler @Inject constructor(
     @param:ApplicationContext private val context: Context,
+    private val settings: PlaybackSettingsRepository,
     private val logger: Logger,
 ) : DownloadScheduler {
 
     override suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId) {
+        val policy = settings.observeNetworkPolicy().first()
+        val network = if (policy.allowsCellular(TrafficCategory.ManualDownload)) {
+            NetworkType.CONNECTED
+        } else {
+            NetworkType.UNMETERED
+        }
         val request = OneTimeWorkRequestBuilder<BookDownloadWorker>()
             .setInputData(
                 Data.Builder()
@@ -60,7 +73,7 @@ class WorkManagerDownloadScheduler @Inject constructor(
             )
             .setConstraints(
                 Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .setRequiredNetworkType(network)
                     // Not `setRequiresStorageNotLow`: the use case already checked free space against this
                     // book's own size, which is a better question than Android's device-wide threshold, and
                     // a job blocked by the system one would wait with no way to explain itself.
@@ -75,7 +88,11 @@ class WorkManagerDownloadScheduler @Inject constructor(
             ExistingWorkPolicy.KEEP,
             request,
         )
-        logger.info(LogCategory.Sync, "A book download was queued")
+        logger.info(
+            LogCategory.Sync,
+            "A book download was queued",
+            LogField.Public("network", network.name),
+        )
     }
 
     override suspend fun cancel(serverId: ServerId, itemId: LibraryItemId) {

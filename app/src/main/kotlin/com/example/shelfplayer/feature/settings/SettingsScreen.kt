@@ -65,6 +65,7 @@ fun SettingsRoute(
             onAutoRewindChanged = viewModel::onAutoRewindChanged,
             onBufferChanged = viewModel::onBufferPresetChanged,
             onAutoPlayChanged = viewModel::onAutoPlayOnCarConnectChanged,
+            onNetworkPolicyChanged = viewModel::onNetworkPolicyChanged,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -139,7 +140,12 @@ fun SettingsScreen(
                         actions = sleepTimerActions,
                     )
 
-                    SettingsTab.Playback -> playbackTab(uiState.playback, uiState.libraries, playbackActions)
+                    SettingsTab.Playback -> playbackTab(
+                        settings = uiState.playback,
+                        libraries = uiState.libraries,
+                        actions = playbackActions,
+                        networkPolicy = uiState.networkPolicy,
+                    )
 
                     SettingsTab.About -> aboutTab(uiState, onOpenEventLog = { isEventLogOpen = true })
                 }

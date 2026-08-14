@@ -92,6 +92,56 @@ class AndroidNetworkMonitor @Inject constructor(@param:ApplicationContext privat
         .distinctUntilChanged()
         .conflate()
 
+    /**
+     * PRODUCT_SPEC DL-004 — the metering state, from the platform rather than from the transport type.
+     *
+     * `NET_CAPABILITY_NOT_METERED` rather than "is the transport Wi-Fi". The two disagree in both
+     * directions and both cases are common: a Wi-Fi network the user marked as metered — a phone hotspot,
+     * a hotel connection with a cap — reports Wi-Fi and is metered, and an unmetered mobile plan reports
+     * cellular. The requirement says the platform's answer is the source of truth, and this is it.
+     *
+     * `NET_CAPABILITY_NOT_VPN` is deliberately *not* required. A VPN reports its own capabilities and its
+     * underlying transport's metering, so excluding it would report every VPN user as metered and refuse
+     * their downloads on their home Wi-Fi.
+     */
+    override val isUnmetered: Flow<Boolean> = callbackFlow {
+        val manager = context.getSystemService<ConnectivityManager>()
+        if (manager == null) {
+            // No connectivity service. Reported as metered, which is the direction that cannot cost
+            // somebody money — the opposite of [isOnline]'s optimistic fallback, and for the same reason:
+            // each guesses towards the answer whose being wrong is harmless.
+            trySend(false)
+            awaitClose {}
+            return@callbackFlow
+        }
+
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                trySend(capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED))
+            }
+
+            override fun onLost(network: Network) {
+                trySend(manager.isActiveNetworkUnmetered())
+            }
+
+            override fun onUnavailable() {
+                trySend(false)
+            }
+        }
+
+        trySend(manager.isActiveNetworkUnmetered())
+        manager.registerDefaultNetworkCallback(callback)
+
+        awaitClose { manager.unregisterNetworkCallback(callback) }
+    }
+        .distinctUntilChanged()
+        .conflate()
+
+    private fun ConnectivityManager.isActiveNetworkUnmetered(): Boolean {
+        val capabilities = getNetworkCapabilities(activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    }
+
     private fun ConnectivityManager.hasValidatedNetwork(): Boolean {
         val capabilities = getNetworkCapabilities(activeNetwork) ?: return false
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&

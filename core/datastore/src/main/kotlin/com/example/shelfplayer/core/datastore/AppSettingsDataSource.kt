@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
@@ -319,6 +320,32 @@ class AppSettingsDataSource @Inject constructor(
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */
     suspend fun setAutoPlayOnCarConnect(enabled: Boolean) {
         dataStore.updateData { current -> current.toBuilder().setAutoPlayOnCarConnect(enabled).build() }
+    }
+
+    /**
+     * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — which categories may spend cellular data.
+     *
+     * Streaming is stored **inverted**, as a *disabled* flag. Proto3 has no way to tell an unwritten
+     * boolean from a stored `false`, so the field that defaults to *on* has to be the one whose zero value
+     * means "on". Reading it any other way would silently turn streaming on cellular off for every install
+     * that has never opened this screen — which is all of them, on the build this ships in.
+     */
+    val networkPolicy: Flow<NetworkPolicy> = settings.map { stored ->
+        NetworkPolicy(
+            streamingOnCellular = !stored.streamingCellularDisabled,
+            downloadsOnCellular = stored.downloadsCellularEnabled,
+            smartDownloadsOnCellular = stored.smartDownloadsCellularEnabled,
+        )
+    }
+
+    suspend fun setNetworkPolicy(policy: NetworkPolicy) {
+        dataStore.updateData { current ->
+            current.toBuilder()
+                .setStreamingCellularDisabled(!policy.streamingOnCellular)
+                .setDownloadsCellularEnabled(policy.downloadsOnCellular)
+                .setSmartDownloadsCellularEnabled(policy.smartDownloadsOnCellular)
+                .build()
+        }
     }
 
     suspend fun current(): AppSettings = dataStore.updateData { it }

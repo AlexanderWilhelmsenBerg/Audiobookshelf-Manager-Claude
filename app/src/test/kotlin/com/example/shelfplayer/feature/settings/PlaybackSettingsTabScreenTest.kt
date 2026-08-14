@@ -2,6 +2,8 @@ package com.example.shelfplayer.feature.settings
 
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -108,6 +110,43 @@ class PlaybackSettingsTabScreenTest {
         scrollTo("Finished")
         composeRule.onNodeWithText("Used where your server sets nothing").assertDoesNotExist()
         composeRule.onNodeWithText("Finished with this much left").assertDoesNotExist()
+    }
+
+    /**
+     * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — three switches, and Wi-Fi is not one of them.
+     *
+     * The hint is asserted because the section is otherwise open to exactly the wrong reading: three
+     * switches under a heading about data, all off by default except one, look like they control whether
+     * the app has a network at all. They do not — Wi-Fi is always used — and the only place that is said is
+     * the hint.
+     */
+    @Test
+    fun `the network section offers cellular per category, and says Wi-Fi is always used`() {
+        render(libraries = listOf(library("Fiction", 10.seconds)))
+
+        // The last row first: scrolling to it brings the whole section into the viewport, and the header
+        // scrolled to on its own leaves its rows below the fold in a `LazyColumn`.
+        scrollTo("Download next book over mobile data")
+        composeRule.onNodeWithText("Wi-Fi is always used when it is available", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Stream over mobile data").assertIsDisplayed()
+        composeRule.onNodeWithText("Download over mobile data").assertIsDisplayed()
+        composeRule.onNodeWithText("Download next book over mobile data").assertIsDisplayed()
+    }
+
+    /**
+     * The defaults, on the screen: streaming on, both downloads off.
+     *
+     * Asserted here as well as in `NetworkPolicyTest` because this is the half a user sees. A model whose
+     * defaults were right and a screen that rendered them inverted would pass the other test.
+     */
+    @Test
+    fun `the defaults show streaming on and downloads off`() {
+        render(libraries = listOf(library("Fiction", 10.seconds)))
+
+        scrollTo("Download next book over mobile data")
+        composeRule.onNodeWithText("Stream over mobile data").assertIsOn()
+        composeRule.onNodeWithText("Download over mobile data").assertIsOff()
+        composeRule.onNodeWithText("Download next book over mobile data").assertIsOff()
     }
 
     /** The tab is a `LazyColumn`, so a row below the viewport does not exist to be asserted on yet. */

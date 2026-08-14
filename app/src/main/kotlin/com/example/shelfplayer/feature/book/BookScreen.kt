@@ -27,12 +27,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,11 +82,14 @@ fun BookRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val playback by playerViewModel.playback.collectAsStateWithLifecycle()
     val menu by viewModel.menu.collectAsStateWithLifecycle()
+    val message by viewModel.message.collectAsStateWithLifecycle()
     val context = LocalContext.current
     BookScreen(
         uiState = uiState,
         playback = playback,
         menu = menu,
+        message = message,
+        onMessageShown = viewModel::onMessageShown,
         actions = BookActions(
             onPlay = playerViewModel::onPlay,
             onTogglePlayPause = playerViewModel::onTogglePlayPause,
@@ -111,12 +117,29 @@ fun BookScreen(
     actions: BookActions,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * PRODUCT_SPEC 21 — the one-line reason an action did not happen, or `null`.
+     *
+     * Every refusal on this screen is silent without it, and the download button has three that a user will
+     * actually meet: no space, a permission the server revoked, and a book whose files the catalogue does
+     * not know about. A control that appears to do nothing is the worst of the available outcomes.
+     */
+    message: String? = null,
+    onMessageShown: () -> Unit = {},
 ) {
     // Which of the menu's three surfaces is open. `rememberSaveable` so a rotation with the history open
     // comes back to the history rather than to the screen behind it.
     var openSurface by rememberSaveable { mutableStateOf(BookSurface.None) }
+    val snackbars = remember { SnackbarHostState() }
+    // Keyed by the message, so two different failures in a row show two snackbars rather than one.
+    LaunchedEffect(message) {
+        val text = message ?: return@LaunchedEffect
+        snackbars.showSnackbar(text)
+        onMessageShown()
+    }
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             TopAppBar(
                 title = {

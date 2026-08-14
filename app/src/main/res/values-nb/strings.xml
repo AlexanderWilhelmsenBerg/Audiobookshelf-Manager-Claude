@@ -261,6 +261,11 @@
     <string name="sleep_timer_countdown">%1$d:%2$02d</string>
     <string name="sleep_timer_restart">Start sovetiden på nytt</string>
 
+    <string name="settings_section_network">Mobildata</string>
+    <string name="settings_network_hint">Wi-Fi brukes alltid når det er tilgjengelig. Disse bestemmer hva som også kan bruke mobildata. Telefonen din avgjør hva som regnes som mobildata, så et Wi-Fi-nett du har merket som målt behandles på samme måte.</string>
+    <string name="settings_network_streaming">Strøm over mobildata</string>
+    <string name="settings_network_downloads">Last ned over mobildata</string>
+    <string name="settings_network_smart_downloads">Last ned neste bok over mobildata</string>
     <string name="settings_section_car">I bilen</string>
     <string name="settings_car_hint">ShelfPlayer vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på.</string>
     <string name="settings_car_autoplay">Start avspilling når en bil kobles til</string>

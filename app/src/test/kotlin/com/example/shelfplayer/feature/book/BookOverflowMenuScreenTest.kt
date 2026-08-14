@@ -296,6 +296,21 @@ class BookOverflowMenuScreenTest {
         assertEquals(1, removed)
     }
 
+    /**
+     * PRODUCT_SPEC 21 — a refusal reaches the user.
+     *
+     * Every failure the download path can produce — no space, a permission the server revoked, a book with
+     * no files — arrived at a `StateFlow` nothing rendered until this. A button that appears to do nothing
+     * is the worst of the available outcomes, and it is invisible to every test that only asks whether the
+     * ViewModel computed the right thing.
+     */
+    @Test
+    fun `a refusal is shown rather than swallowed`() {
+        render(message = "There is not enough space for this book.")
+
+        composeRule.onNodeWithText("There is not enough space for this book.").assertIsDisplayed()
+    }
+
     /** Every other state acts immediately: only removal is destructive, and only removal asks. */
     @Test
     fun `starting a download does not ask`() {
@@ -320,6 +335,7 @@ class BookOverflowMenuScreenTest {
         onOpenWebClient: (String) -> Unit = {},
         onDownloadClicked: (DownloadButtonState) -> Unit = {},
         onRemoveDownload: () -> Unit = {},
+        message: String? = null,
     ) {
         composeRule.setContent {
             BookScreen(
@@ -346,6 +362,7 @@ class BookOverflowMenuScreenTest {
                     onRemoveDownload = onRemoveDownload,
                 ),
                 onNavigateUp = {},
+                message = message,
             )
         }
     }

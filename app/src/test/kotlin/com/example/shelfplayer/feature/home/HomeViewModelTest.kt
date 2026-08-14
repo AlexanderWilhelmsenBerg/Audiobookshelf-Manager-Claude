@@ -111,6 +111,8 @@ class HomeViewModelTest {
         profileRepository = profiles,
         preferences = preferences,
         networkMonitor = object : NetworkMonitor {
+            /** Not exercised here: this test is about the shelf, and metering only governs downloads. */
+            override val isUnmetered: Flow<Boolean> = flowOf(true)
             override val isOnline: Flow<Boolean> = network
         },
         syncAccount = SyncAccountUseCase(profiles, NeverRenewingAuth(), libraries, StubBookmarks()),

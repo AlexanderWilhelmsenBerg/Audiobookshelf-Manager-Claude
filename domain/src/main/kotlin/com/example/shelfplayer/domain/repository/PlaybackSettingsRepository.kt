@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
@@ -27,6 +28,17 @@ interface PlaybackSettingsRepository {
     suspend fun setAutoRewind(rewind: AutoRewind): AppResult<Unit>
 
     suspend fun setBufferPreset(preset: BufferPreset): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — which categories may spend cellular data.
+     *
+     * On this repository rather than a new one because it is the same store and the same screen. A
+     * separate `NetworkPolicyRepository` would be one interface, one binding and one more thing for a
+     * settings ViewModel to combine, for three booleans.
+     */
+    fun observeNetworkPolicy(): Flow<NetworkPolicy>
+
+    suspend fun setNetworkPolicy(policy: NetworkPolicy): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — whether connecting to a car starts the last book.

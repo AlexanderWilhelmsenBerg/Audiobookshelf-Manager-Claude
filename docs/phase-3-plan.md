@@ -47,7 +47,7 @@ download work is genuinely additive rather than a rewrite.
 | 2 — the storage layout and the manifest | **merged** (#19) |
 | 3 — one file downloads, verified, atomically | **merged** (#20), and it absorbed slice 6's resume |
 | 4 — a whole book, and playing it offline | **open** (#21) — the button, the worker, offline playback |
-| 5 — network policy | not started |
+| 5 — network policy | **open** (#21) — three cellular switches, Wi-Fi always allowed |
 | 6 — resume | folded into slice 3; the `RangeDownload` capability gate is still outstanding |
 | 7 — verification and cleanup | not started |
 | 8 — smart download | not started |
@@ -57,8 +57,12 @@ past the screen with a progress notification, and a downloaded book plays with n
 follows the ShelfPlayer fork's `DownloadButton` — one control that cycles download → cancel → remove, with a
 progress ring in place of the icon while bytes arrive.
 
-Still not reachable: the storage screen (*Manage local files*), the network policy, cleanup and smart
-download — slices 5, 7 and 8.
+Slice 5 rode along, because slice 4 could not honestly ship without it: a download that spends mobile data
+by default is worse than no download button. Wi-Fi is always allowed and is not a setting — the owner's rule
+— so each category is one switch, *may this also use cellular*, defaulting on for streaming and off for both
+kinds of download.
+
+Still not reachable: the storage screen (*Manage local files*), cleanup and smart download — slices 7 and 8.
 
 ---
 

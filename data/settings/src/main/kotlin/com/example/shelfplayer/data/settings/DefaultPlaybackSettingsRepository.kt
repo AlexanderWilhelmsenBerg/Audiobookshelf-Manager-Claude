@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
@@ -75,6 +76,19 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
             LogCategory.Settings,
             "Auto-rewind after a pause was changed",
             LogField.Public("enabled", rewind.isEnabled),
+        )
+    }
+
+    override fun observeNetworkPolicy(): Flow<NetworkPolicy> = settings.networkPolicy
+
+    override suspend fun setNetworkPolicy(policy: NetworkPolicy): AppResult<Unit> = write {
+        settings.setNetworkPolicy(policy)
+        logger.info(
+            LogCategory.Settings,
+            "The network policy for downloads changed",
+            LogField.Public("downloadsOnCellular", policy.downloadsOnCellular),
+            LogField.Public("smartDownloadsOnCellular", policy.smartDownloadsOnCellular),
+            LogField.Public("streamingOnCellular", policy.streamingOnCellular),
         )
     }
 
