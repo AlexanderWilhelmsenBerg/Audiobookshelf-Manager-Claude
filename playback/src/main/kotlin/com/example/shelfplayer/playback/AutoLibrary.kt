@@ -10,10 +10,13 @@ import androidx.media3.session.MediaConstants
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
+import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
 import kotlinx.coroutines.flow.first
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -30,10 +33,13 @@ import kotlin.time.Duration.Companion.milliseconds
  * using the tree.
  *
  * What the tree *does* give is tabs: the browsable children of the root become the tab bar across the top of
- * the browse screen, and the playback screen is one swipe from it. So the request lands as three tabs —
- * **Continue**, **Chapters**, **History** — which is the same three panes, reached the way the platform
- * allows. The equaliser is not here because it is not built, and because a list of media items is the wrong
- * shape for a set of sliders; when it exists it belongs on the phone.
+ * the browse screen, and the playback screen is one swipe from it. The equaliser is not here because it is not
+ * built, and because a list of media items is the wrong shape for a set of sliders; when it exists it belongs
+ * on the phone.
+ *
+ * The tabs are **the phone's shelves** — Continue, Recently added, Listen again, Discover — plus **Chapters**
+ * and **History**, which are about whatever is playing. The first build of this had Continue alone, and a car
+ * showed "no books" to an owner whose library was full: see [rootTabs].
  *
  * ### Everything is keyed by a media id
  *
@@ -56,6 +62,7 @@ class AutoLibrary @Inject constructor(
     private val profiles: ProfileRepository,
     private val library: LibraryRepository,
     private val history: PlaybackHistoryRepository,
+    private val homeShelves: ObserveHomeShelvesUseCase,
 ) {
 
     /**
@@ -74,17 +81,79 @@ class AutoLibrary @Inject constructor(
      * has to dismiss.
      */
     suspend fun children(parentId: String, currentBookId: LibraryItemId?): List<MediaItem> = when (parentId) {
-        ROOT -> listOf(
-            browsableNode(TAB_CONTINUE, "Continue"),
-            browsableNode(TAB_CHAPTERS, "Chapters"),
-            browsableNode(TAB_HISTORY, "History"),
-        )
-
-        TAB_CONTINUE -> continueListening().map(::bookItem)
+        ROOT -> rootTabs()
+        TAB_CONTINUE -> shelves().continueListening.map(::bookItem)
+        TAB_RECENT -> shelves().recentlyAdded.map(::bookItem)
+        TAB_DISCOVER -> shelves().discover.map(::bookItem)
+        TAB_AGAIN -> shelves().listenAgain.map(::bookItem)
         TAB_CHAPTERS -> chaptersOf(currentBookId)
         TAB_HISTORY -> historyOf(currentBookId)
         else -> emptyList()
     }
+
+    /**
+     * PRODUCT_SPEC LIB-002 / PLAY-001 — the car's tabs are **the phone's shelves**.
+     *
+     * The owner's report was that the car opened on an empty *Continue* and said "no books", while a search
+     * found them: *"I would like the same library setup as the app."*
+     *
+     * The cause was not a filter. It was that Continue was the **only** shelf in the car, and a library with
+     * nothing in progress has nothing to put in it — which is every account on its first day and any account
+     * whose progress has not synced yet. The phone has never had that problem because it shows four shelves and
+     * omits the empty ones.
+     *
+     * So the tree now reads the same [ObserveHomeShelvesUseCase] the home screen reads. Not a copy of its
+     * rules: the same function. A car and a phone disagreeing about what "continue listening" means would be a
+     * defect nobody could see without owning both.
+     *
+     * ### Empty shelves are omitted, and *Chapters* and *History* are not
+     *
+     * An empty tab a driver has already tapped is worse than a tab that was never there, so a shelf with
+     * nothing in it does not appear — the same rule `homeShelves` applies on the phone. The last two tabs stay
+     * regardless, because they are about whatever is playing rather than about the library, and their emptiness
+     * is a state ("nothing is playing") rather than an absence.
+     *
+     * When every shelf is empty the root would be two tabs about nothing, so it says so in one unplayable row
+     * instead. A blank browse screen in a car is indistinguishable from a broken app.
+     */
+    private suspend fun rootTabs(): List<MediaItem> {
+        val shelves = shelves()
+        val tabs = buildList {
+            if (shelves.continueListening.isNotEmpty()) add(browsableNode(TAB_CONTINUE, "Continue"))
+            if (shelves.recentlyAdded.isNotEmpty()) add(browsableNode(TAB_RECENT, "Recently added"))
+            if (shelves.listenAgain.isNotEmpty()) add(browsableNode(TAB_AGAIN, "Listen again"))
+            if (shelves.discover.isNotEmpty()) add(browsableNode(TAB_DISCOVER, "Discover"))
+        }
+        if (tabs.isEmpty()) return listOf(emptyNotice())
+        return tabs + browsableNode(TAB_CHAPTERS, "Chapters") + browsableNode(TAB_HISTORY, "History")
+    }
+
+    /**
+     * The phone's shelves, for the profile the car is allowed to see.
+     *
+     * `first()` on the flow rather than a subscription: a browse tree is a snapshot answer to a question the
+     * car asked, and Media3 re-asks by invalidating the node rather than by being pushed to.
+     */
+    private suspend fun shelves(): HomeShelves = homeShelves().first()
+
+    /**
+     * PRODUCT_SPEC 21 — a library with nothing in it says so rather than showing a blank screen.
+     *
+     * Unplayable, so tapping it does nothing rather than starting something arbitrary. The wording names the
+     * two causes a driver can act on — no sign-in and nothing synced — because "no books" on its own is what
+     * the owner saw and it explained nothing.
+     */
+    private fun emptyNotice(): MediaItem = MediaItem.Builder()
+        .setMediaId(NOTICE_EMPTY)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle("No books yet")
+                .setSubtitle("Open ShelfPlayer on your phone to sign in or sync your library.")
+                .setIsBrowsable(false)
+                .setIsPlayable(false)
+                .build(),
+        )
+        .build()
 
     /** One node, for a car that asks about an id directly. `null` for one this tree does not own. */
     suspend fun item(mediaId: String, currentBookId: LibraryItemId?): MediaItem? = when {
@@ -106,7 +175,7 @@ class AutoLibrary @Inject constructor(
      */
     suspend fun search(query: String): List<MediaItem> {
         val needle = query.trim().lowercase()
-        if (needle.isEmpty()) return continueListening().map(::bookItem)
+        if (needle.isEmpty()) return shelves().continueListening.map(::bookItem)
         return books()
             .filter { book -> book.matches(needle) }
             .sortedByDescending { book -> book.progress?.updatedAt }
@@ -123,11 +192,14 @@ class AutoLibrary @Inject constructor(
      * The most recently updated progress that is not finished. Finished books are excluded deliberately:
      * a headset press the morning after finishing something should not start it again from the end.
      */
-    suspend fun lastPlayed(): Book? = continueListening().firstOrNull()
-
-    private suspend fun continueListening(): List<Book> = books()
+    suspend fun lastPlayed(): Book? = books()
         .filter { book -> book.progress?.isFinished == false }
-        .sortedByDescending { book -> book.progress?.updatedAt }
+        .maxByOrNull { book -> book.progress?.updatedAt ?: Instant.MIN }
+
+    // `lastPlayed` deliberately does **not** go through the Continue shelf, even though the two answer nearly
+    // the same question. ROUTE-001 is "resume what was playing", so a book with no progress row has nothing to
+    // resume and must not be offered to a headset press; the shelf is a browsing surface and may reasonably
+    // show more. Sharing one list would mean a media button eventually starting a book at random.
 
     private suspend fun books(): List<Book> {
         val profileId = profiles.activeProfileId() ?: return emptyList()
@@ -331,8 +403,14 @@ class AutoLibrary @Inject constructor(
 
         private const val TAB_PREFIX = "tab/"
         const val TAB_CONTINUE = "${TAB_PREFIX}continue"
+        const val TAB_RECENT = "${TAB_PREFIX}recent"
+        const val TAB_DISCOVER = "${TAB_PREFIX}discover"
+        const val TAB_AGAIN = "${TAB_PREFIX}again"
         const val TAB_CHAPTERS = "${TAB_PREFIX}chapters"
         const val TAB_HISTORY = "${TAB_PREFIX}history"
+
+        /** The one row shown when no shelf has anything. Unplayable, so it is never resolved to a book. */
+        const val NOTICE_EMPTY = "notice/empty"
 
         private const val BOOK_PREFIX = "book/"
         private const val AT_PREFIX = "at/"

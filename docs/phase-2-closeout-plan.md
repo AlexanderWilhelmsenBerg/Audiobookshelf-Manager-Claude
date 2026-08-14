@@ -26,7 +26,7 @@ decision, recorded below.
 | 4 | `claude/phase-2-buffer-diagnostics` | PLAY-006 | S | Two readings the buffer work already half-collects |
 | 5 | `claude/phase-2-route-002` | ROUTE-002 | L | Eleven criteria about device identity |
 | 6 | `claude/phase-2-route-003` | ROUTE-003 | S | Three-way startup setting; two thirds true by accident today |
-| 7 | `claude/phase-2-auto-library` | PLAY-001, 11.1 | M | **New.** The app is in the car now; what it shows there is wrong |
+| ~~7~~ | `claude/phase-2-auto-library` | PLAY-001, 11.1 | M | ✅ **done** — the car shows the phone's shelves, from the phone's own use case |
 | — | *no branch* | exit criterion | — | The two-hour soak. Hardware, not code |
 
 Each pull request is a draft, carries its own device-test section where one is needed, and updates
