@@ -100,6 +100,16 @@ deliberately not reported.
 
 | Section | Result | Notes |
 | --- | --- | --- |
-| 1. Switching between books | | |
-| 2. Android Auto — the five readings | | |
+| 1. Switching between books | **Pass** | And a book resumed by a headset can now be replaced, which was the path that failed |
+| 2. Android Auto — the five readings | **Pass, with a defect** | The app appears in the car and browses. The **Continue** tab opens empty saying "no books"; search finds them. Cause and fix are in `docs/phase-2-closeout-plan.md` PR 7 |
 | 3. History: detail, and the server's changes | | |
+
+### What section 1 and 2 settled
+
+**ROUTE-001 — media-button resume — passes.** Pressing play on a headset against a dead process resumes the
+last unfinished book, and 0.8.0's fix means a *different* book can then be started from the app. Both halves
+had to work for the criterion to be met, and the first one hid the second for a whole build.
+
+**PLAY-001's Android Auto criterion is met for discovery and browsing.** Two runs failed to find the app at
+all; it is there now. What is left is the shape of what it shows, which is a different problem from whether
+it shows anything, and it has its own pull request.

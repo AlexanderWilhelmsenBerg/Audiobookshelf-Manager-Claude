@@ -1,4 +1,4 @@
-# Device test — build 0.9.0-bookmarks
+# Device test — build 0.9.1-bookmarks
 
 The bookmark button has been a disabled placeholder since wave 2. It works now. This is the only new thing
 in the build, so the script is short — but read section 4, because the API's design shows through the UI in
@@ -6,30 +6,44 @@ one place and it is better to expect it than to report it.
 
 ## 1. Keeping a spot
 
-**Player → the bookmark icon.** It now does two things:
+**Player → the bookmark icon → the button at the top of the sheet.**
 
-- **tap** — opens the list;
-- **long press** — keeps wherever you are, with no note.
+The first build of this had no visible way to make a bookmark: the only route was a long press on the
+player's icon, and it went unfound — which is the right verdict on a hidden gesture. The sheet now opens with
+a button, the same shape Audiobookshelf's own client uses.
 
-1. Play a book. Long-press the bookmark icon.
+1. Play a book. Tap the bookmark icon.
 
-**Expect:** a message at the bottom saying **Bookmarked at 1:04:22** — the position, not just
-"Bookmarked", so you can tell whether it caught the bit you meant. Nothing opens.
+**Expect:** the sheet, with a filled button across the top reading **New bookmark at 1:04:22** — the
+position it would use, so you can see whether it has moved since you opened the sheet.
 
-2. Tap the bookmark icon.
+2. Press it.
 
-**Expect:** the list, with that bookmark in it, showing its position and the chapter it falls in.
+**Expect:** a bookmark appears in the list below, and a message at the bottom confirms the position. The
+sheet stays open.
 
-3. Tap the row.
+3. Press it again without moving.
+
+**Expect:** it now reads **Already bookmarked at 1:04:22** and is greyed out. A second bookmark in the same
+second is not a thing the server can hold — see section 4 — and the button says so rather than vanishing.
+
+4. Let playback run a few seconds and look at the button again.
+
+**Expect:** the position in it has moved.
+
+5. The **long press** on the player's bookmark icon still works as a shortcut, and skips the sheet
+   entirely — useful once you know it is there, which is why it is no longer the only route.
+
+6. Tap a row.
 
 **Expect:** playback jumps there and the sheet closes.
 
-4. Tap the pencil, type something, save.
+7. Tap the pencil, type something, save.
 
 **Expect:** the note replaces the chapter line on that row. A note is what you wrote; the chapter is only a
 stand-in for when you did not write one.
 
-5. Tap the bin.
+8. Tap the bin.
 
 **Expect:** the row goes.
 
@@ -48,7 +62,7 @@ account refresh the app already does on resume, so that is the moment they land.
 ## 3. With no network — the part worth testing properly
 
 1. Turn on **aeroplane mode**.
-2. Long-press the bookmark icon.
+2. Open the sheet and press **New bookmark at …**
 
 **Expect:** a message saying the server could not be reached — **and the bookmark is in the list anyway.**
 It is yours; the app does not throw away something you deliberately kept because the network was down.
@@ -66,7 +80,8 @@ back**. Those are the two failure modes this was built to avoid, and they are in
 
 **Two bookmarks in the same second are one bookmark.**
 
-1. Long-press the bookmark icon twice in quick succession, inside the same second.
+1. Long-press the player's bookmark icon twice in quick succession, inside the same second — the shortcut,
+   because the sheet's own button disables itself and will not let you.
 
 **Expect:** one row, not two.
 
@@ -75,14 +90,15 @@ delete route is addressed to that number. So the same second cannot hold two, an
 server rather than showing a row that would vanish at the next refresh. Reporting this as a defect would be
 reporting the server's data model.
 
-## 5. In the car, if you get that far
+## 5. In the car
 
 The bookmark command is exposed to the media session, so a head unit that offers custom actions can keep a
 spot. It creates a bookmark with **no note**, which is the right answer for somebody driving.
 
-This is untested — the app has not yet been seen in a car at all
-(`docs/phase-2-switching-device-test.md` section 2 is the script for that, and its readings are what the
-next attempt needs).
+The app now reaches the car — that was settled on 2026-08-14 — but whether a given head unit *surfaces* a
+custom session action is the head unit's choice, so a blank here is not necessarily a defect. What the car
+shows generally is being reworked in PR 7 (`docs/phase-2-closeout-plan.md`); the bookmark action goes with
+it if it needs a home.
 
 ## What is still not in this build
 
@@ -98,7 +114,7 @@ next attempt needs).
 
 | Section | Result | Notes |
 | --- | --- | --- |
-| 1. Keeping, listing, renaming, deleting | | |
+| 1. The New bookmark button, listing, renaming, deleting | | |
 | 2. Bookmarks from another device | | |
 | 3. Offline: kept, and stays deleted | | |
 | 4. Same second is one bookmark | | |

@@ -295,6 +295,7 @@ class PlayerViewModel @Inject constructor(
      * the same [onSeekTo] every other jump uses — a bookmark is a position, not a special kind of playback.
      */
     val bookmarkActions: BookmarkActions = BookmarkActions(
+        onAdd = ::onAddBookmark,
         onGoTo = ::onSeekTo,
         onRename = { at, title -> withBookmark { bookId -> bookmarks.rename(bookId, at, title) } },
         onRemove = { at -> withBookmark { bookId -> bookmarks.remove(bookId, at) } },

@@ -17,6 +17,10 @@ against deliverables — and `docs/phase-2-closeout-plan.md` is what remains.
   local-first and never rolled back on a network failure; `hasUnsyncedChanges` stops a refresh discarding
   one made offline and `isPendingDelete` stops it resurrecting one deleted offline. The custom session
   command is included, so a car or a headset can keep a spot. Database version 13.
+  The sheet opens with a **New bookmark at …** button, which the first build of this did not have — it
+  offered only a long press on the player's icon, and a device run found the feature unusable as a result.
+  The button follows Audiobookshelf's own client, and disables itself when the current second is already
+  bookmarked rather than disappearing.
 - **A book is one timeline window** (ADR-0016, PLAY-001/PLAY-003): Media3 reports the *current item's*
   position to every controller, so a playlist of files made the notification describe the file — "time left
   in this chapter" on a library with a file per chapter. A book is now one `MediaItem` whose extras carry
@@ -27,9 +31,12 @@ against deliverables — and `docs/phase-2-closeout-plan.md` is what remains.
   search over title, author and narrator, and the `automotive_app_desc` metadata Auto enumerates media apps
   by. Two device runs still failed to find the app in a car with everything in the APK verified correct, so
   Settings → About reports the five things that decide it, including what installed the build and whether a
-  car has ever bound to the session.
+  car has ever bound to the session — which is how the third run found the cause on the phone rather than in
+  the build. **Confirmed working in a car on 2026-08-14.** What the car *shows* is not yet right: the
+  Continue tab opens empty, diagnosed and scheduled as its own pull request.
 - **Media-button resume** (ROUTE-001, an exit criterion): `onPlaybackResumption` returns the most recently
-  played **unfinished** book at its stored position. Finished books are excluded on purpose.
+  played **unfinished** book at its stored position. Finished books are excluded on purpose. **Passed on
+  hardware 2026-08-14**, together with the book switching it depended on.
 - **The player's history pane** (PLAY-003): every event rather than only jumps — play, pause, seeks, chapter
   changes, sleep-timer set/extended/expired and the rewinds they apply — combined with the changes that
   arrived from the server, each row carrying a wall-clock time and the chapter it happened in. Play and

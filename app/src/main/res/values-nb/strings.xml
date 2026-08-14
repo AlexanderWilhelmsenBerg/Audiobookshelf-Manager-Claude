@@ -199,7 +199,9 @@
     <string name="player_bookmark_add">Bokmerk dette stedet</string>
     <string name="player_bookmarks">Bokmerker</string>
     <string name="player_bookmarks_body">Steder du har tatt vare på i denne boka. Trykk på ett for å gå tilbake dit.</string>
-    <string name="player_bookmarks_empty">Ingen bokmerker ennå. Bokmerkeknappen tar vare på der du er.</string>
+    <string name="player_bookmarks_empty">Ingen bokmerker ennå. Knappen over tar vare på der du er i boka.</string>
+    <string name="player_bookmark_new_at">Nytt bokmerke på %1$s</string>
+    <string name="player_bookmark_already">Allerede bokmerket på %1$s</string>
     <string name="player_bookmark_rename">Gi nytt navn til bokmerket på %1$s</string>
     <string name="player_bookmark_delete">Slett bokmerket på %1$s</string>
     <string name="player_bookmark_note_at">Notat for %1$s</string>

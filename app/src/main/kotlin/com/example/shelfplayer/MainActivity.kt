@@ -180,6 +180,9 @@ private fun ShelfPlayerContent(startDestination: String, playerViewModel: Player
             // The chapter a bookmark falls in, for the same reason the history pane gets it: the player
             // holds the chapter list and the bookmark table deliberately does not.
             chapters = playback.chapters,
+            // PRODUCT_SPEC 11.1 — the sheet offers "New bookmark at …", so it needs to know where the book
+            // is. Read from the same state the seek bar draws, so the label and the write agree.
+            position = playback.position,
             actions = playerViewModel.bookmarkActions,
             onDismiss = { isBookmarkSheetOpen = false },
         )

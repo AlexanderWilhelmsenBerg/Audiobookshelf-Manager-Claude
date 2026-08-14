@@ -243,7 +243,10 @@
     <string name="player_bookmark_add">Bookmark this spot</string>
     <string name="player_bookmarks">Bookmarks</string>
     <string name="player_bookmarks_body">Places you kept in this book. Tap one to go back to it.</string>
-    <string name="player_bookmarks_empty">No bookmarks yet. The bookmark button keeps wherever you are.</string>
+    <string name="player_bookmarks_empty">No bookmarks yet. The button above keeps wherever you are in the book.</string>
+    <!-- %1$s is the position the button would use, such as "1:04:22". -->
+    <string name="player_bookmark_new_at">New bookmark at %1$s</string>
+    <string name="player_bookmark_already">Already bookmarked at %1$s</string>
     <!-- %1$s is the bookmark\'s position, such as "2:41:07". -->
     <string name="player_bookmark_rename">Rename the bookmark at %1$s</string>
     <string name="player_bookmark_delete">Delete the bookmark at %1$s</string>

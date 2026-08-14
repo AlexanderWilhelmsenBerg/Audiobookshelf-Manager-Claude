@@ -4,17 +4,22 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +55,20 @@ import kotlin.time.Duration
  * the history pane has, for the same reason. Renaming and deleting are deliberate actions behind their own
  * targets, because a mis-tap that deletes a note is a mis-tap that destroys something the listener wrote.
  *
+ * ### Making one is the first thing on the sheet
+ *
+ * A device run found the feature unusable: the only way to create a bookmark was a long press on the
+ * player's icon, and **nobody found it**. That is the correct verdict on a hidden gesture — a control the
+ * user cannot see is not a control, and PRODUCT_SPEC 21 asks for the affordance, not the capability.
+ *
+ * So the sheet opens with a button. It is the same shape Audiobookshelf's own client uses — its maintainer
+ * described the feature as *"an icon that opens up a pop-up list of timestamps with an 'add bookmark'
+ * button"* — and it names the position it would use, because that is the fact a listener is deciding about.
+ *
+ * When the current second is **already** bookmarked the button says so and is disabled, rather than
+ * disappearing as the official client's does. A control that vanishes is the failure this whole change is
+ * fixing; one that explains itself costs a line of text.
+ *
  * ### Positions, and the chapter they fall in
  *
  * A bookmark with no note shows its position and its chapter, which is usually enough — "2:41:07 · The
@@ -61,11 +80,16 @@ import kotlin.time.Duration
 fun BookmarkSheet(
     bookmarks: List<Bookmark>,
     chapters: List<Chapter>,
+    position: Duration,
     actions: BookmarkActions,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var renaming by remember { mutableStateOf<Bookmark?>(null) }
+    // The second the button would use, rounded exactly as the repository will round it — so the label
+    // cannot promise one position and the write store another.
+    val candidate = Bookmark.roundedFrom(position)
+    val isTaken = bookmarks.any { it.at == candidate }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -84,6 +108,7 @@ fun BookmarkSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
             )
+            NewBookmarkButton(at = candidate, isTaken = isTaken, onClick = actions.onAdd)
             if (bookmarks.isEmpty()) {
                 Text(
                     text = stringResource(R.string.player_bookmarks_empty),
@@ -130,10 +155,49 @@ fun BookmarkSheet(
  * forget the fourth.
  */
 data class BookmarkActions(
+    /** PRODUCT_SPEC 11.1 — keeps the position the player is at. The sheet stays open, so the list updates. */
+    val onAdd: () -> Unit,
     val onGoTo: (Duration) -> Unit,
     val onRename: (Duration, String) -> Unit,
     val onRemove: (Duration) -> Unit,
 )
+
+/**
+ * The first thing on the sheet, and the answer to "how do I make one".
+ *
+ * Filled and full width, so it cannot be mistaken for a list row. It carries the **position** rather than
+ * just the word *New*, because the decision a listener is making is about a place in the book — and if they
+ * pressed play again before opening the sheet, the number tells them the offer has moved.
+ *
+ * Theme colours rather than a literal green. A hard-coded green in an app that supports dynamic colour
+ * would fight the palette on some devices and fail contrast on others; `primary` is the role Material
+ * reserves for the one action a screen is *for*, which on this sheet is this.
+ */
+@Composable
+private fun NewBookmarkButton(at: Duration, isTaken: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val clock = at.asChapterClock()
+    Button(
+        onClick = onClick,
+        enabled = !isTaken,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp),
+    ) {
+        Icon(
+            imageVector = if (isTaken) Icons.Filled.Check else Icons.Filled.Add,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = if (isTaken) {
+                stringResource(R.string.player_bookmark_already, clock)
+            } else {
+                stringResource(R.string.player_bookmark_new_at, clock)
+            },
+        )
+    }
+}
 
 @Composable
 private fun BookmarkRow(

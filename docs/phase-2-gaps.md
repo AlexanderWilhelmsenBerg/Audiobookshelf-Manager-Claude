@@ -19,12 +19,12 @@ Legend: ✅ built · ⚠️ partial · ❌ absent · 🔬 needs hardware
 | Playback runs in a `MediaLibraryService` | ✅ |
 | Closing the activity does not stop playback | ✅ |
 | Lock screen, notification, Bluetooth, wired headset, system controls | ✅ |
-| **Android Auto** can play, pause, seek, skip, stop | ⚠️ built — three tabs, voice search, the `automotive_app_desc` metadata — but **two device runs have failed to see the app in a car**. Everything in the APK is verified correct; 0.8.0 adds the readings that say what is not (defect 17) |
+| **Android Auto** can play, pause, seek, skip, stop | ✅ **confirmed in a car, 2026-08-14** — the app appears, browses and plays. What it *shows* is wrong (defect 21) but that is a different criterion |
 | Notification shows cover, title, author, progress | ✅ — the progress became the *book's* in wave 5 |
 | Notification has play/pause, **backward and forward** | ✅ — wave 5 replaced skip-to-previous/next, which restarted the book |
 | Foreground-service type and permissions declared | ✅ |
 | Only one local audio media session | ✅ structurally: the module is the only one that can name the types |
-| **A process restart restores the last playable item, paused** | ✅ *wave 5 closeout* — `onPlaybackResumption` returns the last unfinished book at its stored position |
+| **A process restart restores the last playable item, paused** | ✅ **confirmed in a car and on a headset, 2026-08-14** — `onPlaybackResumption` returns the last unfinished book at its stored position, and since 0.8.0 a different book can then replace it |
 
 Both closed in the wave 5 closeout. Neither has been seen in a car.
 
@@ -126,7 +126,7 @@ it will rewind five minutes"*, which auto-rewind's seconds-scale bands cannot ex
 Every criterion built: off by default, four configurable bands, clamped to chapter start, not after a user
 seek or a focus interruption, visible and undoable.
 
-### ROUTE-001 Media-button resume — ✅ **built in the wave 5 closeout** 🔬 untested on hardware
+### ROUTE-001 Media-button resume — ✅ **built, and confirmed on hardware 2026-08-14**
 
 `onPlaybackResumption` returns the most recently played **unfinished** book at its stored position, which is
 what a headset play button against a dead process now gets. Finished books are excluded on purpose: pressing
@@ -154,7 +154,7 @@ starts playback automatically at all. The three-way profile setting does not exi
 | --- | --- |
 | Two-hour streaming soak | 🔬 not run |
 | Process/activity recreation | 🔬 not run — rotation is covered by tests, process death is not |
-| **Media-button resume** | ✅ built 🔬 needs a headset and a killed process |
+| **Media-button resume** | ✅ **passed on hardware, 2026-08-14** |
 | Progress verified against server | ⚠️ verified by capture, not by a device run |
 
 ## Defects the device runs found
@@ -177,10 +177,12 @@ starts playback automatically at all. The three-way profile setting does not exi
 | 14 | Shake-to-extend left no history entry | ✅ *wave 5 closeout* |
 | 15 | No way to turn the sleep-timer fade **off** | ✅ *wave 5 closeout* |
 | 16 | No rewind when the sleep timer stops playback | ✅ *wave 5 closeout* |
-| 17 | **The app did not appear in Android Auto at all** | ⚠️ *0.7.0 added the missing `automotive_app_desc` metadata, and the app is still not listed* — see below |
+| 17 | **The app did not appear in Android Auto at all** | ✅ *settled on hardware 2026-08-14* — the metadata was the fix; the two runs that still failed were the phone's *Unknown sources* setting |
+| 21 | **Android Auto's Continue tab opens empty** | ❌ diagnosed, and it has its own pull request — see below |
 | 18 | **Pressing a second book left the first one playing** | ✅ *0.8.0* — the session callbacks dropped the app's own items |
 | 19 | History showed only this device, and no time or chapter | ✅ *0.8.0* — server changes, wall-clock times, chapter names, day headings |
 | 20 | The bookmark button had been a disabled placeholder since wave 2 | ✅ *0.9.0* — bookmarks, including the session command |
+| 22 | **0.9.0 shipped bookmarks with no visible way to make one** | ✅ *0.9.1* — a button at the top of the sheet; the long press is now a shortcut, not the only route |
 
 ### Defect 6, because it is the instructive one
 
@@ -212,31 +214,56 @@ failure is **not** rolled back. Two flags carry the difference — `hasUnsyncedC
 discard a bookmark made offline, and `isPendingDelete` so one deleted offline cannot come back on the next
 refresh. Database version 13.
 
+### Defect 22, and the shape of the mistake
+
+0.9.0 built the whole feature — routes, table, repository, offline path, twenty-two tests — and shipped it
+with **no visible way to create a bookmark**. The only route was a long press on the player's icon, and the
+device run reported having *"no way of marking a bookmark"*.
+
+Every layer was tested and every layer was right. What was missing was the affordance, and nothing in the
+suite asserted on one: the tests asked whether a bookmark could be *stored*, never whether it could be
+*made*. `BookmarkSheetScreenTest` now asks the second question, which is the one a listener asks.
+
+The fix follows Audiobookshelf's own client, whose maintainer described the feature as *"an icon that opens
+up a pop-up list of timestamps with an 'add bookmark' button"* — so the sheet opens with a button naming the
+position it would use. It differs in one place on purpose: the official client **hides** the button when the
+current second is already bookmarked, and this one disables it and says so, because a control that
+disappears is the defect being fixed.
+
 **Not in this slice, deliberately:** the book screen does not list bookmarks. It would need its own flow
 keyed by the route's book rather than by what is playing, and a list there that could not start playback at
 a bookmark would be decoration. The player's sheet is the whole feature; the book screen is a convenience,
 and it is a follow-up rather than a silent omission.
 
-### Defect 17, and what is actually left of it
+### Defect 17, settled — and what it cost to settle
 
-The 0.6.0 run found the app missing from the car entirely, and the cause was real: Android Auto enumerates
-media apps by the `com.google.android.gms.car.application` metadata and nothing else, and the app did not
-declare it. 0.7.0 added it. **The 0.8.0 report is that the app is still not listed**, so the fix was
-necessary and not sufficient.
+Three device runs. The 0.6.0 run found the app missing from the car entirely, and the cause was real:
+Android Auto enumerates media apps by the `com.google.android.gms.car.application` metadata and nothing
+else, and the app did not declare it. 0.7.0 added it, and the app was **still** missing. 0.8.0 therefore
+stopped guessing and added the readings — and on 2026-08-14 **the app appeared, browsed and played**.
 
-What the APK contains was checked against the shipped binary rather than the source manifest — `aapt2
-dump xmltree` on `app-debug.apk` — and all three declarations are present and correct: the car metadata
-pointing at `@xml/automotive_app_desc`, that resource containing `<automotiveApp><uses name="media"/>`,
-and an exported service answering `android.media.browse.MediaBrowserService`. There is nothing left in the
-build to fix.
+The lesson is worth keeping, because it is about how the two rounds were spent. The APK was correct after
+0.7.0; it was verified against the *shipped binary* rather than the source manifest (`aapt2 dump xmltree` on
+`app-debug.apk`). Everything that remained was on the phone — Android Auto hides media apps it did not get
+from Play unless **Unknown sources** is on in its developer settings, and unlocking developer settings does
+not turn that on. A round was spent looking for a defect in a build that did not have one, because the app
+could not say what the phone's settings were. It can now: **Settings → About → Testing → Android Auto**
+reports the two things the build controls and the three it does not, and `PlaybackService` logs every
+connection from a car package, so *"Last car connection: never"* after a drive rules the browse tree out
+entirely.
 
-Everything remaining is on the phone, and none of it is visible from a car seat, so 0.8.0 stops guessing
-and asks the platform instead. **Settings → About → Testing → Android Auto** now reports the two things
-the build controls and the three that it does not, including **Installed by** — Android Auto hides media
-apps it did not get from Play unless *Unknown sources* is on in its developer settings, and unlocking
-developer settings does not turn that on — and **Last car connection**, which is written whenever a
-controller from `gearhead` binds to the session. If that still says *never* after a drive, no car ever
-reached the app and the browse tree cannot be at fault.
+### Defect 21 — the Continue tab is empty, and why
+
+The first screen a car shows reads **"no books"**, while voice search finds them. Diagnosed, not guessed:
+`AutoLibrary.continueListening()` filters on `book.progress?.isFinished == false`, and a book that has
+**never been played** has no progress at all — so `progress?.isFinished` is `null`, the comparison is false,
+and the book is excluded. The tab therefore shows only books that have been started and not finished, which
+on a fresh library is none of them. Search is unaffected because it reads the whole list.
+
+That is a one-line fix, but it is the smallest part of what the tab should be. The owner's ask is the app's
+own library structure in the car and the app's own player, which is a browse tree with several shelves rather
+than one filtered list — so it belongs in **PR 7** (`docs/phase-2-closeout-plan.md`) rather than being
+patched here.
 
 ### Defect 18, and why no test caught it
 
