@@ -75,7 +75,7 @@ of ADR-0013 in the row above. Demonstrating un-finishing in a fixture needs a se
 threshold, which moves the duration in a dozen committed fixtures — so it belongs with that work rather than
 with the capture, and the work has to read the setting anyway.
 
-### 11.1 Bookmarks — ✅ **built in 0.9.0**
+### 11.1 Bookmarks — ✅ **built, and passed on hardware 2026-08-14**
 
 Four routes, three of them writes; the read rides on `GET /api/me` because that is where the server keeps
 them. The custom session command is included, so a car or a headset can keep a spot with no note — which is
@@ -182,7 +182,7 @@ starts playback automatically at all. The three-way profile setting does not exi
 | 18 | **Pressing a second book left the first one playing** | ✅ *0.8.0* — the session callbacks dropped the app's own items |
 | 19 | History showed only this device, and no time or chapter | ✅ *0.8.0* — server changes, wall-clock times, chapter names, day headings |
 | 20 | The bookmark button had been a disabled placeholder since wave 2 | ✅ *0.9.0* — bookmarks, including the session command |
-| 22 | **0.9.0 shipped bookmarks with no visible way to make one** | ✅ *0.9.1* — a button at the top of the sheet; the long press is now a shortcut, not the only route |
+| 22 | **0.9.0 shipped bookmarks with no visible way to make one** | ✅ *0.9.1, confirmed on device* — a button at the top of the sheet; the long press is now a shortcut, not the only route |
 
 ### Defect 6, because it is the instructive one
 

@@ -112,9 +112,16 @@ it if it needs a home.
 
 ## Result
 
+Run 2026-08-14 against build 0.9.1. **All sections passed.**
+
 | Section | Result | Notes |
 | --- | --- | --- |
-| 1. The New bookmark button, listing, renaming, deleting | | |
-| 2. Bookmarks from another device | | |
-| 3. Offline: kept, and stays deleted | | |
-| 4. Same second is one bookmark | | |
+| 1. The New bookmark button, listing, renaming, deleting | **Pass** | |
+| 2. Bookmarks from another device | **Pass** | |
+| 3. Offline: kept, and stays deleted | **Pass** | |
+| 4. Same second is one bookmark | **Pass** | |
+| 5. In the car | Not exercised | A head unit's own choice whether it surfaces a custom session action |
+
+So PRODUCT_SPEC 11.1's bookmark responsibility is met, and section 8's fourth recommended feature is
+delivered. What remains against it is recorded above rather than here: no bookmarks on the book screen, and
+no retry for a delete that failed offline.
