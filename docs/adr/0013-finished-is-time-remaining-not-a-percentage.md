@@ -102,3 +102,48 @@ The setting is 5–120 seconds under Settings → Playback, defaulting to this A
 `finished_threshold_seconds` and clamped on both read and write. The library's half is stored per
 library in Room (schema 14, `finishedTimeRemainingSeconds` and `finishedFractionComplete`) — nullable,
 because a library that has not asked for a rule is not a library asking for zero seconds.
+
+## Revised the same day, on the owner's instruction — inherit, do not merge
+
+The device run on build 0.9.2 produced two corrections, both from the owner and both narrowing this ADR
+rather than widening it. They are recorded here because the section above is now wrong in two places.
+
+### 1. No percentage, anywhere
+
+> *"For the marking as finished, I do not want a percentage. It does not make sense. For a 100 hour book,
+> it means 95%, it would mark it finished with 5 hours left."*
+
+The implementation note above argued for honouring `markAsFinishedPercentComplete` on asymmetry grounds.
+That argument was about a rule the owner does not want the app to hold in any form, and the example settles
+it: five hours of an audiobook is not "finished" under any reading. The field is no longer parsed, no longer
+stored, and no longer part of `FinishedThreshold`. `CapturedShapesTest` pins it as *sent and deliberately
+unread*, so a later reader finding it in the fixture does not mistake the omission for an oversight.
+
+The consequence, stated plainly: **if a library on the server is configured with a percentage and no time
+remaining, this app will not honour it.** That is a deliberate divergence from the server, unlike everything
+else here, and it is the owner's decision.
+
+### 2. The library's value is inherited, not merged
+
+> *"Instead of fighting the server, have them merge. Inherit from the web interface."*
+
+The `max` is gone. Where a library sets `markAsFinishedTimeRemaining`, **that is the number the app uses**;
+the listener's setting applies only to a library that sets none.
+
+The `max` was the weaker idea, and the reason is the ADR's own argument turned around. It bounded the
+disagreement instead of removing it: with the app at 30 s against the capture server's 10 s, a book was
+finished in ShelfPlayer twenty seconds before the web interface agreed, and a listener switching between the
+two saw a book whose state depended on where they looked. Inheriting leaves one rule per book, and it is the
+one the server's own interface displays.
+
+What the `max` protected against is still handled, just not here:
+
+- a book the server reports `isFinished` is finished regardless of position, and
+- a locally finished book is never quietly un-finished (`DefaultPlaybackRepository` or-s the flag).
+
+So the app still cannot contradict the server in either direction.
+
+The listener's setting keeps its 5–120 second range and its 30-second default, and the Playback tab now
+lists **every** library with what it actually uses — the inherited seconds, or a line saying it has none and
+follows the setting. An earlier build listed only libraries that differed from the chosen value, which
+displayed nothing on exactly the server where the chips were doing nothing at all.

@@ -15,7 +15,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ServerId
-import com.example.shelfplayer.core.model.library.FinishedRule
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
@@ -37,8 +36,9 @@ import kotlin.time.Duration.Companion.seconds
  * bookmark**, because every test asked whether a bookmark could be stored and none asked whether one could
  * be made. A setting nobody can find is the same defect.
  *
- * The library note is the part worth testing hardest. ADR-0013's rule is a `max`, so a library can overrule
- * the chosen value — and a setting that is silently overruled is a setting that lies.
+ * The library lines are the part worth testing hardest. The chosen value is only a **fallback**: where a
+ * library on the server sets `markAsFinishedTimeRemaining`, that is what its books use. A setting that is
+ * silently overruled is a setting that lies, so each library says what it actually uses.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp")
@@ -53,7 +53,7 @@ class PlaybackSettingsTabScreenTest {
         render()
         scrollToThreshold()
 
-        composeRule.onNodeWithText("Finished with this much left").assertIsDisplayed()
+        composeRule.onNodeWithText("Used where your server sets nothing").assertIsDisplayed()
         chip("30 s").assertIsSelected()
     }
 
@@ -70,42 +70,49 @@ class PlaybackSettingsTabScreenTest {
     }
 
     /**
-     * The `max` made visible: a library asking for longer says so, and names its own number.
+     * A library that sets its own value names it, and says where it came from.
      *
-     * Without this the app finishes a book a minute from the end while the setting says thirty seconds, and
-     * the listener has no way to find out why.
+     * This is the capture server's own case — `markAsFinishedTimeRemaining: 10` — and it is the case where
+     * the chips above do nothing at all. Saying so is the whole point of the line.
      */
     @Test
-    fun `a library asking for longer than the setting says so`() {
-        render(libraries = listOf(library("Fiction", 60.seconds)))
-        val note =
-            "Fiction asks for 60 s, and the longer of the two wins — so books there are finished with 60 s left."
+    fun `a library with its own value says what it is and that it came from the server`() {
+        render(libraries = listOf(library("Fiction", 10.seconds)))
+        val note = "Fiction: 10 s, from your server"
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(note))
+
+        composeRule.onNodeWithText(note).assertIsDisplayed()
+    }
+
+    /** A library with no value says the chips apply to it, which is the only case in which they do. */
+    @Test
+    fun `a library with no value says the setting is used`() {
+        render(libraries = listOf(library("Fiction", null)))
+        val note = "Fiction: no value on the server, so the one above is used"
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(note))
 
         composeRule.onNodeWithText(note).assertIsDisplayed()
     }
 
     /**
-     * A library asking for *less* changes nothing, so it says nothing.
+     * The inherited value does not move when the chips do.
      *
-     * This is the capture server's own case — `markAsFinishedTimeRemaining: 10` against a default of 30 — so
-     * it is the note most users would otherwise see, about a rule that never applies to them.
+     * The line is what the *server* says, so pressing 120 s must not change it — and must not make it
+     * disappear, which is what an earlier build did when it only listed libraries that differed from the
+     * chosen value. On this server that build showed nothing, on exactly the screen where the chips were
+     * doing nothing.
      */
     @Test
-    fun `a library asking for less than the setting is not mentioned`() {
-        render(libraries = listOf(library("Fiction", 10.seconds)))
-        scrollToThreshold()
+    fun `pressing a chip does not change what a library reports`() {
+        render(
+            settings = PlaybackSettings.Default.copy(finishedThreshold = 120.seconds),
+            libraries = listOf(library("Fiction", 10.seconds)),
+        )
+        val note = "Fiction: 10 s, from your server"
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(note))
 
-        composeRule.onNodeWithText("Fiction asks for 10 s", substring = true).assertDoesNotExist()
-    }
-
-    /** And a library with no rule at all is not mentioned either — most libraries have none. */
-    @Test
-    fun `a library with no rule is not mentioned`() {
-        render(libraries = listOf(library("Fiction", null)))
-        scrollToThreshold()
-
-        composeRule.onNodeWithText("asks for", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText(note).assertIsDisplayed()
+        chip("120 s").assertIsSelected()
     }
 
     /**
@@ -160,6 +167,6 @@ class PlaybackSettingsTabScreenTest {
         bookCount = 12,
         remoteUpdatedAt = null,
         lastFetchedAt = Instant.ofEpochMilli(0),
-        finishedRule = FinishedRule(timeRemaining = asks),
+        finishedWhenRemaining = asks,
     )
 }

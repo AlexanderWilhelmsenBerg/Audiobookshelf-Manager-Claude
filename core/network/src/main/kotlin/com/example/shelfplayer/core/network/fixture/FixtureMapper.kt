@@ -17,13 +17,13 @@ import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Chapter
-import com.example.shelfplayer.core.model.library.FinishedRule
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import java.time.Instant
 import kotlin.time.Duration.Companion.seconds
 
@@ -83,11 +83,8 @@ internal class FixtureMapper(private val document: FixtureLibraryDocument) {
             remoteUpdatedAt = null,
             lastFetchedAt = fetchedAt,
             // The same converter the wire mapper uses, so the fixture cannot express a rule a real server
-            // could not send — and cannot be the one place a percentage stays a percentage.
-            finishedRule = FinishedRule.of(
-                timeRemainingSeconds = fixture.markAsFinishedTimeRemaining,
-                percentComplete = fixture.markAsFinishedPercentComplete,
-            ),
+            // could not send.
+            finishedWhenRemaining = FinishedThreshold.libraryRule(fixture.markAsFinishedTimeRemaining),
         )
     }
 

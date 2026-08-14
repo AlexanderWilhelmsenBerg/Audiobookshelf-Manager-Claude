@@ -628,9 +628,9 @@ class MigrationTest {
      * PRODUCT_SPEC PLAY-004 / ADR-0013 — version 14 adds the library's finished rule.
      *
      * Two assertions, and the first is the one that matters: a library cached by an older build reads back
-     * with **no rule**, not with a rule of zero. `null` means "this library has not asked for anything", and
-     * a migration that defaulted the columns to 0 would silently mark every book in every pre-14 library
-     * finished at its last sample.
+     * with **no rule**, not with a rule of zero. `null` means "this library has not set one", and a migration
+     * that defaulted the column to 0 would silently mark every book in every pre-14 library finished at its
+     * last sample.
      */
     @Test
     fun `version 14 gives a cached library no finished rule rather than a zero one`() = runTest {
@@ -639,16 +639,12 @@ class MigrationTest {
         val migrated = openWithMigrations()
 
         val stored = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
-        assertNull(stored.finishedTimeRemainingSeconds, "no opinion, not zero seconds")
-        assertNull(stored.finishedFractionComplete, "and no fraction either")
+        assertNull(stored.finishedTimeRemainingSeconds, "no rule, not zero seconds")
 
-        migrated.libraryWriteDao().upsertLibraries(
-            listOf(stored.copy(finishedTimeRemainingSeconds = 60, finishedFractionComplete = 0.95)),
-        )
+        migrated.libraryWriteDao().upsertLibraries(listOf(stored.copy(finishedTimeRemainingSeconds = 60)))
 
         val updated = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
         assertEquals(60L, updated.finishedTimeRemainingSeconds)
-        assertEquals(0.95, updated.finishedFractionComplete)
     }
 
     /**
@@ -656,22 +652,17 @@ class MigrationTest {
      *
      * A book's rule comes from *its own* library, and the journal has only a book. This is that query
      * against a migrated database, which is where a column named differently by the migration than by the
-     * entity would surface — Room validates the schema but not a hand-written `SELECT`'s aliases.
+     * entity would surface — Room validates the schema but not a hand-written `SELECT`.
      */
     @Test
     fun `a book's finished rule is found through its library`() = runTest {
         createVersion(9)
         val migrated = openWithMigrations()
         val library = assertNotNull(migrated.libraryDao().observeLibrary(LIBRARY_KEY).first())
-        migrated.libraryWriteDao().upsertLibraries(
-            listOf(library.copy(finishedTimeRemainingSeconds = 45, finishedFractionComplete = null)),
-        )
+        migrated.libraryWriteDao().upsertLibraries(listOf(library.copy(finishedTimeRemainingSeconds = 45)))
 
-        val rule = assertNotNull(migrated.libraryDao().finishedRuleFor(BOOK_KEY))
-
-        assertEquals(45L, rule.timeRemainingSeconds)
-        assertNull(rule.fractionComplete)
-        assertNull(migrated.libraryDao().finishedRuleFor("no-such-book"), "an unknown book has no rule")
+        assertEquals(45L, migrated.libraryDao().finishedSecondsFor(BOOK_KEY))
+        assertNull(migrated.libraryDao().finishedSecondsFor("no-such-book"), "an unknown book has no rule")
     }
 
     /**

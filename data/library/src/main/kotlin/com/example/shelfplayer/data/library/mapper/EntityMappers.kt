@@ -34,13 +34,13 @@ import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Chapter
-import com.example.shelfplayer.core.model.library.FinishedRule
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import java.time.Instant
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -111,11 +111,9 @@ internal object EntityMappers {
         remoteUpdatedAt = library.remoteUpdatedAt?.toEpochMilli(),
         lastFetchedAt = library.lastFetchedAt.toEpochMilli(),
         isDeleted = false,
-        // The domain's own units, both of them. `FinishedRule.of` converts the server's percentage exactly
-        // once, on the way in from the wire; a column holding the percentage would put a second conversion
-        // here and a third on the way back out.
-        finishedTimeRemainingSeconds = library.finishedRule.timeRemaining?.inWholeSeconds,
-        finishedFractionComplete = library.finishedRule.percentComplete,
+        // Seconds, which is the server's own unit and the column's. No conversion either way, so the two
+        // halves of the round trip have nothing to disagree about.
+        finishedTimeRemainingSeconds = library.finishedWhenRemaining?.inWholeSeconds,
     )
 
     fun toDomain(entity: LibraryEntity, bookCount: Int) = Library(
@@ -127,12 +125,7 @@ internal object EntityMappers {
         bookCount = bookCount,
         remoteUpdatedAt = entity.remoteUpdatedAt?.let(Instant::ofEpochMilli),
         lastFetchedAt = Instant.ofEpochMilli(entity.lastFetchedAt),
-        // `stored` rather than `of`: these columns are already in the domain's units, and the wire converter
-        // would divide the fraction by a hundred a second time.
-        finishedRule = FinishedRule.stored(
-            timeRemainingSeconds = entity.finishedTimeRemainingSeconds,
-            fractionComplete = entity.finishedFractionComplete,
-        ),
+        finishedWhenRemaining = FinishedThreshold.libraryRule(entity.finishedTimeRemainingSeconds),
     )
 
     // --- Book -------------------------------------------------------------------------------------

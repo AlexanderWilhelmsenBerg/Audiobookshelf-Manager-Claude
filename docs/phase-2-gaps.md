@@ -60,10 +60,10 @@ Complete for a streaming client. The three remaining criteria are about download
 | Journaled at least every 5 s | ✅ |
 | Remote sync ~30 s plus the seven named triggers | ✅ all seven |
 | Survives process death, ≤10 s lost | ✅ by construction 🔬 unproven on hardware |
-| Finished threshold 95%, configurable 90–99% | ✅ **configurable 5–120 s**, defaulting to 30 s — a duration rather than a percentage, deviating from the literal wording by ADR-0013 |
+| Finished threshold 95%, configurable 90–99% | ✅ **configurable 5–120 s**, defaulting to 30 s, and overridden by the library where the server sets one — a duration rather than a percentage, deviating from the literal wording by ADR-0013 |
 | **Marking finished is explicit** | ✅ a checkbox, both directions — and the un-finish PATCH is confirmed accepted by the server |
 | Rewinding preserved; conflict never blindly takes the maximum | ✅ |
-| **`markAsFinishedTimeRemaining` from library settings** | ✅ **read and applied**, as the `max` with the listener's setting — and `markAsFinishedPercentComplete` with it |
+| **`markAsFinishedTimeRemaining` from library settings** | ✅ **read and inherited** — where a library sets it, it is the rule; the listener's setting is the fallback |
 
 The 2026-08-13 capture settled both directions. `isFinished: true` round-trips, and the un-finish PATCH
 answers `200 OK` — the server accepts it. What made the first probe look like a failure was the server's own
@@ -72,9 +72,14 @@ every position in it is inside the last ten, so it can never be un-finished. A r
 
 That is also the **first observation of `markAsFinishedTimeRemaining` in action**. Both rows above closed on
 2026-08-14 (build 0.9.2, Phase 2 closeout PR 2): `LibraryDto` no longer parses `settings` away, the rule is
-stored per library in Room, and `FinishedThreshold` takes ADR-0013's `max` of it and the listener's own
-setting. The decision moved out of `PlaybackService` — which had been applying a hard-coded thirty seconds —
-into `DefaultPlaybackRepository`, the one place that resolves both halves.
+stored per library in Room, and `FinishedThreshold` resolves it against the listener's own setting. The
+decision moved out of `PlaybackService` — which had been applying a hard-coded thirty seconds — into
+`DefaultPlaybackRepository`, the one place that can resolve both.
+
+The rule the app applies is the **server's**, on the owner's instruction: where a library sets
+`markAsFinishedTimeRemaining`, that value is used, and the listener's setting covers libraries that set none.
+`markAsFinishedPercentComplete` is deliberately not read — a percentage of a long book is a long time. Both
+decisions and the `max` they replaced are recorded in ADR-0013.
 
 "Its endpoint is still uncaptured", which this row said for a week, was wrong: `settings` is nested in the
 `GET /api/libraries` response and has been in `libraries.json` since the wave A capture. Nothing needed

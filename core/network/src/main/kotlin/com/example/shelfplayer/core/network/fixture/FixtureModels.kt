@@ -51,14 +51,12 @@ data class FixtureLibrary(
     @SerialName("kind") val kind: String,
     @SerialName("displayOrder") val displayOrder: Int = 0,
     /**
-     * PRODUCT_SPEC PLAY-004 / ADR-0013 — the library's own finished rule, in the *server's* units.
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — the library's own finished rule, in the *server's* unit.
      *
-     * Seconds and a percentage, named as the wire names them, so the fixture is readable beside a real
-     * `GET /api/libraries` response. Both optional: a fixture library that omits them is a library with no
-     * opinion, which is what most of them are.
+     * Seconds, named as the wire names it, so the fixture is readable beside a real `GET /api/libraries`
+     * response. Optional: a fixture library that omits it is a library with no rule, which is what most are.
      */
     @SerialName("markAsFinishedTimeRemaining") val markAsFinishedTimeRemaining: Long? = null,
-    @SerialName("markAsFinishedPercentComplete") val markAsFinishedPercentComplete: Double? = null,
 )
 
 @Serializable

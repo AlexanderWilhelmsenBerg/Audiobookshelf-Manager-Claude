@@ -128,11 +128,12 @@ threshold is unit-tested against synthetic durations. It stays outstanding, note
 
 Merged as build 0.9.2. Everything above shipped. What the plan did not anticipate:
 
-- **The percentage clause shipped too.** ADR-0013 had deferred `markAsFinishedPercentComplete` until a
-  capture produced a value; on building it, that turned out to be the riskier choice, for the ADR's own
-  reason — a library configured on a fraction would finish books this app still showed in progress, and the
-  app has no way to notice. It is honoured, dropped rather than clamped when out of range, and asserted as
-  *sent and null* in `CapturedShapesTest` so the first server that sets it announces itself.
+- **No percentage, and the library's value is inherited rather than merged.** Both on the owner's
+  instruction, from the device run on the same build: *"I do not want a percentage… for a 100 hour book it
+  would mark it finished with 5 hours left"*, and *"instead of fighting the server, have them merge — inherit
+  from the web interface."* So `markAsFinishedPercentComplete` is not read at all, and the `max` is gone: a
+  library's `markAsFinishedTimeRemaining` **is** the rule for its books, and the setting is the fallback for a
+  library that sets none. ADR-0013 carries both reversals and why the `max` was the weaker idea.
 - **`FinishedThreshold` moved from `:domain` to `:core:model`.** Its range and default now have three
   readers — the settings model, the settings store's clamp, and the chips — and `:core:datastore` cannot see
   `:domain`. Two copies of one range is one range and one bug.

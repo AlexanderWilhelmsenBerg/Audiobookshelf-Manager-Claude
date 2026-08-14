@@ -48,22 +48,22 @@ internal data class LibraryDto(
 )
 
 /**
- * The subset of `library.settings` this app reads.
+ * The one field of `library.settings` this app reads.
  *
- * Only two fields, out of the eleven the capture shows. The rest are the server's own scanning and matching
+ * One, out of the eleven the capture shows. Nine of the rest are the server's own scanning and matching
  * behaviour — `metadataPrecedence`, `disableWatcher`, `skipMatchingMediaWithAsin` — which a client cannot act
  * on and should not model (PRODUCT_SPEC 9.3: a DTO describes what this app uses, not what the server sends).
  *
+ * The tenth is **`markAsFinishedPercentComplete`, deliberately not declared.** It is sent, and it is `null` in
+ * every capture ever taken, and an earlier build of this file read it. The project owner rejected the unit
+ * outright: a percentage of a long book is a long time, and 95% of a hundred-hour book leaves five hours to
+ * go. A field the app parses and does not act on is worse than one it ignores — it reads as support. See
+ * ADR-0013.
+ *
  * @property markAsFinishedTimeRemaining **seconds**. `10` on the capture server.
- * @property markAsFinishedPercentComplete a **percentage**, not a fraction — so `95`, not `0.95`. `null` in
- *   every fixture ever captured, which is why [com.example.shelfplayer.core.model.library.FinishedRule]
- *   records the branch as unverified.
  */
 @Serializable
-internal data class LibrarySettingsDto(
-    val markAsFinishedTimeRemaining: Long? = null,
-    val markAsFinishedPercentComplete: Double? = null,
-)
+internal data class LibrarySettingsDto(val markAsFinishedTimeRemaining: Long? = null)
 
 /**
  * `GET /api/libraries/{id}/items`, and the same envelope for `/series`.

@@ -273,73 +273,73 @@ class DefaultPlaybackRepositoryTest {
     // --- The finished rule, both halves (PLAY-004 / ADR-0013) ---------------------------------------
 
     /**
-     * The default: ADR-0013's thirty seconds, applied by the repository rather than by its caller.
+     * The library's rule wins, which is what *"inherit from the web interface"* means.
      *
-     * The fixture libraries carry the capture server's own `markAsFinishedTimeRemaining: 10`, which is *less*
-     * eager than the setting — so the number in force here is the listener's, and this is the case the
-     * `max` resolves in the app's favour.
+     * The fixture libraries carry the capture server's own `markAsFinishedTimeRemaining: 10` against a
+     * default setting of 30. So a book with twenty seconds left is **not** finished here — because the
+     * Audiobookshelf web interface would not call it finished either. An earlier build took the `max` and
+     * finished it, which is the disagreement this replaced.
      */
     @Test
-    fun `a book inside the configured threshold is finished`() = runTest {
+    fun `the library's rule decides, not the listener's setting`() = runTest {
         repository.recordPosition(BOOK, position = 2.hours - 20.seconds, duration = 2.hours)
-        assertTrue(storedProgress().isFinished, "twenty seconds left is finished")
+        assertFalse(storedProgress().isFinished, "twenty seconds left, against the library's ten")
+
+        repository.recordPosition(BOOK, position = 2.hours - 8.seconds, duration = 2.hours)
+        assertTrue(storedProgress().isFinished, "eight seconds left is inside the library's rule")
     }
 
+    /** Changing the listener's setting changes nothing for a library that has its own rule. */
     @Test
-    fun `a book outside the configured threshold is not finished`() = runTest {
-        repository.recordPosition(BOOK, position = 2.hours - 40.seconds, duration = 2.hours)
-        assertFalse(storedProgress().isFinished, "forty seconds left is not")
-    }
-
-    /** PRODUCT_SPEC SET-002 — the setting is what decides, so changing it changes the answer. */
-    @Test
-    fun `the listener's setting moves the line`() = runTest {
+    fun `the listener's setting does not override a library that sets one`() = runTest {
         settings.set(120.seconds)
 
         repository.recordPosition(BOOK, position = 2.hours - 90.seconds, duration = 2.hours)
 
-        assertTrue(storedProgress().isFinished, "a minute and a half left, against a two-minute threshold")
+        assertFalse(storedProgress().isFinished, "the library's ten seconds still decides")
     }
 
     /**
-     * ADR-0013's `max`, from the database — the half that was being parsed away until now.
+     * PRODUCT_SPEC SET-002 — and where the library sets nothing, the setting is what decides.
      *
-     * The library's rule is written the way a sync writes it, through the same mapper, and then a position
-     * that the *listener's* thirty seconds would leave unfinished is finished because the library asked for
-     * ninety. Without the join in `LibraryDao.finishedRuleFor` this test cannot pass, which is the point:
-     * the book knows its library, and the journal has to be able to get there.
+     * This is the fallback, and it is the only case the chips in Settings affect. `null` on the library row
+     * has to mean "no rule" rather than "zero seconds", or a library the app has not synced since before
+     * version 14 would finish nothing at all.
      */
     @Test
-    fun `a library more eager than the setting wins`() = runTest {
-        libraryAsksFor(90.seconds)
+    fun `a library with no rule falls back to the listener's setting`() = runTest {
+        libraryRule(null)
+        settings.set(120.seconds)
 
-        repository.recordPosition(BOOK, position = 2.hours - 60.seconds, duration = 2.hours)
+        repository.recordPosition(BOOK, position = 2.hours - 90.seconds, duration = 2.hours)
 
-        assertTrue(storedProgress().isFinished, "a minute left, against a library asking for ninety seconds")
+        assertTrue(storedProgress().isFinished, "a minute and a half left, against a two-minute setting")
     }
 
     /**
-     * And it does not reach across libraries.
+     * The rule comes through the join, and the join is by book.
      *
-     * A rule set on the *other* library must not decide anything about this book. The join is by book, and a
-     * bug that read "any library on this server" would pass every other test in this file.
+     * A rule set on the *other* library must not decide anything about this book. A query that read "any
+     * library on this server" would pass every other test in this file.
      */
     @Test
     fun `another library's rule does not apply`() = runTest {
-        libraryAsksFor(90.seconds, libraryId = "lib-nonfiction")
+        libraryRule(null)
+        libraryRule(90.seconds, libraryId = "lib-nonfiction")
+        settings.set(30.seconds)
 
         repository.recordPosition(BOOK, position = 2.hours - 60.seconds, duration = 2.hours)
 
-        assertFalse(storedProgress().isFinished, "the book's own library still asks for ten seconds")
+        assertFalse(storedProgress().isFinished, "this book's own library sets nothing, so 30 s applies")
     }
 
-    /** Writes a library's own finished rule, through the mapper a sync writes it with. */
-    private suspend fun libraryAsksFor(timeRemaining: kotlin.time.Duration, libraryId: String = "lib-fiction") {
+    /** Writes a library's own finished rule — or clears it — the way a sync writes one. */
+    private suspend fun libraryRule(timeRemaining: kotlin.time.Duration?, libraryId: String = "lib-fiction") {
         val existing = requireNotNull(
             database.libraryDao().observeLibrary(EntityKey.of(SERVER, libraryId)).first(),
         ) { "the fixture refresh wrote no $libraryId row" }
         database.libraryWriteDao().upsertLibraries(
-            listOf(existing.copy(finishedTimeRemainingSeconds = timeRemaining.inWholeSeconds)),
+            listOf(existing.copy(finishedTimeRemainingSeconds = timeRemaining?.inWholeSeconds)),
         )
     }
 

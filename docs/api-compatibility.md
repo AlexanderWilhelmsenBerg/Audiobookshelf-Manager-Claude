@@ -529,22 +529,26 @@ unilaterally: it is a deviation from PLAY-004's literal wording and wants an ADR
 
 ### Read, as of 2026-08-14
 
-ADR-0013 settled the deviation and Phase 2 closeout PR 2 implemented it. `LibrarySettingsDto` now takes
-both fields, `FinishedRule` converts the server's units once — seconds stay seconds, the percentage becomes
-a fraction — and the rule is stored per library in Room (schema 14). `FinishedThreshold` takes the `max` of
-the library's value and the listener's own setting, so the app is never the one calling a book unfinished
-that the server has finished.
+ADR-0013 settled the deviation and Phase 2 closeout PR 2 implemented it. `LibrarySettingsDto` takes
+`markAsFinishedTimeRemaining`, it is stored per library in Room in the server's own unit — seconds, schema 14
+— and **the app inherits it**: where a library sets it, that number is the rule for its books, and the
+listener's own setting applies only to a library that sets none.
 
-Two notes for anyone reading the fixture:
+Three notes for anyone reading the fixture:
 
-- **No new endpoint was needed.** The plan for PR 2 opened by naming "capture the library-settings
-  endpoint" as its blocker. There is nothing to capture: `settings` has been nested in the `GET
-  /api/libraries` response since the wave A capture. `CapturedShapesTest` now asserts both fields, so the
-  dependency is pinned to the observation rather than to this paragraph.
-- **`markAsFinishedPercentComplete` is still `null` in every capture ever taken.** The branch is honoured
-  anyway — see ADR-0013's implementation note for why waiting would have been the riskier choice — and the
-  same test asserts the field is present and null, so the first server that sets it announces itself as a
-  failing assertion rather than as a book that will not stay finished.
+- **The app no longer keeps a competing threshold.** An earlier build of the same day took
+  `max(the setting, the library's value)`, which bounded the disagreement rather than removing it: at 30 s
+  against this server's 10 s, a book was finished in the app twenty seconds before the web interface agreed.
+  The owner's instruction was to inherit instead, and ADR-0013 records it.
+- **`markAsFinishedPercentComplete` is sent, is `null` in every capture ever taken, and is deliberately not
+  read.** The owner rejected the unit: 95% of a hundred-hour book leaves five hours to go. `CapturedShapesTest`
+  pins it as *sent and unread*, so a later reader finding it in the fixture does not mistake the omission for
+  an oversight. A library configured on a percentage alone will not be honoured by this app — the one place it
+  knowingly diverges from the server.
+- **No new endpoint was needed.** The plan for PR 2 opened by naming "capture the library-settings endpoint"
+  as its blocker. There is nothing to capture: `settings` has been nested in the `GET /api/libraries` response
+  since the wave A capture. The test asserts it, so the dependency is pinned to the observation rather than to
+  this paragraph.
 
 ## The offline routes, captured 2026-08-07
 

@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.model.library
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ServerId
 import java.time.Instant
+import kotlin.time.Duration
 
 /** PRODUCT_SPEC LIB-001 — a library the authenticated account can see. */
 data class Library(
@@ -15,13 +16,16 @@ data class Library(
     val remoteUpdatedAt: Instant?,
     val lastFetchedAt: Instant,
     /**
-     * PRODUCT_SPEC PLAY-004 / ADR-0013 — when this library says a book is finished.
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — how close to the end **this library** calls finished.
      *
-     * [FinishedRule.Unset] for a library the server described without settings, and for every row written
-     * before database version 14. `Unset` means "no opinion" rather than "zero", so an un-migrated row
-     * leaves the app's own threshold standing alone rather than silently becoming a different rule.
+     * The server's `markAsFinishedTimeRemaining`, and where it is set the app uses it rather than the
+     * listener's own setting: one rule per book, and it is the one the web interface shows.
+     *
+     * `null` for a library the server described without the setting, and for every row written before
+     * database version 14. `null` means "no rule" rather than "zero seconds", so an un-migrated row leaves
+     * the listener's setting standing rather than silently becoming a different rule.
      */
-    val finishedRule: FinishedRule = FinishedRule.Unset,
+    val finishedWhenRemaining: Duration? = null,
 )
 
 /**

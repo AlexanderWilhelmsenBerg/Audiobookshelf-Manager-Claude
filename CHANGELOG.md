@@ -21,20 +21,20 @@ against deliverables — and `docs/phase-2-closeout-plan.md` is what remains.
   offered only a long press on the player's icon, and a device run found the feature unusable as a result.
   The button follows Audiobookshelf's own client, and disables itself when the current second is already
   bookmarked rather than disappearing.
-- **The finished threshold, both clauses** (PLAY-004, ADR-0013): a book is finished when little enough of it
-  remains, the listener chooses how little, and the book's **library** gets a say. Until now the threshold was
-  a hard-coded thirty seconds inside `PlaybackService` and `LibraryDto` parsed the library's own
-  `markAsFinishedTimeRemaining` away entirely, so ADR-0013's rule had one operand. Both halves are real:
-  `max(the setting, the library's rule)`, which is the asymmetry that stops a book oscillating between
-  finished here and unfinished on the server. `markAsFinishedPercentComplete` is honoured too, against the
-  documented field — no capture has ever produced a value, and `CapturedShapesTest` asserts that, so the first
-  server that sets one announces itself. The setting is 5–120 seconds under Settings → Playback, and the tab
-  **names any library asking for longer than the chosen value**, because a `max` the user cannot see is a
-  setting that lies. The decision moved from the media service into `DefaultPlaybackRepository`, which already
-  resolved the profile and the book and is therefore the one place that can resolve both halves;
-  `recordPosition` no longer takes an `isFinished` flag. Database version 14, two nullable columns —
-  nullable because a library that has not asked for a rule is not a library asking for zero seconds. No new
-  capture was needed: `settings` has been nested in `GET /api/libraries` since the wave A capture.
+- **The finished threshold, inherited from the server** (PLAY-004, ADR-0013): a book is finished when little
+  enough of it remains, and **the library on the server decides how little**. Until now the threshold was a
+  hard-coded thirty seconds inside `PlaybackService` and `LibraryDto` parsed the library's own
+  `markAsFinishedTimeRemaining` away entirely, so ADR-0013's rule had one operand. Now the library's value
+  *is* the rule for its books, and the listener's setting — 5–120 seconds under Settings → Playback,
+  defaulting to 30 — is the fallback for a library that sets none. The Playback tab lists every library with
+  what it actually uses, because a setting that is silently overruled is a setting that lies.
+  `markAsFinishedPercentComplete` is deliberately **not** read: a percentage of a long book is a long time,
+  and 95% of a hundred-hour book leaves five hours to go. The decision moved from the media service into
+  `DefaultPlaybackRepository`, which already resolved the profile and the book and is therefore the one place
+  that can resolve the rule; `recordPosition` no longer takes an `isFinished` flag. Database version 14, one
+  nullable column in the server's own unit — nullable because a library that has set no rule is not a library
+  asking for zero seconds. No new capture was needed: `settings` has been nested in `GET /api/libraries` since
+  the wave A capture.
 - **A book is one timeline window** (ADR-0016, PLAY-001/PLAY-003): Media3 reports the *current item's*
   position to every controller, so a playlist of files made the notification describe the file — "time left
   in this chapter" on a library with a file per chapter. A book is now one `MediaItem` whose extras carry

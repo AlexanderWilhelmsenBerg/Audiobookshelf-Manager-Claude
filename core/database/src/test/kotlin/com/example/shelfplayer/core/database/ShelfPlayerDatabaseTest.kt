@@ -204,8 +204,8 @@ class ShelfPlayerDatabaseTest {
     /**
      * One library, with no finished rule of its own — which is what most libraries have (PLAY-004).
      *
-     * The two nulls are spelled out rather than defaulted because `LibraryEntity` deliberately has no
-     * defaults: a new column should be a compile error at every writer instead of a silent zero.
+     * The null is spelled out rather than defaulted because `LibraryEntity` deliberately has no defaults: a
+     * new column should be a compile error at every writer instead of a silent zero.
      */
     private fun library() = LibraryEntity(
         libraryKey = LIBRARY_KEY,
@@ -218,7 +218,6 @@ class ShelfPlayerDatabaseTest {
         lastFetchedAt = 0,
         isDeleted = false,
         finishedTimeRemainingSeconds = null,
-        finishedFractionComplete = null,
     )
 
     private suspend fun seed() {

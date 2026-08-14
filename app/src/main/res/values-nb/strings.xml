@@ -445,9 +445,10 @@
 
     <!-- PRODUCT_SPEC PLAY-004 / ADR-0013 — når en bok regnes som ferdig. -->
     <string name="settings_section_finished">Ferdig</string>
-    <string name="settings_finished_threshold">Ferdig når det er så mye igjen</string>
-    <string name="settings_finished_hint">En bok merkes som ferdig når det er så lite igjen, slik at de siste sekundene med rulletekst ikke etterlater den som ulest. Å merke en bok som ferdig selv virker uansett, og å starte en ferdig bok fra begynnelsen gjør den alltid ulest igjen.</string>
-    <string name="settings_finished_library_override">%1$s ber om %2$d s, og den lengste av de to vinner — så bøker der blir ferdige når det er %2$d s igjen.</string>
+    <string name="settings_finished_threshold">Brukes der serveren din ikke sier noe</string>
+    <string name="settings_finished_hint">En bok merkes som ferdig når det er så lite igjen av den, slik at de siste sekundene med rulletekst ikke etterlater den som ulest. Der et bibliotek på serveren din har sin egen verdi, bruker ShelfPlayer den i stedet — den følger nettgrensesnittet framfor å ha en egen mening. Å merke en bok som ferdig selv virker uansett, og å starte en ferdig bok fra begynnelsen gjør den alltid ulest igjen.</string>
+    <string name="settings_finished_inherited">%1$s: %2$d s, fra serveren din</string>
+    <string name="settings_finished_inherited_none">%1$s: ingen verdi på serveren, så verdien over brukes</string>
 
     <plurals name="home_library_books">
         <item quantity="one">%1$d bok</item>

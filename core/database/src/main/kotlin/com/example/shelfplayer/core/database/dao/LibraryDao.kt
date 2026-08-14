@@ -203,39 +203,30 @@ interface LibraryDao {
     suspend fun inProgressBookIds(profileId: String, libraryKey: String): List<String>
 
     /**
-     * PRODUCT_SPEC PLAY-004 / ADR-0013 — the finished rule of the library that holds [bookKey].
+     * PRODUCT_SPEC PLAY-004 / ADR-0013 — `markAsFinishedTimeRemaining`, in **seconds**, for the library that
+     * holds [bookKey].
      *
      * A join rather than two reads, because the caller is the progress journal: it runs every five seconds
-     * while a book plays, and the thing it has in hand is a book. Asking it to find a library first would
-     * put a second round trip on the hot path for two nullable numbers.
+     * while a book plays, and the thing it has in hand is a book. Asking it to find a library first would put
+     * a second round trip on the hot path for one nullable number.
      *
-     * Two columns rather than the whole row, for the same reason. The journal has no use for the library's
+     * One column rather than the whole row, for the same reason. The journal has no use for the library's
      * name, and a projection cannot accidentally grow a dependency on one.
      *
-     * `null` — no such book, or a library that has said nothing — is a rule of [FinishedRuleRow]'s own
-     * making at the caller: it means the listener's setting stands alone, which is exactly right for a
-     * book whose library has not been synced since before version 14.
+     * `null` covers two cases — no such book, and a library that has set no rule — and they want identical
+     * behaviour: the listener's own setting applies. A book whose library has not been synced since before
+     * version 14 is the second, and it does not matter that this cannot tell it from the first.
      */
     @Query(
         """
-        SELECT libraries.finishedTimeRemainingSeconds AS timeRemainingSeconds,
-               libraries.finishedFractionComplete AS fractionComplete
+        SELECT libraries.finishedTimeRemainingSeconds
         FROM libraries
         INNER JOIN books ON books.libraryKey = libraries.libraryKey
         WHERE books.bookKey = :bookKey
         """,
     )
-    suspend fun finishedRuleFor(bookKey: String): FinishedRuleRow?
+    suspend fun finishedSecondsFor(bookKey: String): Long?
 }
-
-/**
- * The two columns of `libraries` that answer "when does this library call a book finished".
- *
- * Deliberately in the storage units rather than in the domain's: `timeRemainingSeconds` is seconds and
- * `fractionComplete` is a fraction, which is what the columns hold. The conversion to a
- * `FinishedRule` belongs to the mapper, not to a DAO projection.
- */
-data class FinishedRuleRow(val timeRemainingSeconds: Long?, val fractionComplete: Double?)
 
 /** One already-expanded book: its server id and the `updatedAt` the server reported when it was stored. */
 data class ExpandedBookStamp(val remoteId: String, val remoteUpdatedAt: Long?)

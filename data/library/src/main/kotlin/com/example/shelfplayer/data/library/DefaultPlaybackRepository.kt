@@ -15,7 +15,6 @@ import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
-import com.example.shelfplayer.core.model.library.FinishedRule
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -214,27 +213,21 @@ class DefaultPlaybackRepository @Inject constructor(
         }
 
     /**
-     * ADR-0013 — the rule in force for one book: the listener's setting, and the book's library's own.
+     * ADR-0013 — the rule in force for one book: the book's library's, or the listener's where it has none.
      *
-     * Read on every journal write rather than cached. The library's half changes when the server's settings
-     * change, the listener's half changes from the settings screen, and both are two nullable numbers behind
-     * an indexed key — a cache here would buy nothing measurable and would hold a stale rule for exactly as
-     * long as nobody noticed.
+     * Read on every journal write rather than cached. The library's value changes when the server's settings
+     * change, the listener's changes from the settings screen, and both are one nullable number behind an
+     * indexed key — a cache here would buy nothing measurable and would hold a stale rule for exactly as long
+     * as nobody noticed.
      *
-     * A book whose library predates version 14, or that has no row at all, contributes
-     * [FinishedRule.Unset] — so the listener's setting stands alone. That is the honest answer rather than a
-     * guess: a library the app has never read settings for has not asked for anything.
+     * A book whose library predates version 14, or that has no row at all, reads `null` — so the listener's
+     * setting applies. That is the honest answer rather than a guess: a library the app has never read
+     * settings for has not asked for anything.
      */
-    private suspend fun thresholdFor(bookKey: String): FinishedThreshold {
-        val row = libraryDao.finishedRuleFor(bookKey)
-        return FinishedThreshold(
-            configured = playbackSettings.observeSettings().first().finishedThreshold,
-            library = FinishedRule.stored(
-                timeRemainingSeconds = row?.timeRemainingSeconds,
-                fractionComplete = row?.fractionComplete,
-            ),
-        )
-    }
+    private suspend fun thresholdFor(bookKey: String): FinishedThreshold = FinishedThreshold(
+        configured = playbackSettings.observeSettings().first().finishedThreshold,
+        library = FinishedThreshold.libraryRule(libraryDao.finishedSecondsFor(bookKey)),
+    )
 
     private companion object {
         /**

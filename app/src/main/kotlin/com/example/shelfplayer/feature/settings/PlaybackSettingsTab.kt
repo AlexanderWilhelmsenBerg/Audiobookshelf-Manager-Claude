@@ -117,15 +117,15 @@ internal fun LazyListScope.playbackTab(
 /**
  * PRODUCT_SPEC PLAY-004 / ADR-0013 — when a book counts as finished.
  *
- * ### Why the libraries appear here
+ * ### Why every library is listed
  *
- * ADR-0013's rule is `max(this setting, the library's own markAsFinishedTimeRemaining)`, and without the
- * second half shown, a listener who chose 30 seconds and then watched a book finish with a minute left has
- * been given a setting that lies. Only the libraries that actually *win* are named — a library asking for
- * less than the chosen value changes nothing and saying so would be noise.
+ * The value here is a **fallback**: where a library on the server sets `markAsFinishedTimeRemaining`, that is
+ * the number used for its books. A setting that is silently overruled is a setting that lies, so each library
+ * says what it actually uses — the inherited seconds, or that it has none and follows the chips above.
  *
- * The comparison is against the chosen value rather than against every library, so the note appears and
- * disappears as the chips are pressed, which is the clearest way to show what the `max` is doing.
+ * Every library rather than only the overriding ones. An earlier build of this listed only the libraries that
+ * differed from the chosen value, which reads as "nothing to see" on exactly the server where the chips are
+ * doing nothing at all.
  */
 private fun LazyListScope.finishedSection(
     threshold: Duration,
@@ -149,20 +149,22 @@ private fun LazyListScope.finishedSection(
             modifier = Modifier.testTag(FINISHED_THRESHOLD_CHIPS),
         )
     }
-    libraries
-        .mapNotNull { library -> library.finishedRule.timeRemaining?.let { library.name to it } }
-        .filter { (_, asked) -> asked > threshold }
-        .forEach { (name, asked) ->
-            item(key = "finished-override-$name") {
-                Hint(
-                    text = stringResource(
-                        R.string.settings_finished_library_override,
-                        name,
-                        asked.inWholeSeconds.toInt(),
-                    ),
-                )
-            }
+    libraries.forEach { library ->
+        item(key = "finished-library-${library.id.value}") {
+            val inherited = library.finishedWhenRemaining
+            Hint(
+                text = if (inherited == null) {
+                    stringResource(R.string.settings_finished_inherited_none, library.name)
+                } else {
+                    stringResource(
+                        R.string.settings_finished_inherited,
+                        library.name,
+                        inherited.inWholeSeconds.toInt(),
+                    )
+                },
+            )
         }
+    }
 }
 
 /** See [finishedSection]. Named here so the test and the tab cannot drift apart on a string literal. */
