@@ -235,15 +235,6 @@ data class PlaybackSettings(
     val autoRewind: AutoRewind = AutoRewind.Default,
     val buffer: BufferPreset = BufferPreset.Default,
     /**
-     * PRODUCT_SPEC PLAY-004 / SET-002 — how close to the end counts as finished.
-     *
-     * A duration rather than the requirement's percentage, for the reason [FinishedThreshold] gives at
-     * length. Only the listener's half of the rule is here; the book's library has a say too, and the two
-     * are combined by [FinishedThreshold] at the moment a position is written rather than stored combined —
-     * a book's library is a property of the book, not of the device's settings.
-     */
-    val finishedThreshold: Duration = FinishedThreshold.Default,
-    /**
      * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — whether connecting to a car should start the last book.
      *
      * **Off by default, and it is the only setting in this app that can make audio begin with nobody

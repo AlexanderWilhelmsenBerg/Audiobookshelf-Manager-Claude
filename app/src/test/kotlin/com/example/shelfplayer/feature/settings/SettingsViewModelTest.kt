@@ -21,7 +21,6 @@ import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.CarReadiness
-import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -61,8 +60,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC SET-001 / SET-002 / SYNC-001 — both settings tabs, from the one ViewModel behind them.
@@ -261,40 +258,6 @@ class SettingsViewModelTest {
         }
     }
 
-    /**
-     * PRODUCT_SPEC PLAY-004 / SET-002 — the finished threshold reaches the store, and the screen reads it back.
-     *
-     * The default is asserted first, because ADR-0013's thirty seconds is the number the app behaves by for
-     * every user who never opens this setting — which is most of them.
-     */
-    @Test
-    fun `the finished threshold starts at the documented default and is stored when changed`() = runTest {
-        val model = viewModel()
-
-        model.uiState.test {
-            assertEquals(FinishedThreshold.Default, awaitItem().playback.finishedThreshold)
-            model.onFinishedThresholdChanged(90.seconds)
-            assertEquals(90.seconds, awaitItem().playback.finishedThreshold)
-        }
-    }
-
-    /**
-     * A value outside `FinishedThreshold.Range` is pulled into it rather than stored.
-     *
-     * The clamp lives in the store, not in the screen, so this asserts the path a caller actually takes —
-     * including a future caller that is not a chip row with eight safe options.
-     */
-    @Test
-    fun `a threshold outside the range is coerced`() = runTest {
-        val model = viewModel()
-
-        model.uiState.test {
-            awaitItem()
-            model.onFinishedThresholdChanged(1.hours)
-            assertEquals(FinishedThreshold.Range.endInclusive, awaitItem().playback.finishedThreshold)
-        }
-    }
-
     private fun library(id: String, name: String, bookCount: Int) = Library(
         serverId = ServerId("srv_books"),
         id = LibraryId(id),
@@ -424,11 +387,6 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
 
     override suspend fun setBufferPreset(preset: BufferPreset): AppResult<Unit> {
         controls.value = controls.value.copy(buffer = preset)
-        return AppResult.Success(Unit)
-    }
-
-    override suspend fun setFinishedThreshold(threshold: kotlin.time.Duration): AppResult<Unit> {
-        controls.value = controls.value.copy(finishedThreshold = FinishedThreshold.coerce(threshold))
         return AppResult.Success(Unit)
     }
 

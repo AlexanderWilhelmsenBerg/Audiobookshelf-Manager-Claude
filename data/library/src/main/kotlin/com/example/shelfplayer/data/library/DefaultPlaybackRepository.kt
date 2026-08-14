@@ -19,10 +19,8 @@ import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.domain.repository.PlaybackRepository
-import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -47,7 +45,6 @@ class DefaultPlaybackRepository @Inject constructor(
     private val profileDao: ProfileDao,
     private val progressDao: ProgressDao,
     private val libraryDao: LibraryDao,
-    private val playbackSettings: PlaybackSettingsRepository,
     private val gateway: AudiobookshelfGateway,
     private val clock: AppClock,
     private val logger: Logger,
@@ -213,21 +210,18 @@ class DefaultPlaybackRepository @Inject constructor(
         }
 
     /**
-     * ADR-0013 — the rule in force for one book: the book's library's, or the listener's where it has none.
+     * ADR-0013 — the rule in force for one book: its own library's, read fresh on every write.
      *
-     * Read on every journal write rather than cached. The library's value changes when the server's settings
-     * change, the listener's changes from the settings screen, and both are one nullable number behind an
-     * indexed key — a cache here would buy nothing measurable and would hold a stale rule for exactly as long
-     * as nobody noticed.
+     * Not cached. The value changes when the server's library settings change, and it is one nullable number
+     * behind an indexed key — a cache would buy nothing measurable and would hold a stale rule for exactly as
+     * long as nobody noticed.
      *
-     * A book whose library predates version 14, or that has no row at all, reads `null` — so the listener's
-     * setting applies. That is the honest answer rather than a guess: a library the app has never read
-     * settings for has not asked for anything.
+     * A book whose library predates database version 14, or that has no row at all, reads `null` and falls
+     * back to `FinishedThreshold.Default`. That is the honest answer rather than a guess: a library the app
+     * has never read settings for has not asked for anything.
      */
-    private suspend fun thresholdFor(bookKey: String): FinishedThreshold = FinishedThreshold(
-        configured = playbackSettings.observeSettings().first().finishedThreshold,
-        library = FinishedThreshold.libraryRule(libraryDao.finishedSecondsFor(bookKey)),
-    )
+    private suspend fun thresholdFor(bookKey: String): FinishedThreshold =
+        FinishedThreshold(library = FinishedThreshold.libraryRule(libraryDao.finishedSecondsFor(bookKey)))
 
     private companion object {
         /**

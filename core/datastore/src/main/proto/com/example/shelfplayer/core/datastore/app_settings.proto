@@ -134,17 +134,16 @@ message AppSettings {
   // policy exists this is the single global switch, and the UI has to say what it does.
   bool auto_play_on_car_connect = 26;
 
-  // PRODUCT_SPEC PLAY-004 / SET-002 — how close to the end of a book counts as finished, in seconds.
+  // Field 27 held `finished_threshold_seconds`, a per-device finished threshold. It is gone: the rule is
+  // the library's `markAsFinishedTimeRemaining`, read from the server, and this app keeps no competing
+  // number. There is nothing on the server to synchronise a per-listener value with — the user object has
+  // no settings field at all — so a device-local one could only ever disagree with the web interface.
+  // See ADR-0013.
   //
-  // 5–120 (`FinishedThreshold.Range`), and zero means "never chosen" as it does for every other numeric
-  // setting here, so the reader substitutes ADR-0013's 30. Zero is not a legal choice for this setting —
-  // a threshold of zero seconds would mean a book is only finished at its exact last sample — so unlike
-  // the auto-rewind bands this needs no companion "configured" flag.
-  //
-  // Only the listener's half of the rule. The other half is the book's library's own
-  // `markAsFinishedTimeRemaining`, which belongs to the library rather than to this device and is stored
-  // in Room with the rest of the library's row.
-  int32 finished_threshold_seconds = 27;
+  // Reserved, not reused. Build 0.9.2 wrote this field on a device, and a new field numbered 27 would read
+  // those bytes as its own.
+  reserved 27;
+  reserved "finished_threshold_seconds";
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

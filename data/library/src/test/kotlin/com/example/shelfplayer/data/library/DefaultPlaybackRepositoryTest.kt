@@ -18,22 +18,14 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.auth.AccountProgress
-import com.example.shelfplayer.core.model.playback.AutoRewind
-import com.example.shelfplayer.core.model.playback.BufferPreset
-import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
-import com.example.shelfplayer.core.model.playback.PlaybackSettings
-import com.example.shelfplayer.core.model.playback.PlaybackSpeed
-import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
-import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -71,13 +63,6 @@ class DefaultPlaybackRepositoryTest {
     private val sink = RecordingLogSink()
     private val profileId = ProfileId("fixture-profile")
 
-    /**
-     * PRODUCT_SPEC SET-002 — the listener's half of the finished rule, settable from a test.
-     *
-     * The whole point of PR 2 is that this is no longer a constant, so the tests have to be able to move it.
-     */
-    private val settings = StubPlaybackSettings()
-
     @Before
     fun setUp() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -98,7 +83,6 @@ class DefaultPlaybackRepositoryTest {
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
             libraryDao = database.libraryDao(),
-            playbackSettings = settings,
             gateway = gateway,
             clock = TestAppClock(),
             logger = logger,
@@ -247,7 +231,6 @@ class DefaultPlaybackRepositoryTest {
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
             libraryDao = database.libraryDao(),
-            playbackSettings = settings,
             gateway = FakeAudiobookshelfGateway(
                 loader = FixtureLibraryLoader(),
                 clock = TestAppClock(),
@@ -281,7 +264,7 @@ class DefaultPlaybackRepositoryTest {
      * finished it, which is the disagreement this replaced.
      */
     @Test
-    fun `the library's rule decides, not the listener's setting`() = runTest {
+    fun `the library's own rule is what decides`() = runTest {
         repository.recordPosition(BOOK, position = 2.hours - 20.seconds, duration = 2.hours)
         assertFalse(storedProgress().isFinished, "twenty seconds left, against the library's ten")
 
@@ -289,31 +272,31 @@ class DefaultPlaybackRepositoryTest {
         assertTrue(storedProgress().isFinished, "eight seconds left is inside the library's rule")
     }
 
-    /** Changing the listener's setting changes nothing for a library that has its own rule. */
+    /** A library that asks for longer is honoured just as literally, through the same join. */
     @Test
-    fun `the listener's setting does not override a library that sets one`() = runTest {
-        settings.set(120.seconds)
+    fun `a library asking for longer finishes the book earlier`() = runTest {
+        libraryRule(90.seconds)
 
-        repository.recordPosition(BOOK, position = 2.hours - 90.seconds, duration = 2.hours)
+        repository.recordPosition(BOOK, position = 2.hours - 60.seconds, duration = 2.hours)
 
-        assertFalse(storedProgress().isFinished, "the library's ten seconds still decides")
+        assertTrue(storedProgress().isFinished, "a minute left, against a library asking for ninety seconds")
     }
 
     /**
-     * PRODUCT_SPEC SET-002 — and where the library sets nothing, the setting is what decides.
+     * Where the library has said nothing, ADR-0013's thirty seconds applies.
      *
-     * This is the fallback, and it is the only case the chips in Settings affect. `null` on the library row
-     * has to mean "no rule" rather than "zero seconds", or a library the app has not synced since before
-     * version 14 would finish nothing at all.
+     * `null` on the library row has to mean "no rule" rather than "zero seconds", or a library the app has not
+     * synced since before database version 14 would finish nothing at all.
      */
     @Test
-    fun `a library with no rule falls back to the listener's setting`() = runTest {
+    fun `a library with no rule falls back to thirty seconds`() = runTest {
         libraryRule(null)
-        settings.set(120.seconds)
 
-        repository.recordPosition(BOOK, position = 2.hours - 90.seconds, duration = 2.hours)
+        repository.recordPosition(BOOK, position = 2.hours - 40.seconds, duration = 2.hours)
+        assertFalse(storedProgress().isFinished, "forty seconds left is outside the fallback")
 
-        assertTrue(storedProgress().isFinished, "a minute and a half left, against a two-minute setting")
+        repository.recordPosition(BOOK, position = 2.hours - 20.seconds, duration = 2.hours)
+        assertTrue(storedProgress().isFinished, "twenty seconds left is inside it")
     }
 
     /**
@@ -326,11 +309,10 @@ class DefaultPlaybackRepositoryTest {
     fun `another library's rule does not apply`() = runTest {
         libraryRule(null)
         libraryRule(90.seconds, libraryId = "lib-nonfiction")
-        settings.set(30.seconds)
 
         repository.recordPosition(BOOK, position = 2.hours - 60.seconds, duration = 2.hours)
 
-        assertFalse(storedProgress().isFinished, "this book's own library sets nothing, so 30 s applies")
+        assertFalse(storedProgress().isFinished, "this book's own library sets nothing, so the fallback applies")
     }
 
     /** Writes a library's own finished rule — or clears it — the way a sync writes one. */
@@ -455,44 +437,6 @@ class DefaultPlaybackRepositoryTest {
         override suspend fun activeProfileId(): ProfileId? = activeProfileId
 
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
-    }
-
-    /**
-     * PRODUCT_SPEC SET-002 — the playback settings, with only the one this repository reads made settable.
-     *
-     * A stub rather than the real `DefaultPlaybackSettingsRepository`: that one needs a `DataStore`, and the
-     * subject here is the rule the repository applies rather than where the number is kept. Everything else
-     * answers with the product default, which is what a test that does not care about it should get.
-     */
-    private class StubPlaybackSettings : PlaybackSettingsRepository {
-        private val state = MutableStateFlow(PlaybackSettings.Default)
-
-        fun set(threshold: kotlin.time.Duration) {
-            state.value = state.value.copy(finishedThreshold = FinishedThreshold.coerce(threshold))
-        }
-
-        override fun observeSettings(): Flow<PlaybackSettings> = state
-
-        override suspend fun setFinishedThreshold(threshold: kotlin.time.Duration): AppResult<Unit> {
-            set(threshold)
-            return AppResult.Success(Unit)
-        }
-
-        override suspend fun setDefaultSpeed(speed: PlaybackSpeed) = AppResult.Success(Unit)
-
-        override suspend fun setSkipIntervals(skips: SkipIntervals) = AppResult.Success(Unit)
-
-        override suspend fun setAutoRewind(rewind: AutoRewind) = AppResult.Success(Unit)
-
-        override suspend fun setBufferPreset(preset: BufferPreset) = AppResult.Success(Unit)
-
-        override suspend fun setAutoPlayOnCarConnect(enabled: Boolean) = AppResult.Success(Unit)
-
-        override fun observeSpeedFor(bookId: LibraryItemId): Flow<PlaybackSpeed?> = flowOf(null)
-
-        override suspend fun speedFor(bookId: LibraryItemId): PlaybackSpeed = state.value.defaultSpeed
-
-        override suspend fun setSpeedFor(bookId: LibraryItemId, speed: PlaybackSpeed?) = AppResult.Success(Unit)
     }
 
     private companion object {

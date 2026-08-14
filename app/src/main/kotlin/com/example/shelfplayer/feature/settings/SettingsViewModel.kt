@@ -180,11 +180,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { playbackSettings.setBufferPreset(preset) }
     }
 
-    /** PRODUCT_SPEC PLAY-004 — how close to the end of a book counts as finished. */
-    fun onFinishedThresholdChanged(threshold: kotlin.time.Duration) {
-        viewModelScope.launch { playbackSettings.setFinishedThreshold(threshold) }
-    }
-
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless chosen. */
     fun onAutoPlayOnCarConnectChanged(enabled: Boolean) {
         viewModelScope.launch { playbackSettings.setAutoPlayOnCarConnect(enabled) }

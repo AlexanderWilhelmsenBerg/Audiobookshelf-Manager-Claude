@@ -64,7 +64,6 @@ fun SettingsRoute(
             onSkipsChanged = viewModel::onSkipIntervalsChanged,
             onAutoRewindChanged = viewModel::onAutoRewindChanged,
             onBufferChanged = viewModel::onBufferPresetChanged,
-            onFinishedThresholdChanged = viewModel::onFinishedThresholdChanged,
             onAutoPlayChanged = viewModel::onAutoPlayOnCarConnectChanged,
         ),
         onNavigateUp = onNavigateUp,

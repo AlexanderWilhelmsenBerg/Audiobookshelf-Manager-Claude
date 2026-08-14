@@ -17,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -30,7 +29,6 @@ import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
-import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls, as a settings tab.
@@ -109,52 +107,50 @@ internal fun LazyListScope.playbackTab(
     item { Hint(text = stringResource(R.string.settings_buffer_hint)) }
     items(BufferPreset.entries, settings.buffer, onBufferChanged)
 
-    finishedSection(settings.finishedThreshold, libraries, actions.onFinishedThresholdChanged)
+    finishedSection(libraries)
     carSection(settings.autoPlayOnCarConnect, actions.onAutoPlayChanged)
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) }
 }
 
 /**
- * PRODUCT_SPEC PLAY-004 / ADR-0013 — when a book counts as finished.
+ * PRODUCT_SPEC PLAY-004 / ADR-0013 — when a book counts as finished. **A reading, not a control.**
  *
- * ### Why every library is listed
+ * ### Why there is nothing to press here
  *
- * The value here is a **fallback**: where a library on the server sets `markAsFinishedTimeRemaining`, that is
- * the number used for its books. A setting that is silently overruled is a setting that lies, so each library
- * says what it actually uses — the inherited seconds, or that it has none and follows the chips above.
+ * The rule is the library's `markAsFinishedTimeRemaining`, read from the server, and this app keeps no
+ * competing number. So this section reports what each library actually uses and says where to change it —
+ * the Audiobookshelf web interface, per library.
  *
- * Every library rather than only the overriding ones. An earlier build of this listed only the libraries that
- * differed from the chosen value, which reads as "nothing to see" on exactly the server where the chips are
- * doing nothing at all.
+ * The owner asked for the app's value and the server's to match. There is nothing on the server to
+ * synchronise a per-listener value *with*: the user object has no settings field at all, and the only
+ * writable copy is the library's own configuration, which belongs to the administrator and applies to every
+ * account that can see the library. So the two can only match by the app following the server, which is what
+ * this is. ADR-0013 records the reasoning, including why the app does not write the library's settings back.
+ *
+ * ### Why every library is listed, including the ones with no rule
+ *
+ * Because the alternative is a screen that cannot explain the app's own behaviour. A listener who watches a
+ * book finish with a minute left needs to be able to find out that their library asked for a minute. An
+ * earlier build listed only libraries that differed from a chosen value, which showed nothing on exactly the
+ * server where the explanation was most needed.
  */
-private fun LazyListScope.finishedSection(
-    threshold: Duration,
-    libraries: List<Library>,
-    onChanged: (Duration) -> Unit,
-) {
+private fun LazyListScope.finishedSection(libraries: List<Library>) {
     item { SectionHeader(text = stringResource(R.string.settings_section_finished)) }
     item { Hint(text = stringResource(R.string.settings_finished_hint)) }
-    item {
-        ChipRow(
-            labelRes = R.string.settings_finished_threshold,
-            options = FinishedThreshold.Presets,
-            selected = threshold,
-            label = { seconds -> stringResource(R.string.settings_seconds, seconds.inWholeSeconds.toInt()) },
-            onSelect = onChanged,
-            // The only test tag in the app, and it earns its place: three chip rows on this tab offer the
-            // *same* eight labels — "5 s" through "120 s" — because the skip intervals and this threshold
-            // share a range on purpose. A test asserting that a listener can press this row's 90 therefore
-            // cannot name it by its text, and PR 1 of this closeout is the record of what happens when a
-            // control goes untested for pressability.
-            modifier = Modifier.testTag(FINISHED_THRESHOLD_CHIPS),
-        )
+    if (libraries.isEmpty()) {
+        item { Hint(text = stringResource(R.string.settings_finished_no_libraries)) }
+        return
     }
     libraries.forEach { library ->
         item(key = "finished-library-${library.id.value}") {
             val inherited = library.finishedWhenRemaining
             Hint(
                 text = if (inherited == null) {
-                    stringResource(R.string.settings_finished_inherited_none, library.name)
+                    stringResource(
+                        R.string.settings_finished_inherited_none,
+                        library.name,
+                        FinishedThreshold.Default.inWholeSeconds.toInt(),
+                    )
                 } else {
                     stringResource(
                         R.string.settings_finished_inherited,
@@ -166,9 +162,6 @@ private fun LazyListScope.finishedSection(
         }
     }
 }
-
-/** See [finishedSection]. Named here so the test and the tab cannot drift apart on a string literal. */
-internal const val FINISHED_THRESHOLD_CHIPS = "finished-threshold-chips"
 
 /**
  * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — what happens when the phone meets a car.
@@ -223,8 +216,6 @@ data class PlaybackSettingsActions(
     val onSkipsChanged: (SkipIntervals) -> Unit,
     val onAutoRewindChanged: (AutoRewind) -> Unit,
     val onBufferChanged: (BufferPreset) -> Unit,
-    /** PRODUCT_SPEC PLAY-004 — how close to the end counts as finished. */
-    val onFinishedThresholdChanged: (Duration) -> Unit,
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. */
     val onAutoPlayChanged: (Boolean) -> Unit,
 )

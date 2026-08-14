@@ -60,10 +60,10 @@ Complete for a streaming client. The three remaining criteria are about download
 | Journaled at least every 5 s | ✅ |
 | Remote sync ~30 s plus the seven named triggers | ✅ all seven |
 | Survives process death, ≤10 s lost | ✅ by construction 🔬 unproven on hardware |
-| Finished threshold 95%, configurable 90–99% | ✅ **configurable 5–120 s**, defaulting to 30 s, and overridden by the library where the server sets one — a duration rather than a percentage, deviating from the literal wording by ADR-0013 |
+| Finished threshold 95%, configurable 90–99% | ⚠️ **deviates, by the owner's decision.** A duration rather than a percentage, and **not configurable in the app at all** — the value is the library's `markAsFinishedTimeRemaining`, changed in the web interface. ADR-0013 records both departures and why |
 | **Marking finished is explicit** | ✅ a checkbox, both directions — and the un-finish PATCH is confirmed accepted by the server |
 | Rewinding preserved; conflict never blindly takes the maximum | ✅ |
-| **`markAsFinishedTimeRemaining` from library settings** | ✅ **read and inherited** — where a library sets it, it is the rule; the listener's setting is the fallback |
+| **`markAsFinishedTimeRemaining` from library settings** | ✅ **read and used as the rule.** Thirty seconds applies only to a library whose settings have not been read yet |
 
 The 2026-08-13 capture settled both directions. `isFinished: true` round-trips, and the un-finish PATCH
 answers `200 OK` — the server accepts it. What made the first probe look like a failure was the server's own

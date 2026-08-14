@@ -157,3 +157,57 @@ The listener's setting keeps its 5–120 second range and its 30-second default,
 lists **every** library with what it actually uses — the inherited seconds, or a line saying it has none and
 follows the setting. An earlier build listed only libraries that differed from the chosen value, which
 displayed nothing on exactly the server where the chips were doing nothing at all.
+
+## Revised a third time — the app keeps no threshold at all
+
+The owner, after the 0.9.4 device build:
+
+> *"The only thing missing is that the app should update the marked finished seconds on the server as well, so
+> these match. If this is not possible then remove it from setting. Since this setting is library specific it
+> could be difficult."*
+
+It is not possible in the sense asked for, so the setting is gone. Three facts, in the order that settles it:
+
+1. **There is no per-user finished threshold on the server to match.** `contracts/me.json`'s user object has
+   no `settings` key at all — it carries `permissions`, `bookmarks`, `mediaProgress`, `librariesAccessible`
+   and identity fields, and nothing resembling a playback preference. So "make the two match" cannot mean
+   "sync a per-listener value"; there is no such value to sync with.
+
+2. **`markAsFinishedTimeRemaining` belongs to the library, not to a person.** Every account with access to that
+   library reads the same number. Writing it from one listener's phone reconfigures the library for everybody
+   on the server, and a non-administrator account cannot write it at all — so the app would need to hide the
+   control by role, and the control would still be misrepresenting itself as a personal setting.
+
+3. **`library.settings` carries twelve fields and this app models one.** The others are the server's own
+   scanning and matching behaviour: an ordered `metadataPrecedence` array, `disableWatcher`,
+   `autoScanCronExpression`, four `skipMatching*`/`hide*` flags. No capture shows whether the server merges a
+   partial settings PATCH or replaces the object. If it replaces, a write-back from this app would silently
+   discard eleven settings it deliberately does not understand, on a library shared with other people.
+   PRODUCT_SPEC 22.4 forbids relying on unobserved server behaviour, and destroying somebody's library
+   configuration is exactly the outcome that rule exists to prevent.
+
+So the app has no threshold. `FinishedThreshold` holds the library's value and nothing else; `Default` — still
+thirty seconds — is a fallback for a library whose settings have not been read yet, not a preference. The
+proto field is reserved rather than removed, because build 0.9.2 wrote it on a device.
+
+### This is now a real deviation from PLAY-004, and it is wider than before
+
+PLAY-004 says the threshold is **configurable**. In this app it is not: there is no control, and the only way
+to change it is the Audiobookshelf web interface, per library. The requirement's intent — that a listener can
+tune when a book counts as finished — is met only in the sense that a self-hosted user is also their own
+administrator. On a server they do not administer, they cannot tune it at all.
+
+That is the owner's decision, taken with the alternative in front of them, and it buys something the
+requirement did not anticipate: the app and the web interface can never disagree about whether a book is
+finished. Recorded here as a deviation rather than quietly satisfied, per PRODUCT_SPEC 22's rule about
+requirements being contractual.
+
+### What the Settings screen does instead
+
+The Playback tab keeps a **Finished** section that is a reading rather than a control: it names every library
+and the number in force for its books, says which libraries the server has not answered for and what fallback
+is being used, and states where the value is changed — the web interface, under that library's settings.
+
+A screen that dropped the subject entirely would leave the app's most surprising behaviour unexplained. A
+listener who watches a book finish with a minute left has to be able to find out that their library asked for
+a minute.

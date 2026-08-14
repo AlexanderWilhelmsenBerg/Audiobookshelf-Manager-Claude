@@ -10,38 +10,35 @@ There is no percentage rule and there will not be one — 95% of a hundred-hour 
 If a library on your server is configured with a percentage and *no* time remaining, this app will not
 honour it. That is the one place it knowingly diverges from the server, and it is deliberate.
 
-## 1. The setting exists and says what it does
+## 1. The Finished section, which is now a reading rather than a setting
 
 **Settings → Playback → scroll to Finished.**
 
-**Expect:** a section headed **Finished**, a paragraph explaining it, a row of chips from **5 s** to
-**120 s** with **30 s** selected, and under them **one line per library**.
+**Expect:** a section headed **Finished**, a paragraph, and **one line per library**. There is **no row of
+chips** — the app no longer keeps a threshold of its own.
 
-The paragraph states the two things this setting does *not* change: you can always mark a book finished by
-hand, and starting a finished book from the beginning always un-finishes it.
+That is the answer to "make the app's number and the server's match": there is nothing on your server to match
+a per-listener number *with* — a user account has no such setting — and the only writable copy is the
+library's own configuration, which every account on that library shares and which the app models one field of
+out of twelve. So the app follows the server instead. `docs/adr/0013-…` has the full reasoning.
 
-## 2. What each of your libraries actually uses — the part that is new
+**Expect each line** to say one of two things:
 
-Read the lines under the chips.
+- **"Fiction: finished with 10 s left"** — that library's own value, and the number in force for its books.
+  Audiobookshelf's default is 10 seconds, so this is the likely line.
+- **"Fiction: your server has not said, so 30 s is used until it does"** — the app has not read that library's
+  settings yet.
 
-**Expect** one line per library, each saying one of two things:
+**Cross-check one against the web interface:** open the library's settings there and read *mark as finished
+when time remaining is*. The number on the phone must be the same. If they disagree, that is the defect worth
+reporting.
 
-- **"Fiction: 10 s, from your server"** — that library sets its own value, and that value is what its books
-  use. The chips above do nothing for it. Audiobookshelf's own default is 10 seconds, so this is the likely
-  line for most people.
-- **"Fiction: no value on the server, so the one above is used"** — that library sets nothing, so the chips
-  apply.
-
-**Cross-check one of them against the web interface:** open the library's settings there and read *Mark as
-finished when time remaining is*. The number on the phone must be the same number. If they disagree, that is
-the defect worth reporting, and the line on the phone tells you exactly what the app thinks.
-
-Change it in the web interface, refresh on the phone (pull to refresh on the home screen, or switch profile
-and back), and the line should follow. It arrives with the library refresh, not instantly.
+Change it in the web interface, refresh on the phone (pull to refresh, or switch profile and back), and the
+line should follow. It arrives with the library refresh, not instantly.
 
 ## 3. It actually finishes a book — and read section 4 first
 
-Use the number *that library reports*, not the chips, unless the line says the chips apply.
+Use the number *that library reports*.
 
 1. Play a book and seek to a few seconds before the reported threshold — for a library at 10 s, about
    **15 seconds** from the end.

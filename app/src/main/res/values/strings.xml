@@ -555,16 +555,18 @@
     <string name="settings_buffer_automatic_range">Whatever the player decides</string>
     <string name="settings_seconds">%1$d s</string>
 
-    <!-- PRODUCT_SPEC PLAY-004 / ADR-0013 — when a book counts as finished. -->
-    <string name="settings_section_finished">Finished</string>
-    <string name="settings_finished_threshold">Used where your server sets nothing</string>
-    <string name="settings_finished_hint">A book is marked finished when this little of it is left, so the last few seconds of credits do not leave it looking unread. Where a library on your server sets its own value, ShelfPlayer uses that one instead — it follows the web interface rather than keeping a second opinion. Marking a book finished by hand always works either way, and starting a finished book from the beginning always un-finishes it.</string>
     <!--
-      What each library actually uses, which is the thing this screen has to be able to say. A setting that
-      is silently overruled is a setting that lies, so the inherited value is shown rather than implied.
+      PRODUCT_SPEC PLAY-004 / ADR-0013 — when a book counts as finished.
+
+      A reading rather than a control. The rule belongs to the library on the server, so this section reports
+      what each library uses and says where to change it. See ADR-0013 for why the app keeps no number of its
+      own and does not write the library's settings back.
     -->
-    <string name="settings_finished_inherited">%1$s: %2$d s, from your server</string>
-    <string name="settings_finished_inherited_none">%1$s: no value on the server, so the one above is used</string>
+    <string name="settings_section_finished">Finished</string>
+    <string name="settings_finished_hint">A book is marked finished when a little of it is left, so the last few seconds of credits do not leave it looking unread. How little is your server\'s decision, set per library — in the Audiobookshelf web interface, under that library\'s settings, as “mark as finished when time remaining is”. ShelfPlayer follows it rather than keeping a second opinion. Marking a book finished by hand always works either way, and starting a finished book from the beginning always un-finishes it.</string>
+    <string name="settings_finished_inherited">%1$s: finished with %2$d s left</string>
+    <string name="settings_finished_inherited_none">%1$s: your server has not said, so %2$d s is used until it does</string>
+    <string name="settings_finished_no_libraries">No libraries have been read from your server yet, so nothing here can be shown.</string>
 
     <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.

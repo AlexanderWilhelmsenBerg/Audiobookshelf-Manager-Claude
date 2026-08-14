@@ -13,37 +13,37 @@ import kotlin.time.Duration.Companion.seconds
  * terms, and this type has no percentage in it at all — not a disabled one, not an unread field. The
  * requirement's intent is kept; its unit is not, and ADR-0013 records the deviation.
  *
- * ### The library's value is inherited, not merged
+ * ### There is no app-side setting, and that is the whole design
  *
- * A library on the server carries `markAsFinishedTimeRemaining`, and where it does, **that is the number this
- * app uses**. [configured] applies only to a library that sets none.
+ * Each library on the server carries `markAsFinishedTimeRemaining`, and that value **is** the rule for its
+ * books. This app holds no competing number. [Default] is a fallback for a library that reports none, not a
+ * preference.
  *
- * This replaced a `max` of the two, and the owner's instruction was the reason: *"instead of fighting the
- * server, have them merge — inherit from the web interface."* The `max` was the weaker idea. It bounded the
- * disagreement rather than removing it: with the app at 30 s against a library's 10 s, a book was finished
- * here twenty seconds before the web interface agreed, and a listener switching between the two saw a book
- * that changed state depending on where they looked. Inheriting means there is one rule for one book, and it
- * is the one the server's own interface shows.
+ * It ended here after two earlier shapes — a setting, then a `max` of the setting and the library — and the
+ * reason is that there is nothing on the server to synchronise a per-listener value *with*. The user object
+ * carries no such field: `contracts/me.json` has no `settings` key at all. The only writable copy is the
+ * library's own configuration, which belongs to the administrator and applies to every account that can see
+ * the library. A per-device setting could therefore only ever *disagree* with the server, and the owner's
+ * instruction was that the two should match. One number, read from the library, is the only way they can.
  *
- * What the `max` was protecting against is still handled, just not here: a book the server reports as
- * `isFinished` is finished regardless of position, and a locally finished book is never quietly un-finished
- * (`DefaultPlaybackRepository`). So the app cannot contradict the server in either direction.
+ * ### Why the app does not write it back
+ *
+ * Recorded here because it is the first question a reader will have. `library.settings` carries **twelve**
+ * fields and this app models one; the other eleven are the server's own scanning and matching behaviour,
+ * including an ordered `metadataPrecedence` array and the filesystem watcher. No capture shows whether the
+ * server merges a partial settings PATCH or replaces the object, so a write-back could silently discard
+ * eleven settings this app deliberately does not understand — on a library shared with other people.
+ * PRODUCT_SPEC 22.4 forbids relying on unobserved server behaviour, and this is the case it exists for.
  *
  * ### Was previously a constant, and lived in `:domain`
  *
  * Until PR 2 of the Phase 2 closeout this was `object FinishedThreshold` with a hard-coded 30 seconds, and
- * its own comment documented the gap and said it would close "in wave 3". It did not. The library's settings
- * were being parsed away in `LibraryDto` the whole time.
- *
- * It moved here from `:domain` in the same change, because [Range] and [Default] now have three readers:
- * [PlaybackSettings], which carries the chosen value; `AppSettingsDataSource`, which clamps what it reads off
- * disk; and the settings screen, which offers the choices. `:core:datastore` cannot see `:domain`, so leaving
- * the bounds there would have meant a second copy of the numbers — and two copies of a range are one range
- * and one bug waiting for somebody to widen the other.
+ * its own comment documented the gap and said it would close "in wave 3". It did not: the library's settings
+ * were being parsed away in `LibraryDto` the whole time. It moved to `:core:model` in the same change, because
+ * the rule now travels on [com.example.shelfplayer.core.model.library.Library], and the model module is the
+ * one both the data layer and the screens can see.
  */
 data class FinishedThreshold(
-    /** PRODUCT_SPEC SET-002 — the listener's own setting, used where the book's library sets none. */
-    val configured: Duration = Default,
     /**
      * PRODUCT_SPEC PLAY-004 — the book's library's `markAsFinishedTimeRemaining`, or `null` for none.
      *
@@ -52,11 +52,8 @@ data class FinishedThreshold(
      */
     val library: Duration? = null,
 ) {
-    /** The rule in force: the library's where it has one, the listener's setting otherwise. */
-    val effective: Duration get() = library ?: configured
-
-    /** Whether [effective] came from the server, which is the thing a settings screen has to be able to say. */
-    val isInherited: Boolean get() = library != null
+    /** The rule in force: the library's where it has one, [Default] otherwise. */
+    val effective: Duration get() = library ?: Default
 
     /**
      * Whether a book at [position] of [duration] counts as finished.
@@ -69,29 +66,15 @@ data class FinishedThreshold(
         duration > Duration.ZERO && duration - position <= effective
 
     companion object {
-        /** ADR-0013's number, and the default the setting starts at. */
+        /**
+         * ADR-0013's number, used only where a library reports no rule of its own.
+         *
+         * Not a setting, and not a default anybody can see or change. Every Audiobookshelf library has
+         * `markAsFinishedTimeRemaining` set — the server's own default is ten seconds — so in practice this
+         * covers a library whose settings this app has not read yet: a row cached before database version 14,
+         * or one written by a sync that predates the field being parsed.
+         */
         val Default: Duration = 30.seconds
-
-        /**
-         * PRODUCT_SPEC SET-002 / ADR-0013 — the configurable span, as a duration.
-         *
-         * Five seconds is the shortest that is not just "the very end"; two minutes is long enough for a
-         * listener who counts credits and an afterword as not-the-book. Wider than that stops being a
-         * threshold: at ten minutes an hour-long book is finished six sixths of the way through.
-         */
-        val Range: ClosedRange<Duration> = 5.seconds..120.seconds
-
-        /**
-         * What the settings screen offers, matching `SkipIntervals.Presets`.
-         *
-         * The same eight numbers as the skip intervals, deliberately: they span the same range, and a user
-         * who has already learned that 30 is the middle of one list should not meet a different arithmetic
-         * in the next.
-         */
-        val Presets: List<Duration> = listOf(5, 10, 15, 30, 45, 60, 90, 120).map { it.seconds }
-
-        /** Clamps a stored or typed value into [Range], so a bad row cannot produce a strange rule. */
-        fun coerce(value: Duration): Duration = value.coerceIn(Range.start, Range.endInclusive)
 
         /**
          * A library's `markAsFinishedTimeRemaining`, in the server's unit, as a rule this app can hold.
@@ -101,9 +84,8 @@ data class FinishedThreshold(
          * value is dropped rather than clamped: it is not a library asking for anything sensible, and
          * honouring it as zero would be inventing a rule the server does not have.
          *
-         * Deliberately **not** coerced into [Range]. That range bounds what a *listener* may choose; the
-         * server may legitimately want ten seconds or ten minutes, and overriding it here would be the
-         * arguing this design exists to stop.
+         * Deliberately **not** bounded. A server may legitimately want ten seconds or ten minutes, and
+         * second-guessing it here would be the arguing this design exists to stop.
          */
         fun libraryRule(seconds: Long?): Duration? = seconds?.takeIf { it >= 0 }?.seconds
     }

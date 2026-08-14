@@ -536,10 +536,14 @@ listener's own setting applies only to a library that sets none.
 
 Three notes for anyone reading the fixture:
 
-- **The app no longer keeps a competing threshold.** An earlier build of the same day took
-  `max(the setting, the library's value)`, which bounded the disagreement rather than removing it: at 30 s
-  against this server's 10 s, a book was finished in the app twenty seconds before the web interface agreed.
-  The owner's instruction was to inherit instead, and ADR-0013 records it.
+- **The app keeps no threshold of its own, and does not write the library's back.** Two earlier builds of the
+  same day did keep one — a setting, then a `max` of the setting and the library's value — and both could
+  disagree with the web interface. The setting is gone. There is nothing on the server to synchronise a
+  per-listener value with: **`me.json`'s user object has no `settings` key at all**, so the only writable copy
+  is `library.settings`, which is shared by every account and which this app models one field of out of twelve.
+  Nothing captured says whether a partial settings PATCH merges or replaces, so writing it back could discard
+  eleven settings — including the ordered `metadataPrecedence` — on somebody else's library. ADR-0013 records
+  the decision and the fact that it widens the deviation from PLAY-004, which asks for a configurable value.
 - **`markAsFinishedPercentComplete` is sent, is `null` in every capture ever taken, and is deliberately not
   read.** The owner rejected the unit: 95% of a hundred-hour book leaves five hours to go. `CapturedShapesTest`
   pins it as *sent and unread*, so a later reader finding it in the fixture does not mistake the omission for
