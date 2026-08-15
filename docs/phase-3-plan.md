@@ -46,11 +46,11 @@ download work is genuinely additive rather than a rewrite.
 | 1 — the download permission becomes real | **merged** (#18) |
 | 2 — the storage layout and the manifest | **merged** (#19) |
 | 3 — one file downloads, verified, atomically | **merged** (#20), and it absorbed slice 6's resume |
-| 4 — a whole book, and playing it offline | **open** (#21) — the button, the worker, offline playback |
-| 5 — network policy | **open** (#21) — three cellular switches, Wi-Fi always allowed |
+| 4 — a whole book, and playing it offline | **merged** (#21) — the button, the worker, offline playback |
+| 5 — network policy | **merged** (#21) — three cellular switches, Wi-Fi always allowed |
 | 6 — resume | folded into slice 3; the `RangeDownload` capability gate is still outstanding |
-| 7 — verification and cleanup | not started |
-| 8 — smart download | not started |
+| 7 — verification and cleanup | **open** (#22) — the storage screen, *Repair*, retention |
+| 8 — smart download | **open** (#22) — the halfway trigger and its two switches |
 
 Slice 4 joins them: the book screen's download button is live, a `BookDownloadWorker` carries the transfer
 past the screen with a progress notification, and a downloaded book plays with no network at all. The UI
@@ -62,7 +62,16 @@ by default is worse than no download button. Wi-Fi is always allowed and is not 
 — so each category is one switch, *may this also use cellular*, defaulting on for streaming and off for both
 kinds of download.
 
-Still not reachable: the storage screen (*Manage local files*), cleanup and smart download — slices 7 and 8.
+Slices 7 and 8 close the phase. *Manage local files* lists every download on the device, pins the ones that
+must survive cleanup and removes the rest; a *Check downloaded files* button runs the full verification, which
+marks what is broken and deletes nothing. Two opt-in switches join it: delete finished books after N days, and
+fetch the next book in a series at the halfway mark — with the option to drop the one before it.
+
+**What is deliberately still open at the end of Phase 3:** the `RangeDownload` capability gate (slice 6's
+last piece — resume works, but nothing records per-server whether the server supports it), SAF writing for
+decision 4's user-chosen folder and SD card (the manifest and the verifier both handle `content://`
+locations; nothing writes one yet), and the twelve named job states of §12 — the manifest models four, which
+is what the *stored* thing can be, and WorkManager owns the rest.
 
 ---
 

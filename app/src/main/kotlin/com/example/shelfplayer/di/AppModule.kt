@@ -9,7 +9,9 @@ import com.example.shelfplayer.core.network.di.RemoteGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.http.UserAgent
 import com.example.shelfplayer.domain.download.DownloadScheduler
+import com.example.shelfplayer.domain.download.SmartDownload
 import com.example.shelfplayer.domain.sync.BackgroundSync
+import com.example.shelfplayer.domain.usecase.SmartDownloadUseCase
 import com.example.shelfplayer.download.WorkManagerDownloadScheduler
 import com.example.shelfplayer.log.FanOutLogSink
 import com.example.shelfplayer.sync.WorkManagerBackgroundSync
@@ -78,6 +80,18 @@ interface AppModule {
     // token, which nothing outside `:data:auth` should be able to do.
 
     companion object {
+        /**
+         * PRODUCT_SPEC DL-005 — the halfway trigger, bound in `:app` because it is the only module that can
+         * see both ends.
+         *
+         * `SmartDownloadUseCase` needs the library and the download use case; the progress journal that
+         * calls it lives in `:data:library`, which those depend on. A direct injection would be a cycle, so
+         * the journal takes the `SmartDownload` seam and this supplies the real one.
+         */
+        @Provides
+        @Singleton
+        fun providesSmartDownload(useCase: SmartDownloadUseCase): SmartDownload = SmartDownload(useCase::invoke)
+
         /**
          * PRODUCT_SPEC 10.3 — the user agent carries the app version and nothing that identifies the
          * device, the installation or the user.

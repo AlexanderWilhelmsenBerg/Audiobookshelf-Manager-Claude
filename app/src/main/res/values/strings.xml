@@ -156,8 +156,8 @@
     <string name="book_menu_finished">Mark as finished</string>
     <string name="book_menu_unfinished">Mark as not finished</string>
     <string name="book_menu_discard">Discard progress</string>
-    <string name="book_menu_local_files">Manage local files (Phase 3)</string>
-    <string name="book_menu_delete_local">Delete local item (Phase 3)</string>
+    <string name="book_menu_local_files">Manage local files</string>
+    <string name="book_menu_delete_local">Delete local item</string>
     <string name="book_menu_web_client">Go to web client</string>
     <string name="book_menu_more_info">More info</string>
 
@@ -330,6 +330,44 @@
       preference anybody holds. The hint says so, because three switches with no mention of Wi-Fi invites
       the reading that Wi-Fi is what they control.
     -->
+    <!-- PRODUCT_SPEC DL-003 / SET-002 / ADR-0018 decisions 6 and 8 — Manage local files. -->
+    <string name="downloads_title">Downloaded books</string>
+    <string name="downloads_empty_title">Nothing downloaded</string>
+    <string name="downloads_empty_body">Books you download appear here, with how much space each one uses. Download one from its own screen.</string>
+    <string name="downloads_total">%1$s used by downloads</string>
+    <!--
+      ADR-0018 decision 8. The owner asked for a repair button that compares a checksum with the server.
+      The capture says the server sends an ETag — a validator, not a checksum — so this names what it can
+      honestly do: check the files are here, whole, and openable.
+    -->
+    <string name="downloads_verify_hint">Checks that every downloaded file is still present, the right size, and openable as audio. It does not compare the audio with your server — Audiobookshelf does not send a checksum to compare against.</string>
+    <string name="downloads_verify">Check downloaded files</string>
+    <!-- PRODUCT_SPEC 5.2 — a book the signed-in profile may not see is listed, and not named. -->
+    <string name="downloads_hidden_title">A book in a library this profile cannot see</string>
+    <string name="downloads_incomplete">incomplete</string>
+    <string name="downloads_pin">Keep this one, never delete it automatically</string>
+    <string name="downloads_unpin">Stop keeping this one</string>
+    <string name="downloads_remove">Remove this download</string>
+    <string name="downloads_remove_shared_body">This removes the book from your downloads. Another profile on this phone downloaded it too, so the files stay and no space is freed until they remove it as well. Nothing is deleted on your server.</string>
+    <plurals name="downloads_files">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <!-- PRODUCT_SPEC DL-005 / DL-006 / ADR-0018 decisions 1 and 7 — what the app may do unasked. -->
+    <string name="settings_section_downloads">Downloads</string>
+    <string name="settings_downloads_hint">Both of these are off until you turn them on. One spends space and data on a book you did not ask for; the other deletes a book you did.</string>
+    <string name="settings_downloads_manage">Manage downloaded books</string>
+    <string name="settings_downloads_smart">Download the next book in a series</string>
+    <string name="settings_downloads_smart_hint">When you pass halfway through a book, the next one in the same series starts downloading.</string>
+    <string name="settings_downloads_delete_previous">Remove the previous book in the series</string>
+    <string name="settings_downloads_delete_previous_hint">When the next book arrives, the one before the book you are listening to is removed from this device. Never the one playing.</string>
+    <string name="settings_downloads_retention">Remove finished books</string>
+    <string name="settings_downloads_retention_hint">A finished book is removed this long after you finished it. Never the book playing, never one whose progress has not reached your server, and never one you have pinned.</string>
+    <plurals name="settings_downloads_retention_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <string name="settings_downloads_retention_never">Never</string>
     <string name="settings_section_network">Mobile data</string>
     <string name="settings_network_hint">Wi-Fi is always used when it is available. These decide what may also use mobile data. Your phone decides what counts as mobile data, so a Wi-Fi network you marked as metered is treated the same way.</string>
     <string name="settings_network_streaming">Stream over mobile data</string>

@@ -52,8 +52,8 @@ class BookOverflowMenuScreenTest {
             "History",
             "Mark as finished",
             "Discard progress",
-            "Manage local files (Phase 3)",
-            "Delete local item (Phase 3)",
+            "Manage local files",
+            "Delete local item",
             "Go to web client",
             "More info",
         ).forEach { label ->
@@ -62,17 +62,20 @@ class BookOverflowMenuScreenTest {
     }
 
     /**
-     * PRODUCT_SPEC 21 — the row that is still a placeholder says which phase it arrives in.
+     * PRODUCT_SPEC DL-003 — *Manage local files* opens the storage screen. No longer a placeholder.
      *
-     * Shown rather than hidden so the menu does not look complete when it is not; disabled rather than live
-     * so nothing looks pressable that does nothing.
+     * Live whatever this book's state is: the screen it opens is about the **device**, and a user who
+     * wonders where their space went should not have to find a downloaded book first to be allowed to ask.
      */
     @Test
-    fun `manage local files still names its phase`() {
-        render()
+    fun `manage local files opens the storage screen`() {
+        var opened = 0
+        render(onManageDownloads = { opened++ })
         openMenu()
 
-        composeRule.onNodeWithText("Manage local files (Phase 3)").assertIsNotEnabled()
+        composeRule.onNodeWithText("Manage local files").assertIsEnabled().performClick()
+
+        assertEquals(1, opened)
     }
 
     /**
@@ -86,7 +89,7 @@ class BookOverflowMenuScreenTest {
         render(download = DownloadButtonState.Downloaded)
         openMenu()
 
-        composeRule.onNodeWithText("Delete local item (Phase 3)").assertIsEnabled()
+        composeRule.onNodeWithText("Delete local item").assertIsEnabled()
     }
 
     @Test
@@ -94,7 +97,7 @@ class BookOverflowMenuScreenTest {
         render(download = DownloadButtonState.NotDownloaded)
         openMenu()
 
-        composeRule.onNodeWithText("Delete local item (Phase 3)").assertIsNotEnabled()
+        composeRule.onNodeWithText("Delete local item").assertIsNotEnabled()
     }
 
     /** The label names the state it would put the book into, so it flips on a finished book. */
@@ -335,6 +338,7 @@ class BookOverflowMenuScreenTest {
         onOpenWebClient: (String) -> Unit = {},
         onDownloadClicked: (DownloadButtonState) -> Unit = {},
         onRemoveDownload: () -> Unit = {},
+        onManageDownloads: () -> Unit = {},
         message: String? = null,
     ) {
         composeRule.setContent {
@@ -360,6 +364,7 @@ class BookOverflowMenuScreenTest {
                     onOpenWebClient = onOpenWebClient,
                     onDownloadClicked = onDownloadClicked,
                     onRemoveDownload = onRemoveDownload,
+                    onManageDownloads = onManageDownloads,
                 ),
                 onNavigateUp = {},
                 message = message,

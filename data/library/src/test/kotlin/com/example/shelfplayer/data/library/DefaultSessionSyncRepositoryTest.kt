@@ -512,6 +512,14 @@ class DefaultSessionSyncRepositoryTest {
             ): AppResult<FileTransfer> = AppResult.Failure(
                 AppError.ApiCompatibility(summary = "This fake serves no audio files."),
             )
+
+            override suspend fun fetchCover(
+                profileId: ProfileId,
+                bookId: LibraryItemId,
+                sink: () -> OutputStream,
+            ): AppResult<String?> = AppResult.Failure(
+                AppError.ApiCompatibility(summary = "This fake serves no cover art."),
+            )
         }
 
         override val bookmarks: BookmarkApi = object : BookmarkApi {

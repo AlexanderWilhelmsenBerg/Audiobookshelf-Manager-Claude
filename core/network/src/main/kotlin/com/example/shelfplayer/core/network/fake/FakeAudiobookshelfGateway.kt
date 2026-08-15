@@ -100,6 +100,14 @@ class FakeAudiobookshelfGateway @Inject constructor(
         AppError.ApiCompatibility(summary = "The bundled demo library has no audio files to download."),
     )
 
+    override suspend fun fetchCover(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        sink: () -> java.io.OutputStream,
+    ): AppResult<String?> = AppResult.Failure(
+        AppError.ApiCompatibility(summary = "The bundled demo library has no cover art to download."),
+    )
+
     /**
      * The fixture server and profile, for a test that needs the identities the demo document declares.
      *

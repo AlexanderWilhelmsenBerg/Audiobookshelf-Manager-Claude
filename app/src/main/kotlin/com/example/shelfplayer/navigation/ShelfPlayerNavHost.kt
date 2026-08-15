@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.shelfplayer.feature.book.BookRoute
+import com.example.shelfplayer.feature.downloads.DownloadsRoute
 import com.example.shelfplayer.feature.home.HomeRoute
 import com.example.shelfplayer.feature.onboarding.SignInRoute
 import com.example.shelfplayer.feature.onboarding.SignInViewModel
@@ -86,7 +87,15 @@ fun ShelfPlayerNavHost(
             // search and sort chips, which a device run called out as "two different places for the same
             // functions". Choosing a library here narrows the home screen, and the home screen is where
             // browsing happens.
-            SettingsRoute(onNavigateUp = navController::navigateUp)
+            SettingsRoute(
+                onNavigateUp = navController::navigateUp,
+                onManageDownloads = { navController.navigate(ShelfDestinations.DOWNLOADS) },
+            )
+        }
+        // PRODUCT_SPEC DL-003 / ADR-0018 decision 6 — reachable from Settings and from a book's own menu,
+        // because both are places somebody wonders where their space went.
+        composable(ShelfDestinations.DOWNLOADS) {
+            DownloadsRoute(onNavigateUp = navController::navigateUp)
         }
         composable(
             route = ShelfDestinations.BOOK,
@@ -94,7 +103,10 @@ fun ShelfPlayerNavHost(
                 navArgument(ShelfDestinations.ARG_BOOK_ID) { type = NavType.StringType },
             ),
         ) {
-            BookRoute(onNavigateUp = navController::navigateUp)
+            BookRoute(
+                onNavigateUp = navController::navigateUp,
+                onManageDownloads = { navController.navigate(ShelfDestinations.DOWNLOADS) },
+            )
         }
         composable(
             route = ShelfDestinations.SERIES,

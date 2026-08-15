@@ -49,7 +49,7 @@ class DefaultPlaybackRepository @Inject constructor(
     private val progressDao: ProgressDao,
     private val libraryDao: LibraryDao,
     private val gateway: AudiobookshelfGateway,
-    private val offlineSessions: OfflineSessionBuilder,
+    private val downloads: DownloadSupport,
     private val clock: AppClock,
     private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
@@ -89,12 +89,12 @@ class DefaultPlaybackRepository @Inject constructor(
                 ),
             )
         val serverId = profileDao.findProfile(profileId.value)?.serverId?.let(::ServerId)
-        val manifest = serverId?.let { offlineSessions.manifestFor(it, bookId) }
+        val manifest = serverId?.let { downloads.sessions.manifestFor(it, bookId) }
 
         val opened = gateway.playback.openSession(profileId, bookId)
         if (opened is AppResult.Success) {
             clearFinishedIfRestarting(bookId, opened.value.startAt)
-            return AppResult.Success(offlineSessions.localise(opened.value, manifest))
+            return AppResult.Success(downloads.sessions.localise(opened.value, manifest))
         }
 
         val offline = playableOffline(profileId, serverId, bookId, manifest, (opened as AppResult.Failure).error)
@@ -118,7 +118,7 @@ class DefaultPlaybackRepository @Inject constructor(
         if (serverId == null || manifest?.isComplete != true) return null
         if (failure is AppError.Authentication || failure is AppError.Authorization) return null
 
-        val session = offlineSessions.build(profileId, serverId, bookId, manifest) ?: return null
+        val session = downloads.sessions.build(profileId, serverId, bookId, manifest) ?: return null
         logger.info(LogCategory.Playback, "A downloaded book is playing without the server")
         return AppResult.Success(session)
     }
@@ -212,6 +212,15 @@ class DefaultPlaybackRepository @Inject constructor(
                 LogField.Millis("remaining", (duration - position).inWholeMilliseconds),
             )
         }
+        // PRODUCT_SPEC DL-005 — the halfway mark, considered on the position that just moved past it. It
+        // is the journal rather than the player that knows both the old position and the new one, and the
+        // use case reads one boolean and returns when the feature is off, which is the usual case.
+        downloads.smartDownload(
+            bookId = bookId,
+            previousPosition = stored?.positionMillis ?: 0,
+            position = position.inWholeMilliseconds,
+            duration = duration.inWholeMilliseconds.takeIf { it > 0 } ?: stored?.durationMillis ?: 0,
+        )
         AppResult.Success(Unit)
     }
 

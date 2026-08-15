@@ -50,4 +50,17 @@ internal interface DownloadService {
         @Header("Range") range: String?,
         @Header("If-Range") ifRange: String?,
     ): Response<ResponseBody>
+
+    /**
+     * One item's cover. `contracts/item-cover.json`: `200`, `image/webp`.
+     *
+     * No `Range`, because a cover is kilobytes — resuming one costs more round trips than restarting it.
+     *
+     * The capture records `unauthenticatedStatus: 200`: **Audiobookshelf serves cover art without a
+     * credential.** The bearer is sent anyway, because a server configured to require one should get one,
+     * and because a request that authenticates when it need not is harmless while the reverse is a 401.
+     */
+    @Streaming
+    @GET("api/items/{itemId}/cover")
+    suspend fun cover(@Header(AUTHORIZATION) bearer: String, @Path("itemId") itemId: String): Response<ResponseBody>
 }

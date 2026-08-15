@@ -3,8 +3,10 @@ package com.example.shelfplayer.data.downloads.di
 import com.example.shelfplayer.data.downloads.AndroidMediaContainerVerifier
 import com.example.shelfplayer.data.downloads.BookDownloader
 import com.example.shelfplayer.data.downloads.DefaultDownloadRepository
+import com.example.shelfplayer.data.downloads.DownloadVerifier
 import com.example.shelfplayer.data.downloads.MediaContainerVerifier
 import com.example.shelfplayer.domain.download.OfflineFiles
+import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import dagger.Binds
 import dagger.Module
@@ -35,4 +37,9 @@ interface DownloadsDataModule {
     @Binds
     @Singleton
     fun bindsOfflineFiles(impl: BookDownloader): OfflineFiles
+
+    /** PRODUCT_SPEC DL-002 — the start-up check and the diagnostics action. */
+    @Binds
+    @Singleton
+    fun bindsOfflineVerification(impl: DownloadVerifier): OfflineVerification
 }

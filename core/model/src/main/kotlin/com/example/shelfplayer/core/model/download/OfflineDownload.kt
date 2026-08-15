@@ -47,6 +47,13 @@ data class OfflineBook(
      * before, which is what lets two profiles on one device share one copy.
      */
     val requestedBy: Set<ProfileId>,
+    /**
+     * PRODUCT_SPEC DL-006 — whether any profile has protected this copy from automatic cleanup.
+     *
+     * Any profile's pin protects the shared copy. One person deciding to keep a book is enough, and asking
+     * everyone to agree before something is kept would make the pin useless on the device it is for.
+     */
+    val isPinned: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {

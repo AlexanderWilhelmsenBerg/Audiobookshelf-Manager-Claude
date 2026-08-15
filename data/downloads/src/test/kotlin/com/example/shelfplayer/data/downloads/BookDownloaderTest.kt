@@ -75,6 +75,7 @@ class BookDownloaderTest {
         )
         downloader = BookDownloader(
             repository = repository,
+            downloads = api,
             fileDownloader = FileDownloader(
                 downloads = api,
                 storage = storage,
@@ -290,9 +291,19 @@ class BookDownloaderTest {
             )
         }
 
+        override suspend fun fetchCover(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            sink: () -> OutputStream,
+        ): AppResult<String?> {
+            sink().use { stream -> stream.write(ByteArray(COVER_BYTES)) }
+            return AppResult.Success("image/webp")
+        }
+
         private companion object {
             /** Small and constant. What is asserted is the *weighting*, which comes from the manifest. */
             const val BODY_BYTES = 8
+            const val COVER_BYTES = 4
         }
     }
 

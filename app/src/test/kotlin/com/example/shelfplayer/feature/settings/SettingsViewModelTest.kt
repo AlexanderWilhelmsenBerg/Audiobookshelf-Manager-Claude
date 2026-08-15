@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
@@ -369,6 +370,7 @@ class SettingsViewModelTest {
 internal class FakePlaybackSettings : PlaybackSettingsRepository {
     private val controls = MutableStateFlow(PlaybackSettings.Default)
     private val network = MutableStateFlow(NetworkPolicy.Default)
+    private val housekeeping = MutableStateFlow(DownloadHousekeeping.Default)
 
     override fun observeSettings(): Flow<PlaybackSettings> = controls
 
@@ -376,6 +378,13 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
 
     override suspend fun setNetworkPolicy(policy: NetworkPolicy): AppResult<Unit> {
         network.value = policy
+        return AppResult.Success(Unit)
+    }
+
+    override fun observeHousekeeping(): Flow<DownloadHousekeeping> = housekeeping
+
+    override suspend fun setHousekeeping(housekeeping: DownloadHousekeeping): AppResult<Unit> {
+        this.housekeeping.value = housekeeping
         return AppResult.Success(Unit)
     }
 

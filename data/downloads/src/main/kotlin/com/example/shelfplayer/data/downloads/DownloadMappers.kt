@@ -23,6 +23,7 @@ internal object DownloadMappers {
         files = row.files.sortedBy(DownloadedFileEntity::fileIndex).map(::toDomain),
         coverUri = row.book.coverUri,
         requestedBy = row.requests.map { request -> ProfileId(request.profileId) }.toSet(),
+        isPinned = row.requests.any { request -> request.isPinned },
         createdAt = Instant.ofEpochMilli(row.book.createdAt),
         updatedAt = Instant.ofEpochMilli(row.book.updatedAt),
     )

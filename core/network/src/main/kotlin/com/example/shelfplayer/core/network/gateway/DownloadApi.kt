@@ -59,6 +59,17 @@ interface DownloadApi {
         validator: String? = null,
         onProgress: (Long) -> Unit = {},
     ): AppResult<FileTransfer>
+
+    /**
+     * PRODUCT_SPEC DL-001 — the cover, alongside the audio.
+     *
+     * Simpler than [fetchFile] because a cover is kilobytes: no range, no validator, no progress. It is
+     * also the one part of a download whose failure does **not** make the book incomplete — a book with
+     * every audio file is completely listenable, and a server with no artwork for an item is ordinary.
+     *
+     * @return the MIME type the server sent, which decides the file's extension.
+     */
+    suspend fun fetchCover(profileId: ProfileId, bookId: LibraryItemId, sink: () -> OutputStream): AppResult<String?>
 }
 
 /**

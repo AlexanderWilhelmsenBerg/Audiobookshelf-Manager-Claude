@@ -142,8 +142,8 @@
     <string name="book_menu_finished">Merk som ferdig</string>
     <string name="book_menu_unfinished">Merk som ikke ferdig</string>
     <string name="book_menu_discard">Forkast fremdrift</string>
-    <string name="book_menu_local_files">Håndter lokale filer (fase 3)</string>
-    <string name="book_menu_delete_local">Slett lokal kopi (fase 3)</string>
+    <string name="book_menu_local_files">Håndter lokale filer</string>
+    <string name="book_menu_delete_local">Slett lokal kopi</string>
     <string name="book_menu_web_client">Gå til nettklienten</string>
     <string name="book_menu_more_info">Mer informasjon</string>
 
@@ -261,6 +261,36 @@
     <string name="sleep_timer_countdown">%1$d:%2$02d</string>
     <string name="sleep_timer_restart">Start sovetiden på nytt</string>
 
+    <string name="downloads_title">Nedlastede bøker</string>
+    <string name="downloads_empty_title">Ingenting er lastet ned</string>
+    <string name="downloads_empty_body">Bøker du laster ned vises her, med hvor mye plass hver av dem bruker. Last ned en fra bokens egen side.</string>
+    <string name="downloads_total">%1$s brukt av nedlastinger</string>
+    <string name="downloads_verify_hint">Kontrollerer at hver nedlastede fil fortsatt finnes, har riktig størrelse og kan åpnes som lyd. Den sammenligner ikke lyden med serveren din — Audiobookshelf sender ingen sjekksum å sammenligne med.</string>
+    <string name="downloads_verify">Kontroller nedlastede filer</string>
+    <string name="downloads_hidden_title">En bok i et bibliotek denne profilen ikke ser</string>
+    <string name="downloads_incomplete">ufullstendig</string>
+    <string name="downloads_pin">Behold denne, aldri slett den automatisk</string>
+    <string name="downloads_unpin">Slutt å beholde denne</string>
+    <string name="downloads_remove">Fjern denne nedlastingen</string>
+    <string name="downloads_remove_shared_body">Dette fjerner boken fra dine nedlastinger. En annen profil på denne telefonen har også lastet den ned, så filene blir liggende og ingen plass frigjøres før de også fjerner den. Ingenting slettes på serveren din.</string>
+    <plurals name="downloads_files">
+        <item quantity="one">%1$d fil</item>
+        <item quantity="other">%1$d filer</item>
+    </plurals>
+    <string name="settings_section_downloads">Nedlastinger</string>
+    <string name="settings_downloads_hint">Begge disse er av til du slår dem på. Den ene bruker plass og data på en bok du ikke ba om; den andre sletter en bok du ba om.</string>
+    <string name="settings_downloads_manage">Administrer nedlastede bøker</string>
+    <string name="settings_downloads_smart">Last ned neste bok i en serie</string>
+    <string name="settings_downloads_smart_hint">Når du passerer halvveis i en bok, begynner den neste i samme serie å lastes ned.</string>
+    <string name="settings_downloads_delete_previous">Fjern forrige bok i serien</string>
+    <string name="settings_downloads_delete_previous_hint">Når neste bok kommer, fjernes boken før den du hører på fra denne enheten. Aldri den som spilles.</string>
+    <string name="settings_downloads_retention">Fjern fullførte bøker</string>
+    <string name="settings_downloads_retention_hint">En fullført bok fjernes så lenge etter at du fullførte den. Aldri boken som spilles, aldri en hvis fremdrift ikke har nådd serveren din, og aldri en du har festet.</string>
+    <plurals name="settings_downloads_retention_days">
+        <item quantity="one">%1$d dag</item>
+        <item quantity="other">%1$d dager</item>
+    </plurals>
+    <string name="settings_downloads_retention_never">Aldri</string>
     <string name="settings_section_network">Mobildata</string>
     <string name="settings_network_hint">Wi-Fi brukes alltid når det er tilgjengelig. Disse bestemmer hva som også kan bruke mobildata. Telefonen din avgjør hva som regnes som mobildata, så et Wi-Fi-nett du har merket som målt behandles på samme måte.</string>
     <string name="settings_network_streaming">Strøm over mobildata</string>

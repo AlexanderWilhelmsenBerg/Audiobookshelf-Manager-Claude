@@ -35,6 +35,10 @@ import javax.inject.Singleton
 @Singleton
 class DownloadStorage @Inject constructor(@param:ApplicationContext private val context: Context) {
 
+    /** One item's directory under whichever root is in use. */
+    fun itemDirectory(serverId: String, itemId: String): File =
+        File(context.filesDir, DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
+
     /**
      * The `.part` file for one audio file, with its directory created.
      *
@@ -46,6 +50,18 @@ class DownloadStorage @Inject constructor(@param:ApplicationContext private val 
             File(context.filesDir, DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
         directory.mkdirs()
         return File(directory, DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType)))
+    }
+
+    /**
+     * Where an item's cover goes.
+     *
+     * One name per item, so a re-download replaces the artwork rather than accumulating copies of it, and
+     * so the offline player can find it without consulting the manifest.
+     */
+    fun coverFor(serverId: String, itemId: String, mimeType: String?): File {
+        val directory = itemDirectory(serverId, itemId)
+        directory.mkdirs()
+        return File(directory, DownloadPaths.coverName(mimeType))
     }
 
     /** Where [partFor]'s file will end up once it has been verified. */

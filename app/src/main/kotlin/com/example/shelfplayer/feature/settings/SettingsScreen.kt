@@ -46,6 +46,7 @@ import com.example.shelfplayer.core.model.library.Library
 @Composable
 fun SettingsRoute(
     onNavigateUp: () -> Unit,
+    onManageDownloads: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -66,6 +67,8 @@ fun SettingsRoute(
             onBufferChanged = viewModel::onBufferPresetChanged,
             onAutoPlayChanged = viewModel::onAutoPlayOnCarConnectChanged,
             onNetworkPolicyChanged = viewModel::onNetworkPolicyChanged,
+            onHousekeepingChanged = viewModel::onHousekeepingChanged,
+            onManageDownloads = onManageDownloads,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -145,6 +148,7 @@ fun SettingsScreen(
                         libraries = uiState.libraries,
                         actions = playbackActions,
                         networkPolicy = uiState.networkPolicy,
+                        housekeeping = uiState.housekeeping,
                     )
 
                     SettingsTab.About -> aboutTab(uiState, onOpenEventLog = { isEventLogOpen = true })
