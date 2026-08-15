@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.network.api
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AuthSession
@@ -254,4 +255,102 @@ class AbsAuthContractTest {
 
         assertTrue(error.isRetryable)
     }
+
+    // --- GET /api/search/providers as the one management capability a probe can answer -------------
+
+    /**
+     * PRODUCT_SPEC MGR-003 — a deployment that lists a usable provider supports matching.
+     *
+     * The shape here is **source-derived rather than captured** (`docs/api-compatibility.md`), which is
+     * why the next two tests matter more than this one: what makes shipping ahead of the fixture safe is
+     * that every other shape fails closed, not that this one succeeds.
+     */
+    @Test
+    fun `a provider list confirms the match capability`() = runTest {
+        server.enqueue(ContractFixtures.response("status-initialized"))
+        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(
+            MockResponse().setBody(
+                """{"providers":{"books":[{"value":"google","text":"Google Books"}],"podcasts":[]}}""",
+            ),
+        )
+        val resolver = resolver()
+
+        val capabilities = assertIs<AppResult.Success<*>>(
+            resolver.resolve(ServerId("srv_1"), baseUrl(), AuthToken("token")),
+        ).value as ServerCapabilities
+
+        assertTrue(capabilities.supports(ServerCapability.MatchProvider))
+    }
+
+    /**
+     * A server too old to have the route answers `404`, and older servers are the common case rather than
+     * the exotic one. It has to read as "not confirmed" without a version comparison (PRODUCT_SPEC 10.4).
+     */
+    @Test
+    fun `a server without the provider route does not confirm the match capability`() = runTest {
+        server.enqueue(ContractFixtures.response("status-initialized"))
+        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(MockResponse().setResponseCode(404))
+        val resolver = resolver()
+
+        val capabilities = assertIs<AppResult.Success<*>>(
+            resolver.resolve(ServerId("srv_1"), baseUrl(), AuthToken("token")),
+        ).value as ServerCapabilities
+
+        assertTrue(ServerCapability.MatchProvider !in capabilities.supported)
+    }
+
+    /**
+     * The reason this can ship before its fixture: an answer that is not the recorded shape confirms
+     * nothing (PRODUCT_SPEC 22.5, SYNC-001).
+     *
+     * Three ways to be wrong, all of which must land in the same place — a body with no providers at all,
+     * a provider with no `value` to send, and a body that is not this shape.
+     */
+    @Test
+    fun `an unrecognised provider response confirms nothing`() = runTest {
+        val bodies = listOf(
+            """{"providers":{"books":[]}}""",
+            """{"providers":{"books":[{"text":"Nameless"}]}}""",
+            """{"hello":"world"}""",
+        )
+        for (body in bodies) {
+            server.enqueue(ContractFixtures.response("status-initialized"))
+            server.enqueue(MockResponse().setResponseCode(404))
+            server.enqueue(MockResponse().setBody(body))
+
+            val capabilities = assertIs<AppResult.Success<*>>(
+                resolver().resolve(ServerId("srv_1"), baseUrl(), AuthToken("token")),
+            ).value as ServerCapabilities
+
+            assertTrue(ServerCapability.MatchProvider !in capabilities.supported, "confirmed on: $body")
+        }
+    }
+
+    /**
+     * A handshake before sign-in still works, and asks nothing it cannot authenticate.
+     *
+     * The assertion that matters is the request count: an unauthenticated probe of this route would get a
+     * `401`, which is the same "not confirmed" answer — but it would also put a bare request on the wire
+     * for a server the user may not have signed in to (PRODUCT_SPEC 9.4).
+     */
+    @Test
+    fun `a handshake with no token does not ask for providers`() = runTest {
+        server.enqueue(ContractFixtures.response("status-initialized"))
+        server.enqueue(MockResponse().setResponseCode(404))
+
+        val capabilities = assertIs<AppResult.Success<*>>(
+            resolver().resolve(ServerId("srv_1"), baseUrl(), accessToken = null),
+        ).value as ServerCapabilities
+
+        assertEquals("2.36.0", capabilities.serverVersion)
+        assertTrue(ServerCapability.MatchProvider !in capabilities.supported)
+        assertEquals(2, server.requestCount)
+    }
+
+    private fun resolver() = AbsCapabilityResolver(
+        services = AudiobookshelfServiceFactory(OkHttpClient(), OkHttpClient(), json),
+        errors = NetworkErrorMapper(),
+    )
 }

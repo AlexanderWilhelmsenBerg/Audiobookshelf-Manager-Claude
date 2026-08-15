@@ -820,6 +820,44 @@ fi
 # The container's root account holds `update`, `delete` and `upload`, so a `403` here would be a fact about
 # the *endpoint* rather than about this account — which is exactly the distinction the permission gating in
 # the app has to make.
+# MGR-003 — the metadata providers this deployment offers.
+#
+# The fixture `AbsCapabilityResolver` has been written against and is currently missing: the provider probe
+# ships source-derived (`docs/api-compatibility.md`, "What the official project's own source settles") and
+# this is the capture that turns it into evidence.
+#
+# Deliberately captured whole and early. It is read-only, needs no item, has no side effects, and is
+# deterministic — it lists what the server is configured with, not what a third party answered — which is
+# what makes it the one management-adjacent endpoint that can be an honest capability probe.
+capture search-providers GET /api/search/providers -H "$AUTH_HEADER"
+
+# MGR-003 — a candidate search, recorded as a **shape** rather than as a body.
+#
+# This is the only capture in this file that leaves the server: the request makes Google answer. So its
+# body is not committed, because it would be different tomorrow and the drift check compares captures byte
+# for byte — a fixture that cannot be reproduced is not a fixture, it is a snapshot of one afternoon.
+#
+# What the app actually relies on is which keys a candidate carries, and that is stable. The status code
+# and the sorted key set of the first result are recorded; the values are discarded, which also keeps a
+# third party's book data out of a committed file.
+if [ -n "$LIBRARY_ID" ]; then
+  log "recording the candidate search's shape (keys only, never the results)"
+  SEARCH_RAW="$RAW_DIR/search-books.raw"
+  SEARCH_STATUS="$(curl -sS -G "$BASE_URL/api/search/books" -H "$AUTH_HEADER" \
+    --data-urlencode 'title=The Salt Harbour' --data-urlencode 'provider=google' \
+    -o "$SEARCH_RAW" -w '%{http_code}')"
+  SEARCH_KEYS="$(python3 -c '
+import json, sys
+try:
+    results = json.load(open(sys.argv[1]))
+except Exception:
+    print("[]"); raise SystemExit
+first = results[0] if isinstance(results, list) and results else {}
+print(json.dumps(sorted(first.keys())))' "$SEARCH_RAW")"
+  printf '{\n  "note": "GET /api/search/books. Keys only: the results come from a third party and change.",\n  "status": %s,\n  "firstResultKeys": %s\n}\n' \
+    "$SEARCH_STATUS" "$SEARCH_KEYS" >"$OUT_DIR/search-books-shape.json"
+fi
+
 if [ -n "$ITEM_ID" ]; then
   # MGR-004 — the two scan endpoints. Captured before any edit, because a scan can rewrite metadata from
   # the file's own tags and would then be indistinguishable from what the PATCH below does.
@@ -859,6 +897,56 @@ capture users-list GET /api/users -H "$AUTH_HEADER"
 capture user-create POST /api/users \
   -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
   -d '{"username":"contractlistener","password":"contract-listener-password","type":"user"}'
+
+# --- What a refusal looks like (PRODUCT_SPEC principle 4) ----------------------------------------
+#
+# Every capture above this point ran as `root`, so every management response so far is the *permitted*
+# one. That left the app's second enforcement — the one in the domain layer — built entirely from the
+# grants in `me.json`, with no observation of what happens when the server disagrees.
+#
+# This is the other half. A second account is created, this time **active** so it can sign in, of type
+# `user` — whose server-side defaults are download but not update, delete or upload. It then asks for the
+# three things it may not have.
+#
+# The first create above is left alone deliberately: it omits `isActive` and is therefore the fixture that
+# records USER-002's finding that a created user cannot sign in. Two creates, two facts.
+capture user-create-active POST /api/users \
+  -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+  -d '{"username":"contractactive","password":"contract-active-password","type":"user","isActive":true}'
+
+LISTENER_TOKEN="$(curl -sS -X POST "$BASE_URL/login" \
+  -H 'Content-Type: application/json' -H 'x-return-tokens: true' \
+  -d '{"username":"contractactive","password":"contract-active-password"}' |
+  python3 -c 'import json,sys
+try:
+    user = (json.load(sys.stdin) or {}).get("user") or {}
+except Exception:
+    user = {}
+print(user.get("accessToken") or user.get("token") or "")')"
+
+if [ -n "$LISTENER_TOKEN" ] && [ -n "$ITEM_ID" ]; then
+  LISTENER_HEADER="Authorization: Bearer $LISTENER_TOKEN"
+
+  # This account's own view of itself. The permissions here are what the app's gating reads, and the
+  # three refusals below are what those permissions are supposed to predict.
+  capture me-listener GET /api/me -H "$LISTENER_HEADER"
+
+  # MGR-001 — refused for want of the update grant.
+  capture item-update-forbidden PATCH "/api/items/$ITEM_ID/media" \
+    -H 'Content-Type: application/json' -H "$LISTENER_HEADER" \
+    -d '{"metadata":{"subtitle":"This edit must be refused"}}'
+
+  # MGR-005 — refused for want of the delete grant. Safe to attempt precisely because it is refused; if
+  # the server ever stops refusing it, this capture fails loudly by deleting the item the next capture
+  # reads, which is the correct way for that surprise to surface.
+  capture item-delete-forbidden DELETE "/api/items/$ITEM_ID" -H "$LISTENER_HEADER"
+
+  # MGR-004 — refused on account *type* rather than on a grant. The distinction matters: this account
+  # could hold every permission the server has and still be refused here.
+  capture item-scan-forbidden POST "/api/items/$ITEM_ID/scan" -H "$LISTENER_HEADER"
+else
+  log "the non-admin account could not sign in; the refusal shapes were not captured"
+fi
 
 # MGR-005 — **the destructive one, last.** Removing the item from the database is what the requirement is
 # about, and its response is the only thing that can tell the app whether a removal actually happened.

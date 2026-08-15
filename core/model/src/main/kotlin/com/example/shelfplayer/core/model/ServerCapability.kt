@@ -21,6 +21,14 @@ enum class ServerCapability {
      *
      * This is deliberately separate from [RemoveFromDatabase]: the documented database-delete
      * operation does not delete media files, and the app must never present it as if it did.
+     *
+     * **No probe will ever confirm this, and that is a decision rather than an omission (ADR-0021).**
+     * The server does have the operation — `DELETE /api/items/{id}?hard=1` removes the item's directory,
+     * and `DELETE /api/items/{id}/file/{ino}` removes one file. What it does not have is an
+     * acknowledgement: a filesystem removal that fails is logged on the server and discarded, and the
+     * request succeeds anyway. MGR-006 requires the response to confirm the deletion, and no response
+     * this server sends can. The entry stays so the gate has something to check and so a future server
+     * that does confirm needs a probe rather than a new concept.
      */
     SourceFileDelete,
 

@@ -1,7 +1,8 @@
 # Phase 5 — Management tools: the plan, and what has to happen first
 
-**Status: slice 1 is done and the captures have come back.** What they found is below, and two of the
-findings change slices that had not started yet.
+**Status: slices 1, 2 and 7 are done.** The captures came back, the four questions they could not answer
+were settled from the Audiobookshelf project's own source, and one of those answers ended a slice with no
+feature — correctly. What remains is slices 3, 4, 5, 6 and 8.
 
 ## The problem this phase starts with
 
@@ -57,18 +58,22 @@ that change the plan.
 | **Item scan is synchronous; library scan is not** | MGR-004 needs two different treatments, and neither response says which. |
 | **A quick match with no provider defaults to Google, and can miss** | A miss is `200` with a `warning`, not an error. |
 
-### What they did not settle
+### What they did not settle, and what did
 
-- **A successful match.** Only the miss shape exists. MGR-003 needs "provider, candidate title, author,
-  year, cover, and fields that will change" and none of it is captured — the container has no provider key.
-  **Slice 5 cannot be finished from what is on disk today.**
-- **Cover upload.** Not attempted; needs a multipart body and an image the script should not invent.
-- **What a `403` looks like on these routes.** Every capture ran as `root`, so all of them are the
-  permitted response. The gating is therefore built from `me.json`'s permissions rather than from
-  recognising a refusal — which is the right way round anyway (principle 4), but it means the second
-  enforcement has never been observed failing.
-- **Source-file deletion.** No endpoint probed, because none is known to exist. MGR-006's first criterion
-  is currently satisfied by there being nothing to gate.
+Four questions were left open. None of them could be answered by a capture, so they were answered by
+reading the Audiobookshelf project's own source at the same version — ADR-0012's amendment records the
+licensing posture, and `docs/api-compatibility.md` has the findings in full. The short version:
+
+| Question | Answer |
+| --- | --- |
+| **A successful match** | Quick match is not a preview at all — it applies the change and then reports it. MGR-003's preview has to come from `GET /api/search/books`, which writes nothing, with the chosen fields applied via the metadata `PATCH`. **Slice 5 is unblocked and its design changed.** |
+| **Cover upload** | Multipart, part named `cover`, validated on the **filename extension** — `png`, `jpg`, `jpeg`, `webp`. Android's Photo Picker does not supply a usable one, so the app must synthesise it. A URL body is the alternative. |
+| **What a `403` looks like** | `text/plain`, body `Forbidden`, because these handlers use Express's `sendStatus` — which is also why three of them answered `text/plain "OK"`. One cause, not three quirks. The capture script now creates an active non-admin account and records three real refusals. |
+| **Source-file deletion** | Two endpoints exist — `DELETE /api/items/{id}?hard=1` and `DELETE /api/items/{id}/file/{ino}` — and **neither can prove it happened**: a failed filesystem removal is logged on the server and discarded, and the request succeeds anyway. **Slice 7 ships no feature, by decision (ADR-0021) rather than by absence.** |
+
+The reference also settled the permission model, which had been assumed: the item routes gate on the HTTP
+method, cover *upload* needs the update **and** upload grants, and both scan endpoints gate on the account
+*type* rather than on any grant.
 
 ## The slices
 
@@ -85,14 +90,28 @@ image this script has no business inventing.
 and exposed on `Profile`, and `ProfileRole` is derived from the type rather than defaulted. Ends with: the
 app can honestly say what this account may do, which is what every later slice gates on.
 
-### Slice 2 — the capability probe
+### Slice 2 — the capability probe *(done)*
 
-`AbsCapabilityResolver` learns to confirm the management capabilities. Which of them a probe can honestly
-answer depends on what slice 1's captures show — an endpoint that answers `404` for an unknown item and
-`403` for an unpermitted one can be probed; one that only fails after it has done something cannot.
+The slice's question was "which of the management capabilities can a probe honestly answer", and the
+answer turned out to be **one**.
 
-This is the slice that decides whether MGR-006 can exist at all: its first criterion is *"The action does
-not exist unless the connected server reports a dedicated, tested source-file-delete capability."*
+`GET /api/search/providers` is read-only, needs no privilege beyond a session, has no side effects, and
+answers something that genuinely varies by deployment — an administrator can configure custom providers.
+It is now `AbsCapabilityResolver`'s second real probe, alongside the websocket handshake.
+
+Everything else in EPIC MGR cannot be probed, and the reason is structural rather than incidental: asking
+whether metadata may be edited means editing it, and asking whether an item may be deleted means deleting
+it. What gates those is **the account's grant, not the server's capability** — a different question with a
+different owner, since two profiles on one server share a capability set and must not share a menu.
+
+So the gate is `ManagementAction` and `ManagementPermissions` in `:core:model`: a pure function of the
+profile's grants, the confirmed capabilities and connectivity, returning *why* an action is unavailable
+rather than a boolean. MGR-005 blocks offline invocation while MGR-006 says the action must not exist, and
+a caller cannot tell those apart from a boolean.
+
+This slice also decided MGR-006, which is what it was for. The capability is real and the acknowledgement
+is not, so `SourceFileDelete` is never confirmed and **slice 7 is already complete with no feature**
+(ADR-0021).
 
 ### Slice 3 — metadata editing (MGR-001)
 
@@ -107,8 +126,18 @@ capture of the upload endpoint that slice 1 does not attempt.
 
 ### Slice 5 — match and scan (MGR-003, MGR-004)
 
-Both are "ask the server to do something and watch it happen", and both are capability-gated. Scan needs
-the repeated-tap guard and the four visible states; match needs the untrusted-display-data handling.
+**Match is search-then-apply, not quick match.** `GET /api/search/books` returns candidates and writes
+nothing, so the preview MGR-003 requires is buildable; the chosen fields are then applied through the same
+metadata `PATCH` slice 3 uses, which is what makes "existing non-empty fields are not overwritten without
+an explicit choice" achievable. Quick match cannot do it: it applies the first result and then reports
+what it did. Candidate fields differ by provider and every one of them is optional. Two of them are
+hazards rather than data — `cover` is a URL on a third party's host, and `description` is provider HTML.
+
+**Scan** needs the repeated-tap guard and the four visible states, and the two endpoints need different
+treatment: an item scan is over before it answers and reports `NOTHING`/`ADDED`/`UPDATED`/`REMOVED`/
+`UPTODATE`, while a library scan acknowledges before it starts and never reports a result at all. Both
+gate on the account *type* rather than on a grant. A `500` from an item scan can mean "file-based library
+items cannot be rescanned" and must be shown as a failed scan rather than as a crash.
 
 ### Slice 6 — removal from the database (MGR-005)
 
@@ -116,11 +145,17 @@ The label is fixed by the requirement: **`Remove from Audiobookshelf database`**
 that media files remain on the server and a later scan may re-add the item. Local download removal is a
 separate, unchecked checkbox.
 
-### Slice 7 — source-file deletion (MGR-006), if and only if the capability is real
+### Slice 7 — source-file deletion (MGR-006) *(done — no feature, by decision)*
 
-Capability-gated, typed confirmation, and an explicit server acknowledgement. If the server cannot prove
-the deletion happened, the UI says so rather than claiming success. **This slice may correctly end with no
-feature at all**, and that is a successful outcome rather than a failed one.
+The slice ended the way it was allowed to end. The capability is real: `?hard=1` on the item delete
+removes the files, and there is a per-file endpoint too. The acknowledgement is not — a failed filesystem
+removal is logged on the server and discarded, and the request succeeds either way, so no response this
+server sends can satisfy *"the server response must explicitly confirm deletion"*.
+
+A capture cannot help, which is why this is a decision rather than a deferral: every response that route
+can produce is a success, including the ones where the file survived. ADR-0021 records it, and
+`ManagementActionTest` guards it — the test fails the moment a probe starts confirming the capability,
+which is precisely when the decision needs revisiting.
 
 ### Slice 8 — user management (EPIC USER)
 

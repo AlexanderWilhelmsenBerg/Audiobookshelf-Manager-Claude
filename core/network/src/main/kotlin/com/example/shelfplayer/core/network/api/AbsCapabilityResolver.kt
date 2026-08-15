@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.http.NetworkErrorMapper
@@ -34,6 +35,12 @@ import javax.inject.Singleton
  * handshake — because the answer is a property of the deployment rather than of the version, which is
  * the same reason the rest are not inferred.
  *
+ * [ServerCapability.MatchProvider] is the second, and the only one from EPIC MGR that will ever be here.
+ * The rest of the management endpoints cannot be probed: asking whether metadata may be edited means
+ * editing it, and asking whether an item may be deleted means deleting it. What gates those is the
+ * account's grant rather than the server's capability, which is a different question with a different
+ * owner — see [com.example.shelfplayer.core.model.ManagementAction].
+ *
  * A version-derived capability map is the obvious alternative and is rejected for a specific reason: a
  * self-hosted Audiobookshelf sits behind reverse proxies that break websockets, on filesystems that
  * break range requests, and behind configurations that disable endpoints the version nominally has.
@@ -45,7 +52,11 @@ internal class AbsCapabilityResolver @Inject constructor(
     private val errors: NetworkErrorMapper,
 ) : CapabilityResolver {
 
-    override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> {
+    override suspend fun resolve(
+        serverId: ServerId,
+        serverUrl: String,
+        accessToken: AuthToken?,
+    ): AppResult<ServerCapabilities> {
         val transport = resultOf(onError = errors::fromThrowable) {
             services.authService(serverUrl).status()
         }
@@ -56,7 +67,12 @@ internal class AbsCapabilityResolver @Inject constructor(
                 if (!response.isSuccessful) {
                     AppResult.Failure(errors.fromStatus(response.code()))
                 } else {
-                    capabilitiesOf(serverId, response.body(), websocketOffered(serverUrl))
+                    capabilitiesOf(
+                        serverId = serverId,
+                        body = response.body(),
+                        websocket = websocketOffered(serverUrl),
+                        matchProviders = matchProvidersOffered(serverUrl, accessToken),
+                    )
                 }
             }
         }
@@ -95,10 +111,37 @@ internal class AbsCapabilityResolver @Inject constructor(
         return frame.substringAfter('{', "").contains(WEBSOCKET_UPGRADE)
     }
 
+    /**
+     * PRODUCT_SPEC MGR-003 — the only management capability a probe can honestly answer.
+     *
+     * `GET /api/search/providers` is read-only, has no side effects and needs no privilege beyond a
+     * session. Every other management endpoint either performs the operation it would be asked about, or
+     * refuses on a permission this app already reads from `me.json` — which is why the rest of EPIC MGR
+     * is gated by [com.example.shelfplayer.core.model.ManagementAction] on the *profile's* grants rather
+     * than appearing in this set. A capability is a property of the server; a grant is a property of the
+     * account, and conflating them would give two accounts on one server the same answer.
+     *
+     * The bar is a provider with a usable `value`. A `404` from an older server, a `401`, an unparseable
+     * body and an empty list all mean the same thing here — not confirmed — which is what lets this ship
+     * ahead of its fixture (PRODUCT_SPEC 22.5): the only shape that enables anything is the exact one
+     * `docs/api-compatibility.md` records, and everything else fails closed.
+     *
+     * No token means no probe. That is the pre-sign-in handshake, not a failure.
+     */
+    private suspend fun matchProvidersOffered(serverUrl: String, accessToken: AuthToken?): Boolean {
+        val bearer = accessToken?.value?.takeIf(String::isNotBlank)?.let(::bearerOf) ?: return false
+        val transport = resultOf(onError = errors::fromThrowable) {
+            services.authService(serverUrl).metadataProviders(bearer)
+        }
+        val body = (transport as? AppResult.Success)?.value?.takeIf { it.isSuccessful }?.body() ?: return false
+        return body.providers?.books.orEmpty().any { !it.value.isNullOrBlank() }
+    }
+
     private fun capabilitiesOf(
         serverId: ServerId,
         body: ServerStatusDto?,
         websocket: Boolean,
+        matchProviders: Boolean,
     ): AppResult<ServerCapabilities> {
         if (body?.app != AUDIOBOOKSHELF) {
             return AppResult.Failure(
@@ -113,8 +156,11 @@ internal class AbsCapabilityResolver @Inject constructor(
                 serverId = serverId,
                 serverVersion = body.serverVersion?.takeIf(String::isNotBlank),
                 // Only what a probe confirmed. `/status` confirms nothing — see the class comment — so
-                // the set is empty except for the websocket, which has its own handshake to ask.
-                supported = if (websocket) setOf(ServerCapability.Websocket) else emptySet(),
+                // the set holds exactly the two capabilities that have a probe of their own to ask.
+                supported = buildSet {
+                    if (websocket) add(ServerCapability.Websocket)
+                    if (matchProviders) add(ServerCapability.MatchProvider)
+                },
                 authMethods = body.authMethods.filter(String::isNotBlank),
             ),
         )

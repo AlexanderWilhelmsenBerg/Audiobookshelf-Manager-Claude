@@ -101,8 +101,12 @@ internal class FakeAuthGateway :
     val handshakes = mutableListOf<Handshake>()
 
     override val capabilities: CapabilityResolver = object : CapabilityResolver {
-        override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> {
-            handshakes += Handshake(serverId, serverUrl)
+        override suspend fun resolve(
+            serverId: ServerId,
+            serverUrl: String,
+            accessToken: AuthToken?,
+        ): AppResult<ServerCapabilities> {
+            handshakes += Handshake(serverId, serverUrl, accessToken)
             return capabilitiesResult
                 ?: AppResult.Success(
                     ServerCapabilities(
@@ -220,7 +224,7 @@ internal class FakeAuthGateway :
 
     internal data class CurrentAccount(val serverUrl: String, val accessToken: String)
 
-    internal data class Handshake(val serverId: ServerId, val serverUrl: String)
+    internal data class Handshake(val serverId: ServerId, val serverUrl: String, val accessToken: AuthToken? = null)
 
     internal companion object {
         fun session(

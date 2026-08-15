@@ -38,6 +38,7 @@ import javax.inject.Singleton
 class DefaultCapabilityRepository @Inject constructor(
     private val gateway: AudiobookshelfGateway,
     private val profileDao: ProfileDao,
+    private val tokens: SessionTokenProvider,
     private val clock: AppClock,
     private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
@@ -96,7 +97,13 @@ class DefaultCapabilityRepository @Inject constructor(
             ?: return@withContext missingProfile()
         val serverId = ServerId(server.serverId)
 
-        when (val resolved = gateway.capabilities.resolve(serverId, server.baseUrl)) {
+        // PRODUCT_SPEC MGR-003 — the provider probe needs a session, and the handshake has a profile, so
+        // this is where the two meet. A profile with no stored token is not an error: `/status` needs no
+        // credential, so the version and the authentication modes still arrive and only the authenticated
+        // probes go unanswered.
+        val accessToken = tokens.accessTokenFor(profileId)
+
+        when (val resolved = gateway.capabilities.resolve(serverId, server.baseUrl, accessToken)) {
             is AppResult.Failure -> resolved
             is AppResult.Success -> {
                 persist(resolved.value, detectedAt = clock.now().toEpochMilli())

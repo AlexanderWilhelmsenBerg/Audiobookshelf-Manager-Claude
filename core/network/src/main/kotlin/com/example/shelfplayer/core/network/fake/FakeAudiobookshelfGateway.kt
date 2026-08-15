@@ -239,8 +239,11 @@ class FakeAudiobookshelfGateway @Inject constructor(
      * Ignoring it is safe here for the reason the whole class is safe: there is exactly one fixture
      * server, and it is not a real one. A real resolver must probe the server it was given.
      */
-    override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> =
-        withMapper { mapper -> mapper.capabilities() }
+    override suspend fun resolve(
+        serverId: ServerId,
+        serverUrl: String,
+        accessToken: AuthToken?,
+    ): AppResult<ServerCapabilities> = withMapper { mapper -> mapper.capabilities() }
 
     override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> =
         requireProfile(profileId).flatMap {

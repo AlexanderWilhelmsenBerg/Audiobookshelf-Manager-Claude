@@ -267,7 +267,18 @@ interface AuthApi {
  * implicitly is how a handshake gets attributed to the wrong connection.
  */
 interface CapabilityResolver {
-    suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities>
+    /**
+     * @param accessToken the credential to run the *authenticated* probes with, or `null` when the
+     *   handshake is running before a sign-in. A handshake without a token is not an error and not a
+     *   degraded mode: `GET /status` needs no credential, so the version and the authentication modes
+     *   still arrive. The probes that do need one simply do not run, and what they would have confirmed
+     *   stays unconfirmed — which SYNC-001 already defines as unsupported.
+     */
+    suspend fun resolve(
+        serverId: ServerId,
+        serverUrl: String,
+        accessToken: AuthToken? = null,
+    ): AppResult<ServerCapabilities>
 }
 
 /**

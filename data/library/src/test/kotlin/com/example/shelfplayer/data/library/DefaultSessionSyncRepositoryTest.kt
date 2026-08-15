@@ -596,8 +596,11 @@ class DefaultSessionSyncRepositoryTest {
         }
 
         override val capabilities: CapabilityResolver = object : CapabilityResolver {
-            override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> =
-                unsupported()
+            override suspend fun resolve(
+                serverId: ServerId,
+                serverUrl: String,
+                accessToken: AuthToken?,
+            ): AppResult<ServerCapabilities> = unsupported()
         }
 
         override val library: LibraryApi = object : LibraryApi {

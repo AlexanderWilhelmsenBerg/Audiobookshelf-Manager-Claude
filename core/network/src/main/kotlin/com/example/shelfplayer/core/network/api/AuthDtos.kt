@@ -93,3 +93,29 @@ internal data class ServerStatusDto(
     val language: String? = null,
     val authMethods: List<String> = emptyList(),
 )
+
+/**
+ * `GET /api/search/providers` — PRODUCT_SPEC MGR-003.
+ *
+ * The response nests one level: `{"providers": {"books": [...], "booksCovers": [...], "podcasts": [...]}}`.
+ * Only [MetadataProviderListsDto.books] is read. `booksCovers` is the cover-search provider list, which is
+ * a different feature, and `podcasts` is for a media type this app does not manage.
+ *
+ * Every level is nullable with a default, which here is more than the usual defensiveness: this shape is
+ * **source-derived and not yet captured**, so a deployment that answers something else must produce an
+ * empty list and therefore an unconfirmed capability, never an exception and never an optimistic guess
+ * (PRODUCT_SPEC 22.5).
+ */
+@Serializable
+internal data class MetadataProvidersDto(val providers: MetadataProviderListsDto? = null)
+
+@Serializable
+internal data class MetadataProviderListsDto(val books: List<MetadataProviderDto> = emptyList())
+
+/**
+ * One provider. [value] is what `GET /api/search/books?provider=` takes; [text] is a display name.
+ *
+ * A provider with no [value] is unusable — there is nothing to send — so it is dropped rather than shown.
+ */
+@Serializable
+internal data class MetadataProviderDto(val value: String? = null, val text: String? = null)

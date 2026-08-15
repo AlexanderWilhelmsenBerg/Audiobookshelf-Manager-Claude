@@ -1,6 +1,6 @@
 # Open gaps
 
-**As of:** 2026-08-15, end of Phase 4.
+**As of:** 2026-08-15, Phase 5 slice 2.
 
 Every requirement this app has *not* fully met, and why. Kept as one document rather than a note per phase,
 because the question anybody actually asks is "what is missing" and not "what was missing in April".
@@ -95,18 +95,24 @@ recreation — and the advanced form is the part nobody can use without the diag
 
 ## Phase 5 — Management tools
 
-In progress. Its requirements become gaps only if the phase is declared done without them, but two are
-already known to be **blocked on something a capture could not provide**:
+In progress: slices 1, 2 and 7 are done. Its requirements become gaps only if the phase is declared done
+without them. Three entries below are not "not built yet" — they are settled.
 
 | Requirement | Gap | State |
 | --- | --- | --- |
-| MGR-003 | **A successful match has never been captured.** The container has no metadata-provider key, so the only recorded shape is the miss (`200` with a `warning`). The criterion "user sees provider, candidate title, author, year, cover, and fields that will change" cannot be built from it. | Blocked on a fixture environment with a provider |
-| MGR-002 | **Cover *upload* has never been captured** — only removal. It needs a multipart body and an image the capture script should not invent. | Blocked on a capture |
-| MGR-006 | **No source-file-delete endpoint is known to exist.** Its first criterion — the action does not exist unless the server reports a dedicated capability — is currently satisfied by there being nothing to gate. | Deferred, correctly |
+| MGR-006 | **Source-file deletion ships no feature.** Both endpoints exist, and neither can prove the deletion happened: a failed filesystem removal is logged on the server and discarded, and the request succeeds either way. MGR-006 requires the response to confirm it. | **Closed by decision** — ADR-0021 |
+| MGR-003 | **A successful match is still uncaptured, and no longer blocking.** Quick match turned out not to be a preview at all, so MGR-003 is built on `GET /api/search/books`, which writes nothing. That endpoint reaches a third party, so its *shape* is captured and its results deliberately are not. | Unblocked |
+| MGR-002 | **Cover *upload* has never been captured** — only removal. It needs a multipart body and an image the capture script should not invent. The contract is known from the project's own source: multipart, part named `cover`, validated on the filename extension. | Open, source-derived |
+| MGR-003 | **`GET /api/search/providers` ships ahead of its fixture.** The probe is written from the project's source rather than from a capture, which PRODUCT_SPEC 22.5 does not permit as evidence. It fails closed on any shape it does not recognise, and the capture script now asks for it. | Open until the next capture run |
 
-One finding is not a gap but a standing rule: **`GET /api/users` returns every user's live token.**
-`UserDto` must never model the field, so there is nothing to store, log or display. Recorded in
-`docs/api-compatibility.md` and pinned by `CapturedShapesTest`.
+Two findings are not gaps but standing rules:
+
+- **`GET /api/users` returns every user's live token.** `UserDto` must never model the field, so there is
+  nothing to store, log or display. Pinned by `CapturedShapesTest`.
+- **Refusals on the management routes are `text/plain`, not JSON** — `Forbidden`, `Not Found` — because
+  those handlers use Express's `sendStatus`. The same mechanism is why three of them answered
+  `text/plain "OK"` on success. `NetworkErrorMapper` keys on the status code, so this costs nothing today;
+  it would cost something the moment somebody reads an error message out of a management response.
 
 ---
 
