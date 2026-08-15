@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -29,9 +31,11 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.FinishedThreshold
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
+import com.example.shelfplayer.core.model.playback.StartupMode
 
 /**
  * PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls, as a settings tab.
@@ -116,7 +120,90 @@ internal fun LazyListScope.playbackTab(
     downloadsSection(housekeeping, actions.onHousekeepingChanged, actions.onManageDownloads)
     networkSection(networkPolicy, actions.onNetworkPolicyChanged)
     carSection(settings.autoPlayOnCarConnect, actions.onAutoPlayChanged)
+    interruptionSection(settings.focusBehaviour, actions.onFocusBehaviourChanged)
+    startupSection(settings.startupMode, actions.onStartupModeChanged)
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-002 — *"A transient focus loss pauses or ducks according to setting; default is pause."*
+ *
+ * The two options are a genuine personal trade, so the hint states it rather than naming the setting twice:
+ * pausing means nothing is missed, ducking means nothing has to be rewound. A phone call pauses either way,
+ * because that is the platform's decision and not this app's — and saying so here is what stops somebody
+ * choosing *Duck* and then wondering why their call still stopped the book.
+ */
+private fun LazyListScope.interruptionSection(behaviour: FocusBehaviour, onChanged: (FocusBehaviour) -> Unit) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_interruptions)) }
+    item {
+        ChoiceRow(
+            options = FocusBehaviour.entries,
+            selected = behaviour,
+            label = { option ->
+                stringResource(
+                    when (option) {
+                        FocusBehaviour.Pause -> R.string.settings_focus_pause
+                        FocusBehaviour.Duck -> R.string.settings_focus_duck
+                    },
+                )
+            },
+            onSelected = onChanged,
+        )
+    }
+    item { Hint(text = stringResource(R.string.settings_focus_hint)) }
+}
+
+/**
+ * PRODUCT_SPEC ROUTE-003 — what opening the app does.
+ *
+ * Three options and only one of them makes a sound. The default is the first, which does nothing at all —
+ * ROUTE-003's *"app launch alone never starts playback by default"* is a property of this list's ordering
+ * as much as of the code behind it.
+ */
+private fun LazyListScope.startupSection(mode: StartupMode, onChanged: (StartupMode) -> Unit) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_startup)) }
+    item {
+        ChoiceRow(
+            options = StartupMode.entries,
+            selected = mode,
+            label = { option ->
+                stringResource(
+                    when (option) {
+                        StartupMode.OnMediaCommand -> R.string.settings_startup_nothing
+                        StartupMode.RestorePaused -> R.string.settings_startup_restore
+                        StartupMode.ResumeOnOpen -> R.string.settings_startup_resume
+                    },
+                )
+            },
+            onSelected = onChanged,
+        )
+    }
+    item { Hint(text = stringResource(R.string.settings_startup_hint)) }
+}
+
+/** A row of mutually exclusive chips, which is what both of the sections above are. */
+@Composable
+private fun <T> ChoiceRow(options: List<T>, selected: T, label: @Composable (T) -> String, onSelected: (T) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { option ->
+            FilterChip(
+                selected = option == selected,
+                onClick = { onSelected(option) },
+                label = { Text(text = label(option)) },
+                modifier = Modifier.selectable(
+                    selected = option == selected,
+                    role = Role.RadioButton,
+                    onClick = { onSelected(option) },
+                ),
+            )
+        }
+    }
 }
 
 /**
@@ -333,6 +420,8 @@ data class PlaybackSettingsActions(
     val onBufferChanged: (BufferPreset) -> Unit,
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. */
     val onAutoPlayChanged: (Boolean) -> Unit,
+    val onFocusBehaviourChanged: (FocusBehaviour) -> Unit = {},
+    val onStartupModeChanged: (StartupMode) -> Unit = {},
     /** PRODUCT_SPEC DL-004 — which categories may spend cellular data. */
     val onNetworkPolicyChanged: (NetworkPolicy) -> Unit = {},
     /** PRODUCT_SPEC DL-005 / DL-006 — smart download and the automatic cleanup. */

@@ -5,17 +5,20 @@ import com.example.shelfplayer.connectivity.AndroidNetworkMonitor
 import com.example.shelfplayer.core.common.AppBuild
 import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
 import com.example.shelfplayer.core.common.log.LogSink
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.network.di.RemoteGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.http.UserAgent
 import com.example.shelfplayer.domain.download.DownloadScheduler
 import com.example.shelfplayer.domain.download.SmartDownload
+import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.domain.usecase.SmartDownloadUseCase
 import com.example.shelfplayer.download.WorkManagerDownloadScheduler
 import com.example.shelfplayer.launcher.AndroidLauncherIcons
 import com.example.shelfplayer.launcher.LauncherIcons
 import com.example.shelfplayer.log.FanOutLogSink
+import com.example.shelfplayer.playback.PlaybackController
 import com.example.shelfplayer.sync.WorkManagerBackgroundSync
 import dagger.Binds
 import dagger.Module
@@ -103,6 +106,22 @@ interface AppModule {
         @Provides
         @Singleton
         fun providesSmartDownload(useCase: SmartDownloadUseCase): SmartDownload = SmartDownload(useCase::invoke)
+
+        /**
+         * PRODUCT_SPEC ROUTE-003 — the startup mode's hands, bound in `:app` for the same reason smart
+         * download is: `:playback` depends on `:domain`, so the use case cannot name the controller.
+         */
+        @Provides
+        @Singleton
+        fun providesStartupPlayer(controller: PlaybackController): StartupPlayer = object : StartupPlayer {
+            override suspend fun arm(bookId: LibraryItemId) {
+                controller.arm(bookId)
+            }
+
+            override suspend fun play(bookId: LibraryItemId) {
+                controller.play(bookId)
+            }
+        }
 
         /**
          * PRODUCT_SPEC 10.3 — the user agent carries the app version and nothing that identifies the

@@ -109,6 +109,10 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var outputDevices: OutputDeviceWatcher
 
+    /** PRODUCT_SPEC PLAY-006 — the two readings that say whether the buffer preset is the right one. */
+    @Inject
+    internal lateinit var metrics: PlaybackMetricsRecorder
+
     /** PRODUCT_SPEC ROUTE-002 — so Settings can say whether a car has ever reached this app. */
     @Inject
     internal lateinit var carConnections: CarConnections
@@ -155,7 +159,11 @@ class PlaybackService : MediaLibraryService() {
         // PRODUCT_SPEC PLAY-006 — the preset in force when this player is built. Read blocking on the
         // service's own creation rather than observed: a load control is a construction argument, and the
         // requirement is that a change applies to the *next* player rather than to this one.
-        val exoPlayer = players.create(buffer = runBlocking { playbackSettings.observeSettings().first().buffer })
+        // PRODUCT_SPEC PLAY-002 / PLAY-006 — both are construction arguments: Media3 fixes the load control
+        // and the audio attributes when the player is built, so both apply to the *next* player. Read once,
+        // together, rather than as two blocking reads.
+        val settings = runBlocking { playbackSettings.observeSettings().first() }
+        val exoPlayer = players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
             .also { player = it }
         exoPlayer.addListener(PlayerEvents())
         session = MediaLibrarySession.Builder(this, exoPlayer, LibraryCallback())
@@ -259,6 +267,7 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         flushProgress()
         outputDevices.stop()
+        metrics.onReleased()
         // PRODUCT_SPEC PLAY-004 — "service shutdown callback". On the application scope inside the
         // coordinator, because `scope` is cancelled two lines below.
         sessionSync.onShutdown()
@@ -404,6 +413,10 @@ class PlaybackService : MediaLibraryService() {
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             recovery.onBookChanged()
+            // PRODUCT_SPEC PLAY-006 — the startup stopwatch starts here rather than at `prepare()`, because
+            // this fires for every book including one started from a car or by a media button, and the wait
+            // to hear a book is the wait for *that* book.
+            if (mediaItem != null) metrics.onItemPrepared()
             scope.launch { recordPosition() }
             sessionSync.request(SyncTrigger.TrackChanged)
         }
@@ -432,6 +445,12 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            // PRODUCT_SPEC PLAY-006 — the recorder decides what counts; this only reports what happened.
+            when (playbackState) {
+                Player.STATE_BUFFERING -> metrics.onBuffering()
+                Player.STATE_READY -> metrics.onReady()
+                else -> Unit
+            }
             if (playbackState == Player.STATE_ENDED) {
                 scope.launch { recordPosition() }
                 sessionSync.request(SyncTrigger.BookChanged)

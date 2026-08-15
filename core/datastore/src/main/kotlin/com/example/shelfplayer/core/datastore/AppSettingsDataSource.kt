@@ -12,11 +12,13 @@ import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.model.playback.DevicePolicy
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
+import com.example.shelfplayer.core.model.playback.StartupMode
 import com.example.shelfplayer.core.model.settings.ProfilePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -30,7 +32,9 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import com.example.shelfplayer.core.datastore.DeviceKind as StoredDeviceKind
 import com.example.shelfplayer.core.datastore.DevicePolicy as StoredDevicePolicy
+import com.example.shelfplayer.core.datastore.FocusBehaviour as StoredFocusBehaviour
 import com.example.shelfplayer.core.datastore.KnownDevice as StoredKnownDevice
+import com.example.shelfplayer.core.datastore.StartupMode as StoredStartupMode
 
 /**
  * PRODUCT_SPEC SET-001 — typed access to the settings store.
@@ -267,7 +271,51 @@ class AppSettingsDataSource @Inject constructor(
             autoRewind = stored.autoRewind(),
             autoPlayOnCarConnect = stored.autoPlayOnCarConnect,
             buffer = BufferPreset.byNameOrDefault(stored.bufferPreset.takeIf(String::isNotBlank)),
+            focusBehaviour = when (stored.focusBehaviour) {
+                StoredFocusBehaviour.FOCUS_BEHAVIOUR_DUCK -> FocusBehaviour.Duck
+                // The zero value and anything a newer build wrote. Both mean pause, which is the option
+                // that cannot surprise anybody.
+                StoredFocusBehaviour.FOCUS_BEHAVIOUR_PAUSE,
+                StoredFocusBehaviour.UNRECOGNIZED,
+                -> FocusBehaviour.Pause
+            },
+            startupMode = when (stored.startupMode) {
+                StoredStartupMode.STARTUP_MODE_RESTORE_PAUSED -> StartupMode.RestorePaused
+                StoredStartupMode.STARTUP_MODE_RESUME_ON_OPEN -> StartupMode.ResumeOnOpen
+                // ROUTE-003: "App launch alone never starts playback by default." An unset field and an
+                // unknown one both land here, so no upgrade path can produce a build that plays on open.
+                StoredStartupMode.STARTUP_MODE_ON_MEDIA_COMMAND,
+                StoredStartupMode.UNRECOGNIZED,
+                -> StartupMode.OnMediaCommand
+            },
         )
+    }
+
+    suspend fun setFocusBehaviour(behaviour: FocusBehaviour) {
+        dataStore.updateData { current ->
+            current.toBuilder()
+                .setFocusBehaviour(
+                    when (behaviour) {
+                        FocusBehaviour.Pause -> StoredFocusBehaviour.FOCUS_BEHAVIOUR_PAUSE
+                        FocusBehaviour.Duck -> StoredFocusBehaviour.FOCUS_BEHAVIOUR_DUCK
+                    },
+                )
+                .build()
+        }
+    }
+
+    suspend fun setStartupMode(mode: StartupMode) {
+        dataStore.updateData { current ->
+            current.toBuilder()
+                .setStartupMode(
+                    when (mode) {
+                        StartupMode.OnMediaCommand -> StoredStartupMode.STARTUP_MODE_ON_MEDIA_COMMAND
+                        StartupMode.RestorePaused -> StoredStartupMode.STARTUP_MODE_RESTORE_PAUSED
+                        StartupMode.ResumeOnOpen -> StoredStartupMode.STARTUP_MODE_RESUME_ON_OPEN
+                    },
+                )
+                .build()
+        }
     }
 
     /**

@@ -204,6 +204,14 @@ message AppSettings {
   // present with `DEVICE_POLICY_UNSPECIFIED` gets the same, which is what makes the proto3 zero value safe
   // here: unset and "arm only" really are the same answer.
   map<string, KnownDevice> known_devices = 35;
+
+  // PRODUCT_SPEC PLAY-002 — what a transient interruption does. The zero value is `pause`, which is the
+  // requirement's default, so an install that predates this field behaves exactly as it did.
+  FocusBehaviour focus_behaviour = 36;
+
+  // PRODUCT_SPEC ROUTE-003 — what opening the app does to the player. The zero value is "nothing until a
+  // media command", which is both the safe answer and what the app did before this field existed.
+  StartupMode startup_mode = 37;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.
@@ -256,6 +264,21 @@ enum DeviceKind {
   DEVICE_KIND_HEARING_AID = 4;
   DEVICE_KIND_SPEAKER = 5;
   DEVICE_KIND_OTHER = 6;
+}
+
+// PRODUCT_SPEC PLAY-002. Zero is `pause` because that is the stated default and because an unset field must
+// never be the option that keeps making noise.
+enum FocusBehaviour {
+  FOCUS_BEHAVIOUR_PAUSE = 0;
+  FOCUS_BEHAVIOUR_DUCK = 1;
+}
+
+// PRODUCT_SPEC ROUTE-003. Zero is "only on a media command", which satisfies "app launch alone never starts
+// playback by default" for every install, including one upgrading from a build with no such setting.
+enum StartupMode {
+  STARTUP_MODE_ON_MEDIA_COMMAND = 0;
+  STARTUP_MODE_RESTORE_PAUSED = 1;
+  STARTUP_MODE_RESUME_ON_OPEN = 2;
 }
 
 enum ThemeMode {

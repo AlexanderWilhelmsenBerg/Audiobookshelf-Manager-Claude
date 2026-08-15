@@ -370,6 +370,28 @@
       opplyst manuskript, men det leses som «belyst» av alle andre.
     -->
     <!-- PRODUCT_SPEC ROUTE-002 — hva som skjer når en enhet kobles til. -->
+    <!-- PRODUCT_SPEC PLAY-002 — pause eller demp ved korte avbrudd. -->
+    <string name="settings_section_interruptions">Korte avbrudd</string>
+    <string name="settings_focus_pause">Sett på pause</string>
+    <string name="settings_focus_duck">Fortsett, men lavt</string>
+    <string name="settings_focus_hint">Hva som skjer under en veibeskrivelse eller et varsel. Pause betyr at du ikke går glipp av noe; å fortsette betyr at du ikke må spole tilbake. En telefonsamtale setter boka på pause uansett — det er Androids avgjørelse, ikke appens. En endring gjelder neste gang en bok starter.</string>
+
+    <!-- PRODUCT_SPEC ROUTE-003 — hva det å åpne appen gjør. Bare det tredje valget lager lyd. -->
+    <string name="settings_section_startup">Når du åpner appen</string>
+    <string name="settings_startup_nothing">Ingenting</string>
+    <string name="settings_startup_restore">Last inn siste bok</string>
+    <string name="settings_startup_resume">Spill siste bok</string>
+    <string name="settings_startup_hint">Ingenting er standard: å åpne appen for å se på biblioteket legger ikke en spiller i varselpanelet. Avspillingsknappen på hodetelefonene starter siste bok uansett hva du velger her.</string>
+
+    <!-- PRODUCT_SPEC PLAY-006 — de to tallene som sier om bufferinnstillingen er riktig. -->
+    <string name="about_section_playback_metrics">Avspilling siden appen startet</string>
+    <string name="about_metrics_empty">Ingenting er spilt av ennå.</string>
+    <string name="about_metrics_rebuffers">Ganger avspillingen gikk tom for buffer</string>
+    <string name="about_metrics_last_startup">Siste venting før en bok startet</string>
+    <string name="about_metrics_slowest_startup">Lengste venting</string>
+    <string name="about_metrics_startups">Bøker startet</string>
+    <string name="about_metrics_hint">Et større buffer bør gjøre det første tallet mindre og de andre større. Ingen boktitler lagres her.</string>
+    <string name="about_metrics_seconds">%1$s s</string>
     <string name="settings_section_devices">Når en enhet kobles til</string>
     <string name="settings_devices_hint">Hver hodetelefon, høyttaler eller bil får sitt eget svar. Nye enheter starter på Klar — boka lastes og settes på pause, så avspillingsknappen på hodetelefonene starter den med én gang. En enhet dukker opp her første gang du kobler den til.</string>
     <string name="settings_devices_empty">Ingen enheter ennå. Koble til hodetelefoner, en høyttaler eller en bil, så dukker den opp her.</string>

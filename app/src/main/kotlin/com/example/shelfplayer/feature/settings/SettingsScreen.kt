@@ -44,7 +44,10 @@ import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.KnownDevice
+import com.example.shelfplayer.core.model.playback.PlaybackMetrics
 import com.example.shelfplayer.launcher.LauncherIcon
+import java.util.Locale
+import kotlin.time.Duration
 
 @Composable
 fun SettingsRoute(
@@ -56,10 +59,12 @@ fun SettingsRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
     val knownDevices by viewModel.knownDevices.collectAsStateWithLifecycle()
+    val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     SettingsScreen(
         uiState = uiState,
         launcherIcon = launcherIcon,
         onLauncherIconChanged = viewModel::onLauncherIconChanged,
+        metrics = metrics,
         devices = DeviceSettingsActions(
             known = knownDevices,
             onPolicyChanged = viewModel::onDevicePolicyChanged,
@@ -80,6 +85,8 @@ fun SettingsRoute(
             onAutoPlayChanged = viewModel::onAutoPlayOnCarConnectChanged,
             onNetworkPolicyChanged = viewModel::onNetworkPolicyChanged,
             onHousekeepingChanged = viewModel::onHousekeepingChanged,
+            onFocusBehaviourChanged = viewModel::onFocusBehaviourChanged,
+            onStartupModeChanged = viewModel::onStartupModeChanged,
             onManageDownloads = onManageDownloads,
         ),
         onNavigateUp = onNavigateUp,
@@ -110,6 +117,7 @@ fun SettingsScreen(
     launcherIcon: LauncherIcon = LauncherIcon.Default,
     onLauncherIconChanged: (LauncherIcon) -> Unit = {},
     devices: DeviceSettingsActions = DeviceSettingsActions(),
+    metrics: PlaybackMetrics = PlaybackMetrics.Empty,
 ) {
     var selected by rememberSaveable { mutableStateOf(SettingsTab.Server) }
     // PRODUCT_SPEC 14.4 — the event log's open/closed state is this screen's, not the caller's. Lifting it
@@ -173,6 +181,7 @@ fun SettingsScreen(
                         uiState = uiState,
                         launcherIcon = launcherIcon,
                         onLauncherIconChanged = onLauncherIconChanged,
+                        metrics = metrics,
                         onOpenEventLog = { isEventLogOpen = true },
                     )
                 }
@@ -214,6 +223,7 @@ private fun LazyListScope.aboutTab(
     uiState: SettingsUiState,
     launcherIcon: LauncherIcon,
     onLauncherIconChanged: (LauncherIcon) -> Unit,
+    metrics: PlaybackMetrics,
     onOpenEventLog: () -> Unit,
 ) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
@@ -235,6 +245,11 @@ private fun LazyListScope.aboutTab(
             Text(text = stringResource(R.string.event_log_open))
         }
     }
+
+    // PRODUCT_SPEC PLAY-006 — beside the diagnostics rather than under Testing, because these are
+    // readings a listener uses to choose a buffer preset, not numbers to verify a build against.
+    item { SectionHeader(text = stringResource(R.string.about_section_playback_metrics)) }
+    playbackMetricsRows(metrics)
 
     item { SectionHeader(text = stringResource(R.string.about_section_testing)) }
     item { Hint(text = stringResource(R.string.about_testing_body)) }
@@ -346,6 +361,42 @@ data class DeviceSettingsActions(
     val onPolicyChanged: (String, DevicePolicy) -> Unit = { _, _ -> },
     val onForget: (String) -> Unit = {},
 )
+
+/**
+ * PRODUCT_SPEC PLAY-006 — rebuffer count and startup latency, with nowhere to put a title.
+ *
+ * The rebuffer count and the startup times pull in opposite directions, which is exactly why both are
+ * shown: a larger buffer should reduce the first and lengthen the others, and somebody choosing a preset on
+ * a slow connection needs to see the trade rather than one half of it.
+ */
+private fun LazyListScope.playbackMetricsRows(metrics: PlaybackMetrics) {
+    if (metrics.isEmpty) {
+        item { Hint(text = stringResource(R.string.about_metrics_empty)) }
+        return
+    }
+    item {
+        TextRow(labelRes = R.string.about_metrics_rebuffers, value = metrics.rebuffers.toString())
+    }
+    metrics.lastStartup?.let { latency ->
+        item { TextRow(labelRes = R.string.about_metrics_last_startup, value = latency.asSeconds()) }
+    }
+    metrics.slowestStartup?.let { latency ->
+        item { TextRow(labelRes = R.string.about_metrics_slowest_startup, value = latency.asSeconds()) }
+    }
+    item {
+        TextRow(labelRes = R.string.about_metrics_startups, value = metrics.startupsMeasured.toString())
+    }
+    item { Hint(text = stringResource(R.string.about_metrics_hint)) }
+}
+
+/** One decimal. A startup of "1.4 s" is worth a digit; "1.437 s" is a number nobody asked for. */
+@Composable
+private fun Duration.asSeconds(): String = stringResource(
+    R.string.about_metrics_seconds,
+    String.format(Locale.getDefault(), "%.1f", inWholeMilliseconds / MILLIS_PER_SECOND),
+)
+
+private const val MILLIS_PER_SECOND = 1000.0
 
 private enum class SettingsTab(val labelRes: Int) {
     Server(R.string.settings_tab_server),

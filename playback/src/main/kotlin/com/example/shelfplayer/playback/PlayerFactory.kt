@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
@@ -28,7 +29,7 @@ interface PlayerFactory {
      *   effect on the next player, which is what "applied on the next player preparation" means: recreating a
      *   live player mid-book is the one thing product priority 1 forbids doing for a setting.
      */
-    fun create(buffer: BufferPreset = BufferPreset.Default): ExoPlayer
+    fun create(buffer: BufferPreset = BufferPreset.Default, focus: FocusBehaviour = FocusBehaviour.Default): ExoPlayer
 
     /** How the notification and lock screen load cover art. See [DefaultPlayerFactory]. */
     fun bitmapLoader(): BitmapLoader
@@ -50,7 +51,7 @@ internal class DefaultPlayerFactory @Inject constructor(
     private val logger: Logger,
 ) : PlayerFactory {
 
-    override fun create(buffer: BufferPreset): ExoPlayer = ExoPlayer.Builder(context)
+    override fun create(buffer: BufferPreset, focus: FocusBehaviour): ExoPlayer = ExoPlayer.Builder(context)
         // ADR-0016 — a book is one timeline window, so its item becomes a concatenated source rather
         // than a playlist. Everything that is not one of our book items falls through to the default.
         .setMediaSourceFactory(BookMediaSourceFactory(dataSourceFactory, logger))
@@ -58,7 +59,7 @@ internal class DefaultPlayerFactory @Inject constructor(
         // thing from any particular pair of numbers and is why the enum carries no override for it.
         .apply { loadControlFor(buffer)?.let(::setLoadControl) }
         // The `true` is `handleAudioFocus`: Media3 requests and releases focus itself.
-        .setAudioAttributes(SPEECH_OVER_MEDIA, true)
+        .setAudioAttributes(attributesFor(focus), true)
         // PRODUCT_SPEC PLAY-002 — headphones out pauses, and audio never moves to the phone speaker.
         .setHandleAudioBecomingNoisy(true)
         // The stream keeps arriving with the screen off. `WAKE_MODE_NETWORK` also holds a WifiLock,
@@ -88,17 +89,24 @@ internal class DefaultPlayerFactory @Inject constructor(
             .build()
     }
 
-    private companion object {
-        /**
-         * PLAY-002's "default to pause on transient loss", expressed as what the audio *is*.
-         *
-         * Media3's focus manager ducks a transient-can-duck loss for music and pauses it for speech.
-         * Declaring speech is therefore the requirement rather than a hint: an audiobook ducked under a
-         * navigation prompt is an audiobook the listener has to rewind.
-         */
-        val SPEECH_OVER_MEDIA: AudioAttributes = AudioAttributes.Builder()
-            .setUsage(C.USAGE_MEDIA)
-            .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
-            .build()
-    }
+    /**
+     * PRODUCT_SPEC PLAY-002 — the setting, expressed as what the audio *is*.
+     *
+     * Media3's focus manager ducks a `TRANSIENT_CAN_DUCK` loss for music and pauses it for speech. So the
+     * choice is made by declaring a content type rather than by intercepting the callback: keeping
+     * `handleAudioFocus` means the platform still handles every other case — the phone call, the permanent
+     * loss, the alarm — and this app does not reimplement audio focus to change one branch of it.
+     *
+     * The default is speech, and the default is pause, because an audiobook ducked under a navigation
+     * prompt is an audiobook the listener has to rewind.
+     */
+    private fun attributesFor(focus: FocusBehaviour): AudioAttributes = AudioAttributes.Builder()
+        .setUsage(C.USAGE_MEDIA)
+        .setContentType(
+            when (focus) {
+                FocusBehaviour.Pause -> C.AUDIO_CONTENT_TYPE_SPEECH
+                FocusBehaviour.Duck -> C.AUDIO_CONTENT_TYPE_MUSIC
+            },
+        )
+        .build()
 }

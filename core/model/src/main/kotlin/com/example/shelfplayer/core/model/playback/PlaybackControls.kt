@@ -247,8 +247,75 @@ data class PlaybackSettings(
      * vehicle.
      */
     val autoPlayOnCarConnect: Boolean = false,
+    /** PRODUCT_SPEC PLAY-002 — what a transient interruption does. Pause unless the listener says otherwise. */
+    val focusBehaviour: FocusBehaviour = FocusBehaviour.Default,
+    /** PRODUCT_SPEC ROUTE-003 — what opening the app does to the player. */
+    val startupMode: StartupMode = StartupMode.Default,
 ) {
     companion object {
         val Default = PlaybackSettings()
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-002 — *"A transient focus loss pauses or ducks according to setting; default is pause."*
+ *
+ * A transient loss is a navigation prompt, a notification chime, somebody else's app saying something short.
+ * The choice is between missing a sentence and hearing it under a beep, and it is genuinely personal: in a
+ * car, ducking keeps the book moving through "turn left in 200 metres"; on a walk, pausing means not having
+ * to rewind.
+ *
+ * ### It is expressed as what the audio *is*
+ *
+ * Media3's focus manager ducks a `TRANSIENT_CAN_DUCK` loss for music and pauses it for speech, so this
+ * chooses the declared **content type** rather than intercepting the callback. Fighting the platform's own
+ * focus handling would mean giving up `handleAudioFocus` and reimplementing every other case.
+ */
+enum class FocusBehaviour {
+
+    /** The book stops and waits. Nothing is missed and nothing has to be rewound. */
+    Pause,
+
+    /**
+     * The book keeps playing, quietly, under whatever interrupted it.
+     *
+     * Only for a loss the system says *can* be ducked. A phone call is a permanent-enough loss to pause
+     * either way, which is the platform's decision and not this setting's.
+     */
+    Duck,
+    ;
+
+    companion object {
+        /** PLAY-002 says so in as many words. */
+        val Default: FocusBehaviour = Pause
+    }
+}
+
+/**
+ * PRODUCT_SPEC ROUTE-003 — what opening the app does to the player.
+ *
+ * All three restore *something*; only [ResumeOnOpen] makes a sound, and it is not the default because
+ * ROUTE-003 says *"App launch alone never starts playback by default."*
+ */
+enum class StartupMode {
+
+    /**
+     * Opening the app does nothing to the player; a media button still starts the last book.
+     *
+     * ROUTE-003's *"restore and play only after explicit media command"*, and the default — because it is
+     * what the app already did, and because the alternative puts a media notification in the shade every
+     * time somebody opens the app to browse.
+     */
+    OnMediaCommand,
+
+    /** ROUTE-003's *"restore last item paused"*: the book is loaded and waiting, silent, on open. */
+    RestorePaused,
+
+    /** ROUTE-003's *"resume automatically when app is opened"*. Chosen deliberately or not at all. */
+    ResumeOnOpen,
+    ;
+
+    companion object {
+        val Default: StartupMode = OnMediaCommand
     }
 }
