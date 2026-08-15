@@ -14,6 +14,8 @@ import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
+import com.example.shelfplayer.core.model.library.BookMetadataEdit
+import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
@@ -30,6 +32,7 @@ import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import java.io.OutputStream
 
@@ -119,6 +122,16 @@ internal class FakeAuthGateway :
         }
     }
 
+    /** PRODUCT_SPEC EPIC MGR — not part of the auth tests, and refusing rather than pretending. */
+    override val management: ManagementApi = object : ManagementApi {
+        override suspend fun updateMetadata(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            edit: BookMetadataEdit,
+            changed: Set<BookMetadataField>,
+        ): AppResult<BookSnapshot> = unsupported()
+    }
+
     override val library: LibraryApi = object : LibraryApi {
         override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> = unsupported()
 
@@ -134,6 +147,9 @@ internal class FakeAuthGateway :
             libraryId: LibraryId,
             query: String,
         ): AppResult<List<BookSnapshot>> = unsupported()
+
+        override suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> =
+            unsupported()
     }
 
     override val playback: PlaybackApi = object : PlaybackApi {

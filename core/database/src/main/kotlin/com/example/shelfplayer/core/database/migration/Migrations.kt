@@ -536,6 +536,35 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC MGR-001 — the unsaved metadata draft.
+     *
+     * A new table and nothing else, so an upgrade cannot lose anything: there is no existing draft to
+     * migrate, and the absence of a row already means "no draft" everywhere the table is read.
+     *
+     * `ON DELETE CASCADE` from the profile is what stops a signed-out account's half-written edit
+     * outliving it — a draft holds the user's own words about their own library, and it belongs to the
+     * profile the same way a bookmark does (PRODUCT_SPEC 5.2).
+     */
+    private val MIGRATION_18_19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `metadata_draft` (
+                    `draftId` TEXT NOT NULL,
+                    `profileId` TEXT NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `payload` TEXT NOT NULL,
+                    `savedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`draftId`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_metadata_draft_profileId` ON `metadata_draft` (`profileId`)")
+        }
+    }
+
     private fun createDownloadedBooks(db: SupportSQLiteDatabase) {
         db.execSQL(
             """
@@ -621,5 +650,6 @@ object Migrations {
         MIGRATION_15_16,
         MIGRATION_16_17,
         MIGRATION_17_18,
+        MIGRATION_18_19,
     )
 }

@@ -76,6 +76,7 @@ import kotlin.time.Duration
 fun BookRoute(
     onNavigateUp: () -> Unit,
     onManageDownloads: () -> Unit,
+    onEditMetadata: (LibraryItemId) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: BookViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel(),
@@ -104,6 +105,7 @@ fun BookRoute(
             onDownloadClicked = viewModel::onDownloadClicked,
             onRemoveDownload = viewModel::onRemoveDownload,
             onManageDownloads = onManageDownloads,
+            onEditMetadata = onEditMetadata,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -194,6 +196,7 @@ fun BookScreen(
                     isDownloaded = menu.download is DownloadButtonState.Downloaded,
                     onRemoveDownload = { openSurface = BookSurface.RemoveDownloadConfirmation },
                     onManageDownloads = actions.onManageDownloads,
+                    onEditMetadata = { actions.onEditMetadata(uiState.book.id) },
                 ),
                 download = DownloadControl(
                     isPermitted = menu.canDownload,
@@ -287,6 +290,8 @@ data class BookActions(
     val onRemoveDownload: () -> Unit = {},
     /** PRODUCT_SPEC DL-003 — opens the list of everything downloaded on this device. */
     val onManageDownloads: () -> Unit = {},
+    /** PRODUCT_SPEC MGR-001 — opens the metadata editor for this book. */
+    val onEditMetadata: (LibraryItemId) -> Unit = {},
 )
 
 @Composable

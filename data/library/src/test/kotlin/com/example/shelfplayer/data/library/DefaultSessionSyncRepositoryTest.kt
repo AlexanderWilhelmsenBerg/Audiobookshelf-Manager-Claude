@@ -25,6 +25,8 @@ import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
+import com.example.shelfplayer.core.model.library.BookMetadataEdit
+import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
@@ -42,6 +44,7 @@ import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
@@ -603,6 +606,16 @@ class DefaultSessionSyncRepositoryTest {
             ): AppResult<ServerCapabilities> = unsupported()
         }
 
+        /** PRODUCT_SPEC EPIC MGR — not exercised here, and refusing rather than pretending. */
+        override val management: ManagementApi = object : ManagementApi {
+            override suspend fun updateMetadata(
+                profileId: ProfileId,
+                bookId: LibraryItemId,
+                edit: BookMetadataEdit,
+                changed: Set<BookMetadataField>,
+            ): AppResult<BookSnapshot> = unsupported()
+        }
+
         override val library: LibraryApi = object : LibraryApi {
             override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> = unsupported()
 
@@ -618,6 +631,8 @@ class DefaultSessionSyncRepositoryTest {
                 libraryId: LibraryId,
                 query: String,
             ): AppResult<List<BookSnapshot>> = unsupported()
+            override suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> =
+                unsupported()
         }
 
         private companion object {

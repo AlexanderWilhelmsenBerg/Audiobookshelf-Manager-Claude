@@ -856,3 +856,51 @@ data class DownloadRequestEntity(
      */
     val isPinned: Boolean,
 )
+
+/**
+ * PRODUCT_SPEC MGR-001 — an unsaved metadata edit, kept until the user saves or discards it.
+ *
+ * ### Why the edit is one opaque column
+ *
+ * Nothing queries inside a draft. It is read whole by the editor that wrote it and by nothing else, so
+ * fifteen columns would buy nothing and would cost a migration every time MGR-001's field list changes.
+ * A column per field would also make the draft's shape a database concern, when it is the *form's* shape.
+ *
+ * The trade is that a draft written by a newer build may not parse in an older one. That is handled where
+ * it is read — an unreadable draft is discarded rather than crashing the editor — which is the same rule
+ * `AuthEntityMappers` applies to an unrecognised capability name, and for the same reason.
+ *
+ * ### Why it is not an outbox
+ *
+ * MGR-001 is explicit that privileged edits are not queued for blind offline execution in version 1. So
+ * nothing drains this table, no worker looks at it, and a draft never becomes a request on its own. It is
+ * a saved form, and the user is the only thing that submits it.
+ */
+@Entity(
+    tableName = "metadata_draft",
+    foreignKeys = [
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["profileId"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("profileId")],
+)
+data class MetadataDraftEntity(
+    /** `EntityKey.scoped(profileId, bookKey)` — one draft per book per profile, which is the whole rule. */
+    @PrimaryKey val draftId: String,
+    val profileId: String,
+    /**
+     * The server's own item id, **not** a server-scoped key like every other table here.
+     *
+     * A draft belongs to a profile, and a profile belongs to exactly one server, so the server is already
+     * decided by [profileId]. Scoping it again would mean looking the server up to read a draft, which is a
+     * query to answer a question the row's own owner has already answered.
+     */
+    val bookKey: String,
+    /** The form, serialized. Opaque to Room and to SQL; see the class comment. */
+    val payload: String,
+    val savedAt: Long,
+)

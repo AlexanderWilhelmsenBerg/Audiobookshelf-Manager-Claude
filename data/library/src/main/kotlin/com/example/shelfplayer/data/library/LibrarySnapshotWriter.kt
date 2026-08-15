@@ -190,11 +190,32 @@ class LibrarySnapshotWriter @Inject constructor(
      * one transaction at the end is what left a 490-book library blank for minutes.
      */
     suspend fun writeBooks(profileId: ProfileId, library: Library, books: List<BookSnapshot>) {
+        writeBooks(profileId, EntityKey.of(library.serverId.value, library.id.value), books) {
+            libraryWriteDao.upsertLibraries(listOf(EntityMappers.toEntity(library)))
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 / MGR-004 — one book, refreshed after something changed it on the server.
+     *
+     * The same write as [writeBooks] without the library upsert, because there is nothing new to say about
+     * the library: this is a book the device already had, being re-read. Inventing a `Library` row from a
+     * single item's `libraryId` would write a library with no name over the real one.
+     */
+    suspend fun writeBook(profileId: ProfileId, book: BookSnapshot) {
+        writeBooks(profileId, EntityKey.of(book.book.serverId.value, book.book.libraryId.value), listOf(book))
+    }
+
+    private suspend fun writeBooks(
+        profileId: ProfileId,
+        libraryKey: String,
+        books: List<BookSnapshot>,
+        upsertLibrary: suspend () -> Unit = {},
+    ) {
         if (books.isEmpty()) return
         val rows = books.map(EntityMappers::toEntities)
-        val libraryKey = EntityKey.of(library.serverId.value, library.id.value)
         transaction {
-            libraryWriteDao.upsertLibraries(listOf(EntityMappers.toEntity(library)))
+            upsertLibrary()
             libraryWriteDao.upsertAuthors(rows.flatMap { it.authors }.distinctBy { it.authorKey })
             libraryWriteDao.upsertSeries(rows.flatMap { it.series }.distinctBy { it.seriesKey })
             libraryWriteDao.upsertBooks(rows.map { it.book })

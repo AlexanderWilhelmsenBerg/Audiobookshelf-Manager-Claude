@@ -175,6 +175,53 @@ internal class AbsLibraryApi @Inject constructor(
     }
 
     /**
+     * PRODUCT_SPEC MGR-001 / MGR-004 — one item, expanded, after a management operation changed it.
+     *
+     * The authorization check is the same one the catalogue sync makes and is not a formality here: an
+     * item id is a guessable string, so a profile that has lost access to a library must not be able to
+     * refresh a book out of it by asking for the book directly (PRODUCT_SPEC 5.2). The library comes from
+     * the response, so the check happens after the fetch and before anything is returned.
+     */
+    override suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> =
+        withConnection(profileId) { connection, service ->
+            val fetchedAt = clock.now()
+            retries.readOnly("fetchBook") {
+                service
+                    .item(bearerOf(connection.accessToken.value), bookId.value)
+                    .toResult { body -> snapshotOf(connection, body, fetchedAt) }
+            }
+        }
+
+    private fun snapshotOf(
+        connection: ProfileConnection,
+        dto: LibraryItemDto?,
+        fetchedAt: Instant,
+    ): AppResult<BookSnapshot> {
+        val libraryId = dto?.libraryId?.let(::LibraryId)
+            ?: return AppResult.Failure(
+                AppError.ApiCompatibility(
+                    summary = "The server described that book without saying which library it is in.",
+                    missingField = "libraryId",
+                ),
+            )
+        if (!connection.access.allows(libraryId)) {
+            return AppResult.Failure(
+                AppError.Authorization(
+                    summary = "This account is not allowed to see that library.",
+                    missingPermission = "library.read",
+                ),
+            )
+        }
+        return LibraryMapper.toSnapshot(
+            serverId = connection.serverId,
+            libraryId = libraryId,
+            profileId = connection.profileId,
+            dto = dto,
+            fetchedAt = fetchedAt,
+        )
+    }
+
+    /**
      * D1 — the catalogue in pages, each one handed over as it lands.
      *
      * The capture was taken with no page size and the server answered `limit: 0` with the whole library

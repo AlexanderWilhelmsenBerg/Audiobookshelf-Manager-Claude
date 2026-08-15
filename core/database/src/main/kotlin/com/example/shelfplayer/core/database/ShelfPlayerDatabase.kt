@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.database.dao.BookmarkDao
 import com.example.shelfplayer.core.database.dao.DownloadDao
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
+import com.example.shelfplayer.core.database.dao.MetadataDraftDao
 import com.example.shelfplayer.core.database.dao.PlaybackHistoryDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
@@ -28,6 +29,7 @@ import com.example.shelfplayer.core.database.entity.DownloadedBookEntity
 import com.example.shelfplayer.core.database.entity.DownloadedFileEntity
 import com.example.shelfplayer.core.database.entity.LibraryEntity
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
+import com.example.shelfplayer.core.database.entity.MetadataDraftEntity
 import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
@@ -85,6 +87,7 @@ import com.example.shelfplayer.core.database.entity.SyncStateEntity
         DownloadedBookEntity::class,
         DownloadedFileEntity::class,
         DownloadRequestEntity::class,
+        MetadataDraftEntity::class,
     ],
     version = DATABASE_VERSION,
     exportSchema = true,
@@ -107,6 +110,8 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
 
     abstract fun bookmarkDao(): BookmarkDao
 
+    abstract fun metadataDraftDao(): MetadataDraftDao
+
     abstract fun bookPlaybackSettingsDao(): BookPlaybackSettingsDao
 
     abstract fun downloadDao(): DownloadDao
@@ -118,4 +123,4 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
     }
 }
 
-internal const val DATABASE_VERSION = 18
+internal const val DATABASE_VERSION = 19

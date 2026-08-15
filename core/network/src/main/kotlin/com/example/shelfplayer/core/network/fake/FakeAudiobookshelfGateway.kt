@@ -17,10 +17,13 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
+import com.example.shelfplayer.core.model.library.BookMetadataEdit
+import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
@@ -40,6 +43,7 @@ import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -73,13 +77,39 @@ class FakeAudiobookshelfGateway @Inject constructor(
     LibraryApi,
     PlaybackApi,
     BookmarkApi,
-    DownloadApi {
+    DownloadApi,
+    ManagementApi {
     override val auth: AuthApi get() = this
     override val capabilities: CapabilityResolver get() = this
     override val library: LibraryApi get() = this
     override val playback: PlaybackApi get() = this
     override val bookmarks: BookmarkApi get() = this
     override val downloads: DownloadApi get() = this
+    override val management: ManagementApi get() = this
+
+    /**
+     * PRODUCT_SPEC MGR-001 — the fixture library is read-only, and says so rather than pretending.
+     *
+     * Same refusal as [signIn] and [fetchFile], for the same reason. A fake that accepted an edit would
+     * let a test believe a save had reached a server, and the whole point of this layer is that nothing
+     * can believe that by accident.
+     */
+    override suspend fun updateMetadata(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        edit: BookMetadataEdit,
+        changed: Set<BookMetadataField>,
+    ): AppResult<BookSnapshot> = AppError.ApiCompatibility(
+        summary = "The demo library cannot be edited.",
+        missingField = "media",
+    ).asFailure()
+
+    /** PRODUCT_SPEC MGR-001 — one fixture book, re-read. The fixtures never change, so this is a lookup. */
+    override suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> =
+        AppError.ApiCompatibility(
+            summary = "The demo library cannot be refreshed one book at a time.",
+            missingField = "media",
+        ).asFailure()
 
     /**
      * PRODUCT_SPEC DL-001 — the demo library has no files to fetch, and says so.

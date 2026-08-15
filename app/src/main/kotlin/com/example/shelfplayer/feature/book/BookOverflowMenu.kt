@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
@@ -137,6 +138,14 @@ internal fun BookOverflowMenu(book: Book, actions: BookMenuActions, modifier: Mo
             onClick = {
                 isOpen = false
                 actions.onRemoveDownload()
+            },
+        )
+        MenuRow(
+            labelRes = R.string.book_menu_edit_metadata,
+            icon = Icons.Filled.Edit,
+            onClick = {
+                isOpen = false
+                actions.onEditMetadata()
             },
         )
         MenuRow(
@@ -283,6 +292,14 @@ internal data class BookMenuActions(
     val onRemoveDownload: () -> Unit = {},
     /** PRODUCT_SPEC DL-003 — everything downloaded on this device, in one list. */
     val onManageDownloads: () -> Unit = {},
+    /**
+     * PRODUCT_SPEC MGR-001 — the metadata editor.
+     *
+     * Always offered, even to an account that may not save. The editor itself explains the refusal, which
+     * is more useful than a row that is simply not there: "why can I not edit this" has an answer, and a
+     * missing row does not give it.
+     */
+    val onEditMetadata: () -> Unit = {},
 )
 
 /**

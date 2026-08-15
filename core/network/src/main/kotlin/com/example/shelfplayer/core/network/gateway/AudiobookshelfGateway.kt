@@ -10,6 +10,8 @@ import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
+import com.example.shelfplayer.core.model.library.BookMetadataEdit
+import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
@@ -40,10 +42,10 @@ import kotlin.time.Duration
  * [downloads] joined on 2026-08-14, when the capture of `/api/items/{id}/file/{fileId}` answered the
  * questions the downloader needed — ranges, validators, and what an unauthenticated request gets.
  *
- * The remaining sub-APIs listed in PRODUCT_SPEC 10.4 — `ProgressApi`, `ManagementApi`, `UsersApi`,
- * `EventApi` — are added in the phase that implements them, together with the captured fixtures and
- * MockWebServer contract tests that prove their shape. Declaring them now as empty interfaces would look
- * like coverage the repository does not have.
+ * [management] joined on 2026-08-15, once ten management fixtures existed. The remaining sub-APIs listed
+ * in PRODUCT_SPEC 10.4 — `ProgressApi`, `UsersApi`, `EventApi` — are added in the phase that implements
+ * them, together with the captured fixtures and MockWebServer contract tests that prove their shape.
+ * Declaring them now as empty interfaces would look like coverage the repository does not have.
  */
 interface AudiobookshelfGateway {
     val auth: AuthApi
@@ -65,6 +67,14 @@ interface AudiobookshelfGateway {
      * an unauthenticated request is refused.
      */
     val downloads: DownloadApi
+
+    /**
+     * PRODUCT_SPEC EPIC MGR — the writes that change somebody else's library, added in Phase 5.
+     *
+     * The last sub-API to arrive, and deliberately: every other one either reads, or writes something the
+     * user can put back. This one can lose a household's metadata.
+     */
+    val management: ManagementApi
 }
 
 /**
@@ -342,6 +352,19 @@ interface LibraryApi {
      * 22.4). Those axes stay local-only until a capture covers them.
      */
     suspend fun searchBooks(profileId: ProfileId, libraryId: LibraryId, query: String): AppResult<List<BookSnapshot>>
+
+    /**
+     * PRODUCT_SPEC MGR-001 / MGR-004 — one item, expanded, after something changed it.
+     *
+     * The same request the catalogue sync makes per item, addressed at a single book. It exists because
+     * every management operation ends with "and now refresh the affected local entity", and the
+     * alternative is a whole library sync to observe one edit.
+     *
+     * The library is not a parameter: an item knows which library it belongs to, and a caller that had to
+     * supply one could supply the wrong one. The response's own `libraryId` is used, which is also what
+     * makes this safe to call after an edit that moved nothing.
+     */
+    suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot>
 }
 
 /**
@@ -382,4 +405,39 @@ interface CachedLibrary {
             override fun isInProgress(id: LibraryItemId): Boolean = false
         }
     }
+}
+
+/**
+ * PRODUCT_SPEC EPIC MGR — the operations that change a server's library.
+ *
+ * ### Why the whole updated book comes back
+ *
+ * MGR-001 requires that "on success, Room updates immediately and then refreshes from server", and the
+ * `PATCH` response *is* the refresh: it carries the entire item as the server now holds it. A follow-up
+ * `GET` would ask for data already in hand, and would open a window in which the two could disagree — and
+ * on this endpoint that window is real, because a save triggers a metadata-file write and a socket
+ * broadcast on the server.
+ *
+ * ### Why permission is not checked here
+ *
+ * It is checked twice, and neither time is here (PRODUCT_SPEC principle 4). The domain layer refuses the
+ * action before it is offered, and the server refuses it again with a `403`. This layer's job is to make
+ * the request faithfully and report what came back — a third check here would be a third place for the
+ * three to disagree.
+ */
+interface ManagementApi {
+    /**
+     * PRODUCT_SPEC MGR-001 — save the changed metadata fields, and return the item the server now holds.
+     *
+     * @param changed which fields to send. **Not a hint.** `authors` and `series` are replacements on this
+     *   endpoint: sending either array removes every entry it does not contain, so a payload built from
+     *   anything wider than the user's actual edits would delete data. An empty set is a no-op rather than
+     *   a request, because a `PATCH` with an empty body still bumps the item's `updatedAt`.
+     */
+    suspend fun updateMetadata(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        edit: BookMetadataEdit,
+        changed: Set<BookMetadataField>,
+    ): AppResult<BookSnapshot>
 }

@@ -800,4 +800,44 @@
         <item quantity="one">%1$d audio file</item>
         <item quantity="other">%1$d audio files</item>
     </plurals>
+
+    <!-- PRODUCT_SPEC MGR-001 - the metadata editor. -->
+    <string name="edit_metadata_title">Edit metadata</string>
+    <string name="edit_metadata_save">Save</string>
+    <string name="edit_metadata_missing">That book is no longer on this device.</string>
+    <string name="edit_metadata_changed">Changed</string>
+    <string name="edit_metadata_revert">Undo all changes</string>
+    <string name="edit_metadata_draft_kept">Your changes were kept on this device. Nothing was sent to the server.</string>
+    <string name="edit_metadata_field_title">Title</string>
+    <string name="edit_metadata_field_subtitle">Subtitle</string>
+    <string name="edit_metadata_field_authors">Authors (separated by commas)</string>
+    <string name="edit_metadata_field_narrators">Narrators (separated by commas)</string>
+    <string name="edit_metadata_field_series">Series</string>
+    <string name="edit_metadata_field_series_name">Series name</string>
+    <string name="edit_metadata_field_series_sequence">Position in series</string>
+    <string name="edit_metadata_field_genres">Genres (separated by commas)</string>
+    <string name="edit_metadata_field_tags">Tags (separated by commas)</string>
+    <string name="edit_metadata_field_year">Published year</string>
+    <string name="edit_metadata_field_publisher">Publisher</string>
+    <string name="edit_metadata_field_description">Description</string>
+    <string name="edit_metadata_field_isbn">ISBN</string>
+    <string name="edit_metadata_field_asin">ASIN</string>
+    <string name="edit_metadata_field_language">Language</string>
+    <string name="edit_metadata_field_explicit">Explicit</string>
+    <string name="edit_metadata_field_abridged">Abridged</string>
+    <string name="edit_metadata_error_title">A book needs a title.</string>
+    <string name="edit_metadata_error_year">Enter a year as a number, or leave it empty.</string>
+    <string name="edit_metadata_error_series">A series needs a name before it can have a position.</string>
+    <string name="edit_metadata_blocked_offline">You are offline. The fields below are read-only until this device can reach the server.</string>
+    <string name="edit_metadata_blocked_permission">This account may not change metadata on this server. Ask an administrator if you need to.</string>
+    <string name="edit_metadata_blocked_capability">This server has not confirmed that it supports editing metadata.</string>
+    <string name="edit_metadata_draft_title">Unsaved changes</string>
+    <string name="edit_metadata_draft_body">You have unsaved changes to \u201c%1$s\u201d from an earlier edit. Restore them, or start from what the server has?</string>
+    <string name="edit_metadata_draft_restore">Restore</string>
+    <string name="edit_metadata_draft_discard">Discard</string>
+    <string name="edit_metadata_conflict_title">Someone else changed this book</string>
+    <string name="edit_metadata_conflict_body">These fields were changed on the server after you started editing:</string>
+    <string name="edit_metadata_conflict_overwrite">Use my version</string>
+    <string name="edit_metadata_conflict_reload">Use the server\u2019s version</string>
+    <string name="book_menu_edit_metadata">Edit metadata</string>
 </resources>

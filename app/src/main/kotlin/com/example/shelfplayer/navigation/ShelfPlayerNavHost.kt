@@ -11,6 +11,7 @@ import androidx.navigation.navArgument
 import com.example.shelfplayer.feature.book.BookRoute
 import com.example.shelfplayer.feature.downloads.DownloadsRoute
 import com.example.shelfplayer.feature.home.HomeRoute
+import com.example.shelfplayer.feature.metadata.EditMetadataScreen
 import com.example.shelfplayer.feature.onboarding.SignInRoute
 import com.example.shelfplayer.feature.onboarding.SignInViewModel
 import com.example.shelfplayer.feature.profiles.ProfileSwitcherRoute
@@ -106,7 +107,16 @@ fun ShelfPlayerNavHost(
             BookRoute(
                 onNavigateUp = navController::navigateUp,
                 onManageDownloads = { navController.navigate(ShelfDestinations.DOWNLOADS) },
+                onEditMetadata = { bookId -> navController.navigate(ShelfDestinations.editMetadata(bookId)) },
             )
+        }
+        composable(
+            route = ShelfDestinations.EDIT_METADATA,
+            arguments = listOf(
+                navArgument(ShelfDestinations.ARG_BOOK_ID) { type = NavType.StringType },
+            ),
+        ) {
+            EditMetadataScreen(onBack = navController::navigateUp)
         }
         composable(
             route = ShelfDestinations.SERIES,

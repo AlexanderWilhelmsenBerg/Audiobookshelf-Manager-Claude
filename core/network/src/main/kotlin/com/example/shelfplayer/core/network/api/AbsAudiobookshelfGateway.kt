@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.network.gateway.BookmarkApi
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -29,4 +30,5 @@ internal class AbsAudiobookshelfGateway @Inject constructor(
     override val playback: PlaybackApi,
     override val bookmarks: BookmarkApi,
     override val downloads: DownloadApi,
+    override val management: ManagementApi,
 ) : AudiobookshelfGateway

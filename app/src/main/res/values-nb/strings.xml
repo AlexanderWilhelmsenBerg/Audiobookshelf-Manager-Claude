@@ -614,4 +614,44 @@
         <item quantity="one">%1$d lydfil</item>
         <item quantity="other">%1$d lydfiler</item>
     </plurals>
+
+    <!-- PRODUCT_SPEC MGR-001 - the metadata editor. -->
+    <string name="edit_metadata_title">Rediger metadata</string>
+    <string name="edit_metadata_save">Lagre</string>
+    <string name="edit_metadata_missing">Den boken finnes ikke lenger p\u00e5 denne enheten.</string>
+    <string name="edit_metadata_changed">Endret</string>
+    <string name="edit_metadata_revert">Angre alle endringer</string>
+    <string name="edit_metadata_draft_kept">Endringene dine ble lagret p\u00e5 denne enheten. Ingenting ble sendt til serveren.</string>
+    <string name="edit_metadata_field_title">Tittel</string>
+    <string name="edit_metadata_field_subtitle">Undertittel</string>
+    <string name="edit_metadata_field_authors">Forfattere (atskilt med komma)</string>
+    <string name="edit_metadata_field_narrators">Innlesere (atskilt med komma)</string>
+    <string name="edit_metadata_field_series">Serie</string>
+    <string name="edit_metadata_field_series_name">Serienavn</string>
+    <string name="edit_metadata_field_series_sequence">Plass i serien</string>
+    <string name="edit_metadata_field_genres">Sjangere (atskilt med komma)</string>
+    <string name="edit_metadata_field_tags">Etiketter (atskilt med komma)</string>
+    <string name="edit_metadata_field_year">Utgivelses\u00e5r</string>
+    <string name="edit_metadata_field_publisher">Forlag</string>
+    <string name="edit_metadata_field_description">Beskrivelse</string>
+    <string name="edit_metadata_field_isbn">ISBN</string>
+    <string name="edit_metadata_field_asin">ASIN</string>
+    <string name="edit_metadata_field_language">Spr\u00e5k</string>
+    <string name="edit_metadata_field_explicit">Eksplisitt</string>
+    <string name="edit_metadata_field_abridged">Forkortet</string>
+    <string name="edit_metadata_error_title">En bok m\u00e5 ha en tittel.</string>
+    <string name="edit_metadata_error_year">Skriv \u00e5ret som et tall, eller la feltet st\u00e5 tomt.</string>
+    <string name="edit_metadata_error_series">En serie m\u00e5 ha et navn f\u00f8r den kan ha en plassering.</string>
+    <string name="edit_metadata_blocked_offline">Du er frakoblet. Feltene nedenfor kan ikke endres f\u00f8r enheten n\u00e5r serveren.</string>
+    <string name="edit_metadata_blocked_permission">Denne kontoen kan ikke endre metadata p\u00e5 denne serveren. Sp\u00f8r en administrator om du trenger det.</string>
+    <string name="edit_metadata_blocked_capability">Serveren har ikke bekreftet at den st\u00f8tter redigering av metadata.</string>
+    <string name="edit_metadata_draft_title">Ulagrede endringer</string>
+    <string name="edit_metadata_draft_body">Du har ulagrede endringer i \u00ab%1$s\u00bb fra en tidligere redigering. Vil du gjenopprette dem, eller starte fra det serveren har?</string>
+    <string name="edit_metadata_draft_restore">Gjenopprett</string>
+    <string name="edit_metadata_draft_discard">Forkast</string>
+    <string name="edit_metadata_conflict_title">Noen andre har endret denne boken</string>
+    <string name="edit_metadata_conflict_body">Disse feltene ble endret p\u00e5 serveren etter at du begynte \u00e5 redigere:</string>
+    <string name="edit_metadata_conflict_overwrite">Bruk min versjon</string>
+    <string name="edit_metadata_conflict_reload">Bruk serverens versjon</string>
+    <string name="book_menu_edit_metadata">Rediger metadata</string>
 </resources>

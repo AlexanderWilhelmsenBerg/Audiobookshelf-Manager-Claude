@@ -113,11 +113,27 @@ This slice also decided MGR-006, which is what it was for. The capability is rea
 is not, so `SourceFileDelete` is never confirmed and **slice 7 is already complete with no feature**
 (ADR-0021).
 
-### Slice 3 — metadata editing (MGR-001)
+### Slice 3 — metadata editing (MGR-001) *(done)*
 
-The largest slice, and the one with the most criteria that are about *the editor* rather than the network:
-dirty-field tracking, inline validation, a local draft that survives a network failure, and a conflict view
-when the item changed underneath. Most of it is testable without a server.
+The largest slice, and most of what makes it hard is on this side of the wire.
+
+**Dirty tracking is the load-bearing part**, and not for tidiness: `authors` and `series` are
+*replacements* on this endpoint, so the server removes every entry an array does not contain. A payload
+built from anything wider than the user's actual edits would delete data. `MetadataPayload` sends only the
+changed fields, and the two tests named for that are the most important in the slice.
+
+**The conflict check is a comparison, not a header.** Audiobookshelf's metadata route carries no `ETag` and
+honours no `If-Match`, so there is no way to ask the server to refuse a stale write. The editor reloads the
+item before saving and compares three versions — what it opened with, what the user typed, and what the
+server holds now — and reports a conflict only where the user *and* somebody else changed the same field.
+
+**Drafts are a Room table** (migration 19), not `ViewModel` state, because the process dies behind a user
+who leaves to look up an ISBN. They are deliberately not an outbox: MGR-001 forbids queueing privileged
+edits for blind offline execution, so nothing drains the table and only the user submits it.
+
+The refresh after a save is a second, expanded request. The `PATCH` response is complete for the metadata
+but carries no tracks, and writing a snapshot without tracks would replace a playable book with an
+unplayable one.
 
 ### Slice 4 — covers (MGR-002)
 
