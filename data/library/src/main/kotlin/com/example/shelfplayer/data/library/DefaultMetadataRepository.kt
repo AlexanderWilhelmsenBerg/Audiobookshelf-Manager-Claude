@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.common.time.AppClock
+import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.MetadataDraftDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.MetadataDraftEntity
@@ -17,6 +18,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
+import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.CoverUpload
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -55,6 +57,7 @@ class DefaultMetadataRepository @Inject constructor(
     private val gateway: AudiobookshelfGateway,
     private val library: LibraryRepository,
     private val draftDao: MetadataDraftDao,
+    private val writeDao: LibraryWriteDao,
     private val writer: LibrarySnapshotWriter,
     private val drafts: MetadataDraftCodec,
     private val clock: AppClock,
@@ -138,6 +141,45 @@ class DefaultMetadataRepository @Inject constructor(
     override suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<Book> =
         withContext(ioDispatcher) {
             refreshFrom(profileId, gateway.management.removeCover(profileId, bookId))
+        }
+
+    override suspend fun findCandidates(
+        profileId: ProfileId,
+        provider: String,
+        title: String,
+        author: String,
+    ): AppResult<List<MatchCandidate>> = withContext(ioDispatcher) {
+        gateway.management.findCandidates(profileId, provider, title, author)
+    }
+
+    override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<String> =
+        withContext(ioDispatcher) {
+            when (val scanned = gateway.management.scanItem(profileId, bookId)) {
+                is AppResult.Failure -> scanned
+                is AppResult.Success -> {
+                    scanned.value.book?.let { snapshot -> store(profileId, snapshot) }
+                    AppResult.Success(scanned.value.result)
+                }
+            }
+        }
+
+    /**
+     * PRODUCT_SPEC MGR-005 — server first, Room second, and the download last of all.
+     *
+     * The order is the requirement: "the item is removed from Room only after server confirmation". It is
+     * also the order that fails safely — a request that never arrived leaves the book where it was, and the
+     * user sees an error rather than a book that vanished from their device and not from the server.
+     */
+    override suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
+        withContext(ioDispatcher) {
+            when (val removed = gateway.management.removeFromDatabase(profileId, bookId)) {
+                is AppResult.Failure -> removed
+                is AppResult.Success -> {
+                    val book = library.observeBook(profileId, bookId).first()
+                    book?.let { writeDao.markBookDeleted(EntityKey.of(it.serverId.value, it.id.value)) }
+                    AppResult.Success(Unit)
+                }
+            }
         }
 
     private suspend fun refreshFrom(profileId: ProfileId, result: AppResult<BookSnapshot>): AppResult<Book> =

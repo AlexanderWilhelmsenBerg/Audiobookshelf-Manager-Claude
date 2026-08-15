@@ -6,12 +6,14 @@ import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * PRODUCT_SPEC EPIC MGR — the endpoints that write to somebody else's library.
@@ -87,6 +89,62 @@ internal interface ManagementService {
      */
     @DELETE("api/items/{itemId}/cover")
     suspend fun removeCover(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("itemId") itemId: String,
+    ): Response<ResponseBody>
+
+    /**
+     * PRODUCT_SPEC MGR-003 — candidates from a metadata provider, **without changing anything**.
+     *
+     * This rather than `POST /api/items/{id}/match`, and the difference is the whole design of MGR-003.
+     * Quick match is not a preview: it takes the provider's first result, downloads the cover, writes the
+     * fields and *then* tells you what it did. The requirement asks that the user see "provider, candidate
+     * title, author, year, cover, and fields that will change" before committing, which quick match
+     * structurally cannot offer.
+     *
+     * So the preview is this read, and the commit is the metadata `PATCH` the editor already uses — which
+     * is also what makes "existing non-empty fields are not overwritten without an explicit choice"
+     * achievable, since the user picks the fields rather than a flag picking all of them.
+     *
+     * `provider` defaults to `google` server-side and needs no API key, so this works on a deployment
+     * whose owner has configured nothing.
+     */
+    @GET("api/search/books")
+    suspend fun searchBooks(
+        @Header(AUTHORIZATION) bearer: String,
+        @Query("title") title: String,
+        @Query("author") author: String,
+        @Query("provider") provider: String,
+    ): Response<List<MatchCandidateDto>>
+
+    /**
+     * PRODUCT_SPEC MGR-004 — rescan one item. Synchronous: the answer *is* the result.
+     *
+     * Admin or root only, and gated on the account **type** rather than on any grant. A `500` here can
+     * mean "re-scanning file library items is not supported" as well as a real error, so the caller must
+     * report a failed scan rather than a crash.
+     */
+    @POST("api/items/{itemId}/scan")
+    suspend fun scanItem(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("itemId") itemId: String,
+    ): Response<ScanResultDto>
+
+    /**
+     * PRODUCT_SPEC MGR-005 — remove the item from the database.
+     *
+     * **Deliberately no `hard` query parameter, ever.** `?hard=1` is what deletes the media files from the
+     * server's filesystem, and ADR-0021 records why this app does not send it: the server discards a failed
+     * filesystem removal and answers success either way, so it cannot satisfy MGR-006's requirement that
+     * the response confirm the deletion.
+     *
+     * Without the flag, this removes database rows and leaves every file in place — which is exactly what
+     * MGR-005's confirmation text promises, and the reason that promise is safe to make.
+     *
+     * Answers `text/plain "OK"`, so the body is not parsed.
+     */
+    @DELETE("api/items/{itemId}")
+    suspend fun deleteItem(
         @Header(AUTHORIZATION) bearer: String,
         @Path("itemId") itemId: String,
     ): Response<ResponseBody>

@@ -28,6 +28,7 @@ import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.map
 import com.example.shelfplayer.core.model.playback.OfflineSession
@@ -43,6 +44,7 @@ import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.CoverUpload
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
+import com.example.shelfplayer.core.network.gateway.ItemScanOutcome
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
@@ -110,6 +112,22 @@ class FakeAudiobookshelfGateway @Inject constructor(
     ): AppResult<BookSnapshot> = readOnly()
 
     override suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> = readOnly()
+
+    /** PRODUCT_SPEC MGR-003 — the demo library reaches no metadata provider, and says so. */
+    override suspend fun findCandidates(
+        profileId: ProfileId,
+        provider: String,
+        title: String,
+        author: String,
+    ): AppResult<List<MatchCandidate>> = AppError.ApiCompatibility(
+        summary = "The demo library cannot search a metadata provider.",
+    ).asFailure()
+
+    override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome> =
+        AppError.ApiCompatibility(summary = "The demo library has no files to scan.").asFailure()
+
+    override suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
+        AppError.ApiCompatibility(summary = "The demo library cannot be edited.").asFailure()
 
     private fun readOnly(): AppResult<BookSnapshot> = AppError.ApiCompatibility(
         summary = "The demo library cannot be edited.",

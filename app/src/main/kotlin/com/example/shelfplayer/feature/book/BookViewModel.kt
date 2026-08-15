@@ -3,6 +3,7 @@ package com.example.shelfplayer.feature.book
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
@@ -16,7 +17,6 @@ import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.DownloadBookUseCase
 import com.example.shelfplayer.domain.usecase.ObserveBookChaptersUseCase
 import com.example.shelfplayer.domain.usecase.ObserveBookDetailsUseCase
-import com.example.shelfplayer.domain.usecase.RemoveDownloadUseCase
 import com.example.shelfplayer.navigation.ShelfDestinations
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -45,7 +45,7 @@ class BookViewModel @Inject constructor(
     profiles: ProfileRepository,
     private val downloads: DownloadRepository,
     private val downloadBook: DownloadBookUseCase,
-    private val removeDownload: RemoveDownloadUseCase,
+    private val removals: BookRemovals,
     private val playbackRepository: PlaybackRepository,
 ) : ViewModel() {
 
@@ -94,6 +94,9 @@ class BookViewModel @Inject constructor(
             // PRODUCT_SPEC DL-001 — the server's grant, not a guess. `false` while no profile is loaded,
             // which is the same safe direction the column defaults to.
             canDownload = profile?.canDownload == true,
+            // PRODUCT_SPEC MGR-005 — the delete grant and nothing else. Absent rather than greyed, for the
+            // same reason the download control is: a disabled destructive row invites a tap that will fail.
+            canRemoveFromServer = profile?.canDelete == true,
             download = downloadStateOf(offline),
             // ADR note in `BookOverflowMenu`: the web client's own route, not an API endpoint.
             webUrl = book?.let { loaded ->
@@ -125,6 +128,22 @@ class BookViewModel @Inject constructor(
      * they were. Marking finished ignores it — the repository moves the position to the end of the book,
      * which is the only position a finished book can honestly report.
      */
+    /**
+     * PRODUCT_SPEC MGR-005 — remove the item from the server's database, after the screen confirmed it.
+     *
+     * A message either way. This is the one action on this screen whose effect the user cannot see by
+     * looking — the book leaves the list, and "did that work" has to be answerable without checking the
+     * server.
+     */
+    fun onRemoveFromServer(alsoRemoveDownload: Boolean) {
+        viewModelScope.launch {
+            _message.value = when (val removed = removals.fromServer(bookId, alsoRemoveDownload)) {
+                is AppResult.Failure -> removed.error.summary
+                is AppResult.Success -> null
+            }
+        }
+    }
+
     fun onFinishedChanged(isFinished: Boolean) {
         viewModelScope.launch {
             val at = currentBook()?.progress?.position ?: Duration.ZERO
@@ -188,7 +207,7 @@ class BookViewModel @Inject constructor(
         viewModelScope.launch {
             when (state) {
                 is DownloadButtonState.NotDownloaded, is DownloadButtonState.Failed -> report(downloadBook(bookId))
-                is DownloadButtonState.Downloading -> report(removeDownload.cancel(bookId))
+                is DownloadButtonState.Downloading -> report(removals.local.cancel(bookId))
                 is DownloadButtonState.Downloaded -> Unit
             }
         }
@@ -196,7 +215,7 @@ class BookViewModel @Inject constructor(
 
     /** PRODUCT_SPEC 21 — the confirmed half of *remove*, which is the only action here that deletes files. */
     fun onRemoveDownload() {
-        viewModelScope.launch { report(removeDownload(bookId)) }
+        viewModelScope.launch { report(removals.local(bookId)) }
     }
 
     private suspend fun currentBook(): Book? = (uiState.first() as? BookUiState.Loaded)?.book
@@ -237,6 +256,8 @@ data class BookMenuState(
     /** PRODUCT_SPEC DL-001 — what the download control shows, and therefore what a tap does. */
     val download: DownloadButtonState = DownloadButtonState.NotDownloaded,
     val webUrl: String? = null,
+    /** PRODUCT_SPEC MGR-005 — whether this account may remove the item from the server's database. */
+    val canRemoveFromServer: Boolean = false,
 )
 
 /**

@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
+import com.example.shelfplayer.core.model.library.MatchCandidate
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -89,4 +90,38 @@ interface MetadataRepository {
 
     /** PRODUCT_SPEC MGR-002 — remove the cover, then refresh. Confirmation belongs to the caller. */
     suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<Book>
+
+    /**
+     * PRODUCT_SPEC MGR-003 — ask a provider for candidates. Nothing is written.
+     *
+     * The result is display data from a third party and is treated as such by every caller: the
+     * description is never rendered as markup, and the cover URL is never signed with this app's token.
+     */
+    suspend fun findCandidates(
+        profileId: ProfileId,
+        provider: String,
+        title: String,
+        author: String,
+    ): AppResult<List<MatchCandidate>>
+
+    /**
+     * PRODUCT_SPEC MGR-004 — rescan one item, and refresh what it changed.
+     *
+     * Returns the server's own conclusion, unmapped. `REMOVED` means the item is gone, and the caller has
+     * to leave the screen rather than show a book that no longer exists.
+     */
+    suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<String>
+
+    /**
+     * PRODUCT_SPEC MGR-005 — remove the item from the Audiobookshelf **database**, then from Room.
+     *
+     * In that order and only in that order: "on success, the item is removed from Room only after server
+     * confirmation". A local delete that ran first would hide a book that is still on the server whenever
+     * the request failed.
+     *
+     * Media files on the server are untouched, and this app never sends the flag that would touch them
+     * (ADR-0021). The *local* download is a separate decision, made by `RemoveFromDatabaseUseCase` — it is
+     * a different question about a different copy, and MGR-005 makes it a separate, unchecked checkbox.
+     */
+    suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit>
 }

@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
@@ -452,7 +453,47 @@ interface ManagementApi {
 
     /** PRODUCT_SPEC MGR-002 — remove the cover. The item keeps everything else. */
     suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot>
+
+    /**
+     * PRODUCT_SPEC MGR-003 — candidates from [provider], changing nothing.
+     *
+     * A read. Nothing on the server moves, which is what makes a preview possible at all — see
+     * `ManagementService.searchBooks` for why the quick-match route cannot be used here.
+     */
+    suspend fun findCandidates(
+        profileId: ProfileId,
+        provider: String,
+        title: String,
+        author: String,
+    ): AppResult<List<MatchCandidate>>
+
+    /**
+     * PRODUCT_SPEC MGR-004 — rescan one item, and refresh it.
+     *
+     * Returns the scan's own conclusion alongside the refreshed book, because the two answer different
+     * questions: the book is what to display, and the conclusion is what to tell the user happened.
+     */
+    suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome>
+
+    /**
+     * PRODUCT_SPEC MGR-005 — remove the item from the server's **database**.
+     *
+     * Media files are untouched. This app never sends the flag that would touch them (ADR-0021), which is
+     * what makes the confirmation's promise safe.
+     */
+    suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit>
 }
+
+/**
+ * PRODUCT_SPEC MGR-004 — what a scan concluded, and the item as it stands afterwards.
+ *
+ * @property result the server's own word: `NOTHING`, `ADDED`, `UPDATED`, `REMOVED` or `UPTODATE`. Kept as
+ *   a string rather than an enum because a word this build has never seen must still reach a log, and a
+ *   `when` that had to be exhaustive would be a guess about a future server (PRODUCT_SPEC 22.4).
+ * @property book `null` when the scan concluded the item is gone, which is the one outcome that leaves
+ *   nothing to refresh.
+ */
+data class ItemScanOutcome(val result: String, val book: BookSnapshot?)
 
 /**
  * PRODUCT_SPEC MGR-002 — an image the user chose, already validated, ready to send.

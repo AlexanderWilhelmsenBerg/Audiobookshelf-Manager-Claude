@@ -99,6 +99,16 @@ interface LibraryWriteDao {
     suspend fun markAllBooksDeleted(libraryKey: String)
 
     /**
+     * PRODUCT_SPEC MGR-005 — one book, after the *server* confirmed it is gone.
+     *
+     * Soft rather than hard, like every other deletion here: the row keeps the progress and the download
+     * state attached to it, so a later scan that re-adds the item on the server finds the listener's
+     * position waiting rather than starting them at zero.
+     */
+    @Query("UPDATE books SET isDeleted = 1 WHERE bookKey = :bookKey")
+    suspend fun markBookDeleted(bookKey: String)
+
+    /**
      * PRODUCT_SPEC 13.2 — a library the server no longer lists.
      *
      * Nothing enumerated these before, so deleting a library on the server left its row and its books in

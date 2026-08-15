@@ -31,6 +31,50 @@ internal data class MediaUpdateResponseDto(val updated: Boolean = false, val lib
 internal data class CoverUploadResponseDto(val success: Boolean = false, val cover: String? = null)
 
 /**
+ * `GET /api/search/books` — one candidate from a metadata provider.
+ *
+ * **Every field is optional, including the ones that look mandatory.** The shape varies by provider:
+ * Google returns ten of these, Audible returns all of them plus a narrator and a duration, and a custom
+ * provider returns whatever its author chose. A required field here would turn one provider's omission
+ * into a failed search.
+ *
+ * Two of these are hazards rather than data. [cover] is a URL on a third party's host — MGR-002's "tokens
+ * are not appended to third-party cover URLs" is about exactly this value. [description] is
+ * provider-supplied HTML, which is what MGR-003 means by "match results are treated as untrusted display
+ * data and sanitized".
+ */
+@Serializable
+internal data class MatchCandidateDto(
+    val title: String? = null,
+    val subtitle: String? = null,
+    val author: String? = null,
+    val narrator: String? = null,
+    val publisher: String? = null,
+    val publishedYear: String? = null,
+    val description: String? = null,
+    val cover: String? = null,
+    val isbn: String? = null,
+    val asin: String? = null,
+    val genres: List<String>? = null,
+    val tags: List<String>? = null,
+    val language: String? = null,
+    val series: List<MatchSeriesDto>? = null,
+)
+
+@Serializable
+internal data class MatchSeriesDto(val series: String? = null, val sequence: String? = null)
+
+/**
+ * `POST /api/items/{id}/scan` — the conclusion, as a name.
+ *
+ * One of `NOTHING`, `ADDED`, `UPDATED`, `REMOVED`, `UPTODATE`. Kept as the server's own string rather than
+ * mapped to an enum here: a value this build has never seen must survive to the log, and a `when` that had
+ * to be exhaustive would be a guess about a future server (PRODUCT_SPEC 22.4).
+ */
+@Serializable
+internal data class ScanResultDto(val result: String? = null)
+
+/**
  * PRODUCT_SPEC MGR-001 — "a save request sends only the server-supported shape".
  *
  * The single place a metadata `PATCH` body is constructed, and the reason [ManagementService.updateMedia]

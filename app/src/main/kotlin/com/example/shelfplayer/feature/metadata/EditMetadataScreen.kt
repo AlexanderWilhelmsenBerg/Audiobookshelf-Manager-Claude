@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,12 +20,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -143,6 +146,7 @@ private fun EditMetadataForm(
     ) {
         state.block?.let { block -> BlockedNotice(block) }
         CoverSection(state, viewModel)
+        MatchAndScanSection(state, viewModel)
         state.errorSummary?.let { summary ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -238,6 +242,101 @@ private fun EditMetadataForm(
 
         if (state.changed.isNotEmpty()) {
             TextButton(onClick = viewModel::revert) { Text(stringResource(R.string.edit_metadata_revert)) }
+        }
+    }
+}
+
+/**
+ * PRODUCT_SPEC MGR-003 / MGR-004 — ask a provider what it knows, and ask the server to re-read the files.
+ *
+ * Both live in the editor rather than in the book screen's menu, and for the same reason: what they produce
+ * is *proposed metadata*, and the place to review proposed metadata is the form that already shows all of
+ * it. A match applied from a menu would change fields on a screen that does not display them.
+ */
+@Composable
+private fun MatchAndScanSection(state: EditMetadataUiState, viewModel: EditMetadataViewModel) {
+    val permissions = state.permissions
+    val canMatch = permissions?.isAvailable(ManagementAction.MatchMetadata) == true && !state.isSaving
+    val canScan = permissions?.isAvailable(ManagementAction.ScanItem) == true && !state.isSaving
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(onClick = { viewModel.findMatches(DEFAULT_PROVIDER) }, enabled = canMatch && !state.isMatching) {
+            Text(stringResource(R.string.edit_metadata_match))
+        }
+        TextButton(onClick = viewModel::scan, enabled = canScan && !state.isScanning) {
+            Text(stringResource(R.string.edit_metadata_scan))
+        }
+    }
+    // The server's own word, shown verbatim rather than translated into a sentence. `UPTODATE` and
+    // `NOTHING` mean different things to somebody debugging an import, and inventing a friendlier phrase
+    // for each would be guessing at what a future server means by a word this build has not seen.
+    state.scanResult?.let { result ->
+        Text(
+            stringResource(R.string.edit_metadata_scan_result, result),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+    if (state.candidates.isNotEmpty()) CandidateSheet(state, viewModel)
+}
+
+/**
+ * PRODUCT_SPEC MGR-003 — the candidates, and the fields each would change.
+ *
+ * ### Two things here are safety rather than presentation
+ *
+ * The **description is never rendered as markup**. It is provider-supplied HTML, and Compose's `Text` draws
+ * it as characters, which is exactly the sanitisation the requirement asks for — the tags show as tags
+ * rather than executing as formatting, and nothing can smuggle a link through.
+ *
+ * The **cover URL is not fetched**. It points at Google or Audible, and this app's image loading carries
+ * the server's `Authorization` header — sending that to a third party is what MGR-002's "tokens are not
+ * appended to third-party cover URLs" forbids. The candidate is chosen on its text, and the cover arrives
+ * later from the user's own server after the match is saved and the server has downloaded it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CandidateSheet(state: EditMetadataUiState, viewModel: EditMetadataViewModel) {
+    ModalBottomSheet(onDismissRequest = viewModel::dismissMatches) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                stringResource(R.string.edit_metadata_match_from, state.matchProvider),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            val selected = state.selectedCandidate
+            if (selected == null) {
+                state.candidates.forEach { candidate ->
+                    ListItem(
+                        headlineContent = { Text(candidate.title) },
+                        supportingContent = {
+                            Text(
+                                listOfNotNull(candidate.author, candidate.publishedYear)
+                                    .joinToString(" · ")
+                                    .ifEmpty { stringResource(R.string.edit_metadata_match_unknown) },
+                            )
+                        },
+                        modifier = Modifier.clickable { viewModel.selectCandidate(candidate) },
+                    )
+                }
+            } else {
+                Text(stringResource(R.string.edit_metadata_match_changes), style = MaterialTheme.typography.bodyMedium)
+                selected.changesAgainst(state.form).forEach { field ->
+                    ListItem(
+                        headlineContent = { FIELD_LABELS[field]?.let { label -> Text(stringResource(label)) } },
+                        trailingContent = {
+                            Checkbox(
+                                checked = field in state.acceptedFields,
+                                onCheckedChange = { viewModel.toggleAcceptedField(field) },
+                            )
+                        },
+                    )
+                }
+                TextButton(onClick = viewModel::applyCandidate, enabled = state.acceptedFields.isNotEmpty()) {
+                    Text(stringResource(R.string.edit_metadata_match_apply))
+                }
+            }
         }
     }
 }
@@ -563,3 +662,13 @@ internal val FIELD_LABELS: Map<BookMetadataField, Int> = mapOf(
 private const val SEPARATOR = ", "
 
 private val PREVIEW_SIZE = 160.dp
+
+/**
+ * PRODUCT_SPEC MGR-003 — the provider a match starts with.
+ *
+ * Google, because it is the server's own default and the only one that needs no configuration. The captured
+ * provider list shows fourteen on a bare install, so a picker is a reasonable next step — it is not here
+ * because nobody has asked which provider they want, and one that works everywhere beats a choice nobody
+ * makes.
+ */
+private const val DEFAULT_PROVIDER = "google"

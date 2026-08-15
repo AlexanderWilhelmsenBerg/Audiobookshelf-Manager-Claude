@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
@@ -157,6 +158,16 @@ internal fun BookOverflowMenu(book: Book, actions: BookMenuActions, modifier: Mo
                 actions.webUrl?.let(actions.onOpenWebClient)
             },
         )
+        if (actions.canRemoveFromServer) {
+            MenuRow(
+                labelRes = R.string.book_menu_remove_from_server,
+                icon = Icons.Filled.DeleteForever,
+                onClick = {
+                    isOpen = false
+                    actions.onRemoveFromServer()
+                },
+            )
+        }
         MenuRow(
             labelRes = R.string.book_menu_more_info,
             icon = Icons.Filled.Info,
@@ -300,6 +311,16 @@ internal data class BookMenuActions(
      * missing row does not give it.
      */
     val onEditMetadata: () -> Unit = {},
+    /**
+     * PRODUCT_SPEC MGR-005 — `Remove from Audiobookshelf database`.
+     *
+     * The label is fixed by the requirement, word for word, and it is the last row for the same reason the
+     * destructive capture runs last: an irreversible action should not be next to the one above it in the
+     * muscle memory of somebody reaching for *More info*.
+     */
+    val onRemoveFromServer: () -> Unit = {},
+    /** `false` hides the row entirely — MGR-005 requires the delete permission. */
+    val canRemoveFromServer: Boolean = false,
 )
 
 /**

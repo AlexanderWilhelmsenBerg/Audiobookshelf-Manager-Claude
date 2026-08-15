@@ -854,4 +854,21 @@
     <string name="edit_metadata_cover_error_decode">That file could not be opened as an image.</string>
     <string name="edit_metadata_cover_error_large">That image is larger than 10 MB. Pick a smaller one.</string>
     <string name="edit_metadata_cover_error_small">That image is too small to use as a cover.</string>
+
+    <!-- PRODUCT_SPEC MGR-003 / MGR-004 - match and scan. -->
+    <string name="edit_metadata_match">Find metadata</string>
+    <string name="edit_metadata_scan">Rescan files</string>
+    <string name="edit_metadata_scan_result">The server reported: %1$s</string>
+    <string name="edit_metadata_match_from">Results from %1$s</string>
+    <string name="edit_metadata_match_unknown">No author or year given</string>
+    <string name="edit_metadata_match_changes">Choose which fields to take. Nothing is sent until you save.</string>
+    <string name="edit_metadata_match_apply">Use the ticked fields</string>
+
+    <!-- PRODUCT_SPEC MGR-005 - removal from the server database. -->
+    <string name="book_menu_remove_from_server">Remove from Audiobookshelf database</string>
+    <string name="book_remove_server_title">Remove from Audiobookshelf database?</string>
+    <string name="book_remove_server_body">This removes \u201c%1$s\u201d from the server\'s database. The media files stay on the server, and a later library scan may add the book back.</string>
+    <string name="book_remove_server_downloads">Also delete the copy downloaded on this device</string>
+    <string name="book_remove_server_confirm">Remove</string>
+    <string name="book_remove_server_cancel">Cancel</string>
 </resources>

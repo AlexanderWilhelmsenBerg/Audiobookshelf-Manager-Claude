@@ -12,8 +12,11 @@ import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
+import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.SeriesEdit
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.core.network.gateway.CoverUpload
+import com.example.shelfplayer.core.network.gateway.ItemScanOutcome
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
@@ -181,6 +184,129 @@ internal class AbsManagementApi @Inject constructor(
         }
     }
 
+    override suspend fun findCandidates(
+        profileId: ProfileId,
+        provider: String,
+        title: String,
+        author: String,
+    ): AppResult<List<MatchCandidate>> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+
+        val transport = resultOf(onError = errors::fromThrowable) {
+            services.managementService(connection.serverUrl).searchBooks(
+                bearer = bearerOf(connection.accessToken.value),
+                title = title,
+                author = author,
+                provider = provider,
+            )
+        }
+        return when (transport) {
+            is AppResult.Failure -> AppResult.Failure(transport.error)
+            is AppResult.Success -> {
+                val response = transport.value
+                if (response.isSuccessful) {
+                    // A candidate with no title cannot be shown or chosen, so it is dropped rather than
+                    // rendered as a blank row. Every other field is genuinely optional.
+                    AppResult.Success(response.body().orEmpty().mapNotNull { dto -> candidateOf(provider, dto) })
+                } else {
+                    AppResult.Failure(errors.fromStatus(response.code()))
+                }
+            }
+        }
+    }
+
+    override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+
+        return when (val scanned = requestScan(connection, bookId)) {
+            is AppResult.Failure -> AppResult.Failure(scanned.error)
+            is AppResult.Success -> outcomeOf(profileId, bookId, scanned.value)
+        }
+    }
+
+    private suspend fun requestScan(connection: ProfileConnection, bookId: LibraryItemId): AppResult<String> {
+        val transport = resultOf(onError = errors::fromThrowable) {
+            services.managementService(connection.serverUrl)
+                .scanItem(bearerOf(connection.accessToken.value), bookId.value)
+        }
+        return when (transport) {
+            is AppResult.Failure -> AppResult.Failure(transport.error)
+            is AppResult.Success -> {
+                val response = transport.value
+                if (response.isSuccessful) {
+                    // A scan that answered with no word is reported as unknown rather than as a success
+                    // with an invented conclusion (PRODUCT_SPEC 22.4).
+                    AppResult.Success(response.body()?.result.orEmpty().ifEmpty { UNKNOWN_SCAN })
+                } else {
+                    AppResult.Failure(errors.fromStatus(response.code()))
+                }
+            }
+        }
+    }
+
+    private suspend fun outcomeOf(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        result: String,
+    ): AppResult<ItemScanOutcome> {
+        logger.info(LogCategory.Sync, "Rescanned an item", LogField.Public("result", result))
+        // `REMOVED` means the item is gone, which is the one conclusion with nothing left to refresh —
+        // asking for it would produce a `404` and turn a successful scan into a reported failure.
+        if (result == SCAN_REMOVED) return AppResult.Success(ItemScanOutcome(result, book = null))
+
+        return when (val refreshed = library.fetchBook(profileId, bookId)) {
+            is AppResult.Failure -> AppResult.Failure(refreshed.error)
+            is AppResult.Success -> AppResult.Success(ItemScanOutcome(result, refreshed.value))
+        }
+    }
+
+    override suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+
+        val transport = resultOf(onError = errors::fromThrowable) {
+            services.managementService(connection.serverUrl)
+                .deleteItem(bearerOf(connection.accessToken.value), bookId.value)
+        }
+        return when (transport) {
+            is AppResult.Failure -> AppResult.Failure(transport.error)
+            is AppResult.Success -> {
+                // `text/plain "OK"`, deliberately not read. The status is the whole answer.
+                transport.value.body()?.close()
+                if (transport.value.isSuccessful) {
+                    logger.info(LogCategory.Sync, "Removed an item from the server database")
+                    AppResult.Success(Unit)
+                } else {
+                    AppResult.Failure(errors.fromStatus(transport.value.code()))
+                }
+            }
+        }
+    }
+
+    private fun candidateOf(provider: String, dto: MatchCandidateDto): MatchCandidate? {
+        val title = dto.title?.takeIf(String::isNotBlank) ?: return null
+        return MatchCandidate(
+            provider = provider,
+            title = title,
+            subtitle = dto.subtitle,
+            author = dto.author,
+            narrator = dto.narrator,
+            publisher = dto.publisher,
+            publishedYear = dto.publishedYear,
+            description = dto.description,
+            coverUrl = dto.cover,
+            isbn = dto.isbn,
+            asin = dto.asin,
+            genres = dto.genres.orEmpty(),
+            series = dto.series.orEmpty().mapNotNull { entry ->
+                entry.series?.takeIf(String::isNotBlank)?.let { name -> SeriesEdit(name, entry.sequence.orEmpty()) }
+            },
+            language = dto.language,
+        )
+    }
+
     /**
      * PRODUCT_SPEC MGR-002 — the part the server will actually accept.
      *
@@ -200,6 +326,12 @@ internal class AbsManagementApi @Inject constructor(
     private companion object {
         /** The multipart field name the server reads. Not configurable, not guessable. */
         const val COVER_FIELD = "cover"
+
+        /** The scan conclusion that leaves nothing to re-read. */
+        const val SCAN_REMOVED = "REMOVED"
+
+        /** A scan that answered with no word at all. Reported rather than invented. */
+        const val UNKNOWN_SCAN = "UNKNOWN"
 
         /**
          * The four extensions the server accepts, keyed by the MIME types Android reports.

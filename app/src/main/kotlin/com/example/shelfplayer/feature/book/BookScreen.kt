@@ -19,6 +19,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -106,6 +108,7 @@ fun BookRoute(
             onRemoveDownload = viewModel::onRemoveDownload,
             onManageDownloads = onManageDownloads,
             onEditMetadata = onEditMetadata,
+            onRemoveFromServer = viewModel::onRemoveFromServer,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -197,6 +200,8 @@ fun BookScreen(
                     onRemoveDownload = { openSurface = BookSurface.RemoveDownloadConfirmation },
                     onManageDownloads = actions.onManageDownloads,
                     onEditMetadata = { actions.onEditMetadata(uiState.book.id) },
+                    onRemoveFromServer = { openSurface = BookSurface.RemoveFromServerConfirmation },
+                    canRemoveFromServer = menu.canRemoveFromServer,
                 ),
                 download = DownloadControl(
                     isPermitted = menu.canDownload,
@@ -250,7 +255,70 @@ fun BookScreen(
             },
             onDismiss = { openSurface = BookSurface.None },
         )
+
+        openSurface == BookSurface.RemoveFromServerConfirmation -> RemoveFromServerDialog(
+            title = book.title,
+            isDownloaded = menu.download is DownloadButtonState.Downloaded,
+            onConfirm = { alsoRemoveDownload ->
+                openSurface = BookSurface.None
+                actions.onRemoveFromServer(alsoRemoveDownload)
+            },
+            onDismiss = { openSurface = BookSurface.None },
+        )
     }
+}
+
+/**
+ * PRODUCT_SPEC MGR-005 — the confirmation, which has to describe the actual effect.
+ *
+ * Three clauses, and each one is there because the label alone would be read as something worse:
+ *
+ * - **it leaves the database** — the thing that was asked for;
+ * - **the media files stay on the server** — the fear. CLAUDE.md forbids this app from ever claiming
+ *   otherwise, and this is the sentence that keeps the promise. It is true because of what the request
+ *   does *not* carry: `?hard=1` is the flag that would delete the files, and ADR-0021 records why this app
+ *   never sends it;
+ * - **a later scan may add it back** — because it will, and a user who did not expect that would think the
+ *   removal had failed.
+ *
+ * The download checkbox is separate and starts unchecked, exactly as the requirement specifies: they are
+ * two different copies, and somebody removing a duplicate from their library has not asked to lose the
+ * hours they downloaded over hotel wi-fi.
+ */
+@Composable
+private fun RemoveFromServerDialog(
+    title: String,
+    isDownloaded: Boolean,
+    onConfirm: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var alsoRemoveDownload by rememberSaveable { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.book_remove_server_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.book_remove_server_body, title))
+                if (isDownloaded) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = alsoRemoveDownload,
+                            onCheckedChange = { checked -> alsoRemoveDownload = checked },
+                        )
+                        Text(stringResource(R.string.book_remove_server_downloads))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(alsoRemoveDownload) }) {
+                Text(stringResource(R.string.book_remove_server_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.book_remove_server_cancel)) }
+        },
+    )
 }
 
 /**
@@ -267,7 +335,16 @@ fun BookScreen(
 internal data class DownloadControl(val isPermitted: Boolean, val state: DownloadButtonState, val onClick: () -> Unit)
 
 /** Which of the screen's dialogs or sheets is showing. Saveable, so it survives a rotation. */
-private enum class BookSurface { None, History, Info, DiscardConfirmation, RemoveDownloadConfirmation }
+private enum class BookSurface {
+    None,
+    History,
+    Info,
+    DiscardConfirmation,
+    RemoveDownloadConfirmation,
+
+    /** PRODUCT_SPEC MGR-005 — the only surface on this screen that changes somebody else's server. */
+    RemoveFromServerConfirmation,
+}
 
 /**
  * What this screen can do that only its callers can perform.
@@ -292,6 +369,8 @@ data class BookActions(
     val onManageDownloads: () -> Unit = {},
     /** PRODUCT_SPEC MGR-001 — opens the metadata editor for this book. */
     val onEditMetadata: (LibraryItemId) -> Unit = {},
+    /** PRODUCT_SPEC MGR-005 — the confirmed removal, carrying the separate download checkbox's answer. */
+    val onRemoveFromServer: (Boolean) -> Unit = {},
 )
 
 @Composable

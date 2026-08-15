@@ -668,4 +668,21 @@
     <string name="edit_metadata_cover_error_decode">Den filen kunne ikke \u00e5pnes som et bilde.</string>
     <string name="edit_metadata_cover_error_large">Bildet er st\u00f8rre enn 10 MB. Velg et mindre.</string>
     <string name="edit_metadata_cover_error_small">Bildet er for lite til \u00e5 brukes som omslag.</string>
+
+    <!-- PRODUCT_SPEC MGR-003 / MGR-004 - match and scan. -->
+    <string name="edit_metadata_match">Finn metadata</string>
+    <string name="edit_metadata_scan">Skann filene p\u00e5 nytt</string>
+    <string name="edit_metadata_scan_result">Serveren svarte: %1$s</string>
+    <string name="edit_metadata_match_from">Treff fra %1$s</string>
+    <string name="edit_metadata_match_unknown">Ingen forfatter eller \u00e5rstall oppgitt</string>
+    <string name="edit_metadata_match_changes">Velg hvilke felter du vil bruke. Ingenting sendes f\u00f8r du lagrer.</string>
+    <string name="edit_metadata_match_apply">Bruk de avkryssede feltene</string>
+
+    <!-- PRODUCT_SPEC MGR-005 - removal from the server database. -->
+    <string name="book_menu_remove_from_server">Fjern fra Audiobookshelf-databasen</string>
+    <string name="book_remove_server_title">Fjerne fra Audiobookshelf-databasen?</string>
+    <string name="book_remove_server_body">Dette fjerner \u00ab%1$s\u00bb fra databasen p\u00e5 serveren. Mediefilene blir liggende p\u00e5 serveren, og en senere biblioteksskanning kan legge boken inn igjen.</string>
+    <string name="book_remove_server_downloads">Slett ogs\u00e5 kopien som er lastet ned p\u00e5 denne enheten</string>
+    <string name="book_remove_server_confirm">Fjern</string>
+    <string name="book_remove_server_cancel">Avbryt</string>
 </resources>

@@ -1,8 +1,8 @@
 # Phase 5 — Management tools: the plan, and what has to happen first
 
-**Status: slices 1, 2 and 7 are done.** The captures came back, the four questions they could not answer
+**Status: slices 1 through 7 are done.** The captures came back, the four questions they could not answer
 were settled from the Audiobookshelf project's own source, and one of those answers ended a slice with no
-feature — correctly. What remains is slices 3, 4, 5, 6 and 8.
+feature — correctly. What remains is slice 8, user management.
 
 ## The problem this phase starts with
 
@@ -156,7 +156,7 @@ message and an `OutOfMemoryError` when somebody picks a 48-megapixel photograph 
 Cache invalidation needs no cache code: the upload moves the item's `updatedAt`, the refresh picks it up,
 and `?ts=` makes the new image a different key from the old one.
 
-### Slice 5 — match and scan (MGR-003, MGR-004)
+### Slice 5 — match and scan (MGR-003, MGR-004) *(done)*
 
 **Match is search-then-apply, not quick match.** `GET /api/search/books` returns candidates and writes
 nothing, so the preview MGR-003 requires is buildable; the chosen fields are then applied through the same
@@ -171,11 +171,19 @@ treatment: an item scan is over before it answers and reports `NOTHING`/`ADDED`/
 gate on the account *type* rather than on a grant. A `500` from an item scan can mean "file-based library
 items cannot be rescanned" and must be shown as a failed scan rather than as a crash.
 
-### Slice 6 — removal from the database (MGR-005)
+### Slice 6 — removal from the database (MGR-005) *(done)*
 
-The label is fixed by the requirement: **`Remove from Audiobookshelf database`**. The confirmation states
-that media files remain on the server and a later scan may re-add the item. Local download removal is a
-separate, unchecked checkbox.
+The label is the requirement's own words, and the confirmation's three clauses each exist because the label
+alone would be read as something worse: it leaves the database, the media files stay on the server, and a
+later scan may add the book back.
+
+The middle clause is **true because of what the request does not carry**. `?hard=1` is the flag that deletes
+the files, and ADR-0021 records why this app never sends it — so the promise is structural rather than a
+matter of wording.
+
+The order is fixed by the requirement: server first, Room only after confirmation. The local download is a
+separate, unchecked checkbox, and a failed local delete does not fail the removal — the server's copy is
+already gone, and inviting a second attempt against an item that no longer exists would earn a `404`.
 
 ### Slice 7 — source-file deletion (MGR-006) *(done — no feature, by decision)*
 

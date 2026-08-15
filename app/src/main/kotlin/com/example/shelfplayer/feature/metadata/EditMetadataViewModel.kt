@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataError
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.CoverRejection
+import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.domain.repository.MetadataRepository
 import com.example.shelfplayer.domain.usecase.ObserveManagementPermissionsUseCase
 import com.example.shelfplayer.navigation.ShelfDestinations
@@ -154,6 +155,99 @@ class EditMetadataViewModel @Inject constructor(
                         coverRejection = null,
                         coverVersion = it.coverVersion + 1,
                     )
+                }
+            }
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-003 — ask a provider for candidates, using what the form currently says.
+     *
+     * The form rather than the stored book, so a user who has just corrected a misspelled title searches
+     * with the correction. Nothing is written: this is the preview quick match cannot provide.
+     */
+    fun findMatches(provider: String) {
+        val profile = profileId ?: return
+        val form = _uiState.value.form
+        viewModelScope.launch {
+            _uiState.update { it.copy(isMatching = true, matchProvider = provider, candidates = emptyList()) }
+            val found = metadata.findCandidates(
+                profileId = profile,
+                provider = provider,
+                title = form.title,
+                author = form.authors.firstOrNull().orEmpty(),
+            )
+            when (found) {
+                is AppResult.Failure -> _uiState.update {
+                    it.copy(isMatching = false, errorSummary = found.error.summary)
+                }
+                is AppResult.Success -> _uiState.update {
+                    it.copy(isMatching = false, candidates = found.value)
+                }
+            }
+        }
+    }
+
+    fun dismissMatches() {
+        _uiState.update { it.copy(candidates = emptyList(), selectedCandidate = null) }
+    }
+
+    /** PRODUCT_SPEC MGR-003 — the chosen candidate, and which of its fields the user has agreed to. */
+    fun selectCandidate(candidate: MatchCandidate) {
+        _uiState.update { state ->
+            state.copy(
+                selectedCandidate = candidate,
+                // Pre-ticked, because a user who picked a candidate has already said they prefer it. What
+                // the requirement forbids is applying a field *silently*, and every one is visible and
+                // individually removable before anything is sent.
+                acceptedFields = candidate.changesAgainst(state.form),
+            )
+        }
+    }
+
+    fun toggleAcceptedField(field: BookMetadataField) {
+        _uiState.update { state ->
+            val accepted = state.acceptedFields
+            state.copy(acceptedFields = if (field in accepted) accepted - field else accepted + field)
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-003 — applies the chosen fields into the *form*, not to the server.
+     *
+     * The user then reviews them in the editor and saves, which is what makes the match reviewable and
+     * undoable. Applying straight to the server would be quick match with extra steps.
+     */
+    fun applyCandidate() {
+        _uiState.update { state ->
+            val candidate = state.selectedCandidate ?: return@update state
+            state.copy(
+                form = candidate.applyTo(state.form, state.acceptedFields),
+                candidates = emptyList(),
+                selectedCandidate = null,
+                acceptedFields = emptySet(),
+            )
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-004 — rescan this item.
+     *
+     * The repeated-tap guard is `isScanning`: the requirement says repeated taps must not start duplicate
+     * scans, and an item scan is synchronous, so the second tap would sit behind the first and then run
+     * again against an item that was just scanned.
+     */
+    fun scan() {
+        val profile = profileId ?: return
+        if (_uiState.value.isScanning) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isScanning = true, scanResult = null, errorSummary = null) }
+            when (val scanned = metadata.scanItem(profile, bookId)) {
+                is AppResult.Failure -> _uiState.update {
+                    it.copy(isScanning = false, errorSummary = scanned.error.summary)
+                }
+                is AppResult.Success -> _uiState.update {
+                    it.copy(isScanning = false, scanResult = scanned.value)
                 }
             }
         }
@@ -309,6 +403,15 @@ data class EditMetadataUiState(
     val savedAt: SaveOutcome? = null,
     /** PRODUCT_SPEC MGR-002 — picked and previewed, not yet sent. */
     val pickedCover: PickedCover? = null,
+    /** PRODUCT_SPEC MGR-003 — candidates offered, and the one the user is considering. */
+    val isMatching: Boolean = false,
+    val matchProvider: String = "",
+    val candidates: List<MatchCandidate> = emptyList(),
+    val selectedCandidate: MatchCandidate? = null,
+    val acceptedFields: Set<BookMetadataField> = emptySet(),
+    /** PRODUCT_SPEC MGR-004 — the scan's own word, or `null` when none has run. */
+    val isScanning: Boolean = false,
+    val scanResult: String? = null,
     val coverRejection: CoverRejection? = null,
     /**
      * Increments on every successful cover change, so the preview stops showing the old image.
