@@ -2,7 +2,7 @@
 <!--
   PRODUCT_SPEC 3.1 — Norwegian Bokmål.
 
-  `app_name` is deliberately absent: the product is called ShelfPlayer in every locale, and a
+  `app_name` is deliberately absent: the product is called BookWave in every locale, and a
   translated launcher label would be a different app on the home screen.
 
   Two conventions worth stating, because they are what a reviewer should check rather than the
@@ -17,7 +17,7 @@
   English does.
 -->
 <resources>
-    <string name="home_title">ShelfPlayer</string>
+    <string name="home_title">BookWave</string>
     <string name="home_loading">Laster bøkene dine</string>
     <string name="home_empty_title">Ingen bøker ennå</string>
     <string name="home_empty_body">Denne kontoen har ingenting i bibliotekene sine ennå, eller de er ikke synkronisert. Oppdater for å prøve igjen.</string>
@@ -297,7 +297,7 @@
     <string name="settings_network_downloads">Last ned over mobildata</string>
     <string name="settings_network_smart_downloads">Last ned neste bok over mobildata</string>
     <string name="settings_section_car">I bilen</string>
-    <string name="settings_car_hint">ShelfPlayer vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på.</string>
+    <string name="settings_car_hint">BookWave vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på.</string>
     <string name="settings_car_autoplay">Start avspilling når en bil kobles til</string>
     <string name="sleep_timer_settings">Standardverdier</string>
     <string name="sleep_timer_default_length">Standard lengde</string>
@@ -341,7 +341,7 @@
     <string name="settings_title">Innstillinger</string>
     <string name="settings_tab_server">Server</string>
     <string name="settings_tab_about">Om</string>
-    <string name="about_section_app">ShelfPlayer</string>
+    <string name="about_section_app">BookWave</string>
     <string name="about_version">Versjon</string>
     <string name="about_section_diagnostics">Diagnostikk</string>
     <string name="event_log_body">En oversikt over hva appen har gjort siden den startet: avspilling, synkronisering, nettverk og feil. Ingenting herfra sendes noe sted, og det tømmes når appen lukkes.</string>
@@ -355,7 +355,22 @@
     <string name="event_log_copy">Kopier</string>
     <string name="event_log_clear">Tøm</string>
     <string name="event_log_empty">Ingenting er registrert ennå.</string>
-    <string name="about_phase">Under arbeid. Direkteavspilling, kapitler, sovetid og fremdriftssynkronisering er bygget; nedlastinger og frakoblet avspilling er ikke.</string>
+    <string name="about_phase">Under arbeid. Direkteavspilling og frakoblet avspilling, kapitler, bokmerker, sovetid, nedlastinger og fremdriftssynkronisering er bygget; forvaltningsverktøyene er ikke.</string>
+
+    <!--
+      PRODUCT_SPEC SET-003 — navnene på de seks ikonene.
+
+      «Gilded» er «Forgylt» og ikke «Illuminert»: det siste er det kunsthistorisk riktige ordet for et
+      opplyst manuskript, men det leses som «belyst» av alle andre.
+    -->
+    <string name="settings_section_icon">Appikon</string>
+    <string name="settings_icon_indigo">Indigo</string>
+    <string name="settings_icon_spectrum">Spekter</string>
+    <string name="settings_icon_crimson">Karmin</string>
+    <string name="settings_icon_illuminated">Forgylt</string>
+    <string name="settings_icon_vintage">Antikk</string>
+    <string name="settings_icon_monochrome">Mono</string>
+    <string name="settings_icon_hint">Å bytte ikon avbryter ikke noe som spilles av. Hjemskjermen kan bruke et øyeblikk på å henge med, og et ikon du selv har lagt der kan måtte legges dit på nytt.</string>
     <string name="about_section_testing">Testing</string>
     <string name="about_testing_body">Avlesninger som brukes til å kontrollere en bygging mot akseptansetestene. Ingenting her endrer hvordan appen oppfører seg.</string>
 
@@ -471,7 +486,7 @@
     <string name="settings_car_unknown_sources">Android Auto skjuler apper den ikke har fått fra Play. I Android Auto-appen: trykk på versjonen ti ganger for å låse opp Utviklerinnstillinger, og slå så på Ukjente kilder — å låse opp utviklerinnstillingene slår det ikke på av seg selv. Tvangsavslutt Android Auto etterpå så listen bygges på nytt.</string>
     <string name="settings_car_last_connection">Siste bilkobling</string>
     <string name="settings_car_last_connection_never">Aldri, siden appen startet</string>
-    <string name="settings_check_car">Koble til en bilskjerm: ShelfPlayer er i listen over medieapper og lar seg bla i. Står Siste bilkobling fortsatt til aldri, nådde ingen bil frem til appen.</string>
+    <string name="settings_check_car">Koble til en bilskjerm: BookWave er i listen over medieapper og lar seg bla i. Står Siste bilkobling fortsatt til aldri, nådde ingen bil frem til appen.</string>
 
     <string name="player_notifications_blocked">Varsler er av, så denne boken har ingen varsel- eller låseskjermkontroller.</string>
     <string name="player_notifications_fix">Slå på</string>
@@ -520,7 +535,7 @@
 
     <!-- PRODUCT_SPEC PLAY-004 / ADR-0013 — når en bok regnes som ferdig. En visning, ikke en innstilling. -->
     <string name="settings_section_finished">Ferdig</string>
-    <string name="settings_finished_hint">En bok merkes som ferdig når det er litt igjen av den, slik at de siste sekundene med rulletekst ikke etterlater den som ulest. Hvor lite er serveren din som bestemmer, per bibliotek — i Audiobookshelf-nettgrensesnittet, under innstillingene til biblioteket, som «mark as finished when time remaining is». ShelfPlayer følger den framfor å ha en egen mening. Å merke en bok som ferdig selv virker uansett, og å starte en ferdig bok fra begynnelsen gjør den alltid ulest igjen.</string>
+    <string name="settings_finished_hint">En bok merkes som ferdig når det er litt igjen av den, slik at de siste sekundene med rulletekst ikke etterlater den som ulest. Hvor lite er serveren din som bestemmer, per bibliotek — i Audiobookshelf-nettgrensesnittet, under innstillingene til biblioteket, som «mark as finished when time remaining is». BookWave følger den framfor å ha en egen mening. Å merke en bok som ferdig selv virker uansett, og å starte en ferdig bok fra begynnelsen gjør den alltid ulest igjen.</string>
     <string name="settings_finished_inherited">%1$s: ferdig når %2$d s er igjen</string>
     <string name="settings_finished_inherited_none">%1$s: serveren din har ikke sagt noe, så %2$d s brukes inntil den gjør det</string>
     <string name="settings_finished_no_libraries">Ingen bibliotek er lest fra serveren din ennå, så ingenting kan vises her.</string>

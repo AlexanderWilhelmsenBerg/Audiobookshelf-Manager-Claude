@@ -7,7 +7,7 @@
   66dp of the 108dp layer — the only region a circular mask is guaranteed to keep.
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background_indigo" />
-    <foreground android:drawable="@mipmap/ic_launcher_indigo_foreground" />
+    <background android:drawable="@color/ic_launcher_background_crimson" />
+    <foreground android:drawable="@mipmap/ic_launcher_crimson_foreground" />
     <monochrome android:drawable="@mipmap/ic_launcher_themed" />
 </adaptive-icon>

@@ -42,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.launcher.LauncherIcon
 
 @Composable
 fun SettingsRoute(
@@ -51,8 +52,11 @@ fun SettingsRoute(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
     SettingsScreen(
         uiState = uiState,
+        launcherIcon = launcherIcon,
+        onLauncherIconChanged = viewModel::onLauncherIconChanged,
         onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
         sleepTimerActions = SleepTimerSettingsActions(
             onDefaultChanged = viewModel::onSleepTimerDefaultChanged,
@@ -95,6 +99,8 @@ fun SettingsScreen(
     playbackActions: PlaybackSettingsActions,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
+    launcherIcon: LauncherIcon = LauncherIcon.Default,
+    onLauncherIconChanged: (LauncherIcon) -> Unit = {},
 ) {
     var selected by rememberSaveable { mutableStateOf(SettingsTab.Server) }
     // PRODUCT_SPEC 14.4 — the event log's open/closed state is this screen's, not the caller's. Lifting it
@@ -151,7 +157,12 @@ fun SettingsScreen(
                         housekeeping = uiState.housekeeping,
                     )
 
-                    SettingsTab.About -> aboutTab(uiState, onOpenEventLog = { isEventLogOpen = true })
+                    SettingsTab.About -> aboutTab(
+                        uiState = uiState,
+                        launcherIcon = launcherIcon,
+                        onLauncherIconChanged = onLauncherIconChanged,
+                        onOpenEventLog = { isEventLogOpen = true },
+                    )
                 }
             }
         }
@@ -187,10 +198,21 @@ private fun LazyListScope.serverTab(uiState: SettingsUiState, onDefaultLibraryCh
  * than through `adb`. It is deliberately grouped and deliberately labelled as such: these are numbers to
  * verify a build against, not settings to change.
  */
-private fun LazyListScope.aboutTab(uiState: SettingsUiState, onOpenEventLog: () -> Unit) {
+private fun LazyListScope.aboutTab(
+    uiState: SettingsUiState,
+    launcherIcon: LauncherIcon,
+    onLauncherIconChanged: (LauncherIcon) -> Unit,
+    onOpenEventLog: () -> Unit,
+) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
     item { TextRow(labelRes = R.string.about_version, value = uiState.versionName) }
     item { Hint(text = stringResource(R.string.about_phase)) }
+
+    // PRODUCT_SPEC SET-003 — on the About tab because it is about the app's own identity rather than
+    // about a server, a book or how playback behaves.
+    item { SectionHeader(text = stringResource(R.string.settings_section_icon)) }
+    item { LauncherIconPicker(selected = launcherIcon, onSelected = onLauncherIconChanged) }
+    item { Hint(text = stringResource(R.string.settings_icon_hint)) }
 
     // PRODUCT_SPEC 14.4 — before the readings, because this is the one thing on the tab somebody reaches
     // for while something is wrong rather than while checking a build.
