@@ -1,8 +1,8 @@
 # Phase 5 — Management tools: the plan, and what has to happen first
 
-**Status: slices 1 through 7 are done.** The captures came back, the four questions they could not answer
+**Status: Phase 5 is complete.** All eight slices are done, one of them correctly with no feature. The captures came back, the four questions they could not answer
 were settled from the Audiobookshelf project's own source, and one of those answers ended a slice with no
-feature — correctly. What remains is slice 8, user management.
+feature — correctly. 
 
 ## The problem this phase starts with
 
@@ -197,9 +197,29 @@ can produce is a success, including the ones where the file survived. ADR-0021 r
 `ManagementActionTest` guards it — the test fails the moment a probe starts confirming the capability,
 which is precisely when the decision needs revisiting.
 
-### Slice 8 — user management (EPIC USER)
+### Slice 8 — user management (EPIC USER) *(done)*
 
-Admin-only, not cached offline, and never displaying a token or a password hash.
+Admin-only, never cached, and the token problem solved by absence rather than by filtering.
+
+**There is no `token` property anywhere.** `GET /api/users` returns every user's live access token in
+plain text to any admin who asks. USER-001 says tokens are never displayed; the stronger rule this build
+enforces is that the value is never *parsed* — `UserSummaryDto` has no field for it, so there is nothing to
+store, log, put in a crash report or render by accident. `pash`, the password hash, is absent for the same
+reason, and `CapturedShapesTest` asserts the fixture does contain the token so the omission stays
+deliberate rather than becoming an oversight somebody "fixes".
+
+**Nothing is cached.** `ServerUserRepository` has no `observe`, no Room table and nowhere to put one, which
+is USER-001's "not cached for offline viewing by default" expressed as an absence. The list is who exists on
+somebody's private server and what each may do, read on a device other household members also use.
+
+**The password is cleared on every outcome**, not only on success — a failed create leaves the username so
+the administrator can retry and does not leave the password in memory behind a screen they may put down.
+
+**A new account is created active**, because the server defaults it to inactive and an account nobody can
+sign in to is not what "created" means.
+
+**Deleting a user is absent, not disabled.** USER-003 puts it in later scope "unless thoroughly
+contract-tested", and disabling is what it prefers where the server supports it. This one does.
 
 ### Not in these slices
 

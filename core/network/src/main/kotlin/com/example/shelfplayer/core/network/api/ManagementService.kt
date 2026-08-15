@@ -148,4 +148,43 @@ internal interface ManagementService {
         @Header(AUTHORIZATION) bearer: String,
         @Path("itemId") itemId: String,
     ): Response<ResponseBody>
+
+    /**
+     * PRODUCT_SPEC USER-001 — every account on the server. Admin or root only.
+     *
+     * **This response carries every user's live access token.** [UserSummaryDto] does not model the field,
+     * which is the strongest form USER-001's "tokens are never displayed" can take: the value is discarded
+     * by the deserializer, so nothing downstream can hold it, log it or render it by accident.
+     */
+    @GET("api/users")
+    suspend fun listUsers(@Header(AUTHORIZATION) bearer: String): Response<UsersResponseDto>
+
+    /**
+     * PRODUCT_SPEC USER-002 — create an account.
+     *
+     * `isActive` must be sent explicitly. The server stores `!!req.body.isActive`, so omitting it creates an
+     * account that cannot sign in — captured both ways, as `user-create.json` and `user-create-active.json`.
+     *
+     * A duplicate username answers `400` with a plain-text body, which USER-002 turns into a field-level
+     * error rather than a general failure.
+     */
+    @POST("api/users")
+    suspend fun createUser(
+        @Header(AUTHORIZATION) bearer: String,
+        @Body request: CreateUserRequestDto,
+    ): Response<CreateUserResponseDto>
+
+    /**
+     * PRODUCT_SPEC USER-003 — change an account, including disabling it.
+     *
+     * A partial body: only the keys sent are considered, so disabling somebody is `{"isActive": false}` and
+     * nothing else. Sending the whole user back would rewrite permissions an administrator did not open
+     * this screen to change.
+     */
+    @PATCH("api/users/{userId}")
+    suspend fun updateUser(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("userId") userId: String,
+        @Body body: JsonObject,
+    ): Response<ResponseBody>
 }

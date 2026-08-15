@@ -31,6 +31,74 @@ internal data class MediaUpdateResponseDto(val updated: Boolean = false, val lib
 internal data class CoverUploadResponseDto(val success: Boolean = false, val cover: String? = null)
 
 /**
+ * `GET /api/users`.
+ *
+ * The envelope. See [UserSummaryDto] for the field this deliberately does not have.
+ */
+@Serializable
+internal data class UsersResponseDto(val users: List<UserSummaryDto> = emptyList())
+
+/**
+ * One account, as an administrator may see it.
+ *
+ * ### The missing field is the point
+ *
+ * The server sends a `token` for every user in this list — a live access token, for accounts other than the
+ * caller's. There is no property for it here, and adding one would be a defect rather than a feature:
+ * PRODUCT_SPEC USER-001 forbids displaying tokens, and the only way to guarantee that across a codebase is
+ * for the value never to be parsed. `pash`, the password hash, is absent for the same reason.
+ *
+ * `CapturedShapesTest` asserts the fixture *does* contain the token, so this omission stays deliberate
+ * rather than becoming an oversight somebody "fixes".
+ */
+@Serializable
+internal data class UserSummaryDto(
+    val id: String? = null,
+    val username: String? = null,
+    val type: String? = null,
+    val isActive: Boolean = false,
+    val isLocked: Boolean = false,
+    val permissions: UserPermissionsDto? = null,
+    val librariesAccessible: List<String> = emptyList(),
+)
+
+@Serializable
+internal data class UserPermissionsDto(
+    val download: Boolean = false,
+    val update: Boolean = false,
+    val delete: Boolean = false,
+    val upload: Boolean = false,
+    val accessAllLibraries: Boolean = false,
+)
+
+/**
+ * `POST /api/users`.
+ *
+ * [isActive] is not optional in practice: the server reads `!!req.body.isActive`, so omitting it creates an
+ * account nobody can sign in to.
+ */
+@Serializable
+internal data class CreateUserRequestDto(
+    val username: String,
+    val password: String,
+    val type: String,
+    val isActive: Boolean,
+    val permissions: CreateUserPermissionsDto,
+)
+
+@Serializable
+internal data class CreateUserPermissionsDto(
+    val download: Boolean,
+    val update: Boolean,
+    val delete: Boolean,
+    val upload: Boolean,
+)
+
+/** `POST /api/users` — the created account, in the same shape as a listed one, token included and dropped. */
+@Serializable
+internal data class CreateUserResponseDto(val user: UserSummaryDto? = null)
+
+/**
  * `GET /api/search/books` — one candidate from a metadata provider.
  *
  * **Every field is optional, including the ones that look mandatory.** The shape varies by provider:

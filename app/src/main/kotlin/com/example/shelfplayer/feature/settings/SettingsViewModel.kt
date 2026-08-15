@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
@@ -27,6 +28,7 @@ import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
+import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
@@ -43,6 +45,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -62,6 +65,14 @@ data class DeviceReaders @Inject constructor(
     val car: CarReadinessReader,
     val launcherIcons: LauncherIcons,
     val metrics: PlaybackMetricsRecorder,
+    /**
+     * PRODUCT_SPEC ROUTE-002 — the remembered output devices and their policies.
+     *
+     * Folded in here when the account-management row arrived and the constructor reached eleven
+     * parameters. It belongs with the rest: everything in this bundle answers "what does this *device*
+     * know", and the known-output-device list is the one entry that was outside it for no reason.
+     */
+    val known: DeviceRepository,
 )
 
 /**
@@ -92,13 +103,13 @@ data class DeviceReaders @Inject constructor(
 class SettingsViewModel @Inject constructor(
     observeLibraries: ObserveLibrariesUseCase,
     observeServerDiagnostics: ObserveServerDiagnosticsUseCase,
+    profiles: ProfileRepository,
     diagnostics: DiagnosticsRepository,
     private val preferences: PreferencesRepository,
     private val sleepTimer: SleepTimerRepository,
     sessionSync: SessionSyncRepository,
     private val device: DeviceReaders,
     private val playbackSettings: PlaybackSettingsRepository,
-    private val devices: DeviceRepository,
 ) : ViewModel() {
 
     /**
@@ -117,7 +128,7 @@ class SettingsViewModel @Inject constructor(
      */
     val playbackMetrics: StateFlow<PlaybackMetrics> = device.metrics.metrics
 
-    val knownDevices: StateFlow<List<KnownDevice>> = devices.observeDevices().stateIn(
+    val knownDevices: StateFlow<List<KnownDevice>> = device.known.observeDevices().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
         initialValue = emptyList(),
@@ -125,12 +136,12 @@ class SettingsViewModel @Inject constructor(
 
     /** PRODUCT_SPEC ROUTE-002 — `Auto-play` is chosen here, per device, and nowhere else. */
     fun onDevicePolicyChanged(deviceId: String, policy: DevicePolicy) {
-        viewModelScope.launch { devices.setPolicy(deviceId, policy) }
+        viewModelScope.launch { device.known.setPolicy(deviceId, policy) }
     }
 
     /** Forgetting a device somebody no longer owns. It returns with the default policy if it comes back. */
     fun onDeviceForgotten(deviceId: String) {
-        viewModelScope.launch { devices.forget(deviceId) }
+        viewModelScope.launch { device.known.forget(deviceId) }
     }
 
     /**
@@ -142,6 +153,20 @@ class SettingsViewModel @Inject constructor(
      */
     private val _launcherIcon = MutableStateFlow(device.launcherIcons.current())
     val launcherIcon: StateFlow<LauncherIcon> = _launcherIcon.asStateFlow()
+
+    /**
+     * PRODUCT_SPEC USER-001 — "only admin/root profiles can open server user management".
+     *
+     * Its own flow rather than a field on [SettingsUiState], for the reason the launcher icon has its own:
+     * the `combine` behind that state is already nesting to stay under Kotlin's five-flow arity, and a
+     * sixth source would cost another nesting level to carry one boolean.
+     *
+     * Decides whether the row **exists**, not whether it is greyed out. A disabled row is a promise that
+     * pressing it might one day work, and for an ordinary account it never will.
+     */
+    val isAdmin: StateFlow<Boolean> = profiles.observeActiveProfile()
+        .map { profile -> profile?.role == ProfileRole.Admin }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), false)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         observeLibraries(),

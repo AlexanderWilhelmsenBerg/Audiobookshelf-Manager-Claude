@@ -7,7 +7,9 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.NewServerUser
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ServerUser
 import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
@@ -22,6 +24,8 @@ import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
 import com.example.shelfplayer.core.network.http.NetworkErrorMapper
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -283,6 +287,115 @@ internal class AbsManagementApi @Inject constructor(
                 }
             }
         }
+    }
+
+    override suspend fun listUsers(profileId: ProfileId): AppResult<List<ServerUser>> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+
+        val transport = resultOf(onError = errors::fromThrowable) {
+            services.managementService(connection.serverUrl).listUsers(bearerOf(connection.accessToken.value))
+        }
+        return when (transport) {
+            is AppResult.Failure -> AppResult.Failure(transport.error)
+            is AppResult.Success -> {
+                val response = transport.value
+                if (response.isSuccessful) {
+                    // An account with no id cannot be acted on, so it is dropped rather than shown as a row
+                    // whose buttons would fail.
+                    AppResult.Success(response.body()?.users.orEmpty().mapNotNull(::userOf))
+                } else {
+                    AppResult.Failure(errors.fromStatus(response.code()))
+                }
+            }
+        }
+    }
+
+    override suspend fun createUser(profileId: ProfileId, user: NewServerUser): AppResult<ServerUser> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+
+        val transport = resultOf(onError = errors::fromThrowable) {
+            services.managementService(connection.serverUrl).createUser(
+                bearer = bearerOf(connection.accessToken.value),
+                request = CreateUserRequestDto(
+                    username = user.username,
+                    password = user.password,
+                    type = user.accountType,
+                    // Explicit, always. The server reads `!!req.body.isActive`, so an omitted flag creates
+                    // an account that cannot sign in.
+                    isActive = user.isActive,
+                    permissions = CreateUserPermissionsDto(
+                        download = user.canDownload,
+                        update = user.canUpdate,
+                        delete = user.canDelete,
+                        upload = user.canUpload,
+                    ),
+                ),
+            )
+        }
+        return when (transport) {
+            is AppResult.Failure -> AppResult.Failure(transport.error)
+            is AppResult.Success -> createdUserOf(transport.value)
+        }
+    }
+
+    private fun createdUserOf(response: retrofit2.Response<CreateUserResponseDto>): AppResult<ServerUser> {
+        if (!response.isSuccessful) return AppResult.Failure(errors.fromStatus(response.code()))
+        val created = response.body()?.user?.let(::userOf)
+            ?: return AppError.ApiCompatibility(
+                summary = "The server created the account but did not describe it.",
+                missingField = "user",
+            ).asFailure()
+        // The username is the administrator's own choice and is not private in the sense 14.5 means, but it
+        // is still somebody's identity — the count is enough to say the operation happened.
+        logger.info(LogCategory.Settings, "Created a server account")
+        return AppResult.Success(created)
+    }
+
+    override suspend fun setUserActive(profileId: ProfileId, userId: String, isActive: Boolean): AppResult<Unit> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+
+        val transport = resultOf(onError = errors::fromThrowable) {
+            services.managementService(connection.serverUrl).updateUser(
+                bearer = bearerOf(connection.accessToken.value),
+                userId = userId,
+                // One key. Sending the whole user back would rewrite permissions the administrator did not
+                // open this screen to change.
+                body = buildJsonObject { put("isActive", isActive) },
+            )
+        }
+        return when (transport) {
+            is AppResult.Failure -> AppResult.Failure(transport.error)
+            is AppResult.Success -> {
+                transport.value.body()?.close()
+                if (transport.value.isSuccessful) {
+                    AppResult.Success(Unit)
+                } else {
+                    AppResult.Failure(errors.fromStatus(transport.value.code()))
+                }
+            }
+        }
+    }
+
+    /** A listed account. The token the server sent alongside it was never parsed — see [UserSummaryDto]. */
+    private fun userOf(dto: UserSummaryDto): ServerUser? {
+        val id = dto.id?.takeIf(String::isNotBlank) ?: return null
+        val permissions = dto.permissions
+        return ServerUser(
+            id = id,
+            username = dto.username.orEmpty(),
+            accountType = dto.type.orEmpty(),
+            isActive = dto.isActive,
+            isLocked = dto.isLocked,
+            canDownload = permissions?.download == true,
+            canUpdate = permissions?.update == true,
+            canDelete = permissions?.delete == true,
+            canUpload = permissions?.upload == true,
+            hasAllLibraryAccess = permissions?.accessAllLibraries == true,
+            accessibleLibraryIds = dto.librariesAccessible,
+        )
     }
 
     private fun candidateOf(provider: String, dto: MatchCandidateDto): MatchCandidate? {

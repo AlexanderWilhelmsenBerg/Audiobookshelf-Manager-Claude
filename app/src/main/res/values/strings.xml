@@ -871,4 +871,23 @@
     <string name="book_remove_server_downloads">Also delete the copy downloaded on this device</string>
     <string name="book_remove_server_confirm">Remove</string>
     <string name="book_remove_server_cancel">Cancel</string>
+
+    <!-- PRODUCT_SPEC EPIC USER - server account management. -->
+    <string name="users_title">Server accounts</string>
+    <string name="users_refresh">Refresh</string>
+    <string name="users_state_active">Active</string>
+    <string name="users_state_disabled">Disabled</string>
+    <string name="users_state_locked">Locked out</string>
+    <string name="users_grant_download">download</string>
+    <string name="users_grant_update">edit</string>
+    <string name="users_grant_delete">delete</string>
+    <string name="users_grant_upload">upload</string>
+    <string name="users_grant_none">no permissions</string>
+    <string name="users_create_title">Add an account</string>
+    <string name="users_username">Username</string>
+    <string name="users_password">Password</string>
+    <string name="users_username_required">Enter a username.</string>
+    <string name="users_password_required">Enter a password.</string>
+    <string name="users_create">Create account</string>
+    <string name="settings_server_users">Manage server accounts</string>
 </resources>

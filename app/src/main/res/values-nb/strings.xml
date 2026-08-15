@@ -685,4 +685,23 @@
     <string name="book_remove_server_downloads">Slett ogs\u00e5 kopien som er lastet ned p\u00e5 denne enheten</string>
     <string name="book_remove_server_confirm">Fjern</string>
     <string name="book_remove_server_cancel">Avbryt</string>
+
+    <!-- PRODUCT_SPEC EPIC USER - server account management. -->
+    <string name="users_title">Serverkontoer</string>
+    <string name="users_refresh">Oppdater</string>
+    <string name="users_state_active">Aktiv</string>
+    <string name="users_state_disabled">Deaktivert</string>
+    <string name="users_state_locked">L\u00e5st ute</string>
+    <string name="users_grant_download">nedlasting</string>
+    <string name="users_grant_update">redigering</string>
+    <string name="users_grant_delete">sletting</string>
+    <string name="users_grant_upload">opplasting</string>
+    <string name="users_grant_none">ingen tillatelser</string>
+    <string name="users_create_title">Legg til en konto</string>
+    <string name="users_username">Brukernavn</string>
+    <string name="users_password">Passord</string>
+    <string name="users_username_required">Skriv inn et brukernavn.</string>
+    <string name="users_password_required">Skriv inn et passord.</string>
+    <string name="users_create">Opprett konto</string>
+    <string name="settings_server_users">Administrer serverkontoer</string>
 </resources>

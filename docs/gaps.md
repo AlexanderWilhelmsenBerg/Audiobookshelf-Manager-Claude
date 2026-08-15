@@ -1,6 +1,6 @@
 # Open gaps
 
-**As of:** 2026-08-15, Phase 5 slice 2.
+**As of:** 2026-08-15, end of Phase 5.
 
 Every requirement this app has *not* fully met, and why. Kept as one document rather than a note per phase,
 because the question anybody actually asks is "what is missing" and not "what was missing in April".
@@ -95,14 +95,17 @@ recreation — and the advanced form is the part nobody can use without the diag
 
 ## Phase 5 — Management tools
 
-In progress: slices 1, 2 and 7 are done. Its requirements become gaps only if the phase is declared done
-without them. Three entries below are not "not built yet" — they are settled.
+**Complete.** All eight slices are done, one of them — source-file deletion — correctly with no feature at
+all. What is left below is genuinely open, and three of the five are settled rather than missing.
 
 | Requirement | Gap | State |
 | --- | --- | --- |
 | MGR-006 | **Source-file deletion ships no feature.** Both endpoints exist, and neither can prove the deletion happened: a failed filesystem removal is logged on the server and discarded, and the request succeeds either way. MGR-006 requires the response to confirm it. | **Closed by decision** — ADR-0021 |
 | MGR-003 | **A successful match is still uncaptured, and no longer blocking.** Quick match turned out not to be a preview at all, so MGR-003 is built on `GET /api/search/books`, which writes nothing. That endpoint reaches a third party, so its *shape* is captured and its results deliberately are not. | Unblocked |
 | MGR-002 | **Cover *upload* has still never been captured** — only removal. It needs a multipart body and an image the capture script should not invent. The contract is known from the project's own source: multipart, part named `cover`, validated on the filename extension. | Open, source-derived |
+| MGR-007 | **Embed metadata is not built**, and deliberately: it asks the server to rewrite the user's source audio files, which needs its own decision about whether this app should offer it at all. PRODUCT_SPEC lists it; nothing in Phase 5's plan claimed it. | Open, needs a decision |
+| USER-003 | **Deleting a user is not offered**, and disabling is. USER-003 puts deletion in later scope "unless thoroughly contract-tested", and it has not been. Library-access editing is also absent — the requirement asks for a warning about other devices' downloads first. | Deferred, correctly |
+| MGR-003 | **The provider is always Google.** Fourteen are available on a bare server and there is no picker, because nobody has asked which they want and the default works everywhere. | Open |
 | MGR-001 | **A name containing a comma cannot be typed.** Authors, narrators, genres and tags are edited as comma-separated text, which is the right shape for two-item lists and the wrong one for `Smith, Jr.`. A chip editor would fix it and costs four gestures where a text field costs one. | Open, by trade |
 | — | **Five refusal fixtures are captured but not committed.** The CI capture run produced them and the drift check is red until they land: `me-listener`, `item-update-forbidden`, `item-delete-forbidden`, `item-scan-forbidden`, `search-books-shape`. The run's log confirms the server refused all three attempts, so the *finding* is established; the files are not. | Open until the artifact is committed |
 

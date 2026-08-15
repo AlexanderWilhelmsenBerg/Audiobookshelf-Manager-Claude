@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +20,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -27,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -53,11 +56,13 @@ import kotlin.time.Duration
 fun SettingsRoute(
     onNavigateUp: () -> Unit,
     onManageDownloads: () -> Unit,
+    onManageServerUsers: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
+    val isAdmin by viewModel.isAdmin.collectAsStateWithLifecycle()
     val knownDevices by viewModel.knownDevices.collectAsStateWithLifecycle()
     val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     SettingsScreen(
@@ -70,7 +75,11 @@ fun SettingsRoute(
             onPolicyChanged = viewModel::onDevicePolicyChanged,
             onForget = viewModel::onDeviceForgotten,
         ),
-        onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
+        serverTab = ServerTabInputs(
+            onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
+            isAdmin = isAdmin,
+            onManageServerUsers = onManageServerUsers,
+        ),
         sleepTimerActions = SleepTimerSettingsActions(
             onDefaultChanged = viewModel::onSleepTimerDefaultChanged,
             onFadeChanged = viewModel::onSleepTimerFadeChanged,
@@ -109,7 +118,7 @@ fun SettingsRoute(
 @Composable
 fun SettingsScreen(
     uiState: SettingsUiState,
-    onDefaultLibraryChanged: (LibraryId?) -> Unit,
+    serverTab: ServerTabInputs,
     sleepTimerActions: SleepTimerSettingsActions,
     playbackActions: PlaybackSettingsActions,
     onNavigateUp: () -> Unit,
@@ -159,7 +168,7 @@ fun SettingsScreen(
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
                 when (selected) {
-                    SettingsTab.Server -> serverTab(uiState, onDefaultLibraryChanged)
+                    SettingsTab.Server -> serverTab(uiState, serverTab)
                     SettingsTab.Sleep -> sleepTimerTab(
                         settings = uiState.sleepTimer,
                         history = uiState.sleepTimerHistory,
@@ -193,9 +202,19 @@ fun SettingsScreen(
 }
 
 /** PRODUCT_SPEC SET-002 — which server, and which of its libraries. */
-private fun LazyListScope.serverTab(uiState: SettingsUiState, onDefaultLibraryChanged: (LibraryId?) -> Unit) {
+private fun LazyListScope.serverTab(uiState: SettingsUiState, inputs: ServerTabInputs) {
     item { SectionHeader(text = stringResource(R.string.settings_section_server)) }
     uiState.server?.let { server -> serverInfoRows(server) }
+
+    // PRODUCT_SPEC USER-001 — admin and root only, and absent rather than disabled for everybody else.
+    if (inputs.isAdmin) {
+        item {
+            SettingsNavigationRow(
+                label = stringResource(R.string.settings_server_users),
+                onClick = inputs.onManageServerUsers,
+            )
+        }
+    }
 
     item { SectionHeader(text = stringResource(R.string.settings_section_libraries)) }
     if (uiState.libraries.isEmpty()) {
@@ -205,7 +224,7 @@ private fun LazyListScope.serverTab(uiState: SettingsUiState, onDefaultLibraryCh
             LibraryRow(
                 library = library,
                 isDefault = library.id == uiState.defaultLibraryId,
-                onToggled = { isDefault -> onDefaultLibraryChanged(library.id.takeIf { isDefault }) },
+                onToggled = { isDefault -> inputs.onDefaultLibraryChanged(library.id.takeIf { isDefault }) },
             )
         }
         item { Hint(text = stringResource(R.string.settings_default_library_hint)) }
@@ -403,4 +422,28 @@ private enum class SettingsTab(val labelRes: Int) {
     Playback(R.string.settings_tab_playback),
     Sleep(R.string.settings_tab_sleep),
     About(R.string.settings_tab_about),
+}
+
+/**
+ * PRODUCT_SPEC SET-002 / USER-001 — what the Server tab needs beyond [SettingsUiState].
+ *
+ * A bundle rather than three parameters, for the reason detekt's limit exists: `SettingsScreen` was already
+ * at ten, and the eleventh is where an argument list stops being readable. [isAdmin] travels with the two
+ * callbacks because it decides whether one of them is reachable at all, and separating a flag from the
+ * action it gates is how the two end up disagreeing.
+ */
+@Immutable
+data class ServerTabInputs(
+    val onDefaultLibraryChanged: (LibraryId?) -> Unit = {},
+    /** PRODUCT_SPEC USER-001 — admin and root only. `false` removes the row rather than disabling it. */
+    val isAdmin: Boolean = false,
+    val onManageServerUsers: () -> Unit = {},
+)
+
+@Composable
+private fun SettingsNavigationRow(label: String, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(label) },
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }

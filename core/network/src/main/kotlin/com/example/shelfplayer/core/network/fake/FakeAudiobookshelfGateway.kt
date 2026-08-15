@@ -11,12 +11,14 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.NewServerUser
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.ServerUser
 import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
@@ -128,6 +130,16 @@ class FakeAudiobookshelfGateway @Inject constructor(
 
     override suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
         AppError.ApiCompatibility(summary = "The demo library cannot be edited.").asFailure()
+
+    /** PRODUCT_SPEC EPIC USER — the demo document describes one fixture profile, not a server's accounts. */
+    override suspend fun listUsers(profileId: ProfileId): AppResult<List<ServerUser>> =
+        AppError.ApiCompatibility(summary = "The demo library has no server accounts to manage.").asFailure()
+
+    override suspend fun createUser(profileId: ProfileId, user: NewServerUser): AppResult<ServerUser> =
+        AppError.ApiCompatibility(summary = "The demo library cannot create accounts.").asFailure()
+
+    override suspend fun setUserActive(profileId: ProfileId, userId: String, isActive: Boolean): AppResult<Unit> =
+        AppError.ApiCompatibility(summary = "The demo library cannot change accounts.").asFailure()
 
     private fun readOnly(): AppResult<BookSnapshot> = AppError.ApiCompatibility(
         summary = "The demo library cannot be edited.",

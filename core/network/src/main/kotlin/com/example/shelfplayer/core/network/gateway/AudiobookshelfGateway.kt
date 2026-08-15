@@ -3,10 +3,12 @@ package com.example.shelfplayer.core.network.gateway
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.NewServerUser
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.ServerUser
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
@@ -482,6 +484,26 @@ interface ManagementApi {
      * what makes the confirmation's promise safe.
      */
     suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC USER-001 — every account on the server.
+     *
+     * Never cached. USER-001 says the list is "not cached for offline viewing by default", and this
+     * signature is why that is easy to honour: there is no observe, no Room table and nowhere to put one.
+     */
+    suspend fun listUsers(profileId: ProfileId): AppResult<List<ServerUser>>
+
+    /** PRODUCT_SPEC USER-002 — create an account, active unless told otherwise. */
+    suspend fun createUser(profileId: ProfileId, user: NewServerUser): AppResult<ServerUser>
+
+    /**
+     * PRODUCT_SPEC USER-003 — enable or disable an account.
+     *
+     * Disabling rather than deleting, which the requirement prefers where the server supports it — and this
+     * one does. Deleting a user is deliberately absent: USER-003 puts it in later scope "unless thoroughly
+     * contract-tested", and it has not been.
+     */
+    suspend fun setUserActive(profileId: ProfileId, userId: String, isActive: Boolean): AppResult<Unit>
 }
 
 /**
