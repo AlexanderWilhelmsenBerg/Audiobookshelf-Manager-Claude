@@ -44,6 +44,8 @@ internal object AuthMapper {
                 userId = user.id?.takeIf(String::isNotBlank),
                 username = username,
                 role = toRole(user.type),
+                // PRODUCT_SPEC 5.1 — the server's own word, kept so an unrecognised type is diagnosable.
+                accountType = user.type.orEmpty(),
                 access = LibraryAccess(
                     // Absent permissions mean no grant, not a full one: PRODUCT_SPEC 5.2's safe default
                     // is the restrictive one, and a server that sent no permissions block has told us
@@ -54,6 +56,11 @@ internal object AuthMapper {
                     // every item is an account whose sync is allowed to delete another account's books.
                     hasAllTagAccess = user.permissions?.accessAllTags ?: false,
                     canDownload = user.permissions?.download ?: false,
+                    // PRODUCT_SPEC MGR-001 / MGR-002 / MGR-005 — same safe default: no permissions
+                    // block means no management grant, never a full one.
+                    canUpdate = user.permissions?.update ?: false,
+                    canDelete = user.permissions?.delete ?: false,
+                    canUpload = user.permissions?.upload ?: false,
                 ),
             ),
         )
@@ -82,11 +89,18 @@ internal object AuthMapper {
                 userId = user.id?.takeIf(String::isNotBlank),
                 username = user.username,
                 role = toRole(user.type),
+                // PRODUCT_SPEC 5.1 — the server's own word, kept so an unrecognised type is diagnosable.
+                accountType = user.type.orEmpty(),
                 access = LibraryAccess(
                     hasAllLibraryAccess = user.permissions?.accessAllLibraries ?: false,
                     accessibleLibraryIds = user.librariesAccessible.filter(String::isNotBlank).map(::LibraryId),
                     hasAllTagAccess = user.permissions?.accessAllTags ?: false,
                     canDownload = user.permissions?.download ?: false,
+                    // PRODUCT_SPEC MGR-001 / MGR-002 / MGR-005 — same safe default: no permissions
+                    // block means no management grant, never a full one.
+                    canUpdate = user.permissions?.update ?: false,
+                    canDelete = user.permissions?.delete ?: false,
+                    canUpload = user.permissions?.upload ?: false,
                 ),
                 progress = user.mediaProgress.mapNotNull(::toProgress),
                 bookmarks = user.bookmarks.mapNotNull(::toBookmark),

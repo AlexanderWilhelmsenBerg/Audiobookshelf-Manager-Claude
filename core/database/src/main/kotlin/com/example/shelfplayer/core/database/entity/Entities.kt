@@ -119,6 +119,36 @@ data class ProfileEntity(
      * column would invite a reader to treat unknown as permitted.
      */
     @ColumnInfo(defaultValue = "0") val canDownload: Boolean,
+    /**
+     * PRODUCT_SPEC MGR-001 / MGR-005 / MGR-002 — the three grants every management action is gated on.
+     *
+     * All three default to `0`, for the reason [canDownload] does and more strongly: a profile whose grants
+     * have not been re-read is offered no management action rather than one the server would refuse. The
+     * failure of guessing wrong here is not a disabled button — it is a `403` after the user believed they
+     * had changed something.
+     *
+     * Rewritten by sign-in and by the `403` permission refresh, so a profile that does hold them corrects
+     * itself on next use.
+     *
+     * These four carry **Kotlin** defaults as well as column ones, unlike [canDownload] above. That is a
+     * decision about which way a forgotten argument fails: omitting a permission here produces a profile
+     * that may do nothing, which is the same direction the column default points and the same direction
+     * PRODUCT_SPEC principle 4 wants. A required argument would be caught by the compiler, but only after
+     * somebody had already decided what to pass.
+     */
+    @ColumnInfo(defaultValue = "0") val canUpdate: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canDelete: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canUpload: Boolean = false,
+    /**
+     * PRODUCT_SPEC 5.1 / USER-001 — the account type the server reports: `root`, `admin`, `user`, `guest`.
+     *
+     * Stored as the server's own string rather than as this app's [ProfileRole], because the two are not the
+     * same thing and the mapping is this app's opinion. A type the app has never heard of is preserved and
+     * maps to the least privileged role, so a future Audiobookshelf type cannot silently promote anybody.
+     *
+     * Empty for every row written before version 18, which maps to `Listener`.
+     */
+    @ColumnInfo(defaultValue = "''") val accountType: String = "",
 )
 
 @Entity(

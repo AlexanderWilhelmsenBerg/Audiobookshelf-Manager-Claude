@@ -77,21 +77,26 @@ internal object AuthEntityMappers {
 
     fun authMethodsJson(authMethods: List<String>): String = StringListConverters.fromStringList(authMethods)
 
-    fun toEntity(profile: Profile, remoteUserId: String?, access: LibraryAccess) = ProfileEntity(
-        profileId = profile.id.value,
-        serverId = profile.serverId.value,
-        remoteUserId = remoteUserId,
-        username = profile.username,
-        displayName = profile.displayName,
-        role = profile.role.name,
-        requiresReauthentication = profile.requiresReauthentication,
-        lastUsedAt = profile.lastUsedAt?.toEpochMilli(),
-        isFixture = profile.isFixture,
-        accessibleLibrariesJson = accessibleLibrariesJson(access),
-        hasAllLibraryAccess = access.hasAllLibraryAccess,
-        hasAllTagAccess = access.hasAllTagAccess,
-        canDownload = access.canDownload,
-    )
+    fun toEntity(profile: Profile, remoteUserId: String?, access: LibraryAccess, accountType: String = "") =
+        ProfileEntity(
+            profileId = profile.id.value,
+            serverId = profile.serverId.value,
+            remoteUserId = remoteUserId,
+            username = profile.username,
+            displayName = profile.displayName,
+            role = profile.role.name,
+            requiresReauthentication = profile.requiresReauthentication,
+            lastUsedAt = profile.lastUsedAt?.toEpochMilli(),
+            isFixture = profile.isFixture,
+            accessibleLibrariesJson = accessibleLibrariesJson(access),
+            hasAllLibraryAccess = access.hasAllLibraryAccess,
+            hasAllTagAccess = access.hasAllTagAccess,
+            canDownload = access.canDownload,
+            canUpdate = access.canUpdate,
+            canDelete = access.canDelete,
+            canUpload = access.canUpload,
+            accountType = accountType,
+        )
 
     /**
      * PRODUCT_SPEC 5.2 — the stored grant, read back.
@@ -106,6 +111,9 @@ internal object AuthEntityMappers {
             .map(::LibraryId),
         hasAllTagAccess = entity.hasAllTagAccess,
         canDownload = entity.canDownload,
+        canUpdate = entity.canUpdate,
+        canDelete = entity.canDelete,
+        canUpload = entity.canUpload,
     )
 
     fun accessibleLibrariesJson(access: LibraryAccess): String =

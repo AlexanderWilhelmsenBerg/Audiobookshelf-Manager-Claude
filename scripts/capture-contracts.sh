@@ -807,6 +807,69 @@ if [ -n "$ITEM_ID" ]; then
   capture media-progress-unfinished GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
 fi
 
+# --- Management: what the server will and will not let a client change (EPIC MGR) ----------------
+#
+# Phase 5's whole problem is that none of these shapes had ever been seen. PRODUCT_SPEC 22.4 forbids
+# inventing an endpoint and 22.5 forbids relying on a response before a fixture records it, so nothing in
+# EPIC MGR can be built against a guess — these captures are what unblock it.
+#
+# The order is deliberate and the destructive probe is last. A `PATCH` that renames the item would change
+# what every earlier capture recorded if it ran first, and a delete would remove the item the bookmark and
+# progress captures depend on. Everything read-only happens before anything is written.
+#
+# The container's root account holds `update`, `delete` and `upload`, so a `403` here would be a fact about
+# the *endpoint* rather than about this account — which is exactly the distinction the permission gating in
+# the app has to make.
+if [ -n "$ITEM_ID" ]; then
+  # MGR-004 — the two scan endpoints. Captured before any edit, because a scan can rewrite metadata from
+  # the file's own tags and would then be indistinguishable from what the PATCH below does.
+  capture item-scan POST "/api/items/$ITEM_ID/scan" -H "$AUTH_HEADER"
+
+  # MGR-003 — quick match. Sent with no provider so the response records what the server does with a bare
+  # request; a candidate search needs a provider this container has no key for, and inventing one would
+  # capture an error shape rather than a match shape.
+  capture item-match POST "/api/items/$ITEM_ID/match" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d '{}'
+
+  # MGR-001 — the edit. One field, and one the seeded fixture does not already use, so the response can be
+  # read as "this is what changed" rather than "this is what was already there".
+  capture item-update PATCH "/api/items/$ITEM_ID/media" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"metadata":{"subtitle":"A subtitle written by the contract capture"}}'
+
+  capture item-after-update GET "/api/items/$ITEM_ID?expanded=1" -H "$AUTH_HEADER"
+
+  # MGR-002 — removing a cover. Captured rather than uploading one: an upload needs a multipart body this
+  # script has no image for, and the removal's response shape is the half the app has to understand before
+  # it can claim a cover is gone.
+  capture item-cover-remove DELETE "/api/items/$ITEM_ID/cover" -H "$AUTH_HEADER"
+fi
+
+# MGR-004 — a library scan. After the item captures, because it can rewrite the item.
+if [ -n "$LIBRARY_ID" ]; then
+  capture library-scan POST "/api/libraries/$LIBRARY_ID/scan" -H "$AUTH_HEADER"
+fi
+
+# EPIC USER — the user list, and what a created user looks like coming back.
+#
+# `USER-001` says tokens and password hashes are never displayed, and this is how the app finds out whether
+# the server sends them at all: a field that is never rendered is still a field that reached the device.
+capture users-list GET /api/users -H "$AUTH_HEADER"
+
+capture user-create POST /api/users \
+  -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+  -d '{"username":"contractlistener","password":"contract-listener-password","type":"user"}'
+
+# MGR-005 — **the destructive one, last.** Removing the item from the database is what the requirement is
+# about, and its response is the only thing that can tell the app whether a removal actually happened.
+#
+# It runs after everything that needs the item, and its own capture is the last word on that item. Nothing
+# below may depend on `ITEM_ID`.
+if [ -n "$ITEM_ID" ]; then
+  capture item-delete DELETE "/api/items/$ITEM_ID" -H "$AUTH_HEADER"
+  capture item-after-delete GET "/api/items/$ITEM_ID" -H "$AUTH_HEADER"
+fi
+
 capture logout POST /logout -H "$AUTH_HEADER"
 
 log "captured $(find "$OUT_DIR" -name '*.json' | wc -l) fixtures"

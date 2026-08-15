@@ -166,7 +166,9 @@ class DefaultAuthRepository @Inject constructor(
             // The grant is written with the profile, not after it: PRODUCT_SPEC 5.2 has the sync apply it,
             // and a profile that exists for even a moment without one would sync with `LibraryAccess.None`
             // and soft-delete every cached book in the process.
-            profileDao.upsertProfile(AuthEntityMappers.toEntity(profile, session.userId, session.access))
+            profileDao.upsertProfile(
+                AuthEntityMappers.toEntity(profile, session.userId, session.access, session.accountType),
+            )
         }
 
         sessionTokens.adopt(profileId, session)
@@ -255,6 +257,13 @@ class DefaultAuthRepository @Inject constructor(
                     canDownload = renewed.value.access.canDownload,
                     role = renewed.value.role.name,
                 )
+                profileDao.setManagementPermissions(
+                    profileId = profileId.value,
+                    canUpdate = renewed.value.access.canUpdate,
+                    canDelete = renewed.value.access.canDelete,
+                    canUpload = renewed.value.access.canUpload,
+                    accountType = renewed.value.accountType,
+                )
                 logger.info(
                     LogCategory.Auth,
                     "Renewed a session without re-prompting",
@@ -326,6 +335,13 @@ class DefaultAuthRepository @Inject constructor(
                     hasAllTagAccess = access.hasAllTagAccess,
                     canDownload = access.canDownload,
                     role = account.value.role.name,
+                )
+                profileDao.setManagementPermissions(
+                    profileId = profileId.value,
+                    canUpdate = access.canUpdate,
+                    canDelete = access.canDelete,
+                    canUpload = access.canUpload,
+                    accountType = account.value.accountType,
                 )
                 profileDao.setRequiresReauthentication(profileId.value, required = false)
                 logger.info(
