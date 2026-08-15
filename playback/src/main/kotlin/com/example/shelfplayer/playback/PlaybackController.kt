@@ -99,7 +99,18 @@ class PlaybackController @Inject constructor(
      * signed in" and "this server could not be reached", and both are worth a message rather than a
      * play button that does nothing.
      */
-    suspend fun play(bookId: LibraryItemId): AppResult<Unit> {
+    suspend fun play(bookId: LibraryItemId): AppResult<Unit> = open(bookId, startPlaying = true)
+
+    /**
+     * PRODUCT_SPEC ROUTE-003 — loads a book **paused**, ready for a play from anywhere.
+     *
+     * The same path as [play] with the last call omitted, deliberately: a book that is armed rather than
+     * played must be armed *identically*, or the sleep timer, the outbox, auto-rewind and the speed would
+     * all be set up differently depending on how the book arrived.
+     */
+    suspend fun arm(bookId: LibraryItemId): AppResult<Unit> = open(bookId, startPlaying = false)
+
+    private suspend fun open(bookId: LibraryItemId, startPlaying: Boolean): AppResult<Unit> {
         _state.value = _state.value.copy(isLoading = true)
         return when (val opened = playbackRepository.openSession(bookId)) {
             is AppResult.Failure -> {
@@ -107,34 +118,40 @@ class PlaybackController @Inject constructor(
                 opened
             }
 
-            is AppResult.Success -> start(opened.value)
+            is AppResult.Success -> start(opened.value, startPlaying)
         }
     }
 
-    private suspend fun start(session: PlaybackSession): AppResult<Unit> = withContext(mainDispatcher) {
-        val media = connect() ?: return@withContext AppResult.Failure(
-            AppError.Playback(summary = "The player could not be started.", isRetryable = true),
-        )
-        // PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — the sleep timer, the outbox and auto-rewind all need
-        // to know, in that order. See [BookChanges]; the chapters travel to them here rather than in the
-        // playlist, because a long book's list in every `MediaItem`'s extras would be tens of kilobytes
-        // across the binder to answer one question.
-        bookChanges.onBookOpened(session)
-        chapters = session.chapters
-        lastChapter = null
-        // ADR-0016 — one item for the whole book, and the resume point is a book position because the
-        // player's timeline is the book. `BookMediaSourceFactory` turns the item into the concatenation.
-        val queue = MediaItems.queueFor(session)
-        media.setMediaItem(queue.item, queue.startPositionMs)
-        // PRODUCT_SPEC PLAY-007 — the book's own speed if it has one, the profile default otherwise, applied
-        // before `prepare` so the first second plays at the right rate rather than snapping a moment later.
-        media.setPlaybackSpeed(playbackSettings.speedFor(session.bookId).value)
-        media.prepare()
-        media.play()
-        // PRODUCT_SPEC PLAY-003 — the one history entry with no "from": there was no before.
-        applicationScope.launch { history.record(session.bookId, PlaybackEvent.Resume, null, session.startAt) }
-        AppResult.Success(Unit)
-    }
+    private suspend fun start(session: PlaybackSession, startPlaying: Boolean): AppResult<Unit> =
+        withContext(mainDispatcher) {
+            val media = connect() ?: return@withContext AppResult.Failure(
+                AppError.Playback(summary = "The player could not be started.", isRetryable = true),
+            )
+            // PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — the sleep timer, the outbox and auto-rewind all need
+            // to know, in that order. See [BookChanges]; the chapters travel to them here rather than in the
+            // playlist, because a long book's list in every `MediaItem`'s extras would be tens of kilobytes
+            // across the binder to answer one question.
+            bookChanges.onBookOpened(session)
+            chapters = session.chapters
+            lastChapter = null
+            // ADR-0016 — one item for the whole book, and the resume point is a book position because the
+            // player's timeline is the book. `BookMediaSourceFactory` turns the item into the concatenation.
+            val queue = MediaItems.queueFor(session)
+            media.setMediaItem(queue.item, queue.startPositionMs)
+            // PRODUCT_SPEC PLAY-007 — the book's own speed if it has one, the profile default otherwise, applied
+            // before `prepare` so the first second plays at the right rate rather than snapping a moment later.
+            media.setPlaybackSpeed(playbackSettings.speedFor(session.bookId).value)
+            media.prepare()
+            if (startPlaying) media.play()
+            // PRODUCT_SPEC PLAY-003 — the one history entry with no "from": there was no before.
+            //
+            // Only for a book that is actually playing. Arming one on app open is not listening, and recording
+            // it would put a Resume in the history for every launch of a build set to restore.
+            if (startPlaying) {
+                applicationScope.launch { history.record(session.bookId, PlaybackEvent.Resume, null, session.startAt) }
+            }
+            AppResult.Success(Unit)
+        }
 
     /**
      * The transport control a mini player and a notification share.

@@ -25,6 +25,7 @@ import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.CarReadiness
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.model.playback.DevicePolicy
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
@@ -36,10 +37,12 @@ import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
+import com.example.shelfplayer.core.model.playback.StartupMode
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import com.example.shelfplayer.core.testing.MainDispatcherRule
+import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.DeviceRepository
@@ -55,10 +58,12 @@ import com.example.shelfplayer.launcher.LauncherIcon
 import com.example.shelfplayer.launcher.LauncherIcons
 import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.NotificationAccessReader
+import com.example.shelfplayer.playback.PlaybackMetricsRecorder
 import com.example.shelfplayer.testing.FakePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
@@ -110,12 +115,37 @@ class SettingsViewModelTest {
         preferences = preferences,
         sleepTimer = sleepTimer,
         sessionSync = sessionSync,
-        device = DeviceReaders(notifications = notifications, car = car, launcherIcons = launcherIcons),
+        device = DeviceReaders(
+            notifications = notifications,
+            car = car,
+            launcherIcons = launcherIcons,
+            metrics = PlaybackMetricsRecorder(TestAppClock()),
+        ),
         playbackSettings = playbackSettings,
         devices = knownDevices,
     )
 
     private val knownDevices = FakeDevices()
+
+    /** PRODUCT_SPEC PLAY-002 — the setting is written; the player picks it up when it is next built. */
+    @Test
+    fun `choosing to duck stores it`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onFocusBehaviourChanged(FocusBehaviour.Duck)
+
+        assertEquals(FocusBehaviour.Duck, playbackSettings.observeSettings().first().focusBehaviour)
+    }
+
+    /** PRODUCT_SPEC ROUTE-003 — and the one that can make the app play on open is stored the same way. */
+    @Test
+    fun `choosing a startup mode stores it`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onStartupModeChanged(StartupMode.ResumeOnOpen)
+
+        assertEquals(StartupMode.ResumeOnOpen, playbackSettings.observeSettings().first().startupMode)
+    }
 
     /** PRODUCT_SPEC ROUTE-002 — the list is what the store says, ordered by the store. */
     @Test
@@ -506,6 +536,16 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
 
     override suspend fun setAutoPlayOnCarConnect(enabled: Boolean): AppResult<Unit> {
         controls.value = controls.value.copy(autoPlayOnCarConnect = enabled)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setFocusBehaviour(behaviour: FocusBehaviour): AppResult<Unit> {
+        controls.value = controls.value.copy(focusBehaviour = behaviour)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setStartupMode(mode: StartupMode): AppResult<Unit> {
+        controls.value = controls.value.copy(startupMode = mode)
         return AppResult.Success(Unit)
     }
 

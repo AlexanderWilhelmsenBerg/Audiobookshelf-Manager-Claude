@@ -473,6 +473,33 @@
       The four policy names are the load-bearing strings. "Arm only" and "Auto-play" differ by whether the
       room fills with sound, so neither may be vague: one *readies* the book, the other *starts* it.
     -->
+    <!--
+      PRODUCT_SPEC PLAY-002 — pause or duck on a brief interruption.
+
+      The hint has to say that a phone call pauses either way. Without it, somebody chooses Keep playing,
+      takes a call, and concludes the setting is broken.
+    -->
+    <string name="settings_section_interruptions">Short interruptions</string>
+    <string name="settings_focus_pause">Pause</string>
+    <string name="settings_focus_duck">Keep playing, quietly</string>
+    <string name="settings_focus_hint">What happens during a navigation prompt or a notification sound. Pausing means you miss nothing; keeping it playing means you have nothing to rewind. A phone call pauses the book either way — that is Android\'s decision, not this app\'s. A change applies the next time a book starts.</string>
+
+    <!-- PRODUCT_SPEC ROUTE-003 — what opening the app does. Only the third option makes a sound. -->
+    <string name="settings_section_startup">When you open the app</string>
+    <string name="settings_startup_nothing">Nothing</string>
+    <string name="settings_startup_restore">Load the last book</string>
+    <string name="settings_startup_resume">Play the last book</string>
+    <string name="settings_startup_hint">Nothing is the default: opening the app to look at your library does not put a player in your notification shade. The play button on your headphones starts your last book whichever of these you choose.</string>
+
+    <!-- PRODUCT_SPEC PLAY-006 — the two readings that say whether the buffer preset is the right one. -->
+    <string name="about_section_playback_metrics">Playback since the app started</string>
+    <string name="about_metrics_empty">Nothing has played yet.</string>
+    <string name="about_metrics_rebuffers">Times playback ran out of buffer</string>
+    <string name="about_metrics_last_startup">Last wait before a book started</string>
+    <string name="about_metrics_slowest_startup">Longest wait</string>
+    <string name="about_metrics_startups">Books started</string>
+    <string name="about_metrics_hint">A larger buffer should make the first number smaller and the others larger. No book titles are recorded here.</string>
+    <string name="about_metrics_seconds">%1$s s</string>
     <string name="settings_section_devices">When a device connects</string>
     <string name="settings_devices_hint">Each headset, speaker or car gets its own answer. New devices start at Ready — the book is loaded and paused, so the play button on your headphones starts it instantly. A device appears here the first time you connect it.</string>
     <string name="settings_devices_empty">No devices yet. Connect headphones, a speaker or a car and it will appear here.</string>

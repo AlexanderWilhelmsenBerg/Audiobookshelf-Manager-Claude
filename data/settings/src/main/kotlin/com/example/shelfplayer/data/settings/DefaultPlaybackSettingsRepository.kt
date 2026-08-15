@@ -18,9 +18,11 @@ import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
+import com.example.shelfplayer.core.model.playback.StartupMode
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -112,6 +114,24 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
             LogCategory.Settings,
             "The streaming buffer preset changed",
             LogField.Public("preset", preset.name),
+        )
+    }
+
+    override suspend fun setFocusBehaviour(behaviour: FocusBehaviour): AppResult<Unit> = write {
+        settings.setFocusBehaviour(behaviour)
+        logger.info(
+            LogCategory.Playback,
+            "The interruption behaviour was changed",
+            LogField.Public("behaviour", behaviour.name),
+        )
+    }
+
+    override suspend fun setStartupMode(mode: StartupMode): AppResult<Unit> = write {
+        settings.setStartupMode(mode)
+        logger.info(
+            LogCategory.Playback,
+            "The startup mode was changed",
+            LogField.Public("mode", mode.name),
         )
     }
 

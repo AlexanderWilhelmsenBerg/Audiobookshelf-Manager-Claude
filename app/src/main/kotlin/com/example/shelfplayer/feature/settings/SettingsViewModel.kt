@@ -12,14 +12,17 @@ import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.CarReadiness
 import com.example.shelfplayer.core.model.playback.DevicePolicy
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.NotificationAccess
+import com.example.shelfplayer.core.model.playback.PlaybackMetrics
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
+import com.example.shelfplayer.core.model.playback.StartupMode
 import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
@@ -33,6 +36,7 @@ import com.example.shelfplayer.launcher.LauncherIcon
 import com.example.shelfplayer.launcher.LauncherIcons
 import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.NotificationAccessReader
+import com.example.shelfplayer.playback.PlaybackMetricsRecorder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -57,6 +61,7 @@ data class DeviceReaders @Inject constructor(
     val notifications: NotificationAccessReader,
     val car: CarReadinessReader,
     val launcherIcons: LauncherIcons,
+    val metrics: PlaybackMetricsRecorder,
 )
 
 /**
@@ -103,6 +108,15 @@ class SettingsViewModel @Inject constructor(
      * under the typed arity limit. The list is also read by one section of one tab, so folding it into the
      * state every other section shares would buy nothing.
      */
+    /**
+     * PRODUCT_SPEC PLAY-006 — the two readings that say whether the buffer preset is the right one.
+     *
+     * Read from the recorder in `:playback` for the same reason the notification and car readings are read
+     * from there: it is a fact about *this process's* playback, not about the account, so there is nothing
+     * for a repository to mediate.
+     */
+    val playbackMetrics: StateFlow<PlaybackMetrics> = device.metrics.metrics
+
     val knownDevices: StateFlow<List<KnownDevice>> = devices.observeDevices().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
@@ -251,6 +265,16 @@ class SettingsViewModel @Inject constructor(
 
     fun onBufferPresetChanged(preset: BufferPreset) {
         viewModelScope.launch { playbackSettings.setBufferPreset(preset) }
+    }
+
+    /** PRODUCT_SPEC PLAY-002 — pause or duck when something interrupts briefly. Takes effect next player. */
+    fun onFocusBehaviourChanged(behaviour: FocusBehaviour) {
+        viewModelScope.launch { playbackSettings.setFocusBehaviour(behaviour) }
+    }
+
+    /** PRODUCT_SPEC ROUTE-003 — what opening the app does to the player. */
+    fun onStartupModeChanged(mode: StartupMode) {
+        viewModelScope.launch { playbackSettings.setStartupMode(mode) }
     }
 
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless chosen. */

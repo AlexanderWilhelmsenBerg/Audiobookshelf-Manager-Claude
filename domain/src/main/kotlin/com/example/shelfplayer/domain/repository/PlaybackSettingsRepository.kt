@@ -6,9 +6,11 @@ import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
+import com.example.shelfplayer.core.model.playback.StartupMode
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -53,6 +55,18 @@ interface PlaybackSettingsRepository {
      * is the honest interim, and the setting says so.
      */
     suspend fun setAutoPlayOnCarConnect(enabled: Boolean): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — pause or duck when something interrupts briefly.
+     *
+     * Applied to the **next** player, like the buffer preset and for the same reason: it is expressed as the
+     * audio attributes the player is built with, and Media3 fixes those at construction. Changing it does
+     * not disturb a book that is already playing, which is the right way round.
+     */
+    suspend fun setFocusBehaviour(behaviour: FocusBehaviour): AppResult<Unit>
+
+    /** PRODUCT_SPEC ROUTE-003 — what opening the app does to the player. */
+    suspend fun setStartupMode(mode: StartupMode): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC PLAY-007 — "per-book speed overrides profile default".

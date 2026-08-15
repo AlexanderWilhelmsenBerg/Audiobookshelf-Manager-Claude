@@ -67,11 +67,15 @@ must survive cleanup and removes the rest; a *Check downloaded files* button run
 marks what is broken and deletes nothing. Two opt-in switches join it: delete finished books after N days, and
 fetch the next book in a series at the halfway mark — with the option to drop the one before it.
 
-**What is deliberately still open at the end of Phase 3:** the `RangeDownload` capability gate (slice 6's
-last piece — resume works, but nothing records per-server whether the server supports it), SAF writing for
-decision 4's user-chosen folder and SD card (the manifest and the verifier both handle `content://`
-locations; nothing writes one yet), and the twelve named job states of §12 — the manifest models four, which
-is what the *stored* thing can be, and WorkManager owns the rest.
+**What was still open at the end of Phase 3**, and what happened to it:
+
+| Gap | Outcome |
+| --- | --- |
+| The `RangeDownload` capability gate | **Closed** (#24). Observed from the download itself, because `/status` cannot be asked. |
+| Decision 4's user-chosen folder and SD card | **Half closed** (#24). A volume can be chosen; an arbitrary SAF folder is deferred by PRODUCT_SPEC 3.3, and ADR-0020 records why. |
+| §12's twelve named job states | **Still open, by design.** The manifest models the four a stored file can be in; WorkManager owns the rest. |
+
+`docs/gaps.md` is the live list from here on — this table is the historical record of what Phase 3 left.
 
 ---
 

@@ -11,7 +11,9 @@ import com.example.shelfplayer.data.auth.SessionRestorer
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
+import com.example.shelfplayer.domain.usecase.ApplyStartupModeUseCase
 import com.example.shelfplayer.domain.usecase.CleanUpDownloadsUseCase
+import com.example.shelfplayer.playback.AutoLibrary
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -84,6 +86,20 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var cleanUpDownloads: CleanUpDownloadsUseCase
 
+    /**
+     * PRODUCT_SPEC ROUTE-003 — what opening the app does to the player.
+     *
+     * Here rather than in an activity or a ViewModel because "opening the app" means *this process
+     * starting*. `onCreate` runs once; a ViewModel is rebuilt on every rotation and an activity's
+     * `onResume` fires every time somebody comes back from a message — and a listener who paused, checked
+     * a notification and returned must not find their book restarted.
+     */
+    @Inject
+    lateinit var applyStartupMode: ApplyStartupModeUseCase
+
+    @Inject
+    lateinit var auto: AutoLibrary
+
     @Inject
     lateinit var logger: Logger
 
@@ -92,6 +108,9 @@ class ShelfPlayerApplication :
         logger.info(LogCategory.App, "Application started")
         applicationScope.launch {
             sessionRestorer.restoreActiveSession()
+            // PRODUCT_SPEC ROUTE-003 — after the session is restored, because arming a book needs a signed-in
+            // profile to open a session for. Does nothing at all in the default mode.
+            applyStartupMode(auto.lastPlayed()?.id)
         }
         applicationScope.launch {
             sleepTimers.closeOrphanedSessions()

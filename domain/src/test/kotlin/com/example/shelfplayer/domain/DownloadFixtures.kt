@@ -15,9 +15,11 @@ import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
+import com.example.shelfplayer.core.model.playback.StartupMode
 import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.download.BookAssets
 import com.example.shelfplayer.domain.download.DownloadScheduler
@@ -176,8 +178,11 @@ internal class FakeDownloadRepository(stored: List<OfflineBook> = emptyList()) :
 }
 
 /** Only the housekeeping half is real; the rest of the settings surface is not read by these use cases. */
-internal class FakeSettingsRepository(housekeeping: DownloadHousekeeping = DownloadHousekeeping.Default) :
-    PlaybackSettingsRepository {
+internal class FakeSettingsRepository(
+    housekeeping: DownloadHousekeeping = DownloadHousekeeping.Default,
+    /** PRODUCT_SPEC ROUTE-003 — the one playback setting a domain test currently dictates. */
+    private val startupMode: StartupMode = StartupMode.Default,
+) : PlaybackSettingsRepository {
     private val stored = MutableStateFlow(housekeeping)
 
     override fun observeHousekeeping(): Flow<DownloadHousekeeping> = stored
@@ -187,7 +192,11 @@ internal class FakeSettingsRepository(housekeeping: DownloadHousekeeping = Downl
         return AppResult.Success(Unit)
     }
 
-    override fun observeSettings(): Flow<PlaybackSettings> = flowOf(PlaybackSettings())
+    override fun observeSettings(): Flow<PlaybackSettings> = flowOf(PlaybackSettings(startupMode = startupMode))
+
+    override suspend fun setFocusBehaviour(behaviour: FocusBehaviour): AppResult<Unit> = notUsed()
+
+    override suspend fun setStartupMode(mode: StartupMode): AppResult<Unit> = notUsed()
 
     override suspend fun setDefaultSpeed(speed: PlaybackSpeed): AppResult<Unit> = notUsed()
 
