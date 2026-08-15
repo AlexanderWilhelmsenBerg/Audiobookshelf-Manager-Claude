@@ -26,15 +26,35 @@ import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
 import com.example.shelfplayer.domain.usecase.ServerDiagnostics
+import com.example.shelfplayer.launcher.LauncherIcon
+import com.example.shelfplayer.launcher.LauncherIcons
 import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.NotificationAccessReader
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/**
+ * PRODUCT_SPEC PLAY-001 / ROUTE-002 / SET-003 — the three things the settings screen asks the *device*.
+ *
+ * None of them is about this account's data — whether notifications are permitted, whether a car could
+ * reach this app, which launcher entry is enabled — so none of them has a repository to be mediated by, and
+ * `:app` reads each directly. They travel together because they are the same kind of question and because
+ * detekt's parameter limit is a real constraint on a ViewModel that already combines five sources.
+ *
+ * `@Inject constructor` so Hilt assembles it; nothing constructs one by hand except a test.
+ */
+data class DeviceReaders @Inject constructor(
+    val notifications: NotificationAccessReader,
+    val car: CarReadinessReader,
+    val launcherIcons: LauncherIcons,
+)
 
 /**
  * PRODUCT_SPEC SET-001 / SET-002 / SYNC-001 — everything the settings screen shows, across both tabs.
@@ -68,25 +88,19 @@ class SettingsViewModel @Inject constructor(
     private val preferences: PreferencesRepository,
     private val sleepTimer: SleepTimerRepository,
     sessionSync: SessionSyncRepository,
-    /**
-     * PRODUCT_SPEC PLAY-001 — read directly from `:playback` rather than through a domain repository.
-     *
-     * It is a question about the *device's* notification settings and about Media3's own channel, not about
-     * this account's data, so there is nothing for a repository to mediate. `:app` already reaches into
-     * `:playback` for the controller and the sleep timer, and inventing a repository interface for a two-line
-     * platform read would be the parallel abstraction CLAUDE.md warns about.
-     */
-    private val notifications: NotificationAccessReader,
-    /**
-     * PRODUCT_SPEC PLAY-001 / ROUTE-002 — why the app is, or is not, in a car's app list.
-     *
-     * Here for the same reason [notifications] is: it is a question about the *device* — what Android Auto is
-     * installed, what installed this build — rather than about this account's data, so there is nothing for a
-     * repository to mediate.
-     */
-    private val car: CarReadinessReader,
+    private val device: DeviceReaders,
     private val playbackSettings: PlaybackSettingsRepository,
 ) : ViewModel() {
+
+    /**
+     * PRODUCT_SPEC SET-003 — the chosen icon, outside [uiState] on purpose.
+     *
+     * `PackageManager` has no flow to observe: the enabled component changes only when this ViewModel
+     * changes it. So this is a point read seeded at construction and updated by [onLauncherIconChanged],
+     * rather than a sixth source in a `combine` that is already nesting to stay under the arity limit.
+     */
+    private val _launcherIcon = MutableStateFlow(device.launcherIcons.current())
+    val launcherIcon: StateFlow<LauncherIcon> = _launcherIcon.asStateFlow()
 
     val uiState: StateFlow<SettingsUiState> = combine(
         observeLibraries(),
@@ -130,10 +144,10 @@ class SettingsViewModel @Inject constructor(
             // Read per emission rather than observed: notification state has no change callback, and this
             // flow already re-runs whenever anything it depends on moves — which on the About tab is often
             // enough to be current while somebody is looking at it.
-            notifications = notifications.read(),
+            notifications = device.notifications.read(),
             // Read per emission for the reason above it: neither the installed set of apps nor "has a car
             // connected yet" has a change callback, and this flow re-runs often enough to be current.
-            car = car.read(),
+            car = device.car.read(),
             versionName = BuildConfig.VERSION_NAME,
             isLoaded = true,
         )
@@ -215,6 +229,18 @@ class SettingsViewModel @Inject constructor(
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless chosen. */
     fun onAutoPlayOnCarConnectChanged(enabled: Boolean) {
         viewModelScope.launch { playbackSettings.setAutoPlayOnCarConnect(enabled) }
+    }
+
+    /**
+     * PRODUCT_SPEC SET-003 — swaps the enabled launcher alias.
+     *
+     * Synchronous, and the state is re-read rather than assumed: `apply` is a package-manager write that
+     * can be refused, and a picker that moved its tick before the launcher agreed would be lying about
+     * what the home screen shows.
+     */
+    fun onLauncherIconChanged(icon: LauncherIcon) {
+        device.launcherIcons.apply(icon)
+        _launcherIcon.value = device.launcherIcons.current()
     }
 
     /**

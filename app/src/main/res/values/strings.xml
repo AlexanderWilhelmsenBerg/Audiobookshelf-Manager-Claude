@@ -6,13 +6,13 @@
 <resources>
     <!--
       The launcher label, and the one string that is never translated: the product is called
-      ShelfPlayer in every locale, and a translated name would read as a different app on the home
+      BookWave in every locale, and a translated name would read as a different app on the home
       screen. Marked rather than duplicated into each locale, so lint asks about it once and no
       translator has to decide.
     -->
-    <string name="app_name" translatable="false">ShelfPlayer</string>
+    <string name="app_name" translatable="false">BookWave</string>
 
-    <string name="home_title">ShelfPlayer</string>
+    <string name="home_title">BookWave</string>
     <string name="home_loading">Loading your books</string>
     <string name="home_empty_title">No books yet</string>
     <string name="home_empty_body">This account has nothing in its libraries yet, or they have not been synced. Refresh to try again.</string>
@@ -374,7 +374,7 @@
     <string name="settings_network_downloads">Download over mobile data</string>
     <string name="settings_network_smart_downloads">Download next book over mobile data</string>
     <string name="settings_section_car">In the car</string>
-    <string name="settings_car_hint">ShelfPlayer appears in Android Auto with three tabs: Continue, Chapters and History. It always opens on the book you were last listening to.</string>
+    <string name="settings_car_hint">BookWave appears in Android Auto with three tabs: Continue, Chapters and History. It always opens on the book you were last listening to.</string>
     <string name="settings_car_autoplay">Start playing when a car connects</string>
     <string name="sleep_timer_settings">Timer defaults</string>
     <string name="sleep_timer_default_length">Default length</string>
@@ -440,13 +440,29 @@
     -->
     <string name="settings_tab_server">Server</string>
     <string name="settings_tab_about">About</string>
-    <string name="about_section_app">ShelfPlayer</string>
+    <string name="about_section_app">BookWave</string>
     <string name="about_version">Version</string>
     <!--
       PRODUCT_SPEC SET-002 — what this build actually is. Kept current with the phase, because a build
       that describes itself wrongly makes every other reading on this tab suspect.
     -->
-    <string name="about_phase">A work in progress. Streaming playback, chapters, the sleep timer and progress sync are built; downloads and offline playback are not.</string>
+    <string name="about_phase">A work in progress. Streaming and offline playback, chapters, bookmarks, the sleep timer, downloads and progress sync are built; the management tools are not.</string>
+
+    <!--
+      PRODUCT_SPEC SET-003 — the six launcher icons.
+
+      One word each, because they sit under 56dp pictures in a row of six and a second word wraps on a
+      narrow phone. They name what the picture looks like rather than what it means: nobody chooses
+      between these by reading.
+    -->
+    <string name="settings_section_icon">App icon</string>
+    <string name="settings_icon_indigo">Indigo</string>
+    <string name="settings_icon_spectrum">Spectrum</string>
+    <string name="settings_icon_crimson">Crimson</string>
+    <string name="settings_icon_illuminated">Gilded</string>
+    <string name="settings_icon_vintage">Vintage</string>
+    <string name="settings_icon_monochrome">Mono</string>
+    <string name="settings_icon_hint">Changing the icon does not interrupt anything that is playing. Your home screen may take a moment to catch up, and an icon you placed there by hand can need placing again.</string>
     <!-- PRODUCT_SPEC 14.4 — the in-app log. -->
     <string name="about_section_diagnostics">Diagnostics</string>
     <string name="event_log_body">A record of what the app has done since it started: playback, sync, network and errors. Nothing here is sent anywhere, and it is cleared when the app closes.</string>
@@ -612,7 +628,7 @@
     <string name="settings_car_unknown_sources">Android Auto hides apps it did not get from Play. In the Android Auto app: tap the version ten times to unlock Developer settings, then turn on Unknown sources — unlocking developer settings does not turn it on by itself. Force-stop Android Auto afterwards so it rebuilds its list.</string>
     <string name="settings_car_last_connection">Last car connection</string>
     <string name="settings_car_last_connection_never">Never, since the app started</string>
-    <string name="settings_check_car">Connect a head unit: ShelfPlayer is in the media app list and browses. If Last car connection still says never, no car ever reached the app.</string>
+    <string name="settings_check_car">Connect a head unit: BookWave is in the media app list and browses. If Last car connection still says never, no car ever reached the app.</string>
 
     <!-- PRODUCT_SPEC PLAY-001 — shown over the player when the notification cannot appear. -->
     <string name="player_notifications_blocked">Notifications are off, so this book has no notification or lock-screen controls.</string>
@@ -671,7 +687,7 @@
       own and does not write the library's settings back.
     -->
     <string name="settings_section_finished">Finished</string>
-    <string name="settings_finished_hint">A book is marked finished when a little of it is left, so the last few seconds of credits do not leave it looking unread. How little is your server\'s decision, set per library — in the Audiobookshelf web interface, under that library\'s settings, as “mark as finished when time remaining is”. ShelfPlayer follows it rather than keeping a second opinion. Marking a book finished by hand always works either way, and starting a finished book from the beginning always un-finishes it.</string>
+    <string name="settings_finished_hint">A book is marked finished when a little of it is left, so the last few seconds of credits do not leave it looking unread. How little is your server\'s decision, set per library — in the Audiobookshelf web interface, under that library\'s settings, as “mark as finished when time remaining is”. BookWave follows it rather than keeping a second opinion. Marking a book finished by hand always works either way, and starting a finished book from the beginning always un-finishes it.</string>
     <string name="settings_finished_inherited">%1$s: finished with %2$d s left</string>
     <string name="settings_finished_inherited_none">%1$s: your server has not said, so %2$d s is used until it does</string>
     <string name="settings_finished_no_libraries">No libraries have been read from your server yet, so nothing here can be shown.</string>

@@ -47,6 +47,8 @@ import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveServerDiagnosticsUseCase
+import com.example.shelfplayer.launcher.LauncherIcon
+import com.example.shelfplayer.launcher.LauncherIcons
 import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.NotificationAccessReader
 import com.example.shelfplayer.testing.FakePreferences
@@ -104,10 +106,37 @@ class SettingsViewModelTest {
         preferences = preferences,
         sleepTimer = sleepTimer,
         sessionSync = sessionSync,
-        notifications = notifications,
-        car = car,
+        device = DeviceReaders(notifications = notifications, car = car, launcherIcons = launcherIcons),
         playbackSettings = playbackSettings,
     )
+
+    private val launcherIcons = FakeLauncherIcons()
+
+    /** PRODUCT_SPEC SET-003 — the picker reflects what the launcher would draw, not what was tapped. */
+    @Test
+    fun `choosing a launcher icon applies it and reports it back`() = runTest {
+        val viewModel = viewModel()
+        assertEquals(LauncherIcon.Default, viewModel.launcherIcon.value)
+
+        viewModel.onLauncherIconChanged(LauncherIcon.Vintage)
+
+        assertEquals(LauncherIcon.Vintage, viewModel.launcherIcon.value)
+        assertEquals(listOf(LauncherIcon.Vintage), launcherIcons.applied)
+    }
+
+    /**
+     * A package manager that refuses the write leaves the picker on the icon the home screen still
+     * shows. Moving the tick anyway would be the settings screen lying about the device.
+     */
+    @Test
+    fun `a refused change leaves the picker where it was`() = runTest {
+        launcherIcons.refuse()
+        val viewModel = viewModel()
+
+        viewModel.onLauncherIconChanged(LauncherIcon.Crimson)
+
+        assertEquals(LauncherIcon.Default, viewModel.launcherIcon.value)
+    }
 
     /**
      * PRODUCT_SPEC SET-002 — browsing by library lives here, as a list rather than a switch.
@@ -504,4 +533,28 @@ internal class FakeSleepTimers : SleepTimerRepository {
         AppResult.Success(Unit)
 
     override suspend fun closeOrphanedSessions(): AppResult<Int> = AppResult.Success(0)
+}
+
+/**
+ * PRODUCT_SPEC SET-003 — a package manager that records rather than one that exists.
+ *
+ * `AndroidLauncherIcons` is tested against the real merged manifest in `LauncherIconsTest`; what this
+ * ViewModel has to get right is different — that it re-reads the state rather than assuming its own
+ * write landed — so [refuse] gives it a device that says no.
+ */
+internal class FakeLauncherIcons : LauncherIcons {
+    val applied = mutableListOf<LauncherIcon>()
+    private var stored = LauncherIcon.Default
+    private var accepts = true
+
+    fun refuse() {
+        accepts = false
+    }
+
+    override fun current(): LauncherIcon = stored
+
+    override fun apply(icon: LauncherIcon) {
+        applied += icon
+        if (accepts) stored = icon
+    }
 }

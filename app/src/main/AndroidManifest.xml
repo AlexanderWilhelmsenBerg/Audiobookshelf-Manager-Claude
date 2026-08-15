@@ -72,17 +72,102 @@
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
+        <!--
+          PRODUCT_SPEC SET-003 — the activity has no launcher filter of its own, because the launcher
+          entry has to be switchable and an activity's own icon is not.
+
+          Android offers exactly one mechanism for a user-chosen app icon: several `activity-alias`
+          entries pointing at one activity, of which exactly one is enabled. The icon a launcher draws is
+          the *enabled alias's*, so choosing an icon means enabling one alias and disabling the other
+          five (`LauncherIcons`). `exported="false"` is correct here — every entry point is an alias, and
+          nothing outside the app starts this activity directly.
+        -->
         <activity
             android:name=".MainActivity"
-            android:exported="true"
+            android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
             android:resizeableActivity="true"
-            android:theme="@style/Theme.ShelfPlayer">
+            android:theme="@style/Theme.ShelfPlayer" />
+
+        <!--
+          The six icons, in the order the picker shows them. Indigo is the one enabled out of the box; the
+          rest are disabled until somebody chooses them, and `LauncherIcons` keeps exactly one enabled.
+
+          No `android:label` on any of them: the alias inherits the application's, and repeating it is
+          lint's `RedundantLabel`. All six are the same app under the same name — only the picture differs.
+        -->
+        <activity-alias
+            android:name=".launcher.IndigoAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_indigo"
+            android:roundIcon="@mipmap/ic_launcher_indigo_round">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".launcher.SpectrumAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_spectrum"
+            android:roundIcon="@mipmap/ic_launcher_spectrum_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".launcher.CrimsonAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_crimson"
+            android:roundIcon="@mipmap/ic_launcher_crimson_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".launcher.IlluminatedAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_illuminated"
+            android:roundIcon="@mipmap/ic_launcher_illuminated_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".launcher.VintageAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_vintage"
+            android:roundIcon="@mipmap/ic_launcher_vintage_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".launcher.MonochromeAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_monochrome"
+            android:roundIcon="@mipmap/ic_launcher_monochrome_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
         <!--
           PRODUCT_SPEC DL-001 — WorkManager's own foreground service, told what kind of work it hosts.
 

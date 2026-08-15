@@ -13,6 +13,8 @@ import com.example.shelfplayer.domain.download.SmartDownload
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.domain.usecase.SmartDownloadUseCase
 import com.example.shelfplayer.download.WorkManagerDownloadScheduler
+import com.example.shelfplayer.launcher.AndroidLauncherIcons
+import com.example.shelfplayer.launcher.LauncherIcons
 import com.example.shelfplayer.log.FanOutLogSink
 import com.example.shelfplayer.sync.WorkManagerBackgroundSync
 import dagger.Binds
@@ -74,6 +76,16 @@ interface AppModule {
     @Singleton
     fun bindsBackgroundSync(impl: WorkManagerBackgroundSync): BackgroundSync
 
+    /**
+     * PRODUCT_SPEC SET-003 — which launcher icon is enabled, which only `:app` can answer.
+     *
+     * The aliases are declared in this module's manifest and addressed by this module's application id,
+     * so there is nowhere else the implementation could live.
+     */
+    @Binds
+    @Singleton
+    fun bindsLauncherIcons(impl: AndroidLauncherIcons): LauncherIcons
+
     // PRODUCT_SPEC AUTH-003: the TokenProvider binding moved to `:data:auth`. It is not final wiring —
     // it is the credential store answering the HTTP layer, and both ends of that seam are inside that
     // module. Keeping it here also required `:app` to be able to name the class holding a decrypted
@@ -111,6 +123,6 @@ interface AppModule {
         @Singleton
         fun providesAppBuild(): AppBuild = AppBuild(CLIENT_NAME, BuildConfig.VERSION_NAME)
 
-        private const val CLIENT_NAME = "ShelfPlayer"
+        private const val CLIENT_NAME = "BookWave"
     }
 }

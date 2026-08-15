@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="window_background">#FBFAF8</color>
-    <color name="ic_launcher_background">#2F5D62</color>
+
+    <!-- SET-003 — one background per launcher icon. Deep and tone-matched, so the
+         artwork's own light edges keep their contrast against it. -->
+    <color name="ic_launcher_background_indigo">#1E1246</color>
+    <color name="ic_launcher_background_spectrum">#14121F</color>
+    <color name="ic_launcher_background_crimson">#4E0D18</color>
+    <color name="ic_launcher_background_illuminated">#17245C</color>
+    <color name="ic_launcher_background_vintage">#3E2415</color>
+    <color name="ic_launcher_background_monochrome">#1B1B1D</color>
 </resources>

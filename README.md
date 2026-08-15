@@ -1,4 +1,4 @@
-# ShelfPlayer for Android
+# BookWave for Android
 
 **Unofficial** native Android client for [Audiobookshelf](https://www.audiobookshelf.org/). This
 project is not affiliated with, endorsed by, or supported by the Audiobookshelf project. It does not
@@ -84,7 +84,7 @@ the tested server versions will be recorded in
 [`docs/api-compatibility.md`](docs/api-compatibility.md).
 
 To change what the demo library contains, edit
-`core/network/src/main/resources/fixtures/demo-library.json`. That file uses a ShelfPlayer-owned
+`core/network/src/main/resources/fixtures/demo-library.json`. That file uses a BookWave-owned
 format and is **not** an Audiobookshelf API response.
 
 ## Repository layout

@@ -1,9 +1,9 @@
-# ShelfPlayer for Android
+# BookWave for Android
 ## Product Requirements and Technical Specification
 
 **Document status:** Build-ready baseline  
 **Date:** 2026-08-04  
-**Working title:** ShelfPlayer  
+**Working title:** BookWave (was ShelfPlayer until 2026-08-15; see ADR-0019)  
 **Product type:** Unofficial native Android client for an Audiobookshelf server  
 **Primary clients for this specification:** OpenAI Codex and Claude Code  
 **Target platform:** Android phones, tablets, foldables, Android Auto, Bluetooth and wired media controls
@@ -14,7 +14,7 @@
 
 # 1. Executive summary
 
-ShelfPlayer is a native Android audiobook player and server-management client for Audiobookshelf. It must provide dependable streaming, offline downloads, progress synchronization, Android media integration, fast profile switching, and permission-aware administrative tools.
+BookWave is a native Android audiobook player and server-management client for Audiobookshelf. It must provide dependable streaming, offline downloads, progress synchronization, Android media integration, fast profile switching, and permission-aware administrative tools.
 
 The product has two equally important modes:
 
@@ -869,6 +869,18 @@ Settings precedence:
 - export redacted diagnostic bundle;
 - clear caches;
 - verify downloads.
+
+### SET-003 Launcher icon
+
+The listener chooses which of the supplied launcher icons the home screen shows. The choice is a property of the installation, not of a profile: a phone has one home screen whoever is signed in.
+
+**Acceptance criteria**
+- Every supplied icon is offered, previewed as the launcher would mask it, and selectable.
+- Exactly one launcher entry is enabled at any moment; the app is never absent from the app drawer.
+- Changing the icon does not stop playback and does not restart the application.
+- Every icon supplies a themed (monochrome) layer.
+- The choice survives an app restart and an app update.
+- The setting states the visible consequence: a home-screen shortcut placed by hand may need placing again.
 
 ---
 
