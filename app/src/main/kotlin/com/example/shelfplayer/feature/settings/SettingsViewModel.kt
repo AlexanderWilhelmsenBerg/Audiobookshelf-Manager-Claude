@@ -11,6 +11,8 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.CarReadiness
+import com.example.shelfplayer.core.model.playback.DevicePolicy
+import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -18,6 +20,7 @@ import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
+import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
@@ -90,7 +93,31 @@ class SettingsViewModel @Inject constructor(
     sessionSync: SessionSyncRepository,
     private val device: DeviceReaders,
     private val playbackSettings: PlaybackSettingsRepository,
+    private val devices: DeviceRepository,
 ) : ViewModel() {
+
+    /**
+     * PRODUCT_SPEC ROUTE-002 — the output devices this app has seen, and what each may do.
+     *
+     * Its own flow rather than a sixth source in [uiState]'s `combine`, which is already nesting to stay
+     * under the typed arity limit. The list is also read by one section of one tab, so folding it into the
+     * state every other section shares would buy nothing.
+     */
+    val knownDevices: StateFlow<List<KnownDevice>> = devices.observeDevices().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = emptyList(),
+    )
+
+    /** PRODUCT_SPEC ROUTE-002 — `Auto-play` is chosen here, per device, and nowhere else. */
+    fun onDevicePolicyChanged(deviceId: String, policy: DevicePolicy) {
+        viewModelScope.launch { devices.setPolicy(deviceId, policy) }
+    }
+
+    /** Forgetting a device somebody no longer owns. It returns with the default policy if it comes back. */
+    fun onDeviceForgotten(deviceId: String) {
+        viewModelScope.launch { devices.forget(deviceId) }
+    }
 
     /**
      * PRODUCT_SPEC SET-003 — the chosen icon, outside [uiState] on purpose.

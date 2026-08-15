@@ -194,6 +194,16 @@ message AppSettings {
   // itself is called. A UUID that no longer resolves — the card was removed — falls back to internal for
   // *new* downloads, and existing ones keep the absolute URIs their manifest already holds.
   string download_storage_volume_uuid = 34;
+
+  // PRODUCT_SPEC ROUTE-002 / SET-002 (Devices) — what to do when each known output device connects.
+  //
+  // Keyed by the app's own device id — a kind and an advertised name, never a hardware address. See
+  // `KnownDevice` for why that is the minimum-permission choice and what it costs.
+  //
+  // A device absent from this map is a device never seen, and it gets `DevicePolicy.Default`. A device
+  // present with `DEVICE_POLICY_UNSPECIFIED` gets the same, which is what makes the proto3 zero value safe
+  // here: unset and "arm only" really are the same answer.
+  map<string, KnownDevice> known_devices = 35;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.
@@ -215,6 +225,37 @@ message ProfileSettings {
 
   // The order used on the home shelf, which spans libraries and so has no library id to key on.
   string shelf_sort_order = 3;
+}
+
+// PRODUCT_SPEC ROUTE-002 — one output device this app has seen.
+message KnownDevice {
+  // What the device calls itself. Shown as-is; ROUTE-002 forbids hardware addresses in ordinary UI, and
+  // this is not one.
+  string display_name = 1;
+  DeviceKind kind = 2;
+  DevicePolicy policy = 3;
+  // Wall-clock, for ordering the settings list by recency.
+  int64 last_seen_epoch_millis = 4;
+}
+
+// The zero value is the product default on purpose: ROUTE-002 says every new device is `Arm only`, so a
+// device stored before this field existed, or written by a build that did not set it, behaves correctly.
+enum DevicePolicy {
+  DEVICE_POLICY_UNSPECIFIED = 0;
+  DEVICE_POLICY_ARM_ONLY = 1;
+  DEVICE_POLICY_NEVER = 2;
+  DEVICE_POLICY_AUTO_PLAY = 3;
+  DEVICE_POLICY_ASK = 4;
+}
+
+enum DeviceKind {
+  DEVICE_KIND_UNSPECIFIED = 0;
+  DEVICE_KIND_WIRED = 1;
+  DEVICE_KIND_BLUETOOTH = 2;
+  DEVICE_KIND_CAR = 3;
+  DEVICE_KIND_HEARING_AID = 4;
+  DEVICE_KIND_SPEAKER = 5;
+  DEVICE_KIND_OTHER = 6;
 }
 
 enum ThemeMode {

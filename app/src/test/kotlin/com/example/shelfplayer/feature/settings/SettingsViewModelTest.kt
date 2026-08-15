@@ -23,6 +23,9 @@ import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.CarReadiness
+import com.example.shelfplayer.core.model.playback.DeviceKind
+import com.example.shelfplayer.core.model.playback.DevicePolicy
+import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -39,6 +42,7 @@ import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.CapabilityRepository
+import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
@@ -108,6 +112,62 @@ class SettingsViewModelTest {
         sessionSync = sessionSync,
         device = DeviceReaders(notifications = notifications, car = car, launcherIcons = launcherIcons),
         playbackSettings = playbackSettings,
+        devices = knownDevices,
+    )
+
+    private val knownDevices = FakeDevices()
+
+    /** PRODUCT_SPEC ROUTE-002 — the list is what the store says, ordered by the store. */
+    @Test
+    fun `the devices this app has seen are listed`() = runTest {
+        knownDevices.emit(listOf(earbuds(), wired()))
+
+        viewModel().knownDevices.test {
+            assertEquals(
+                listOf("bluetooth:earbuds", "wired"),
+                (
+                    awaitItem().takeIf { it.isNotEmpty() }
+                        ?: awaitItem()
+                    ).map { it.id },
+            )
+        }
+    }
+
+    /** `Auto-play` is chosen per device and nowhere else — this is the only path that sets it. */
+    @Test
+    fun `choosing a policy stores it against that device`() = runTest {
+        knownDevices.emit(listOf(earbuds()))
+        val viewModel = viewModel()
+
+        viewModel.onDevicePolicyChanged("bluetooth:earbuds", DevicePolicy.AutoPlay)
+
+        assertEquals(listOf("bluetooth:earbuds" to DevicePolicy.AutoPlay), knownDevices.policies)
+    }
+
+    @Test
+    fun `forgetting a device removes it`() = runTest {
+        knownDevices.emit(listOf(earbuds()))
+        val viewModel = viewModel()
+
+        viewModel.onDeviceForgotten("bluetooth:earbuds")
+
+        assertEquals(listOf("bluetooth:earbuds"), knownDevices.forgotten)
+    }
+
+    private fun earbuds() = KnownDevice(
+        id = "bluetooth:earbuds",
+        displayName = "Earbuds",
+        kind = DeviceKind.Bluetooth,
+        policy = DevicePolicy.ArmOnly,
+        lastSeenAt = Instant.EPOCH,
+    )
+
+    private fun wired() = KnownDevice(
+        id = "wired",
+        displayName = "Wired headphones",
+        kind = DeviceKind.Wired,
+        policy = DevicePolicy.ArmOnly,
+        lastSeenAt = Instant.EPOCH,
     )
 
     private val launcherIcons = FakeLauncherIcons()
@@ -549,6 +609,34 @@ internal class FakeSleepTimers : SleepTimerRepository {
  * ViewModel has to get right is different — that it re-reads the state rather than assuming its own
  * write landed — so [refuse] gives it a device that says no.
  */
+/** PRODUCT_SPEC ROUTE-002 — the known-device store, recording what the screen asked it to change. */
+internal class FakeDevices : DeviceRepository {
+    private val stored = MutableStateFlow<List<KnownDevice>>(emptyList())
+    val policies = mutableListOf<Pair<String, DevicePolicy>>()
+    val forgotten = mutableListOf<String>()
+
+    fun emit(devices: List<KnownDevice>) {
+        stored.value = devices
+    }
+
+    override fun observeDevices(): Flow<List<KnownDevice>> = stored
+
+    override suspend fun remember(device: KnownDevice): AppResult<Unit> = AppResult.Success(Unit)
+
+    override suspend fun setPolicy(deviceId: String, policy: DevicePolicy): AppResult<Unit> {
+        policies += deviceId to policy
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun forget(deviceId: String): AppResult<Unit> {
+        forgotten += deviceId
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun policyFor(deviceId: String): DevicePolicy =
+        stored.value.firstOrNull { it.id == deviceId }?.policy ?: DevicePolicy.Default
+}
+
 internal class FakeLauncherIcons : LauncherIcons {
     val applied = mutableListOf<LauncherIcon>()
     private var stored = LauncherIcon.Default

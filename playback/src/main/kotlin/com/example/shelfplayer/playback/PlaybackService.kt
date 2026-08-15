@@ -105,6 +105,10 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var bookChanges: BookChanges
 
+    /** PRODUCT_SPEC ROUTE-002 — what happens when a headset, a car or a speaker connects. */
+    @Inject
+    internal lateinit var outputDevices: OutputDeviceWatcher
+
     /** PRODUCT_SPEC ROUTE-002 — so Settings can say whether a car has ever reached this app. */
     @Inject
     internal lateinit var carConnections: CarConnections
@@ -171,6 +175,7 @@ class PlaybackService : MediaLibraryService() {
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()
+        outputDevices.start(scope, DeviceActions())
         logger.info(LogCategory.Playback, "Playback service started")
     }
 
@@ -194,6 +199,46 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
+    /**
+     * PRODUCT_SPEC ROUTE-002 — the three verbs the device watcher is allowed to use.
+     *
+     * The watcher decides *whether* and *which*; this does the Media3 part. Split that way because the
+     * decision — the debounce, the policy lookup, the classification — is the part worth testing, and none
+     * of it should need a player.
+     *
+     * `armAndPlay` is the only path in this app that starts audio with nobody pressing anything, and it is
+     * reached only from a policy the user set on that specific device.
+     */
+    private inner class DeviceActions : OutputDeviceWatcher.Actions {
+
+        override fun isBusy(): Boolean = (player?.mediaItemCount ?: 0) > 0
+
+        override suspend fun arm() {
+            load(startPlaying = false)
+        }
+
+        override suspend fun armAndPlay() {
+            load(startPlaying = true)
+        }
+
+        /**
+         * Loads the last book, optionally playing it.
+         *
+         * `prepare()` without `play()` is what "armed" means: the book is in the session, the notification
+         * shows it, and the headset's own Play button starts it instantly — with no app to open and no book
+         * to find. That is most of the value of auto-play without the part that makes noise in a quiet room.
+         */
+        private suspend fun load(startPlaying: Boolean) {
+            val current = player ?: return
+            if (current.mediaItemCount > 0) return
+            val book = auto.lastPlayed() ?: return
+            val queue = openQueue(book.id, startAt = null) ?: return
+            current.setMediaItem(queue.item, queue.startPositionMs)
+            current.prepare()
+            if (startPlaying) current.play()
+        }
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     /**
@@ -213,6 +258,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         flushProgress()
+        outputDevices.stop()
         // PRODUCT_SPEC PLAY-004 — "service shutdown callback". On the application scope inside the
         // coordinator, because `scope` is cancelled two lines below.
         sessionSync.onShutdown()
