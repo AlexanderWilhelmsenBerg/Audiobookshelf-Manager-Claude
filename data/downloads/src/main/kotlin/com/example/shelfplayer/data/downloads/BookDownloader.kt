@@ -14,9 +14,11 @@ import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.isFailure
+import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import kotlinx.coroutines.flow.first
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -46,6 +48,7 @@ import javax.inject.Singleton
 @Singleton
 class BookDownloader @Inject constructor(
     private val repository: DownloadRepository,
+    private val downloads: DownloadApi,
     private val fileDownloader: FileDownloader,
     private val storage: DownloadStorage,
     private val logger: Logger,
@@ -95,7 +98,11 @@ class BookDownloader @Inject constructor(
             onProgress(weights.fraction())
         }
 
-        val completed = repository.markComplete(serverId, itemId, coverUri = manifest.coverUri)
+        val completed = repository.markComplete(
+            serverId,
+            itemId,
+            coverUri = manifest.coverUri ?: fetchCover(profileId, serverId, itemId),
+        )
         if (completed is AppResult.Success) {
             logger.info(
                 LogCategory.Sync,
@@ -105,6 +112,34 @@ class BookDownloader @Inject constructor(
             onProgress(1f)
         }
         return completed
+    }
+
+    /**
+     * PRODUCT_SPEC DL-001 — the cover, fetched once the audio is safely down.
+     *
+     * Last, and failure-tolerant. A book with every audio file is completely listenable, and a server with
+     * no artwork for an item is ordinary — so a cover that cannot be had returns `null` and the book is
+     * still `Downloaded`. Refusing to complete for a cosmetic gap would leave a permanently stuck download.
+     *
+     * Fetched only when the manifest has none, so a retry of a book whose audio failed does not re-fetch
+     * artwork it already has.
+     */
+    private suspend fun fetchCover(profileId: ProfileId, serverId: ServerId, itemId: LibraryItemId): String? {
+        var destination: File? = null
+        val fetched = downloads.fetchCover(profileId, itemId) {
+            // The type is not known until the response arrives, and the name depends on it — so the file is
+            // named inside the sink, which is the first moment both facts exist.
+            storage.coverFor(serverId.value, itemId.value, mimeType = null)
+                .also { destination = it }
+                .outputStream()
+        }
+        return when (fetched) {
+            is AppResult.Success -> destination?.toURI()?.toString()
+            is AppResult.Failure -> {
+                logger.info(LogCategory.Sync, "A book was downloaded without its cover, which is not a failure")
+                null
+            }
+        }
     }
 
     /**

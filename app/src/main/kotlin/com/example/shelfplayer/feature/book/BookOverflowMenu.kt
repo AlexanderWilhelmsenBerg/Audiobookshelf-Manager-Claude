@@ -63,9 +63,8 @@ internal const val BOOK_OVERFLOW_BUTTON = "book-overflow-button"
  * third state — the owner asked for it in both places, and one action reachable two ways is better than two
  * that could disagree. It is enabled only when there is a copy to delete.
  *
- * *Manage local files* is still Phase 3's storage screen, and is shown **disabled with the phase named**
- * rather than hidden. A control that looks live and does nothing is worse than one that admits it
- * (PRODUCT_SPEC 21), and hiding it would make the menu look complete when it is not.
+ * *Manage local files* opens the storage screen, which lists every download on the device with its size
+ * (ADR-0018 decision 6). Both rows are live as of Phase 3 slice 7; neither is a placeholder any more.
  *
  * *Add to playlist* is absent rather than disabled: this app has no playlists at all, in any phase that is
  * planned, so a disabled row would promise something nothing is building.
@@ -123,8 +122,10 @@ internal fun BookOverflowMenu(book: Book, actions: BookMenuActions, modifier: Mo
         MenuRow(
             labelRes = R.string.book_menu_local_files,
             icon = Icons.Filled.Folder,
-            isEnabled = false,
-            onClick = {},
+            onClick = {
+                isOpen = false
+                actions.onManageDownloads()
+            },
         )
         MenuRow(
             // The same action as the download button's third state, reached the other way the owner asked
@@ -280,6 +281,8 @@ internal data class BookMenuActions(
     /** PRODUCT_SPEC DL-003 — whether *Delete local item* has anything to delete. */
     val isDownloaded: Boolean = false,
     val onRemoveDownload: () -> Unit = {},
+    /** PRODUCT_SPEC DL-003 — everything downloaded on this device, in one list. */
+    val onManageDownloads: () -> Unit = {},
 )
 
 /**

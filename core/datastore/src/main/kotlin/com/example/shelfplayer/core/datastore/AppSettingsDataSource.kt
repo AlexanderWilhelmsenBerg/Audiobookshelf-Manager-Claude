@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
@@ -336,6 +337,30 @@ class AppSettingsDataSource @Inject constructor(
             downloadsOnCellular = stored.downloadsCellularEnabled,
             smartDownloadsOnCellular = stored.smartDownloadsCellularEnabled,
         )
+    }
+
+    /**
+     * PRODUCT_SPEC DL-005 / DL-006 / ADR-0018 decisions 1 and 7 — the two unattended behaviours.
+     *
+     * Every field's zero value is the off state, so a device that has never opened this screen reads back
+     * as "do nothing without asking" — which is the only default either of these may safely have.
+     */
+    val housekeeping: Flow<DownloadHousekeeping> = settings.map { stored ->
+        DownloadHousekeeping(
+            smartDownload = stored.smartDownloadEnabled,
+            deleteFinishedAfterDays = stored.deleteFinishedAfterDays.coerceAtLeast(0),
+            deletePreviousOnSmartDownload = stored.deletePreviousOnSmartDownload,
+        )
+    }
+
+    suspend fun setHousekeeping(housekeeping: DownloadHousekeeping) {
+        dataStore.updateData { current ->
+            current.toBuilder()
+                .setSmartDownloadEnabled(housekeeping.smartDownload)
+                .setDeleteFinishedAfterDays(housekeeping.deleteFinishedAfterDays.coerceAtLeast(0))
+                .setDeletePreviousOnSmartDownload(housekeeping.deletePreviousOnSmartDownload)
+                .build()
+        }
     }
 
     suspend fun setNetworkPolicy(policy: NetworkPolicy) {

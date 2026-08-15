@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.StorageDiagnostics
+import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
@@ -103,9 +104,12 @@ class SettingsViewModel @Inject constructor(
             sleepTimer.observeRecentSessions(),
             sessionSync.observeDiagnostics(),
             playbackSettings.observeSettings(),
-            // PRODUCT_SPEC DL-004 — the network policy rides with the playback settings because it comes
-            // from the same store and is rendered on the same tab.
-            playbackSettings.observeNetworkPolicy(),
+            // PRODUCT_SPEC DL-004 / DL-005 / DL-006 — the download preferences pair up rather than
+            // becoming a fifth and sixth source. `combine`'s typed overloads stop at five, and they are
+            // read together anyway: one section of the tab decides what may be downloaded and the next
+            // what may be deleted.
+            playbackSettings.observeNetworkPolicy()
+                .combine(playbackSettings.observeHousekeeping(), ::Downloads),
             ::Playback,
         ),
     ) { libraries, stored, server, storage, playback ->
@@ -121,7 +125,8 @@ class SettingsViewModel @Inject constructor(
             sleepTimerHistory = playback.timerHistory,
             sessionSync = playback.sessionSync,
             playback = playback.controls,
-            networkPolicy = playback.network,
+            networkPolicy = playback.downloads.network,
+            housekeeping = playback.downloads.housekeeping,
             // Read per emission rather than observed: notification state has no change callback, and this
             // flow already re-runs whenever anything it depends on moves — which on the About tab is often
             // enough to be current while somebody is looking at it.
@@ -159,6 +164,16 @@ class SettingsViewModel @Inject constructor(
      */
     fun onNetworkPolicyChanged(policy: NetworkPolicy) {
         viewModelScope.launch { playbackSettings.setNetworkPolicy(policy) }
+    }
+
+    /**
+     * PRODUCT_SPEC DL-005 / DL-006 — the two unattended behaviours.
+     *
+     * Turning the retention off does not restore anything already deleted, which is why the setting starts
+     * at *Never* and why its hint lists the three books it will never touch.
+     */
+    fun onHousekeepingChanged(housekeeping: DownloadHousekeeping) {
+        viewModelScope.launch { playbackSettings.setHousekeeping(housekeeping) }
     }
 
     /** PRODUCT_SPEC PLAY-008 — "requires explicit opt-in". This toggle is that opt-in. */
@@ -214,8 +229,11 @@ class SettingsViewModel @Inject constructor(
         val timerHistory: List<SleepTimerSession>,
         val sessionSync: SessionSyncDiagnostics,
         val controls: PlaybackSettings,
-        val network: NetworkPolicy,
+        val downloads: Downloads,
     )
+
+    /** PRODUCT_SPEC DL-004 / DL-005 / DL-006 — the download preferences, read as one. */
+    private data class Downloads(val network: NetworkPolicy, val housekeeping: DownloadHousekeeping)
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
@@ -250,6 +268,8 @@ data class SettingsUiState(
     val playback: PlaybackSettings = PlaybackSettings.Default,
     /** PRODUCT_SPEC DL-004 — which categories may spend cellular data. */
     val networkPolicy: NetworkPolicy = NetworkPolicy.Default,
+    /** PRODUCT_SPEC DL-005 / DL-006 — smart download, and the automatic cleanup. */
+    val housekeeping: DownloadHousekeeping = DownloadHousekeeping.Default,
     val versionName: String = "",
     val isLoaded: Boolean = false,
 )

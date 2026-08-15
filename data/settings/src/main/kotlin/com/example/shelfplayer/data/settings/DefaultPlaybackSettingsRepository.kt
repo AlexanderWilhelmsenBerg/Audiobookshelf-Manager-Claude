@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
@@ -89,6 +90,19 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
             LogField.Public("downloadsOnCellular", policy.downloadsOnCellular),
             LogField.Public("smartDownloadsOnCellular", policy.smartDownloadsOnCellular),
             LogField.Public("streamingOnCellular", policy.streamingOnCellular),
+        )
+    }
+
+    override fun observeHousekeeping(): Flow<DownloadHousekeeping> = settings.housekeeping
+
+    override suspend fun setHousekeeping(housekeeping: DownloadHousekeeping): AppResult<Unit> = write {
+        settings.setHousekeeping(housekeeping)
+        logger.info(
+            LogCategory.Settings,
+            "The unattended download behaviours changed",
+            LogField.Public("smartDownload", housekeeping.smartDownload),
+            LogField.Count("deleteFinishedAfterDays", housekeeping.deleteFinishedAfterDays),
+            LogField.Public("deletePrevious", housekeeping.deletePreviousOnSmartDownload),
         )
     }
 

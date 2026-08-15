@@ -167,6 +167,22 @@ message AppSettings {
   bool streaming_cellular_disabled = 28;
   bool downloads_cellular_enabled = 29;
   bool smart_downloads_cellular_enabled = 30;
+
+  // PRODUCT_SPEC DL-005 / ADR-0018 decision 1 — download the next book in a series at the halfway mark.
+  //
+  // Off by default. It spends storage and data on a book nobody asked for, which is a reasonable thing to
+  // want and a rude thing to assume.
+  bool smart_download_enabled = 31;
+
+  // PRODUCT_SPEC DL-006 / ADR-0018 decision 7 — remove a finished book after this many days.
+  //
+  // Zero is off, which is also the default: deleting somebody's audiobook because a timer expired is the
+  // most destructive thing this app can do on its own, and it happens only when explicitly asked for.
+  int32 delete_finished_after_days = 32;
+
+  // Decision 7's second half — when smart download fetches the next book in a series, remove the one
+  // before it. Off by default, and meaningless unless smart download is on.
+  bool delete_previous_on_smart_download = 33;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

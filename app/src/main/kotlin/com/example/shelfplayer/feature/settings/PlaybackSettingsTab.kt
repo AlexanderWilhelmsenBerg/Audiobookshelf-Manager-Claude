@@ -13,6 +13,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
@@ -22,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
@@ -52,6 +54,7 @@ internal fun LazyListScope.playbackTab(
     libraries: List<Library>,
     actions: PlaybackSettingsActions,
     networkPolicy: NetworkPolicy = NetworkPolicy.Default,
+    housekeeping: DownloadHousekeeping = DownloadHousekeeping.Default,
 ) {
     val onSpeedChanged = actions.onSpeedChanged
     val onSkipsChanged = actions.onSkipsChanged
@@ -110,6 +113,7 @@ internal fun LazyListScope.playbackTab(
     items(BufferPreset.entries, settings.buffer, onBufferChanged)
 
     finishedSection(libraries)
+    downloadsSection(housekeeping, actions.onHousekeepingChanged, actions.onManageDownloads)
     networkSection(networkPolicy, actions.onNetworkPolicyChanged)
     carSection(settings.autoPlayOnCarConnect, actions.onAutoPlayChanged)
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) }
@@ -173,6 +177,70 @@ private fun LazyListScope.finishedSection(libraries: List<Library>) {
  * The hint says what the car will show either way, because "ShelfPlayer appears in Android Auto" is a fact a
  * user cannot discover from the phone.
  */
+/**
+ * PRODUCT_SPEC DL-005 / DL-006 / ADR-0018 decisions 1 and 7 — the two things the app may do unasked.
+ *
+ * Both off by default, and the hint says so in as many words. One spends storage and possibly data on a
+ * book nobody asked for; the other deletes a book somebody did. Each is a reasonable thing to want and a
+ * rude thing to assume, and a settings screen that did not say which was which would be inviting a user to
+ * turn on the second by accident.
+ *
+ * The retention row is a chip row rather than a free number: *"there should be a when settings, so delete
+ * after x days after finished"* has four sensible answers and a text field would be four taps and a
+ * keyboard for the same result.
+ *
+ * *Remove the previous book* is shown only when smart download is on, because it is defined in terms of it
+ * — a switch whose description begins "when the next book arrives" is meaningless when nothing arrives.
+ */
+private fun LazyListScope.downloadsSection(
+    housekeeping: DownloadHousekeeping,
+    onChanged: (DownloadHousekeeping) -> Unit,
+    onManage: () -> Unit,
+) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_downloads)) }
+    item { Hint(text = stringResource(R.string.settings_downloads_hint)) }
+    item {
+        TextButton(onClick = onManage, modifier = Modifier.padding(horizontal = 16.dp)) {
+            Text(text = stringResource(R.string.settings_downloads_manage))
+        }
+    }
+    item {
+        SwitchRow(
+            label = stringResource(R.string.settings_downloads_smart),
+            checked = housekeeping.smartDownload,
+            onCheckedChange = { onChanged(housekeeping.copy(smartDownload = it)) },
+        )
+    }
+    item { Hint(text = stringResource(R.string.settings_downloads_smart_hint)) }
+    if (housekeeping.smartDownload) {
+        item {
+            SwitchRow(
+                label = stringResource(R.string.settings_downloads_delete_previous),
+                checked = housekeeping.deletePreviousOnSmartDownload,
+                onCheckedChange = { onChanged(housekeeping.copy(deletePreviousOnSmartDownload = it)) },
+            )
+        }
+        item { Hint(text = stringResource(R.string.settings_downloads_delete_previous_hint)) }
+    }
+    item { Hint(text = stringResource(R.string.settings_downloads_retention_hint)) }
+    item {
+        ChipRow(
+            labelRes = R.string.settings_downloads_retention,
+            options = DownloadHousekeeping.RetentionDays,
+            selected = housekeeping.deleteFinishedAfterDays,
+            label = { days -> retentionLabel(days) },
+            onSelect = { days -> onChanged(housekeeping.copy(deleteFinishedAfterDays = days)) },
+        )
+    }
+}
+
+@Composable
+private fun retentionLabel(days: Int): String = if (days == 0) {
+    stringResource(R.string.settings_downloads_retention_never)
+} else {
+    pluralStringResource(R.plurals.settings_downloads_retention_days, days, days)
+}
+
 /**
  * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — what each kind of traffic may spend cellular data on.
  *
@@ -267,6 +335,10 @@ data class PlaybackSettingsActions(
     val onAutoPlayChanged: (Boolean) -> Unit,
     /** PRODUCT_SPEC DL-004 — which categories may spend cellular data. */
     val onNetworkPolicyChanged: (NetworkPolicy) -> Unit = {},
+    /** PRODUCT_SPEC DL-005 / DL-006 — smart download and the automatic cleanup. */
+    val onHousekeepingChanged: (DownloadHousekeeping) -> Unit = {},
+    /** PRODUCT_SPEC DL-003 — opens the list of everything downloaded on this device. */
+    val onManageDownloads: () -> Unit = {},
 )
 
 /** PRODUCT_SPEC PLAY-009 — the four bands, with the requirement's own boundaries as their labels. */

@@ -26,6 +26,7 @@ import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.domain.download.SmartDownload
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -88,10 +89,15 @@ class DefaultPlaybackRepositoryTest {
             progressDao = database.progressDao(),
             libraryDao = database.libraryDao(),
             gateway = gateway,
-            offlineSessions = OfflineSessionBuilder(
-                libraryDao = database.libraryDao(),
-                progressDao = database.progressDao(),
-                downloads = NoDownloads,
+            downloads = DownloadSupport(
+                sessions = OfflineSessionBuilder(
+                    libraryDao = database.libraryDao(),
+                    progressDao = database.progressDao(),
+                    downloads = NoDownloads,
+                ),
+                // PRODUCT_SPEC DL-005 — off, which is its default. These cases are about the journal, and
+                // a trigger that fetched a book would make every one of them depend on a catalogue.
+                smartDownload = SmartDownload.Disabled,
             ),
             clock = TestAppClock(),
             logger = logger,
@@ -247,10 +253,15 @@ class DefaultPlaybackRepositoryTest {
                 logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default)),
                 ioDispatcher = UnconfinedTestDispatcher(),
             ),
-            offlineSessions = OfflineSessionBuilder(
-                libraryDao = database.libraryDao(),
-                progressDao = database.progressDao(),
-                downloads = NoDownloads,
+            downloads = DownloadSupport(
+                sessions = OfflineSessionBuilder(
+                    libraryDao = database.libraryDao(),
+                    progressDao = database.progressDao(),
+                    downloads = NoDownloads,
+                ),
+                // PRODUCT_SPEC DL-005 — off, which is its default. These cases are about the journal, and
+                // a trigger that fetched a book would make every one of them depend on a catalogue.
+                smartDownload = SmartDownload.Disabled,
             ),
             clock = TestAppClock(),
             logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default)),

@@ -375,6 +375,15 @@ class FileDownloaderTest {
                 ),
             )
         }
+
+        /** Not exercised here: `BookDownloaderTest` covers the cover, which is a whole-book concern. */
+        override suspend fun fetchCover(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            sink: () -> OutputStream,
+        ): AppResult<String?> = AppResult.Failure(
+            com.example.shelfplayer.core.model.AppError.ApiCompatibility(summary = "no cover in this test"),
+        )
     }
 
     /** Robolectric has no media stack, so the container check is a decision rather than a parser here. */

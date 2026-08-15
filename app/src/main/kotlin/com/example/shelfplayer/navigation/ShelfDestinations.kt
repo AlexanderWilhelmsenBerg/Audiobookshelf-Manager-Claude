@@ -25,6 +25,9 @@ object ShelfDestinations {
     const val HOME = "home"
     const val PROFILES = "profiles"
     const val SETTINGS = "settings"
+
+    /** PRODUCT_SPEC DL-003 / ADR-0018 decision 6 — every download on this device, in one list. */
+    const val DOWNLOADS = "downloads"
     const val BOOK = "book/{bookId}"
     const val SERIES = "series/{seriesId}"
 

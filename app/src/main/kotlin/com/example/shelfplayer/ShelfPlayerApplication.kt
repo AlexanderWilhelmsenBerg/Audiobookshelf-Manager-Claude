@@ -9,7 +9,9 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.data.auth.SessionRestorer
 import com.example.shelfplayer.domain.download.OfflineFiles
+import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
+import com.example.shelfplayer.domain.usecase.CleanUpDownloadsUseCase
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -67,6 +69,21 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var offlineFiles: OfflineFiles
 
+    /**
+     * PRODUCT_SPEC DL-002 — the incremental verifier, and DL-006's retention pass.
+     *
+     * Both at start-up, in that order, and both are no-ops until they have something to do: the verifier
+     * `stat`s the files a manifest claims, and the cleanup returns immediately unless the user turned a
+     * retention on. Verifying first matters — a book whose files went missing must be marked incomplete
+     * before anything considers deleting it, or the cleanup would remove a manifest for files that are
+     * already gone and lose the record that they ever existed.
+     */
+    @Inject
+    lateinit var verification: OfflineVerification
+
+    @Inject
+    lateinit var cleanUpDownloads: CleanUpDownloadsUseCase
+
     @Inject
     lateinit var logger: Logger
 
@@ -81,6 +98,10 @@ class ShelfPlayerApplication :
         }
         applicationScope.launch {
             offlineFiles.sweepOrphans()
+            verification.verifyManifests()
+            // No book id: nothing is playing at process start, so the "never the playing book" rule has
+            // nothing to exclude. A cleanup that ran mid-session would need one.
+            cleanUpDownloads()
         }
     }
 }

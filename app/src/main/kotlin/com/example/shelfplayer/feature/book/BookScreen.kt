@@ -75,6 +75,7 @@ import kotlin.time.Duration
 @Composable
 fun BookRoute(
     onNavigateUp: () -> Unit,
+    onManageDownloads: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: BookViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel(),
@@ -102,6 +103,7 @@ fun BookRoute(
             },
             onDownloadClicked = viewModel::onDownloadClicked,
             onRemoveDownload = viewModel::onRemoveDownload,
+            onManageDownloads = onManageDownloads,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -191,6 +193,7 @@ fun BookScreen(
                     webUrl = menu.webUrl,
                     isDownloaded = menu.download is DownloadButtonState.Downloaded,
                     onRemoveDownload = { openSurface = BookSurface.RemoveDownloadConfirmation },
+                    onManageDownloads = actions.onManageDownloads,
                 ),
                 download = DownloadControl(
                     isPermitted = menu.canDownload,
@@ -282,6 +285,8 @@ data class BookActions(
     val onDownloadClicked: (DownloadButtonState) -> Unit = {},
     /** The confirmed half of *remove*, which is the only tap on this screen that deletes files. */
     val onRemoveDownload: () -> Unit = {},
+    /** PRODUCT_SPEC DL-003 — opens the list of everything downloaded on this device. */
+    val onManageDownloads: () -> Unit = {},
 )
 
 @Composable

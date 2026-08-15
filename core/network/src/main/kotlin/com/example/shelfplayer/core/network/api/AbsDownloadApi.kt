@@ -91,6 +91,44 @@ internal class AbsDownloadApi @Inject constructor(
         }
     }
 
+    override suspend fun fetchCover(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        sink: () -> OutputStream,
+    ): AppResult<String?> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+
+        return withContext(ioDispatcher) {
+            resultOf(onError = errors::fromThrowable) {
+                val response = services.downloadService(connection.serverUrl)
+                    .cover(bearerOf(connection.accessToken.value), bookId.value)
+                response.use { coverOf(it, sink) }
+            }.flatten()
+        }
+    }
+
+    /**
+     * Writes a cover, or says why not.
+     *
+     * The sink is opened only on a successful response, like [transferOf]'s, so a server with no artwork
+     * for an item leaves no zero-byte file behind pretending to be one.
+     */
+    private suspend fun coverOf(
+        response: retrofit2.Response<ResponseBody>,
+        sink: () -> OutputStream,
+    ): AppResult<String?> {
+        if (!response.isSuccessful) return AppResult.Failure(errors.fromStatus(response.code()))
+        val body = response.body() ?: return AppResult.Failure(
+            AppError.ApiCompatibility(
+                summary = "This server answered a cover request with no body.",
+                missingField = "body",
+            ),
+        )
+        sink().use { stream -> copy(body, stream, alreadyOnDisk = 0) {} }
+        return AppResult.Success(body.contentType()?.let { "${'$'}{it.type}/${'$'}{it.subtype}" })
+    }
+
     /**
      * Reads one response into [sink], or explains why it could not be.
      *
@@ -189,8 +227,8 @@ internal class AbsDownloadApi @Inject constructor(
         else -> contentLength?.toLongOrNull()
     }
 
-    /** Unwraps the result the transfer produced from the one `resultOf` wrapped around it. */
-    private fun AppResult<AppResult<FileTransfer>>.flatten(): AppResult<FileTransfer> = when (this) {
+    /** Unwraps the result the call produced from the one `resultOf` wrapped around it. */
+    private fun <T> AppResult<AppResult<T>>.flatten(): AppResult<T> = when (this) {
         is AppResult.Failure -> AppResult.Failure(error)
         is AppResult.Success -> value
     }

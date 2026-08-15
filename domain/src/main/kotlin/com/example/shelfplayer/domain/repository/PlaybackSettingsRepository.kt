@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
@@ -39,6 +40,11 @@ interface PlaybackSettingsRepository {
     fun observeNetworkPolicy(): Flow<NetworkPolicy>
 
     suspend fun setNetworkPolicy(policy: NetworkPolicy): AppResult<Unit>
+
+    /** PRODUCT_SPEC DL-005 / DL-006 — smart download, and the two ways a download may be removed unasked. */
+    fun observeHousekeeping(): Flow<DownloadHousekeeping>
+
+    suspend fun setHousekeeping(housekeeping: DownloadHousekeeping): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — whether connecting to a car starts the last book.
