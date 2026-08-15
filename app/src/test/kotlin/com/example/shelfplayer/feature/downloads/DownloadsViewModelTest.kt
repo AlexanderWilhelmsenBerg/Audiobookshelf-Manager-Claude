@@ -16,12 +16,14 @@ import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.download.VerificationReport
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.testing.MainDispatcherRule
+import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.DownloadRepository
@@ -195,8 +197,45 @@ class DownloadsViewModelTest {
         files = files,
         verification = verification,
         profiles = FakeProfiles(),
+        locations = locations,
         library = library,
     )
+
+    private val locations = FakeLocations()
+
+    /**
+     * PRODUCT_SPEC DL-003 / ADR-0020 — the volumes offered, and the one in use.
+     *
+     * A phone with no card gets one option, and the screen does not draw a picker for it. The list is what
+     * decides that, so it is worth asserting rather than assuming.
+     */
+    @Test
+    fun `the volumes this device can write to are offered`() = runTest {
+        val viewModel = viewModel()
+
+        assertEquals(listOf("", "card-1"), viewModel.volumes.value.map { it.uuid })
+        assertEquals(StorageVolumeOption.INTERNAL_UUID, viewModel.selectedVolume.value)
+    }
+
+    @Test
+    fun `choosing a volume stores it`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onVolumeChosen("card-1")
+
+        assertEquals("card-1", locations.selected.value)
+    }
+
+    /** A refused write says why. Silently leaving the radio where it was would look like a dead control. */
+    @Test
+    fun `a refused volume change reports the reason`() = runTest {
+        locations.failure = AppError.Storage(summary = "That card is no longer mounted.")
+        val viewModel = viewModel()
+
+        viewModel.onVolumeChosen("card-1")
+
+        assertEquals("That card is no longer mounted.", viewModel.message.value)
+    }
 
     private fun book(id: String, title: String) = Book(
         serverId = SERVER,
@@ -346,6 +385,25 @@ class DownloadsViewModelTest {
         override suspend fun verifyManifests(): AppResult<VerificationReport> = AppResult.Success(report)
 
         override suspend fun verifyFully(): AppResult<VerificationReport> = AppResult.Success(report)
+    }
+
+    /** PRODUCT_SPEC DL-003 / ADR-0020 — a device with internal storage and one card in it. */
+    private class FakeLocations : DownloadLocations {
+        val selected = MutableStateFlow(StorageVolumeOption.INTERNAL_UUID)
+        var failure: AppError? = null
+
+        override suspend fun options(): List<StorageVolumeOption> = listOf(
+            StorageVolumeOption(uuid = "", label = "Internal", freeBytes = 8_000, isRemovable = false),
+            StorageVolumeOption(uuid = "card-1", label = "SD card", freeBytes = 64_000, isRemovable = true),
+        )
+
+        override fun observeSelected(): Flow<String> = selected
+
+        override suspend fun select(uuid: String): AppResult<Unit> {
+            failure?.let { return AppResult.Failure(it) }
+            selected.value = uuid
+            return AppResult.Success(Unit)
+        }
     }
 
     private class FakeProfiles : ProfileRepository {

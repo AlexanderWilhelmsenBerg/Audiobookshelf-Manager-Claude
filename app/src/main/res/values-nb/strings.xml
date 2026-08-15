@@ -265,6 +265,12 @@
     <string name="downloads_empty_title">Ingenting er lastet ned</string>
     <string name="downloads_empty_body">Bøker du laster ned vises her, med hvor mye plass hver av dem bruker. Last ned en fra bokens egen side.</string>
     <string name="downloads_total">%1$s brukt av nedlastinger</string>
+    <!-- PRODUCT_SPEC DL-003 / ADR-0020 — nedlastingsplassering. -->
+    <string name="downloads_location">Hvor nye nedlastinger havner</string>
+    <string name="downloads_location_internal">Denne enheten</string>
+    <string name="downloads_location_free">%1$s ledig</string>
+    <string name="downloads_location_removable">Uttakbar</string>
+    <string name="downloads_location_hint">Dette gjelder neste nedlasting. Bøker som allerede er på enheten blir liggende der de er og spilles av som før. Bøker på et kort du tar ut vil tilby å lastes ned på nytt — ingenting slettes.</string>
     <string name="downloads_verify_hint">Kontrollerer at hver nedlastede fil fortsatt finnes, har riktig størrelse og kan åpnes som lyd. Den sammenligner ikke lyden med serveren din — Audiobookshelf sender ingen sjekksum å sammenligne med.</string>
     <string name="downloads_verify">Kontroller nedlastede filer</string>
     <string name="downloads_hidden_title">En bok i et bibliotek denne profilen ikke ser</string>

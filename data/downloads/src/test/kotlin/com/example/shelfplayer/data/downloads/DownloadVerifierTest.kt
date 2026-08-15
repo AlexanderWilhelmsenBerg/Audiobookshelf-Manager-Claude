@@ -70,7 +70,7 @@ class DownloadVerifierTest {
             .build()
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
-            storage = DownloadStorage(context),
+            storage = DownloadStorage(context) { listOf(context.filesDir) },
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )

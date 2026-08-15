@@ -363,6 +363,21 @@ class AppSettingsDataSource @Inject constructor(
         }
     }
 
+    /**
+     * PRODUCT_SPEC DL-003 / ADR-0020 — the volume new downloads are written to.
+     *
+     * Empty is internal storage, which is proto3's zero value and the product default at once — the one
+     * download setting that needs no inversion, because "unset" and "the default" really are the same
+     * thing here.
+     */
+    val downloadVolumeUuid: Flow<String> = settings.map { stored -> stored.downloadStorageVolumeUuid }
+
+    suspend fun setDownloadVolumeUuid(uuid: String) {
+        dataStore.updateData { current ->
+            current.toBuilder().setDownloadStorageVolumeUuid(uuid).build()
+        }
+    }
+
     suspend fun setNetworkPolicy(policy: NetworkPolicy) {
         dataStore.updateData { current ->
             current.toBuilder()

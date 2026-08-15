@@ -7,8 +7,10 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
+import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.download.VerificationReport
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.DownloadRepository
@@ -47,8 +49,46 @@ class DownloadsViewModel @Inject constructor(
     private val files: OfflineFiles,
     private val verification: OfflineVerification,
     private val profiles: ProfileRepository,
+    private val locations: DownloadLocations,
     library: LibraryRepository,
 ) : ViewModel() {
+
+    /**
+     * PRODUCT_SPEC DL-003 / ADR-0020 — the volumes downloads can go to, and which one is chosen.
+     *
+     * Outside [uiState] because the list is a *device* fact read once per visit rather than a flow: a card
+     * appearing while the screen is open is rare enough that re-reading on open is the honest cost, and
+     * folding it in would push the `combine` past its typed arity for a list that does not change.
+     */
+    private val _volumes = MutableStateFlow<List<StorageVolumeOption>>(emptyList())
+    val volumes: StateFlow<List<StorageVolumeOption>> = _volumes.asStateFlow()
+
+    val selectedVolume: StateFlow<String> = locations.observeSelected().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = StorageVolumeOption.INTERNAL_UUID,
+    )
+
+    init {
+        viewModelScope.launch { _volumes.value = locations.options() }
+    }
+
+    /**
+     * PRODUCT_SPEC DL-003 — chooses where the *next* download goes.
+     *
+     * Nothing moves. Every downloaded file's location is recorded absolutely in the manifest, so the books
+     * already on the device keep playing from where they are; this is not a migration and does not pretend
+     * to be one. The hint under the picker says so, because "change download location" reads like a promise
+     * to move things.
+     */
+    fun onVolumeChosen(uuid: String) {
+        viewModelScope.launch {
+            when (val outcome = locations.select(uuid)) {
+                is AppResult.Failure -> _message.value = outcome.error.summary
+                is AppResult.Success -> _volumes.value = locations.options()
+            }
+        }
+    }
 
     private val visibleBooks = profiles.observeActiveProfile().flatMapLatest { profile ->
         if (profile == null) flowOf(emptyList()) else library.observeAccessibleBooks(profile.id)

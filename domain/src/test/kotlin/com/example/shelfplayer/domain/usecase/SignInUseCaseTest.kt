@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.domain.FakeAuthRepository
@@ -92,6 +93,13 @@ class SignInUseCaseTest {
     }
 
     private class FakeCapabilityRepository : CapabilityRepository {
+
+        /** Nothing in these tests downloads a file, so nothing observes a capability. */
+        override suspend fun record(
+            serverId: ServerId,
+            capability: ServerCapability,
+            isSupported: Boolean,
+        ): AppResult<Unit> = AppResult.Success(Unit)
         var result: AppResult<ServerCapabilities> = AppResult.Success(ServerCapabilities.unknown(TEST_SERVER))
         val handshakes = mutableListOf<ProfileId>()
 

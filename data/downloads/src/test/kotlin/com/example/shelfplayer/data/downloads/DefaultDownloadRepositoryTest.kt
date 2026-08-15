@@ -56,7 +56,7 @@ class DefaultDownloadRepositoryTest {
         database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        storage = DownloadStorage(context)
+        storage = DownloadStorage(context) { listOf(context.filesDir) }
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = storage,

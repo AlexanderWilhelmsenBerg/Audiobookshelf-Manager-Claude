@@ -33,11 +33,32 @@ import javax.inject.Singleton
  * chooses their own folder they give that up deliberately, and ADR-0018 records it as a deviation.
  */
 @Singleton
-class DownloadStorage @Inject constructor(@param:ApplicationContext private val context: Context) {
+class DownloadStorage @Inject constructor(
+    @param:ApplicationContext private val context: Context,
+    private val volumes: DownloadRoots,
+) {
 
-    /** One item's directory under whichever root is in use. */
+    /**
+     * Where a *new* download is written.
+     *
+     * Read on every call rather than cached, because the answer changes when the user picks a different
+     * volume and because an SD card can be removed between one file and the next. [StorageVolumes] falls
+     * back to internal storage when the chosen volume is gone, so this never returns a path on a card that
+     * is not in the device.
+     */
+    private fun root(): File = volumes.roots().first()
+
+    /**
+     * Every root this app has ever been able to write to, newest choice first.
+     *
+     * Reads and deletes consult all of them, because the manifest holds absolute URIs and a book downloaded
+     * before the volume changed is still exactly where it was. Only writes use [root].
+     */
+    private fun roots(): List<File> = volumes.roots()
+
+    /** One item's directory under the *current* root. */
     fun itemDirectory(serverId: String, itemId: String): File =
-        File(context.filesDir, DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
+        File(root(), DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
 
     /**
      * The `.part` file for one audio file, with its directory created.
@@ -46,8 +67,7 @@ class DownloadStorage @Inject constructor(@param:ApplicationContext private val 
      * its real name is a file the verifier and the player are entitled to trust.
      */
     fun partFor(serverId: String, itemId: String, fileId: String, mimeType: String?): File {
-        val directory =
-            File(context.filesDir, DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
+        val directory = itemDirectory(serverId, itemId)
         directory.mkdirs()
         return File(directory, DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType)))
     }
@@ -106,9 +126,13 @@ class DownloadStorage @Inject constructor(@param:ApplicationContext private val 
      * somebody else's book.
      */
     fun deleteItem(serverId: String, itemId: String): Boolean {
-        val directory =
-            File(context.filesDir, DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
-        return !directory.exists() || directory.deleteRecursively()
+        // Every root, not just the current one. A book downloaded before the volume was changed is still on
+        // the old one, and a removal that only looked at the new root would report success while leaving
+        // the bytes exactly where they were — the storage screen's total would not move, and nobody would
+        // be able to find out why.
+        val relative = DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
+        return roots().map { root -> File(root, relative) }
+            .all { directory -> !directory.exists() || directory.deleteRecursively() }
     }
 
     /** How many bytes of [part] are already on disk, which is where a resume asks the server to continue. */
@@ -127,9 +151,9 @@ class DownloadStorage @Inject constructor(@param:ApplicationContext private val 
      */
     fun usableBytes(): Long = resultOf {
         val manager = context.getSystemService(StorageManager::class.java)
-        val uuid = manager.getUuidForPath(context.filesDir)
+        val uuid = manager.getUuidForPath(root())
         manager.getAllocatableBytes(uuid)
-    }.getOrNull() ?: context.filesDir.usableSpace.coerceAtLeast(0)
+    }.getOrNull() ?: root().usableSpace.coerceAtLeast(0)
 
     /**
      * PRODUCT_SPEC DL-001 — removes the temporary parts left by downloads that will never finish.
@@ -146,15 +170,22 @@ class DownloadStorage @Inject constructor(@param:ApplicationContext private val 
      * @return how many bytes were reclaimed, for the log and for the storage screen.
      */
     fun sweepOrphans(keep: Set<Pair<String, String>>): Long {
-        val root = File(context.filesDir, DownloadPaths.ROOT_DIRECTORY)
-        if (!root.isDirectory) return 0
+        // Across every root. Orphans are exactly the files no manifest points at, so a sweep that only
+        // looked at the current root would leave the old volume's litter permanently unreachable — nothing
+        // else in the app can find it either.
         val live = keep.mapTo(mutableSetOf()) { (serverId, itemId) ->
             DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
         }
+        return roots().sumOf { base -> sweepRoot(base, live) }
+    }
+
+    private fun sweepRoot(base: File, live: Set<String>): Long {
+        val root = File(base, DownloadPaths.ROOT_DIRECTORY)
+        if (!root.isDirectory) return 0
         var reclaimed = 0L
         root.listFiles().orEmpty().forEach { serverDirectory ->
             serverDirectory.listFiles().orEmpty().forEach { itemDirectory ->
-                val relative = itemDirectory.relativeTo(context.filesDir).path
+                val relative = itemDirectory.relativeTo(base).path
                 if (relative !in live) {
                     reclaimed += itemDirectory.walkBottomUp().filter(File::isFile).sumOf(File::length)
                     itemDirectory.deleteRecursively()
@@ -175,12 +206,17 @@ class DownloadStorage @Inject constructor(@param:ApplicationContext private val 
      * resumable part should not survive. [sweepOrphans] cannot cover it, because the manifest is still there.
      */
     fun deleteParts(serverId: String, itemId: String): Long {
-        val directory =
-            File(context.filesDir, DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
-        if (!directory.isDirectory) return 0
-        return directory.listFiles().orEmpty()
-            .filter { file -> file.isFile && DownloadPaths.isPart(file.name) }
-            .sumOf { file -> file.length().also { file.delete() } }
+        val relative = DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
+        return roots().sumOf { base ->
+            val directory = File(base, relative)
+            if (!directory.isDirectory) {
+                0L
+            } else {
+                directory.listFiles().orEmpty()
+                    .filter { file -> file.isFile && DownloadPaths.isPart(file.name) }
+                    .sumOf { file -> file.length().also { file.delete() } }
+            }
+        }
     }
 
     private companion object {

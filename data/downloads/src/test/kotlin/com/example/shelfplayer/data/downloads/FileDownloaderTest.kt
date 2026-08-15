@@ -12,6 +12,7 @@ import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineFile
@@ -58,13 +59,15 @@ class FileDownloaderTest {
     private val api = FakeDownloadApi()
     private val verifier = FakeVerifier()
 
+    private val capabilities = RecordingCapabilities()
+
     @Before
     fun setUp() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        storage = DownloadStorage(context)
+        storage = DownloadStorage(context) { listOf(context.filesDir) }
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = storage,
@@ -76,6 +79,7 @@ class FileDownloaderTest {
             storage = storage,
             repository = repository,
             verifier = verifier,
+            capabilities = capabilities,
             logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
         )
         seedAccount()
@@ -248,6 +252,96 @@ class FileDownloaderTest {
 
         assertEquals(0L, api.lastResumeFrom, "no range was requested")
         assertEquals("whole", committed().readText())
+    }
+
+    /**
+     * PRODUCT_SPEC SYNC-001 / DL-001 — a resume that worked teaches the app that this server resumes.
+     *
+     * `/status` cannot be asked whether a server honours `Range`, so the only evidence is a `206` to a real
+     * request. Without this the capability would stay unconfirmed for the life of the install and the
+     * diagnostics screen would report a server as unable to do something it had just done.
+     */
+    @Test
+    fun `a honoured range records that the server supports resuming`() = runTest {
+        part().parentFile?.mkdirs()
+        part().writeText("head")
+        api.body = "-and-tail".toByteArray()
+        api.wasResumed = true
+
+        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+
+        assertTrue(ServerCapability.RangeDownload to true in capabilities.observations)
+    }
+
+    /** And a declined one records the refusal, which is what stops the next attempt asking again. */
+    @Test
+    fun `a declined range records that the server does not resume`() = runTest {
+        part().parentFile?.mkdirs()
+        part().writeText("stale")
+        api.body = "whole".toByteArray()
+        api.wasResumed = false
+
+        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+
+        assertTrue(ServerCapability.RangeDownload to false in capabilities.observations)
+    }
+
+    /**
+     * A `200` to a request that never carried a `Range` header proves nothing.
+     *
+     * This is the case that would otherwise mark every server unable to resume on the first file of the
+     * first book — there are no bytes on disk yet, so no range is asked for, and the plain `200` that comes
+     * back is not a refusal of anything.
+     */
+    @Test
+    fun `a first download records nothing about ranges`() = runTest {
+        api.body = "whole".toByteArray()
+
+        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+
+        assertTrue(capabilities.observations.none { (capability, _) -> capability == ServerCapability.RangeDownload })
+    }
+
+    /**
+     * PRODUCT_SPEC DL-002 — a validator in the response confirms staleness detection, and only that.
+     *
+     * The capability is called `ChecksumOrETag` and what it records is the weaker half of its name: an
+     * `ETag` says the file changed, never that these bytes are those bytes (ADR-0018).
+     */
+    @Test
+    fun `a validator in the response records that the server sends one`() = runTest {
+        api.body = "x".toByteArray()
+        api.eTag = "\"v9\""
+
+        downloader.download(PROFILE, SERVER, BOOK, queuedFile())
+
+        assertTrue(ServerCapability.ChecksumOrETag to true in capabilities.observations)
+    }
+
+    /**
+     * PRODUCT_SPEC DL-001 — an observed refusal does **not** stop the next attempt asking again.
+     *
+     * `ServerCapabilities.supports` reads `false` both for "this server refused a range" and for "nothing
+     * has asked yet", so a downloader that skipped the range when it read `false` would skip it on the
+     * first retry after any interrupted download — disabling resuming everywhere rather than only against
+     * the servers that cannot do it. The capability is recorded for diagnostics; what is on disk decides.
+     */
+    @Test
+    fun `a recorded refusal does not stop a later resume being attempted`() = runTest {
+        part().parentFile?.mkdirs()
+        part().writeText("stale")
+        api.body = "whole".toByteArray()
+        api.wasResumed = false
+        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+        assertTrue(ServerCapability.RangeDownload to false in capabilities.observations)
+
+        part().writeText("head")
+        api.body = "-and-tail".toByteArray()
+        api.wasResumed = true
+        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+
+        assertEquals(4L, api.lastResumeFrom, "the range was asked for again")
+        assertEquals("head-and-tail", committed().readText())
     }
 
     /** A transport failure records the attempt without destroying what a retry would resume from. */

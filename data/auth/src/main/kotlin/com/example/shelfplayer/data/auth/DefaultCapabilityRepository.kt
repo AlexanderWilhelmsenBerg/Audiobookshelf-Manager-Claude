@@ -12,6 +12,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -19,6 +20,8 @@ import com.example.shelfplayer.domain.repository.CapabilityRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -49,6 +52,43 @@ class DefaultCapabilityRepository @Inject constructor(
         profileDao.findServer(serverId.value)?.let(AuthEntityMappers::toCapabilities)
     }
 
+    /**
+     * PRODUCT_SPEC DL-001 — one observation, folded into the stored set.
+     *
+     * Read-modify-write under a mutex. Two files of the same book download one after another rather than
+     * at once, so contention is not expected; the lock is here because the alternative to holding it is
+     * two concurrent books racing on one row and one of them losing its answer, which would be invisible
+     * and would only ever be wrong in the direction of forgetting.
+     *
+     * Writes nothing when the answer has not changed, so the ordinary case — every file after the first
+     * confirming what the first one proved — touches no rows at all.
+     */
+    override suspend fun record(
+        serverId: ServerId,
+        capability: ServerCapability,
+        isSupported: Boolean,
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        observations.withLock {
+            val stored = profileDao.findServer(serverId.value)?.let(AuthEntityMappers::toCapabilities)
+                ?: return@withContext missingProfile()
+            if (stored.supports(capability) == isSupported) return@withContext AppResult.Success(Unit)
+
+            val supported = if (isSupported) stored.supported + capability else stored.supported - capability
+            persistSet(stored, supported, clock.now().toEpochMilli())
+            logger.info(
+                LogCategory.Sync,
+                "A server capability was observed rather than probed",
+                LogField.Identifier("server", serverId.value),
+                // The capability's name describes the software, not the user or their library (14.5).
+                LogField.Public("capability", capability.name),
+                LogField.Public("supported", isSupported.toString()),
+            )
+            AppResult.Success(Unit)
+        }
+    }
+
+    private val observations = Mutex()
+
     override suspend fun handshake(profileId: ProfileId): AppResult<ServerCapabilities> = withContext(ioDispatcher) {
         val profile = profileDao.findProfile(profileId.value)
             ?: return@withContext missingProfile()
@@ -74,10 +114,31 @@ class DefaultCapabilityRepository @Inject constructor(
         }
     }
 
+    /**
+     * PRODUCT_SPEC SYNC-001 — writes the probe's answer without discarding what the device proved.
+     *
+     * A handshake replaces the resolved set, and rightly: a server that stopped offering websockets should
+     * stop being listed as offering them. But `ServerCapability.ObservedOnly` entries are not in the
+     * probe's answer at all — `/status` cannot speak to ranges or validators — so replacing wholesale would
+     * silently forget them on every reconnect. They are carried across instead.
+     */
     private suspend fun persist(capabilities: ServerCapabilities, detectedAt: Long) {
+        val observed = profileDao.findServer(capabilities.serverId.value)
+            ?.let(AuthEntityMappers::toCapabilities)
+            ?.supported
+            ?.filterTo(mutableSetOf()) { it in ServerCapability.ObservedOnly }
+            .orEmpty()
+        persistSet(capabilities, capabilities.supported + observed, detectedAt)
+    }
+
+    private suspend fun persistSet(
+        capabilities: ServerCapabilities,
+        supported: Set<ServerCapability>,
+        detectedAt: Long,
+    ) {
         profileDao.updateServerCapabilities(
             serverId = capabilities.serverId.value,
-            capabilitiesJson = AuthEntityMappers.capabilitiesJson(capabilities.supported),
+            capabilitiesJson = AuthEntityMappers.capabilitiesJson(supported),
             authMethodsJson = AuthEntityMappers.authMethodsJson(capabilities.authMethods),
             serverVersion = capabilities.serverVersion,
             detectedAt = detectedAt,

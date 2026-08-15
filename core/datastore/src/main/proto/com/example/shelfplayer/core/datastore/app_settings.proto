@@ -183,6 +183,17 @@ message AppSettings {
   // Decision 7's second half — when smart download fetches the next book in a series, remove the one
   // before it. Off by default, and meaningless unless smart download is on.
   bool delete_previous_on_smart_download = 33;
+
+  // PRODUCT_SPEC DL-003 / ADR-0018 decision 4 / ADR-0020 — which storage volume downloads are written to.
+  //
+  // The volume's UUID as `StorageManager` reports it, or empty for the device's own internal storage —
+  // which is both the default and what proto3's zero value means here, so no inversion is needed.
+  //
+  // A UUID and not a path. A removable volume's mount path is not stable across reboots or across
+  // devices, so a stored path would resolve to the wrong place or to nothing; the UUID is what the volume
+  // itself is called. A UUID that no longer resolves — the card was removed — falls back to internal for
+  // *new* downloads, and existing ones keep the absolute URIs their manifest already holds.
+  string download_storage_volume_uuid = 34;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

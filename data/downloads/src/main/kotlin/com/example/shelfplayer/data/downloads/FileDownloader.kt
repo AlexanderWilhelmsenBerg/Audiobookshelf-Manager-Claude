@@ -8,12 +8,14 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.isFailure
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
+import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import java.io.File
 import javax.inject.Inject
@@ -57,6 +59,7 @@ class FileDownloader @Inject constructor(
     private val storage: DownloadStorage,
     private val repository: DownloadRepository,
     private val verifier: MediaContainerVerifier,
+    private val capabilities: CapabilityRepository,
     private val logger: Logger,
 ) {
 
@@ -81,6 +84,13 @@ class FileDownloader @Inject constructor(
 
         // Two conditions for even attempting a resume: bytes on disk, and a validator to guard them with.
         // Without the second the server cannot tell us the file changed, and a resume would be a guess.
+        //
+        // Deliberately *not* a third condition on `ServerCapability.RangeDownload`. That capability records
+        // what a past transfer observed, and `ServerCapabilities.supports` cannot tell "this server refused
+        // a range" apart from "nothing has asked yet" — both read as `false`. Gating on it would mean the
+        // first retry after any interrupted download never asks for a range, which would disable resuming
+        // everywhere rather than only against the servers that cannot do it. The capability is recorded for
+        // diagnostics; the decision to try is made from what is on disk.
         val resumeFrom = if (file.eTag != null) onDisk else 0
 
         val transfer = fetch(profileId, itemId, file, part, resumeFrom, onProgress)
@@ -89,6 +99,7 @@ class FileDownloader @Inject constructor(
             return AppResult.Failure(transfer.error)
         }
         val outcome = (transfer as AppResult.Success).value
+        observe(serverId, askedForRange = resumeFrom > 0, outcome = outcome)
 
         verify(part, outcome)?.let { problem ->
             // The part is left where it is. A short file resumes; a corrupt one is replaced by the next
@@ -120,6 +131,26 @@ class FileDownloader @Inject constructor(
             LogField.Public("resumed", outcome.wasResumed.toString()),
         )
         return AppResult.Success(stored)
+    }
+
+    /**
+     * PRODUCT_SPEC SYNC-001 / DL-001 — what this transfer proved about the server.
+     *
+     * The two `ObservedOnly` capabilities, both answered by the response that just arrived and by nothing
+     * else. `/status` cannot be asked either question, so a real file is the only evidence there is — which
+     * is why this lives on the download path rather than in the handshake.
+     *
+     * The range answer is recorded only when a range was actually **asked for**. A `200` to a request that
+     * carried no `Range` header says nothing at all, and recording it as a refusal would teach the app that
+     * every server is one that cannot resume, on the first file of the first book.
+     */
+    private suspend fun observe(serverId: ServerId, askedForRange: Boolean, outcome: FileTransfer) {
+        if (askedForRange) {
+            capabilities.record(serverId, ServerCapability.RangeDownload, outcome.wasResumed)
+        }
+        if (outcome.eTag != null || outcome.lastModified != null) {
+            capabilities.record(serverId, ServerCapability.ChecksumOrETag, isSupported = true)
+        }
     }
 
     /**
