@@ -1,6 +1,7 @@
 # Phase 5 — Management tools: the plan, and what has to happen first
 
-**Status: started. Slice 1 is the captures and the permissions.**
+**Status: slice 1 is done and the captures have come back.** What they found is below, and two of the
+findings change slices that had not started yet.
 
 ## The problem this phase starts with
 
@@ -42,9 +43,36 @@ Worth stating, because it is more than it looks:
 - `ProfileRole` has `Listener`/`Editor`/`Manager`/`Admin`, and every profile is currently a `Listener`.
 - The book screen's three-dot menu exists and is where the management actions belong.
 
+## What the captures came back with
+
+Run on 2026-08-15 against 2.36.0. `docs/api-compatibility.md` has the full record; these are the findings
+that change the plan.
+
+| Finding | Effect |
+| --- | --- |
+| **`GET /api/users` returns every user's live token** | `UserDto` must never model the field. Slice 8's shape is decided before it starts. |
+| **A created user is `isActive: false`** | USER-002 cannot report "created" and stop. |
+| **Cover removal, library scan and item deletion answer `text/plain "OK"`** | Three endpoints where assuming JSON would report failure for a success. |
+| **`PATCH /api/items/{id}/media` returns the whole item** | MGR-001's "refresh from server" *is* the response. No follow-up `GET`. |
+| **Item scan is synchronous; library scan is not** | MGR-004 needs two different treatments, and neither response says which. |
+| **A quick match with no provider defaults to Google, and can miss** | A miss is `200` with a `warning`, not an error. |
+
+### What they did not settle
+
+- **A successful match.** Only the miss shape exists. MGR-003 needs "provider, candidate title, author,
+  year, cover, and fields that will change" and none of it is captured — the container has no provider key.
+  **Slice 5 cannot be finished from what is on disk today.**
+- **Cover upload.** Not attempted; needs a multipart body and an image the script should not invent.
+- **What a `403` looks like on these routes.** Every capture ran as `root`, so all of them are the
+  permitted response. The gating is therefore built from `me.json`'s permissions rather than from
+  recognising a refusal — which is the right way round anyway (principle 4), but it means the second
+  enforcement has never been observed failing.
+- **Source-file deletion.** No endpoint probed, because none is known to exist. MGR-006's first criterion
+  is currently satisfied by there being nothing to gate.
+
 ## The slices
 
-### Slice 1 — the captures, and the permissions become real *(this slice)*
+### Slice 1 — the captures, and the permissions become real *(done)*
 
 Two halves, both of which unblock everything after them.
 

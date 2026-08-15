@@ -1,0 +1,35 @@
+{
+  "body": {
+    "users": [
+      {
+        "createdAt": 0,
+        "email": null,
+        "hasOpenIDLink": false,
+        "id": "<volatile>",
+        "isActive": true,
+        "isLocked": false,
+        "itemTagsSelected": [],
+        "lastSeen": 0,
+        "librariesAccessible": [],
+        "permissions": {
+          "accessAllLibraries": true,
+          "accessAllTags": true,
+          "accessExplicitContent": true,
+          "createEreader": true,
+          "delete": true,
+          "download": true,
+          "selectedTagsNotAccessible": false,
+          "update": true,
+          "upload": true
+        },
+        "seriesHideFromContinueListening": [],
+        "token": "<redacted-secret>",
+        "type": "root",
+        "username": "contractroot"
+      }
+    ]
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

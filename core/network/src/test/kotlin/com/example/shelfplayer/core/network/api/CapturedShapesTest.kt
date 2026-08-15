@@ -255,6 +255,139 @@ class CapturedShapesTest {
         assertEquals(401, file.getValue("unauthenticatedStatus").jsonPrimitive.content.toInt())
     }
 
+    // --- Management (EPIC MGR / EPIC USER) --------------------------------------------------------
+
+    /**
+     * **`GET /api/users` returns every user's `token`.**
+     *
+     * This is the single most important thing the management captures found. The response carries a live
+     * API credential *for other accounts* to any client an admin signs in with — not a hash, not a
+     * placeholder, the token itself. The fixture shows `<redacted-secret>` because the capture script
+     * redacts it; the wire does not.
+     *
+     * USER-001 says tokens are never *displayed*. The stronger rule this forces is that the app must never
+     * **model** the field: no DTO property, so there is nothing to store, nothing to log, and nothing to
+     * put on a screen by accident. A field that is never parsed cannot leak.
+     *
+     * Pinned as a test so that a future reader who wonders why `UserDto` has no `token` finds the reason
+     * rather than adding one.
+     */
+    @Test
+    fun `the user list carries a live token for every account`() {
+        val users = json.parseToJsonElement(bodyOf("users-list")).jsonObject
+            .getValue("users").jsonArray
+
+        assertTrue(users.isNotEmpty())
+        users.forEach { user ->
+            assertTrue("token" in user.jsonObject, "a user object with no token would be the safe shape")
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC USER-002 — a user created through this endpoint arrives **inactive**.
+     *
+     * The request sent a username, a password and a type, and the server answered with `isActive: false`.
+     * So "create a user" does not produce an account that can sign in, and an app that reported success
+     * without saying so would leave an admin waiting for somebody to log in with credentials that cannot
+     * work yet.
+     */
+    @Test
+    fun `a created user is not active`() {
+        val user = json.parseToJsonElement(bodyOf("user-create")).jsonObject.getValue("user").jsonObject
+
+        assertEquals(false, user.getValue("isActive").jsonPrimitive.content.toBoolean())
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 — the metadata `PATCH` answers with the whole updated item.
+     *
+     * That settles how MGR-001's *"On success, Room updates immediately and then refreshes from server"* is
+     * satisfied: the refresh is the response, not a second `GET`. A client that re-fetched would be making
+     * a request for data it already had, and would have a window in which the two disagreed.
+     */
+    @Test
+    fun `updating metadata returns the updated library item`() {
+        val body = json.parseToJsonElement(bodyOf("item-update")).jsonObject
+
+        assertTrue("libraryItem" in body, "the PATCH response is the item, so no follow-up GET is needed")
+    }
+
+    /**
+     * Three management endpoints answer `text/plain`, not JSON.
+     *
+     * `OK` is the whole body. A client that assumed every 2xx carried JSON would fail to parse a success
+     * and report a failure for an operation that worked — which for the deletion would mean telling
+     * somebody their book is still there when it is gone.
+     */
+    @Test
+    fun `cover removal, library scan and item deletion answer in plain text`() {
+        listOf("item-cover-remove", "library-scan", "item-delete").forEach { fixture ->
+            val envelope = json.parseToJsonElement(rawEnvelope(fixture)).jsonObject
+            assertEquals(200, envelope.getValue("status").jsonPrimitive.content.toInt(), fixture)
+            assertTrue(
+                envelope.getValue("contentType").jsonPrimitive.content.startsWith("text/plain"),
+                "$fixture answered ${envelope.getValue("contentType")}",
+            )
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-005 — the deletion is confirmed by the item being gone, not by the response.
+     *
+     * `DELETE` answers `OK` and the item then `404`s. MGR-005 requires the local row to be removed *only
+     * after server confirmation*, and this pair is what confirmation looks like on this server: a plain-text
+     * acknowledgement plus an item that no longer resolves.
+     */
+    @Test
+    fun `a deleted item stops resolving`() {
+        val after = json.parseToJsonElement(rawEnvelope("item-after-delete")).jsonObject
+
+        assertEquals(404, after.getValue("status").jsonPrimitive.content.toInt())
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-004 — an item scan answers with a *result*, synchronously.
+     *
+     * `{"result": "UPTODATE"}`. No job id, nothing to poll. MGR-004 asks for "started, running if
+     * detectable, completed, and failed" — on this server an item scan has no detectable running state
+     * because it is over by the time the response arrives, while a **library** scan answers `OK`
+     * immediately and runs on. The two need different UI, and that is not something either response
+     * announces.
+     */
+    @Test
+    fun `an item scan answers with a result and a library scan does not`() {
+        val scan = json.parseToJsonElement(bodyOf("item-scan")).jsonObject
+
+        assertTrue("result" in scan, "the item scan is synchronous and says what it concluded")
+
+        val library = json.parseToJsonElement(rawEnvelope("library-scan")).jsonObject
+        assertTrue(
+            library.getValue("contentType").jsonPrimitive.content.startsWith("text/plain"),
+            "the library scan only acknowledges; it does not report a result",
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-003 — a quick match with no provider defaults to Google, and can find nothing.
+     *
+     * The capture is the **no-match** shape: `{"warning": "No google match found"}`. What a *successful*
+     * match returns is still unknown, because this container has no provider key and nothing to match
+     * against — so MGR-003's "user sees provider, candidate title, author, year, cover, and fields that
+     * will change" cannot be built from this capture alone. Recorded so that limitation is visible rather
+     * than discovered halfway through the slice.
+     */
+    @Test
+    fun `a quick match that finds nothing reports a warning rather than failing`() {
+        val envelope = json.parseToJsonElement(rawEnvelope("item-match")).jsonObject
+        assertEquals(200, envelope.getValue("status").jsonPrimitive.content.toInt())
+
+        val body = json.parseToJsonElement(bodyOf("item-match")).jsonObject
+        assertTrue("warning" in body, "a miss is a 200 with a warning, not an error status")
+    }
+
+    private fun bodyOf(fixture: String): String =
+        json.parseToJsonElement(rawEnvelope(fixture)).jsonObject.getValue("body").toString()
+
     private fun rawEnvelope(fixture: String): String {
         val stream = requireNotNull(javaClass.classLoader?.getResourceAsStream("contracts/$fixture.json")) {
             "no committed fixture named contracts/$fixture.json. Run scripts/capture-contracts.sh."

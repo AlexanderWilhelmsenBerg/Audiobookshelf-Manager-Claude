@@ -780,3 +780,91 @@ The drift check was red on every commit of this branch for two reasons, neither 
   was hiding the two genuinely new fixtures underneath it.
 - **`media-progress-set-finished` and `media-progress-set-unfinished` had never been committed**, which is
   the expected state of the pull request that adds a capture target. They are committed now.
+
+---
+
+## The management endpoints, captured 2026-08-15 against 2.36.0
+
+The first capture of anything in EPIC MGR or EPIC USER. Everything below is observed, not documented —
+PRODUCT_SPEC 22.4 and 22.5 exist because none of it could be guessed, and three of these findings
+contradict what a client written from the requirements alone would have assumed.
+
+| Endpoint | Status | Body | Content type |
+| --- | --- | --- | --- |
+| `POST /api/items/{id}/scan` | 200 | `{"result": "UPTODATE"}` | JSON |
+| `POST /api/items/{id}/match` | 200 | `{"warning": "No google match found"}` | JSON |
+| `PATCH /api/items/{id}/media` | 200 | `{"libraryItem": { … }}` | JSON |
+| `DELETE /api/items/{id}/cover` | 200 | `OK` | **text/plain** |
+| `POST /api/libraries/{id}/scan` | 200 | `OK` | **text/plain** |
+| `GET /api/users` | 200 | `{"users": [ … ]}` | JSON |
+| `POST /api/users` | 200 | `{"user": { … }}` | JSON |
+| `DELETE /api/items/{id}` | 200 | `OK` | **text/plain** |
+| `GET /api/items/{id}` after deletion | 404 | `Not Found` | text/plain |
+
+### `GET /api/users` returns every user's live token
+
+**The most important thing these captures found.** Each element of `users` carries a `token` field, and it
+is a working API credential for that account — not a hash, not a placeholder. An admin signing in to this
+app is handed credentials for everybody else on the server.
+
+USER-001 says tokens are never *displayed*. That is not a strong enough rule for a field like this, so the
+rule this project adopts is stricter:
+
+> **The app never models the field.** `UserDto` has no `token` property. There is nothing to store, nothing
+> to log, nothing to put on a screen by accident, and nothing for a future refactor to expose.
+
+A field that is never parsed cannot leak. `CapturedShapesTest` pins the finding so the absence reads as a
+decision rather than an oversight.
+
+The capture script's redaction already replaces it with `<redacted-secret>` in the committed fixture, so
+the repository is safe; the wire is not.
+
+### A created user is inactive
+
+`POST /api/users` with a username, a password and a type answers with `isActive: false`. The account
+exists and **cannot sign in**.
+
+USER-002 therefore cannot report "user created" and stop. Either the request has to carry `isActive`, or
+the screen has to say that somebody still needs to activate the account — and which of those is right
+depends on whether the server accepts the field, which this capture does not answer because it did not
+send one.
+
+### Three endpoints answer `text/plain`
+
+Cover removal, library scan and item deletion all return the two characters `OK`. A client that assumed
+every 2xx carried JSON would fail to parse a success and report a failure — for the deletion, that means
+telling somebody their book is still on the server when it is gone.
+
+### The metadata PATCH returns the whole item
+
+`PATCH /api/items/{id}/media` answers with `{"libraryItem": …}` — the complete updated item, in the same
+shape as the expanded single-item read.
+
+That settles how MGR-001's *"On success, Room updates immediately and then refreshes from server"* should
+work: **the refresh is the response.** A follow-up `GET` would be a request for data the client already
+holds, with a window in which the two could disagree.
+
+### The two scans are not the same kind of operation
+
+An **item** scan is synchronous and reports a conclusion: `{"result": "UPTODATE"}`. A **library** scan
+acknowledges with `OK` and runs on afterwards.
+
+MGR-004 asks for "started, running if detectable, completed, and failed". On this server an item scan has
+no detectable running state — it is over before the response arrives — while a library scan has no
+completion the response can report. They need different treatment, and neither response says so.
+
+### What the captures did **not** settle
+
+- **A successful match.** `POST /api/items/{id}/match` with an empty body defaults to the **Google**
+  provider and found nothing, so the only shape recorded is the miss. MGR-003 requires showing "provider,
+  candidate title, author, year, cover, and fields that will change", and none of that is in this capture.
+  The container has no provider key and nothing to match against; a successful match needs a different
+  fixture environment, not a different script.
+- **Cover upload.** Deliberately not attempted: it needs a multipart body and an image the capture script
+  has no business inventing. Only removal is recorded.
+- **Source-file deletion (MGR-006).** No endpoint was probed, because none is known to exist. MGR-006's
+  first criterion — the action does not exist unless the server reports a dedicated capability — is
+  currently satisfied by there being no capability and no action.
+- **Permission failures.** Every capture ran as `root`, so every management response here is the
+  *permitted* one. What a `403` looks like on these routes is still unknown, and the app's gating is
+  therefore built on the permissions in `me.json` rather than on recognising a refusal.

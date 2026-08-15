@@ -1,0 +1,169 @@
+{
+  "body": {
+    "libraryItem": {
+      "addedAt": 0,
+      "birthtimeMs": 0,
+      "ctimeMs": 0,
+      "folderId": "<volatile>",
+      "id": "<volatile>",
+      "ino": "<volatile>",
+      "isFile": false,
+      "isInvalid": false,
+      "isMissing": false,
+      "lastScan": 0,
+      "libraryFiles": [
+        {
+          "addedAt": 0,
+          "fileType": "audio",
+          "ino": "<volatile>",
+          "isSupplementary": null,
+          "metadata": {
+            "birthtimeMs": 0,
+            "ctimeMs": 0,
+            "ext": ".mp3",
+            "filename": "01 - The Salt Harbour.mp3",
+            "mtimeMs": 0,
+            "path": "/audiobooks/Marisol Holt/The Salt Harbour/01 - The Salt Harbour.mp3",
+            "relPath": "01 - The Salt Harbour.mp3",
+            "size": 0
+          },
+          "updatedAt": 0
+        },
+        {
+          "addedAt": 0,
+          "fileType": "image",
+          "ino": "<volatile>",
+          "isSupplementary": null,
+          "metadata": {
+            "birthtimeMs": 0,
+            "ctimeMs": 0,
+            "ext": ".jpg",
+            "filename": "cover.jpg",
+            "mtimeMs": 0,
+            "path": "/audiobooks/Marisol Holt/The Salt Harbour/cover.jpg",
+            "relPath": "cover.jpg",
+            "size": 0
+          },
+          "updatedAt": 0
+        }
+      ],
+      "libraryId": "<volatile>",
+      "media": {
+        "audioFiles": [
+          {
+            "addedAt": 0,
+            "bitRate": 32000,
+            "channelLayout": "mono",
+            "channels": 1,
+            "chapters": [
+              {
+                "end": 4,
+                "id": 0,
+                "start": 0,
+                "title": "Chapter One"
+              },
+              {
+                "end": 8,
+                "id": 0,
+                "start": 4,
+                "title": "Chapter Two"
+              }
+            ],
+            "codec": "mp3",
+            "discNumFromFilename": null,
+            "discNumFromMeta": null,
+            "duration": 8,
+            "embeddedCoverArt": null,
+            "error": null,
+            "exclude": false,
+            "format": "MP2/3 (MPEG audio layer 2/3)",
+            "index": 1,
+            "ino": "<volatile>",
+            "language": null,
+            "manuallyVerified": false,
+            "metaTags": {
+              "tagAlbum": "The Salt Harbour",
+              "tagArtist": "Marisol Holt",
+              "tagComposer": "Ada Fenwick",
+              "tagDate": "2024",
+              "tagEncoder": "Lavf62.3.100",
+              "tagGenre": "Fiction",
+              "tagTitle": "The Salt Harbour"
+            },
+            "metadata": {
+              "birthtimeMs": 0,
+              "ctimeMs": 0,
+              "ext": ".mp3",
+              "filename": "01 - The Salt Harbour.mp3",
+              "mtimeMs": 0,
+              "path": "/audiobooks/Marisol Holt/The Salt Harbour/01 - The Salt Harbour.mp3",
+              "relPath": "01 - The Salt Harbour.mp3",
+              "size": 0
+            },
+            "mimeType": "audio/mpeg",
+            "timeBase": "1/14112000",
+            "trackNumFromFilename": 1,
+            "trackNumFromMeta": null,
+            "updatedAt": 0
+          }
+        ],
+        "chapters": [
+          {
+            "end": 4,
+            "id": 0,
+            "start": 0,
+            "title": "Chapter One"
+          },
+          {
+            "end": 8,
+            "id": 0,
+            "start": 4,
+            "title": "Chapter Two"
+          }
+        ],
+        "coverPath": "/audiobooks/Marisol Holt/The Salt Harbour/cover.jpg",
+        "ebookFile": null,
+        "id": "<volatile>",
+        "libraryItemId": "<volatile>",
+        "metadata": {
+          "abridged": false,
+          "asin": null,
+          "authors": [
+            {
+              "id": "<volatile>",
+              "name": "Marisol Holt"
+            }
+          ],
+          "description": null,
+          "explicit": false,
+          "genres": [
+            "Fiction"
+          ],
+          "isbn": null,
+          "language": null,
+          "narrators": [
+            "Ada Fenwick"
+          ],
+          "publishedDate": null,
+          "publishedYear": "2024",
+          "publisher": null,
+          "series": [],
+          "subtitle": "A subtitle written by the contract capture",
+          "title": "The Salt Harbour"
+        },
+        "tags": []
+      },
+      "mediaType": "book",
+      "mtimeMs": 0,
+      "oldLibraryItemId": null,
+      "path": "/audiobooks/Marisol Holt/The Salt Harbour",
+      "relPath": "Marisol Holt/The Salt Harbour",
+      "scanVersion": "2.36.0",
+      "updatedAt": 0
+    },
+    "updated": true
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

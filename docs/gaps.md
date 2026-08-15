@@ -95,8 +95,18 @@ recreation — and the advanced form is the part nobody can use without the diag
 
 ## Phase 5 — Management tools
 
-Not started. Its requirements are listed under EPIC MGR and are not gaps yet; they become gaps if Phase 5 is
-declared done without them.
+In progress. Its requirements become gaps only if the phase is declared done without them, but two are
+already known to be **blocked on something a capture could not provide**:
+
+| Requirement | Gap | State |
+| --- | --- | --- |
+| MGR-003 | **A successful match has never been captured.** The container has no metadata-provider key, so the only recorded shape is the miss (`200` with a `warning`). The criterion "user sees provider, candidate title, author, year, cover, and fields that will change" cannot be built from it. | Blocked on a fixture environment with a provider |
+| MGR-002 | **Cover *upload* has never been captured** — only removal. It needs a multipart body and an image the capture script should not invent. | Blocked on a capture |
+| MGR-006 | **No source-file-delete endpoint is known to exist.** Its first criterion — the action does not exist unless the server reports a dedicated capability — is currently satisfied by there being nothing to gate. | Deferred, correctly |
+
+One finding is not a gap but a standing rule: **`GET /api/users` returns every user's live token.**
+`UserDto` must never model the field, so there is nothing to store, log or display. Recorded in
+`docs/api-compatibility.md` and pinned by `CapturedShapesTest`.
 
 ---
 
