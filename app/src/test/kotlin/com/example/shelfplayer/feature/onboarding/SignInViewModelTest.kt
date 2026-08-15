@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.SyncState
@@ -392,6 +393,13 @@ class SignInViewModelTest {
     }
 
     private class StubCapabilityRepository : CapabilityRepository {
+
+        /** Nothing in these tests downloads a file, so nothing observes a capability. */
+        override suspend fun record(
+            serverId: ServerId,
+            capability: ServerCapability,
+            isSupported: Boolean,
+        ): AppResult<Unit> = AppResult.Success(Unit)
         var result: AppResult<ServerCapabilities> =
             AppResult.Success(ServerCapabilities.unknown(ServerId("srv_books")))
 

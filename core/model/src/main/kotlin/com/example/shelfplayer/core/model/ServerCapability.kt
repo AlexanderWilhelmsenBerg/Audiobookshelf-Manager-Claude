@@ -23,10 +23,41 @@ enum class ServerCapability {
      * operation does not delete media files, and the app must never present it as if it did.
      */
     SourceFileDelete,
+
+    /**
+     * PRODUCT_SPEC DL-001 — the server honours a `Range` request, so an interrupted download resumes.
+     *
+     * One of the two entries no probe can answer: the only honest way to find out is to ask for a range
+     * and see whether `206` or `200` comes back. It is therefore **observed**, not resolved — see
+     * [ObservedOnly].
+     */
     RangeDownload,
     Websocket,
     PlaybackSession,
+
+    /**
+     * PRODUCT_SPEC DL-002 — the server sends a validator with a file, so a stale copy can be detected.
+     *
+     * Named for what it is rather than for what it would be convenient to be. `contracts/item-file.json`
+     * records an `ETag` and a `Last-Modified`; neither is required to be derived from the bytes, so this
+     * confirms *staleness detection* and never *integrity* — which is exactly what limits what the
+     * storage screen's check may claim (ADR-0018).
+     */
     ChecksumOrETag,
+    ;
+
+    companion object {
+        /**
+         * The capabilities that are learned by doing, and that a handshake must therefore never clear.
+         *
+         * `/status` says nothing about ranges or validators — `AbsCapabilityResolver` deliberately returns
+         * an empty set rather than guessing — so these two arrive from the download path, once a real file
+         * has been fetched. A handshake that overwrote the stored set with the probe's would erase them
+         * every time the app reconnected, and the diagnostics screen would forget what the device had
+         * already proved.
+         */
+        val ObservedOnly: Set<ServerCapability> = setOf(RangeDownload, ChecksumOrETag)
+    }
 }
 
 /**

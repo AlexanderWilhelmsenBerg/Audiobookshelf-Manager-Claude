@@ -3,6 +3,7 @@ package com.example.shelfplayer.domain.repository
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCapabilities
+import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import kotlinx.coroutines.flow.Flow
 
@@ -34,4 +35,19 @@ interface CapabilityRepository {
      * Read-only: PRODUCT_SPEC SYNC-001 requires capability probes not to change server state.
      */
     suspend fun handshake(profileId: ProfileId): AppResult<ServerCapabilities>
+
+    /**
+     * PRODUCT_SPEC SYNC-001 / DL-001 — records what the app *observed*, as opposed to what a probe resolved.
+     *
+     * For [ServerCapability.ObservedOnly] entries this is the only way they are ever set: `/status` says
+     * nothing about ranges or validators, so the download path reports what actually came back. A
+     * capability recorded here survives the next handshake.
+     *
+     * Idempotent, and cheap enough to call after every file: it writes only when the answer changes.
+     *
+     * @param isSupported what was observed. `false` is a real answer — a server that answered `200` to a
+     *   ranged request has told us resuming will not work, and remembering that is what stops the app
+     *   keeping `.part` files it can never resume from.
+     */
+    suspend fun record(serverId: ServerId, capability: ServerCapability, isSupported: Boolean): AppResult<Unit>
 }

@@ -25,6 +25,10 @@ dependencies {
     api(projects.domain)
     implementation(projects.core.common)
     implementation(projects.core.database)
+    // ADR-0020 — the chosen download volume is an app setting, and `DownloadStorage` has to resolve it
+    // without suspending. Reading it here rather than threading it down from `:app` keeps the storage
+    // decision inside the module that owns storage.
+    implementation(projects.core.datastore)
     implementation(projects.core.network)
 
     testImplementation(projects.core.testing)

@@ -340,6 +340,18 @@
       The capture says the server sends an ETag — a validator, not a checksum — so this names what it can
       honestly do: check the files are here, whole, and openable.
     -->
+    <!--
+      PRODUCT_SPEC DL-003 / ADR-0020 — the download location, and the two things it does not do.
+
+      The hint is the important string. "Change download location" reads like a promise to move what is
+      already downloaded, and this moves nothing; a user who chooses a card and then finds their phone no
+      emptier has been misled by the label rather than by the feature.
+    -->
+    <string name="downloads_location">Where new downloads go</string>
+    <string name="downloads_location_internal">This device</string>
+    <string name="downloads_location_free">%1$s free</string>
+    <string name="downloads_location_removable">Removable</string>
+    <string name="downloads_location_hint">This applies to the next download. Books already on this device stay where they are and keep playing. Books on a card you take out will offer to download again — nothing is deleted.</string>
     <string name="downloads_verify_hint">Checks that every downloaded file is still present, the right size, and openable as audio. It does not compare the audio with your server — Audiobookshelf does not send a checksum to compare against.</string>
     <string name="downloads_verify">Check downloaded files</string>
     <!-- PRODUCT_SPEC 5.2 — a book the signed-in profile may not see is listed, and not named. -->

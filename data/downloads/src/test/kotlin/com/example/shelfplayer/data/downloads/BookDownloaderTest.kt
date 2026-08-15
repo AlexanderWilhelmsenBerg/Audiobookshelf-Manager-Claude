@@ -65,7 +65,7 @@ class BookDownloaderTest {
         database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        storage = DownloadStorage(context)
+        storage = DownloadStorage(context) { listOf(context.filesDir) }
         val logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default))
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
@@ -83,6 +83,7 @@ class BookDownloaderTest {
                 // Robolectric has no media stack, so the container check is a decision here
                 // rather than a parser. `FileDownloaderTest` covers what it decides.
                 verifier = MediaContainerVerifier { true },
+                capabilities = RecordingCapabilities(),
                 logger = logger,
             ),
             storage = storage,

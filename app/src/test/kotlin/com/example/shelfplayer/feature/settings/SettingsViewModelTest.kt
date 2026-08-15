@@ -302,6 +302,13 @@ class SettingsViewModelTest {
 
     /** PRODUCT_SPEC SYNC-001 — a handshake the test dictates, including "there has not been one". */
     private class FakeCapabilities : CapabilityRepository {
+
+        /** Nothing in these tests downloads a file, so nothing observes a capability. */
+        override suspend fun record(
+            serverId: ServerId,
+            capability: ServerCapability,
+            isSupported: Boolean,
+        ): AppResult<Unit> = AppResult.Success(Unit)
         val stored = MutableStateFlow<ServerCapabilities?>(null)
 
         override fun observeCapabilities(serverId: ServerId): Flow<ServerCapabilities?> = stored

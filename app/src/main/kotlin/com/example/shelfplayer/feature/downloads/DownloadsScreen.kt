@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -19,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -36,12 +39,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
+import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import java.util.Locale
 
 @Composable
@@ -52,9 +57,14 @@ fun DownloadsRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val volumes by viewModel.volumes.collectAsStateWithLifecycle()
+    val selectedVolume by viewModel.selectedVolume.collectAsStateWithLifecycle()
     DownloadsScreen(
         uiState = uiState,
         message = message,
+        volumes = volumes,
+        selectedVolume = selectedVolume,
+        onVolumeChosen = viewModel::onVolumeChosen,
         onMessageShown = viewModel::onMessageShown,
         onRemove = viewModel::onRemove,
         onPinnedChanged = viewModel::onPinnedChanged,
@@ -96,6 +106,9 @@ fun DownloadsScreen(
     modifier: Modifier = Modifier,
     message: String? = null,
     onMessageShown: () -> Unit = {},
+    volumes: List<StorageVolumeOption> = emptyList(),
+    selectedVolume: String = StorageVolumeOption.INTERNAL_UUID,
+    onVolumeChosen: (String) -> Unit = {},
 ) {
     var confirming by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbars = remember { SnackbarHostState() }
@@ -151,6 +164,16 @@ fun DownloadsScreen(
                     }
                 }
                 HorizontalDivider()
+                // PRODUCT_SPEC DL-003 / ADR-0020 — only worth a row when there is more than one answer.
+                // A phone with no card would otherwise get a picker with one option in it.
+                if (volumes.size > 1) {
+                    StorageVolumePicker(
+                        volumes = volumes,
+                        selected = selectedVolume,
+                        onChosen = onVolumeChosen,
+                    )
+                    HorizontalDivider()
+                }
             }
             items(uiState.books, key = { row -> "${row.serverId.value}:${row.bookId.value}" }) { row ->
                 DownloadRowItem(
@@ -171,6 +194,77 @@ fun DownloadsScreen(
                 HorizontalDivider()
             }
         }
+    }
+}
+
+/**
+ * PRODUCT_SPEC DL-003 / ADR-0018 decision 4 / ADR-0020 — where the *next* download goes.
+ *
+ * ### It says what it does not do
+ *
+ * "Change download location" reads like a promise to move things, and this moves nothing: every downloaded
+ * file's location is recorded absolutely in the manifest, so the books already here keep playing from where
+ * they are. The hint states that rather than leaving it to be discovered by a user who chose a card and
+ * then found their phone no emptier.
+ *
+ * ### And what removing the card costs
+ *
+ * Books on a card that is taken out fail the start-up check and offer a re-download — the same handling any
+ * unreadable local file gets (PLAY-003). Nothing is deleted on the strength of an absent volume, which is
+ * why this can be a plain radio list and not a warning dialog.
+ */
+@Composable
+private fun StorageVolumePicker(volumes: List<StorageVolumeOption>, selected: String, onChosen: (String) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .selectableGroup(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.downloads_location),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        volumes.forEach { volume ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = volume.uuid == selected,
+                        role = Role.RadioButton,
+                        onClick = { onChosen(volume.uuid) },
+                    )
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RadioButton(selected = volume.uuid == selected, onClick = null)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (volume.isInternal) {
+                            stringResource(R.string.downloads_location_internal)
+                        } else {
+                            volume.label
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = listOfNotNull(
+                            stringResource(R.string.downloads_location_free, formatBytes(volume.freeBytes)),
+                            stringResource(R.string.downloads_location_removable).takeIf { volume.isRemovable },
+                        ).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Text(
+            text = stringResource(R.string.downloads_location_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
