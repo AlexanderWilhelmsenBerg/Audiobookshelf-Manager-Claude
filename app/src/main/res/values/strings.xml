@@ -840,4 +840,18 @@
     <string name="edit_metadata_conflict_overwrite">Use my version</string>
     <string name="edit_metadata_conflict_reload">Use the server\u2019s version</string>
     <string name="book_menu_edit_metadata">Edit metadata</string>
+
+    <!-- PRODUCT_SPEC MGR-002 - cover management. -->
+    <string name="edit_metadata_cover">Cover</string>
+    <string name="edit_metadata_cover_choose">Choose an image</string>
+    <string name="edit_metadata_cover_use">Use this image</string>
+    <string name="edit_metadata_cover_cancel">Cancel</string>
+    <string name="edit_metadata_cover_remove">Remove cover</string>
+    <string name="edit_metadata_cover_preview">The image you picked</string>
+    <string name="edit_metadata_cover_remove_title">Remove this cover?</string>
+    <string name="edit_metadata_cover_remove_body">The book keeps its metadata and its audio files. Only the cover image is removed from the server, and a later scan may find one again.</string>
+    <string name="edit_metadata_cover_error_type">That file is not a PNG, JPEG or WebP image.</string>
+    <string name="edit_metadata_cover_error_decode">That file could not be opened as an image.</string>
+    <string name="edit_metadata_cover_error_large">That image is larger than 10 MB. Pick a smaller one.</string>
+    <string name="edit_metadata_cover_error_small">That image is too small to use as a cover.</string>
 </resources>

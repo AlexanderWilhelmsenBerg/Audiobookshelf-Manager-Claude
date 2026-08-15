@@ -67,4 +67,26 @@ interface MetadataRepository {
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
     ): AppResult<Book>
+
+    /**
+     * PRODUCT_SPEC MGR-002 — replace the cover with [bytes], then refresh the item.
+     *
+     * The bytes arrive already validated and already read: whoever opened the Photo Picker owns the
+     * decoding and the memory, because only they know how to read a content URI, and this interface must
+     * stay callable from a test with a byte array.
+     *
+     * The refresh is what makes the new cover visible. Audiobookshelf's cover URL is cache-busted by the
+     * item's `updatedAt`, which the upload moves — so a client that did not re-read the item would keep
+     * requesting the old image under the old key indefinitely (MGR-002: "cover cache invalidates after
+     * successful update").
+     */
+    suspend fun uploadCover(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        bytes: ByteArray,
+        mimeType: String,
+    ): AppResult<Book>
+
+    /** PRODUCT_SPEC MGR-002 — remove the cover, then refresh. Confirmation belongs to the caller. */
+    suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<Book>
 }

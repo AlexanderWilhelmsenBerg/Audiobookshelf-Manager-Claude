@@ -1,11 +1,18 @@
 package com.example.shelfplayer.feature.metadata
 
+import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -27,8 +34,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -36,10 +48,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.ManagementAction
 import com.example.shelfplayer.core.model.ManagementBlock
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataError
 import com.example.shelfplayer.core.model.library.BookMetadataField
+import com.example.shelfplayer.core.model.library.CoverRejection
 import com.example.shelfplayer.core.model.library.SeriesEdit
 
 /** So a test can find the save control without depending on its label. */
@@ -127,6 +142,7 @@ private fun EditMetadataForm(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         state.block?.let { block -> BlockedNotice(block) }
+        CoverSection(state, viewModel)
         state.errorSummary?.let { summary ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -224,6 +240,115 @@ private fun EditMetadataForm(
             TextButton(onClick = viewModel::revert) { Text(stringResource(R.string.edit_metadata_revert)) }
         }
     }
+}
+
+/**
+ * PRODUCT_SPEC MGR-002 — pick, preview, commit; and remove, with a confirmation.
+ *
+ * ### The preview is the picked image, not the stored one
+ *
+ * MGR-002 asks for a preview *before* commit, so what is drawn between picking and confirming is the bytes
+ * in memory — not a re-fetch of the server's copy, which is still the old cover until the upload lands.
+ *
+ * ### Two permissions, two buttons
+ *
+ * *Change* needs update **and** upload; *remove* needs delete. The server gates them differently, so an
+ * account can genuinely have one and not the other, and collapsing them into one "may edit covers" flag
+ * would offer an action that then fails.
+ */
+@Composable
+private fun CoverSection(state: EditMetadataUiState, viewModel: EditMetadataViewModel) {
+    val permissions = state.permissions
+    val canChange = permissions?.isAvailable(ManagementAction.ChangeCover) == true && !state.isSaving
+    val canRemove = permissions?.isAvailable(ManagementAction.RemoveCover) == true && !state.isSaving
+    val context = LocalContext.current
+    val picker = rememberLauncherForActivityResult(PickVisualMedia()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        when (val read = CoverPicker.read(context.contentResolver, uri)) {
+            is AppResult.Failure -> viewModel.coverPickFailed(read.error.summary)
+            is AppResult.Success -> viewModel.coverPicked(read.value)
+        }
+    }
+    var confirmingRemoval by remember { mutableStateOf(false) }
+
+    Text(stringResource(R.string.edit_metadata_cover), style = MaterialTheme.typography.labelLarge)
+    state.pickedCover?.let { picked -> CoverPreview(picked) }
+    state.coverRejection?.let { rejection ->
+        Text(
+            stringResource(rejectionTextOf(rejection)),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.pickedCover == null) {
+            TextButton(
+                onClick = { picker.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly)) },
+                enabled = canChange,
+            ) { Text(stringResource(R.string.edit_metadata_cover_choose)) }
+            TextButton(onClick = { confirmingRemoval = true }, enabled = canRemove) {
+                Text(stringResource(R.string.edit_metadata_cover_remove))
+            }
+        } else {
+            TextButton(onClick = viewModel::confirmCover, enabled = canChange) {
+                Text(stringResource(R.string.edit_metadata_cover_use))
+            }
+            TextButton(onClick = viewModel::discardPickedCover) {
+                Text(stringResource(R.string.edit_metadata_cover_cancel))
+            }
+        }
+    }
+
+    if (confirmingRemoval) {
+        AlertDialog(
+            onDismissRequest = { confirmingRemoval = false },
+            title = { Text(stringResource(R.string.edit_metadata_cover_remove_title)) },
+            // Says what it does *and* what it does not: removing a cover is not deleting the book, and a
+            // destructive-sounding button with no scope is how somebody stops trusting the app.
+            text = { Text(stringResource(R.string.edit_metadata_cover_remove_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmingRemoval = false
+                        viewModel.removeCover()
+                    },
+                ) { Text(stringResource(R.string.edit_metadata_cover_remove)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingRemoval = false }) {
+                    Text(stringResource(R.string.edit_metadata_cover_cancel))
+                }
+            },
+        )
+    }
+}
+
+/**
+ * The picked image, decoded once for display.
+ *
+ * `remember(picked)` so the decode happens on pick rather than on every recomposition — a cover is up to
+ * ten megabytes, and re-decoding it while somebody types in the title field below would make the field
+ * stutter.
+ */
+@Composable
+private fun CoverPreview(picked: PickedCover) {
+    val bitmap = remember(picked) {
+        BitmapFactory.decodeByteArray(picked.bytes, 0, picked.bytes.size)?.asImageBitmap()
+    }
+    bitmap?.let { image ->
+        Image(
+            bitmap = image,
+            contentDescription = stringResource(R.string.edit_metadata_cover_preview),
+            modifier = Modifier.size(PREVIEW_SIZE),
+        )
+    }
+}
+
+private fun rejectionTextOf(rejection: CoverRejection): Int = when (rejection) {
+    CoverRejection.UnsupportedType -> R.string.edit_metadata_cover_error_type
+    CoverRejection.NotAnImage -> R.string.edit_metadata_cover_error_decode
+    CoverRejection.TooLarge -> R.string.edit_metadata_cover_error_large
+    CoverRejection.TooSmall -> R.string.edit_metadata_cover_error_small
 }
 
 /**
@@ -436,3 +561,5 @@ internal val FIELD_LABELS: Map<BookMetadataField, Int> = mapOf(
 )
 
 private const val SEPARATOR = ", "
+
+private val PREVIEW_SIZE = 160.dp

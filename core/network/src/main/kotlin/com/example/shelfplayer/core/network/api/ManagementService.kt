@@ -1,10 +1,16 @@
 package com.example.shelfplayer.core.network.api
 
 import kotlinx.serialization.json.JsonObject
+import okhttp3.MultipartBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.Header
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
+import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 
 /**
@@ -45,4 +51,43 @@ internal interface ManagementService {
         @Path("itemId") itemId: String,
         @Body body: JsonObject,
     ): Response<MediaUpdateResponseDto>
+
+    /**
+     * PRODUCT_SPEC MGR-002 — replace the cover with an uploaded image.
+     *
+     * ### The filename is part of the contract
+     *
+     * The server decides whether the upload is an image **by the extension on the part's filename** —
+     * `png`, `jpg`, `jpeg`, `webp` — not by its `Content-Type` and not by sniffing the bytes. Android's
+     * Photo Picker hands back a content URI whose display name is frequently absent or extensionless, so
+     * the app synthesises the name from the MIME type it has already validated. A perfectly good PNG sent
+     * as `image` is refused; the same bytes sent as `cover.png` are accepted.
+     *
+     * The part's field name must be exactly `cover`, which is why the `@Part` is built by the caller
+     * rather than described here.
+     *
+     * The response names the path the server stored it at. What makes the *client* show the new image is
+     * separate: the item's `updatedAt` moves, and `GET /api/items/{id}/cover?ts={updatedAt}` is a
+     * different cache key from the one the old image is under.
+     */
+    @Multipart
+    @POST("api/items/{itemId}/cover")
+    suspend fun uploadCover(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("itemId") itemId: String,
+        @Part cover: MultipartBody.Part,
+    ): Response<CoverUploadResponseDto>
+
+    /**
+     * PRODUCT_SPEC MGR-002 — remove the cover.
+     *
+     * `ResponseBody` rather than a typed body: this route answers `text/plain "OK"`, not JSON, so a
+     * deserializer would report a failure for a success (`docs/api-compatibility.md`). Gated on the
+     * account's **delete** grant rather than its upload grant, because the server gates on the method.
+     */
+    @DELETE("api/items/{itemId}/cover")
+    suspend fun removeCover(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("itemId") itemId: String,
+    ): Response<ResponseBody>
 }

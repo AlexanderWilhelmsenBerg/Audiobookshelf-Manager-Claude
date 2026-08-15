@@ -22,6 +22,15 @@ import kotlinx.serialization.json.putJsonArray
 internal data class MediaUpdateResponseDto(val updated: Boolean = false, val libraryItem: LibraryItemDto? = null)
 
 /**
+ * `POST /api/items/{id}/cover`.
+ *
+ * [cover] is a path on the **server's** filesystem, not a URL. It is read only to confirm the server
+ * accepted something; the app never uses it to address an image (PRODUCT_SPEC 3.4).
+ */
+@Serializable
+internal data class CoverUploadResponseDto(val success: Boolean = false, val cover: String? = null)
+
+/**
  * PRODUCT_SPEC MGR-001 — "a save request sends only the server-supported shape".
  *
  * The single place a metadata `PATCH` body is constructed, and the reason [ManagementService.updateMedia]

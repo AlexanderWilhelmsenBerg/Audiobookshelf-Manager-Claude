@@ -440,4 +440,35 @@ interface ManagementApi {
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
     ): AppResult<BookSnapshot>
+
+    /**
+     * PRODUCT_SPEC MGR-002 — replace the cover, and return the item the server now holds.
+     *
+     * The bytes are passed rather than a URI, so that whoever reads the picker owns the decoding, the
+     * validation and the memory — and this layer owns only the request. [CoverUpload.mimeType] is what the
+     * filename is synthesised from, because the server reads the *extension* and not the content type.
+     */
+    suspend fun uploadCover(profileId: ProfileId, bookId: LibraryItemId, image: CoverUpload): AppResult<BookSnapshot>
+
+    /** PRODUCT_SPEC MGR-002 — remove the cover. The item keeps everything else. */
+    suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot>
+}
+
+/**
+ * PRODUCT_SPEC MGR-002 — an image the user chose, already validated, ready to send.
+ *
+ * @property mimeType one of the four the server accepts. Validation happens before this type exists, so a
+ *   value here is a promise that the decode succeeded and the dimensions and size were checked.
+ */
+data class CoverUpload(val bytes: ByteArray, val mimeType: String) {
+    /**
+     * `equals` and `hashCode` are by identity, deliberately.
+     *
+     * A data class over a `ByteArray` gets reference equality for free and structural equality never, which
+     * surprises readers both ways. Comparing two multi-megabyte images is not something any caller wants;
+     * saying so is better than leaving the generated version to imply otherwise.
+     */
+    override fun equals(other: Any?): Boolean = this === other
+
+    override fun hashCode(): Int = System.identityHashCode(this)
 }

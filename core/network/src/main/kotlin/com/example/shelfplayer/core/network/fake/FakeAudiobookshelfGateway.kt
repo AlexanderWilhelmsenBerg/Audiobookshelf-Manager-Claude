@@ -40,6 +40,7 @@ import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.BookmarkApi
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
+import com.example.shelfplayer.core.network.gateway.CoverUpload
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
@@ -99,7 +100,18 @@ class FakeAudiobookshelfGateway @Inject constructor(
         bookId: LibraryItemId,
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
-    ): AppResult<BookSnapshot> = AppError.ApiCompatibility(
+    ): AppResult<BookSnapshot> = readOnly()
+
+    /** PRODUCT_SPEC MGR-002 — the fixture library's covers are bundled assets, not files a server holds. */
+    override suspend fun uploadCover(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        image: CoverUpload,
+    ): AppResult<BookSnapshot> = readOnly()
+
+    override suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> = readOnly()
+
+    private fun readOnly(): AppResult<BookSnapshot> = AppError.ApiCompatibility(
         summary = "The demo library cannot be edited.",
         missingField = "media",
     ).asFailure()

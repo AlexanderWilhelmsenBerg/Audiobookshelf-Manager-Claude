@@ -1,0 +1,35 @@
+{
+  "body": {
+    "user": {
+      "bookmarks": [],
+      "createdAt": 0,
+      "email": null,
+      "hasOpenIDLink": false,
+      "id": "<volatile>",
+      "isActive": true,
+      "isLocked": false,
+      "itemTagsSelected": [],
+      "lastSeen": null,
+      "librariesAccessible": [],
+      "mediaProgress": [],
+      "permissions": {
+        "accessAllLibraries": true,
+        "accessAllTags": true,
+        "accessExplicitContent": false,
+        "createEreader": false,
+        "delete": false,
+        "download": true,
+        "selectedTagsNotAccessible": false,
+        "update": false,
+        "upload": false
+      },
+      "seriesHideFromContinueListening": [],
+      "token": "<redacted-secret>",
+      "type": "user",
+      "username": "contractactive"
+    }
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}

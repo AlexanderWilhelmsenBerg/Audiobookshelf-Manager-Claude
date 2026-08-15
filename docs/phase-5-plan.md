@@ -135,10 +135,26 @@ The refresh after a save is a second, expanded request. The `PATCH` response is 
 but carries no tracks, and writing a snapshot without tracks would replace a playable book with an
 unplayable one.
 
-### Slice 4 — covers (MGR-002)
+### Slice 4 — covers (MGR-002) *(done)*
 
-Photo Picker, MIME and dimension validation, preview before commit, cache invalidation. Depends on a
-capture of the upload endpoint that slice 1 does not attempt.
+Photo Picker, validation, preview, commit, and removal behind a confirmation.
+
+**All four validations are this app's own**, and that is the point of the slice. The server checks one
+thing — the filename's extension — so an eight-megabyte photograph, a zero-byte file and a `.png` that is
+really a text document are all accepted and all become somebody's cover. `CoverCandidate` is the only place
+MIME type, decode success, dimensions and a size limit are checked.
+
+**The filename is contract, not convention.** The server reads the extension, and Android's Photo Picker
+hands back a URI whose display name is frequently absent or extensionless, so the app synthesises the name
+from the MIME type it validated. A valid PNG sent as `image` is refused; the same bytes as `cover.png` are
+not.
+
+**The image is decoded twice**: once with `inJustDecodeBounds`, which reads the header and allocates no
+pixels, and once for real only if the bounds pass. On a mid-range phone that is the difference between a
+message and an `OutOfMemoryError` when somebody picks a 48-megapixel photograph by mistake.
+
+Cache invalidation needs no cache code: the upload moves the item's `updatedAt`, the refresh picks it up,
+and `?ts=` makes the new image a different key from the old one.
 
 ### Slice 5 — match and scan (MGR-003, MGR-004)
 

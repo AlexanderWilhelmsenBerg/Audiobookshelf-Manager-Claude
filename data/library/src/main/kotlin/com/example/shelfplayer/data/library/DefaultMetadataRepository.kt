@@ -18,6 +18,7 @@ import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
+import com.example.shelfplayer.core.network.gateway.CoverUpload
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.MetadataRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -124,6 +125,26 @@ class DefaultMetadataRepository @Inject constructor(
             }
         }
     }
+
+    override suspend fun uploadCover(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        bytes: ByteArray,
+        mimeType: String,
+    ): AppResult<Book> = withContext(ioDispatcher) {
+        refreshFrom(profileId, gateway.management.uploadCover(profileId, bookId, CoverUpload(bytes, mimeType)))
+    }
+
+    override suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<Book> =
+        withContext(ioDispatcher) {
+            refreshFrom(profileId, gateway.management.removeCover(profileId, bookId))
+        }
+
+    private suspend fun refreshFrom(profileId: ProfileId, result: AppResult<BookSnapshot>): AppResult<Book> =
+        when (result) {
+            is AppResult.Failure -> result
+            is AppResult.Success -> AppResult.Success(store(profileId, result.value))
+        }
 
     /**
      * Writes a fetched item to Room through the catalogue's own writer, and reads back what was stored.

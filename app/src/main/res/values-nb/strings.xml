@@ -654,4 +654,18 @@
     <string name="edit_metadata_conflict_overwrite">Bruk min versjon</string>
     <string name="edit_metadata_conflict_reload">Bruk serverens versjon</string>
     <string name="book_menu_edit_metadata">Rediger metadata</string>
+
+    <!-- PRODUCT_SPEC MGR-002 - cover management. -->
+    <string name="edit_metadata_cover">Omslag</string>
+    <string name="edit_metadata_cover_choose">Velg et bilde</string>
+    <string name="edit_metadata_cover_use">Bruk dette bildet</string>
+    <string name="edit_metadata_cover_cancel">Avbryt</string>
+    <string name="edit_metadata_cover_remove">Fjern omslag</string>
+    <string name="edit_metadata_cover_preview">Bildet du valgte</string>
+    <string name="edit_metadata_cover_remove_title">Fjerne dette omslaget?</string>
+    <string name="edit_metadata_cover_remove_body">Boken beholder metadataene og lydfilene sine. Bare omslagsbildet fjernes fra serveren, og en senere skanning kan finne et nytt.</string>
+    <string name="edit_metadata_cover_error_type">Den filen er ikke et PNG-, JPEG- eller WebP-bilde.</string>
+    <string name="edit_metadata_cover_error_decode">Den filen kunne ikke \u00e5pnes som et bilde.</string>
+    <string name="edit_metadata_cover_error_large">Bildet er st\u00f8rre enn 10 MB. Velg et mindre.</string>
+    <string name="edit_metadata_cover_error_small">Bildet er for lite til \u00e5 brukes som omslag.</string>
 </resources>

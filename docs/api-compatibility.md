@@ -912,7 +912,10 @@ The app's `NetworkErrorMapper` already keys on the status code rather than the b
 today. It is recorded because the obvious future change — reading an error message out of a failed
 management response — would be wrong on exactly these routes.
 
-*Still to capture:* a real `403`. Every capture so far ran as `root`.
+**Observed 2026-08-15.** The capture run creates an active non-admin account and attempts three
+management operations with it; the server refused all three, logging *"attempted to update without
+permission"*, *"attempted to delete without permission"* and the scan refusal. The response fixtures were
+produced but are not yet committed — see `docs/gaps.md`.
 
 ### Permissions are checked per-method, and cover upload needs two grants
 
@@ -1078,4 +1081,9 @@ The shape is `{"providers": {"books": [{"value": …, "text": …}], "booksCover
 `value` is what `GET /api/search/books?provider=` takes; `text` is a display name. A server too old to
 have this route answers `404`, which is the correct "not confirmed" signal and needs no version check.
 
-*Still to capture:* this response. `scripts/capture-contracts.sh` now asks for it.
+**Captured 2026-08-15**, and the answer is more useful than expected: a server with nothing configured
+still lists fourteen book providers — Google, iTunes, Open Library, FantLab and ten Audible regions. So the
+probe confirms on every ordinary deployment rather than only on a configured one, and `google` being the
+default and key-free is what makes MGR-003's candidate search work without setup.
+
+`booksCovers` adds `best`, `audiobookcovers` and `all`; `podcasts` holds only `itunes`.

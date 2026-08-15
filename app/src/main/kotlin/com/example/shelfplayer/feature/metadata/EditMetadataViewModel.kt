@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataError
 import com.example.shelfplayer.core.model.library.BookMetadataField
+import com.example.shelfplayer.core.model.library.CoverRejection
 import com.example.shelfplayer.domain.repository.MetadataRepository
 import com.example.shelfplayer.domain.usecase.ObserveManagementPermissionsUseCase
 import com.example.shelfplayer.navigation.ShelfDestinations
@@ -89,6 +90,71 @@ class EditMetadataViewModel @Inject constructor(
                     form = fromBook,
                     draft = draft?.takeIf { saved -> saved.changesFrom(fromBook).isNotEmpty() },
                 )
+            }
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-002 — the user picked an image; hold it for preview and say why if it cannot be used.
+     *
+     * Nothing is sent here. MGR-002 requires a preview before commit, so the picked image sits in state
+     * until the user confirms — which is also what makes "I picked the wrong photo" recoverable.
+     */
+    fun coverPicked(picked: PickedCover) {
+        val rejection = picked.candidate.rejection()
+        _uiState.update {
+            it.copy(
+                pickedCover = if (rejection == null) picked else null,
+                coverRejection = rejection,
+                errorSummary = null,
+            )
+        }
+    }
+
+    fun coverPickFailed(summary: String) {
+        _uiState.update { it.copy(pickedCover = null, coverRejection = null, errorSummary = summary) }
+    }
+
+    fun discardPickedCover() {
+        _uiState.update { it.copy(pickedCover = null, coverRejection = null) }
+    }
+
+    /** PRODUCT_SPEC MGR-002 — the commit half, after the preview. */
+    fun confirmCover() {
+        val profile = profileId ?: return
+        val picked = _uiState.value.pickedCover ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, errorSummary = null) }
+            val result = metadata.uploadCover(profile, bookId, picked.bytes, picked.candidate.mimeType)
+            onCoverResult(result)
+        }
+    }
+
+    /** PRODUCT_SPEC MGR-002 — "removing a cover requires confirmation", which the screen has already taken. */
+    fun removeCover() {
+        val profile = profileId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, errorSummary = null) }
+            onCoverResult(metadata.removeCover(profile, bookId))
+        }
+    }
+
+    private fun onCoverResult(result: AppResult<Book>) {
+        when (result) {
+            is AppResult.Failure -> _uiState.update {
+                it.copy(isSaving = false, errorSummary = result.error.summary)
+            }
+            is AppResult.Success -> {
+                // Not `adopt`: a cover change must not discard the metadata the user is part-way through
+                // typing. Only the cover and the baseline's identity moved.
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        pickedCover = null,
+                        coverRejection = null,
+                        coverVersion = it.coverVersion + 1,
+                    )
+                }
             }
         }
     }
@@ -241,6 +307,17 @@ data class EditMetadataUiState(
     val errorSummary: String? = null,
     val hasStoredDraft: Boolean = false,
     val savedAt: SaveOutcome? = null,
+    /** PRODUCT_SPEC MGR-002 — picked and previewed, not yet sent. */
+    val pickedCover: PickedCover? = null,
+    val coverRejection: CoverRejection? = null,
+    /**
+     * Increments on every successful cover change, so the preview stops showing the old image.
+     *
+     * The server's own cache key is the item's `updatedAt`, which the refresh has already moved. This is
+     * the *local* equivalent: a value Compose can key on so the composable that draws the cover is
+     * recomposed rather than reusing what it already drew.
+     */
+    val coverVersion: Int = 0,
 ) {
     val changed: Set<BookMetadataField> get() = form.changesFrom(baseline)
 

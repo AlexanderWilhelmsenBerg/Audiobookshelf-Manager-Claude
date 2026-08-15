@@ -1,6 +1,7 @@
 package com.example.shelfplayer.core.network.api
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -383,6 +384,62 @@ class CapturedShapesTest {
 
         val body = json.parseToJsonElement(bodyOf("item-match")).jsonObject
         assertTrue("warning" in body, "a miss is a 200 with a warning, not an error status")
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-003 / 22.5 — the provider probe's fixture, which arrived one CI run after the probe.
+     *
+     * `AbsCapabilityResolver` was written from the Audiobookshelf project's source and shipped ahead of
+     * this file, failing closed on anything it did not recognise. This is the evidence that made that safe
+     * retroactively: the shape the code assumes is the shape a real 2.36.0 answered with.
+     *
+     * The bar the probe applies is asserted too — a provider needs a `value`, because that is what a
+     * search request sends. `text` is a display name and a provider without one would still work.
+     */
+    @Test
+    fun `the provider list names providers that a search can actually use`() {
+        val providers = json.parseToJsonElement(bodyOf("search-providers"))
+            .jsonObject.getValue("providers").jsonObject.getValue("books").jsonArray
+
+        assertTrue(providers.isNotEmpty())
+        assertTrue(providers.all { !it.jsonObject["value"]?.jsonPrimitive?.contentOrNull.isNullOrBlank() })
+        // Google is the default and needs no configuration, which is what makes the probe meaningful on a
+        // server whose administrator has set nothing up.
+        assertTrue(providers.any { it.jsonObject["value"]?.jsonPrimitive?.contentOrNull == "google" })
+    }
+
+    /**
+     * PRODUCT_SPEC USER-002 — `isActive` is honoured on creation, and defaults to `false` when omitted.
+     *
+     * `user-create.json` omits it and comes back inactive; this one sends `true` and comes back active. The
+     * pair is the finding: a client that creates a user without saying so has created an account nobody can
+     * sign in to, and USER-002 cannot report "created" and stop.
+     */
+    @Test
+    fun `a created user is active only when the request said so`() {
+        val omitted = json.parseToJsonElement(bodyOf("user-create")).jsonObject.getValue("user").jsonObject
+        val requested = json.parseToJsonElement(bodyOf("user-create-active"))
+            .jsonObject.getValue("user").jsonObject
+
+        assertEquals(false, omitted.getValue("isActive").jsonPrimitive.boolean)
+        assertEquals(true, requested.getValue("isActive").jsonPrimitive.boolean)
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 / MGR-002 / MGR-004 — the default grants of an ordinary `user` account.
+     *
+     * Download, and nothing else. This is what `ManagementPermissions` is built to reflect, and it is the
+     * reason an ordinary account sees an editor it cannot save from rather than no editor at all.
+     */
+    @Test
+    fun `an ordinary account may download and may not manage`() {
+        val permissions = json.parseToJsonElement(bodyOf("user-create-active"))
+            .jsonObject.getValue("user").jsonObject.getValue("permissions").jsonObject
+
+        assertEquals(true, permissions.getValue("download").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("update").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("delete").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("upload").jsonPrimitive.boolean)
     }
 
     private fun bodyOf(fixture: String): String =
