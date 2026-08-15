@@ -467,6 +467,28 @@
       narrow phone. They name what the picture looks like rather than what it means: nobody chooses
       between these by reading.
     -->
+    <!--
+      PRODUCT_SPEC ROUTE-002 — per-device connection policy.
+
+      The four policy names are the load-bearing strings. "Arm only" and "Auto-play" differ by whether the
+      room fills with sound, so neither may be vague: one *readies* the book, the other *starts* it.
+    -->
+    <string name="settings_section_devices">When a device connects</string>
+    <string name="settings_devices_hint">Each headset, speaker or car gets its own answer. New devices start at Ready — the book is loaded and paused, so the play button on your headphones starts it instantly. A device appears here the first time you connect it.</string>
+    <string name="settings_devices_empty">No devices yet. Connect headphones, a speaker or a car and it will appear here.</string>
+    <string name="settings_devices_background_hint">Auto-play is best effort. Android and some manufacturers stop apps running in the background, which can prevent a connection from starting a book when the app has not been opened for a while.</string>
+    <string name="settings_device_forget">Forget this device</string>
+    <string name="settings_device_policy_never">Do nothing</string>
+    <string name="settings_device_policy_arm">Ready</string>
+    <string name="settings_device_policy_auto">Play</string>
+    <string name="settings_device_policy_ask">Ask</string>
+    <string name="settings_device_kind_wired">Wired</string>
+    <string name="settings_device_kind_bluetooth">Bluetooth</string>
+    <string name="settings_device_kind_car">Car</string>
+    <string name="settings_device_kind_hearing_aid">Hearing aid</string>
+    <string name="settings_device_kind_speaker">Speaker</string>
+    <string name="settings_device_kind_other">Audio device</string>
+    <string name="settings_device_speaker_warning">This is a speaker, so a book will start out loud in whatever room it is in.</string>
     <string name="settings_section_icon">App icon</string>
     <string name="settings_icon_indigo">Indigo</string>
     <string name="settings_icon_spectrum">Spectrum</string>

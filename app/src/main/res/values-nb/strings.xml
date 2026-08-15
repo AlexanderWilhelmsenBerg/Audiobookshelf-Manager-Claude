@@ -369,6 +369,23 @@
       «Gilded» er «Forgylt» og ikke «Illuminert»: det siste er det kunsthistorisk riktige ordet for et
       opplyst manuskript, men det leses som «belyst» av alle andre.
     -->
+    <!-- PRODUCT_SPEC ROUTE-002 — hva som skjer når en enhet kobles til. -->
+    <string name="settings_section_devices">Når en enhet kobles til</string>
+    <string name="settings_devices_hint">Hver hodetelefon, høyttaler eller bil får sitt eget svar. Nye enheter starter på Klar — boka lastes og settes på pause, så avspillingsknappen på hodetelefonene starter den med én gang. En enhet dukker opp her første gang du kobler den til.</string>
+    <string name="settings_devices_empty">Ingen enheter ennå. Koble til hodetelefoner, en høyttaler eller en bil, så dukker den opp her.</string>
+    <string name="settings_devices_background_hint">Automatisk avspilling gjør så godt den kan. Android og enkelte produsenter stopper apper som kjører i bakgrunnen, og det kan hindre at en tilkobling starter en bok når appen ikke har vært åpnet på en stund.</string>
+    <string name="settings_device_forget">Glem denne enheten</string>
+    <string name="settings_device_policy_never">Gjør ingenting</string>
+    <string name="settings_device_policy_arm">Klar</string>
+    <string name="settings_device_policy_auto">Spill</string>
+    <string name="settings_device_policy_ask">Spør</string>
+    <string name="settings_device_kind_wired">Kablet</string>
+    <string name="settings_device_kind_bluetooth">Bluetooth</string>
+    <string name="settings_device_kind_car">Bil</string>
+    <string name="settings_device_kind_hearing_aid">Høreapparat</string>
+    <string name="settings_device_kind_speaker">Høyttaler</string>
+    <string name="settings_device_kind_other">Lydenhet</string>
+    <string name="settings_device_speaker_warning">Dette er en høyttaler, så boka starter høyt i rommet den står i.</string>
     <string name="settings_section_icon">Appikon</string>
     <string name="settings_icon_indigo">Indigo</string>
     <string name="settings_icon_spectrum">Spekter</string>

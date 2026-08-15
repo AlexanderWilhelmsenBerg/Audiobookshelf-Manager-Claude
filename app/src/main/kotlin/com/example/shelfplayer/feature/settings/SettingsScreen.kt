@@ -42,6 +42,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.playback.DevicePolicy
+import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.launcher.LauncherIcon
 
 @Composable
@@ -53,10 +55,16 @@ fun SettingsRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
+    val knownDevices by viewModel.knownDevices.collectAsStateWithLifecycle()
     SettingsScreen(
         uiState = uiState,
         launcherIcon = launcherIcon,
         onLauncherIconChanged = viewModel::onLauncherIconChanged,
+        devices = DeviceSettingsActions(
+            known = knownDevices,
+            onPolicyChanged = viewModel::onDevicePolicyChanged,
+            onForget = viewModel::onDeviceForgotten,
+        ),
         onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
         sleepTimerActions = SleepTimerSettingsActions(
             onDefaultChanged = viewModel::onSleepTimerDefaultChanged,
@@ -101,6 +109,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
     launcherIcon: LauncherIcon = LauncherIcon.Default,
     onLauncherIconChanged: (LauncherIcon) -> Unit = {},
+    devices: DeviceSettingsActions = DeviceSettingsActions(),
 ) {
     var selected by rememberSaveable { mutableStateOf(SettingsTab.Server) }
     // PRODUCT_SPEC 14.4 — the event log's open/closed state is this screen's, not the caller's. Lifting it
@@ -149,13 +158,16 @@ fun SettingsScreen(
                         actions = sleepTimerActions,
                     )
 
-                    SettingsTab.Playback -> playbackTab(
-                        settings = uiState.playback,
-                        libraries = uiState.libraries,
-                        actions = playbackActions,
-                        networkPolicy = uiState.networkPolicy,
-                        housekeeping = uiState.housekeeping,
-                    )
+                    SettingsTab.Playback -> {
+                        playbackTab(
+                            settings = uiState.playback,
+                            libraries = uiState.libraries,
+                            actions = playbackActions,
+                            networkPolicy = uiState.networkPolicy,
+                            housekeeping = uiState.housekeeping,
+                        )
+                        devicesSection(devices)
+                    }
 
                     SettingsTab.About -> aboutTab(
                         uiState = uiState,
@@ -297,6 +309,44 @@ private fun LibraryRow(
  * Sleep sits between them deliberately: it is the only tab with a preference somebody changes more than
  * once, and About is a place you arrive at rather than pass through.
  */
+/**
+ * PRODUCT_SPEC ROUTE-002 — what happens when each known device connects.
+ *
+ * On the Playback tab rather than a tab of its own: it is a question about how playback *starts*, and it
+ * sits directly under the auto-play switch it supersedes for any device listed here.
+ */
+private fun LazyListScope.devicesSection(devices: DeviceSettingsActions) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_devices)) }
+    item { Hint(text = stringResource(R.string.settings_devices_hint)) }
+    if (devices.known.isEmpty()) {
+        item { Hint(text = stringResource(R.string.settings_devices_empty)) }
+        return
+    }
+    items(devices.known, key = { device -> device.id }) { device ->
+        DeviceRow(
+            device = device,
+            onPolicyChanged = { policy -> devices.onPolicyChanged(device.id, policy) },
+            onForget = { devices.onForget(device.id) },
+        )
+        HorizontalDivider()
+    }
+    // ROUTE-002: "Auto-play is best-effort and the UI states that Android/OEM background rules may
+    // prevent a cold-start connection trigger." Said once, under the list, rather than on every row.
+    item { Hint(text = stringResource(R.string.settings_devices_background_hint)) }
+}
+
+/**
+ * The device list and the two things that can be done to a row.
+ *
+ * A bundle because `SettingsScreen` is at detekt's parameter limit, and because these three always travel
+ * together — a list with no way to change it would be a diagnostic, not a setting.
+ */
+data class DeviceSettingsActions(
+    val known: List<KnownDevice> = emptyList(),
+    val onPolicyChanged: (String, DevicePolicy) -> Unit = { _, _ -> },
+    val onForget: (String) -> Unit = {},
+)
+
 private enum class SettingsTab(val labelRes: Int) {
     Server(R.string.settings_tab_server),
     Playback(R.string.settings_tab_playback),

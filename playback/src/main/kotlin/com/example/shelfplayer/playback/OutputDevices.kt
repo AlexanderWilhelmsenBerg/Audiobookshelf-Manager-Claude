@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.annotation.SuppressLint
 import android.media.AudioDeviceInfo
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.model.playback.KnownDevice
@@ -58,6 +59,11 @@ object OutputDevices {
      * headphones are unplugged, which is a case somebody may well want set to `Never`.
      */
     @Suppress("CyclomaticComplexMethod")
+    // InlinedApi: `TYPE_HEARING_AID` (28), `TYPE_BLE_HEADSET` and `TYPE_BLE_SPEAKER` (31) are compile-time
+    // `int` constants, and every use here compares one against a value the platform supplied. An API 26
+    // device never reports those types, so the branch is simply never taken — there is no call to a method
+    // that does not exist, which is what the check is really for.
+    @SuppressLint("InlinedApi")
     private fun kindOf(type: Int): DeviceKind? = when (type) {
         AudioDeviceInfo.TYPE_WIRED_HEADSET,
         AudioDeviceInfo.TYPE_WIRED_HEADPHONES,

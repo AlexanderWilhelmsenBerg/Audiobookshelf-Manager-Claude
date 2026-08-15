@@ -433,20 +433,31 @@ class AppSettingsDataSource @Inject constructor(
     private fun StoredKnownDevice.toModel(id: String) = KnownDevice(
         id = id,
         displayName = displayName,
+        // Exhaustive rather than `else`, so adding a kind to the proto fails to compile here instead of
+        // silently mapping to `Other` on somebody's device. `UNRECOGNIZED` is protobuf's own value for a
+        // number a newer build wrote and this one has never heard of — it genuinely is "some other device".
         kind = when (kind) {
             StoredDeviceKind.DEVICE_KIND_WIRED -> DeviceKind.Wired
             StoredDeviceKind.DEVICE_KIND_BLUETOOTH -> DeviceKind.Bluetooth
             StoredDeviceKind.DEVICE_KIND_CAR -> DeviceKind.Car
             StoredDeviceKind.DEVICE_KIND_HEARING_AID -> DeviceKind.HearingAid
             StoredDeviceKind.DEVICE_KIND_SPEAKER -> DeviceKind.Speaker
-            else -> DeviceKind.Other
+            StoredDeviceKind.DEVICE_KIND_OTHER,
+            StoredDeviceKind.DEVICE_KIND_UNSPECIFIED,
+            StoredDeviceKind.UNRECOGNIZED,
+            -> DeviceKind.Other
         },
         policy = when (policy) {
             StoredDevicePolicy.DEVICE_POLICY_NEVER -> DevicePolicy.Never
             StoredDevicePolicy.DEVICE_POLICY_AUTO_PLAY -> DevicePolicy.AutoPlay
             StoredDevicePolicy.DEVICE_POLICY_ASK -> DevicePolicy.Ask
-            // Both `ARM_ONLY` and the unset zero value. See the proto: that is the point of the ordering.
-            else -> DevicePolicy.ArmOnly
+            // `ARM_ONLY`, the unset zero value, and a policy written by a newer build all land on the
+            // product default. That is the point of the proto's ordering, and it fails safe: an unknown
+            // policy readies a book rather than starting one.
+            StoredDevicePolicy.DEVICE_POLICY_ARM_ONLY,
+            StoredDevicePolicy.DEVICE_POLICY_UNSPECIFIED,
+            StoredDevicePolicy.UNRECOGNIZED,
+            -> DevicePolicy.ArmOnly
         },
         lastSeenAt = Instant.ofEpochMilli(lastSeenEpochMillis),
     )
