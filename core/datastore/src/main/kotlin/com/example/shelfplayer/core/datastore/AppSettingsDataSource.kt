@@ -10,6 +10,9 @@ import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.DeviceKind
+import com.example.shelfplayer.core.model.playback.DevicePolicy
+import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
@@ -19,11 +22,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import java.io.IOException
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import com.example.shelfplayer.core.datastore.DeviceKind as StoredDeviceKind
+import com.example.shelfplayer.core.datastore.DevicePolicy as StoredDevicePolicy
+import com.example.shelfplayer.core.datastore.KnownDevice as StoredKnownDevice
 
 /**
  * PRODUCT_SPEC SET-001 — typed access to the settings store.
@@ -376,6 +383,95 @@ class AppSettingsDataSource @Inject constructor(
         dataStore.updateData { current ->
             current.toBuilder().setDownloadStorageVolumeUuid(uuid).build()
         }
+    }
+
+    /**
+     * PRODUCT_SPEC ROUTE-002 — the devices this app has seen, most recently connected first.
+     *
+     * Ordered here rather than at the screen because the order is a property of the data — a settings list
+     * of output devices is only navigable if the one you just plugged in is at the top.
+     */
+    val knownDevices: Flow<List<KnownDevice>> = settings.map { stored ->
+        stored.knownDevicesMap
+            .map { (id, device) -> device.toModel(id) }
+            .sortedByDescending(KnownDevice::lastSeenAt)
+    }
+
+    /**
+     * Records that a device connected, creating it with the default policy if it is new.
+     *
+     * Deliberately does **not** overwrite an existing policy. This runs on every connection, and a device
+     * whose policy was set to `Never` last week must not quietly become `Arm only` because it was plugged
+     * in again. The name and the timestamp are refreshed; the decision is not.
+     */
+    suspend fun rememberDevice(device: KnownDevice) {
+        dataStore.updateData { current ->
+            val existing = current.knownDevicesMap[device.id]
+            current.toBuilder()
+                .putKnownDevices(
+                    device.id,
+                    device.toProto(policy = existing?.policy ?: device.policy.toProto()),
+                )
+                .build()
+        }
+    }
+
+    suspend fun setDevicePolicy(deviceId: String, policy: DevicePolicy) {
+        dataStore.updateData { current ->
+            val existing = current.knownDevicesMap[deviceId] ?: return@updateData current
+            current.toBuilder()
+                .putKnownDevices(deviceId, existing.toBuilder().setPolicy(policy.toProto()).build())
+                .build()
+        }
+    }
+
+    /** PRODUCT_SPEC SET-002 — forgetting a device somebody no longer owns. It returns as new if it comes back. */
+    suspend fun forgetDevice(deviceId: String) {
+        dataStore.updateData { current -> current.toBuilder().removeKnownDevices(deviceId).build() }
+    }
+
+    private fun StoredKnownDevice.toModel(id: String) = KnownDevice(
+        id = id,
+        displayName = displayName,
+        kind = when (kind) {
+            StoredDeviceKind.DEVICE_KIND_WIRED -> DeviceKind.Wired
+            StoredDeviceKind.DEVICE_KIND_BLUETOOTH -> DeviceKind.Bluetooth
+            StoredDeviceKind.DEVICE_KIND_CAR -> DeviceKind.Car
+            StoredDeviceKind.DEVICE_KIND_HEARING_AID -> DeviceKind.HearingAid
+            StoredDeviceKind.DEVICE_KIND_SPEAKER -> DeviceKind.Speaker
+            else -> DeviceKind.Other
+        },
+        policy = when (policy) {
+            StoredDevicePolicy.DEVICE_POLICY_NEVER -> DevicePolicy.Never
+            StoredDevicePolicy.DEVICE_POLICY_AUTO_PLAY -> DevicePolicy.AutoPlay
+            StoredDevicePolicy.DEVICE_POLICY_ASK -> DevicePolicy.Ask
+            // Both `ARM_ONLY` and the unset zero value. See the proto: that is the point of the ordering.
+            else -> DevicePolicy.ArmOnly
+        },
+        lastSeenAt = Instant.ofEpochMilli(lastSeenEpochMillis),
+    )
+
+    private fun KnownDevice.toProto(policy: StoredDevicePolicy): StoredKnownDevice = StoredKnownDevice.newBuilder()
+        .setDisplayName(displayName)
+        .setKind(
+            when (kind) {
+                DeviceKind.Wired -> StoredDeviceKind.DEVICE_KIND_WIRED
+                DeviceKind.Bluetooth -> StoredDeviceKind.DEVICE_KIND_BLUETOOTH
+                DeviceKind.Car -> StoredDeviceKind.DEVICE_KIND_CAR
+                DeviceKind.HearingAid -> StoredDeviceKind.DEVICE_KIND_HEARING_AID
+                DeviceKind.Speaker -> StoredDeviceKind.DEVICE_KIND_SPEAKER
+                DeviceKind.Other -> StoredDeviceKind.DEVICE_KIND_OTHER
+            },
+        )
+        .setPolicy(policy)
+        .setLastSeenEpochMillis(lastSeenAt.toEpochMilli())
+        .build()
+
+    private fun DevicePolicy.toProto(): StoredDevicePolicy = when (this) {
+        DevicePolicy.Never -> StoredDevicePolicy.DEVICE_POLICY_NEVER
+        DevicePolicy.ArmOnly -> StoredDevicePolicy.DEVICE_POLICY_ARM_ONLY
+        DevicePolicy.AutoPlay -> StoredDevicePolicy.DEVICE_POLICY_AUTO_PLAY
+        DevicePolicy.Ask -> StoredDevicePolicy.DEVICE_POLICY_ASK
     }
 
     suspend fun setNetworkPolicy(policy: NetworkPolicy) {

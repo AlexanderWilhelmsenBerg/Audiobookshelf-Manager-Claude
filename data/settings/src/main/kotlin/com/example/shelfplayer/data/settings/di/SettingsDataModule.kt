@@ -1,11 +1,13 @@
 package com.example.shelfplayer.data.settings.di
 
 import com.example.shelfplayer.core.network.gateway.PlaybackDeviceIdentity
+import com.example.shelfplayer.data.settings.DefaultDeviceRepository
 import com.example.shelfplayer.data.settings.DefaultDiagnosticsRepository
 import com.example.shelfplayer.data.settings.DefaultPlaybackDeviceIdentity
 import com.example.shelfplayer.data.settings.DefaultPlaybackSettingsRepository
 import com.example.shelfplayer.data.settings.DefaultPreferencesRepository
 import com.example.shelfplayer.data.settings.DefaultSleepTimerRepository
+import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
@@ -23,6 +25,16 @@ interface SettingsDataModule {
     @Binds
     @Singleton
     fun bindsPlaybackSettingsRepository(impl: DefaultPlaybackSettingsRepository): PlaybackSettingsRepository
+
+    /**
+     * PRODUCT_SPEC ROUTE-002 — the known-device list, which is a setting and so lives here.
+     *
+     * Separate from [bindsPlaybackSettingsRepository] because what it stores is a set of rows the user
+     * manages rather than a handful of switches.
+     */
+    @Binds
+    @Singleton
+    fun bindsDeviceRepository(impl: DefaultDeviceRepository): DeviceRepository
 
     @Binds
     @Singleton
