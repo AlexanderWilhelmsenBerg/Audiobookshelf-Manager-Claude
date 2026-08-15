@@ -992,8 +992,13 @@ Two of those fields are hazards rather than data. `cover` is a URL on a third pa
 provider-supplied HTML, which is what MGR-003 means by "match results are treated as untrusted display
 data and sanitized".
 
-*Still to capture:* the provider list and a real candidate list. Both are read-only, both are now in
-`scripts/capture-contracts.sh`.
+*Captured 2026-08-15, with one finding the capture itself produced:* **Google Books rate-limits GitHub
+Actions.** Every candidate search from CI answers `429`, so `search-books-shape.json` records an empty
+result set and will keep doing so. The endpoint works; the *shape* of a populated result cannot be captured
+from a shared CI address, and would need a run against a real deployment.
+
+That is a fact about where the capture runs rather than about the server, and it is why the candidate model
+is written from the provider sources' own field lists with every field optional.
 
 ### Cover upload takes a file **or** a URL, and validates on the filename
 
