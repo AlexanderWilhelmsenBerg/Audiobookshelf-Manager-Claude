@@ -902,4 +902,11 @@
     <string name="edit_metadata_saved">Saved.</string>
     <string name="edit_metadata_blocked_now">That is no longer allowed right now. Check your connection and your permissions.</string>
     <string name="book_remove_server_done">Removed from the server database.</string>
+
+    <!-- PRODUCT_SPEC 14.4 - the debug console. -->
+    <string name="debug_console_open">Open the debug console</string>
+    <string name="debug_console_body">Everything this build knows about itself, as one block you can copy and paste into a report. It carries no server address, no library or book names, and no device names.</string>
+    <string name="debug_console_title">Debug console</string>
+    <string name="debug_console_subtitle">Copy this and paste it wherever you are reporting the problem.</string>
+    <string name="debug_console_copy">Copy everything</string>
 </resources>

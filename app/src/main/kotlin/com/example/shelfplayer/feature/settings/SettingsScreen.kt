@@ -133,6 +133,9 @@ fun SettingsScreen(
     // would add a parameter and a callback to a signature that is already at detekt's limit, to describe a
     // sheet nothing outside this screen can open.
     var isEventLogOpen by rememberSaveable { mutableStateOf(false) }
+    // PRODUCT_SPEC 14.4 — the debug console, alongside the event log for the same reason it is on this tab:
+    // both exist to be *reported*, and the console is the log plus everything around it.
+    var isDebugConsoleOpen by rememberSaveable { mutableStateOf(false) }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -192,6 +195,7 @@ fun SettingsScreen(
                         onLauncherIconChanged = onLauncherIconChanged,
                         metrics = metrics,
                         onOpenEventLog = { isEventLogOpen = true },
+                        onOpenDebugConsole = { isDebugConsoleOpen = true },
                     )
                 }
             }
@@ -199,6 +203,7 @@ fun SettingsScreen(
     }
 
     if (isEventLogOpen) EventLogSheet(onDismiss = { isEventLogOpen = false })
+    if (isDebugConsoleOpen) DebugConsoleSheet(onDismiss = { isDebugConsoleOpen = false })
 }
 
 /** PRODUCT_SPEC SET-002 — which server, and which of its libraries. */
@@ -244,6 +249,7 @@ private fun LazyListScope.aboutTab(
     onLauncherIconChanged: (LauncherIcon) -> Unit,
     metrics: PlaybackMetrics,
     onOpenEventLog: () -> Unit,
+    onOpenDebugConsole: () -> Unit,
 ) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
     item { TextRow(labelRes = R.string.about_version, value = uiState.versionName) }
@@ -262,6 +268,14 @@ private fun LazyListScope.aboutTab(
     item {
         TextButton(onClick = onOpenEventLog, modifier = Modifier.padding(horizontal = 8.dp)) {
             Text(text = stringResource(R.string.event_log_open))
+        }
+    }
+
+    // PRODUCT_SPEC 14.4 — the log plus everything around it, in one copyable block.
+    item { Hint(text = stringResource(R.string.debug_console_body)) }
+    item {
+        TextButton(onClick = onOpenDebugConsole, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(text = stringResource(R.string.debug_console_open))
         }
     }
 

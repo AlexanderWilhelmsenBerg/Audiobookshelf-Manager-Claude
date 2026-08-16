@@ -716,4 +716,11 @@
     <string name="edit_metadata_saved">Lagret.</string>
     <string name="edit_metadata_blocked_now">Det er ikke tillatt akkurat n\u00e5. Sjekk tilkoblingen og tillatelsene dine.</string>
     <string name="book_remove_server_done">Fjernet fra serverdatabasen.</string>
+
+    <!-- PRODUCT_SPEC 14.4 - the debug console. -->
+    <string name="debug_console_open">\u00c5pne feils\u00f8kingskonsollen</string>
+    <string name="debug_console_body">Alt denne versjonen vet om seg selv, som \u00e9n blokk du kan kopiere og lime inn i en rapport. Den inneholder ingen serveradresse, ingen biblioteks- eller boktitler og ingen enhetsnavn.</string>
+    <string name="debug_console_title">Feils\u00f8kingskonsoll</string>
+    <string name="debug_console_subtitle">Kopier dette og lim det inn der du melder fra om problemet.</string>
+    <string name="debug_console_copy">Kopier alt</string>
 </resources>
