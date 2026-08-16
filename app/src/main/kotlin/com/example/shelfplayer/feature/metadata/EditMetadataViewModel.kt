@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.library.BookMetadataError
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.CoverRejection
 import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.domain.repository.MetadataRepository
 import com.example.shelfplayer.domain.usecase.ObserveManagementPermissionsUseCase
 import com.example.shelfplayer.navigation.ShelfDestinations
@@ -170,7 +171,21 @@ class EditMetadataViewModel @Inject constructor(
         val profile = profileId ?: return
         val form = _uiState.value.form
         viewModelScope.launch {
-            _uiState.update { it.copy(isMatching = true, matchProvider = provider, candidates = emptyList()) }
+            _uiState.update {
+                it.copy(
+                    isMatching = true,
+                    // Open before the request, and it stays open on an empty result. A sheet that closed
+                    // when a provider found nothing would take the other providers with it, which is
+                    // exactly the moment the user needs them.
+                    isMatchSheetOpen = true,
+                    matchProvider = provider,
+                    candidates = emptyList(),
+                )
+            }
+            // The list is loaded lazily, on the first search, rather than with the screen. It costs a
+            // request that most visits to this editor never need — somebody fixing a title does not open
+            // the provider picker — and a failure to load it must not stop the editor from opening.
+            if (_uiState.value.providers.isEmpty()) loadProviders(profile)
             val found = metadata.findCandidates(
                 profileId = profile,
                 provider = provider,
@@ -188,8 +203,13 @@ class EditMetadataViewModel @Inject constructor(
         }
     }
 
+    private suspend fun loadProviders(profile: ProfileId) {
+        val listed = metadata.metadataProviders(profile)
+        if (listed is AppResult.Success) _uiState.update { it.copy(providers = listed.value) }
+    }
+
     fun dismissMatches() {
-        _uiState.update { it.copy(candidates = emptyList(), selectedCandidate = null) }
+        _uiState.update { it.copy(isMatchSheetOpen = false, candidates = emptyList(), selectedCandidate = null) }
     }
 
     /** PRODUCT_SPEC MGR-003 — the chosen candidate, and which of its fields the user has agreed to. */
@@ -223,6 +243,7 @@ class EditMetadataViewModel @Inject constructor(
             val candidate = state.selectedCandidate ?: return@update state
             state.copy(
                 form = candidate.applyTo(state.form, state.acceptedFields),
+                isMatchSheetOpen = false,
                 candidates = emptyList(),
                 selectedCandidate = null,
                 acceptedFields = emptySet(),
@@ -405,8 +426,15 @@ data class EditMetadataUiState(
     val pickedCover: PickedCover? = null,
     /** PRODUCT_SPEC MGR-003 — candidates offered, and the one the user is considering. */
     val isMatching: Boolean = false,
+    /** Open from the moment a search starts, so an empty result still offers the other providers. */
+    val isMatchSheetOpen: Boolean = false,
     val matchProvider: String = "",
     val candidates: List<MatchCandidate> = emptyList(),
+    /**
+     * PRODUCT_SPEC MGR-003 — the sources this server offers, so a deployment that cannot reach one can use
+     * another. Empty until the first search asks for them.
+     */
+    val providers: List<MetadataProvider> = emptyList(),
     val selectedCandidate: MatchCandidate? = null,
     val acceptedFields: Set<BookMetadataField> = emptySet(),
     /** PRODUCT_SPEC MGR-004 — the scan's own word, or `null` when none has run. */

@@ -120,6 +120,18 @@ internal data class MatchCandidateDto(
     val publisher: String? = null,
     val publishedYear: String? = null,
     val description: String? = null,
+    /**
+     * PRODUCT_SPEC MGR-003 — the description with the markup already removed, by the server.
+     *
+     * The single most useful field in this response and the easiest to miss. [description] is HTML; this is
+     * the same text stripped. MGR-003 requires match results to be "treated as untrusted display data and
+     * sanitized", and taking a sanitised value the server already computed beats sanitising HTML in a
+     * client — the app never has to decide which tags are safe, because it never handles any.
+     *
+     * Observed on `audiobooks.dev` 2026-08-16. Nullable, because a provider that omits it is a provider
+     * whose description this app then declines to show rather than one it renders as markup.
+     */
+    val descriptionPlain: String? = null,
     val cover: String? = null,
     val isbn: String? = null,
     val asin: String? = null,

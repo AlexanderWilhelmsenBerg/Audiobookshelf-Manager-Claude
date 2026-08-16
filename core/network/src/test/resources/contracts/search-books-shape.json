@@ -1,0 +1,25 @@
+{
+  "note": "GET /api/search/books?provider=audible. Keys only: the results come from a third party and change. Captured against audiobooks.dev because Google Books answers 429 to CI addresses, so the CI run records an empty list for the default provider.",
+  "status": 200,
+  "firstResultKeys": [
+    "abridged",
+    "asin",
+    "author",
+    "cover",
+    "description",
+    "descriptionPlain",
+    "duration",
+    "genres",
+    "isbn",
+    "language",
+    "narrator",
+    "publishedYear",
+    "publisher",
+    "rating",
+    "region",
+    "series",
+    "subtitle",
+    "tags",
+    "title"
+  ]
+}

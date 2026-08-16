@@ -912,10 +912,14 @@ The app's `NetworkErrorMapper` already keys on the status code rather than the b
 today. It is recorded because the obvious future change — reading an error message out of a failed
 management response — would be wrong on exactly these routes.
 
-**Observed 2026-08-15.** The capture run creates an active non-admin account and attempts three
-management operations with it; the server refused all three, logging *"attempted to update without
-permission"*, *"attempted to delete without permission"* and the scan refusal. The response fixtures were
-produced but are not yet committed — see `docs/gaps.md`.
+**Captured 2026-08-15.** The capture run creates an active non-admin account and attempts three management
+operations with it. All three are refused with **`403`, `Content-Type: text/plain`, body `Forbidden`** —
+committed as `item-update-forbidden`, `item-delete-forbidden` and `item-scan-forbidden`, and pinned by
+`CapturedShapesTest`.
+
+The scan refusal is the one worth reading twice. The refused account holds `download` and nothing else, so
+the update and delete refusals are explained by its grants — but the scan refusal is not: the server gates
+scanning on being admin or root, and that account would be refused holding every permission there is.
 
 ### Permissions are checked per-method, and cover upload needs two grants
 
@@ -997,8 +1001,34 @@ Actions.** Every candidate search from CI answers `429`, so `search-books-shape.
 result set and will keep doing so. The endpoint works; the *shape* of a populated result cannot be captured
 from a shared CI address, and would need a run against a real deployment.
 
-That is a fact about where the capture runs rather than about the server, and it is why the candidate model
-is written from the provider sources' own field lists with every field optional.
+That is a fact about where the capture runs rather than about the server.
+
+### A run against a real deployment, 2026-08-16
+
+`audiobooks.dev` — a public demo instance on 2.36.0, public-domain material only — settled the rest, and
+produced two findings that changed the code.
+
+**The default provider is not reliably the working one.** Google and Open Library returned *empty lists* for
+every query there; Audible returned six populated results for the same title. Reachability is a property of
+the server's own outbound network, exactly like the websocket, and a client that hardcodes one source turns
+"this deployment cannot reach Google" into "this book has no metadata anywhere". MGR-003 now reads the
+provider list and lets the user pick.
+
+That deployment also lists **two custom providers**, with `custom-<uuid>` slugs — the case the provider list
+exists for, and one no hardcoded list could have.
+
+**The server sends a sanitised description.** Alongside the HTML `description` it sends `descriptionPlain`,
+the same text stripped. That is the field this app reads, and the HTML one is never touched: MGR-003 wants
+match results sanitized, and declining to handle markup at all is a stronger guarantee than stripping it.
+
+The full key set of an Audible candidate, recorded in `search-books-shape.json`:
+
+`abridged`, `asin`, `author`, `cover`, `description`, `descriptionPlain`, `duration`, `genres`, `isbn`,
+`language`, `narrator`, `publishedYear`, `publisher`, `rating`, `region`, `series`, `subtitle`, `tags`,
+`title`.
+
+`cover` was observed pointing at `m.media-amazon.com`, which is exactly the third-party host MGR-002's
+"tokens are not appended to third-party cover URLs" is about.
 
 ### Cover upload takes a file **or** a URL, and validates on the filename
 

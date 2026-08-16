@@ -890,4 +890,5 @@
     <string name="users_password_required">Enter a password.</string>
     <string name="users_create">Create account</string>
     <string name="settings_server_users">Manage server accounts</string>
+    <string name="edit_metadata_match_empty">No results from this source. Try another one above.</string>
 </resources>

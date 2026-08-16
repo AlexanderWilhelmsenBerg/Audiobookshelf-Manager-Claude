@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.model.library.SeriesEdit
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.core.network.gateway.CoverUpload
@@ -220,6 +221,35 @@ internal class AbsManagementApi @Inject constructor(
         }
     }
 
+    override suspend fun metadataProviders(profileId: ProfileId): AppResult<List<MetadataProvider>> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+
+        val transport = resultOf(onError = errors::fromThrowable) {
+            services.authService(connection.serverUrl)
+                .metadataProviders(bearerOf(connection.accessToken.value))
+        }
+        return when (transport) {
+            is AppResult.Failure -> AppResult.Failure(transport.error)
+            is AppResult.Success -> {
+                val response = transport.value
+                if (response.isSuccessful) {
+                    AppResult.Success(
+                        response.body()?.providers?.books.orEmpty().mapNotNull { dto ->
+                            // A provider with no `value` cannot be sent, so it is dropped rather than
+                            // offered as a choice that would produce an empty search.
+                            dto.value?.takeIf(String::isNotBlank)?.let { id ->
+                                MetadataProvider(id, dto.text?.takeIf(String::isNotBlank) ?: id)
+                            }
+                        },
+                    )
+                } else {
+                    AppResult.Failure(errors.fromStatus(response.code()))
+                }
+            }
+        }
+    }
+
     override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome> {
         val connection = connections.connectionFor(profileId)
             ?: return AppResult.Failure(AppError.Authentication())
@@ -408,7 +438,10 @@ internal class AbsManagementApi @Inject constructor(
             narrator = dto.narrator,
             publisher = dto.publisher,
             publishedYear = dto.publishedYear,
-            description = dto.description,
+            // Plain text or nothing. The HTML `description` is deliberately never read: MGR-003 wants
+            // match results sanitized, and refusing to handle markup at all is a stronger guarantee than
+            // stripping it — there is no tag list to get wrong and nothing to render by accident.
+            description = dto.descriptionPlain,
             coverUrl = dto.cover,
             isbn = dto.isbn,
             asin = dto.asin,

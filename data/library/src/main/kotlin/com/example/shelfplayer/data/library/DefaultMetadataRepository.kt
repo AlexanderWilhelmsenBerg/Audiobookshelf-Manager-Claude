@@ -19,6 +19,7 @@ import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.CoverUpload
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -151,6 +152,9 @@ class DefaultMetadataRepository @Inject constructor(
     ): AppResult<List<MatchCandidate>> = withContext(ioDispatcher) {
         gateway.management.findCandidates(profileId, provider, title, author)
     }
+
+    override suspend fun metadataProviders(profileId: ProfileId): AppResult<List<MetadataProvider>> =
+        withContext(ioDispatcher) { gateway.management.metadataProviders(profileId) }
 
     override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<String> =
         withContext(ioDispatcher) {

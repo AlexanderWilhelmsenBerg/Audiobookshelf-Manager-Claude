@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.MetadataProvider
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -103,6 +104,15 @@ interface MetadataRepository {
         title: String,
         author: String,
     ): AppResult<List<MatchCandidate>>
+
+    /**
+     * PRODUCT_SPEC MGR-003 — the metadata sources this deployment offers.
+     *
+     * Read rather than assumed, because which providers a server can actually reach is a property of its
+     * own outbound network: a real deployment returned nothing from Google on every query and six results
+     * from Audible for the same title.
+     */
+    suspend fun metadataProviders(profileId: ProfileId): AppResult<List<MetadataProvider>>
 
     /**
      * PRODUCT_SPEC MGR-004 — rescan one item, and refresh what it changed.

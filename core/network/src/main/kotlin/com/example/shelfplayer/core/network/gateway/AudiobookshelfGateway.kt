@@ -19,6 +19,7 @@ import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
@@ -468,6 +469,14 @@ interface ManagementApi {
         title: String,
         author: String,
     ): AppResult<List<MatchCandidate>>
+
+    /**
+     * PRODUCT_SPEC MGR-003 — the metadata sources this deployment offers, including custom ones.
+     *
+     * The same read the capability probe makes, exposed for the picker. A deployment that cannot reach one
+     * provider can usually reach another, and only the server knows which it has been configured with.
+     */
+    suspend fun metadataProviders(profileId: ProfileId): AppResult<List<MetadataProvider>>
 
     /**
      * PRODUCT_SPEC MGR-004 — rescan one item, and refresh it.

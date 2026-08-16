@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +24,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -276,7 +278,7 @@ private fun MatchAndScanSection(state: EditMetadataUiState, viewModel: EditMetad
             style = MaterialTheme.typography.bodySmall,
         )
     }
-    if (state.candidates.isNotEmpty()) CandidateSheet(state, viewModel)
+    if (state.candidates.isNotEmpty() || state.isMatchSheetOpen) CandidateSheet(state, viewModel)
 }
 
 /**
@@ -305,6 +307,25 @@ private fun CandidateSheet(state: EditMetadataUiState, viewModel: EditMetadataVi
                 stringResource(R.string.edit_metadata_match_from, state.matchProvider),
                 style = MaterialTheme.typography.titleMedium,
             )
+            // PRODUCT_SPEC MGR-003 — the other sources, offered rather than assumed. A deployment that
+            // cannot reach Google can usually reach Audible, and only the server knows which it has.
+            if (state.providers.size > 1) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    state.providers.forEach { provider ->
+                        FilterChip(
+                            selected = provider.id == state.matchProvider,
+                            onClick = { viewModel.findMatches(provider.id) },
+                            label = { Text(provider.displayName) },
+                        )
+                    }
+                }
+            }
+            if (state.candidates.isEmpty() && !state.isMatching) {
+                Text(
+                    stringResource(R.string.edit_metadata_match_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             val selected = state.selectedCandidate
             if (selected == null) {
                 state.candidates.forEach { candidate ->

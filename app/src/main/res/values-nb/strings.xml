@@ -704,4 +704,5 @@
     <string name="users_password_required">Skriv inn et passord.</string>
     <string name="users_create">Opprett konto</string>
     <string name="settings_server_users">Administrer serverkontoer</string>
+    <string name="edit_metadata_match_empty">Ingen treff fra denne kilden. Pr\u00f8v en annen ovenfor.</string>
 </resources>

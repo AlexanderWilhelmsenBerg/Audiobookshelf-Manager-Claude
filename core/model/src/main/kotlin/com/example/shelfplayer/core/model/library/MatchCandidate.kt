@@ -9,12 +9,16 @@ package com.example.shelfplayer.core.model.library
  * duration and a series; a custom provider returns whatever its author chose. A field that is required
  * here would turn one provider's omission into an unusable result.
  *
- * ### `description` is untrusted, and `coverUrl` is somebody else's host
+ * ### `description` is already plain, and `coverUrl` is somebody else's host
  *
- * MGR-003 requires match results to be "treated as untrusted display data and sanitized": [description] is
- * provider-supplied HTML and must never be rendered as markup. MGR-002 requires that "tokens are not
- * appended to third-party cover URLs", and [coverUrl] is precisely such a URL — it points at Google or
- * Audible, not at the user's server, so the app's `Authorization` header must never travel with it.
+ * MGR-003 requires match results to be "treated as untrusted display data and sanitized". The server does
+ * that itself: alongside the HTML `description` it sends `descriptionPlain`, the same text stripped, and
+ * that is the only one this app reads. Refusing to handle markup at all is a stronger guarantee than
+ * stripping it — there is no tag list to get wrong.
+ *
+ * MGR-002 requires that "tokens are not appended to third-party cover URLs", and [coverUrl] is precisely
+ * such a URL — observed pointing at `m.media-amazon.com`, not at the user's server — so the app's
+ * `Authorization` header must never travel with it.
  */
 data class MatchCandidate(
     val provider: String,

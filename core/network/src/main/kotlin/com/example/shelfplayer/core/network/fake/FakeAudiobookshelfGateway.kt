@@ -31,6 +31,7 @@ import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.map
 import com.example.shelfplayer.core.model.playback.OfflineSession
@@ -124,6 +125,9 @@ class FakeAudiobookshelfGateway @Inject constructor(
     ): AppResult<List<MatchCandidate>> = AppError.ApiCompatibility(
         summary = "The demo library cannot search a metadata provider.",
     ).asFailure()
+
+    override suspend fun metadataProviders(profileId: ProfileId): AppResult<List<MetadataProvider>> =
+        AppError.ApiCompatibility(summary = "The demo library has no metadata providers.").asFailure()
 
     override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome> =
         AppError.ApiCompatibility(summary = "The demo library has no files to scan.").asFailure()

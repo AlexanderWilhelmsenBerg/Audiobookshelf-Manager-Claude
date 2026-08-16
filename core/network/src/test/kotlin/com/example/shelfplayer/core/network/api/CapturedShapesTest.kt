@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.network.api
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -440,6 +441,62 @@ class CapturedShapesTest {
         assertEquals(false, permissions.getValue("update").jsonPrimitive.boolean)
         assertEquals(false, permissions.getValue("delete").jsonPrimitive.boolean)
         assertEquals(false, permissions.getValue("upload").jsonPrimitive.boolean)
+    }
+
+    /**
+     * PRODUCT_SPEC principle 4 — what the *second* enforcement is predicting, observed at last.
+     *
+     * Every management capture before these ran as `root`, so every response was the permitted one. These
+     * three ran as an active `user` account and are the refusals: `403`, `text/plain`, body `Forbidden`.
+     *
+     * The finding that generalises is the content type. These handlers end with Express's `sendStatus`,
+     * which writes the status *name* as a plain-text body — the same mechanism that makes cover removal,
+     * library scan and item deletion answer `text/plain "OK"` on success. A client that parsed a management
+     * failure as JSON would get a deserialization error where it should get a permission error, so
+     * `NetworkErrorMapper` keys on the status code and never on the body.
+     */
+    @Test
+    fun `a refused management request is plain text, not json`() {
+        for (fixture in listOf("item-update-forbidden", "item-delete-forbidden", "item-scan-forbidden")) {
+            val envelope = json.parseToJsonElement(rawEnvelope(fixture)).jsonObject
+
+            assertEquals(403, envelope.getValue("status").jsonPrimitive.int, fixture)
+            assertEquals("text", envelope.getValue("bodyKind").jsonPrimitive.content, fixture)
+            assertTrue(envelope.getValue("contentType").jsonPrimitive.content.startsWith("text/plain"), fixture)
+            assertEquals("Forbidden", envelope.getValue("bodyText").jsonPrimitive.content, fixture)
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-004 — the scan refusal is about the account **type**, not about a grant.
+     *
+     * The account that was refused holds `download` and nothing else, so the update and delete refusals are
+     * explained by its grants. The *scan* refusal is not: the server gates scanning on being admin or root,
+     * and this account would still be refused holding every permission there is. That is why `ProfileRole`
+     * does real work in `ManagementPermissions` rather than being a presentation bucket.
+     */
+    @Test
+    fun `the refused account is an ordinary user with only the download grant`() {
+        val user = json.parseToJsonElement(bodyOf("me-listener")).jsonObject
+        val permissions = user.getValue("permissions").jsonObject
+
+        assertEquals("user", user.getValue("type").jsonPrimitive.content)
+        assertEquals(true, permissions.getValue("download").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("update").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("delete").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("upload").jsonPrimitive.boolean)
+    }
+
+    /**
+     * `GET /api/me` carries the caller's own token, which the app already holds — so this is not the leak
+     * `GET /api/users` is. It is pinned anyway, because the *reason* `UserDto` models no token is that no
+     * response's token is ever worth parsing, and a reader who saw this one might conclude otherwise.
+     */
+    @Test
+    fun `even the caller's own account response carries a token that is never modelled`() {
+        val user = json.parseToJsonElement(bodyOf("me-listener")).jsonObject
+
+        assertTrue("token" in user)
     }
 
     private fun bodyOf(fixture: String): String =
