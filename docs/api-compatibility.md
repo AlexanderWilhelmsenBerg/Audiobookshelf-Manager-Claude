@@ -1030,6 +1030,24 @@ The full key set of an Audible candidate, recorded in `search-books-shape.json`:
 `cover` was observed pointing at `m.media-amazon.com`, which is exactly the third-party host MGR-002's
 "tokens are not appended to third-party cover URLs" is about.
 
+**The refusals reproduce on a second, independent server.** The `demo` account there is an ordinary `user`
+with `download` and nothing else, and every management route refuses it with `403` and
+`Content-Type: text/plain; charset=utf-8`:
+
+| Request | Response |
+| --- | --- |
+| `PATCH /api/items/{id}/media` | `403 text/plain` |
+| `POST /api/items/{id}/cover` | `403 text/plain` |
+| `POST /api/items/{id}/scan` | `403 text/plain` |
+| `GET /api/users` | `403 text/plain` |
+
+That is the CI capture confirmed against a deployment nobody involved in this project configured, which is
+the strongest form this evidence can take.
+
+It is also why **no write contract can be captured there**. The demo account holds no update, delete or
+upload grant, so the cover-upload shape stays source-derived until it is exercised against a server whose
+account has the grants.
+
 ### Cover upload takes a file **or** a URL, and validates on the filename
 
 `POST /api/items/{id}/cover` accepts either:

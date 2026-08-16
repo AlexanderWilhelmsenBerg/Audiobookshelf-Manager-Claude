@@ -24,6 +24,7 @@ import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.CoverUpload
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.MetadataRepository
+import com.example.shelfplayer.domain.repository.MetadataSaveResult
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -118,14 +119,16 @@ class DefaultMetadataRepository @Inject constructor(
         bookId: LibraryItemId,
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
-    ): AppResult<Book> = withContext(ioDispatcher) {
+    ): AppResult<MetadataSaveResult> = withContext(ioDispatcher) {
         when (val saved = gateway.management.updateMetadata(profileId, bookId, edit, changed)) {
             is AppResult.Failure -> saved
             is AppResult.Success -> {
-                val book = store(profileId, saved.value)
-                // Last, and only once the server's own version is in Room. See the class comment.
+                val snapshot = saved.value.book
+                val book = snapshot?.let { store(profileId, it) } ?: library.observeBook(profileId, bookId).first()
+                // Discarded whether or not the re-read landed. The words are on the server either way, and
+                // keeping a draft of changes the server has accepted is how a user ends up retyping them.
                 discardDraft(profileId, bookId)
-                AppResult.Success(book)
+                AppResult.Success(MetadataSaveResult(book = book, isLocalCopyStale = snapshot == null))
             }
         }
     }
@@ -161,7 +164,15 @@ class DefaultMetadataRepository @Inject constructor(
             when (val scanned = gateway.management.scanItem(profileId, bookId)) {
                 is AppResult.Failure -> scanned
                 is AppResult.Success -> {
-                    scanned.value.book?.let { snapshot -> store(profileId, snapshot) }
+                    val snapshot = scanned.value.book
+                    if (snapshot != null) {
+                        store(profileId, snapshot)
+                    } else {
+                        // `REMOVED`: the scan found the item's files gone, so the server no longer has it.
+                        // Skipping the re-read is right — it would `404` — but skipping the *deletion* would
+                        // leave a book on the shelf that opens onto nothing.
+                        markDeleted(profileId, bookId)
+                    }
                     AppResult.Success(scanned.value.result)
                 }
             }
@@ -179,12 +190,17 @@ class DefaultMetadataRepository @Inject constructor(
             when (val removed = gateway.management.removeFromDatabase(profileId, bookId)) {
                 is AppResult.Failure -> removed
                 is AppResult.Success -> {
-                    val book = library.observeBook(profileId, bookId).first()
-                    book?.let { writeDao.markBookDeleted(EntityKey.of(it.serverId.value, it.id.value)) }
+                    markDeleted(profileId, bookId)
                     AppResult.Success(Unit)
                 }
             }
         }
+
+    /** Soft-deletes the cached row once the *server* has said the item is gone. */
+    private suspend fun markDeleted(profileId: ProfileId, bookId: LibraryItemId) {
+        val book = library.observeBook(profileId, bookId).first() ?: return
+        writeDao.markBookDeleted(EntityKey.of(book.serverId.value, book.id.value))
+    }
 
     private suspend fun refreshFrom(profileId: ProfileId, result: AppResult<BookSnapshot>): AppResult<Book> =
         when (result) {

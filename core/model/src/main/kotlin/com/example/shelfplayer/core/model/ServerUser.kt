@@ -76,4 +76,10 @@ data class NewServerUser(
     }
 }
 
-enum class NewUserError { UsernameRequired, PasswordRequired, UnknownType }
+/**
+ * Why an account cannot be created.
+ *
+ * [UsernameTaken] is the one that cannot be known before asking: the server answers `400` with a plain-text
+ * body, and USER-002 requires it be shown against the username field rather than as a page-level failure.
+ */
+enum class NewUserError { UsernameRequired, PasswordRequired, UnknownType, UsernameTaken }

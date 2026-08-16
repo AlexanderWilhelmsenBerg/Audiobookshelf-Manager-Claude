@@ -705,4 +705,15 @@
     <string name="users_create">Opprett konto</string>
     <string name="settings_server_users">Administrer serverkontoer</string>
     <string name="edit_metadata_match_empty">Ingen treff fra denne kilden. Pr\u00f8v en annen ovenfor.</string>
+
+    <!-- Phase 5 defect fixes: self-lockout, stale save, blocked action, removal confirmation. -->
+    <string name="users_you">%1$s (deg)</string>
+    <string name="users_self_disable_title">Du kan ikke deaktivere din egen konto</string>
+    <string name="users_self_disable_body">\u00c5 deaktivere kontoen du er logget inn med ville avslutte denne \u00f8kten, og ingen konto i appen kunne sl\u00e5tt den p\u00e5 igjen. Sp\u00f8r en annen administrator, eller bruk serveren direkte.</string>
+    <string name="users_self_disable_ok">Forst\u00e5tt</string>
+    <string name="users_username_taken">Det brukernavnet er allerede i bruk p\u00e5 denne serveren.</string>
+    <string name="edit_metadata_saved_stale">Lagret. Denne enheten klarte ikke \u00e5 lese boken tilbake, s\u00e5 det du ser kan v\u00e6re utdatert til neste synkronisering.</string>
+    <string name="edit_metadata_saved">Lagret.</string>
+    <string name="edit_metadata_blocked_now">Det er ikke tillatt akkurat n\u00e5. Sjekk tilkoblingen og tillatelsene dine.</string>
+    <string name="book_remove_server_done">Fjernet fra serverdatabasen.</string>
 </resources>

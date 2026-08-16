@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -95,22 +96,54 @@ fun ServerUsersScreen(onBack: () -> Unit, viewModel: ServerUsersViewModel = hilt
             if (state.isLoading) {
                 CircularProgressIndicator()
             } else {
-                state.users.forEach { user -> UserRow(user, viewModel) }
+                state.rows.forEach { row -> UserRow(row, viewModel) }
             }
             HorizontalDivider()
             CreateUserForm(state, viewModel)
         }
     }
+
+    if (state.selfDisableRefused) {
+        AlertDialog(
+            onDismissRequest = viewModel::acknowledgeSelfDisable,
+            title = { Text(stringResource(R.string.users_self_disable_title)) },
+            text = { Text(stringResource(R.string.users_self_disable_body)) },
+            confirmButton = {
+                TextButton(onClick = viewModel::acknowledgeSelfDisable) {
+                    Text(stringResource(R.string.users_self_disable_ok))
+                }
+            },
+        )
+    }
 }
 
+/**
+ * PRODUCT_SPEC USER-003 — one account, and whether it is the one holding this session.
+ *
+ * The signed-in row is labelled and its switch is disabled while it is on. Disabling yourself is refused in
+ * the `ViewModel` regardless, but a control that cannot do harm is better than one that refuses afterwards:
+ * the switch never moves, so there is no moment where the user believes it worked.
+ */
 @Composable
-private fun UserRow(user: ServerUser, viewModel: ServerUsersViewModel) {
+private fun UserRow(row: ServerUserRow, viewModel: ServerUsersViewModel) {
+    val user = row.user
     ListItem(
-        headlineContent = { Text(user.username) },
+        headlineContent = {
+            Text(
+                if (row.isCurrentUser) {
+                    stringResource(R.string.users_you, user.username)
+                } else {
+                    user.username
+                },
+            )
+        },
         supportingContent = { Text(descriptionOf(user)) },
         trailingContent = {
             Switch(
                 checked = user.isActive,
+                // Only the *disabling* direction is barred. Re-enabling your own account is impossible to
+                // reach anyway — a disabled account has no session — but the asymmetry is the honest one.
+                enabled = !(row.isCurrentUser && user.isActive),
                 onCheckedChange = { checked -> viewModel.setActive(user, checked) },
             )
         },
@@ -160,8 +193,10 @@ private fun CreateUserForm(state: ServerUsersUiState, viewModel: ServerUsersView
         onValueChange = viewModel::usernameChanged,
         label = { Text(stringResource(R.string.users_username)) },
         singleLine = true,
-        isError = NewUserError.UsernameRequired in state.fieldErrors,
-        supportingText = errorTextFor(NewUserError.UsernameRequired, state, R.string.users_username_required),
+        isError = NewUserError.UsernameRequired in state.fieldErrors ||
+            NewUserError.UsernameTaken in state.fieldErrors,
+        supportingText = errorTextFor(NewUserError.UsernameRequired, state, R.string.users_username_required)
+            ?: errorTextFor(NewUserError.UsernameTaken, state, R.string.users_username_taken),
         modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(

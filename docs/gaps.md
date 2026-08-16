@@ -96,7 +96,26 @@ recreation — and the advanced form is the part nobody can use without the diag
 ## Phase 5 — Management tools
 
 **Complete.** All eight slices are done, one of them — source-file deletion — correctly with no feature at
-all. What is left below is genuinely open, and three of the five are settled rather than missing.
+all.
+
+An adversarial audit against every acceptance criterion in EPIC MGR and EPIC USER ran on 2026-08-16 and
+found **eight defects that this document did not list**, all of them now fixed. Worth recording what they
+were, because they are the shapes this kind of work fails in:
+
+- **Disabling your own account was one mis-tap and unrecoverable** — the account that would undo it is the
+  one just disabled. Now refused outright rather than confirmed.
+- **The cover cache never invalidated.** A new cover was invisible forever: the loader ignores cache headers
+  and nothing evicted, so the URL *was* the key. `?ts=` was documented and not implemented.
+- **A save whose follow-up read failed reported as a failed save**, handing back an "unsaved draft" of
+  changes already on the server.
+- **Permissions were a snapshot** taken when the editor opened, so going offline left every button live.
+- **The destructive removal was gated on the grant alone**, not on connectivity.
+- **A successful removal said nothing.**
+- **A duplicate username was a page-level card**, not a field error.
+- **A `REMOVED` scan left a phantom book** on the shelf.
+
+Two were found by the compiler and the linter rather than by the audit, during the fix: an
+`?.let { } ?: …` that folded "permitted" into "blocked", and three strings written but never rendered.
 
 | Requirement | Gap | State |
 | --- | --- | --- |

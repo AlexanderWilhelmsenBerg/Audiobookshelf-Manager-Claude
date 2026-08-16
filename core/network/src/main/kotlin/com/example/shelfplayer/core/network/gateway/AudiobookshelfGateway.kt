@@ -443,7 +443,7 @@ interface ManagementApi {
         bookId: LibraryItemId,
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
-    ): AppResult<BookSnapshot>
+    ): AppResult<MetadataSaveOutcome>
 
     /**
      * PRODUCT_SPEC MGR-002 — replace the cover, and return the item the server now holds.
@@ -525,6 +525,23 @@ interface ManagementApi {
  *   nothing to refresh.
  */
 data class ItemScanOutcome(val result: String, val book: BookSnapshot?)
+
+/**
+ * PRODUCT_SPEC MGR-001 — the save happened; whether the device managed to read the result back is separate.
+ *
+ * ### Why this is not just `AppResult<BookSnapshot>`
+ *
+ * The `PATCH` and the expanded re-read are two requests, and the second can fail after the first succeeded.
+ * Collapsing that into a failure is the most damaging thing this layer could get wrong: the user's changes
+ * are on the server, and the app would tell them the save failed and hand back an "unsaved draft" of edits
+ * that are already live. They would then re-save, or worse, give up and retype.
+ *
+ * So a failed refresh is reported as a **success with a stale cache**. The draft is discarded either way —
+ * the words are safely on the server — and the screen says the local copy will catch up.
+ *
+ * @property book the item as the server now holds it, or `null` when only the re-read failed.
+ */
+data class MetadataSaveOutcome(val book: BookSnapshot?)
 
 /**
  * PRODUCT_SPEC MGR-002 — an image the user chose, already validated, ready to send.

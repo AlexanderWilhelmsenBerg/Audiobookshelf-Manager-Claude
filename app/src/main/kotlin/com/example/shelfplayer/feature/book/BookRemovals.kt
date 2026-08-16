@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.book
 
+import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
 import com.example.shelfplayer.domain.usecase.RemoveDownloadUseCase
 import com.example.shelfplayer.domain.usecase.RemoveFromDatabaseUseCase
 import javax.inject.Inject
@@ -16,4 +17,16 @@ import javax.inject.Inject
  * being readable and somebody passes them in the wrong order. Two use cases in one holder that names what
  * they have in common is better than two more parameters that do not.
  */
-class BookRemovals @Inject constructor(val local: RemoveDownloadUseCase, val fromServer: RemoveFromDatabaseUseCase)
+class BookRemovals @Inject constructor(
+    val local: RemoveDownloadUseCase,
+    val fromServer: RemoveFromDatabaseUseCase,
+    /**
+     * PRODUCT_SPEC MGR-005 — "offline invocation is blocked", which makes connectivity part of *whether a
+     * removal is offered* rather than a separate concern the screen happens to also need.
+     *
+     * It lives here for that reason and not for arithmetic: this type answers "what can be removed, and may
+     * it be", and the second half of that question is unanswerable without knowing if the server is
+     * reachable.
+     */
+    val network: NetworkMonitor,
+)

@@ -891,4 +891,15 @@
     <string name="users_create">Create account</string>
     <string name="settings_server_users">Manage server accounts</string>
     <string name="edit_metadata_match_empty">No results from this source. Try another one above.</string>
+
+    <!-- Phase 5 defect fixes: self-lockout, stale save, blocked action, removal confirmation. -->
+    <string name="users_you">%1$s (you)</string>
+    <string name="users_self_disable_title">You cannot disable your own account</string>
+    <string name="users_self_disable_body">Disabling the account you are signed in with would end this session, and no account left in the app could turn it back on. Ask another administrator, or use the server directly.</string>
+    <string name="users_self_disable_ok">Got it</string>
+    <string name="users_username_taken">That username is already taken on this server.</string>
+    <string name="edit_metadata_saved_stale">Saved. This device could not read the book back, so what you see may be out of date until the next sync.</string>
+    <string name="edit_metadata_saved">Saved.</string>
+    <string name="edit_metadata_blocked_now">That is no longer allowed right now. Check your connection and your permissions.</string>
+    <string name="book_remove_server_done">Removed from the server database.</string>
 </resources>

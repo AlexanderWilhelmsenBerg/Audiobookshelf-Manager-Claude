@@ -147,6 +147,7 @@ private fun EditMetadataForm(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         state.block?.let { block -> BlockedNotice(block) }
+        SaveOutcomeNotice(state)
         CoverSection(state, viewModel)
         MatchAndScanSection(state, viewModel)
         state.errorSummary?.let { summary ->
@@ -581,6 +582,30 @@ private fun errorTextOf(error: BookMetadataError): String = stringResource(
         BookMetadataError.SeriesNameRequired -> R.string.edit_metadata_error_series
     },
 )
+
+/**
+ * PRODUCT_SPEC MGR-001 — what the last save achieved, said out loud.
+ *
+ * [SaveOutcome.SavedButStale] is the one that needed saying. The changes are on the server and this device
+ * could not read them back, so the form below is showing the *old* values — a user who saw no message would
+ * conclude the save had silently done nothing and type it all again.
+ *
+ * [EditMetadataUiState.blockedAction] is the other half: PRODUCT_SPEC principle 4 re-checks the permission
+ * immediately before sending, and when that check refuses, something has changed since the button was
+ * drawn. Saying so beats a button that quietly stops working.
+ */
+@Composable
+private fun SaveOutcomeNotice(state: EditMetadataUiState) {
+    val text = when {
+        state.blockedAction != null -> stringResource(R.string.edit_metadata_blocked_now)
+        state.savedAt == SaveOutcome.SavedButStale -> stringResource(R.string.edit_metadata_saved_stale)
+        state.savedAt == SaveOutcome.Saved -> stringResource(R.string.edit_metadata_saved)
+        else -> null
+    } ?: return
+    Card(Modifier.fillMaxWidth()) {
+        Text(text, Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+    }
+}
 
 @Composable
 private fun BlockedNotice(block: ManagementBlock) {

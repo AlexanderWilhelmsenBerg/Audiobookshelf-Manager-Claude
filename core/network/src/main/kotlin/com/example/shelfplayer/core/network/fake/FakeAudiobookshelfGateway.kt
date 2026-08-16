@@ -50,6 +50,7 @@ import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.ItemScanOutcome
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.ManagementApi
+import com.example.shelfplayer.core.network.gateway.MetadataSaveOutcome
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -105,7 +106,10 @@ class FakeAudiobookshelfGateway @Inject constructor(
         bookId: LibraryItemId,
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
-    ): AppResult<BookSnapshot> = readOnly()
+    ): AppResult<MetadataSaveOutcome> = AppError.ApiCompatibility(
+        summary = "The demo library cannot be edited.",
+        missingField = "media",
+    ).asFailure()
 
     /** PRODUCT_SPEC MGR-002 — the fixture library's covers are bundled assets, not files a server holds. */
     override suspend fun uploadCover(

@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
+import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
@@ -22,6 +23,7 @@ import com.example.shelfplayer.core.network.gateway.CoverUpload
 import com.example.shelfplayer.core.network.gateway.ItemScanOutcome
 import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.ManagementApi
+import com.example.shelfplayer.core.network.gateway.MetadataSaveOutcome
 import com.example.shelfplayer.core.network.gateway.ProfileConnection
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
 import com.example.shelfplayer.core.network.http.NetworkErrorMapper
@@ -62,7 +64,7 @@ internal class AbsManagementApi @Inject constructor(
         bookId: LibraryItemId,
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
-    ): AppResult<BookSnapshot> {
+    ): AppResult<MetadataSaveOutcome> {
         // An empty `PATCH` is not a cheap no-op on this endpoint: the server still saves the item, still
         // touches `updatedAt`, still rewrites the metadata file and still broadcasts to every connected
         // client. A save with nothing to save must not leave the wire.
@@ -83,7 +85,20 @@ internal class AbsManagementApi @Inject constructor(
                     LogField.Count("fields", changed.size),
                     LogField.Public("changedAnything", sent.value.toString()),
                 )
-                library.fetchBook(profileId, bookId)
+                // The save has already happened. A refresh that fails after it is a *stale cache*, not a
+                // failed save — and reporting it as a failure would hand the user an unsaved draft of
+                // changes the server has accepted, which is the worst possible thing to be wrong about.
+                when (val refreshed = library.fetchBook(profileId, bookId)) {
+                    is AppResult.Success -> AppResult.Success(MetadataSaveOutcome(refreshed.value))
+                    is AppResult.Failure -> {
+                        logger.warn(
+                            LogCategory.Sync,
+                            "The save succeeded but the item could not be re-read",
+                            LogField.Public("reason", refreshed.error.code),
+                        )
+                        AppResult.Success(MetadataSaveOutcome(book = null))
+                    }
+                }
             }
         }
     }
@@ -371,7 +386,23 @@ internal class AbsManagementApi @Inject constructor(
     }
 
     private fun createdUserOf(response: retrofit2.Response<CreateUserResponseDto>): AppResult<ServerUser> {
-        if (!response.isSuccessful) return AppResult.Failure(errors.fromStatus(response.code()))
+        if (!response.isSuccessful) {
+            // PRODUCT_SPEC USER-002 — "duplicate username returns a field-level error".
+            //
+            // The server answers `400` with a plain-text body, and this is the one place in the app that
+            // reads a management error's *body*: the same status covers a missing password, an unknown
+            // account type and a name already in use, and only the words tell them apart. Matched loosely
+            // and case-insensitively, because the exact sentence is not a contract — a match that fails
+            // falls through to the general error, which is the safe direction.
+            val body = response.errorBody()?.string().orEmpty()
+            if (response.code() == HTTP_BAD_REQUEST && body.contains(USERNAME_TAKEN, ignoreCase = true)) {
+                return AppError.Validation(
+                    summary = "That username is already taken on this server.",
+                    fieldErrors = mapOf(USERNAME_FIELD to "already taken"),
+                ).asFailure()
+            }
+            return AppResult.Failure(errors.fromStatus(response.code()))
+        }
         val created = response.body()?.user?.let(::userOf)
             ?: return AppError.ApiCompatibility(
                 summary = "The server created the account but did not describe it.",
@@ -495,5 +526,13 @@ internal class AbsManagementApi @Inject constructor(
 
         /** Only reachable if validation let an unknown type through, which it does not. */
         const val DEFAULT_EXTENSION = "jpg"
+
+        const val HTTP_BAD_REQUEST = 400
+
+        /** The server's own words, matched loosely. Not a contract — see the call site. */
+        const val USERNAME_TAKEN = "already taken"
+
+        /** Names the form field the error belongs against, so the screen can put it there. */
+        const val USERNAME_FIELD = "username"
     }
 }

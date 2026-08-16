@@ -68,7 +68,7 @@ interface MetadataRepository {
         bookId: LibraryItemId,
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
-    ): AppResult<Book>
+    ): AppResult<MetadataSaveResult>
 
     /**
      * PRODUCT_SPEC MGR-002 — replace the cover with [bytes], then refresh the item.
@@ -135,3 +135,15 @@ interface MetadataRepository {
      */
     suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit>
 }
+
+/**
+ * PRODUCT_SPEC MGR-001 — what a save actually achieved.
+ *
+ * The save and the refresh are two requests and the second can fail alone. Reporting that as a failed save
+ * would be the most damaging thing this layer could get wrong: the user's words are on the server, and the
+ * app would offer them an "unsaved draft" of changes that are already live.
+ *
+ * @property book the item as this device now holds it, which may be the pre-save version.
+ * @property isLocalCopyStale the save landed and the re-read did not. The screen says so; nothing retries.
+ */
+data class MetadataSaveResult(val book: Book?, val isLocalCopyStale: Boolean)

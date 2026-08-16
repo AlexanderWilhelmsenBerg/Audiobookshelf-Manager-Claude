@@ -71,23 +71,41 @@ class EditMetadataViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val scope = observePermissions(bookId).first()
-            profileId = scope?.profileId
-            val book = scope?.book
-            if (scope == null || book == null) {
-                _uiState.update { it.copy(isLoading = false, isMissing = true) }
-                return@launch
+            var seeded = false
+            // PRODUCT_SPEC MGR-003 — "match action is permission checked immediately before execution", and
+            // the same applies to every other action here.
+            //
+            // Collected for the life of the screen rather than read once. A `.first()` here was a real
+            // defect: going offline with the editor open, or having a grant revoked, left every button live
+            // against a snapshot taken when the screen opened. The *form* is seeded only on the first
+            // emission — re-seeding would throw away what the user is typing every time connectivity
+            // flickered — but the permissions track.
+            observePermissions(bookId).collect { scope ->
+                val book = scope?.book
+                if (scope == null || book == null) {
+                    if (!seeded) _uiState.update { it.copy(isLoading = false, isMissing = true) }
+                    return@collect
+                }
+                profileId = scope.profileId
+                _uiState.update { it.copy(permissions = scope.permissions) }
+                if (seeded) return@collect
+                seeded = true
+                seed(scope.profileId, book)
             }
+        }
+    }
+
+    private suspend fun seed(profile: ProfileId, book: com.example.shelfplayer.core.model.library.Book) {
+        run {
             val fromBook = BookMetadataEdit.of(book)
             // A draft is offered rather than applied. MGR-001 wants an *explicit* unsaved draft, and a
             // form that silently opens with yesterday's abandoned edit is not explicit — the user cannot
             // tell it apart from what the server holds.
-            val draft = metadata.observeDraft(scope.profileId, bookId).first()
+            val draft = metadata.observeDraft(profile, bookId).first()
             _uiState.update {
                 it.copy(
                     isLoading = false,
                     title = book.title,
-                    permissions = scope.permissions,
                     baseline = fromBook,
                     form = fromBook,
                     draft = draft?.takeIf { saved -> saved.changesFrom(fromBook).isNotEmpty() },
@@ -332,6 +350,12 @@ class EditMetadataViewModel @Inject constructor(
     fun save(overwrite: Boolean = false) {
         val profile = profileId ?: return
         val state = _uiState.value
+        // PRODUCT_SPEC principle 4 — checked here, against the *current* permissions, not against the ones
+        // the button was drawn with. Connectivity and grants both move while a form is open.
+        state.permissions?.blockOn(ManagementAction.EditMetadata)?.let { block ->
+            _uiState.update { it.copy(blockedAction = block) }
+            return
+        }
         val errors = state.form.validate()
         if (errors.isNotEmpty()) {
             _uiState.update { it.copy(fieldErrors = errors) }
@@ -360,7 +384,18 @@ class EditMetadataViewModel @Inject constructor(
 
             when (val saved = metadata.save(profile, bookId, state.form, state.changed)) {
                 is AppResult.Failure -> onSaveFailed(profile, saved.error)
-                is AppResult.Success -> adopt(saved.value)
+                is AppResult.Success -> {
+                    val book = saved.value.book
+                    if (book == null) {
+                        // Saved, and the device could not read it back. Nothing to adopt and nothing to
+                        // retry: the draft is already gone because the words are on the server.
+                        _uiState.update {
+                            it.copy(isSaving = false, savedAt = SaveOutcome.SavedButStale, hasStoredDraft = false)
+                        }
+                    } else {
+                        adopt(book, stale = saved.value.isLocalCopyStale)
+                    }
+                }
             }
         }
     }
@@ -377,7 +412,7 @@ class EditMetadataViewModel @Inject constructor(
         _uiState.update { it.copy(isSaving = false, errorSummary = error.summary, hasStoredDraft = true) }
     }
 
-    private fun adopt(book: Book) {
+    private fun adopt(book: Book, stale: Boolean = false) {
         val fresh = BookMetadataEdit.of(book)
         _uiState.update {
             it.copy(
@@ -388,14 +423,14 @@ class EditMetadataViewModel @Inject constructor(
                 server = null,
                 conflicts = emptySet(),
                 hasStoredDraft = false,
-                savedAt = SaveOutcome.Saved,
+                savedAt = if (stale) SaveOutcome.SavedButStale else SaveOutcome.Saved,
             )
         }
     }
 }
 
 /** What happened to the last save, for the screen to acknowledge. */
-enum class SaveOutcome { Saved, }
+enum class SaveOutcome { Saved, SavedButStale }
 
 /**
  * PRODUCT_SPEC MGR-001 — the editor's whole state.
@@ -422,6 +457,8 @@ data class EditMetadataUiState(
     val errorSummary: String? = null,
     val hasStoredDraft: Boolean = false,
     val savedAt: SaveOutcome? = null,
+    /** PRODUCT_SPEC principle 4 — an action refused by the check made immediately before sending it. */
+    val blockedAction: ManagementBlock? = null,
     /** PRODUCT_SPEC MGR-002 — picked and previewed, not yet sent. */
     val pickedCover: PickedCover? = null,
     /** PRODUCT_SPEC MGR-003 — candidates offered, and the one the user is considering. */

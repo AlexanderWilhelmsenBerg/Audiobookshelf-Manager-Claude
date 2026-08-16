@@ -309,7 +309,7 @@ class BookOverflowMenuScreenTest {
      */
     @Test
     fun `a refusal is shown rather than swallowed`() {
-        render(message = "There is not enough space for this book.")
+        render(message = BookMessage.Failed("There is not enough space for this book."))
 
         composeRule.onNodeWithText("There is not enough space for this book.").assertIsDisplayed()
     }
@@ -339,7 +339,7 @@ class BookOverflowMenuScreenTest {
         onDownloadClicked: (DownloadButtonState) -> Unit = {},
         onRemoveDownload: () -> Unit = {},
         onManageDownloads: () -> Unit = {},
-        message: String? = null,
+        message: BookMessage? = null,
     ) {
         composeRule.setContent {
             BookScreen(

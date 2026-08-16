@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.users
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.NewServerUser
 import com.example.shelfplayer.core.model.NewUserError
@@ -11,6 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -91,20 +93,44 @@ class ServerUsersViewModel @Inject constructor(private val users: ServerUserRepo
             _uiState.update { it.copy(isCreating = true, errorSummary = null) }
             val created = users.create(request)
             // Cleared on every path, not only on success. See the class comment.
+            val failure = (created as? AppResult.Failure)?.error
+            // PRODUCT_SPEC USER-002 — a taken username belongs against the field, not in a banner: the
+            // user has to change *that box*, and a page-level card does not say which one.
+            val takenUsername = (failure as? AppError.Validation)?.fieldErrors?.containsKey("username") == true
             _uiState.update {
                 it.copy(
                     isCreating = false,
                     password = "",
                     username = if (created is AppResult.Success) "" else it.username,
-                    errorSummary = (created as? AppResult.Failure)?.error?.summary,
+                    fieldErrors = if (takenUsername) setOf(NewUserError.UsernameTaken) else emptySet(),
+                    errorSummary = failure?.summary?.takeUnless { takenUsername },
                 )
             }
             if (created is AppResult.Success) refresh()
         }
     }
 
-    /** PRODUCT_SPEC USER-003 — disabling is preferred to deletion, and deletion is not offered at all. */
+    /**
+     * PRODUCT_SPEC USER-003 — disabling is preferred to deletion, and deletion is not offered at all.
+     *
+     * ### Disabling yourself is refused outright
+     *
+     * USER-003 asks that "the currently authenticated user cannot accidentally remove their own required
+     * admin access without an explicit elevated confirmation". On this screen the mistake is one mis-tap on
+     * a `Switch`, and it is **unrecoverable from inside the app**: the account that would have to undo it is
+     * the one that was just disabled, so the next request is a `401` and there is no second admin session to
+     * fall back on. The recovery is a shell on the server.
+     *
+     * So there is no elevated confirmation for this case — there is a refusal. A confirmation dialogue is
+     * the right shape for a decision somebody might legitimately make; locking yourself out of the app you
+     * are holding is not one, and offering it politely would be offering a trap with a handrail.
+     */
     fun setActive(user: ServerUser, isActive: Boolean) {
+        val signedInAs = _uiState.value.signedInAs
+        if (!isActive && signedInAs.isNotEmpty() && user.username == signedInAs) {
+            _uiState.update { it.copy(selfDisableRefused = true) }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(errorSummary = null) }
             when (val changed = users.setActive(user.id, isActive)) {
@@ -112,6 +138,10 @@ class ServerUsersViewModel @Inject constructor(private val users: ServerUserRepo
                 is AppResult.Success -> refresh()
             }
         }
+    }
+
+    fun acknowledgeSelfDisable() {
+        _uiState.update { it.copy(selfDisableRefused = false) }
     }
 }
 
@@ -132,4 +162,17 @@ data class ServerUsersUiState(
     val accountType: String = NewServerUser.ACCOUNT_TYPES.first(),
     val fieldErrors: Set<NewUserError> = emptySet(),
     val errorSummary: String? = null,
-)
+    /** PRODUCT_SPEC USER-003 — the signed-in account's username, so its own row can be marked and guarded. */
+    val signedInAs: String = "",
+    /** Set when the user tried to disable their own account, which this screen refuses. */
+    val selfDisableRefused: Boolean = false,
+) {
+    /** The rows, each knowing whether it is the account currently holding this session. */
+    val rows: List<ServerUserRow>
+        get() = users.map { user ->
+            ServerUserRow(user = user, isCurrentUser = signedInAs.isNotEmpty() && user.username == signedInAs)
+        }
+}
+
+/** One account, plus the one thing the list knows that the account itself does not. */
+data class ServerUserRow(val user: ServerUser, val isCurrentUser: Boolean)

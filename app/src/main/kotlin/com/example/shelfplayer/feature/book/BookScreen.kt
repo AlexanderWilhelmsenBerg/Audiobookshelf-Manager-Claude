@@ -131,17 +131,17 @@ fun BookScreen(
      * actually meet: no space, a permission the server revoked, and a book whose files the catalogue does
      * not know about. A control that appears to do nothing is the worst of the available outcomes.
      */
-    message: String? = null,
+    message: BookMessage? = null,
     onMessageShown: () -> Unit = {},
 ) {
     // Which of the menu's three surfaces is open. `rememberSaveable` so a rotation with the history open
     // comes back to the history rather than to the screen behind it.
     var openSurface by rememberSaveable { mutableStateOf(BookSurface.None) }
     val snackbars = remember { SnackbarHostState() }
-    // Keyed by the message, so two different failures in a row show two snackbars rather than one.
-    LaunchedEffect(message) {
-        val text = message ?: return@LaunchedEffect
-        snackbars.showSnackbar(text)
+    val text = message.asText()
+    // Keyed by the message, so two different results in a row show two snackbars rather than one.
+    LaunchedEffect(text) {
+        snackbars.showSnackbar(text ?: return@LaunchedEffect)
         onMessageShown()
     }
     Scaffold(
@@ -319,6 +319,20 @@ private fun RemoveFromServerDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.book_remove_server_cancel)) }
         },
     )
+}
+
+/**
+ * PRODUCT_SPEC MGR-005 — the sentence for a result, resolved where the resources are.
+ *
+ * A successful removal needs a *localised* line, and the `ViewModel` has no business holding one; a failure
+ * already carries its own words from the domain. Lifting the `when` out of `BookScreen` also keeps that
+ * composable under detekt's complexity limit, which it crossed the moment this became two cases.
+ */
+@Composable
+private fun BookMessage?.asText(): String? = when (this) {
+    null -> null
+    is BookMessage.Failed -> summary
+    BookMessage.RemovedFromServer -> stringResource(R.string.book_remove_server_done)
 }
 
 /**

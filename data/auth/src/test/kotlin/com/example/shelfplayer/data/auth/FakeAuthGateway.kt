@@ -14,8 +14,6 @@ import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
-import com.example.shelfplayer.core.model.library.BookMetadataEdit
-import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
@@ -122,15 +120,14 @@ internal class FakeAuthGateway :
         }
     }
 
-    /** PRODUCT_SPEC EPIC MGR — not part of the auth tests, and refusing rather than pretending. */
-    override val management: ManagementApi = object : ManagementApi {
-        override suspend fun updateMetadata(
-            profileId: ProfileId,
-            bookId: LibraryItemId,
-            edit: BookMetadataEdit,
-            changed: Set<BookMetadataField>,
-        ): AppResult<BookSnapshot> = unsupported()
-    }
+    /**
+     * PRODUCT_SPEC EPIC MGR — not part of the auth tests, and refusing rather than pretending.
+     *
+     * `get() = unsupported()` rather than an anonymous object with a stub per method. The object form has to
+     * grow every time `ManagementApi` does, and it silently failed to: CI caught nine unimplemented members
+     * here that a local build had reported as fine. A property that throws cannot fall behind an interface.
+     */
+    override val management: ManagementApi get() = error("management is not part of these tests")
 
     override val library: LibraryApi = object : LibraryApi {
         override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> = unsupported()

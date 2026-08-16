@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ManagementAction
+import com.example.shelfplayer.core.model.ManagementBlock
+import com.example.shelfplayer.core.model.ManagementPermissions
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.library.Book
@@ -82,11 +85,32 @@ class BookViewModel @Inject constructor(
         // both the download grant and the download itself belong to the same account.
         profiles.observeActiveProfile().flatMapLatest { profile ->
             val manifest = if (profile == null) flowOf(null) else downloads.observe(profile.serverId, bookId)
-            manifest.map { offline -> profile to offline }
+            // Connectivity joins the pair rather than becoming a sixth source — `combine`'s typed overloads
+            // stop at five, and MGR-005 needs the grant and the connection together anyway: either one
+            // missing means the same thing to the menu.
+            manifest.combine(removals.network.isOnline) { offline, isOnline -> Account(profile, offline, isOnline) }
         },
         uiState,
     ) { entries, chapters, servers, account, state ->
-        val (profile, offline) = account
+        val (profile, offline, isOnline) = account
+        // `if` rather than `?.let { … } ?: …`: `blockOn` returns `null` for *available*, so an elvis would
+        // fold the good answer into the fallback and report every permitted account as blocked. The
+        // compiler caught it as an always-false condition; it would otherwise have been a silently missing
+        // menu row.
+        val removalBlock = if (profile == null) {
+            ManagementBlock.Permission
+        } else {
+            ManagementPermissions(
+                profileRole = profile.role,
+                canUpdate = profile.canUpdate,
+                canDelete = profile.canDelete,
+                canUpload = profile.canUpload,
+                // The server capability set is not read here: MGR-005 needs no capability, only the grant
+                // and a connection, and `ManagementPermissions` asks for neither on this action.
+                capabilities = null,
+                isOnline = isOnline,
+            ).blockOn(ManagementAction.RemoveFromDatabase)
+        }
         val book = (state as? BookUiState.Loaded)?.book
         BookMenuState(
             history = entries,
@@ -94,9 +118,11 @@ class BookViewModel @Inject constructor(
             // PRODUCT_SPEC DL-001 — the server's grant, not a guess. `false` while no profile is loaded,
             // which is the same safe direction the column defaults to.
             canDownload = profile?.canDownload == true,
-            // PRODUCT_SPEC MGR-005 — the delete grant and nothing else. Absent rather than greyed, for the
-            // same reason the download control is: a disabled destructive row invites a tap that will fail.
-            canRemoveFromServer = profile?.canDelete == true,
+            // PRODUCT_SPEC MGR-005 — the grant *and* connectivity. "Offline invocation is blocked" is a
+            // criterion, and gating on the grant alone let somebody confirm a destructive dialogue on a
+            // train and receive a generic network error for it. Absent rather than greyed, for the same
+            // reason the download control is: a disabled destructive row invites a tap that will fail.
+            canRemoveFromServer = removalBlock == null,
             download = downloadStateOf(offline),
             // ADR note in `BookOverflowMenu`: the web client's own route, not an API endpoint.
             webUrl = book?.let { loaded ->
@@ -112,10 +138,10 @@ class BookViewModel @Inject constructor(
         initialValue = BookMenuState(),
     )
 
-    private val _message = MutableStateFlow<String?>(null)
+    private val _message = MutableStateFlow<BookMessage?>(null)
 
     /** A one-line result for an action that reached the network, or `null`. Cleared when acknowledged. */
-    val message: StateFlow<String?> = _message.asStateFlow()
+    val message: StateFlow<BookMessage?> = _message.asStateFlow()
 
     fun onMessageShown() {
         _message.value = null
@@ -138,8 +164,11 @@ class BookViewModel @Inject constructor(
     fun onRemoveFromServer(alsoRemoveDownload: Boolean) {
         viewModelScope.launch {
             _message.value = when (val removed = removals.fromServer(bookId, alsoRemoveDownload)) {
-                is AppResult.Failure -> removed.error.summary
-                is AppResult.Success -> null
+                is AppResult.Failure -> BookMessage.Failed(removed.error.summary)
+                // Said out loud. This is the one action on this screen whose effect the user cannot see by
+                // looking — the book leaves the shelf either way — so "did that work" has to be answerable
+                // without opening the server.
+                is AppResult.Success -> BookMessage.RemovedFromServer
             }
         }
     }
@@ -228,7 +257,9 @@ class BookViewModel @Inject constructor(
      * message; a success banner for something the screen already shows would be noise.
      */
     private fun report(result: com.example.shelfplayer.core.model.AppResult<Unit>) {
-        if (result is com.example.shelfplayer.core.model.AppResult.Failure) _message.value = result.error.summary
+        if (result is com.example.shelfplayer.core.model.AppResult.Failure) {
+            _message.value = BookMessage.Failed(result.error.summary)
+        }
     }
 
     private companion object {
@@ -242,6 +273,28 @@ class BookViewModel @Inject constructor(
  * @property webUrl this item in the server's own web client, or `null` when the server's address is not
  *   known — which is the state of a profile that has been signed out.
  */
+/**
+ * PRODUCT_SPEC MGR-005 — what to tell the user after an action that reached the network.
+ *
+ * A type rather than a `String?` because one of the two cases has no string to carry: a successful removal
+ * needs a *localised* sentence, and a `ViewModel` that produced one would be holding a resource. The screen
+ * resolves it; this says only what happened.
+ */
+sealed interface BookMessage {
+    /** Something went wrong, described by the domain in its own words. */
+    data class Failed(val summary: String) : BookMessage
+
+    /** PRODUCT_SPEC MGR-005 — the removal landed. Said out loud, because its effect is invisible. */
+    data object RemovedFromServer : BookMessage
+}
+
+/** The active profile, its download manifest and whether the device can reach the server. */
+private data class Account(
+    val profile: com.example.shelfplayer.core.model.Profile?,
+    val offline: OfflineBook?,
+    val isOnline: Boolean,
+)
+
 data class BookMenuState(
     val history: List<PlaybackHistoryEntry> = emptyList(),
     val chapters: List<Chapter> = emptyList(),
