@@ -1140,3 +1140,63 @@ probe confirms on every ordinary deployment rather than only on a configured one
 default and key-free is what makes MGR-003's candidate search work without setup.
 
 `booksCovers` adds `best`, `audiobookcovers` and `all`; `podcasts` holds only `itunes`.
+
+## Embedding metadata into source files, read from the server at 2.36.0
+
+Source-derived, not captured. Starting an embed needs `isAdminOrUp` and the public demo account is an
+ordinary `user`, so there is no run to record — the same position cover *upload* is in, and recorded as such
+in `docs/gaps.md`. Read under ADR-0012's amended posture: **read it for API facts, never copy code.**
+
+### The route
+
+`POST /api/tools/item/{id}/embed-metadata`, with `backup` and `forceEmbedChapters` as `0`/`1` query
+parameters. `isAdminOrUp` in the router's middleware, with **no reference to `permissions.update`** — so an
+account holding update, delete and upload is refused unless its `type` is `admin` or `root`. The same gate
+both scans use.
+
+Answers:
+
+| Status | Meaning |
+| --- | --- |
+| `200` | the task was **queued**. Nothing has been written yet. |
+| `400` "Library item is already in queue or processing" | this item is already being embedded |
+| `400` | not a book, or a book with no audio tracks |
+| `403` `text/plain` "Forbidden" | the account is not an administrator |
+
+`text/plain` throughout, like every other `sendStatus` route on this API.
+
+### `backup=1` is narrower than the word
+
+`AudioMetadataManager` copies each audio file to `Path.join(task.data.itemCachePath, af.filename)` before
+rewriting it, and removes the copy afterwards unless `backupFiles` is set. That is a working copy inside the
+server's cache directory — a safety net for the operation, not a backup a user could restore from. This app
+always sends `1` (sending `0` gives up the net for nothing) and the confirmation dialog says the distinction
+out loud, because MGR-007's *"advise the user to maintain server-side backups"* is not satisfied by a flag.
+
+### The outcome arrives only on the websocket
+
+`TaskManager` emits `task_started` and `task_finished`, both carrying `Task.toJSON()`:
+
+```
+{id, action, data, title, titleKey, titleSubs, description, descriptionKey, descriptionSubs,
+ error, errorKey, errorSubs, showSuccess, isFailed, isFinished, startedAt, finishedAt}
+```
+
+- `action` is `embed-metadata`
+- `data.libraryItemId` is the correlation key
+- a failure calls `setFailed()`, which sets `error` and `isFailed` and then calls `setFinished()` — so a
+  failure arrives as **one** `task_finished` with `isFailed: true`, not as a separate event
+- `AudioMetadataManager` also emits `metadata_embed_queue_update`, `track_started`, `track_finished`,
+  `task_progress` and `track_progress`. None is needed to answer "did it work", and none is modelled.
+
+**`description` is `Embedding metadata in audiobook "<the book's title>"`**, and `descriptionSubs` carries
+the title again, and `data.libraryItemDir` carries the path. A book title and a library path are private
+self-hosted data (PRODUCT_SPEC 14.5), so `ServerTask` models none of the four fields and `TaskFrames` never
+deserializes them — `TaskFramesTest` plants a title in all three places and asserts none comes out.
+
+### There is no way to ask afterwards
+
+The item's own fields do not change when an embed finishes: they are the *input* to the write. So a `GET` on
+the item cannot distinguish running from finished from failed, and a client that missed `task_finished` has
+no second source. That is why a dropped connection is reported as an unknown outcome rather than as either
+answer.

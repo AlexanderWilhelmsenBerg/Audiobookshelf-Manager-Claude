@@ -223,8 +223,11 @@ contract-tested", and disabling is what it prefers where the server supports it.
 
 ### Not in these slices
 
-- **Embed metadata (MGR-007).** It asks the server to rewrite the user's source audio files. It needs its
-  own decision about whether this app should offer that at all, and the answer is not obvious.
+- ~~**Embed metadata (MGR-007).**~~ **Built after all**, on 2026-08-20, as a ninth slice. The decision it
+  needed turned out to be about *how* rather than *whether*: single item only, `backup=1` always and never
+  as a toggle, administrators only, and — the part that decided the design — a status that admits the
+  outcome is **unknown** when the websocket drops, because nothing replays a missed `task_finished` and
+  MGR-007's last criterion is a rule against guessing. See `docs/gaps.md` for what is still uncaptured.
 - **Batch matching.** MGR-003 says later scope.
 - **Bulk source-file deletion.** MGR-006 says not in version 1.
 

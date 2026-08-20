@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
+import com.example.shelfplayer.core.model.library.EmbedRequest
 import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.MetadataProvider
 import kotlinx.coroutines.flow.Flow
@@ -134,6 +135,26 @@ interface MetadataRepository {
      * a different question about a different copy, and MGR-005 makes it a separate, unchecked checkbox.
      */
     suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC MGR-007 — ask the server to write this item's metadata into its own audio files.
+     *
+     * ### What a success means, and what it does not
+     *
+     * It means the server accepted the job. Nothing has been written yet, and this app will not learn the
+     * outcome from this call — the task runs in the server's process and reports on the websocket. That is
+     * why the result is an [EmbedRequest] and not a `Unit`: a `Unit` success reads as "done" at every call
+     * site, and MGR-007's *"a failed operation never marks local metadata as embedded"* rests on the
+     * difference.
+     *
+     * ### Nothing local changes, ever
+     *
+     * Not on request, not on completion. The embed rewrites bytes inside the source audio files on the
+     * server; the item's fields — the ones Room holds and the app displays — are the *input* to that write
+     * and do not move. So there is no local state to update and, deliberately, no "embedded" flag: a flag
+     * would be a claim about files this app never reads, and the honest place to check is the server.
+     */
+    suspend fun embedMetadata(profileId: ProfileId, bookId: LibraryItemId): AppResult<EmbedRequest>
 }
 
 /**

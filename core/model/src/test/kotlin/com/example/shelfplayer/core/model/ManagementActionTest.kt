@@ -79,12 +79,30 @@ class ManagementActionTest {
         assertEquals(ManagementBlock.Permission, fullyPermittedListener.blockOn(ManagementAction.ScanItem))
         assertEquals(ManagementBlock.Permission, fullyPermittedListener.blockOn(ManagementAction.ScanLibrary))
         assertEquals(ManagementBlock.Permission, fullyPermittedListener.blockOn(ManagementAction.ManageUsers))
+        // MGR-007 joins them, and this is the assertion that says why: the account below holds update,
+        // delete and upload, and the server still refuses it because `isAdminOrUp` is about the type.
+        assertEquals(ManagementBlock.Permission, fullyPermittedListener.blockOn(ManagementAction.EmbedMetadata))
 
         val admin = permissions(role = ProfileRole.Admin)
 
         assertNull(admin.blockOn(ManagementAction.ScanItem))
         assertNull(admin.blockOn(ManagementAction.ScanLibrary))
         assertNull(admin.blockOn(ManagementAction.ManageUsers))
+        assertNull(admin.blockOn(ManagementAction.EmbedMetadata))
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-007 — an administrator on a train is *blocked*, not unpermitted.
+     *
+     * The distinction the whole type exists for, applied to the one action that rewrites files. An offline
+     * administrator has the permission and cannot use it right now; telling them they lack it would send
+     * them looking for another administrator.
+     */
+    @Test
+    fun `embedding offline is blocked rather than refused`() {
+        val offline = permissions(role = ProfileRole.Admin, isOnline = false)
+
+        assertEquals(ManagementBlock.Offline, offline.blockOn(ManagementAction.EmbedMetadata))
     }
 
     /** PRODUCT_SPEC MGR-003 — matching is the one management action that also needs a confirmed capability. */

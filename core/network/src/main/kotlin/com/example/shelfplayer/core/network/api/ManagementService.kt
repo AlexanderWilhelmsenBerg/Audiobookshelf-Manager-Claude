@@ -131,6 +131,30 @@ internal interface ManagementService {
     ): Response<ScanResultDto>
 
     /**
+     * PRODUCT_SPEC MGR-007 — ask the server to write this item's metadata into its own audio files.
+     *
+     * Admin or root only, gated on the account **type** like both scans (`isAdminOrUp`, with no reference
+     * to `permissions.update`). An account holding every grant with the `user` type is refused.
+     *
+     * **`200` means accepted, not finished.** The handler queues a task and answers immediately; the
+     * outcome arrives on the websocket as `task_finished` with `action == "embed-metadata"`. Two `400`s are
+     * worth telling apart from a generic failure — "already in queue or processing", and an item with no
+     * audio tracks — and both arrive as `text/plain`, like every other `sendStatus` route on this API.
+     *
+     * `backup` is always `1` and is deliberately not a setting. Its effect is narrower than the word
+     * suggests: the server copies each audio file into the *item's cache directory* before rewriting it,
+     * which is a safety net rather than a backup a user could find. MGR-007's advice to keep server-side
+     * backups therefore stands on its own, and the confirmation says so — while sending `backup=0` would
+     * give up even the safety net in exchange for nothing anybody wants.
+     */
+    @POST("api/tools/item/{itemId}/embed-metadata")
+    suspend fun embedMetadata(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("itemId") itemId: String,
+        @Query("backup") backup: String = ALWAYS_BACK_UP,
+    ): Response<ResponseBody>
+
+    /**
      * PRODUCT_SPEC MGR-005 — remove the item from the database.
      *
      * **Deliberately no `hard` query parameter, ever.** `?hard=1` is what deletes the media files from the
@@ -188,3 +212,11 @@ internal interface ManagementService {
         @Body body: JsonObject,
     ): Response<ResponseBody>
 }
+
+/**
+ * MGR-007 — the value of `backup` on every embed request this app makes.
+ *
+ * Named rather than inlined so that the one place it could be changed carries the reason it must not be:
+ * `0` tells the server to rewrite the audio files with no copy kept anywhere.
+ */
+private const val ALWAYS_BACK_UP = "1"

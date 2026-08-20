@@ -55,6 +55,16 @@ enum class ManagementAction {
      */
     DeleteSourceFiles,
 
+    /**
+     * MGR-007 — `POST /api/tools/item/{id}/embed-metadata`, admin or root.
+     *
+     * Gated on the account *type* rather than on a grant, like the two scans, because that is what the
+     * server's own route does: `isAdminOrUp`, with no reference to `permissions.update`. An account with
+     * every grant and the `user` type is refused, so offering it would produce a `403` after the user had
+     * been told their audio files were about to be rewritten.
+     */
+    EmbedMetadata,
+
     /** EPIC USER — the user list and its writes, admin or root. */
     ManageUsers,
 }
@@ -109,7 +119,11 @@ data class ManagementPermissions(
         ManagementAction.ChangeCover -> permission(canUpdate && canUpload)
         ManagementAction.RemoveCover -> permission(canDelete)
         ManagementAction.MatchMetadata -> capability(ServerCapability.MatchProvider) ?: permission(canUpdate)
-        ManagementAction.ScanItem, ManagementAction.ScanLibrary -> permission(profileRole == ProfileRole.Admin)
+        ManagementAction.ScanItem,
+        ManagementAction.ScanLibrary,
+        // MGR-007 joins the scans rather than the grants: the server gates all three on the account type.
+        ManagementAction.EmbedMetadata,
+        -> permission(profileRole == ProfileRole.Admin)
         ManagementAction.RemoveFromDatabase -> permission(canDelete)
         // The capability is checked first and is never confirmed, so this always answers `Capability`.
         // Written as a chain anyway: if a server ever does confirm it, the grant becomes the next gate

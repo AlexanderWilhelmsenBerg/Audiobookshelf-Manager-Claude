@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
+import com.example.shelfplayer.core.model.library.EmbedRequest
 import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.model.library.SeriesEdit
@@ -32,6 +33,8 @@ import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
+import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -263,6 +266,57 @@ internal class AbsManagementApi @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-007 — asks the server to start the embed, and reports only that it asked.
+     *
+     * ### Why the return value says `Accepted` and not `Done`
+     *
+     * Because `200` here means the task was queued. The work happens afterwards, in the server's own
+     * process, and its outcome arrives on the websocket. A method that returned `Unit` for this would
+     * read as success at every call site, and MGR-007's last criterion — *"a failed operation never marks
+     * local metadata as embedded"* — depends on the difference.
+     *
+     * ### No retry
+     *
+     * For the reason none of the writes in this class retries: a request that timed out may have been
+     * received. Here the cost is specific — a retry that lands twice queues a second rewrite of the same
+     * audio files.
+     */
+    override suspend fun embedMetadata(profileId: ProfileId, bookId: LibraryItemId): AppResult<EmbedRequest> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+
+        val transport = resultOf(onError = errors::fromThrowable) {
+            services.managementService(connection.serverUrl)
+                .embedMetadata(bearerOf(connection.accessToken.value), bookId.value)
+        }
+        return when (transport) {
+            is AppResult.Failure -> AppResult.Failure(transport.error)
+            is AppResult.Success -> acceptanceOf(transport.value)
+        }
+    }
+
+    /**
+     * The three answers this route gives, told apart.
+     *
+     * "Already in queue or processing" is a `400`, and reporting it as a failure would be wrong twice
+     * over: nothing went wrong, and the thing the user asked for is already happening. Matched loosely and
+     * case-insensitively for the reason the duplicate-username check is — the sentence is not a contract,
+     * and a match that fails falls through to the general error, which is the safe direction.
+     */
+    private fun acceptanceOf(response: Response<ResponseBody>): AppResult<EmbedRequest> {
+        if (response.isSuccessful) {
+            logger.info(LogCategory.Sync, "Asked the server to embed metadata")
+            return AppResult.Success(EmbedRequest.Accepted)
+        }
+        val body = response.errorBody()?.string().orEmpty()
+        if (response.code() == HTTP_BAD_REQUEST && body.contains(ALREADY_EMBEDDING, ignoreCase = true)) {
+            logger.info(LogCategory.Sync, "The server is already embedding this item")
+            return AppResult.Success(EmbedRequest.AlreadyRunning)
+        }
+        return AppResult.Failure(errors.fromStatus(response.code()))
     }
 
     override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome> {
@@ -531,6 +585,9 @@ internal class AbsManagementApi @Inject constructor(
 
         /** The server's own words, matched loosely. Not a contract — see the call site. */
         const val USERNAME_TAKEN = "already taken"
+
+        /** MGR-007 — the server's own words for "this item is already being embedded". Also loose. */
+        const val ALREADY_EMBEDDING = "already in queue"
 
         /** Names the form field the error belongs against, so the screen can put it there. */
         const val USERNAME_FIELD = "username"

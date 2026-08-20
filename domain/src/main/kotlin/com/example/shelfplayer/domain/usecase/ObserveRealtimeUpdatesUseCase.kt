@@ -45,6 +45,14 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
                     // up, and until then the stored grant is merely a few minutes old rather than wrong.
                     libraryRepository.writeProgress(profileId, event.account.progress)
                 }
+
+                // PRODUCT_SPEC MGR-007 — not this use case's business. A task's outcome belongs to whoever
+                // started it, which is one screen and not the whole app: applying it here would mean
+                // deciding what "an embed finished" changes globally, and the honest answer is nothing —
+                // the item's own fields did not move, only the bytes in files this app never reads.
+                //
+                // `ObserveEmbedTaskUseCase` reads the same shared stream for the screen that asked.
+                is RealtimeEvent.TaskChanged -> Unit
             }
         }
     }

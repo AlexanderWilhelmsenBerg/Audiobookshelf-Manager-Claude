@@ -18,6 +18,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
+import com.example.shelfplayer.core.model.library.EmbedRequest
 import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -195,6 +196,17 @@ class DefaultMetadataRepository @Inject constructor(
                 }
             }
         }
+
+    /**
+     * PRODUCT_SPEC MGR-007 — passes the request through, and writes nothing.
+     *
+     * The shortest method in this class, and the absence is the point. Every other write here is followed by
+     * a Room update, because every other write changes something the app displays. This one changes bytes
+     * inside audio files on the server, which this app never reads and Room never held — so there is nothing
+     * to store, and no "embedded" flag to set. A flag would be a claim about a file the app cannot see.
+     */
+    override suspend fun embedMetadata(profileId: ProfileId, bookId: LibraryItemId): AppResult<EmbedRequest> =
+        withContext(ioDispatcher) { gateway.management.embedMetadata(profileId, bookId) }
 
     /** Soft-deletes the cached row once the *server* has said the item is gone. */
     private suspend fun markDeleted(profileId: ProfileId, bookId: LibraryItemId) {

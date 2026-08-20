@@ -87,6 +87,7 @@ fun BookRoute(
     val playback by playerViewModel.playback.collectAsStateWithLifecycle()
     val menu by viewModel.menu.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val embed by viewModel.embed.collectAsStateWithLifecycle()
     val context = LocalContext.current
     BookScreen(
         uiState = uiState,
@@ -94,6 +95,8 @@ fun BookRoute(
         menu = menu,
         message = message,
         onMessageShown = viewModel::onMessageShown,
+        embed = embed,
+        onEmbedStatusShown = viewModel::onEmbedStatusShown,
         actions = BookActions(
             onPlay = playerViewModel::onPlay,
             onTogglePlayPause = playerViewModel::onTogglePlayPause,
@@ -109,6 +112,7 @@ fun BookRoute(
             onManageDownloads = onManageDownloads,
             onEditMetadata = onEditMetadata,
             onRemoveFromServer = viewModel::onRemoveFromServer,
+            onEmbedMetadata = viewModel::onEmbedMetadata,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -133,6 +137,9 @@ fun BookScreen(
      */
     message: BookMessage? = null,
     onMessageShown: () -> Unit = {},
+    /** PRODUCT_SPEC MGR-007 — where an embed has got to. [EmbedStatus.Idle] draws nothing. */
+    embed: EmbedStatus = EmbedStatus.Idle,
+    onEmbedStatusShown: () -> Unit = {},
 ) {
     // Which of the menu's three surfaces is open. `rememberSaveable` so a rotation with the history open
     // comes back to the history rather than to the screen behind it.
@@ -170,61 +177,96 @@ fun BookScreen(
             )
         },
     ) { innerPadding ->
-        val content = Modifier.fillMaxSize().padding(innerPadding)
-        when (uiState) {
-            BookUiState.Loading -> ShelfLoadingState(
-                label = stringResource(R.string.book_loading),
-                modifier = content,
-            )
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            // PRODUCT_SPEC MGR-007 — above the book rather than over it. The embed runs for minutes, and the
+            // user is free to keep reading the screen or to leave and come back; a dialog would trap them and
+            // a snackbar would vanish long before the server had finished.
+            EmbedStatusBanner(status = embed, onDismiss = onEmbedStatusShown)
+            val content = Modifier.fillMaxSize()
+            when (uiState) {
+                BookUiState.Loading -> ShelfLoadingState(
+                    label = stringResource(R.string.book_loading),
+                    modifier = content,
+                )
 
-            BookUiState.Missing -> ShelfEmptyState(
-                title = stringResource(R.string.book_missing_title),
-                body = stringResource(R.string.book_missing_body),
-                modifier = content,
-            )
+                BookUiState.Missing -> ShelfEmptyState(
+                    title = stringResource(R.string.book_missing_title),
+                    body = stringResource(R.string.book_missing_body),
+                    modifier = content,
+                )
 
-            is BookUiState.Loaded -> BookDetails(
-                book = uiState.book,
-                playback = playback,
-                actions = actions,
-                // Which surface opens is this screen's own business, so those three callbacks are assembled
-                // here rather than being three more parameters the caller has to know about.
-                menuActions = BookMenuActions(
-                    onOpenHistory = { openSurface = BookSurface.History },
-                    onFinishedChanged = actions.onFinishedChanged,
-                    onDiscardRequested = { openSurface = BookSurface.DiscardConfirmation },
-                    onOpenWebClient = actions.onOpenWebClient,
-                    onOpenInfo = { openSurface = BookSurface.Info },
-                    webUrl = menu.webUrl,
-                    isDownloaded = menu.download is DownloadButtonState.Downloaded,
-                    onRemoveDownload = { openSurface = BookSurface.RemoveDownloadConfirmation },
-                    onManageDownloads = actions.onManageDownloads,
-                    onEditMetadata = { actions.onEditMetadata(uiState.book.id) },
-                    onRemoveFromServer = { openSurface = BookSurface.RemoveFromServerConfirmation },
-                    canRemoveFromServer = menu.canRemoveFromServer,
-                ),
-                download = DownloadControl(
-                    isPermitted = menu.canDownload,
-                    state = menu.download,
-                    onClick = {
-                        // The one state that asks first: removing is the only tap here that deletes files.
-                        if (menu.download is DownloadButtonState.Downloaded) {
-                            openSurface = BookSurface.RemoveDownloadConfirmation
-                        } else {
-                            actions.onDownloadClicked(menu.download)
-                        }
-                    },
-                ),
-                modifier = content,
-            )
+                is BookUiState.Loaded -> BookDetails(
+                    book = uiState.book,
+                    playback = playback,
+                    actions = actions,
+                    // Which surface opens is this screen's own business, so those three callbacks are assembled
+                    // here rather than being three more parameters the caller has to know about.
+                    menuActions = BookMenuActions(
+                        onOpenHistory = { openSurface = BookSurface.History },
+                        onFinishedChanged = actions.onFinishedChanged,
+                        onDiscardRequested = { openSurface = BookSurface.DiscardConfirmation },
+                        onOpenWebClient = actions.onOpenWebClient,
+                        onOpenInfo = { openSurface = BookSurface.Info },
+                        webUrl = menu.webUrl,
+                        isDownloaded = menu.download is DownloadButtonState.Downloaded,
+                        onRemoveDownload = { openSurface = BookSurface.RemoveDownloadConfirmation },
+                        onManageDownloads = actions.onManageDownloads,
+                        onEditMetadata = { actions.onEditMetadata(uiState.book.id) },
+                        onRemoveFromServer = { openSurface = BookSurface.RemoveFromServerConfirmation },
+                        canRemoveFromServer = menu.canRemoveFromServer,
+                        onEmbedMetadata = { openSurface = BookSurface.EmbedConfirmation },
+                        canEmbedMetadata = menu.canEmbedMetadata,
+                    ),
+                    download = DownloadControl(
+                        isPermitted = menu.canDownload,
+                        state = menu.download,
+                        onClick = {
+                            // The one state that asks first: removing is the only tap here that deletes files.
+                            if (menu.download is DownloadButtonState.Downloaded) {
+                                openSurface = BookSurface.RemoveDownloadConfirmation
+                            } else {
+                                actions.onDownloadClicked(menu.download)
+                            }
+                        },
+                    ),
+                    modifier = content,
+                )
+            }
         }
     }
 
     val book = (uiState as? BookUiState.Loaded)?.book
-    when {
-        book == null -> Unit
+    if (book != null) {
+        BookSurfaces(
+            book = book,
+            menu = menu,
+            actions = actions,
+            open = openSurface,
+            onClose = { openSurface = BookSurface.None },
+        )
+    }
+}
 
-        openSurface == BookSurface.History -> HistorySheet(
+/**
+ * Whichever sheet or dialog the menu opened, and nothing when it opened none.
+ *
+ * Extracted from [BookScreen] because that composable reached detekt's complexity limit when the embed
+ * confirmation arrived, and the limit was right: a screen whose body is a scaffold *and* a seven-way
+ * dispatch is two things. It is also a better shape — a `when` over the enum is exhaustive, so a surface
+ * added to [BookSurface] without a branch here is a compile error rather than a dialog that never opens.
+ */
+@Composable
+private fun BookSurfaces(
+    book: Book,
+    menu: BookMenuState,
+    actions: BookActions,
+    open: BookSurface,
+    onClose: () -> Unit,
+) {
+    when (open) {
+        BookSurface.None -> Unit
+
+        BookSurface.History -> HistorySheet(
             entries = menu.history,
             chapters = menu.chapters,
             // Read-only here, unlike the player's copy of this sheet. The player is *at* a position and can
@@ -232,38 +274,44 @@ fun BookScreen(
             // playback from a tap meant for a record would move a listener without being asked. Playing from
             // a history entry is worth having and is worth its own decision, not a side effect of this menu.
             onReturnTo = {},
-            onDismiss = { openSurface = BookSurface.None },
+            onDismiss = onClose,
         )
 
-        openSurface == BookSurface.Info -> BookInfoSheet(
-            book = book,
-            onDismiss = { openSurface = BookSurface.None },
-        )
+        BookSurface.Info -> BookInfoSheet(book = book, onDismiss = onClose)
 
-        openSurface == BookSurface.DiscardConfirmation -> DiscardProgressDialog(
+        BookSurface.DiscardConfirmation -> DiscardProgressDialog(
             onConfirm = {
-                openSurface = BookSurface.None
+                onClose()
                 actions.onDiscardProgress()
             },
-            onDismiss = { openSurface = BookSurface.None },
+            onDismiss = onClose,
         )
 
-        openSurface == BookSurface.RemoveDownloadConfirmation -> RemoveDownloadDialog(
+        BookSurface.RemoveDownloadConfirmation -> RemoveDownloadDialog(
             onConfirm = {
-                openSurface = BookSurface.None
+                onClose()
                 actions.onRemoveDownload()
             },
-            onDismiss = { openSurface = BookSurface.None },
+            onDismiss = onClose,
         )
 
-        openSurface == BookSurface.RemoveFromServerConfirmation -> RemoveFromServerDialog(
+        BookSurface.EmbedConfirmation -> EmbedMetadataDialog(
+            title = book.title,
+            onConfirm = {
+                onClose()
+                actions.onEmbedMetadata()
+            },
+            onDismiss = onClose,
+        )
+
+        BookSurface.RemoveFromServerConfirmation -> RemoveFromServerDialog(
             title = book.title,
             isDownloaded = menu.download is DownloadButtonState.Downloaded,
             onConfirm = { alsoRemoveDownload ->
-                openSurface = BookSurface.None
+                onClose()
                 actions.onRemoveFromServer(alsoRemoveDownload)
             },
-            onDismiss = { openSurface = BookSurface.None },
+            onDismiss = onClose,
         )
     }
 }
@@ -358,6 +406,9 @@ private enum class BookSurface {
 
     /** PRODUCT_SPEC MGR-005 — the only surface on this screen that changes somebody else's server. */
     RemoveFromServerConfirmation,
+
+    /** PRODUCT_SPEC MGR-007 — the only surface that changes files on it. */
+    EmbedConfirmation,
 }
 
 /**
@@ -385,6 +436,8 @@ data class BookActions(
     val onEditMetadata: (LibraryItemId) -> Unit = {},
     /** PRODUCT_SPEC MGR-005 — the confirmed removal, carrying the separate download checkbox's answer. */
     val onRemoveFromServer: (Boolean) -> Unit = {},
+    /** PRODUCT_SPEC MGR-007 — after the confirmation. Takes no arguments: there is nothing to choose. */
+    val onEmbedMetadata: () -> Unit = {},
 )
 
 @Composable

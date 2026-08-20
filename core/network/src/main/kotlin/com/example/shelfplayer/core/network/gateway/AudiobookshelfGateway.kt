@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
+import com.example.shelfplayer.core.model.library.EmbedRequest
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.MatchCandidate
@@ -485,6 +486,14 @@ interface ManagementApi {
      * questions: the book is what to display, and the conclusion is what to tell the user happened.
      */
     suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome>
+
+    /**
+     * PRODUCT_SPEC MGR-007 — ask the server to write this item's metadata into its own audio files.
+     *
+     * Returns what the *request* achieved, never what the task achieved. The outcome arrives separately, on
+     * the websocket, as a `RealtimeEvent.TaskChanged`.
+     */
+    suspend fun embedMetadata(profileId: ProfileId, bookId: LibraryItemId): AppResult<EmbedRequest>
 
     /**
      * PRODUCT_SPEC MGR-005 — remove the item from the server's **database**.

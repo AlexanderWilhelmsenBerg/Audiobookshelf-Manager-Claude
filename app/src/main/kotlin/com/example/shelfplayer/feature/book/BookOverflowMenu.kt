@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -158,6 +159,16 @@ internal fun BookOverflowMenu(book: Book, actions: BookMenuActions, modifier: Mo
                 actions.webUrl?.let(actions.onOpenWebClient)
             },
         )
+        if (actions.canEmbedMetadata) {
+            MenuRow(
+                labelRes = R.string.book_menu_embed_metadata,
+                icon = Icons.Filled.Save,
+                onClick = {
+                    isOpen = false
+                    actions.onEmbedMetadata()
+                },
+            )
+        }
         if (actions.canRemoveFromServer) {
             MenuRow(
                 labelRes = R.string.book_menu_remove_from_server,
@@ -321,6 +332,16 @@ internal data class BookMenuActions(
     val onRemoveFromServer: () -> Unit = {},
     /** `false` hides the row entirely — MGR-005 requires the delete permission. */
     val canRemoveFromServer: Boolean = false,
+    /**
+     * PRODUCT_SPEC MGR-007 — `Embed metadata in the audio files`.
+     *
+     * Above the removal and below the editor, which is where it belongs in both directions: it is the same
+     * kind of thing as editing metadata — it writes what the editor saved — and it is not the same kind of
+     * thing as deleting an item, so it should not sit in that row's muscle memory either.
+     */
+    val onEmbedMetadata: () -> Unit = {},
+    /** `false` hides the row — MGR-007 is administrators only, and the server decides that by account type. */
+    val canEmbedMetadata: Boolean = false,
 )
 
 /**

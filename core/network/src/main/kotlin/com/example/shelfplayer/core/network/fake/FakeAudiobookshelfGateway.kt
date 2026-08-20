@@ -28,6 +28,7 @@ import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
+import com.example.shelfplayer.core.model.library.EmbedRequest
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.MatchCandidate
@@ -135,6 +136,11 @@ class FakeAudiobookshelfGateway @Inject constructor(
 
     override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome> =
         AppError.ApiCompatibility(summary = "The demo library has no files to scan.").asFailure()
+
+    /** PRODUCT_SPEC MGR-007 — there are no audio files behind the demo document to write metadata into. */
+    override suspend fun embedMetadata(profileId: ProfileId, bookId: LibraryItemId): AppResult<EmbedRequest> =
+        AppError.ApiCompatibility(summary = "The demo library has no audio files to embed metadata into.")
+            .asFailure()
 
     override suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
         AppError.ApiCompatibility(summary = "The demo library cannot be edited.").asFailure()

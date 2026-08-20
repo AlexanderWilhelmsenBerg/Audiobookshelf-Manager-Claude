@@ -752,4 +752,19 @@
     <string name="settings_language">Spr\u00e5k</string>
     <string name="settings_language_system">Systemstandard</string>
     <string name="settings_language_hint">Hvert spr\u00e5k er skrevet p\u00e5 sitt eget spr\u00e5k, slik at det er mulig \u00e5 finne uansett hvilket spr\u00e5k appen st\u00e5r p\u00e5 n\u00e5. P\u00e5 Android 13 og nyere er dette den samme innstillingen Android viser under Apper, og endrer du den der, endres den her.</string>
+    <!-- PRODUCT_SPEC MGR-007 -->
+    <string name="book_menu_embed_metadata">Bygg metadata inn i lydfilene</string>
+    <string name="book_embed_title">Skrive metadata inn i lydfilene?</string>
+    <string name="book_embed_body">Serveren din skriver om lydfilene til \u201c%1$s\u201d slik at de b\u00e6rer metadataene inni seg. Ingenting p\u00e5 denne enheten endres: ingen nedlasting ber\u00f8res, og posisjonen din beholdes.</string>
+    <string name="book_embed_backups">Dette endrer filer du eier. Ha sikkerhetskopier av biblioteket p\u00e5 serversiden f\u00f8r du bruker dette. BookWave ber serveren beholde en arbeidskopi mens den skriver, men den kopien ligger i serverens hurtiglager og er ikke en sikkerhetskopi du kan gjenopprette fra.</string>
+    <string name="book_embed_scope">Omslaget skrives sammen med metadataene. Audiobookshelf tilbyr ingen m\u00e5te \u00e5 velge det ene uten det andre.</string>
+    <string name="book_embed_confirm">Bygg inn metadata</string>
+    <string name="book_embed_cancel">Avbryt</string>
+    <string name="book_embed_requesting">Spør serveren\u2026</string>
+    <string name="book_embed_running">Serveren din skriver metadata inn i lydfilene til denne boken. P\u00e5 en lang bok tar dette flere minutter. Du kan forlate denne skjermen.</string>
+    <string name="book_embed_finished">Serveren din er ferdig med \u00e5 skrive metadataene inn i lydfilene.</string>
+    <string name="book_embed_server_failed">Serveren din kunne ikke fullf\u00f8re skrivingen av metadataene. Den noterte hvorfor \u2014 sjekk loggene dens.</string>
+    <string name="book_embed_server_failed_silent">Serveren din kunne ikke fullf\u00f8re skrivingen av metadataene, og oppgav ingen grunn.</string>
+    <string name="book_embed_unknown">Den direkte tilkoblingen falt ut mens serveren jobbet, s\u00e5 BookWave kan ikke si hvordan det endte. Sjekk boken p\u00e5 serveren f\u00f8r du pr\u00f8ver igjen.</string>
+    <string name="book_embed_dismiss">Lukk</string>
 </resources>
