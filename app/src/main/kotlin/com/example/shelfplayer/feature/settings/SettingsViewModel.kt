@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
@@ -45,7 +45,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -155,18 +154,20 @@ class SettingsViewModel @Inject constructor(
     val launcherIcon: StateFlow<LauncherIcon> = _launcherIcon.asStateFlow()
 
     /**
-     * PRODUCT_SPEC USER-001 — "only admin/root profiles can open server user management".
+     * PRODUCT_SPEC 5.1 / 5.2 / USER-001 — the signed-in account, with its role and its server-side grants.
      *
      * Its own flow rather than a field on [SettingsUiState], for the reason the launcher icon has its own:
      * the `combine` behind that state is already nesting to stay under Kotlin's five-flow arity, and a
-     * sixth source would cost another nesting level to carry one boolean.
+     * sixth source would cost another nesting level.
      *
-     * Decides whether the row **exists**, not whether it is greyed out. A disabled row is a promise that
-     * pressing it might one day work, and for an ordinary account it never will.
+     * This used to be an `isAdmin: StateFlow<Boolean>` that decided whether the account-management row
+     * **existed**. The reasoning was that a disabled row promises that pressing it might one day work — and
+     * it was wrong in practice: an absent row is indistinguishable from an unbuilt feature, which is exactly
+     * how a device run reported it. The whole profile is carried instead, so the row can be drawn for
+     * everybody and say what is missing when it cannot be used.
      */
-    val isAdmin: StateFlow<Boolean> = profiles.observeActiveProfile()
-        .map { profile -> profile?.role == ProfileRole.Admin }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), false)
+    val account: StateFlow<Profile?> = profiles.observeActiveProfile()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         observeLibraries(),

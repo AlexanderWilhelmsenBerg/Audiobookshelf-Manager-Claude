@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC SET-002 (Appearance/accessibility) — the languages this app ships.
+
+  Read by Android 13 and above to build the app's entry in Settings → Apps → Language. It has to list
+  exactly the `values` directories that exist: a tag listed here with no translation behind it offers the
+  user a language and then renders English.
+
+  `AppLanguage` is the in-app half of the same list, and `AppLanguageTest` is what keeps the two in step.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="nb" />
+</locale-config>

@@ -1,6 +1,5 @@
 package com.example.shelfplayer.feature.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,7 +19,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -44,6 +42,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.KnownDevice
@@ -59,12 +58,17 @@ fun SettingsRoute(
     onManageServerUsers: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
+    // PRODUCT_SPEC SET-002 — its own ViewModel, for the reason `AppearanceViewModel` records: the theme and
+    // the language are read by the activity long before this screen exists, so the screen is their writer
+    // and not their owner.
+    appearanceViewModel: AppearanceViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
-    val isAdmin by viewModel.isAdmin.collectAsStateWithLifecycle()
+    val account by viewModel.account.collectAsStateWithLifecycle()
     val knownDevices by viewModel.knownDevices.collectAsStateWithLifecycle()
     val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
+    val appearance by appearanceViewModel.state.collectAsStateWithLifecycle()
     SettingsScreen(
         uiState = uiState,
         launcherIcon = launcherIcon,
@@ -77,8 +81,14 @@ fun SettingsRoute(
         ),
         serverTab = ServerTabInputs(
             onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
-            isAdmin = isAdmin,
+            account = account,
             onManageServerUsers = onManageServerUsers,
+        ),
+        appearance = appearance,
+        appearanceActions = AppearanceActions(
+            onThemeModeChanged = appearanceViewModel::onThemeModeChanged,
+            onDynamicColorChanged = appearanceViewModel::onDynamicColorChanged,
+            onLanguageChanged = appearanceViewModel::onLanguageChanged,
         ),
         sleepTimerActions = SleepTimerSettingsActions(
             onDefaultChanged = viewModel::onSleepTimerDefaultChanged,
@@ -127,6 +137,8 @@ fun SettingsScreen(
     onLauncherIconChanged: (LauncherIcon) -> Unit = {},
     devices: DeviceSettingsActions = DeviceSettingsActions(),
     metrics: PlaybackMetrics = PlaybackMetrics.Empty,
+    appearance: AppearanceUiState = AppearanceUiState(),
+    appearanceActions: AppearanceActions = AppearanceActions(),
 ) {
     var selected by rememberSaveable { mutableStateOf(SettingsTab.Server) }
     // PRODUCT_SPEC 14.4 — the event log's open/closed state is this screen's, not the caller's. Lifting it
@@ -194,6 +206,7 @@ fun SettingsScreen(
                         launcherIcon = launcherIcon,
                         onLauncherIconChanged = onLauncherIconChanged,
                         metrics = metrics,
+                        appearance = AppearanceInputs(appearance, appearanceActions),
                         onOpenEventLog = { isEventLogOpen = true },
                         onOpenDebugConsole = { isDebugConsoleOpen = true },
                     )
@@ -211,15 +224,8 @@ private fun LazyListScope.serverTab(uiState: SettingsUiState, inputs: ServerTabI
     item { SectionHeader(text = stringResource(R.string.settings_section_server)) }
     uiState.server?.let { server -> serverInfoRows(server) }
 
-    // PRODUCT_SPEC USER-001 — admin and root only, and absent rather than disabled for everybody else.
-    if (inputs.isAdmin) {
-        item {
-            SettingsNavigationRow(
-                label = stringResource(R.string.settings_server_users),
-                onClick = inputs.onManageServerUsers,
-            )
-        }
-    }
+    // PRODUCT_SPEC 5.1 / USER-001 — who is signed in, what they may do, and the administrators-only screen.
+    accountSection(inputs.account, inputs.onManageServerUsers)
 
     item { SectionHeader(text = stringResource(R.string.settings_section_libraries)) }
     if (uiState.libraries.isEmpty()) {
@@ -248,12 +254,17 @@ private fun LazyListScope.aboutTab(
     launcherIcon: LauncherIcon,
     onLauncherIconChanged: (LauncherIcon) -> Unit,
     metrics: PlaybackMetrics,
+    appearance: AppearanceInputs,
     onOpenEventLog: () -> Unit,
     onOpenDebugConsole: () -> Unit,
 ) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
     item { TextRow(labelRes = R.string.about_version, value = uiState.versionName) }
     item { Hint(text = stringResource(R.string.about_phase)) }
+
+    // PRODUCT_SPEC SET-002 — theme, colours and language, above the icon because they are the same kind of
+    // question and this is the half somebody came here to change.
+    appearanceSection(appearance.state, appearance.actions)
 
     // PRODUCT_SPEC SET-003 — on the About tab because it is about the app's own identity rather than
     // about a server, a book or how playback behaves.
@@ -442,22 +453,33 @@ private enum class SettingsTab(val labelRes: Int) {
  * PRODUCT_SPEC SET-002 / USER-001 — what the Server tab needs beyond [SettingsUiState].
  *
  * A bundle rather than three parameters, for the reason detekt's limit exists: `SettingsScreen` was already
- * at ten, and the eleventh is where an argument list stops being readable. [isAdmin] travels with the two
- * callbacks because it decides whether one of them is reachable at all, and separating a flag from the
+ * at ten, and the eleventh is where an argument list stops being readable. The account travels with the two
+ * callbacks because it decides whether one of them is reachable at all, and separating a permission from the
  * action it gates is how the two end up disagreeing.
  */
 @Immutable
 data class ServerTabInputs(
     val onDefaultLibraryChanged: (LibraryId?) -> Unit = {},
-    /** PRODUCT_SPEC USER-001 — admin and root only. `false` removes the row rather than disabling it. */
-    val isAdmin: Boolean = false,
+    /**
+     * PRODUCT_SPEC 5.1 / 5.2 — the signed-in account, or `null` while none is active.
+     *
+     * The whole profile rather than an `isAdmin` boolean, which is what this used to be. The boolean could
+     * only decide whether to draw a row; the profile can also say *why* the row is unusable, and a device
+     * run proved that difference matters — an account with no administrator grant looked to its owner like
+     * a feature that had never been built.
+     */
+    val account: Profile? = null,
     val onManageServerUsers: () -> Unit = {},
 )
 
-@Composable
-private fun SettingsNavigationRow(label: String, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(label) },
-        modifier = Modifier.clickable(onClick = onClick),
-    )
-}
+/**
+ * PRODUCT_SPEC SET-002 — the appearance state and its three writes, travelling together.
+ *
+ * A bundle so that `aboutTab` keeps a readable parameter list: it is at detekt's function limit with the
+ * two it already has, and a state and its actions are never useful apart.
+ */
+@Immutable
+data class AppearanceInputs(
+    val state: AppearanceUiState = AppearanceUiState(),
+    val actions: AppearanceActions = AppearanceActions(),
+)

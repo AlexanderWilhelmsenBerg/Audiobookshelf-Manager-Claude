@@ -117,6 +117,22 @@ were, because they are the shapes this kind of work fails in:
 Two were found by the compiler and the linter rather than by the audit, during the fix: an
 `?.let { } ?: …` that folded "permitted" into "blocked", and three strings written but never rendered.
 
+A **device run on 2026-08-20** found four more, all fixed, and three of them are the same shape: a feature
+that worked perfectly and could not be reached.
+
+- **The account-management row was hidden for a non-admin**, which on a device is indistinguishable from a
+  feature that was never built — and was reported as exactly that. The row is now drawn for everybody and
+  names the reason when it cannot be used, alongside the account's role and its four server-side grants.
+  The gap this closes is diagnostic: until now the only way to find out whether an account held the
+  `update` grant was to read the server's own web interface.
+- **`theme_mode` and `dynamic_color` had no control.** Both have been in the settings proto since the first
+  build and applied by `MainActivity` ever since; nothing ever wrote them, so the only device that could
+  have a value was one restored from a build that never existed.
+- **There was no language setting** despite a complete `values-nb` translation, so Norwegian was reachable
+  only by changing the whole phone's language. See ADR-0022 for why it is carried by the composition rather
+  than by `LocaleManager` alone.
+- **The About tab described a build from three phases ago**, down to "the management tools are not [built]".
+
 | Requirement | Gap | State |
 | --- | --- | --- |
 | MGR-006 | **Source-file deletion ships no feature.** Both endpoints exist, and neither can prove the deletion happened: a failed filesystem removal is logged on the server and discarded, and the request succeeds either way. MGR-006 requires the response to confirm it. | **Closed by decision** — ADR-0021 |

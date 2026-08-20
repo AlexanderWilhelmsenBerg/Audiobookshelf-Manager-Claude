@@ -361,7 +361,7 @@
     <string name="event_log_copy">Kopier</string>
     <string name="event_log_clear">Tøm</string>
     <string name="event_log_empty">Ingenting er registrert ennå.</string>
-    <string name="about_phase">Under arbeid. Direkteavspilling og frakoblet avspilling, kapitler, bokmerker, sovetid, nedlastinger og fremdriftssynkronisering er bygget; forvaltningsverktøyene er ikke.</string>
+    <string name="about_phase">Under arbeid. Direkteavspilling og frakoblet avspilling, kapitler, bokmerker, sovetid, nedlastinger og smarte nedlastinger, fremdrifts- og \u00f8ktsynkronisering, Android Auto, avspillingsregler per enhet og forvaltningsverkt\u00f8yene \u2014 redigering av metadata, omslag, samsvarss\u00f8k, skanning og serverkontoer \u2014 er bygget. Sletting av kildefiler tilbys bevisst ikke, og noen mangler st\u00e5r igjen: ingen profill\u00e5s, ingen pause i nedlastinger og ingen innbygging av metadata per bok.</string>
 
     <!--
       PRODUCT_SPEC SET-003 — navnene på de seks ikonene.
@@ -723,4 +723,33 @@
     <string name="debug_console_title">Feils\u00f8kingskonsoll</string>
     <string name="debug_console_subtitle">Kopier dette og lim det inn der du melder fra om problemet.</string>
     <string name="debug_console_copy">Kopier alt</string>
+    <!-- PRODUCT_SPEC 5.1 / 5.2 / USER-001 -->
+    <string name="settings_section_account">P\u00e5logget konto</string>
+    <string name="settings_account_none">Ingen konto er p\u00e5logget p\u00e5 denne enheten.</string>
+    <string name="settings_account_username">Brukernavn</string>
+    <string name="settings_account_role">Kontotype</string>
+    <string name="settings_account_role_admin">Administrator</string>
+    <string name="settings_account_role_manager">Forvalter</string>
+    <string name="settings_account_role_editor">Redigerer</string>
+    <string name="settings_account_role_listener">Lytter</string>
+    <string name="settings_account_may_download">Kan laste ned</string>
+    <string name="settings_account_may_update">Kan redigere metadata</string>
+    <string name="settings_account_may_upload">Kan laste opp omslag</string>
+    <string name="settings_account_may_delete">Kan slette</string>
+    <string name="settings_account_allowed">Tillatt</string>
+    <string name="settings_account_not_allowed">Ikke tillatt</string>
+    <string name="settings_account_grants_hint">Dette er serverens rettigheter for denne kontoen, ikke innstillinger appen kan endre. En handling serveren ikke har gitt tilgang til er skjult eller avvist ogs\u00e5 her. Endre dem p\u00e5 serveren, og \u00e5pne appen p\u00e5 nytt for \u00e5 hente dem inn.</string>
+    <string name="settings_server_users_blocked">Bare en serveradministrator kan administrere kontoer.</string>
+
+    <!-- PRODUCT_SPEC SET-002 -->
+    <string name="settings_section_appearance">Utseende</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Lyst</string>
+    <string name="settings_theme_dark">M\u00f8rkt</string>
+    <string name="settings_theme_hint">System bruker enhetens lyse eller m\u00f8rke innstilling, inkludert eventuell tidsplan. \u00c5 endre dette avbryter aldri noe som spilles.</string>
+    <string name="settings_dynamic_color">Bruk fargene fra bakgrunnsbildet mitt</string>
+    <string name="settings_dynamic_color_hint">Tilgjengelig p\u00e5 Android 12 og nyere. Av som standard, slik at appen ser like ut p\u00e5 hver enhet til du ber om dette.</string>
+    <string name="settings_language">Spr\u00e5k</string>
+    <string name="settings_language_system">Systemstandard</string>
+    <string name="settings_language_hint">Hvert spr\u00e5k er skrevet p\u00e5 sitt eget spr\u00e5k, slik at det er mulig \u00e5 finne uansett hvilket spr\u00e5k appen st\u00e5r p\u00e5 n\u00e5. P\u00e5 Android 13 og nyere er dette den samme innstillingen Android viser under Apper, og endrer du den der, endres den her.</string>
 </resources>

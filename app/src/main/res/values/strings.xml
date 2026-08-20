@@ -458,7 +458,7 @@
       PRODUCT_SPEC SET-002 — what this build actually is. Kept current with the phase, because a build
       that describes itself wrongly makes every other reading on this tab suspect.
     -->
-    <string name="about_phase">A work in progress. Streaming and offline playback, chapters, bookmarks, the sleep timer, downloads and progress sync are built; the management tools are not.</string>
+    <string name="about_phase">A work in progress. Streaming and offline playback, chapters, bookmarks, the sleep timer, downloads and smart downloads, progress and session sync, Android Auto, per-device playback policy and the management tools \u2014 metadata editing, covers, matching, scans and server accounts \u2014 are built. Source-file deletion is deliberately not offered, and a few gaps remain: no profile lock, no download pause, and no per-item metadata embedding.</string>
 
     <!--
       PRODUCT_SPEC SET-003 — the six launcher icons.
@@ -909,4 +909,33 @@
     <string name="debug_console_title">Debug console</string>
     <string name="debug_console_subtitle">Copy this and paste it wherever you are reporting the problem.</string>
     <string name="debug_console_copy">Copy everything</string>
+    <!-- PRODUCT_SPEC 5.1 / 5.2 / USER-001 — the signed-in account, and why a screen may be closed to it. -->
+    <string name="settings_section_account">Signed-in account</string>
+    <string name="settings_account_none">No account is signed in on this device.</string>
+    <string name="settings_account_username">Username</string>
+    <string name="settings_account_role">Account type</string>
+    <string name="settings_account_role_admin">Administrator</string>
+    <string name="settings_account_role_manager">Manager</string>
+    <string name="settings_account_role_editor">Editor</string>
+    <string name="settings_account_role_listener">Listener</string>
+    <string name="settings_account_may_download">May download</string>
+    <string name="settings_account_may_update">May edit metadata</string>
+    <string name="settings_account_may_upload">May upload covers</string>
+    <string name="settings_account_may_delete">May delete</string>
+    <string name="settings_account_allowed">Allowed</string>
+    <string name="settings_account_not_allowed">Not allowed</string>
+    <string name="settings_account_grants_hint">These are the server\'s permissions for this account, not settings this app can change. An action the server has not granted is hidden or refused here as well. Change them on the server, then reopen the app to pick them up.</string>
+    <string name="settings_server_users_blocked">Only a server administrator can manage accounts.</string>
+
+    <!-- PRODUCT_SPEC SET-002 (Appearance/accessibility) — theme, colours and language. -->
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_hint">System uses your device\'s light or dark setting, including any schedule it is on. Changing this never interrupts anything that is playing.</string>
+    <string name="settings_dynamic_color">Use the colours from my wallpaper</string>
+    <string name="settings_dynamic_color_hint">Available on Android 12 and later. Off by default, so the app looks the same on every device until you ask for this.</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">System default</string>
+    <string name="settings_language_hint">Each language is written in its own name, so it is findable whichever one the app is currently in. On Android 13 and later this is the same setting Android shows under Apps, and changing it there changes it here.</string>
 </resources>

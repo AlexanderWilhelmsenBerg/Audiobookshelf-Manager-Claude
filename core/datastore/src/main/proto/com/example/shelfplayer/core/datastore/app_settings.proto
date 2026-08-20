@@ -212,6 +212,17 @@ message AppSettings {
   // PRODUCT_SPEC ROUTE-003 — what opening the app does to the player. The zero value is "nothing until a
   // media command", which is both the safe answer and what the app did before this field existed.
   StartupMode startup_mode = 37;
+
+  // PRODUCT_SPEC SET-002 (Appearance/accessibility) — the language the app draws itself in.
+  //
+  // A BCP 47 tag (`en`, `nb`), or empty for "follow the system" — which is both the default and proto3's
+  // zero value, so an install that predates this field keeps behaving exactly as it did.
+  //
+  // A tag rather than an enum, deliberately. The set of languages this app ships is a *resource* fact: it
+  // grows when somebody adds a `values-xx` directory, and an enum in this file would have to be edited in
+  // step or the new translation would be unreachable. A tag no build recognises reads back as "follow the
+  // system", which is visible and harmless — see `AppLanguage.ofTag`.
+  string app_language_tag = 38;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.
