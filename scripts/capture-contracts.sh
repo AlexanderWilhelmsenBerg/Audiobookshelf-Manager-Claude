@@ -578,6 +578,14 @@ PY
 # than skipped.
 SOCKET_URL="$BASE_URL/socket.io/?EIO=4&transport=polling"
 
+# How long to wait for the socket's `init` frame before recording the auth poll.
+#
+# Ten half-second attempts. Generous enough that a loaded CI runner does not lose the race, short enough
+# that a server which never sends the frame costs five seconds rather than a job timeout — and the absence
+# is then recorded in the fixture, which is itself the finding.
+SOCKET_INIT_POLLS=10
+SOCKET_INIT_INTERVAL=0.5
+
 capture socket-handshake GET "/socket.io/?EIO=4&transport=polling"
 
 SOCKET_SID="$(python3 - "$RAW_DIR/socket-handshake.raw" <<'PY'
@@ -615,6 +623,26 @@ else
   curl -sS -X POST "$SOCKET_URL&sid=$SOCKET_SID" \
     -H 'Content-Type: text/plain;charset=UTF-8' \
     --data-binary "42[\"auth\",\"$ACCESS_TOKEN\"]" >/dev/null || true
+
+  # Wait for the `init` frame before polling, because otherwise **which fixture it lands in is a race**.
+  #
+  # The server answers `auth` asynchronously. A long-poll returns whatever has queued by the time it is
+  # answered, so `init` arrived in `socket-auth.json` on the run that produced the committed fixture and in
+  # `socket-event-after-progress.json` on a later one — the same frame, the same keys, a different file.
+  # The drift check compares byte for byte and cannot tell that from the server changing its mind, so it
+  # reported drift on a race. (It went unnoticed while the candidate-search fixture failed every run
+  # regardless; fixing that is what surfaced this. docs/risks.md R-15.)
+  #
+  # Polling until the frame appears makes the split deterministic: `init` belongs to the auth poll, and
+  # anything after it belongs to the next one. Bounded, because a server that never sends it is itself a
+  # finding — the loop gives up and the fixture records the absence rather than hanging the job.
+  for _ in $(seq 1 "$SOCKET_INIT_POLLS"); do
+    if curl -sS "$SOCKET_URL&sid=$SOCKET_SID" 2>/dev/null | grep -q '"init"'; then
+      log "the socket sent its init frame"
+      break
+    fi
+    sleep "$SOCKET_INIT_INTERVAL"
+  done
   capture socket-auth GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
 
   # A progress change made over REST, then a poll: if the server broadcasts progress at all, this is
