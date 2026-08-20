@@ -1200,3 +1200,59 @@ The item's own fields do not change when an embed finishes: they are the *input*
 the item cannot distinguish running from finished from failed, and a client that missed `task_finished` has
 no second source. That is why a dropped connection is reported as an unknown outcome rather than as either
 answer.
+
+## An excluded file never reaches `media.tracks` — settled 2026-08-20 (PLAY-003)
+
+`docs/gaps.md` carried an open defect from Phase 2 onwards:
+
+> **Excluded tracks and the timeline's coordinate space.** A book whose server-side track list excludes a
+> file resolves positions against the wrong offsets.
+
+The reasoning behind it was sound and its premise was wrong. The premise was that `media.tracks` carries
+every audio file with a global `startOffset`, some of them flagged `exclude: true` — so a player that
+concatenates only the playable ones produces a timeline shorter than the book's, and every position after
+the hole is wrong by the excluded file's length.
+
+`server/models/Book.js`, read at 2.36.0 under ADR-0012's amended posture, settles it:
+
+```js
+get includedAudioFiles() {
+  return this.audioFiles.filter((af) => !af.exclude)
+}
+
+getTracklist(libraryItemId) {
+  let startOffset = 0
+  return this.includedAudioFiles.map((af) => {
+    const track = structuredClone(af)
+    track.title = af.metadata.filename
+    track.startOffset = startOffset
+    track.contentUrl = `/api/items/${libraryItemId}/file/${track.ino}`
+    startOffset += track.duration
+    return track
+  })
+}
+```
+
+**The filter runs before the accumulation.** An excluded file is gone before any offset is computed, so
+`media.tracks` — and `session.audioTracks`, which is the same list — is always contiguous, always
+exclusion-free, and always exactly the concatenation the player builds. There is no second coordinate
+space, and there is nothing to convert between.
+
+Two consequences worth stating, because both look like dead code and neither should be deleted:
+
+- `AudioTrack.isExcluded` is always `false` in anything that came from a server. It is `exclude` copied
+  off the `AudioFile` the track was cloned from, and the clone only ever happens for a file that is not
+  excluded. `PlaybackSession.playableTracks` filters on it and the filter is always a no-op.
+- `media.audioFiles` **does** contain excluded files, and they carry no `startOffset` at all — the field
+  is added by `getTracklist`. Anything reading `audioFiles` for timeline purposes would be reading a list
+  the server never intended as one. Nothing does; `LibraryMapper` reads `media.tracks`.
+
+`CapturedShapesTest` pins the invariant against the committed fixtures, so a server that ever changed its
+mind fails a test instead of moving somebody's bookmark. That is the whole mitigation, and it is enough:
+the app already treats the player's position as the book's position (ADR-0016), which is correct precisely
+because of the code above.
+
+What is **not** settled is what the *web client* does when a user excludes a file from a book they are
+part-way through. The server recomputes offsets, so a stored progress position taken before the exclusion
+now points somewhere else in a shorter book. That is a server-side data question, it affects every client
+equally, and this app has no way to detect it.

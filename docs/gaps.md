@@ -36,15 +36,25 @@ that check goes.
 
 | Requirement | Gap | State |
 | --- | --- | --- |
-| PLAY-003 | **Excluded tracks and the timeline's coordinate space.** A book whose server-side track list excludes a file resolves positions against the wrong offsets. | Open |
+| PLAY-003 | **Excluded tracks and the timeline's coordinate space.** | **Closed 2026-08-20 — not a defect** |
 
-**What it costs today:** for the affected books — ones where Audiobookshelf excludes a track from the
-audio timeline — a resume can land at the wrong point. Books without excluded tracks, which is nearly all of
-them, are unaffected.
+This entry stood for four phases and described a bug that cannot occur. It said a book whose track list
+excludes a file resolves positions against the wrong offsets, because the player concatenates the playable
+tracks while the book timeline still counts the excluded one.
 
-**What it needs:** `startOffset` carried into the media item's extras so `PlayerPositions` maps a player
-position to a book position using the same offsets `BookMediaSourceFactory` built the concatenation from.
-ADR-0016 describes the intended coordinate space; this is a place the implementation does not match it.
+The server's own source disposes of it. `Book.getTracklist` maps over `includedAudioFiles` — `audioFiles`
+already filtered — and accumulates `startOffset` as it goes, so **an excluded file is removed before any
+offset exists**. `media.tracks` is therefore always contiguous and never contains an exclusion; the
+player's concatenation and the book's timeline are the same coordinate space by construction, which is
+what makes ADR-0016 correct rather than merely convenient.
+
+`docs/api-compatibility.md` records the reading verbatim, and `CapturedShapesTest` now fails if a captured
+fixture ever shows a hole or a flagged track — so the day this stops being true, a test says so instead of
+a listener's bookmark moving.
+
+**What was really wrong here was the gap entry**, and it is worth saying how: it was written from the
+shape of the app's own model (`AudioTrack.isExcluded` exists, so the server must send it) rather than from
+the server's behaviour. Four phases of "known defect" followed from one unchecked premise.
 
 ---
 

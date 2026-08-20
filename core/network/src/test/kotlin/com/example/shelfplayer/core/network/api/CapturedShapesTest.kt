@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.network.api
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -497,6 +498,77 @@ class CapturedShapesTest {
         val user = json.parseToJsonElement(bodyOf("me-listener")).jsonObject
 
         assertTrue("token" in user)
+    }
+
+    // --- The book timeline (PRODUCT_SPEC PLAY-003, ADR-0016) --------------------------------------
+
+    /**
+     * **`media.tracks` is contiguous**, and the whole of PLAY-003's coordinate question rests on it.
+     *
+     * `docs/gaps.md` carried an open defect for four phases saying that a book with an excluded file
+     * resolves positions against the wrong offsets — the player concatenates only the playable tracks
+     * while the book timeline supposedly still counts the excluded one, leaving a hole. It cannot happen,
+     * and the server's own source says why (`server/models/Book.js`, read at 2.36.0):
+     *
+     * ```js
+     * get includedAudioFiles() { return this.audioFiles.filter((af) => !af.exclude) }
+     *
+     * getTracklist(libraryItemId) {
+     *   let startOffset = 0
+     *   return this.includedAudioFiles.map((af) => { ...; track.startOffset = startOffset
+     *                                                startOffset += track.duration; return track })
+     * }
+     * ```
+     *
+     * Excluded files are filtered out **before** the offsets are accumulated, so `media.tracks` never
+     * contains one and the offsets never contain a hole. The concatenation and the book share a
+     * coordinate space by construction.
+     *
+     * This test is what turns that reading into something that fails when it stops being true. If a
+     * future server ever emits a gap — or ships an excluded track in `tracks` — the arithmetic below
+     * breaks, and the defect surfaces here rather than as a resume landing in the wrong chapter.
+     */
+    @Test
+    fun `track offsets accumulate with no hole, so the player timeline is the book timeline`() {
+        val media = json.parseToJsonElement(bodyOf("library-item")).jsonObject
+            .getValue("media").jsonObject
+        val tracks = media.getValue("tracks").jsonArray
+
+        var expected = 0.0
+        tracks.forEach { element ->
+            val track = element.jsonObject
+            assertEquals(
+                false,
+                track.getValue("exclude").jsonPrimitive.boolean,
+                "media.tracks must never carry an excluded file — the server filters before it accumulates",
+            )
+            assertEquals(
+                expected,
+                track.getValue("startOffset").jsonPrimitive.double,
+                "startOffset must equal the durations before it; a hole here is PLAY-003's defect",
+            )
+            expected += track.getValue("duration").jsonPrimitive.double
+        }
+        assertEquals(expected, media.getValue("duration").jsonPrimitive.double)
+    }
+
+    /**
+     * The same, over the two-file book — the fixture that settled `startOffset` being global in the first
+     * place. A single-track book cannot tell a contiguous timeline from an accumulated one.
+     */
+    @Test
+    fun `a multi-file book's second track starts exactly where the first ends`() {
+        val tracks = json.parseToJsonElement(bodyOf("multi-item-play")).jsonObject
+            .getValue("audioTracks").jsonArray
+            .map { it.jsonObject }
+
+        assertEquals(2, tracks.size)
+        assertEquals(0.0, tracks[0].getValue("startOffset").jsonPrimitive.double)
+        assertEquals(
+            tracks[0].getValue("duration").jsonPrimitive.double,
+            tracks[1].getValue("startOffset").jsonPrimitive.double,
+        )
+        assertTrue(tracks.none { it.getValue("exclude").jsonPrimitive.boolean })
     }
 
     private fun bodyOf(fixture: String): String =
