@@ -624,26 +624,34 @@ else
     -H 'Content-Type: text/plain;charset=UTF-8' \
     --data-binary "42[\"auth\",\"$ACCESS_TOKEN\"]" >/dev/null || true
 
-  # Wait for the `init` frame before polling, because otherwise **which fixture it lands in is a race**.
+  # **Retry the capture itself until it holds the `init` frame.** Never peek first.
   #
-  # The server answers `auth` asynchronously. A long-poll returns whatever has queued by the time it is
-  # answered, so `init` arrived in `socket-auth.json` on the run that produced the committed fixture and in
-  # `socket-event-after-progress.json` on a later one — the same frame, the same keys, a different file.
-  # The drift check compares byte for byte and cannot tell that from the server changing its mind, so it
-  # reported drift on a race. (It went unnoticed while the candidate-search fixture failed every run
-  # regardless; fixing that is what surfaced this. docs/risks.md R-15.)
+  # Two mistakes are avoided here, and the second one was made before it was avoided.
   #
-  # Polling until the frame appears makes the split deterministic: `init` belongs to the auth poll, and
-  # anything after it belongs to the next one. Bounded, because a server that never sends it is itself a
-  # finding — the loop gives up and the fixture records the absence rather than hanging the job.
+  # The race: the server answers `auth` asynchronously, and a long-poll returns whatever has queued by the
+  # time it is answered — so `init` landed in `socket-auth.json` on the run that produced the committed
+  # fixture and in `socket-event-after-progress.json` on a later one. Same frame, same keys, different
+  # file. A byte-for-byte drift check cannot tell that from the server changing its mind.
+  #
+  # The wrong fix, which this replaces: polling in a loop until the frame appeared, *then* capturing.
+  # **Long-polling is destructive.** Each poll drains the queue, so the probe consumed the frames it was
+  # looking for and the capture that followed recorded `2` — an engine.io ping against an empty queue. The
+  # fixture went from carrying a race to carrying nothing.
+  #
+  # So the poll that finds the frame has to be the poll that is recorded. Each attempt overwrites the last,
+  # which is safe because a poll with nothing in it is not evidence of anything. Bounded: a server that
+  # never sends `init` leaves the final empty capture in place, and that absence is itself the finding.
+  #
+  # Residual, and honest about it: `user_online` and `init` are emitted together and are therefore almost
+  # always in one poll, but nothing guarantees it. If they ever split, this records the one with `init`.
   for _ in $(seq 1 "$SOCKET_INIT_POLLS"); do
-    if curl -sS "$SOCKET_URL&sid=$SOCKET_SID" 2>/dev/null | grep -q '"init"'; then
-      log "the socket sent its init frame"
+    capture socket-auth GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
+    if grep -q '"init"' "$OUT_DIR/socket-auth.json" 2>/dev/null; then
+      log "the socket's init frame arrived in the auth poll"
       break
     fi
     sleep "$SOCKET_INIT_INTERVAL"
   done
-  capture socket-auth GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
 
   # A progress change made over REST, then a poll: if the server broadcasts progress at all, this is
   # the frame that carries it, and it is exactly what TC-10 needs.
