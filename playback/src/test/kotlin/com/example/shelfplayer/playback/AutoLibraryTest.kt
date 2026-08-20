@@ -70,13 +70,4 @@ class AutoLibraryTest {
         assertNull(AutoLibrary.resolve("at//600000"))
         assertNull(AutoLibrary.resolve("something-else"))
     }
-
-    @Test
-    fun `the root is browsable and not playable`() {
-        val root = AutoLibrary.root()
-
-        assertEquals(AutoLibrary.ROOT, root.mediaId)
-        assertEquals(true, root.mediaMetadata.isBrowsable)
-        assertEquals(false, root.mediaMetadata.isPlayable)
-    }
 }

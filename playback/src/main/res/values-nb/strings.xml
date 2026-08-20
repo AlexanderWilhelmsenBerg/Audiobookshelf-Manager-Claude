@@ -13,4 +13,38 @@
         <item quantity="one">%1$d sekund fram</item>
         <item quantity="other">%1$d sekunder fram</item>
     </plurals>
+
+    <string name="car_tab_continue">Fortsett</string>
+    <string name="car_tab_recent">Nylig lagt til</string>
+    <string name="car_tab_again">Hør på nytt</string>
+    <string name="car_tab_discover">Oppdag</string>
+    <string name="car_tab_chapters">Kapitler</string>
+    <string name="car_tab_history">Historikk</string>
+
+    <string name="car_empty_title">Ingen bøker ennå</string>
+    <!-- %1$s er appnavnet. -->
+    <string name="car_empty_subtitle">Åpne %1$s på telefonen for å logge inn eller synkronisere biblioteket.</string>
+
+    <string name="car_chapter_untitled">Kapittel %1$d</string>
+
+    <!-- %1$d er en hel prosentandel av boka. -->
+    <string name="car_progress_fraction">%1$d %% av boka</string>
+    <string name="car_progress_position">%1$s av %2$s</string>
+    <string name="car_progress_chapter">kapittel %1$d av %2$d</string>
+
+    <string name="car_chapter_elapsed">%1$s av %2$s</string>
+
+    <string name="car_event_seek">Spoling</string>
+    <string name="car_event_skip">Hopp</string>
+    <string name="car_event_chapter">Kapittel</string>
+    <string name="car_event_auto_rewind">Spolt tilbake etter en pause</string>
+    <string name="car_event_resume">Begynte å høre</string>
+    <string name="car_event_play">Spilt</string>
+    <string name="car_event_pause">Pauset</string>
+    <string name="car_event_timer_started">Sovetid satt</string>
+    <string name="car_event_timer_extended">Sovetid forlenget</string>
+    <string name="car_event_timer_expired">Sovetid avsluttet</string>
+    <string name="car_event_timer_rewind">Spolt tilbake etter sovetid</string>
+    <string name="car_event_remote_progress">Flyttet på en annen enhet</string>
+    <string name="car_event_remote_finished">Fullført på en annen enhet</string>
 </resources>
