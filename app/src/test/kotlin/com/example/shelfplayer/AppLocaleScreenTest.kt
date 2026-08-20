@@ -35,9 +35,19 @@ import org.robolectric.annotation.Config
  * release unit-test variant, which has no `ComponentActivity` to launch — `ui-test-manifest` is a
  * `debugImplementation`. The suffix is the contract that exclusion relies on, and a rendering test named
  * anything else fails in release with an unresolvable launcher intent.
+ * ### Why three SDK levels
+ *
+ * Because this file is the one place in the app where the API level changes the *mechanism*.
+ * `LocaleManager` starts at 33, `minSdk` is 26, and ADR-0022's whole argument is that the composition
+ * carries the language on both sides of that line. Running at 26, 33 and 34 is what makes that an assertion
+ * rather than a claim: 26 exercises the backport alone, 33 the first release where the platform is told as
+ * well, and 34 the ordinary modern case.
+ *
+ * Every test in the class runs three times. It is worth the seconds here and is not worth it everywhere —
+ * `docs/risks.md` R-08 is about the API matrix as a whole, and no JVM run retires it.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], qualifiers = "w411dp-h891dp")
+@Config(sdk = [26, 33, 34], qualifiers = "w411dp-h891dp")
 class AppLocaleScreenTest {
 
     @get:Rule

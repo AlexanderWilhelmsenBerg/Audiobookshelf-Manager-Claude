@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.SessionOutboxState
 import com.example.shelfplayer.core.database.entity.SleepTimerSessionEntity
+import com.example.shelfplayer.core.model.ProfileRole
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -873,6 +874,85 @@ class MigrationTest {
 
         assertEquals(migratedProfiles, columnsOf(fresh.openHelper.readableDatabase, "profiles"))
         assertEquals(migratedServers, columnsOf(fresh.openHelper.readableDatabase, "servers"))
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 / MGR-005 / USER-001 — version 18 records the management grants, denied.
+     *
+     * The same direction as version 16's download grant and for the same reason: a profile cached before
+     * these columns existed is a profile whose grants this build has never read, and the safe reading of
+     * an unknown grant is *absent*. PRODUCT_SPEC principle 4 enforces permissions twice, and the second
+     * enforcement only means anything if "unknown" fails closed.
+     *
+     * A migration defaulting these to 1 would look correct on the owner's own root account — which holds
+     * everything — and would offer an Edit button to every restricted account on the server, which the
+     * server would then refuse with a `403` after the user believed they had changed something.
+     */
+    @Test
+    fun `version 18 denies every management grant to a profile cached before they were recorded`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        val profile = assertNotNull(migrated.profileDao().findProfile(PROFILE_ID))
+        assertFalse(profile.canUpdate, "unknown must read as denied")
+        assertFalse(profile.canDelete, "unknown must read as denied")
+        assertFalse(profile.canUpload, "unknown must read as denied")
+        assertEquals("ada", profile.username, "and the row is otherwise untouched")
+    }
+
+    /**
+     * Version 18's `accountType` defaults to empty, and **empty is not a role**.
+     *
+     * This is `docs/risks.md` R-17 pinned as a test rather than as a paragraph. `accountType` is the
+     * server's own word — `root`, `admin`, `user`, `guest` — and an upgraded install has none of it until a
+     * sign-in or a permission refresh writes one. `ProfileRole.ofAccountType("")` is deliberately
+     * `Listener`, the least privileged bucket.
+     *
+     * The hazard is not the default; it is that **two columns can answer "what kind of account is this"**.
+     * `role` is written at sign-in and survives the migration; `accountType` does not. Any permission check
+     * that reads `accountType` instead of `role` therefore demotes every upgraded administrator until their
+     * next refresh — which is exactly the shape of the defect that hid the account-management row on a
+     * device. This test exists so that the next person to add such a check finds it named.
+     */
+    @Test
+    fun `version 18 leaves the account type empty, which is the least privileged role`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        val profile = assertNotNull(migrated.profileDao().findProfile(PROFILE_ID))
+        assertEquals("", profile.accountType, "an unknown account type must not be invented")
+        assertEquals(
+            ProfileRole.Listener,
+            ProfileRole.ofAccountType(profile.accountType),
+            "an empty account type must never map to a privileged role",
+        )
+        assertEquals(
+            "Listener",
+            profile.role,
+            "the seeded row's own role column is what a permission check should read instead",
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 — version 19 adds the draft table, and adds it **empty**.
+     *
+     * A draft is an unsaved edit. Inventing one would put words in a user's editor that they never typed,
+     * and the editor treats a present draft as "you have unsaved changes" — so a fabricated row would also
+     * offer to discard something that never existed.
+     */
+    @Test
+    fun `version 19 adds an empty metadata draft table`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        assertNull(migrated.metadataDraftDao().observe(PROFILE_ID, "book-1").first())
+        assertTrue(
+            "profileId" in columnsOf(migrated.openHelper.writableDatabase, "metadata_draft"),
+            "the draft table is scoped by profile, like every other per-account table",
+        )
     }
 
     private fun openWithMigrations(): ShelfPlayerDatabase =

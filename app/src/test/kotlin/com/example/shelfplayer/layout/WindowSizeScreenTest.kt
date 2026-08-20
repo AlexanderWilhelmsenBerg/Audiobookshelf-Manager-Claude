@@ -34,9 +34,14 @@ import kotlin.test.assertTrue
  * In `:app` rather than in `:core:designsystem` because this is where the Compose test infrastructure
  * lives — the launcher activity `createComposeRule` needs is a `debugImplementation` of this module, and
  * the `ScreenTest` suffix is this module's contract for excluding such tests from the release variant.
+ * ### Why two SDK levels
+ *
+ * Android Lint's objection to `Configuration.screenWidthDp` was that its inset behaviour *depends on the
+ * target SDK*. `LocalWindowInfo.containerSize` is meant not to, and running the breakpoints at 26 as well
+ * as 34 is what says so. If a future Compose release reintroduces that dependence, this is where it shows.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [26, 34])
 class WindowSizeScreenTest {
 
     @get:Rule
