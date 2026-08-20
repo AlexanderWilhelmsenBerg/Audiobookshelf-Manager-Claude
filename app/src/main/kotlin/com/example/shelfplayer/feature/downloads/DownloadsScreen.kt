@@ -46,6 +46,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
+import com.example.shelfplayer.core.designsystem.layout.centredListPadding
+import com.example.shelfplayer.core.designsystem.layout.windowWidth
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import java.util.Locale
 
@@ -144,7 +146,12 @@ fun DownloadsScreen(
             return@Scaffold
         }
 
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            // PRODUCT_SPEC 4 / §51 — a queue is a list of rows, and a row stretched across a tablet puts
+            // its title and its progress a hand-span apart. The column keeps a readable measure.
+            contentPadding = centredListPadding(width = windowWidth()),
+        ) {
             item {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(

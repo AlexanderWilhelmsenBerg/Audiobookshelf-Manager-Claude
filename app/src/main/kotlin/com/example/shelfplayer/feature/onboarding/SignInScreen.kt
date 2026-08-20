@@ -1,6 +1,7 @@
 package com.example.shelfplayer.feature.onboarding
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +24,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.designsystem.layout.contentWidth
 import com.example.shelfplayer.core.model.ServerCandidate
 
 /**
@@ -78,38 +81,48 @@ fun SignInScreen(uiState: SignInUiState, actions: SignInActions, modifier: Modif
         modifier = modifier.fillMaxSize(),
         topBar = { TopAppBar(title = { Text(text = stringResource(R.string.sign_in_title)) }) },
     ) { innerPadding ->
-        Column(
+        // PRODUCT_SPEC 4 / §51 — a sign-in form is the clearest case for a width cap. There are two
+        // fields and a button; stretched across a tablet they sit a hand-span apart with nothing between
+        // them, and the address field becomes a line of text nobody can scan. The outer box takes the
+        // window and the inner column takes a readable measure of it.
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .verticalScroll(rememberScrollState()),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            when (uiState.stage) {
-                SignInStage.Address -> AddressStage(uiState = uiState, actions = actions)
+            Column(
+                modifier = Modifier
+                    .contentWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                when (uiState.stage) {
+                    SignInStage.Address -> AddressStage(uiState = uiState, actions = actions)
 
-                SignInStage.Credentials -> CredentialsStage(uiState = uiState, actions = actions)
-            }
-
-            uiState.error?.let { error ->
-                // PRODUCT_SPEC 14.4 — the summary is the plain-language part and the code is the optional
-                // technical detail. Both are already redaction-safe, so neither can leak a host or a token.
-                Column(
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(text = error.summary, color = MaterialTheme.colorScheme.error)
-                    Text(
-                        text = error.code,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                    SignInStage.Credentials -> CredentialsStage(uiState = uiState, actions = actions)
                 }
-            }
 
-            if (uiState.isBusy) {
-                CircularProgressIndicator(modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                uiState.error?.let { error ->
+                    // PRODUCT_SPEC 14.4 — the summary is the plain-language part and the code is the optional
+                    // technical detail. Both are already redaction-safe, so neither can leak a host or a token.
+                    Column(
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(text = error.summary, color = MaterialTheme.colorScheme.error)
+                        Text(
+                            text = error.code,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+
+                if (uiState.isBusy) {
+                    CircularProgressIndicator(modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                }
             }
         }
     }

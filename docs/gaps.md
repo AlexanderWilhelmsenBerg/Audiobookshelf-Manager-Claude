@@ -1,13 +1,14 @@
 # Open gaps
 
-**As of:** 2026-08-15, end of Phase 5.
+**As of:** 2026-08-20, entering Phase 6.
 
 Every requirement this app has *not* fully met, and why. Kept as one document rather than a note per phase,
 because the question anybody actually asks is "what is missing" and not "what was missing in April".
 
 A gap is listed here only if it is real: a criterion the specification states and this build does not
-satisfy. Work that was never in scope for a phase is not a gap, and neither is anything PRODUCT_SPEC itself
-defers to a later version.
+satisfy. Risks — things this build *does* that could go wrong — are in `docs/risks.md`. Work that was
+never in scope for a phase is not a gap, and neither is anything PRODUCT_SPEC itself defers to a later
+version.
 
 Each entry says what is missing, what it costs today, and what it depends on. **Blocked** means something
 else has to exist first. **Deferred** means the specification itself put it later. **Open** means it could
@@ -159,14 +160,34 @@ Two findings are not gaps but standing rules:
 
 ## Phase 6 — Android Auto, polish, release
 
+Phase 6 delivers seven things (PRODUCT_SPEC 1750): a browsable media library, adaptive UI, accessibility,
+diagnostics, privacy/security docs, performance profiling and a release pipeline. **Two of the seven are
+already built** — they arrived early because earlier phases needed them — and the table below is what an
+audit on 2026-08-20 found for the rest, rather than what the phase heading implies.
+
+| Deliverable | State on entering the phase |
+| --- | --- |
+| **Browsable media library** | **Built.** `AutoLibrary` publishes the tree; `PlaybackService.LibraryCallback` implements `onGetLibraryRoot`, `onGetChildren`, `onGetItem`, `onSearch`, `onGetSearchResult` and the spoken-query path through `onSetMediaItems`. Never run in a car — see R-10. |
+| **Diagnostics** | **Built.** The event log, the capability rows, the sync checklist and the copyable debug console (PRODUCT_SPEC 14.4) all shipped in earlier phases. |
+| **Adaptive UI** | **Not started.** See below. |
+| **Accessibility** | **Partly, unverified.** See below. |
+| **Privacy/security docs** | **Stale rather than absent.** See below. |
+| **Performance profiling** | **Not started.** No baseline profile, no benchmark module, none of PRODUCT_SPEC 17.3's four numbers measured. R-25 to R-27. |
+| **Release pipeline** | **Partly.** PR and main workflows run wrapper validation, a secret scan, `verifyDebug` with warnings-as-errors, a Room schema diff, release lint and an unsigned release assembly. Dependency verification is `strict` over 887 pinned components. Missing: SBOM, vulnerability scan, changelog, mapping archive, managed-device tests — each blocked on a decision rather than on work. R-01 to R-06. |
+
 | Requirement | Gap | State |
 | --- | --- | --- |
-| §3.3 / packaging | **`applicationId` is `com.example.shelfplayer`.** | Open, with a deadline |
+| §3.3 / packaging | **`applicationId` is `com.example.shelfplayer`.** Google Play rejects `com.example.`. ADR-0019 records why it did not change with the rename: Android identifies an install by its `applicationId`, so changing it produces a *second, empty* app rather than a renamed one — costing a fresh sign-in and every downloaded book. The right moment is the first release, before anybody has an install to lose, and it needs its own decision about migrating the database. | Open, with a deadline |
+| §4 / §129 / §51 | **Adaptive UI is not built.** `material3-window-size-class` is a declared dependency of `:app` and appears in no source file. Every screen is a single phone-width column, so a tablet, a foldable and a split-screen window all get the phone layout stretched across the available space. §51 makes adaptive layout a release requirement, not a nicety. | Open |
+| §51 / 2.10 | **Accessibility semantics are now enforced by a test; the device half is not.** `AccessibilityAssertions` walks everything the semantics tree reports as clickable and fails on an unlabelled control or one under Material's 40dp minimum, and one screen renders at a doubled font scale. It found one defect immediately: every genre and tag was a disabled `SuggestionChip`, which still publishes an `OnClick`, so a screen reader announced each as a dead button. What remains is what no JVM test can reach — whether a label is *useful*, whether contrast is sufficient, and what TalkBack does with the reading order. R-29. | Partly closed |
+| §14.5 / packaging | **`PRIVACY.md` and `SECURITY.md` describe Phase 0.** Both still say the app makes no network requests and opens a bundled demo library. That was true for one phase and has been wrong for five; `PRIVACY.md` is the document a user reads to decide whether to trust a client with their server's credentials. | Open |
+| 18 | **`docs/release.md` lists resolved blockers.** It still names MGR-006 as an open question — ADR-0021 settled it — and lists integration tests as blocked on "endpoints to test", which Phase 1 delivered. | Open |
+| 18 / 24 | **`versionName` is `0.9.6-auto-shelves` at `versionCode` 35**, and has not moved in nine builds. The debug console prints it, so a field report identifies the wrong build. | Open |
+| 17.2 / 17.3 | **Nothing has been verified on hardware.** No instrumented test exists anywhere in the repository; the whole UI tier is Robolectric at `sdk = 34`. The API matrix, the two-hour soak, the process-death budget, Android Auto and the release APK are all unexercised. Three device runs have each found defects the suite passed through. | Open, and the largest |
 
-Google Play rejects `com.example.`. ADR-0019 records why it did not change with the rename: Android
-identifies an install by its `applicationId`, so changing it produces a *second, empty* app rather than a
-renamed one — costing a fresh sign-in and every downloaded book. The right moment is the first release,
-before anybody has an install to lose, and it needs its own decision about migrating the database.
+The full accounting of the last row, with blast radius and the cheapest mitigation for each, is
+`docs/risks.md`. It is a separate document because a gap and a risk are different questions: a gap asks
+what this build does not do, and a risk asks what it does that could go wrong.
 
 ---
 

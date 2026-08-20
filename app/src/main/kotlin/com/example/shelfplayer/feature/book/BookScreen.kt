@@ -31,10 +31,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +60,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
+import com.example.shelfplayer.core.designsystem.layout.hasRoomForTwoPanes
+import com.example.shelfplayer.core.designsystem.layout.windowWidth
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
@@ -440,6 +443,21 @@ data class BookActions(
     val onEmbedMetadata: () -> Unit = {},
 )
 
+/**
+ * PRODUCT_SPEC 4 / §129 — one column on a phone, two panes on a tablet.
+ *
+ * The split is not arbitrary. This screen answers two different questions, and they are asked at
+ * different moments: *what do I do with this book* — the cover, the play button, the download state, how
+ * far in I am — and *what is this book* — the blurb, the genres, the publication facts. On a phone they
+ * stack, and the first is above the fold because it is why somebody opened the screen.
+ *
+ * Given a window wide enough for both, the actions stay put on the left while the description scrolls on
+ * the right. That is the arrangement worth having on a tablet: the play button does not scroll away from
+ * a reader who is halfway down a long blurb.
+ *
+ * `Expanded` only — see `hasRoomForTwoPanes` for why a 600dp window gets one comfortable column instead
+ * of two cramped ones.
+ */
 @Composable
 private fun BookDetails(
     book: Book,
@@ -449,53 +467,106 @@ private fun BookDetails(
     download: DownloadControl,
     modifier: Modifier = Modifier,
 ) {
+    if (windowWidth().hasRoomForTwoPanes) {
+        Row(modifier = modifier) {
+            // Each pane scrolls on its own. One shared scroll would move the play button off the top of
+            // the window as soon as the blurb was scrolled, which is the whole thing this layout fixes.
+            Column(
+                modifier = Modifier
+                    .width(ACTION_PANE_WIDTH)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                ActionPane(book, playback, actions, menuActions, download)
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+            VerticalDivider()
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                Spacer(modifier = Modifier.height(4.dp))
+                AboutPane(book)
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+        return
+    }
+
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        // PRODUCT_SPEC LIB-004 — the hero: cover, title, author, and the two actions.
-        //
-        // Everything a reader came for is above the fold and in one block, rather than a cover followed
-        // by a stack of one-line facts. The block that used to be here read as a form because every
-        // field had the same weight; hierarchy is what makes it a book instead of a record.
-        BookHeader(
-            book = book,
-            playback = playback,
-            onPlay = actions.onPlay,
-            onTogglePlayPause = actions.onTogglePlayPause,
-            actions = menuActions,
-            download = download,
-        )
-
-        // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
-        // kind belong on the same line, and a reader scans a strip faster than they read a list.
-        FactStrip(book = book)
-
-        ProgressSummary(book = book, modifier = Modifier.padding(horizontal = 16.dp))
-
-        book.description?.let { description ->
-            Section(titleRes = R.string.book_section_about) {
-                Synopsis(text = description.stripHtml())
-            }
-        }
-
-        BookLabels(book = book)
-
-        PublicationFacts(book = book)
-
-        // PRODUCT_SPEC LIB-004 — "on the server, as of when". Demoted from a chip pair to a footnote,
-        // because that is what it is: a caveat about how fresh this screen's contents are, not a fact
-        // about the book. It stays because a cached row must never imply "on the server right now".
-        Text(
-            text = stringResource(R.string.book_last_checked, book.lastFetchedAt.asDate()),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-
+        ActionPane(book, playback, actions, menuActions, download)
+        AboutPane(book)
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
+
+/** What a reader does with this book: the hero, the facts strip, and where they are in it. */
+@Composable
+private fun ActionPane(
+    book: Book,
+    playback: PlaybackUiState,
+    actions: BookActions,
+    menuActions: BookMenuActions,
+    download: DownloadControl,
+) {
+    // PRODUCT_SPEC LIB-004 — the hero: cover, title, author, and the two actions.
+    //
+    // Everything a reader came for is above the fold and in one block, rather than a cover followed
+    // by a stack of one-line facts. The block that used to be here read as a form because every
+    // field had the same weight; hierarchy is what makes it a book instead of a record.
+    BookHeader(
+        book = book,
+        playback = playback,
+        onPlay = actions.onPlay,
+        onTogglePlayPause = actions.onTogglePlayPause,
+        actions = menuActions,
+        download = download,
+    )
+
+    // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
+    // kind belong on the same line, and a reader scans a strip faster than they read a list.
+    FactStrip(book = book)
+
+    ProgressSummary(book = book, modifier = Modifier.padding(horizontal = 16.dp))
+}
+
+/** What this book *is*: the blurb, the labels, and the publication facts. */
+@Composable
+private fun AboutPane(book: Book) {
+    book.description?.let { description ->
+        Section(titleRes = R.string.book_section_about) {
+            Synopsis(text = description.stripHtml())
+        }
+    }
+
+    BookLabels(book = book)
+
+    PublicationFacts(book = book)
+
+    // PRODUCT_SPEC LIB-004 — "on the server, as of when". Demoted from a chip pair to a footnote,
+    // because that is what it is: a caveat about how fresh this screen's contents are, not a fact
+    // about the book. It stays because a cached row must never imply "on the server right now".
+    Text(
+        text = stringResource(R.string.book_last_checked, book.lastFetchedAt.asDate()),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+}
+
+/**
+ * How wide the action pane is on a two-pane layout.
+ *
+ * Fixed rather than a weight, because its contents have a natural size — a cover, a title, two buttons —
+ * and a weight would let it grow with the window until the cover was the size of a paperback. The blurb is
+ * the part that benefits from extra width, so the extra width goes there.
+ */
+private val ACTION_PANE_WIDTH = 360.dp
 
 /**
  * PRODUCT_SPEC LIB-004 — the synopsis, three lines at a time.
@@ -806,9 +877,37 @@ private fun BookLabels(book: Book, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        labels.forEach { label ->
-            SuggestionChip(onClick = {}, enabled = false, label = { Text(text = label) })
-        }
+        labels.forEach { label -> LabelChip(text = label) }
+    }
+}
+
+/**
+ * A genre or a tag: chip-shaped, and **not a control**.
+ *
+ * This used to be `SuggestionChip(onClick = {}, enabled = false)`, which looked right and read wrong. A
+ * disabled Material chip still publishes an `OnClick` action, so a screen reader announces every genre on
+ * the screen as a button — and pressing one does nothing, because the `onClick` was empty. Six genres meant
+ * six dead buttons between the synopsis and the publication facts.
+ *
+ * `SettingsAccessibilityScreenTest`'s sibling on this screen is what found it: the chips measured 36dp
+ * against Material's own 40dp minimum, which is only a defect *if* they are controls. They are not, so the
+ * fix is to stop claiming they are rather than to make them bigger.
+ *
+ * A `Surface` because Material 3 has no read-only chip. Nothing here takes a click, so nothing appears in
+ * the semantics tree except the text — which is exactly what a genre is.
+ */
+@Composable
+private fun LabelChip(text: String) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
     }
 }
 

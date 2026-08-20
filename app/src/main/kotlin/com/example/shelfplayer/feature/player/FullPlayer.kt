@@ -9,9 +9,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -61,6 +63,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.designsystem.layout.hasRoomForTwoPanes
+import com.example.shelfplayer.core.designsystem.layout.windowWidth
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.domain.playback.ChapterProgress
@@ -133,41 +137,93 @@ fun FullPlayer(
             // exact combination this replaces.
             if (state.hasFailed) PlaybackFailedNotice(onRetry = actions.onRetry)
 
+            // PRODUCT_SPEC 4 / §129 — the cover moves beside the controls when there is width for it.
+            //
+            // Stacked vertically in a landscape tablet window the artwork either dominates the screen or
+            // squeezes the transport against the bottom edge; on a phone in landscape it does both. Side
+            // by side, the cover takes the height it has and the controls keep theirs.
+            if (windowWidth().hasRoomForTwoPanes) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                ) {
+                    PlayerArtwork(
+                        state = state,
+                        modifier = Modifier
+                            .weight(ARTWORK_WEIGHT)
+                            .align(Alignment.CenterVertically),
+                    )
+                    Column(modifier = Modifier.weight(CONTROLS_WEIGHT).fillMaxHeight()) {
+                        PlayerControls(state = state, timer = timer, actions = actions, skips = skips)
+                    }
+                }
+                return@Column
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
             PlayerArtwork(state = state, modifier = Modifier.fillMaxWidth())
-
-            Spacer(modifier = Modifier.height(28.dp))
-            NowPlaying(state = state)
-
-            Spacer(modifier = Modifier.height(4.dp))
-            // PRODUCT_SPEC PLAY-003 — which chapter, under the title it belongs to.
-            //
-            // Rendered as an empty line when a book has no chapters rather than omitted, so the transport
-            // does not shift up and down between books.
-            Text(
-                text = state.currentChapter?.title.orEmpty(),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                minLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(modifier = Modifier.weight(WEIGHT_FILL))
-            SeekBar(state = state, onSeekTo = actions.onSeekTo)
-
-            Spacer(modifier = Modifier.height(4.dp))
-            TransportRow(state = state, skips = skips, onTogglePlayPause = actions.onTogglePlayPause)
-
-            Spacer(modifier = Modifier.height(4.dp))
-            SecondaryRow(state = state, timer = timer, actions = actions)
-
-            Spacer(modifier = Modifier.height(8.dp))
+            PlayerControls(state = state, timer = timer, actions = actions, skips = skips)
         }
     }
 }
+
+/**
+ * Everything below the artwork: the title block, the seek bar and the two rows of controls.
+ *
+ * Extracted so the one-column and two-pane arrangements share it rather than each holding a copy. A
+ * duplicated control stack is how a button ends up on a phone and not on a tablet — and this file already
+ * has a device run's worth of evidence that a control nobody can reach reads as a control nobody built.
+ *
+ * `ColumnScope` because the spacer between the title and the seek bar is a `weight`: it is what pushes
+ * the transport to the bottom of whatever height the arrangement gave it.
+ */
+@Composable
+private fun ColumnScope.PlayerControls(
+    state: PlaybackUiState,
+    timer: SleepTimerState,
+    actions: PlayerActions,
+    skips: SkipControls,
+) {
+    Spacer(modifier = Modifier.height(28.dp))
+    NowPlaying(state = state)
+
+    Spacer(modifier = Modifier.height(4.dp))
+    // PRODUCT_SPEC PLAY-003 — which chapter, under the title it belongs to.
+    //
+    // Rendered as an empty line when a book has no chapters rather than omitted, so the transport
+    // does not shift up and down between books.
+    Text(
+        text = state.currentChapter?.title.orEmpty(),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        maxLines = 1,
+        minLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    Spacer(modifier = Modifier.weight(WEIGHT_FILL))
+    SeekBar(state = state, onSeekTo = actions.onSeekTo)
+
+    Spacer(modifier = Modifier.height(4.dp))
+    TransportRow(state = state, skips = skips, onTogglePlayPause = actions.onTogglePlayPause)
+
+    Spacer(modifier = Modifier.height(4.dp))
+    SecondaryRow(state = state, timer = timer, actions = actions)
+
+    Spacer(modifier = Modifier.height(8.dp))
+}
+
+/**
+ * How the two panes divide a wide window.
+ *
+ * Weights rather than a fixed artwork width, because a cover is square and its height is what constrains
+ * it: given 45% of a landscape window it lands at roughly the height available, which a fixed dp value
+ * would only match on one device.
+ */
+private const val ARTWORK_WEIGHT = 0.45f
+private const val CONTROLS_WEIGHT = 0.55f
 
 /**
  * The wash behind the player.

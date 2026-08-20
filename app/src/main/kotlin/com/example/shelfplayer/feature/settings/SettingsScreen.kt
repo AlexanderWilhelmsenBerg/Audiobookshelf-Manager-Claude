@@ -2,7 +2,6 @@ package com.example.shelfplayer.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.designsystem.layout.centredListPadding
+import com.example.shelfplayer.core.designsystem.layout.windowWidth
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.library.Library
@@ -180,7 +181,11 @@ fun SettingsScreen(
             }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                // PRODUCT_SPEC 4 / §51 — every row here is a label and a control, and on a tablet the
+                // two end up a hand-span apart with nothing between them. The column keeps a readable
+                // measure and the window keeps the rest; see `centredListPadding` for why this is padding
+                // rather than a width cap on each row.
+                contentPadding = centredListPadding(width = windowWidth(), bottom = 24.dp),
             ) {
                 when (selected) {
                     SettingsTab.Server -> serverTab(uiState, serverTab)
