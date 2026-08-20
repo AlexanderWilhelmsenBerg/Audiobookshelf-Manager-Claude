@@ -139,6 +139,20 @@ class DefaultDownloadRepository @Inject constructor(
         touch(keyOf(serverId, itemId), state = DownloadState.Failed, failureSummary = summary)
     }
 
+    override suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = io {
+        // `clearFailure` because paused and failed are answers to different questions, and the older one
+        // must not be left showing under the newer.
+        touch(keyOf(serverId, itemId), state = DownloadState.Paused, clearFailure = true)
+    }
+
+    override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = io {
+        val key = keyOf(serverId, itemId)
+        val current = downloadDao.find(key)?.book
+        // Only a paused book is resumed. A completed one that somebody double-tapped, or one already
+        // running, keeps the state it earned — see `markQueued`'s contract.
+        if (current?.state == DownloadState.Paused.name) touch(key, state = DownloadState.Queued)
+    }
+
     override suspend fun setPinned(
         serverId: ServerId,
         itemId: LibraryItemId,

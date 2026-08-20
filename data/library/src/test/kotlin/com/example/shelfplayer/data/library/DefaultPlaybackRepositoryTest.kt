@@ -499,6 +499,10 @@ class DefaultPlaybackRepositoryTest {
         override suspend fun markFailed(serverId: ServerId, itemId: LibraryItemId, summary: String): AppResult<Unit> =
             unsupported()
 
+        override suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = unsupported()
+
+        override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = unsupported()
+
         override suspend fun setPinned(
             serverId: ServerId,
             itemId: LibraryItemId,

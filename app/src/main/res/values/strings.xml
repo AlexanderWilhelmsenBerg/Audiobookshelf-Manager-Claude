@@ -357,6 +357,10 @@
     <!-- PRODUCT_SPEC 5.2 — a book the signed-in profile may not see is listed, and not named. -->
     <string name="downloads_hidden_title">A book in a library this profile cannot see</string>
     <string name="downloads_incomplete">incomplete</string>
+    <!-- PRODUCT_SPEC DL-001 — stopped by the listener. Deliberately not worded as a failure. -->
+    <string name="downloads_paused">Paused</string>
+    <string name="downloads_pause">Pause this download</string>
+    <string name="downloads_resume">Resume this download</string>
     <string name="downloads_pin">Keep this one, never delete it automatically</string>
     <string name="downloads_unpin">Stop keeping this one</string>
     <string name="downloads_remove">Remove this download</string>

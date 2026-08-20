@@ -159,6 +159,20 @@ internal class FakeDownloadRepository(stored: List<OfflineBook> = emptyList()) :
     override suspend fun markFailed(serverId: ServerId, itemId: LibraryItemId, summary: String): AppResult<Unit> =
         AppResult.Success(Unit)
 
+    /** The state transitions the pause tests assert on, applied to the in-memory manifest. */
+    override suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> {
+        books.value = books.value.map { if (it.itemId == itemId) it.copy(state = DownloadState.Paused) else it }
+        return AppResult.Success(Unit)
+    }
+
+    /** Paused to queued only, exactly as the real one: see `DownloadRepository.markQueued`. */
+    override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> {
+        books.value = books.value.map {
+            if (it.itemId == itemId && it.state == DownloadState.Paused) it.copy(state = DownloadState.Queued) else it
+        }
+        return AppResult.Success(Unit)
+    }
+
     override suspend fun setPinned(
         serverId: ServerId,
         itemId: LibraryItemId,

@@ -16,6 +16,8 @@ import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.DownloadBookUseCase
+import com.example.shelfplayer.domain.usecase.PauseDownloadUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,6 +52,10 @@ class DownloadsViewModel @Inject constructor(
     private val verification: OfflineVerification,
     private val profiles: ProfileRepository,
     private val locations: DownloadLocations,
+    /** PRODUCT_SPEC DL-001 — stop a transfer without discarding what it fetched. */
+    private val pauseDownload: PauseDownloadUseCase,
+    /** The resume half. It re-checks the grant and the free space, which a bare re-enqueue would not. */
+    private val downloadBook: DownloadBookUseCase,
     library: LibraryRepository,
 ) : ViewModel() {
 
@@ -156,6 +162,21 @@ class DownloadsViewModel @Inject constructor(
     }
 
     /** PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */
+    /**
+     * PRODUCT_SPEC DL-001 — pause a running download, or resume a paused one.
+     *
+     * Resuming goes through [DownloadBookUseCase] rather than straight to the scheduler, and deliberately:
+     * that use case re-checks the download grant and the free space before enqueueing anything. A download
+     * paused a week ago is being started afresh as far as those two questions are concerned — the account
+     * may have lost the permission, and the disk that had room then may not now.
+     */
+    fun onPauseToggled(bookId: LibraryItemId, shouldPause: Boolean) {
+        viewModelScope.launch {
+            val result = if (shouldPause) pauseDownload(bookId) else downloadBook(bookId)
+            if (result is AppResult.Failure) _message.value = result.error.summary
+        }
+    }
+
     fun onPinnedChanged(bookId: LibraryItemId, serverId: ServerId, isPinned: Boolean) {
         viewModelScope.launch {
             val profileId = profiles.activeProfileId() ?: return@launch
@@ -180,6 +201,7 @@ class DownloadsViewModel @Inject constructor(
         bytes = downloadedBytes,
         isComplete = isComplete,
         isFailed = state == DownloadState.Failed,
+        isPaused = state == DownloadState.Paused,
         isPinned = isPinned,
         isSharedWithAnotherProfile = requestedBy.size > 1,
     )
@@ -218,6 +240,8 @@ data class DownloadRow(
     val bytes: Long,
     val isComplete: Boolean,
     val isFailed: Boolean,
+    /** PRODUCT_SPEC DL-001 — stopped by the listener, not by a failure. The row must not conflate them. */
+    val isPaused: Boolean = false,
     val isPinned: Boolean,
     val isSharedWithAnotherProfile: Boolean,
 )

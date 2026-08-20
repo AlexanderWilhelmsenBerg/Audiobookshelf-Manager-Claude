@@ -64,7 +64,7 @@ the server's behaviour. Four phases of "known defect" followed from one unchecke
 | --- | --- | --- |
 | DL-003 / §3.3 | **Downloads into a user-chosen folder (SAF).** A volume can be chosen — internal or an SD card — but not an arbitrary directory. | Deferred |
 | §12 | **The twelve named job states.** The manifest models four. | Open, by design |
-| DL-001 | **Pause and resume a running download from the UI.** Cancel and retry exist; pause does not. | Open |
+| DL-001 | **Pause and resume a running download from the UI.** | **Closed 2026-08-20** |
 
 **SAF** is deferred by PRODUCT_SPEC 3.3 itself, and ADR-0020 records why the volume half shipped without
 it: `getExternalFilesDirs` gives real `File` paths that the whole pipeline — `.part`, verify, atomic rename,
@@ -75,8 +75,13 @@ sweep — works on unchanged, while a `DocumentFile` tree has no atomic rename, 
 manifest stores the four a *file on disk* can be in. Modelling all twelve in the manifest would create two
 places that can disagree about whether a file exists, and WorkManager already owns the other eight.
 
-**Pause** is a genuine omission. A download can be cancelled and retried, which resumes from the `.part`, so
-the capability exists — there is no button that says *pause*.
+**Pause** is built. The mechanism was always there — cancelling leaves the `.part` files and enqueueing
+again resumes from them — and what was missing turned out not to be plumbing but a *state*. A cancelled job
+leaves the manifest reading `Failed`, so a listener who stopped a download deliberately came back to
+"Download failed" and an offer to retry: the app apologising for having obeyed. `DownloadState.Paused` is
+the difference, it is stored so it survives the night, and nothing automatic lifts it — smart download
+passes `isAutomatic = true` and steps over a paused book, so a download stopped on a metered train does not
+restart itself when Wi-Fi comes back.
 
 ---
 

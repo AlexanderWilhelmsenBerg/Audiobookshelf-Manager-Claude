@@ -275,6 +275,9 @@
     <string name="downloads_verify">Kontroller nedlastede filer</string>
     <string name="downloads_hidden_title">En bok i et bibliotek denne profilen ikke ser</string>
     <string name="downloads_incomplete">ufullstendig</string>
+    <string name="downloads_paused">Satt på pause</string>
+    <string name="downloads_pause">Sett nedlastingen på pause</string>
+    <string name="downloads_resume">Fortsett nedlastingen</string>
     <string name="downloads_pin">Behold denne, aldri slett den automatisk</string>
     <string name="downloads_unpin">Slutt å beholde denne</string>
     <string name="downloads_remove">Fjern denne nedlastingen</string>

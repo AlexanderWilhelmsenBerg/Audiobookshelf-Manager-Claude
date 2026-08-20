@@ -124,6 +124,28 @@ enum class DownloadState {
 
     /** Given up on for now, with a reason recorded elsewhere. A retry starts from what is on disk. */
     Failed,
+
+    /**
+     * PRODUCT_SPEC DL-001 — stopped **because the listener asked**, and waiting to be told to carry on.
+     *
+     * ### Why this is not `Failed`
+     *
+     * The two look identical on disk — work cancelled, `.part` files kept, a later enqueue resuming from
+     * them. They are opposite states to a *reader*. `Failed` says the app tried and could not, carries a
+     * reason, and invites a retry; this says nothing went wrong and nothing will happen until you say so.
+     * Showing "Download failed" to somebody who pressed pause is the app blaming itself for obeying.
+     *
+     * The distinction also has to survive a restart, which is why it is a stored state rather than a flag
+     * on a running job: WorkManager's cancellation is not durable in a way the storage screen can read
+     * back the next morning.
+     *
+     * ### Why the automatic paths must not touch it
+     *
+     * Nothing resumes a paused download on its own — not the retry sweep, not smart download, not a
+     * network change. A download the listener stopped on a metered train must not restart itself because
+     * Wi-Fi came back, and `Paused` is what the schedulers test to leave it alone.
+     */
+    Paused,
 }
 
 /**
