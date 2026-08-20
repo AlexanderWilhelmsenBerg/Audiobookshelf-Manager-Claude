@@ -154,15 +154,49 @@ fun FullPlayer(
                             .align(Alignment.CenterVertically),
                     )
                     Column(modifier = Modifier.weight(CONTROLS_WEIGHT).fillMaxHeight()) {
-                        PlayerControls(state = state, timer = timer, actions = actions, skips = skips)
+                        // `pushesToBottom`: this column owns a fixed height of its own and the transport
+                        // belongs at the foot of it. The one-column arrangement is the opposite case —
+                        // there the *artwork* absorbs the slack.
+                        PlayerControls(
+                            state = state,
+                            timer = timer,
+                            actions = actions,
+                            skips = skips,
+                            pushesToBottom = true,
+                        )
                     }
                 }
                 return@Column
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            PlayerArtwork(state = state, modifier = Modifier.fillMaxWidth())
-            PlayerControls(state = state, timer = timer, actions = actions, skips = skips)
+            // PRODUCT_SPEC 2.10 — **the artwork yields, the controls do not.**
+            //
+            // This was `fillMaxWidth()`, which on a square cover means "take the column's whole width as
+            // your height" — a fixed claim on vertical space that ignores what is left for anything else.
+            // At a doubled font scale the title and chapter lines grow, the total exceeds the screen, and
+            // the children measured last are the ones that lose: `PlayerAccessibilityScreenTest` found the
+            // secondary row of controls laid out **four density-independent pixels tall**. Not clipped, not
+            // scrolled off — present, announced, and impossible to hit.
+            //
+            // Weighted, the artwork is measured from what remains *after* every control has taken its
+            // intrinsic height, so large text shrinks the cover instead of crushing the transport.
+            // `fill = false` keeps it from stretching past square when there is room to spare, and
+            // `aspectRatio` falls back to matching the height when the width it would need does not fit.
+            PlayerArtwork(
+                state = state,
+                modifier = Modifier
+                    .weight(WEIGHT_FILL, fill = false)
+                    .fillMaxWidth()
+                    .align(Alignment.CenterHorizontally),
+            )
+            PlayerControls(
+                state = state,
+                timer = timer,
+                actions = actions,
+                skips = skips,
+                pushesToBottom = false,
+            )
         }
     }
 }
@@ -183,6 +217,7 @@ private fun ColumnScope.PlayerControls(
     timer: SleepTimerState,
     actions: PlayerActions,
     skips: SkipControls,
+    pushesToBottom: Boolean,
 ) {
     Spacer(modifier = Modifier.height(28.dp))
     NowPlaying(state = state)
@@ -203,7 +238,10 @@ private fun ColumnScope.PlayerControls(
         modifier = Modifier.fillMaxWidth(),
     )
 
-    Spacer(modifier = Modifier.weight(WEIGHT_FILL))
+    // Only where this column owns the slack. In the one-column arrangement the artwork above is the
+    // weighted child, and a second weighted sibling would split the leftover with it — halving the cover
+    // and putting the gap back between the title and the seek bar.
+    if (pushesToBottom) Spacer(modifier = Modifier.weight(WEIGHT_FILL))
     SeekBar(state = state, onSeekTo = actions.onSeekTo)
 
     Spacer(modifier = Modifier.height(4.dp))
