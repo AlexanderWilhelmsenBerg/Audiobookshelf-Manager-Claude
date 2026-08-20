@@ -854,8 +854,22 @@ except Exception:
     print("[]"); raise SystemExit
 first = results[0] if isinstance(results, list) and results else {}
 print(json.dumps(sorted(first.keys())))' "$SEARCH_RAW")"
-  printf '{\n  "note": "GET /api/search/books. Keys only: the results come from a third party and change.",\n  "status": %s,\n  "firstResultKeys": %s\n}\n' \
-    "$SEARCH_STATUS" "$SEARCH_KEYS" >"$OUT_DIR/search-books-shape.json"
+  # An empty key set is **not an answer**, and writing it as one is what made this job permanently red.
+  #
+  # Google Books answers `429` to GitHub Actions' address ranges on every run, so from CI the provider
+  # returns nothing and the "captured shape" is an empty list. The committed fixture came from a real
+  # deployment and names an Audible result's eighteen keys, so the two disagreed every time — and a check
+  # that always fails is a check nobody reads.
+  #
+  # So a run that learned nothing writes nothing. The compare step treats a fixture the run could not
+  # capture as skipped rather than as drift, which keeps the committed evidence and still fails on a real
+  # change. See docs/risks.md R-15.
+  if [ "$SEARCH_KEYS" = "[]" ]; then
+    log "the metadata provider returned no candidates (status $SEARCH_STATUS) — not overwriting the committed shape"
+  else
+    printf '{\n  "note": "GET /api/search/books?provider=audible. Keys only: the results come from a third party and change. Captured against audiobooks.dev because Google Books answers 429 to CI addresses, so the CI run records an empty list for the default provider.",\n  "status": %s,\n  "firstResultKeys": %s\n}\n' \
+      "$SEARCH_STATUS" "$SEARCH_KEYS" >"$OUT_DIR/search-books-shape.json"
+  fi
 fi
 
 if [ -n "$ITEM_ID" ]; then
