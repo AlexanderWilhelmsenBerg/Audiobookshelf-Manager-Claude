@@ -3,17 +3,24 @@ package com.example.shelfplayer.core.network.gateway
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.NewServerUser
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.ServerUser
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
+import com.example.shelfplayer.core.model.library.BookMetadataEdit
+import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
+import com.example.shelfplayer.core.model.library.EmbedRequest
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
@@ -40,10 +47,10 @@ import kotlin.time.Duration
  * [downloads] joined on 2026-08-14, when the capture of `/api/items/{id}/file/{fileId}` answered the
  * questions the downloader needed — ranges, validators, and what an unauthenticated request gets.
  *
- * The remaining sub-APIs listed in PRODUCT_SPEC 10.4 — `ProgressApi`, `ManagementApi`, `UsersApi`,
- * `EventApi` — are added in the phase that implements them, together with the captured fixtures and
- * MockWebServer contract tests that prove their shape. Declaring them now as empty interfaces would look
- * like coverage the repository does not have.
+ * [management] joined on 2026-08-15, once ten management fixtures existed. The remaining sub-APIs listed
+ * in PRODUCT_SPEC 10.4 — `ProgressApi`, `UsersApi`, `EventApi` — are added in the phase that implements
+ * them, together with the captured fixtures and MockWebServer contract tests that prove their shape.
+ * Declaring them now as empty interfaces would look like coverage the repository does not have.
  */
 interface AudiobookshelfGateway {
     val auth: AuthApi
@@ -65,6 +72,14 @@ interface AudiobookshelfGateway {
      * an unauthenticated request is refused.
      */
     val downloads: DownloadApi
+
+    /**
+     * PRODUCT_SPEC EPIC MGR — the writes that change somebody else's library, added in Phase 5.
+     *
+     * The last sub-API to arrive, and deliberately: every other one either reads, or writes something the
+     * user can put back. This one can lose a household's metadata.
+     */
+    val management: ManagementApi
 }
 
 /**
@@ -267,7 +282,18 @@ interface AuthApi {
  * implicitly is how a handshake gets attributed to the wrong connection.
  */
 interface CapabilityResolver {
-    suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities>
+    /**
+     * @param accessToken the credential to run the *authenticated* probes with, or `null` when the
+     *   handshake is running before a sign-in. A handshake without a token is not an error and not a
+     *   degraded mode: `GET /status` needs no credential, so the version and the authentication modes
+     *   still arrive. The probes that do need one simply do not run, and what they would have confirmed
+     *   stays unconfirmed — which SYNC-001 already defines as unsupported.
+     */
+    suspend fun resolve(
+        serverId: ServerId,
+        serverUrl: String,
+        accessToken: AuthToken? = null,
+    ): AppResult<ServerCapabilities>
 }
 
 /**
@@ -331,6 +357,19 @@ interface LibraryApi {
      * 22.4). Those axes stay local-only until a capture covers them.
      */
     suspend fun searchBooks(profileId: ProfileId, libraryId: LibraryId, query: String): AppResult<List<BookSnapshot>>
+
+    /**
+     * PRODUCT_SPEC MGR-001 / MGR-004 — one item, expanded, after something changed it.
+     *
+     * The same request the catalogue sync makes per item, addressed at a single book. It exists because
+     * every management operation ends with "and now refresh the affected local entity", and the
+     * alternative is a whole library sync to observe one edit.
+     *
+     * The library is not a parameter: an item knows which library it belongs to, and a caller that had to
+     * supply one could supply the wrong one. The response's own `libraryId` is used, which is also what
+     * makes this safe to call after an edit that moved nothing.
+     */
+    suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot>
 }
 
 /**
@@ -371,4 +410,163 @@ interface CachedLibrary {
             override fun isInProgress(id: LibraryItemId): Boolean = false
         }
     }
+}
+
+/**
+ * PRODUCT_SPEC EPIC MGR — the operations that change a server's library.
+ *
+ * ### Why the whole updated book comes back
+ *
+ * MGR-001 requires that "on success, Room updates immediately and then refreshes from server", and the
+ * `PATCH` response *is* the refresh: it carries the entire item as the server now holds it. A follow-up
+ * `GET` would ask for data already in hand, and would open a window in which the two could disagree — and
+ * on this endpoint that window is real, because a save triggers a metadata-file write and a socket
+ * broadcast on the server.
+ *
+ * ### Why permission is not checked here
+ *
+ * It is checked twice, and neither time is here (PRODUCT_SPEC principle 4). The domain layer refuses the
+ * action before it is offered, and the server refuses it again with a `403`. This layer's job is to make
+ * the request faithfully and report what came back — a third check here would be a third place for the
+ * three to disagree.
+ */
+interface ManagementApi {
+    /**
+     * PRODUCT_SPEC MGR-001 — save the changed metadata fields, and return the item the server now holds.
+     *
+     * @param changed which fields to send. **Not a hint.** `authors` and `series` are replacements on this
+     *   endpoint: sending either array removes every entry it does not contain, so a payload built from
+     *   anything wider than the user's actual edits would delete data. An empty set is a no-op rather than
+     *   a request, because a `PATCH` with an empty body still bumps the item's `updatedAt`.
+     */
+    suspend fun updateMetadata(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        edit: BookMetadataEdit,
+        changed: Set<BookMetadataField>,
+    ): AppResult<MetadataSaveOutcome>
+
+    /**
+     * PRODUCT_SPEC MGR-002 — replace the cover, and return the item the server now holds.
+     *
+     * The bytes are passed rather than a URI, so that whoever reads the picker owns the decoding, the
+     * validation and the memory — and this layer owns only the request. [CoverUpload.mimeType] is what the
+     * filename is synthesised from, because the server reads the *extension* and not the content type.
+     */
+    suspend fun uploadCover(profileId: ProfileId, bookId: LibraryItemId, image: CoverUpload): AppResult<BookSnapshot>
+
+    /** PRODUCT_SPEC MGR-002 — remove the cover. The item keeps everything else. */
+    suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot>
+
+    /**
+     * PRODUCT_SPEC MGR-003 — candidates from [provider], changing nothing.
+     *
+     * A read. Nothing on the server moves, which is what makes a preview possible at all — see
+     * `ManagementService.searchBooks` for why the quick-match route cannot be used here.
+     */
+    suspend fun findCandidates(
+        profileId: ProfileId,
+        provider: String,
+        title: String,
+        author: String,
+    ): AppResult<List<MatchCandidate>>
+
+    /**
+     * PRODUCT_SPEC MGR-003 — the metadata sources this deployment offers, including custom ones.
+     *
+     * The same read the capability probe makes, exposed for the picker. A deployment that cannot reach one
+     * provider can usually reach another, and only the server knows which it has been configured with.
+     */
+    suspend fun metadataProviders(profileId: ProfileId): AppResult<List<MetadataProvider>>
+
+    /**
+     * PRODUCT_SPEC MGR-004 — rescan one item, and refresh it.
+     *
+     * Returns the scan's own conclusion alongside the refreshed book, because the two answer different
+     * questions: the book is what to display, and the conclusion is what to tell the user happened.
+     */
+    suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome>
+
+    /**
+     * PRODUCT_SPEC MGR-007 — ask the server to write this item's metadata into its own audio files.
+     *
+     * Returns what the *request* achieved, never what the task achieved. The outcome arrives separately, on
+     * the websocket, as a `RealtimeEvent.TaskChanged`.
+     */
+    suspend fun embedMetadata(profileId: ProfileId, bookId: LibraryItemId): AppResult<EmbedRequest>
+
+    /**
+     * PRODUCT_SPEC MGR-005 — remove the item from the server's **database**.
+     *
+     * Media files are untouched. This app never sends the flag that would touch them (ADR-0021), which is
+     * what makes the confirmation's promise safe.
+     */
+    suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC USER-001 — every account on the server.
+     *
+     * Never cached. USER-001 says the list is "not cached for offline viewing by default", and this
+     * signature is why that is easy to honour: there is no observe, no Room table and nowhere to put one.
+     */
+    suspend fun listUsers(profileId: ProfileId): AppResult<List<ServerUser>>
+
+    /** PRODUCT_SPEC USER-002 — create an account, active unless told otherwise. */
+    suspend fun createUser(profileId: ProfileId, user: NewServerUser): AppResult<ServerUser>
+
+    /**
+     * PRODUCT_SPEC USER-003 — enable or disable an account.
+     *
+     * Disabling rather than deleting, which the requirement prefers where the server supports it — and this
+     * one does. Deleting a user is deliberately absent: USER-003 puts it in later scope "unless thoroughly
+     * contract-tested", and it has not been.
+     */
+    suspend fun setUserActive(profileId: ProfileId, userId: String, isActive: Boolean): AppResult<Unit>
+}
+
+/**
+ * PRODUCT_SPEC MGR-004 — what a scan concluded, and the item as it stands afterwards.
+ *
+ * @property result the server's own word: `NOTHING`, `ADDED`, `UPDATED`, `REMOVED` or `UPTODATE`. Kept as
+ *   a string rather than an enum because a word this build has never seen must still reach a log, and a
+ *   `when` that had to be exhaustive would be a guess about a future server (PRODUCT_SPEC 22.4).
+ * @property book `null` when the scan concluded the item is gone, which is the one outcome that leaves
+ *   nothing to refresh.
+ */
+data class ItemScanOutcome(val result: String, val book: BookSnapshot?)
+
+/**
+ * PRODUCT_SPEC MGR-001 — the save happened; whether the device managed to read the result back is separate.
+ *
+ * ### Why this is not just `AppResult<BookSnapshot>`
+ *
+ * The `PATCH` and the expanded re-read are two requests, and the second can fail after the first succeeded.
+ * Collapsing that into a failure is the most damaging thing this layer could get wrong: the user's changes
+ * are on the server, and the app would tell them the save failed and hand back an "unsaved draft" of edits
+ * that are already live. They would then re-save, or worse, give up and retype.
+ *
+ * So a failed refresh is reported as a **success with a stale cache**. The draft is discarded either way —
+ * the words are safely on the server — and the screen says the local copy will catch up.
+ *
+ * @property book the item as the server now holds it, or `null` when only the re-read failed.
+ */
+data class MetadataSaveOutcome(val book: BookSnapshot?)
+
+/**
+ * PRODUCT_SPEC MGR-002 — an image the user chose, already validated, ready to send.
+ *
+ * @property mimeType one of the four the server accepts. Validation happens before this type exists, so a
+ *   value here is a promise that the decode succeeded and the dimensions and size were checked.
+ */
+data class CoverUpload(val bytes: ByteArray, val mimeType: String) {
+    /**
+     * `equals` and `hashCode` are by identity, deliberately.
+     *
+     * A data class over a `ByteArray` gets reference equality for free and structural equality never, which
+     * surprises readers both ways. Comparing two multi-megabyte images is not something any caller wants;
+     * saying so is better than leaving the generated version to imply otherwise.
+     */
+    override fun equals(other: Any?): Boolean = this === other
+
+    override fun hashCode(): Int = System.identityHashCode(this)
 }

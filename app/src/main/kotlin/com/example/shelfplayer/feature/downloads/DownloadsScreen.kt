@@ -13,6 +13,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,6 +48,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
+import com.example.shelfplayer.core.designsystem.layout.centredListPadding
+import com.example.shelfplayer.core.designsystem.layout.windowWidth
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import java.util.Locale
 
@@ -68,6 +72,7 @@ fun DownloadsRoute(
         onMessageShown = viewModel::onMessageShown,
         onRemove = viewModel::onRemove,
         onPinnedChanged = viewModel::onPinnedChanged,
+        onPauseToggled = viewModel::onPauseToggled,
         onVerify = viewModel::onVerify,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -101,6 +106,8 @@ fun DownloadsScreen(
         com.example.shelfplayer.core.model.ServerId,
         Boolean,
     ) -> Unit,
+    /** PRODUCT_SPEC DL-001 — pause a running download, or resume a paused one. */
+    onPauseToggled: (com.example.shelfplayer.core.model.LibraryItemId, Boolean) -> Unit,
     onVerify: () -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
@@ -144,7 +151,12 @@ fun DownloadsScreen(
             return@Scaffold
         }
 
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            // PRODUCT_SPEC 4 / §51 — a queue is a list of rows, and a row stretched across a tablet puts
+            // its title and its progress a hand-span apart. The column keeps a readable measure.
+            contentPadding = centredListPadding(width = windowWidth()),
+        ) {
             item {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
@@ -179,6 +191,7 @@ fun DownloadsScreen(
                 DownloadRowItem(
                     row = row,
                     onPinnedChanged = { pinned -> onPinnedChanged(row.bookId, row.serverId, pinned) },
+                    onPauseToggled = { paused -> onPauseToggled(row.bookId, paused) },
                     onRemove = { confirming = row.bookId.value },
                 )
                 if (confirming == row.bookId.value) {
@@ -269,7 +282,12 @@ private fun StorageVolumePicker(volumes: List<StorageVolumeOption>, selected: St
 }
 
 @Composable
-private fun DownloadRowItem(row: DownloadRow, onPinnedChanged: (Boolean) -> Unit, onRemove: () -> Unit) {
+private fun DownloadRowItem(
+    row: DownloadRow,
+    onPinnedChanged: (Boolean) -> Unit,
+    onPauseToggled: (Boolean) -> Unit,
+    onRemove: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -295,15 +313,35 @@ private fun DownloadRowItem(row: DownloadRow, onPinnedChanged: (Boolean) -> Unit
                 text = listOfNotNull(
                     formatBytes(row.bytes),
                     pluralStringResource(R.plurals.downloads_files, row.fileCount, row.fileCount),
-                    stringResource(R.string.downloads_incomplete).takeIf { !row.isComplete },
+                    // PRODUCT_SPEC DL-001 — "paused" and "incomplete" are the same fact stated at two
+                    // depths, so the row says the more specific one and not both.
+                    when {
+                        row.isPaused -> stringResource(R.string.downloads_paused)
+                        !row.isComplete -> stringResource(R.string.downloads_incomplete)
+                        else -> null
+                    },
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
+                // A paused download is not an error and is not coloured like one. That distinction is the
+                // entire reason `DownloadState.Paused` exists.
                 color = if (row.isFailed) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
+        }
+        // PRODUCT_SPEC DL-001 — only for a book still being fetched. A completed download has nothing to
+        // pause, and a control that does nothing is worse than no control.
+        if (!row.isComplete) {
+            IconButton(onClick = { onPauseToggled(!row.isPaused) }) {
+                Icon(
+                    imageVector = if (row.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                    contentDescription = stringResource(
+                        if (row.isPaused) R.string.downloads_resume else R.string.downloads_pause,
+                    ),
+                )
+            }
         }
         IconToggleButton(checked = row.isPinned, onCheckedChange = onPinnedChanged) {
             Icon(

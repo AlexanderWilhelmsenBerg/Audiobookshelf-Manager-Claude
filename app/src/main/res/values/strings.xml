@@ -357,6 +357,10 @@
     <!-- PRODUCT_SPEC 5.2 — a book the signed-in profile may not see is listed, and not named. -->
     <string name="downloads_hidden_title">A book in a library this profile cannot see</string>
     <string name="downloads_incomplete">incomplete</string>
+    <!-- PRODUCT_SPEC DL-001 — stopped by the listener. Deliberately not worded as a failure. -->
+    <string name="downloads_paused">Paused</string>
+    <string name="downloads_pause">Pause this download</string>
+    <string name="downloads_resume">Resume this download</string>
     <string name="downloads_pin">Keep this one, never delete it automatically</string>
     <string name="downloads_unpin">Stop keeping this one</string>
     <string name="downloads_remove">Remove this download</string>
@@ -458,7 +462,7 @@
       PRODUCT_SPEC SET-002 — what this build actually is. Kept current with the phase, because a build
       that describes itself wrongly makes every other reading on this tab suspect.
     -->
-    <string name="about_phase">A work in progress. Streaming and offline playback, chapters, bookmarks, the sleep timer, downloads and progress sync are built; the management tools are not.</string>
+    <string name="about_phase">A work in progress. Streaming and offline playback, chapters, bookmarks, the sleep timer, downloads and smart downloads, progress and session sync, Android Auto, per-device playback policy and the management tools \u2014 metadata editing, covers, matching, scans and server accounts \u2014 are built. Source-file deletion is deliberately not offered, and a few gaps remain: no profile lock, no download pause, and no per-item metadata embedding.</string>
 
     <!--
       PRODUCT_SPEC SET-003 — the six launcher icons.
@@ -800,4 +804,157 @@
         <item quantity="one">%1$d audio file</item>
         <item quantity="other">%1$d audio files</item>
     </plurals>
+
+    <!-- PRODUCT_SPEC MGR-001 - the metadata editor. -->
+    <string name="edit_metadata_title">Edit metadata</string>
+    <string name="edit_metadata_save">Save</string>
+    <string name="edit_metadata_missing">That book is no longer on this device.</string>
+    <string name="edit_metadata_changed">Changed</string>
+    <string name="edit_metadata_revert">Undo all changes</string>
+    <string name="edit_metadata_draft_kept">Your changes were kept on this device. Nothing was sent to the server.</string>
+    <string name="edit_metadata_field_title">Title</string>
+    <string name="edit_metadata_field_subtitle">Subtitle</string>
+    <string name="edit_metadata_field_authors">Authors (separated by commas)</string>
+    <string name="edit_metadata_field_narrators">Narrators (separated by commas)</string>
+    <string name="edit_metadata_field_series">Series</string>
+    <string name="edit_metadata_field_series_name">Series name</string>
+    <string name="edit_metadata_field_series_sequence">Position in series</string>
+    <string name="edit_metadata_field_genres">Genres (separated by commas)</string>
+    <string name="edit_metadata_field_tags">Tags (separated by commas)</string>
+    <string name="edit_metadata_field_year">Published year</string>
+    <string name="edit_metadata_field_publisher">Publisher</string>
+    <string name="edit_metadata_field_description">Description</string>
+    <string name="edit_metadata_field_isbn">ISBN</string>
+    <string name="edit_metadata_field_asin">ASIN</string>
+    <string name="edit_metadata_field_language">Language</string>
+    <string name="edit_metadata_field_explicit">Explicit</string>
+    <string name="edit_metadata_field_abridged">Abridged</string>
+    <string name="edit_metadata_error_title">A book needs a title.</string>
+    <string name="edit_metadata_error_year">Enter a year as a number, or leave it empty.</string>
+    <string name="edit_metadata_error_series">A series needs a name before it can have a position.</string>
+    <string name="edit_metadata_blocked_offline">You are offline. The fields below are read-only until this device can reach the server.</string>
+    <string name="edit_metadata_blocked_permission">This account may not change metadata on this server. Ask an administrator if you need to.</string>
+    <string name="edit_metadata_blocked_capability">This server has not confirmed that it supports editing metadata.</string>
+    <string name="edit_metadata_draft_title">Unsaved changes</string>
+    <string name="edit_metadata_draft_body">You have unsaved changes to \u201c%1$s\u201d from an earlier edit. Restore them, or start from what the server has?</string>
+    <string name="edit_metadata_draft_restore">Restore</string>
+    <string name="edit_metadata_draft_discard">Discard</string>
+    <string name="edit_metadata_conflict_title">Someone else changed this book</string>
+    <string name="edit_metadata_conflict_body">These fields were changed on the server after you started editing:</string>
+    <string name="edit_metadata_conflict_overwrite">Use my version</string>
+    <string name="edit_metadata_conflict_reload">Use the server\u2019s version</string>
+    <string name="book_menu_edit_metadata">Edit metadata</string>
+
+    <!-- PRODUCT_SPEC MGR-002 - cover management. -->
+    <string name="edit_metadata_cover">Cover</string>
+    <string name="edit_metadata_cover_choose">Choose an image</string>
+    <string name="edit_metadata_cover_use">Use this image</string>
+    <string name="edit_metadata_cover_cancel">Cancel</string>
+    <string name="edit_metadata_cover_remove">Remove cover</string>
+    <string name="edit_metadata_cover_preview">The image you picked</string>
+    <string name="edit_metadata_cover_remove_title">Remove this cover?</string>
+    <string name="edit_metadata_cover_remove_body">The book keeps its metadata and its audio files. Only the cover image is removed from the server, and a later scan may find one again.</string>
+    <string name="edit_metadata_cover_error_type">That file is not a PNG, JPEG or WebP image.</string>
+    <string name="edit_metadata_cover_error_decode">That file could not be opened as an image.</string>
+    <string name="edit_metadata_cover_error_large">That image is larger than 10 MB. Pick a smaller one.</string>
+    <string name="edit_metadata_cover_error_small">That image is too small to use as a cover.</string>
+
+    <!-- PRODUCT_SPEC MGR-003 / MGR-004 - match and scan. -->
+    <string name="edit_metadata_match">Find metadata</string>
+    <string name="edit_metadata_scan">Rescan files</string>
+    <string name="edit_metadata_scan_result">The server reported: %1$s</string>
+    <string name="edit_metadata_match_from">Results from %1$s</string>
+    <string name="edit_metadata_match_unknown">No author or year given</string>
+    <string name="edit_metadata_match_changes">Choose which fields to take. Nothing is sent until you save.</string>
+    <string name="edit_metadata_match_apply">Use the ticked fields</string>
+
+    <!-- PRODUCT_SPEC MGR-005 - removal from the server database. -->
+    <string name="book_menu_remove_from_server">Remove from Audiobookshelf database</string>
+    <string name="book_remove_server_title">Remove from Audiobookshelf database?</string>
+    <string name="book_remove_server_body">This removes \u201c%1$s\u201d from the server\'s database. The media files stay on the server, and a later library scan may add the book back.</string>
+    <string name="book_remove_server_downloads">Also delete the copy downloaded on this device</string>
+    <string name="book_remove_server_confirm">Remove</string>
+    <string name="book_remove_server_cancel">Cancel</string>
+
+    <!-- PRODUCT_SPEC EPIC USER - server account management. -->
+    <string name="users_title">Server accounts</string>
+    <string name="users_refresh">Refresh</string>
+    <string name="users_state_active">Active</string>
+    <string name="users_state_disabled">Disabled</string>
+    <string name="users_state_locked">Locked out</string>
+    <string name="users_grant_download">download</string>
+    <string name="users_grant_update">edit</string>
+    <string name="users_grant_delete">delete</string>
+    <string name="users_grant_upload">upload</string>
+    <string name="users_grant_none">no permissions</string>
+    <string name="users_create_title">Add an account</string>
+    <string name="users_username">Username</string>
+    <string name="users_password">Password</string>
+    <string name="users_username_required">Enter a username.</string>
+    <string name="users_password_required">Enter a password.</string>
+    <string name="users_create">Create account</string>
+    <string name="settings_server_users">Manage server accounts</string>
+    <string name="edit_metadata_match_empty">No results from this source. Try another one above.</string>
+
+    <!-- Phase 5 defect fixes: self-lockout, stale save, blocked action, removal confirmation. -->
+    <string name="users_you">%1$s (you)</string>
+    <string name="users_self_disable_title">You cannot disable your own account</string>
+    <string name="users_self_disable_body">Disabling the account you are signed in with would end this session, and no account left in the app could turn it back on. Ask another administrator, or use the server directly.</string>
+    <string name="users_self_disable_ok">Got it</string>
+    <string name="users_username_taken">That username is already taken on this server.</string>
+    <string name="edit_metadata_saved_stale">Saved. This device could not read the book back, so what you see may be out of date until the next sync.</string>
+    <string name="edit_metadata_saved">Saved.</string>
+    <string name="edit_metadata_blocked_now">That is no longer allowed right now. Check your connection and your permissions.</string>
+    <string name="book_remove_server_done">Removed from the server database.</string>
+
+    <!-- PRODUCT_SPEC 14.4 - the debug console. -->
+    <string name="debug_console_open">Open the debug console</string>
+    <string name="debug_console_body">Everything this build knows about itself, as one block you can copy and paste into a report. It carries no server address, no library or book names, and no device names.</string>
+    <string name="debug_console_title">Debug console</string>
+    <string name="debug_console_subtitle">Copy this and paste it wherever you are reporting the problem.</string>
+    <string name="debug_console_copy">Copy everything</string>
+    <!-- PRODUCT_SPEC 5.1 / 5.2 / USER-001 — the signed-in account, and why a screen may be closed to it. -->
+    <string name="settings_section_account">Signed-in account</string>
+    <string name="settings_account_none">No account is signed in on this device.</string>
+    <string name="settings_account_username">Username</string>
+    <string name="settings_account_role">Account type</string>
+    <string name="settings_account_role_admin">Administrator</string>
+    <string name="settings_account_role_manager">Manager</string>
+    <string name="settings_account_role_editor">Editor</string>
+    <string name="settings_account_role_listener">Listener</string>
+    <string name="settings_account_may_download">May download</string>
+    <string name="settings_account_may_update">May edit metadata</string>
+    <string name="settings_account_may_upload">May upload covers</string>
+    <string name="settings_account_may_delete">May delete</string>
+    <string name="settings_account_allowed">Allowed</string>
+    <string name="settings_account_not_allowed">Not allowed</string>
+    <string name="settings_account_grants_hint">These are the server\'s permissions for this account, not settings this app can change. An action the server has not granted is hidden or refused here as well. Change them on the server, then reopen the app to pick them up.</string>
+    <string name="settings_server_users_blocked">Only a server administrator can manage accounts.</string>
+
+    <!-- PRODUCT_SPEC SET-002 (Appearance/accessibility) — theme, colours and language. -->
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_hint">System uses your device\'s light or dark setting, including any schedule it is on. Changing this never interrupts anything that is playing.</string>
+    <string name="settings_dynamic_color">Use the colours from my wallpaper</string>
+    <string name="settings_dynamic_color_hint">Available on Android 12 and later. Off by default, so the app looks the same on every device until you ask for this.</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">System default</string>
+    <string name="settings_language_hint">Each language is written in its own name, so it is findable whichever one the app is currently in. On Android 13 and later this is the same setting Android shows under Apps, and changing it there changes it here.</string>
+    <!-- PRODUCT_SPEC MGR-007 — embedding metadata into the server's own audio files. -->
+    <string name="book_menu_embed_metadata">Embed metadata in the audio files</string>
+    <string name="book_embed_title">Write metadata into the audio files?</string>
+    <string name="book_embed_body">Your server will rewrite the audio files of \u201c%1$s\u201d so they carry its metadata inside them. Nothing on this device changes: no download is touched and your position is kept.</string>
+    <string name="book_embed_backups">This changes files you own. Keep server-side backups of your library before using it. BookWave asks the server to keep a working copy while it writes, but that copy lives in the server\'s cache and is not a backup you can restore from.</string>
+    <string name="book_embed_scope">The cover is written with the metadata. Audiobookshelf offers no way to choose one without the other.</string>
+    <string name="book_embed_confirm">Embed metadata</string>
+    <string name="book_embed_cancel">Cancel</string>
+    <string name="book_embed_requesting">Asking your server\u2026</string>
+    <string name="book_embed_running">Your server is writing metadata into this book\'s audio files. On a long book this takes several minutes. You can leave this screen.</string>
+    <string name="book_embed_finished">Your server finished writing the metadata into the audio files.</string>
+    <string name="book_embed_server_failed">Your server could not finish writing the metadata. It recorded why \u2014 check its logs.</string>
+    <string name="book_embed_server_failed_silent">Your server could not finish writing the metadata, and gave no reason.</string>
+    <string name="book_embed_unknown">The live connection dropped while your server was working, so BookWave cannot tell how it ended. Check the book on your server before trying again.</string>
+    <string name="book_embed_dismiss">Dismiss</string>
 </resources>

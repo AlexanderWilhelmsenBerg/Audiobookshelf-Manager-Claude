@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
 import kotlinx.coroutines.flow.Flow
@@ -96,6 +97,25 @@ interface DownloadRepository {
 
     /** Records that a download stopped, with a summary safe to show — never a URL, never a token. */
     suspend fun markFailed(serverId: ServerId, itemId: LibraryItemId, summary: String): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC DL-001 — the listener asked for this to stop, and it is not a failure.
+     *
+     * Records [DownloadState.Paused] and clears any stored failure summary: a book that failed on Monday
+     * and was paused on Tuesday is paused, and leaving "Connection reset" under it would be the app
+     * answering a question nobody asked. The files on disk are untouched — pausing is the *reason* the
+     * partial files exist.
+     */
+    suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC DL-001 — the inverse of [markPaused]: back in the queue, waiting for its constraints.
+     *
+     * **A no-op unless the book is [DownloadState.Paused].** The guard is the point: this is called on the
+     * resume path, and a book that finished while the screen was open, or that is already running, must not
+     * be dragged back to `Queued` by a stale tap. Only the state pause put it in is the state resume undoes.
+     */
+    suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC DL-006 — protects a copy from automatic cleanup, or stops protecting it.

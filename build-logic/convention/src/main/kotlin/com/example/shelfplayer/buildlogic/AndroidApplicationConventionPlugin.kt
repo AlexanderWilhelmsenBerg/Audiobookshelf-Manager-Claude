@@ -59,10 +59,12 @@ private fun ApplicationExtension.configureDefaultConfig(project: Project) {
         applicationId = "com.example.shelfplayer"
         minSdk = project.libs.intVersion("minSdk")
         targetSdk = project.libs.intVersion("targetSdk")
-        versionCode = 35
-        // The build under acceptance test names the phase it is being tested against
-        // (`docs/phase-1-acceptance.md`), so a result recorded against an APK can be traced to one.
-        versionName = "0.9.6-auto-shelves"
+        versionCode = 37
+        // The name states what the build is, so a device-test result recorded against an APK can be
+        // traced to one. It has to move with the code: it sat at `0.9.6-auto-shelves` for nine builds
+        // while the code advanced, and every field report in that window named the wrong build — which
+        // matters more now that the debug console prints this string for the user to paste.
+        versionName = "0.9.11-car-and-pause"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }

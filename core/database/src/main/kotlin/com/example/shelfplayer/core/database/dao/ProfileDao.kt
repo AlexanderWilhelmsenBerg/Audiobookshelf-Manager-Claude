@@ -136,6 +136,36 @@ interface ProfileDao {
     )
 
     /**
+     * PRODUCT_SPEC MGR-001 / MGR-002 / MGR-005 — what this account may *do*, as opposed to what it may see.
+     *
+     * A second statement rather than four more parameters on [setAccountState], and the split is by meaning
+     * rather than by arithmetic: that one answers "which books does this account get", this one answers
+     * "which of them may it change". Room cannot bind an object to a `@Query`, so a ten-parameter method
+     * was the alternative — and a caller passing nine booleans positionally is a caller that will
+     * eventually pass `delete` where `upload` belongs.
+     *
+     * Always called with [setAccountState]: both halves come from the same response, and a profile whose
+     * visibility was refreshed but whose grants were not would offer actions the server has just revoked.
+     */
+    @Query(
+        """
+        UPDATE profiles
+        SET canUpdate = :canUpdate,
+            canDelete = :canDelete,
+            canUpload = :canUpload,
+            accountType = :accountType
+        WHERE profileId = :profileId
+        """,
+    )
+    suspend fun setManagementPermissions(
+        profileId: String,
+        canUpdate: Boolean,
+        canDelete: Boolean,
+        canUpload: Boolean,
+        accountType: String,
+    )
+
+    /**
      * PRODUCT_SPEC AUTH-002 — removing one profile must not remove another profile's data.
      *
      * The cascade deletes only rows keyed by this `profileId` (progress, sync state). Books and

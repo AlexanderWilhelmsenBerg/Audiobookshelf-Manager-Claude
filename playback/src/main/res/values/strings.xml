@@ -28,4 +28,66 @@
         <item quantity="one">Forward %1$d second</item>
         <item quantity="other">Forward %1$d seconds</item>
     </plurals>
+
+    <!--
+      PRODUCT_SPEC PLAY-001 / 11.1 — every word Android Auto shows.
+
+      These were hardcoded English until 2026-08-20, and two of them said "ShelfPlayer" — the app has been
+      called BookWave for three phases, so a car was showing a name that appears nowhere else. Hardcoding is
+      how that survived a rename: a literal in Kotlin is invisible to the checks that keep the two
+      `strings.xml` files in step, and `MissingTranslation` cannot report a string that is not a resource.
+
+      The car's tab titles are deliberately the same words as the phone's shelf headings. A driver who knows
+      the app should recognise the tabs, and the phone's own copies live in `:app`.
+    -->
+    <string name="car_app_name" translatable="false">BookWave</string>
+    <string name="car_tab_continue">Continue</string>
+    <string name="car_tab_recent">Recently added</string>
+    <string name="car_tab_again">Listen again</string>
+    <string name="car_tab_discover">Discover</string>
+    <string name="car_tab_chapters">Chapters</string>
+    <string name="car_tab_history">History</string>
+
+    <!-- The one row shown when no shelf has anything in it. Names the two causes a driver can act on. -->
+    <string name="car_empty_title">No books yet</string>
+    <!-- %1$s is the app name. -->
+    <string name="car_empty_subtitle">Open %1$s on your phone to sign in or sync your library.</string>
+
+    <!-- A chapter the server gave no title. %1$d is its position in the book, counting from one. -->
+    <string name="car_chapter_untitled">Chapter %1$d</string>
+
+    <!--
+      The three parts of the header row above a chapter list, joined by the separator below.
+
+      Separate strings rather than one, because the row omits any part it cannot compute — a book with no
+      duration has no percentage — and a single format string cannot leave a hole.
+    -->
+    <!-- %1$d is a whole percentage of the book. -->
+    <string name="car_progress_fraction">%1$d%% of the book</string>
+    <!-- %1$s is the current position, %2$s the total duration, both as clock times. -->
+    <string name="car_progress_position">%1$s of %2$s</string>
+    <!-- %1$d is the current chapter counting from one, %2$d the number of chapters. -->
+    <string name="car_progress_chapter">chapter %1$d of %2$d</string>
+
+    <!-- The subtitle of the chapter the listener is inside. %1$s elapsed, %2$s the chapter's length. -->
+    <string name="car_chapter_elapsed">%1$s of %2$s</string>
+
+    <!--
+      PRODUCT_SPEC PLAY-003 — what each history row says happened.
+
+      Read at a glance, possibly at speed, so each is a short noun phrase rather than a sentence.
+    -->
+    <string name="car_event_seek">Seek</string>
+    <string name="car_event_skip">Skip</string>
+    <string name="car_event_chapter">Chapter</string>
+    <string name="car_event_auto_rewind">Rewound after a pause</string>
+    <string name="car_event_resume">Started listening</string>
+    <string name="car_event_play">Played</string>
+    <string name="car_event_pause">Paused</string>
+    <string name="car_event_timer_started">Sleep timer set</string>
+    <string name="car_event_timer_extended">Sleep timer extended</string>
+    <string name="car_event_timer_expired">Sleep timer ended</string>
+    <string name="car_event_timer_rewind">Rewound after the sleep timer</string>
+    <string name="car_event_remote_progress">Moved on another device</string>
+    <string name="car_event_remote_finished">Finished on another device</string>
 </resources>

@@ -1,6 +1,8 @@
 plugins {
     id("shelfplayer.android.library")
     id("shelfplayer.hilt")
+    // PRODUCT_SPEC MGR-001 — `MetadataDraftCodec` stores an unsaved edit as one JSON column.
+    alias(libs.plugins.kotlin.serialization)
     // PRODUCT_SPEC 17.3 — this module contributes coverage data; the thresholds live in the root build.
     alias(libs.plugins.kover)
 }
@@ -21,6 +23,7 @@ dependencies {
     implementation(projects.core.database)
     implementation(projects.core.datastore)
     implementation(projects.core.network)
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(projects.core.testing)
     // The repository test builds a real in-memory database, so Room is on the *test* classpath only.

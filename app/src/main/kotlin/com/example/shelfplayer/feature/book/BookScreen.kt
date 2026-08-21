@@ -19,6 +19,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -29,10 +31,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,6 +60,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
+import com.example.shelfplayer.core.designsystem.layout.hasRoomForTwoPanes
+import com.example.shelfplayer.core.designsystem.layout.windowWidth
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
@@ -76,6 +81,7 @@ import kotlin.time.Duration
 fun BookRoute(
     onNavigateUp: () -> Unit,
     onManageDownloads: () -> Unit,
+    onEditMetadata: (LibraryItemId) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: BookViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel(),
@@ -84,6 +90,7 @@ fun BookRoute(
     val playback by playerViewModel.playback.collectAsStateWithLifecycle()
     val menu by viewModel.menu.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val embed by viewModel.embed.collectAsStateWithLifecycle()
     val context = LocalContext.current
     BookScreen(
         uiState = uiState,
@@ -91,6 +98,8 @@ fun BookRoute(
         menu = menu,
         message = message,
         onMessageShown = viewModel::onMessageShown,
+        embed = embed,
+        onEmbedStatusShown = viewModel::onEmbedStatusShown,
         actions = BookActions(
             onPlay = playerViewModel::onPlay,
             onTogglePlayPause = playerViewModel::onTogglePlayPause,
@@ -104,6 +113,9 @@ fun BookRoute(
             onDownloadClicked = viewModel::onDownloadClicked,
             onRemoveDownload = viewModel::onRemoveDownload,
             onManageDownloads = onManageDownloads,
+            onEditMetadata = onEditMetadata,
+            onRemoveFromServer = viewModel::onRemoveFromServer,
+            onEmbedMetadata = viewModel::onEmbedMetadata,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -126,17 +138,20 @@ fun BookScreen(
      * actually meet: no space, a permission the server revoked, and a book whose files the catalogue does
      * not know about. A control that appears to do nothing is the worst of the available outcomes.
      */
-    message: String? = null,
+    message: BookMessage? = null,
     onMessageShown: () -> Unit = {},
+    /** PRODUCT_SPEC MGR-007 — where an embed has got to. [EmbedStatus.Idle] draws nothing. */
+    embed: EmbedStatus = EmbedStatus.Idle,
+    onEmbedStatusShown: () -> Unit = {},
 ) {
     // Which of the menu's three surfaces is open. `rememberSaveable` so a rotation with the history open
     // comes back to the history rather than to the screen behind it.
     var openSurface by rememberSaveable { mutableStateOf(BookSurface.None) }
     val snackbars = remember { SnackbarHostState() }
-    // Keyed by the message, so two different failures in a row show two snackbars rather than one.
-    LaunchedEffect(message) {
-        val text = message ?: return@LaunchedEffect
-        snackbars.showSnackbar(text)
+    val text = message.asText()
+    // Keyed by the message, so two different results in a row show two snackbars rather than one.
+    LaunchedEffect(text) {
+        snackbars.showSnackbar(text ?: return@LaunchedEffect)
         onMessageShown()
     }
     Scaffold(
@@ -165,58 +180,96 @@ fun BookScreen(
             )
         },
     ) { innerPadding ->
-        val content = Modifier.fillMaxSize().padding(innerPadding)
-        when (uiState) {
-            BookUiState.Loading -> ShelfLoadingState(
-                label = stringResource(R.string.book_loading),
-                modifier = content,
-            )
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            // PRODUCT_SPEC MGR-007 — above the book rather than over it. The embed runs for minutes, and the
+            // user is free to keep reading the screen or to leave and come back; a dialog would trap them and
+            // a snackbar would vanish long before the server had finished.
+            EmbedStatusBanner(status = embed, onDismiss = onEmbedStatusShown)
+            val content = Modifier.fillMaxSize()
+            when (uiState) {
+                BookUiState.Loading -> ShelfLoadingState(
+                    label = stringResource(R.string.book_loading),
+                    modifier = content,
+                )
 
-            BookUiState.Missing -> ShelfEmptyState(
-                title = stringResource(R.string.book_missing_title),
-                body = stringResource(R.string.book_missing_body),
-                modifier = content,
-            )
+                BookUiState.Missing -> ShelfEmptyState(
+                    title = stringResource(R.string.book_missing_title),
+                    body = stringResource(R.string.book_missing_body),
+                    modifier = content,
+                )
 
-            is BookUiState.Loaded -> BookDetails(
-                book = uiState.book,
-                playback = playback,
-                actions = actions,
-                // Which surface opens is this screen's own business, so those three callbacks are assembled
-                // here rather than being three more parameters the caller has to know about.
-                menuActions = BookMenuActions(
-                    onOpenHistory = { openSurface = BookSurface.History },
-                    onFinishedChanged = actions.onFinishedChanged,
-                    onDiscardRequested = { openSurface = BookSurface.DiscardConfirmation },
-                    onOpenWebClient = actions.onOpenWebClient,
-                    onOpenInfo = { openSurface = BookSurface.Info },
-                    webUrl = menu.webUrl,
-                    isDownloaded = menu.download is DownloadButtonState.Downloaded,
-                    onRemoveDownload = { openSurface = BookSurface.RemoveDownloadConfirmation },
-                    onManageDownloads = actions.onManageDownloads,
-                ),
-                download = DownloadControl(
-                    isPermitted = menu.canDownload,
-                    state = menu.download,
-                    onClick = {
-                        // The one state that asks first: removing is the only tap here that deletes files.
-                        if (menu.download is DownloadButtonState.Downloaded) {
-                            openSurface = BookSurface.RemoveDownloadConfirmation
-                        } else {
-                            actions.onDownloadClicked(menu.download)
-                        }
-                    },
-                ),
-                modifier = content,
-            )
+                is BookUiState.Loaded -> BookDetails(
+                    book = uiState.book,
+                    playback = playback,
+                    actions = actions,
+                    // Which surface opens is this screen's own business, so those three callbacks are assembled
+                    // here rather than being three more parameters the caller has to know about.
+                    menuActions = BookMenuActions(
+                        onOpenHistory = { openSurface = BookSurface.History },
+                        onFinishedChanged = actions.onFinishedChanged,
+                        onDiscardRequested = { openSurface = BookSurface.DiscardConfirmation },
+                        onOpenWebClient = actions.onOpenWebClient,
+                        onOpenInfo = { openSurface = BookSurface.Info },
+                        webUrl = menu.webUrl,
+                        isDownloaded = menu.download is DownloadButtonState.Downloaded,
+                        onRemoveDownload = { openSurface = BookSurface.RemoveDownloadConfirmation },
+                        onManageDownloads = actions.onManageDownloads,
+                        onEditMetadata = { actions.onEditMetadata(uiState.book.id) },
+                        onRemoveFromServer = { openSurface = BookSurface.RemoveFromServerConfirmation },
+                        canRemoveFromServer = menu.canRemoveFromServer,
+                        onEmbedMetadata = { openSurface = BookSurface.EmbedConfirmation },
+                        canEmbedMetadata = menu.canEmbedMetadata,
+                    ),
+                    download = DownloadControl(
+                        isPermitted = menu.canDownload,
+                        state = menu.download,
+                        onClick = {
+                            // The one state that asks first: removing is the only tap here that deletes files.
+                            if (menu.download is DownloadButtonState.Downloaded) {
+                                openSurface = BookSurface.RemoveDownloadConfirmation
+                            } else {
+                                actions.onDownloadClicked(menu.download)
+                            }
+                        },
+                    ),
+                    modifier = content,
+                )
+            }
         }
     }
 
     val book = (uiState as? BookUiState.Loaded)?.book
-    when {
-        book == null -> Unit
+    if (book != null) {
+        BookSurfaces(
+            book = book,
+            menu = menu,
+            actions = actions,
+            open = openSurface,
+            onClose = { openSurface = BookSurface.None },
+        )
+    }
+}
 
-        openSurface == BookSurface.History -> HistorySheet(
+/**
+ * Whichever sheet or dialog the menu opened, and nothing when it opened none.
+ *
+ * Extracted from [BookScreen] because that composable reached detekt's complexity limit when the embed
+ * confirmation arrived, and the limit was right: a screen whose body is a scaffold *and* a seven-way
+ * dispatch is two things. It is also a better shape — a `when` over the enum is exhaustive, so a surface
+ * added to [BookSurface] without a branch here is a compile error rather than a dialog that never opens.
+ */
+@Composable
+private fun BookSurfaces(
+    book: Book,
+    menu: BookMenuState,
+    actions: BookActions,
+    open: BookSurface,
+    onClose: () -> Unit,
+) {
+    when (open) {
+        BookSurface.None -> Unit
+
+        BookSurface.History -> HistorySheet(
             entries = menu.history,
             chapters = menu.chapters,
             // Read-only here, unlike the player's copy of this sheet. The player is *at* a position and can
@@ -224,30 +277,113 @@ fun BookScreen(
             // playback from a tap meant for a record would move a listener without being asked. Playing from
             // a history entry is worth having and is worth its own decision, not a side effect of this menu.
             onReturnTo = {},
-            onDismiss = { openSurface = BookSurface.None },
+            onDismiss = onClose,
         )
 
-        openSurface == BookSurface.Info -> BookInfoSheet(
-            book = book,
-            onDismiss = { openSurface = BookSurface.None },
-        )
+        BookSurface.Info -> BookInfoSheet(book = book, onDismiss = onClose)
 
-        openSurface == BookSurface.DiscardConfirmation -> DiscardProgressDialog(
+        BookSurface.DiscardConfirmation -> DiscardProgressDialog(
             onConfirm = {
-                openSurface = BookSurface.None
+                onClose()
                 actions.onDiscardProgress()
             },
-            onDismiss = { openSurface = BookSurface.None },
+            onDismiss = onClose,
         )
 
-        openSurface == BookSurface.RemoveDownloadConfirmation -> RemoveDownloadDialog(
+        BookSurface.RemoveDownloadConfirmation -> RemoveDownloadDialog(
             onConfirm = {
-                openSurface = BookSurface.None
+                onClose()
                 actions.onRemoveDownload()
             },
-            onDismiss = { openSurface = BookSurface.None },
+            onDismiss = onClose,
+        )
+
+        BookSurface.EmbedConfirmation -> EmbedMetadataDialog(
+            title = book.title,
+            onConfirm = {
+                onClose()
+                actions.onEmbedMetadata()
+            },
+            onDismiss = onClose,
+        )
+
+        BookSurface.RemoveFromServerConfirmation -> RemoveFromServerDialog(
+            title = book.title,
+            isDownloaded = menu.download is DownloadButtonState.Downloaded,
+            onConfirm = { alsoRemoveDownload ->
+                onClose()
+                actions.onRemoveFromServer(alsoRemoveDownload)
+            },
+            onDismiss = onClose,
         )
     }
+}
+
+/**
+ * PRODUCT_SPEC MGR-005 — the confirmation, which has to describe the actual effect.
+ *
+ * Three clauses, and each one is there because the label alone would be read as something worse:
+ *
+ * - **it leaves the database** — the thing that was asked for;
+ * - **the media files stay on the server** — the fear. CLAUDE.md forbids this app from ever claiming
+ *   otherwise, and this is the sentence that keeps the promise. It is true because of what the request
+ *   does *not* carry: `?hard=1` is the flag that would delete the files, and ADR-0021 records why this app
+ *   never sends it;
+ * - **a later scan may add it back** — because it will, and a user who did not expect that would think the
+ *   removal had failed.
+ *
+ * The download checkbox is separate and starts unchecked, exactly as the requirement specifies: they are
+ * two different copies, and somebody removing a duplicate from their library has not asked to lose the
+ * hours they downloaded over hotel wi-fi.
+ */
+@Composable
+private fun RemoveFromServerDialog(
+    title: String,
+    isDownloaded: Boolean,
+    onConfirm: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var alsoRemoveDownload by rememberSaveable { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.book_remove_server_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.book_remove_server_body, title))
+                if (isDownloaded) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = alsoRemoveDownload,
+                            onCheckedChange = { checked -> alsoRemoveDownload = checked },
+                        )
+                        Text(stringResource(R.string.book_remove_server_downloads))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(alsoRemoveDownload) }) {
+                Text(stringResource(R.string.book_remove_server_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.book_remove_server_cancel)) }
+        },
+    )
+}
+
+/**
+ * PRODUCT_SPEC MGR-005 — the sentence for a result, resolved where the resources are.
+ *
+ * A successful removal needs a *localised* line, and the `ViewModel` has no business holding one; a failure
+ * already carries its own words from the domain. Lifting the `when` out of `BookScreen` also keeps that
+ * composable under detekt's complexity limit, which it crossed the moment this became two cases.
+ */
+@Composable
+private fun BookMessage?.asText(): String? = when (this) {
+    null -> null
+    is BookMessage.Failed -> summary
+    BookMessage.RemovedFromServer -> stringResource(R.string.book_remove_server_done)
 }
 
 /**
@@ -264,7 +400,19 @@ fun BookScreen(
 internal data class DownloadControl(val isPermitted: Boolean, val state: DownloadButtonState, val onClick: () -> Unit)
 
 /** Which of the screen's dialogs or sheets is showing. Saveable, so it survives a rotation. */
-private enum class BookSurface { None, History, Info, DiscardConfirmation, RemoveDownloadConfirmation }
+private enum class BookSurface {
+    None,
+    History,
+    Info,
+    DiscardConfirmation,
+    RemoveDownloadConfirmation,
+
+    /** PRODUCT_SPEC MGR-005 — the only surface on this screen that changes somebody else's server. */
+    RemoveFromServerConfirmation,
+
+    /** PRODUCT_SPEC MGR-007 — the only surface that changes files on it. */
+    EmbedConfirmation,
+}
 
 /**
  * What this screen can do that only its callers can perform.
@@ -287,8 +435,29 @@ data class BookActions(
     val onRemoveDownload: () -> Unit = {},
     /** PRODUCT_SPEC DL-003 — opens the list of everything downloaded on this device. */
     val onManageDownloads: () -> Unit = {},
+    /** PRODUCT_SPEC MGR-001 — opens the metadata editor for this book. */
+    val onEditMetadata: (LibraryItemId) -> Unit = {},
+    /** PRODUCT_SPEC MGR-005 — the confirmed removal, carrying the separate download checkbox's answer. */
+    val onRemoveFromServer: (Boolean) -> Unit = {},
+    /** PRODUCT_SPEC MGR-007 — after the confirmation. Takes no arguments: there is nothing to choose. */
+    val onEmbedMetadata: () -> Unit = {},
 )
 
+/**
+ * PRODUCT_SPEC 4 / §129 — one column on a phone, two panes on a tablet.
+ *
+ * The split is not arbitrary. This screen answers two different questions, and they are asked at
+ * different moments: *what do I do with this book* — the cover, the play button, the download state, how
+ * far in I am — and *what is this book* — the blurb, the genres, the publication facts. On a phone they
+ * stack, and the first is above the fold because it is why somebody opened the screen.
+ *
+ * Given a window wide enough for both, the actions stay put on the left while the description scrolls on
+ * the right. That is the arrangement worth having on a tablet: the play button does not scroll away from
+ * a reader who is halfway down a long blurb.
+ *
+ * `Expanded` only — see `hasRoomForTwoPanes` for why a 600dp window gets one comfortable column instead
+ * of two cramped ones.
+ */
 @Composable
 private fun BookDetails(
     book: Book,
@@ -298,53 +467,106 @@ private fun BookDetails(
     download: DownloadControl,
     modifier: Modifier = Modifier,
 ) {
+    if (windowWidth().hasRoomForTwoPanes) {
+        Row(modifier = modifier) {
+            // Each pane scrolls on its own. One shared scroll would move the play button off the top of
+            // the window as soon as the blurb was scrolled, which is the whole thing this layout fixes.
+            Column(
+                modifier = Modifier
+                    .width(ACTION_PANE_WIDTH)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                ActionPane(book, playback, actions, menuActions, download)
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+            VerticalDivider()
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                Spacer(modifier = Modifier.height(4.dp))
+                AboutPane(book)
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+        return
+    }
+
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        // PRODUCT_SPEC LIB-004 — the hero: cover, title, author, and the two actions.
-        //
-        // Everything a reader came for is above the fold and in one block, rather than a cover followed
-        // by a stack of one-line facts. The block that used to be here read as a form because every
-        // field had the same weight; hierarchy is what makes it a book instead of a record.
-        BookHeader(
-            book = book,
-            playback = playback,
-            onPlay = actions.onPlay,
-            onTogglePlayPause = actions.onTogglePlayPause,
-            actions = menuActions,
-            download = download,
-        )
-
-        // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
-        // kind belong on the same line, and a reader scans a strip faster than they read a list.
-        FactStrip(book = book)
-
-        ProgressSummary(book = book, modifier = Modifier.padding(horizontal = 16.dp))
-
-        book.description?.let { description ->
-            Section(titleRes = R.string.book_section_about) {
-                Synopsis(text = description.stripHtml())
-            }
-        }
-
-        BookLabels(book = book)
-
-        PublicationFacts(book = book)
-
-        // PRODUCT_SPEC LIB-004 — "on the server, as of when". Demoted from a chip pair to a footnote,
-        // because that is what it is: a caveat about how fresh this screen's contents are, not a fact
-        // about the book. It stays because a cached row must never imply "on the server right now".
-        Text(
-            text = stringResource(R.string.book_last_checked, book.lastFetchedAt.asDate()),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-
+        ActionPane(book, playback, actions, menuActions, download)
+        AboutPane(book)
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
+
+/** What a reader does with this book: the hero, the facts strip, and where they are in it. */
+@Composable
+private fun ActionPane(
+    book: Book,
+    playback: PlaybackUiState,
+    actions: BookActions,
+    menuActions: BookMenuActions,
+    download: DownloadControl,
+) {
+    // PRODUCT_SPEC LIB-004 — the hero: cover, title, author, and the two actions.
+    //
+    // Everything a reader came for is above the fold and in one block, rather than a cover followed
+    // by a stack of one-line facts. The block that used to be here read as a form because every
+    // field had the same weight; hierarchy is what makes it a book instead of a record.
+    BookHeader(
+        book = book,
+        playback = playback,
+        onPlay = actions.onPlay,
+        onTogglePlayPause = actions.onTogglePlayPause,
+        actions = menuActions,
+        download = download,
+    )
+
+    // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
+    // kind belong on the same line, and a reader scans a strip faster than they read a list.
+    FactStrip(book = book)
+
+    ProgressSummary(book = book, modifier = Modifier.padding(horizontal = 16.dp))
+}
+
+/** What this book *is*: the blurb, the labels, and the publication facts. */
+@Composable
+private fun AboutPane(book: Book) {
+    book.description?.let { description ->
+        Section(titleRes = R.string.book_section_about) {
+            Synopsis(text = description.stripHtml())
+        }
+    }
+
+    BookLabels(book = book)
+
+    PublicationFacts(book = book)
+
+    // PRODUCT_SPEC LIB-004 — "on the server, as of when". Demoted from a chip pair to a footnote,
+    // because that is what it is: a caveat about how fresh this screen's contents are, not a fact
+    // about the book. It stays because a cached row must never imply "on the server right now".
+    Text(
+        text = stringResource(R.string.book_last_checked, book.lastFetchedAt.asDate()),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+}
+
+/**
+ * How wide the action pane is on a two-pane layout.
+ *
+ * Fixed rather than a weight, because its contents have a natural size — a cover, a title, two buttons —
+ * and a weight would let it grow with the window until the cover was the size of a paperback. The blurb is
+ * the part that benefits from extra width, so the extra width goes there.
+ */
+private val ACTION_PANE_WIDTH = 360.dp
 
 /**
  * PRODUCT_SPEC LIB-004 — the synopsis, three lines at a time.
@@ -655,9 +877,37 @@ private fun BookLabels(book: Book, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        labels.forEach { label ->
-            SuggestionChip(onClick = {}, enabled = false, label = { Text(text = label) })
-        }
+        labels.forEach { label -> LabelChip(text = label) }
+    }
+}
+
+/**
+ * A genre or a tag: chip-shaped, and **not a control**.
+ *
+ * This used to be `SuggestionChip(onClick = {}, enabled = false)`, which looked right and read wrong. A
+ * disabled Material chip still publishes an `OnClick` action, so a screen reader announces every genre on
+ * the screen as a button — and pressing one does nothing, because the `onClick` was empty. Six genres meant
+ * six dead buttons between the synopsis and the publication facts.
+ *
+ * `SettingsAccessibilityScreenTest`'s sibling on this screen is what found it: the chips measured 36dp
+ * against Material's own 40dp minimum, which is only a defect *if* they are controls. They are not, so the
+ * fix is to stop claiming they are rather than to make them bigger.
+ *
+ * A `Surface` because Material 3 has no read-only chip. Nothing here takes a click, so nothing appears in
+ * the semantics tree except the text — which is exactly what a genre is.
+ */
+@Composable
+private fun LabelChip(text: String) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
     }
 }
 

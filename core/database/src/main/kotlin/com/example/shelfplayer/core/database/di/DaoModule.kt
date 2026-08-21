@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.database.dao.BookmarkDao
 import com.example.shelfplayer.core.database.dao.DownloadDao
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
+import com.example.shelfplayer.core.database.dao.MetadataDraftDao
 import com.example.shelfplayer.core.database.dao.PlaybackHistoryDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
@@ -58,6 +59,9 @@ object DaoModule {
 
     @Provides
     fun providesBookmarkDao(database: ShelfPlayerDatabase): BookmarkDao = database.bookmarkDao()
+
+    @Provides
+    fun providesMetadataDraftDao(database: ShelfPlayerDatabase): MetadataDraftDao = database.metadataDraftDao()
 
     @Provides
     fun providesDownloadDao(database: ShelfPlayerDatabase): DownloadDao = database.downloadDao()

@@ -23,12 +23,17 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.testing.MainDispatcherRule
+import com.example.shelfplayer.domain.download.BookAssetSource
+import com.example.shelfplayer.domain.download.BookAssets
 import com.example.shelfplayer.domain.download.DownloadLocations
+import com.example.shelfplayer.domain.download.DownloadScheduler
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.DownloadBookUseCase
+import com.example.shelfplayer.domain.usecase.PauseDownloadUseCase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -198,8 +203,24 @@ class DownloadsViewModelTest {
         verification = verification,
         profiles = FakeProfiles(),
         locations = locations,
+        // The pause pair is constructed against the same fakes. `PauseDownloadUseCaseTest` in `:domain` is
+        // where the transitions are asserted; here they exist so the screen has something to call.
+        pauseDownload = PauseDownloadUseCase(FakeProfiles(), downloads, InertScheduler),
+        downloadBook = DownloadBookUseCase(FakeProfiles(), InertAssets, downloads, InertScheduler),
         library = library,
     )
+
+    /** Neither half of the pause pair is under test here, so neither is allowed to reach anything real. */
+    private object InertScheduler : DownloadScheduler {
+        override suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId) = Unit
+
+        override suspend fun cancel(serverId: ServerId, itemId: LibraryItemId) = Unit
+    }
+
+    private object InertAssets : BookAssetSource {
+        override suspend fun assetsFor(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookAssets> =
+            AppResult.Success(BookAssets(files = emptyList(), coverUrl = null, estimatedBytes = 0))
+    }
 
     private val locations = FakeLocations()
 
@@ -331,6 +352,12 @@ class DownloadsViewModelTest {
         ): AppResult<OfflineBook> = notUsed()
 
         override suspend fun markFailed(serverId: ServerId, itemId: LibraryItemId, summary: String): AppResult<Unit> =
+            AppResult.Success(Unit)
+
+        override suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> =
+            AppResult.Success(Unit)
+
+        override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> =
             AppResult.Success(Unit)
 
         override suspend fun setPinned(

@@ -82,6 +82,9 @@ internal object EntityMappers {
         lastUsedAt = entity.lastUsedAt?.let(Instant::ofEpochMilli),
         isFixture = entity.isFixture,
         canDownload = entity.canDownload,
+        canUpdate = entity.canUpdate,
+        canDelete = entity.canDelete,
+        canUpload = entity.canUpload,
     )
 
     /**
@@ -99,6 +102,9 @@ internal object EntityMappers {
             .map(::LibraryId),
         hasAllTagAccess = entity.hasAllTagAccess,
         canDownload = entity.canDownload,
+        canUpdate = entity.canUpdate,
+        canDelete = entity.canDelete,
+        canUpload = entity.canUpload,
     )
 
     // --- Library ----------------------------------------------------------------------------------

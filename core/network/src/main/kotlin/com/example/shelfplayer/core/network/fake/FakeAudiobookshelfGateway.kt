@@ -11,20 +11,28 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.NewServerUser
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerProbe
+import com.example.shelfplayer.core.model.ServerUser
+import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
+import com.example.shelfplayer.core.model.library.BookMetadataEdit
+import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
+import com.example.shelfplayer.core.model.library.EmbedRequest
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
+import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.map
 import com.example.shelfplayer.core.model.playback.OfflineSession
@@ -37,9 +45,13 @@ import com.example.shelfplayer.core.network.gateway.AuthApi
 import com.example.shelfplayer.core.network.gateway.BookmarkApi
 import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.core.network.gateway.CapabilityResolver
+import com.example.shelfplayer.core.network.gateway.CoverUpload
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
+import com.example.shelfplayer.core.network.gateway.ItemScanOutcome
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.ManagementApi
+import com.example.shelfplayer.core.network.gateway.MetadataSaveOutcome
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -73,13 +85,87 @@ class FakeAudiobookshelfGateway @Inject constructor(
     LibraryApi,
     PlaybackApi,
     BookmarkApi,
-    DownloadApi {
+    DownloadApi,
+    ManagementApi {
     override val auth: AuthApi get() = this
     override val capabilities: CapabilityResolver get() = this
     override val library: LibraryApi get() = this
     override val playback: PlaybackApi get() = this
     override val bookmarks: BookmarkApi get() = this
     override val downloads: DownloadApi get() = this
+    override val management: ManagementApi get() = this
+
+    /**
+     * PRODUCT_SPEC MGR-001 — the fixture library is read-only, and says so rather than pretending.
+     *
+     * Same refusal as [signIn] and [fetchFile], for the same reason. A fake that accepted an edit would
+     * let a test believe a save had reached a server, and the whole point of this layer is that nothing
+     * can believe that by accident.
+     */
+    override suspend fun updateMetadata(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        edit: BookMetadataEdit,
+        changed: Set<BookMetadataField>,
+    ): AppResult<MetadataSaveOutcome> = AppError.ApiCompatibility(
+        summary = "The demo library cannot be edited.",
+        missingField = "media",
+    ).asFailure()
+
+    /** PRODUCT_SPEC MGR-002 — the fixture library's covers are bundled assets, not files a server holds. */
+    override suspend fun uploadCover(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        image: CoverUpload,
+    ): AppResult<BookSnapshot> = readOnly()
+
+    override suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> = readOnly()
+
+    /** PRODUCT_SPEC MGR-003 — the demo library reaches no metadata provider, and says so. */
+    override suspend fun findCandidates(
+        profileId: ProfileId,
+        provider: String,
+        title: String,
+        author: String,
+    ): AppResult<List<MatchCandidate>> = AppError.ApiCompatibility(
+        summary = "The demo library cannot search a metadata provider.",
+    ).asFailure()
+
+    override suspend fun metadataProviders(profileId: ProfileId): AppResult<List<MetadataProvider>> =
+        AppError.ApiCompatibility(summary = "The demo library has no metadata providers.").asFailure()
+
+    override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<ItemScanOutcome> =
+        AppError.ApiCompatibility(summary = "The demo library has no files to scan.").asFailure()
+
+    /** PRODUCT_SPEC MGR-007 — there are no audio files behind the demo document to write metadata into. */
+    override suspend fun embedMetadata(profileId: ProfileId, bookId: LibraryItemId): AppResult<EmbedRequest> =
+        AppError.ApiCompatibility(summary = "The demo library has no audio files to embed metadata into.")
+            .asFailure()
+
+    override suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
+        AppError.ApiCompatibility(summary = "The demo library cannot be edited.").asFailure()
+
+    /** PRODUCT_SPEC EPIC USER — the demo document describes one fixture profile, not a server's accounts. */
+    override suspend fun listUsers(profileId: ProfileId): AppResult<List<ServerUser>> =
+        AppError.ApiCompatibility(summary = "The demo library has no server accounts to manage.").asFailure()
+
+    override suspend fun createUser(profileId: ProfileId, user: NewServerUser): AppResult<ServerUser> =
+        AppError.ApiCompatibility(summary = "The demo library cannot create accounts.").asFailure()
+
+    override suspend fun setUserActive(profileId: ProfileId, userId: String, isActive: Boolean): AppResult<Unit> =
+        AppError.ApiCompatibility(summary = "The demo library cannot change accounts.").asFailure()
+
+    private fun readOnly(): AppResult<BookSnapshot> = AppError.ApiCompatibility(
+        summary = "The demo library cannot be edited.",
+        missingField = "media",
+    ).asFailure()
+
+    /** PRODUCT_SPEC MGR-001 — one fixture book, re-read. The fixtures never change, so this is a lookup. */
+    override suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> =
+        AppError.ApiCompatibility(
+            summary = "The demo library cannot be refreshed one book at a time.",
+            missingField = "media",
+        ).asFailure()
 
     /**
      * PRODUCT_SPEC DL-001 — the demo library has no files to fetch, and says so.
@@ -239,8 +325,11 @@ class FakeAudiobookshelfGateway @Inject constructor(
      * Ignoring it is safe here for the reason the whole class is safe: there is exactly one fixture
      * server, and it is not a real one. A real resolver must probe the server it was given.
      */
-    override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> =
-        withMapper { mapper -> mapper.capabilities() }
+    override suspend fun resolve(
+        serverId: ServerId,
+        serverUrl: String,
+        accessToken: AuthToken?,
+    ): AppResult<ServerCapabilities> = withMapper { mapper -> mapper.capabilities() }
 
     override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> =
         requireProfile(profileId).flatMap {

@@ -1,0 +1,526 @@
+package com.example.shelfplayer.feature.metadata
+
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.shelfplayer.core.model.AppError
+import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ManagementAction
+import com.example.shelfplayer.core.model.ManagementBlock
+import com.example.shelfplayer.core.model.ManagementPermissions
+import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.BookMetadataEdit
+import com.example.shelfplayer.core.model.library.BookMetadataError
+import com.example.shelfplayer.core.model.library.BookMetadataField
+import com.example.shelfplayer.core.model.library.CoverRejection
+import com.example.shelfplayer.core.model.library.MatchCandidate
+import com.example.shelfplayer.core.model.library.MetadataProvider
+import com.example.shelfplayer.domain.repository.MetadataRepository
+import com.example.shelfplayer.domain.usecase.ObserveManagementPermissionsUseCase
+import com.example.shelfplayer.navigation.ShelfDestinations
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/**
+ * PRODUCT_SPEC MGR-001 — the metadata editor.
+ *
+ * ### Three versions of the same book, and why each exists
+ *
+ * - [EditMetadataUiState.form] is what the user is typing.
+ * - [EditMetadataUiState.baseline] is what the book looked like when the editor opened. Dirtiness is
+ *   measured against this, not against the server's current state, so that a change somebody else made
+ *   while this screen was open does not silently become "your edit".
+ * - The server's current state is fetched at save time and compared with the baseline. Where the two
+ *   differ **and the user also changed the field**, there is a conflict.
+ *
+ * That third comparison is the whole of MGR-001's conflict handling, and it is the only kind available:
+ * Audiobookshelf's metadata route has no `ETag` and honours no `If-Match`, so the server cannot be asked
+ * to refuse a stale write. Detecting it here is not belt-and-braces; it is the mechanism.
+ *
+ * ### What is deliberately not here
+ *
+ * No offline queue. MGR-001 is explicit that privileged edits are not queued for blind offline execution
+ * in version 1, so an edit made without a connection becomes a saved draft and stops there — visible,
+ * named, and applied only when the user asks again.
+ */
+@HiltViewModel
+class EditMetadataViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    observePermissions: ObserveManagementPermissionsUseCase,
+    private val metadata: MetadataRepository,
+) : ViewModel() {
+
+    private val bookId: LibraryItemId = LibraryItemId(
+        requireNotNull(savedStateHandle.get<String>(ShelfDestinations.ARG_BOOK_ID)) {
+            "Edit-metadata route is missing its ${ShelfDestinations.ARG_BOOK_ID} argument"
+        },
+    )
+
+    private val _uiState = MutableStateFlow(EditMetadataUiState())
+    val uiState: StateFlow<EditMetadataUiState> = _uiState.asStateFlow()
+
+    private var profileId: ProfileId? = null
+
+    init {
+        viewModelScope.launch {
+            var seeded = false
+            // PRODUCT_SPEC MGR-003 — "match action is permission checked immediately before execution", and
+            // the same applies to every other action here.
+            //
+            // Collected for the life of the screen rather than read once. A `.first()` here was a real
+            // defect: going offline with the editor open, or having a grant revoked, left every button live
+            // against a snapshot taken when the screen opened. The *form* is seeded only on the first
+            // emission — re-seeding would throw away what the user is typing every time connectivity
+            // flickered — but the permissions track.
+            observePermissions(bookId).collect { scope ->
+                val book = scope?.book
+                if (scope == null || book == null) {
+                    if (!seeded) _uiState.update { it.copy(isLoading = false, isMissing = true) }
+                    return@collect
+                }
+                profileId = scope.profileId
+                _uiState.update { it.copy(permissions = scope.permissions) }
+                if (seeded) return@collect
+                seeded = true
+                seed(scope.profileId, book)
+            }
+        }
+    }
+
+    private suspend fun seed(profile: ProfileId, book: com.example.shelfplayer.core.model.library.Book) {
+        run {
+            val fromBook = BookMetadataEdit.of(book)
+            // A draft is offered rather than applied. MGR-001 wants an *explicit* unsaved draft, and a
+            // form that silently opens with yesterday's abandoned edit is not explicit — the user cannot
+            // tell it apart from what the server holds.
+            val draft = metadata.observeDraft(profile, bookId).first()
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    title = book.title,
+                    baseline = fromBook,
+                    form = fromBook,
+                    draft = draft?.takeIf { saved -> saved.changesFrom(fromBook).isNotEmpty() },
+                )
+            }
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-002 — the user picked an image; hold it for preview and say why if it cannot be used.
+     *
+     * Nothing is sent here. MGR-002 requires a preview before commit, so the picked image sits in state
+     * until the user confirms — which is also what makes "I picked the wrong photo" recoverable.
+     */
+    fun coverPicked(picked: PickedCover) {
+        val rejection = picked.candidate.rejection()
+        _uiState.update {
+            it.copy(
+                pickedCover = if (rejection == null) picked else null,
+                coverRejection = rejection,
+                errorSummary = null,
+            )
+        }
+    }
+
+    fun coverPickFailed(summary: String) {
+        _uiState.update { it.copy(pickedCover = null, coverRejection = null, errorSummary = summary) }
+    }
+
+    fun discardPickedCover() {
+        _uiState.update { it.copy(pickedCover = null, coverRejection = null) }
+    }
+
+    /** PRODUCT_SPEC MGR-002 — the commit half, after the preview. */
+    fun confirmCover() {
+        val profile = profileId ?: return
+        val picked = _uiState.value.pickedCover ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, errorSummary = null) }
+            val result = metadata.uploadCover(profile, bookId, picked.bytes, picked.candidate.mimeType)
+            onCoverResult(result)
+        }
+    }
+
+    /** PRODUCT_SPEC MGR-002 — "removing a cover requires confirmation", which the screen has already taken. */
+    fun removeCover() {
+        val profile = profileId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, errorSummary = null) }
+            onCoverResult(metadata.removeCover(profile, bookId))
+        }
+    }
+
+    private fun onCoverResult(result: AppResult<Book>) {
+        when (result) {
+            is AppResult.Failure -> _uiState.update {
+                it.copy(isSaving = false, errorSummary = result.error.summary)
+            }
+            is AppResult.Success -> {
+                // Not `adopt`: a cover change must not discard the metadata the user is part-way through
+                // typing. Only the cover and the baseline's identity moved.
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        pickedCover = null,
+                        coverRejection = null,
+                        coverVersion = it.coverVersion + 1,
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-003 — ask a provider for candidates, using what the form currently says.
+     *
+     * The form rather than the stored book, so a user who has just corrected a misspelled title searches
+     * with the correction. Nothing is written: this is the preview quick match cannot provide.
+     */
+    fun findMatches(provider: String) {
+        val profile = profileId ?: return
+        val form = _uiState.value.form
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isMatching = true,
+                    // Open before the request, and it stays open on an empty result. A sheet that closed
+                    // when a provider found nothing would take the other providers with it, which is
+                    // exactly the moment the user needs them.
+                    isMatchSheetOpen = true,
+                    matchProvider = provider,
+                    candidates = emptyList(),
+                )
+            }
+            // The list is loaded lazily, on the first search, rather than with the screen. It costs a
+            // request that most visits to this editor never need — somebody fixing a title does not open
+            // the provider picker — and a failure to load it must not stop the editor from opening.
+            if (_uiState.value.providers.isEmpty()) loadProviders(profile)
+            val found = metadata.findCandidates(
+                profileId = profile,
+                provider = provider,
+                title = form.title,
+                author = form.authors.firstOrNull().orEmpty(),
+            )
+            when (found) {
+                is AppResult.Failure -> _uiState.update {
+                    it.copy(isMatching = false, errorSummary = found.error.summary)
+                }
+                is AppResult.Success -> _uiState.update {
+                    it.copy(isMatching = false, candidates = found.value)
+                }
+            }
+        }
+    }
+
+    private suspend fun loadProviders(profile: ProfileId) {
+        val listed = metadata.metadataProviders(profile)
+        if (listed is AppResult.Success) _uiState.update { it.copy(providers = listed.value) }
+    }
+
+    fun dismissMatches() {
+        _uiState.update { it.copy(isMatchSheetOpen = false, candidates = emptyList(), selectedCandidate = null) }
+    }
+
+    /** PRODUCT_SPEC MGR-003 — the chosen candidate, and which of its fields the user has agreed to. */
+    fun selectCandidate(candidate: MatchCandidate) {
+        _uiState.update { state ->
+            state.copy(
+                selectedCandidate = candidate,
+                // Pre-ticked, because a user who picked a candidate has already said they prefer it. What
+                // the requirement forbids is applying a field *silently*, and every one is visible and
+                // individually removable before anything is sent.
+                acceptedFields = candidate.changesAgainst(state.form),
+            )
+        }
+    }
+
+    fun toggleAcceptedField(field: BookMetadataField) {
+        _uiState.update { state ->
+            val accepted = state.acceptedFields
+            state.copy(acceptedFields = if (field in accepted) accepted - field else accepted + field)
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-003 — applies the chosen fields into the *form*, not to the server.
+     *
+     * The user then reviews them in the editor and saves, which is what makes the match reviewable and
+     * undoable. Applying straight to the server would be quick match with extra steps.
+     */
+    fun applyCandidate() {
+        _uiState.update { state ->
+            val candidate = state.selectedCandidate ?: return@update state
+            state.copy(
+                form = candidate.applyTo(state.form, state.acceptedFields),
+                isMatchSheetOpen = false,
+                candidates = emptyList(),
+                selectedCandidate = null,
+                acceptedFields = emptySet(),
+            )
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-004 — rescan this item.
+     *
+     * The repeated-tap guard is `isScanning`: the requirement says repeated taps must not start duplicate
+     * scans, and an item scan is synchronous, so the second tap would sit behind the first and then run
+     * again against an item that was just scanned.
+     */
+    fun scan() {
+        val profile = profileId ?: return
+        if (_uiState.value.isScanning) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isScanning = true, scanResult = null, errorSummary = null) }
+            when (val scanned = metadata.scanItem(profile, bookId)) {
+                is AppResult.Failure -> _uiState.update {
+                    it.copy(isScanning = false, errorSummary = scanned.error.summary)
+                }
+                is AppResult.Success -> _uiState.update {
+                    it.copy(isScanning = false, scanResult = scanned.value)
+                }
+            }
+        }
+    }
+
+    fun edit(transform: (BookMetadataEdit) -> BookMetadataEdit) {
+        _uiState.update { state ->
+            val form = transform(state.form)
+            state.copy(form = form, savedAt = null, errorSummary = null)
+        }
+    }
+
+    /** PRODUCT_SPEC MGR-001 — the offered draft is taken up, replacing the form. */
+    fun applyDraft() {
+        _uiState.update { state ->
+            state.copy(form = state.draft ?: state.form, draft = null)
+        }
+    }
+
+    /** PRODUCT_SPEC MGR-001 — "user may discard a draft". */
+    fun discardDraft() {
+        val profile = profileId ?: return
+        _uiState.update { it.copy(draft = null) }
+        viewModelScope.launch { metadata.discardDraft(profile, bookId) }
+    }
+
+    /** Called when the editor is left with unsaved changes, so the text survives the process. */
+    fun keepDraft() {
+        val profile = profileId ?: return
+        val state = _uiState.value
+        if (state.changed.isEmpty()) return
+        viewModelScope.launch { metadata.saveDraft(profile, bookId, state.form) }
+    }
+
+    /** PRODUCT_SPEC MGR-001 — abandons the edit and the stored draft with it. */
+    fun revert() {
+        val profile = profileId ?: return
+        _uiState.update { it.copy(form = it.baseline, conflicts = emptySet(), errorSummary = null) }
+        viewModelScope.launch { metadata.discardDraft(profile, bookId) }
+    }
+
+    /** PRODUCT_SPEC MGR-001 — the conflict view's "reload": take the server's version, losing the edit. */
+    fun reload() {
+        val profile = profileId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true) }
+            when (val fresh = metadata.reload(profile, bookId)) {
+                is AppResult.Failure -> _uiState.update {
+                    it.copy(isSaving = false, errorSummary = fresh.error.summary)
+                }
+                is AppResult.Success -> adopt(fresh.value)
+            }
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 — validate, load the latest item, check for a conflict, then send.
+     *
+     * @param overwrite the user has seen the conflicting fields and chosen to send anyway.
+     */
+    fun save(overwrite: Boolean = false) {
+        val profile = profileId ?: return
+        val state = _uiState.value
+        // PRODUCT_SPEC principle 4 — checked here, against the *current* permissions, not against the ones
+        // the button was drawn with. Connectivity and grants both move while a form is open.
+        state.permissions?.blockOn(ManagementAction.EditMetadata)?.let { block ->
+            _uiState.update { it.copy(blockedAction = block) }
+            return
+        }
+        val errors = state.form.validate()
+        if (errors.isNotEmpty()) {
+            _uiState.update { it.copy(fieldErrors = errors) }
+            return
+        }
+        if (state.changed.isEmpty()) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, fieldErrors = emptyMap(), errorSummary = null) }
+
+            // MGR-001: "editor loads the latest item before save". The reload also writes it to Room, so
+            // the rest of the app stops showing a stale book whether or not this save goes ahead.
+            val latest = when (val reloaded = metadata.reload(profile, bookId)) {
+                is AppResult.Failure -> {
+                    onSaveFailed(profile, reloaded.error)
+                    return@launch
+                }
+                is AppResult.Success -> BookMetadataEdit.of(reloaded.value)
+            }
+            val conflicts = if (overwrite) emptySet() else state.conflictsAgainst(latest)
+            if (conflicts.isNotEmpty()) {
+                _uiState.update { it.copy(isSaving = false, conflicts = conflicts, server = latest) }
+                metadata.saveDraft(profile, bookId, state.form)
+                return@launch
+            }
+
+            when (val saved = metadata.save(profile, bookId, state.form, state.changed)) {
+                is AppResult.Failure -> onSaveFailed(profile, saved.error)
+                is AppResult.Success -> {
+                    val book = saved.value.book
+                    if (book == null) {
+                        // Saved, and the device could not read it back. Nothing to adopt and nothing to
+                        // retry: the draft is already gone because the words are on the server.
+                        _uiState.update {
+                            it.copy(isSaving = false, savedAt = SaveOutcome.SavedButStale, hasStoredDraft = false)
+                        }
+                    } else {
+                        adopt(book, stale = saved.value.isLocalCopyStale)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 — "network failure retains an explicit unsaved draft locally".
+     *
+     * Written on *every* failure rather than only on a network one. A `403` and a timeout leave the user
+     * in the same position — their words are on screen and nowhere else — and the app cannot reliably tell
+     * a refusal apart from a proxy that returned one.
+     */
+    private suspend fun onSaveFailed(profile: ProfileId, error: AppError) {
+        metadata.saveDraft(profile, bookId, _uiState.value.form)
+        _uiState.update { it.copy(isSaving = false, errorSummary = error.summary, hasStoredDraft = true) }
+    }
+
+    private fun adopt(book: Book, stale: Boolean = false) {
+        val fresh = BookMetadataEdit.of(book)
+        _uiState.update {
+            it.copy(
+                isSaving = false,
+                title = book.title,
+                baseline = fresh,
+                form = fresh,
+                server = null,
+                conflicts = emptySet(),
+                hasStoredDraft = false,
+                savedAt = if (stale) SaveOutcome.SavedButStale else SaveOutcome.Saved,
+            )
+        }
+    }
+}
+
+/** What happened to the last save, for the screen to acknowledge. */
+enum class SaveOutcome { Saved, SavedButStale }
+
+/**
+ * PRODUCT_SPEC MGR-001 — the editor's whole state.
+ *
+ * @property baseline the book as the editor opened it. Dirtiness is measured against this.
+ * @property server the server's current version, present only while a conflict is unresolved.
+ * @property conflicts fields the user changed **and** somebody else changed. Not every difference — a
+ *   field only they touched is not a conflict, and a field only the other person touched is already
+ *   reconciled by the reload.
+ * @property draft a stored draft the user has not yet accepted or discarded.
+ */
+data class EditMetadataUiState(
+    val isLoading: Boolean = true,
+    val isMissing: Boolean = false,
+    val isSaving: Boolean = false,
+    val title: String = "",
+    val permissions: ManagementPermissions? = null,
+    val baseline: BookMetadataEdit = Empty,
+    val form: BookMetadataEdit = Empty,
+    val server: BookMetadataEdit? = null,
+    val draft: BookMetadataEdit? = null,
+    val conflicts: Set<BookMetadataField> = emptySet(),
+    val fieldErrors: Map<BookMetadataField, BookMetadataError> = emptyMap(),
+    val errorSummary: String? = null,
+    val hasStoredDraft: Boolean = false,
+    val savedAt: SaveOutcome? = null,
+    /** PRODUCT_SPEC principle 4 — an action refused by the check made immediately before sending it. */
+    val blockedAction: ManagementBlock? = null,
+    /** PRODUCT_SPEC MGR-002 — picked and previewed, not yet sent. */
+    val pickedCover: PickedCover? = null,
+    /** PRODUCT_SPEC MGR-003 — candidates offered, and the one the user is considering. */
+    val isMatching: Boolean = false,
+    /** Open from the moment a search starts, so an empty result still offers the other providers. */
+    val isMatchSheetOpen: Boolean = false,
+    val matchProvider: String = "",
+    val candidates: List<MatchCandidate> = emptyList(),
+    /**
+     * PRODUCT_SPEC MGR-003 — the sources this server offers, so a deployment that cannot reach one can use
+     * another. Empty until the first search asks for them.
+     */
+    val providers: List<MetadataProvider> = emptyList(),
+    val selectedCandidate: MatchCandidate? = null,
+    val acceptedFields: Set<BookMetadataField> = emptySet(),
+    /** PRODUCT_SPEC MGR-004 — the scan's own word, or `null` when none has run. */
+    val isScanning: Boolean = false,
+    val scanResult: String? = null,
+    val coverRejection: CoverRejection? = null,
+    /**
+     * Increments on every successful cover change, so the preview stops showing the old image.
+     *
+     * The server's own cache key is the item's `updatedAt`, which the refresh has already moved. This is
+     * the *local* equivalent: a value Compose can key on so the composable that draws the cover is
+     * recomposed rather than reusing what it already drew.
+     */
+    val coverVersion: Int = 0,
+) {
+    val changed: Set<BookMetadataField> get() = form.changesFrom(baseline)
+
+    val canEdit: Boolean get() = permissions?.isAvailable(ManagementAction.EditMetadata) == true
+
+    val block: ManagementBlock? get() = permissions?.blockOn(ManagementAction.EditMetadata)
+
+    val canSave: Boolean get() = canEdit && !isSaving && changed.isNotEmpty()
+
+    /**
+     * Fields this user changed that the server has also changed since the editor opened.
+     *
+     * The `&&` is the whole rule. A field only the other party touched needs no decision — the reload has
+     * already taken their version, and the user never expressed an opinion about it.
+     */
+    fun conflictsAgainst(latest: BookMetadataEdit): Set<BookMetadataField> =
+        changed intersect latest.changesFrom(baseline)
+
+    private companion object {
+        val Empty = BookMetadataEdit(
+            title = "",
+            subtitle = "",
+            authors = emptyList(),
+            narrators = emptyList(),
+            series = emptyList(),
+            genres = emptyList(),
+            tags = emptyList(),
+            publishedYear = "",
+            publisher = "",
+            description = "",
+            isbn = "",
+            asin = "",
+            language = "",
+            isExplicit = false,
+            isAbridged = false,
+        )
+    }
+}

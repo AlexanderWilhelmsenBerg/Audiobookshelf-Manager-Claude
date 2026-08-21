@@ -73,6 +73,15 @@ class AudiobookshelfServiceFactory @Inject constructor(
         retrofitFor(baseUrl, authenticatedClient).create(DownloadService::class.java)
 
     /**
+     * PRODUCT_SPEC EPIC MGR — the management writes, on the authenticated stack.
+     *
+     * Same client as the reads, because a save and the refresh that follows it go to the same host in the
+     * same second and should share the connection they were both going to open.
+     */
+    internal fun managementService(baseUrl: String): ManagementService =
+        retrofitFor(baseUrl, authenticatedClient).create(ManagementService::class.java)
+
+    /**
      * Retrofit rejects a base URL that does not end in `/`, and — worse — silently discards the last
      * path segment of one that does not. A server behind a reverse proxy at `https://host/abs` would
      * otherwise resolve `login` against `https://host/`, producing 404s that look like the server is

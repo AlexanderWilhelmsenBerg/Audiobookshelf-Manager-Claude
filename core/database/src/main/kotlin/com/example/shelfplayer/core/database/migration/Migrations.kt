@@ -515,6 +515,56 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC MGR-001 / MGR-005 / USER-001 — the management grants and the account type.
+     *
+     * Four columns on `profiles`, all with defaults that mean "no". `me.json` has carried these since
+     * before Phase 1 and the app has been dropping them; nothing in the app could enforce a permission it
+     * had never stored, which is half of PRODUCT_SPEC principle 4 — *"permissions are enforced twice"* —
+     * being structurally impossible.
+     *
+     * Defaulting to no rather than to the previous behaviour is the whole point. An existing row is a
+     * profile whose grants this build has never read, and the safe reading of an unknown grant is that it
+     * is absent. Both sign-in and the `403` refresh rewrite the row, so the correction costs one request.
+     */
+    private val MIGRATION_17_18 = object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `profiles` ADD COLUMN `canUpdate` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `profiles` ADD COLUMN `canDelete` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `profiles` ADD COLUMN `canUpload` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `profiles` ADD COLUMN `accountType` TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 — the unsaved metadata draft.
+     *
+     * A new table and nothing else, so an upgrade cannot lose anything: there is no existing draft to
+     * migrate, and the absence of a row already means "no draft" everywhere the table is read.
+     *
+     * `ON DELETE CASCADE` from the profile is what stops a signed-out account's half-written edit
+     * outliving it — a draft holds the user's own words about their own library, and it belongs to the
+     * profile the same way a bookmark does (PRODUCT_SPEC 5.2).
+     */
+    private val MIGRATION_18_19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `metadata_draft` (
+                    `draftId` TEXT NOT NULL,
+                    `profileId` TEXT NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `payload` TEXT NOT NULL,
+                    `savedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`draftId`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_metadata_draft_profileId` ON `metadata_draft` (`profileId`)")
+        }
+    }
+
     private fun createDownloadedBooks(db: SupportSQLiteDatabase) {
         db.execSQL(
             """
@@ -599,5 +649,7 @@ object Migrations {
         MIGRATION_14_15,
         MIGRATION_15_16,
         MIGRATION_16_17,
+        MIGRATION_17_18,
+        MIGRATION_18_19,
     )
 }

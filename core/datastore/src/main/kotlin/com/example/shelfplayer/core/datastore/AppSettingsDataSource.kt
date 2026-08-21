@@ -19,6 +19,7 @@ import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.StartupMode
+import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.ProfilePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -167,6 +168,17 @@ class AppSettingsDataSource @Inject constructor(
 
     suspend fun setDynamicColor(enabled: Boolean) {
         dataStore.updateData { current -> current.toBuilder().setDynamicColor(enabled).build() }
+    }
+
+    /**
+     * PRODUCT_SPEC SET-002 (Appearance/accessibility) — the language the app draws itself in.
+     *
+     * The tag is stored, not the enum's name. `AppLanguage.ofTag` documents why: the set of languages is a
+     * resource fact rather than a domain one, and a tag the next build no longer ships falls back to the
+     * device's language instead of to a missing `values` directory.
+     */
+    suspend fun setAppLanguage(language: AppLanguage) {
+        dataStore.updateData { current -> current.toBuilder().setAppLanguageTag(language.tag).build() }
     }
 
     // `fixture_library_seeded` is no longer written. The demo-library bootstrapper it guarded is gone —

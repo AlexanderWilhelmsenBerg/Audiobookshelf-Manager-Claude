@@ -780,3 +780,479 @@ The drift check was red on every commit of this branch for two reasons, neither 
   was hiding the two genuinely new fixtures underneath it.
 - **`media-progress-set-finished` and `media-progress-set-unfinished` had never been committed**, which is
   the expected state of the pull request that adds a capture target. They are committed now.
+
+---
+
+## The management endpoints, captured 2026-08-15 against 2.36.0
+
+The first capture of anything in EPIC MGR or EPIC USER. Everything below is observed, not documented —
+PRODUCT_SPEC 22.4 and 22.5 exist because none of it could be guessed, and three of these findings
+contradict what a client written from the requirements alone would have assumed.
+
+| Endpoint | Status | Body | Content type |
+| --- | --- | --- | --- |
+| `POST /api/items/{id}/scan` | 200 | `{"result": "UPTODATE"}` | JSON |
+| `POST /api/items/{id}/match` | 200 | `{"warning": "No google match found"}` | JSON |
+| `PATCH /api/items/{id}/media` | 200 | `{"libraryItem": { … }}` | JSON |
+| `DELETE /api/items/{id}/cover` | 200 | `OK` | **text/plain** |
+| `POST /api/libraries/{id}/scan` | 200 | `OK` | **text/plain** |
+| `GET /api/users` | 200 | `{"users": [ … ]}` | JSON |
+| `POST /api/users` | 200 | `{"user": { … }}` | JSON |
+| `DELETE /api/items/{id}` | 200 | `OK` | **text/plain** |
+| `GET /api/items/{id}` after deletion | 404 | `Not Found` | text/plain |
+
+### `GET /api/users` returns every user's live token
+
+**The most important thing these captures found.** Each element of `users` carries a `token` field, and it
+is a working API credential for that account — not a hash, not a placeholder. An admin signing in to this
+app is handed credentials for everybody else on the server.
+
+USER-001 says tokens are never *displayed*. That is not a strong enough rule for a field like this, so the
+rule this project adopts is stricter:
+
+> **The app never models the field.** `UserDto` has no `token` property. There is nothing to store, nothing
+> to log, nothing to put on a screen by accident, and nothing for a future refactor to expose.
+
+A field that is never parsed cannot leak. `CapturedShapesTest` pins the finding so the absence reads as a
+decision rather than an oversight.
+
+The capture script's redaction already replaces it with `<redacted-secret>` in the committed fixture, so
+the repository is safe; the wire is not.
+
+### A created user is inactive
+
+`POST /api/users` with a username, a password and a type answers with `isActive: false`. The account
+exists and **cannot sign in**.
+
+USER-002 therefore cannot report "user created" and stop. Either the request has to carry `isActive`, or
+the screen has to say that somebody still needs to activate the account — and which of those is right
+depends on whether the server accepts the field, which this capture does not answer because it did not
+send one.
+
+### Three endpoints answer `text/plain`
+
+Cover removal, library scan and item deletion all return the two characters `OK`. A client that assumed
+every 2xx carried JSON would fail to parse a success and report a failure — for the deletion, that means
+telling somebody their book is still on the server when it is gone.
+
+### The metadata PATCH returns the whole item
+
+`PATCH /api/items/{id}/media` answers with `{"libraryItem": …}` — the complete updated item, in the same
+shape as the expanded single-item read.
+
+That settles how MGR-001's *"On success, Room updates immediately and then refreshes from server"* should
+work: **the refresh is the response.** A follow-up `GET` would be a request for data the client already
+holds, with a window in which the two could disagree.
+
+### The two scans are not the same kind of operation
+
+An **item** scan is synchronous and reports a conclusion: `{"result": "UPTODATE"}`. A **library** scan
+acknowledges with `OK` and runs on afterwards.
+
+MGR-004 asks for "started, running if detectable, completed, and failed". On this server an item scan has
+no detectable running state — it is over before the response arrives — while a library scan has no
+completion the response can report. They need different treatment, and neither response says so.
+
+### What the captures did **not** settle
+
+- **A successful match.** `POST /api/items/{id}/match` with an empty body defaults to the **Google**
+  provider and found nothing, so the only shape recorded is the miss. MGR-003 requires showing "provider,
+  candidate title, author, year, cover, and fields that will change", and none of that is in this capture.
+  The container has no provider key and nothing to match against; a successful match needs a different
+  fixture environment, not a different script.
+- **Cover upload.** Deliberately not attempted: it needs a multipart body and an image the capture script
+  has no business inventing. Only removal is recorded.
+- **Source-file deletion (MGR-006).** No endpoint was probed, because none is known to exist. MGR-006's
+  first criterion — the action does not exist unless the server reports a dedicated capability — is
+  currently satisfied by there being no capability and no action.
+- **Permission failures.** Every capture ran as `root`, so every management response here is the
+  *permitted* one. What a `403` looks like on these routes is still unknown, and the app's gating is
+  therefore built on the permissions in `me.json` rather than on recognising a refusal.
+
+---
+
+## What the official project's own source settles, 2026-08-15
+
+Everything above this line was **captured**: a real request, a real response, a fixture on disk. This
+section is different, and the difference is the point. It was **read from the Audiobookshelf project's
+own source** at `advplyr/audiobookshelf` v2.36.0 — the same version the captures ran against — because
+four questions the captures left open cannot be answered by any capture this project can run.
+
+ADR-0012 records the licensing posture and it applies unchanged here: *read it for API facts, do not copy
+code.* Nothing below is source. It is a description of observable HTTP behaviour, in this project's own
+words, of the kind an integrator would write after watching the wire.
+
+**This is weaker evidence than a capture and is treated as such.** PRODUCT_SPEC 22.5 requires a fixture
+before the app relies on a response shape, and reading a server's source is not a fixture: it proves what
+that version's code does, not what a user's deployment behind their reverse proxy actually returns. Every
+finding here is therefore marked with what still has to be captured, and the code written against it
+**fails closed** — an unrecognised shape reads as "not supported", never as "assume it worked".
+
+### The mobile app was the wrong place to look
+
+`advplyr/audiobookshelf-app` was read first, and the finding is worth recording so nobody repeats it: the
+official mobile app **has no management surface at all**. Its only writes are progress, authentication,
+playback sessions and podcast-feed lookups. It never edits metadata, uploads a cover, runs a match,
+scans, deletes an item or touches `/api/users`.
+
+So it settles none of EPIC MGR. What it does settle is that a native Audiobookshelf client can be
+complete without any of it — which is a fact about scope, not about endpoints.
+
+### `sendStatus` is why three endpoints answered `text/plain`
+
+The captures found cover removal, library scan and item deletion answering `text/plain "OK"` instead of
+JSON, and recorded it as three separate quirks. It is one: those handlers end with Express's
+`sendStatus`, which writes the status *name* as a plain-text body.
+
+That generalises in a way that matters more than the original finding. **Every refusal on these routes is
+`text/plain` too** — `403` arrives as the body `Forbidden`, `404` as `Not Found`. A client that parses a
+management failure as JSON gets a parse error where it should get a permission error.
+
+The app's `NetworkErrorMapper` already keys on the status code rather than the body, so this costs nothing
+today. It is recorded because the obvious future change — reading an error message out of a failed
+management response — would be wrong on exactly these routes.
+
+**Captured 2026-08-15.** The capture run creates an active non-admin account and attempts three management
+operations with it. All three are refused with **`403`, `Content-Type: text/plain`, body `Forbidden`** —
+committed as `item-update-forbidden`, `item-delete-forbidden` and `item-scan-forbidden`, and pinned by
+`CapturedShapesTest`.
+
+The scan refusal is the one worth reading twice. The refused account holds `download` and nothing else, so
+the update and delete refusals are explained by its grants — but the scan refusal is not: the server gates
+scanning on being admin or root, and that account would be refused holding every permission there is.
+
+### Permissions are checked per-method, and cover upload needs two grants
+
+The item routes gate on the HTTP method: `DELETE` requires the account's delete grant, and `PATCH` or
+`POST` requires the update grant. Playback session creation is exempt, which is why an ordinary listener
+can start a book.
+
+Two routes then check *again*, more narrowly:
+
+| Route | Grant required |
+| --- | --- |
+| `PATCH /api/items/{id}/media` | update |
+| `DELETE /api/items/{id}` | delete |
+| `DELETE /api/items/{id}/cover` | delete |
+| `POST /api/items/{id}/cover` | update **and** upload |
+| `POST /api/items/{id}/scan` | admin or root |
+| `POST /api/libraries/{id}/scan` | admin or root |
+| `POST /api/items/{id}/match` | update |
+| every `/api/users` write | admin or root |
+
+The cover row is the one a client would get wrong. Uploading a cover is a `POST`, so it passes the
+method gate on the *update* grant, and is then refused separately unless the account also has *upload*.
+An account with update but not upload can edit every metadata field and cannot change the cover.
+
+Item and library scanning are **not** permission-gated at all — they are account-*type*-gated. A user with
+every grant set is still refused if their type is `user`. That is why `Profile.role` is derived from the
+account type and not from the grants (MGR-004: "Item scan appears only for roles/endpoints that allow it").
+
+*Still to capture:* all of the above as observed refusals.
+
+### `POST /api/items/{id}/match` is not a preview — it is the edit
+
+This is the finding that changes a slice.
+
+MGR-003 asks that the user see "provider, candidate title, author, year, cover, and fields that will
+change" before committing. Quick match cannot provide that, because **it applies the change and then
+tells you what it did**. It takes the first result the provider returns, downloads the cover, writes the
+fields and saves — all before it responds.
+
+The two shapes are:
+
+| Outcome | Body |
+| --- | --- |
+| No candidate found | `{"warning": "No <provider> match found"}`, status `200` |
+| A candidate was applied | `{"updated": true|false, "libraryItem": { … expanded item … }}` |
+
+The captured miss is therefore the *whole* of what quick match can be used for as a preview: nothing.
+`updated: false` means a candidate was found and changed nothing, not that nothing was found.
+
+**So MGR-003's preview is built from search, not from match:**
+
+- `GET /api/search/providers` lists the metadata providers this deployment has, including any custom ones
+  the server administrator configured. Read-only, no side effects, no admin required.
+- `GET /api/search/books?title=&author=&provider=&id=` returns the candidate list **without writing
+  anything**. `provider` defaults to `google`, which needs no API key.
+- The user picks a candidate, and the app applies the chosen fields with `PATCH /api/items/{id}/media` —
+  the endpoint MGR-001 already uses, already captured, already returning the whole updated item.
+
+That is the flow that satisfies "existing non-empty fields are not overwritten without an explicit
+choice", and quick match structurally cannot: its `overrideCover` and `overrideDetails` flags are the only
+control it offers, and they are all-or-nothing.
+
+Candidate fields vary by provider. The union across the providers the server ships is:
+
+`title`, `subtitle`, `author`, `narrator`, `publisher`, `publishedYear`, `description`, `cover`, `isbn`,
+`asin`, `genres`, `tags`, `series` (name and sequence), `language`, `duration` in minutes, `abridged`.
+
+Google — the default, and the only one needing no configuration — returns a strict subset: `id`, `title`,
+`subtitle`, `author`, `publisher`, `publishedYear`, `description`, `cover`, `genres`, `isbn`. **Every
+field must be modelled as optional**, including ones that look mandatory.
+
+Two of those fields are hazards rather than data. `cover` is a URL on a third party's host — MGR-002's
+"tokens are not appended to third-party cover URLs" is about exactly this value. `description` is
+provider-supplied HTML, which is what MGR-003 means by "match results are treated as untrusted display
+data and sanitized".
+
+*Captured 2026-08-15, with one finding the capture itself produced:* **Google Books rate-limits GitHub
+Actions.** Every candidate search from CI answers `429`, so `search-books-shape.json` records an empty
+result set and will keep doing so. The endpoint works; the *shape* of a populated result cannot be captured
+from a shared CI address, and would need a run against a real deployment.
+
+That is a fact about where the capture runs rather than about the server.
+
+### A run against a real deployment, 2026-08-16
+
+`audiobooks.dev` — a public demo instance on 2.36.0, public-domain material only — settled the rest, and
+produced two findings that changed the code.
+
+**The default provider is not reliably the working one.** Google and Open Library returned *empty lists* for
+every query there; Audible returned six populated results for the same title. Reachability is a property of
+the server's own outbound network, exactly like the websocket, and a client that hardcodes one source turns
+"this deployment cannot reach Google" into "this book has no metadata anywhere". MGR-003 now reads the
+provider list and lets the user pick.
+
+That deployment also lists **two custom providers**, with `custom-<uuid>` slugs — the case the provider list
+exists for, and one no hardcoded list could have.
+
+**The server sends a sanitised description.** Alongside the HTML `description` it sends `descriptionPlain`,
+the same text stripped. That is the field this app reads, and the HTML one is never touched: MGR-003 wants
+match results sanitized, and declining to handle markup at all is a stronger guarantee than stripping it.
+
+The full key set of an Audible candidate, recorded in `search-books-shape.json`:
+
+`abridged`, `asin`, `author`, `cover`, `description`, `descriptionPlain`, `duration`, `genres`, `isbn`,
+`language`, `narrator`, `publishedYear`, `publisher`, `rating`, `region`, `series`, `subtitle`, `tags`,
+`title`.
+
+`cover` was observed pointing at `m.media-amazon.com`, which is exactly the third-party host MGR-002's
+"tokens are not appended to third-party cover URLs" is about.
+
+**The refusals reproduce on a second, independent server.** The `demo` account there is an ordinary `user`
+with `download` and nothing else, and every management route refuses it with `403` and
+`Content-Type: text/plain; charset=utf-8`:
+
+| Request | Response |
+| --- | --- |
+| `PATCH /api/items/{id}/media` | `403 text/plain` |
+| `POST /api/items/{id}/cover` | `403 text/plain` |
+| `POST /api/items/{id}/scan` | `403 text/plain` |
+| `GET /api/users` | `403 text/plain` |
+
+That is the CI capture confirmed against a deployment nobody involved in this project configured, which is
+the strongest form this evidence can take.
+
+It is also why **no write contract can be captured there**. The demo account holds no update, delete or
+upload grant, so the cover-upload shape stays source-derived until it is exercised against a server whose
+account has the grants.
+
+### Cover upload takes a file **or** a URL, and validates on the filename
+
+`POST /api/items/{id}/cover` accepts either:
+
+- a JSON body `{"url": "…"}`, and the server fetches it; or
+- a multipart body with the file part named exactly **`cover`**.
+
+The server decides whether an upload is an image **by the extension on the multipart part's filename** —
+`png`, `jpg`, `jpeg` or `webp` — and not by the `Content-Type` or by sniffing the bytes.
+
+That is a genuine trap for an Android client. Android's Photo Picker hands back a content URI whose
+display name is frequently absent, extensionless, or `.jpeg` where the server would also have accepted
+`.jpg`. **The app must synthesise the filename from the MIME type it validated**, rather than passing the
+picker's name through. A perfectly valid PNG sent as `image` is refused; the same bytes sent as
+`cover.png` are accepted.
+
+Success is `{"success": true, "cover": "<absolute path on the server>"}`. Failures are `400` or `500`
+with a plain-text body.
+
+There is no server-side size or dimension limit on this route, so MGR-002's "configured size limit" is
+entirely the app's own policy — the server will accept whatever it is sent.
+
+Cache invalidation works by timestamp: a successful upload bumps the item's `updatedAt`, and
+`GET /api/items/{id}/cover?ts=<updatedAt>` is what makes a client fetch the new bytes. The server sets a
+24-hour private `Cache-Control` **only** when `ts` is present, so a request without it is not cached and a
+request with it is cached under a key that changes on every update. That is MGR-002's "cover cache
+invalidates after successful update", and it is a URL convention rather than an endpoint.
+
+*Still to capture:* the upload itself, which needs a multipart body and an image.
+
+### Source-file deletion exists, and the server cannot prove it happened
+
+MGR-006 was written as though no such endpoint might exist. Two do:
+
+- `DELETE /api/items/{id}?hard=1` — removes the database rows **and** recursively removes the item's
+  directory from the server's filesystem. Without `hard`, the same route removes only the rows, which is
+  the MGR-005 operation and is already captured.
+- `DELETE /api/items/{id}/file/{ino}` — removes one file, identified by its inode number, and updates the
+  item to no longer list it.
+
+So the first half of MGR-006's gate is satisfiable: the capability is real, and `?hard=1` is the
+difference between the two requirements. **The second half is not.**
+
+On both routes the filesystem removal is attempted, and **if it fails the failure is logged on the server
+and the request still succeeds.** The response to a hard delete is `200 OK`; the response to a file delete
+is the updated item. Neither carries any indication of whether the bytes are gone. A read-only mount, a
+permissions error, a file held open — all of them produce the same success the client sees when the delete
+worked.
+
+Nor can the app check afterwards. Once the file is removed from the item's file list, asking for it
+returns `404` whether or not it still exists on disk, because the `404` comes from the item's list and not
+from the filesystem.
+
+MGR-006 requires: *"The server response must explicitly confirm deletion"*, and *"If the server cannot
+prove deletion, the UI reports uncertain state and does not claim success."*
+
+**The server cannot prove it.** `ServerCapability.SourceFileDelete` is therefore never confirmed by any
+probe, and the reason is this paragraph rather than an absence of investigation. See ADR-0021.
+
+### Scanning: one endpoint answers, the other only acknowledges
+
+The captures found that an item scan is synchronous and a library scan is not. The source says why, and
+adds the vocabulary.
+
+`POST /api/items/{id}/scan` runs the scan and then answers with its conclusion, one of
+`NOTHING`, `ADDED`, `UPDATED`, `REMOVED`, `UPTODATE`. It refuses file-based library items with a `500`
+and the server log line "Re-scanning file library items not yet supported" — a client cannot tell that
+case apart from a real server error, so a `500` here must be reported as a failed scan rather than a
+crash.
+
+`POST /api/libraries/{id}/scan` answers `200 OK` **before starting**, and `?force=1` is MGR-004's "force
+rescan". The acknowledgement is not a result and must never be shown as one.
+
+*Still to capture:* a scan of an item that actually changes, to see a `result` other than `UPTODATE`.
+
+### `GET /api/search/providers`
+
+The one management-adjacent endpoint that is a genuine, honest capability probe: read-only, no side
+effects, available to any signed-in account, and answering a question that varies by *deployment* rather
+than by version, since an administrator can configure custom providers.
+
+The shape is `{"providers": {"books": [{"value": …, "text": …}], "booksCovers": […], "podcasts": […]}}`.
+
+`value` is what `GET /api/search/books?provider=` takes; `text` is a display name. A server too old to
+have this route answers `404`, which is the correct "not confirmed" signal and needs no version check.
+
+**Captured 2026-08-15**, and the answer is more useful than expected: a server with nothing configured
+still lists fourteen book providers — Google, iTunes, Open Library, FantLab and ten Audible regions. So the
+probe confirms on every ordinary deployment rather than only on a configured one, and `google` being the
+default and key-free is what makes MGR-003's candidate search work without setup.
+
+`booksCovers` adds `best`, `audiobookcovers` and `all`; `podcasts` holds only `itunes`.
+
+## Embedding metadata into source files, read from the server at 2.36.0
+
+Source-derived, not captured. Starting an embed needs `isAdminOrUp` and the public demo account is an
+ordinary `user`, so there is no run to record — the same position cover *upload* is in, and recorded as such
+in `docs/gaps.md`. Read under ADR-0012's amended posture: **read it for API facts, never copy code.**
+
+### The route
+
+`POST /api/tools/item/{id}/embed-metadata`, with `backup` and `forceEmbedChapters` as `0`/`1` query
+parameters. `isAdminOrUp` in the router's middleware, with **no reference to `permissions.update`** — so an
+account holding update, delete and upload is refused unless its `type` is `admin` or `root`. The same gate
+both scans use.
+
+Answers:
+
+| Status | Meaning |
+| --- | --- |
+| `200` | the task was **queued**. Nothing has been written yet. |
+| `400` "Library item is already in queue or processing" | this item is already being embedded |
+| `400` | not a book, or a book with no audio tracks |
+| `403` `text/plain` "Forbidden" | the account is not an administrator |
+
+`text/plain` throughout, like every other `sendStatus` route on this API.
+
+### `backup=1` is narrower than the word
+
+`AudioMetadataManager` copies each audio file to `Path.join(task.data.itemCachePath, af.filename)` before
+rewriting it, and removes the copy afterwards unless `backupFiles` is set. That is a working copy inside the
+server's cache directory — a safety net for the operation, not a backup a user could restore from. This app
+always sends `1` (sending `0` gives up the net for nothing) and the confirmation dialog says the distinction
+out loud, because MGR-007's *"advise the user to maintain server-side backups"* is not satisfied by a flag.
+
+### The outcome arrives only on the websocket
+
+`TaskManager` emits `task_started` and `task_finished`, both carrying `Task.toJSON()`:
+
+```
+{id, action, data, title, titleKey, titleSubs, description, descriptionKey, descriptionSubs,
+ error, errorKey, errorSubs, showSuccess, isFailed, isFinished, startedAt, finishedAt}
+```
+
+- `action` is `embed-metadata`
+- `data.libraryItemId` is the correlation key
+- a failure calls `setFailed()`, which sets `error` and `isFailed` and then calls `setFinished()` — so a
+  failure arrives as **one** `task_finished` with `isFailed: true`, not as a separate event
+- `AudioMetadataManager` also emits `metadata_embed_queue_update`, `track_started`, `track_finished`,
+  `task_progress` and `track_progress`. None is needed to answer "did it work", and none is modelled.
+
+**`description` is `Embedding metadata in audiobook "<the book's title>"`**, and `descriptionSubs` carries
+the title again, and `data.libraryItemDir` carries the path. A book title and a library path are private
+self-hosted data (PRODUCT_SPEC 14.5), so `ServerTask` models none of the four fields and `TaskFrames` never
+deserializes them — `TaskFramesTest` plants a title in all three places and asserts none comes out.
+
+### There is no way to ask afterwards
+
+The item's own fields do not change when an embed finishes: they are the *input* to the write. So a `GET` on
+the item cannot distinguish running from finished from failed, and a client that missed `task_finished` has
+no second source. That is why a dropped connection is reported as an unknown outcome rather than as either
+answer.
+
+## An excluded file never reaches `media.tracks` — settled 2026-08-20 (PLAY-003)
+
+`docs/gaps.md` carried an open defect from Phase 2 onwards:
+
+> **Excluded tracks and the timeline's coordinate space.** A book whose server-side track list excludes a
+> file resolves positions against the wrong offsets.
+
+The reasoning behind it was sound and its premise was wrong. The premise was that `media.tracks` carries
+every audio file with a global `startOffset`, some of them flagged `exclude: true` — so a player that
+concatenates only the playable ones produces a timeline shorter than the book's, and every position after
+the hole is wrong by the excluded file's length.
+
+`server/models/Book.js`, read at 2.36.0 under ADR-0012's amended posture, settles it:
+
+```js
+get includedAudioFiles() {
+  return this.audioFiles.filter((af) => !af.exclude)
+}
+
+getTracklist(libraryItemId) {
+  let startOffset = 0
+  return this.includedAudioFiles.map((af) => {
+    const track = structuredClone(af)
+    track.title = af.metadata.filename
+    track.startOffset = startOffset
+    track.contentUrl = `/api/items/${libraryItemId}/file/${track.ino}`
+    startOffset += track.duration
+    return track
+  })
+}
+```
+
+**The filter runs before the accumulation.** An excluded file is gone before any offset is computed, so
+`media.tracks` — and `session.audioTracks`, which is the same list — is always contiguous, always
+exclusion-free, and always exactly the concatenation the player builds. There is no second coordinate
+space, and there is nothing to convert between.
+
+Two consequences worth stating, because both look like dead code and neither should be deleted:
+
+- `AudioTrack.isExcluded` is always `false` in anything that came from a server. It is `exclude` copied
+  off the `AudioFile` the track was cloned from, and the clone only ever happens for a file that is not
+  excluded. `PlaybackSession.playableTracks` filters on it and the filter is always a no-op.
+- `media.audioFiles` **does** contain excluded files, and they carry no `startOffset` at all — the field
+  is added by `getTracklist`. Anything reading `audioFiles` for timeline purposes would be reading a list
+  the server never intended as one. Nothing does; `LibraryMapper` reads `media.tracks`.
+
+`CapturedShapesTest` pins the invariant against the committed fixtures, so a server that ever changed its
+mind fails a test instead of moving somebody's bookmark. That is the whole mitigation, and it is enough:
+the app already treats the player's position as the book's position (ADR-0016), which is correct precisely
+because of the code above.
+
+What is **not** settled is what the *web client* does when a user excludes a file from a book they are
+part-way through. The server recomputes offsets, so a stored progress position taken before the exclusion
+now points somewhere else in a shorter book. That is a server-side data question, it affects every client
+equally, and this app has no way to detect it.

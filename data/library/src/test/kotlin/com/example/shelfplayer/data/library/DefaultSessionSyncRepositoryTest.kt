@@ -42,6 +42,7 @@ import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
@@ -596,9 +597,15 @@ class DefaultSessionSyncRepositoryTest {
         }
 
         override val capabilities: CapabilityResolver = object : CapabilityResolver {
-            override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> =
-                unsupported()
+            override suspend fun resolve(
+                serverId: ServerId,
+                serverUrl: String,
+                accessToken: AuthToken?,
+            ): AppResult<ServerCapabilities> = unsupported()
         }
+
+        /** PRODUCT_SPEC EPIC MGR — not exercised here. A throwing property cannot fall behind the interface. */
+        override val management: ManagementApi get() = error("management is not exercised here")
 
         override val library: LibraryApi = object : LibraryApi {
             override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> = unsupported()
@@ -615,6 +622,8 @@ class DefaultSessionSyncRepositoryTest {
                 libraryId: LibraryId,
                 query: String,
             ): AppResult<List<BookSnapshot>> = unsupported()
+            override suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> =
+                unsupported()
         }
 
         private companion object {

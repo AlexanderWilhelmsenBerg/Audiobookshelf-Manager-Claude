@@ -578,6 +578,14 @@ PY
 # than skipped.
 SOCKET_URL="$BASE_URL/socket.io/?EIO=4&transport=polling"
 
+# How long to wait for the socket's `init` frame before recording the auth poll.
+#
+# Ten half-second attempts. Generous enough that a loaded CI runner does not lose the race, short enough
+# that a server which never sends the frame costs five seconds rather than a job timeout — and the absence
+# is then recorded in the fixture, which is itself the finding.
+SOCKET_INIT_POLLS=10
+SOCKET_INIT_INTERVAL=0.5
+
 capture socket-handshake GET "/socket.io/?EIO=4&transport=polling"
 
 SOCKET_SID="$(python3 - "$RAW_DIR/socket-handshake.raw" <<'PY'
@@ -615,7 +623,35 @@ else
   curl -sS -X POST "$SOCKET_URL&sid=$SOCKET_SID" \
     -H 'Content-Type: text/plain;charset=UTF-8' \
     --data-binary "42[\"auth\",\"$ACCESS_TOKEN\"]" >/dev/null || true
-  capture socket-auth GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
+
+  # **Retry the capture itself until it holds the `init` frame.** Never peek first.
+  #
+  # Two mistakes are avoided here, and the second one was made before it was avoided.
+  #
+  # The race: the server answers `auth` asynchronously, and a long-poll returns whatever has queued by the
+  # time it is answered — so `init` landed in `socket-auth.json` on the run that produced the committed
+  # fixture and in `socket-event-after-progress.json` on a later one. Same frame, same keys, different
+  # file. A byte-for-byte drift check cannot tell that from the server changing its mind.
+  #
+  # The wrong fix, which this replaces: polling in a loop until the frame appeared, *then* capturing.
+  # **Long-polling is destructive.** Each poll drains the queue, so the probe consumed the frames it was
+  # looking for and the capture that followed recorded `2` — an engine.io ping against an empty queue. The
+  # fixture went from carrying a race to carrying nothing.
+  #
+  # So the poll that finds the frame has to be the poll that is recorded. Each attempt overwrites the last,
+  # which is safe because a poll with nothing in it is not evidence of anything. Bounded: a server that
+  # never sends `init` leaves the final empty capture in place, and that absence is itself the finding.
+  #
+  # Residual, and honest about it: `user_online` and `init` are emitted together and are therefore almost
+  # always in one poll, but nothing guarantees it. If they ever split, this records the one with `init`.
+  for _ in $(seq 1 "$SOCKET_INIT_POLLS"); do
+    capture socket-auth GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
+    if grep -q '"init"' "$OUT_DIR/socket-auth.json" 2>/dev/null; then
+      log "the socket's init frame arrived in the auth poll"
+      break
+    fi
+    sleep "$SOCKET_INIT_INTERVAL"
+  done
 
   # A progress change made over REST, then a poll: if the server broadcasts progress at all, this is
   # the frame that carries it, and it is exactly what TC-10 needs.
@@ -805,6 +841,171 @@ if [ -n "$ITEM_ID" ]; then
     -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
     -d '{"currentTime":2,"isFinished":false}'
   capture media-progress-unfinished GET "/api/me/progress/$ITEM_ID" -H "$AUTH_HEADER"
+fi
+
+# --- Management: what the server will and will not let a client change (EPIC MGR) ----------------
+#
+# Phase 5's whole problem is that none of these shapes had ever been seen. PRODUCT_SPEC 22.4 forbids
+# inventing an endpoint and 22.5 forbids relying on a response before a fixture records it, so nothing in
+# EPIC MGR can be built against a guess — these captures are what unblock it.
+#
+# The order is deliberate and the destructive probe is last. A `PATCH` that renames the item would change
+# what every earlier capture recorded if it ran first, and a delete would remove the item the bookmark and
+# progress captures depend on. Everything read-only happens before anything is written.
+#
+# The container's root account holds `update`, `delete` and `upload`, so a `403` here would be a fact about
+# the *endpoint* rather than about this account — which is exactly the distinction the permission gating in
+# the app has to make.
+# MGR-003 — the metadata providers this deployment offers.
+#
+# The fixture `AbsCapabilityResolver` has been written against and is currently missing: the provider probe
+# ships source-derived (`docs/api-compatibility.md`, "What the official project's own source settles") and
+# this is the capture that turns it into evidence.
+#
+# Deliberately captured whole and early. It is read-only, needs no item, has no side effects, and is
+# deterministic — it lists what the server is configured with, not what a third party answered — which is
+# what makes it the one management-adjacent endpoint that can be an honest capability probe.
+capture search-providers GET /api/search/providers -H "$AUTH_HEADER"
+
+# MGR-003 — a candidate search, recorded as a **shape** rather than as a body.
+#
+# This is the only capture in this file that leaves the server: the request makes Google answer. So its
+# body is not committed, because it would be different tomorrow and the drift check compares captures byte
+# for byte — a fixture that cannot be reproduced is not a fixture, it is a snapshot of one afternoon.
+#
+# What the app actually relies on is which keys a candidate carries, and that is stable. The status code
+# and the sorted key set of the first result are recorded; the values are discarded, which also keeps a
+# third party's book data out of a committed file.
+if [ -n "$LIBRARY_ID" ]; then
+  log "recording the candidate search's shape (keys only, never the results)"
+  SEARCH_RAW="$RAW_DIR/search-books.raw"
+  SEARCH_STATUS="$(curl -sS -G "$BASE_URL/api/search/books" -H "$AUTH_HEADER" \
+    --data-urlencode 'title=The Salt Harbour' --data-urlencode 'provider=google' \
+    -o "$SEARCH_RAW" -w '%{http_code}')"
+  SEARCH_KEYS="$(python3 -c '
+import json, sys
+try:
+    results = json.load(open(sys.argv[1]))
+except Exception:
+    print("[]"); raise SystemExit
+first = results[0] if isinstance(results, list) and results else {}
+print(json.dumps(sorted(first.keys())))' "$SEARCH_RAW")"
+  # An empty key set is **not an answer**, and writing it as one is what made this job permanently red.
+  #
+  # Google Books answers `429` to GitHub Actions' address ranges on every run, so from CI the provider
+  # returns nothing and the "captured shape" is an empty list. The committed fixture came from a real
+  # deployment and names an Audible result's eighteen keys, so the two disagreed every time — and a check
+  # that always fails is a check nobody reads.
+  #
+  # So a run that learned nothing writes nothing. The compare step treats a fixture the run could not
+  # capture as skipped rather than as drift, which keeps the committed evidence and still fails on a real
+  # change. See docs/risks.md R-15.
+  if [ "$SEARCH_KEYS" = "[]" ]; then
+    log "the metadata provider returned no candidates (status $SEARCH_STATUS) — not overwriting the committed shape"
+  else
+    printf '{\n  "note": "GET /api/search/books?provider=audible. Keys only: the results come from a third party and change. Captured against audiobooks.dev because Google Books answers 429 to CI addresses, so the CI run records an empty list for the default provider.",\n  "status": %s,\n  "firstResultKeys": %s\n}\n' \
+      "$SEARCH_STATUS" "$SEARCH_KEYS" >"$OUT_DIR/search-books-shape.json"
+  fi
+fi
+
+if [ -n "$ITEM_ID" ]; then
+  # MGR-004 — the two scan endpoints. Captured before any edit, because a scan can rewrite metadata from
+  # the file's own tags and would then be indistinguishable from what the PATCH below does.
+  capture item-scan POST "/api/items/$ITEM_ID/scan" -H "$AUTH_HEADER"
+
+  # MGR-003 — quick match. Sent with no provider so the response records what the server does with a bare
+  # request; a candidate search needs a provider this container has no key for, and inventing one would
+  # capture an error shape rather than a match shape.
+  capture item-match POST "/api/items/$ITEM_ID/match" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d '{}'
+
+  # MGR-001 — the edit. One field, and one the seeded fixture does not already use, so the response can be
+  # read as "this is what changed" rather than "this is what was already there".
+  capture item-update PATCH "/api/items/$ITEM_ID/media" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d '{"metadata":{"subtitle":"A subtitle written by the contract capture"}}'
+
+  capture item-after-update GET "/api/items/$ITEM_ID?expanded=1" -H "$AUTH_HEADER"
+
+  # MGR-002 — removing a cover. Captured rather than uploading one: an upload needs a multipart body this
+  # script has no image for, and the removal's response shape is the half the app has to understand before
+  # it can claim a cover is gone.
+  capture item-cover-remove DELETE "/api/items/$ITEM_ID/cover" -H "$AUTH_HEADER"
+fi
+
+# MGR-004 — a library scan. After the item captures, because it can rewrite the item.
+if [ -n "$LIBRARY_ID" ]; then
+  capture library-scan POST "/api/libraries/$LIBRARY_ID/scan" -H "$AUTH_HEADER"
+fi
+
+# EPIC USER — the user list, and what a created user looks like coming back.
+#
+# `USER-001` says tokens and password hashes are never displayed, and this is how the app finds out whether
+# the server sends them at all: a field that is never rendered is still a field that reached the device.
+capture users-list GET /api/users -H "$AUTH_HEADER"
+
+capture user-create POST /api/users \
+  -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+  -d '{"username":"contractlistener","password":"contract-listener-password","type":"user"}'
+
+# --- What a refusal looks like (PRODUCT_SPEC principle 4) ----------------------------------------
+#
+# Every capture above this point ran as `root`, so every management response so far is the *permitted*
+# one. That left the app's second enforcement — the one in the domain layer — built entirely from the
+# grants in `me.json`, with no observation of what happens when the server disagrees.
+#
+# This is the other half. A second account is created, this time **active** so it can sign in, of type
+# `user` — whose server-side defaults are download but not update, delete or upload. It then asks for the
+# three things it may not have.
+#
+# The first create above is left alone deliberately: it omits `isActive` and is therefore the fixture that
+# records USER-002's finding that a created user cannot sign in. Two creates, two facts.
+capture user-create-active POST /api/users \
+  -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+  -d '{"username":"contractactive","password":"contract-active-password","type":"user","isActive":true}'
+
+LISTENER_TOKEN="$(curl -sS -X POST "$BASE_URL/login" \
+  -H 'Content-Type: application/json' -H 'x-return-tokens: true' \
+  -d '{"username":"contractactive","password":"contract-active-password"}' |
+  python3 -c 'import json,sys
+try:
+    user = (json.load(sys.stdin) or {}).get("user") or {}
+except Exception:
+    user = {}
+print(user.get("accessToken") or user.get("token") or "")')"
+
+if [ -n "$LISTENER_TOKEN" ] && [ -n "$ITEM_ID" ]; then
+  LISTENER_HEADER="Authorization: Bearer $LISTENER_TOKEN"
+
+  # This account's own view of itself. The permissions here are what the app's gating reads, and the
+  # three refusals below are what those permissions are supposed to predict.
+  capture me-listener GET /api/me -H "$LISTENER_HEADER"
+
+  # MGR-001 — refused for want of the update grant.
+  capture item-update-forbidden PATCH "/api/items/$ITEM_ID/media" \
+    -H 'Content-Type: application/json' -H "$LISTENER_HEADER" \
+    -d '{"metadata":{"subtitle":"This edit must be refused"}}'
+
+  # MGR-005 — refused for want of the delete grant. Safe to attempt precisely because it is refused; if
+  # the server ever stops refusing it, this capture fails loudly by deleting the item the next capture
+  # reads, which is the correct way for that surprise to surface.
+  capture item-delete-forbidden DELETE "/api/items/$ITEM_ID" -H "$LISTENER_HEADER"
+
+  # MGR-004 — refused on account *type* rather than on a grant. The distinction matters: this account
+  # could hold every permission the server has and still be refused here.
+  capture item-scan-forbidden POST "/api/items/$ITEM_ID/scan" -H "$LISTENER_HEADER"
+else
+  log "the non-admin account could not sign in; the refusal shapes were not captured"
+fi
+
+# MGR-005 — **the destructive one, last.** Removing the item from the database is what the requirement is
+# about, and its response is the only thing that can tell the app whether a removal actually happened.
+#
+# It runs after everything that needs the item, and its own capture is the last word on that item. Nothing
+# below may depend on `ITEM_ID`.
+if [ -n "$ITEM_ID" ]; then
+  capture item-delete DELETE "/api/items/$ITEM_ID" -H "$AUTH_HEADER"
+  capture item-after-delete GET "/api/items/$ITEM_ID" -H "$AUTH_HEADER"
 fi
 
 capture logout POST /logout -H "$AUTH_HEADER"

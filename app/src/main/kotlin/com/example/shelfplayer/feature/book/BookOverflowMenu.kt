@@ -10,11 +10,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -140,6 +143,14 @@ internal fun BookOverflowMenu(book: Book, actions: BookMenuActions, modifier: Mo
             },
         )
         MenuRow(
+            labelRes = R.string.book_menu_edit_metadata,
+            icon = Icons.Filled.Edit,
+            onClick = {
+                isOpen = false
+                actions.onEditMetadata()
+            },
+        )
+        MenuRow(
             labelRes = R.string.book_menu_web_client,
             icon = Icons.AutoMirrored.Filled.OpenInNew,
             isEnabled = actions.webUrl != null,
@@ -148,6 +159,26 @@ internal fun BookOverflowMenu(book: Book, actions: BookMenuActions, modifier: Mo
                 actions.webUrl?.let(actions.onOpenWebClient)
             },
         )
+        if (actions.canEmbedMetadata) {
+            MenuRow(
+                labelRes = R.string.book_menu_embed_metadata,
+                icon = Icons.Filled.Save,
+                onClick = {
+                    isOpen = false
+                    actions.onEmbedMetadata()
+                },
+            )
+        }
+        if (actions.canRemoveFromServer) {
+            MenuRow(
+                labelRes = R.string.book_menu_remove_from_server,
+                icon = Icons.Filled.DeleteForever,
+                onClick = {
+                    isOpen = false
+                    actions.onRemoveFromServer()
+                },
+            )
+        }
         MenuRow(
             labelRes = R.string.book_menu_more_info,
             icon = Icons.Filled.Info,
@@ -283,6 +314,34 @@ internal data class BookMenuActions(
     val onRemoveDownload: () -> Unit = {},
     /** PRODUCT_SPEC DL-003 — everything downloaded on this device, in one list. */
     val onManageDownloads: () -> Unit = {},
+    /**
+     * PRODUCT_SPEC MGR-001 — the metadata editor.
+     *
+     * Always offered, even to an account that may not save. The editor itself explains the refusal, which
+     * is more useful than a row that is simply not there: "why can I not edit this" has an answer, and a
+     * missing row does not give it.
+     */
+    val onEditMetadata: () -> Unit = {},
+    /**
+     * PRODUCT_SPEC MGR-005 — `Remove from Audiobookshelf database`.
+     *
+     * The label is fixed by the requirement, word for word, and it is the last row for the same reason the
+     * destructive capture runs last: an irreversible action should not be next to the one above it in the
+     * muscle memory of somebody reaching for *More info*.
+     */
+    val onRemoveFromServer: () -> Unit = {},
+    /** `false` hides the row entirely — MGR-005 requires the delete permission. */
+    val canRemoveFromServer: Boolean = false,
+    /**
+     * PRODUCT_SPEC MGR-007 — `Embed metadata in the audio files`.
+     *
+     * Above the removal and below the editor, which is where it belongs in both directions: it is the same
+     * kind of thing as editing metadata — it writes what the editor saved — and it is not the same kind of
+     * thing as deleting an item, so it should not sit in that row's muscle memory either.
+     */
+    val onEmbedMetadata: () -> Unit = {},
+    /** `false` hides the row — MGR-007 is administrators only, and the server decides that by account type. */
+    val canEmbedMetadata: Boolean = false,
 )
 
 /**

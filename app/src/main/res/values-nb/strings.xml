@@ -275,6 +275,9 @@
     <string name="downloads_verify">Kontroller nedlastede filer</string>
     <string name="downloads_hidden_title">En bok i et bibliotek denne profilen ikke ser</string>
     <string name="downloads_incomplete">ufullstendig</string>
+    <string name="downloads_paused">Satt på pause</string>
+    <string name="downloads_pause">Sett nedlastingen på pause</string>
+    <string name="downloads_resume">Fortsett nedlastingen</string>
     <string name="downloads_pin">Behold denne, aldri slett den automatisk</string>
     <string name="downloads_unpin">Slutt å beholde denne</string>
     <string name="downloads_remove">Fjern denne nedlastingen</string>
@@ -361,7 +364,7 @@
     <string name="event_log_copy">Kopier</string>
     <string name="event_log_clear">Tøm</string>
     <string name="event_log_empty">Ingenting er registrert ennå.</string>
-    <string name="about_phase">Under arbeid. Direkteavspilling og frakoblet avspilling, kapitler, bokmerker, sovetid, nedlastinger og fremdriftssynkronisering er bygget; forvaltningsverktøyene er ikke.</string>
+    <string name="about_phase">Under arbeid. Direkteavspilling og frakoblet avspilling, kapitler, bokmerker, sovetid, nedlastinger og smarte nedlastinger, fremdrifts- og \u00f8ktsynkronisering, Android Auto, avspillingsregler per enhet og forvaltningsverkt\u00f8yene \u2014 redigering av metadata, omslag, samsvarss\u00f8k, skanning og serverkontoer \u2014 er bygget. Sletting av kildefiler tilbys bevisst ikke, og noen mangler st\u00e5r igjen: ingen profill\u00e5s, ingen pause i nedlastinger og ingen innbygging av metadata per bok.</string>
 
     <!--
       PRODUCT_SPEC SET-003 — navnene på de seks ikonene.
@@ -614,4 +617,157 @@
         <item quantity="one">%1$d lydfil</item>
         <item quantity="other">%1$d lydfiler</item>
     </plurals>
+
+    <!-- PRODUCT_SPEC MGR-001 - the metadata editor. -->
+    <string name="edit_metadata_title">Rediger metadata</string>
+    <string name="edit_metadata_save">Lagre</string>
+    <string name="edit_metadata_missing">Den boken finnes ikke lenger p\u00e5 denne enheten.</string>
+    <string name="edit_metadata_changed">Endret</string>
+    <string name="edit_metadata_revert">Angre alle endringer</string>
+    <string name="edit_metadata_draft_kept">Endringene dine ble lagret p\u00e5 denne enheten. Ingenting ble sendt til serveren.</string>
+    <string name="edit_metadata_field_title">Tittel</string>
+    <string name="edit_metadata_field_subtitle">Undertittel</string>
+    <string name="edit_metadata_field_authors">Forfattere (atskilt med komma)</string>
+    <string name="edit_metadata_field_narrators">Innlesere (atskilt med komma)</string>
+    <string name="edit_metadata_field_series">Serie</string>
+    <string name="edit_metadata_field_series_name">Serienavn</string>
+    <string name="edit_metadata_field_series_sequence">Plass i serien</string>
+    <string name="edit_metadata_field_genres">Sjangere (atskilt med komma)</string>
+    <string name="edit_metadata_field_tags">Etiketter (atskilt med komma)</string>
+    <string name="edit_metadata_field_year">Utgivelses\u00e5r</string>
+    <string name="edit_metadata_field_publisher">Forlag</string>
+    <string name="edit_metadata_field_description">Beskrivelse</string>
+    <string name="edit_metadata_field_isbn">ISBN</string>
+    <string name="edit_metadata_field_asin">ASIN</string>
+    <string name="edit_metadata_field_language">Spr\u00e5k</string>
+    <string name="edit_metadata_field_explicit">Eksplisitt</string>
+    <string name="edit_metadata_field_abridged">Forkortet</string>
+    <string name="edit_metadata_error_title">En bok m\u00e5 ha en tittel.</string>
+    <string name="edit_metadata_error_year">Skriv \u00e5ret som et tall, eller la feltet st\u00e5 tomt.</string>
+    <string name="edit_metadata_error_series">En serie m\u00e5 ha et navn f\u00f8r den kan ha en plassering.</string>
+    <string name="edit_metadata_blocked_offline">Du er frakoblet. Feltene nedenfor kan ikke endres f\u00f8r enheten n\u00e5r serveren.</string>
+    <string name="edit_metadata_blocked_permission">Denne kontoen kan ikke endre metadata p\u00e5 denne serveren. Sp\u00f8r en administrator om du trenger det.</string>
+    <string name="edit_metadata_blocked_capability">Serveren har ikke bekreftet at den st\u00f8tter redigering av metadata.</string>
+    <string name="edit_metadata_draft_title">Ulagrede endringer</string>
+    <string name="edit_metadata_draft_body">Du har ulagrede endringer i \u00ab%1$s\u00bb fra en tidligere redigering. Vil du gjenopprette dem, eller starte fra det serveren har?</string>
+    <string name="edit_metadata_draft_restore">Gjenopprett</string>
+    <string name="edit_metadata_draft_discard">Forkast</string>
+    <string name="edit_metadata_conflict_title">Noen andre har endret denne boken</string>
+    <string name="edit_metadata_conflict_body">Disse feltene ble endret p\u00e5 serveren etter at du begynte \u00e5 redigere:</string>
+    <string name="edit_metadata_conflict_overwrite">Bruk min versjon</string>
+    <string name="edit_metadata_conflict_reload">Bruk serverens versjon</string>
+    <string name="book_menu_edit_metadata">Rediger metadata</string>
+
+    <!-- PRODUCT_SPEC MGR-002 - cover management. -->
+    <string name="edit_metadata_cover">Omslag</string>
+    <string name="edit_metadata_cover_choose">Velg et bilde</string>
+    <string name="edit_metadata_cover_use">Bruk dette bildet</string>
+    <string name="edit_metadata_cover_cancel">Avbryt</string>
+    <string name="edit_metadata_cover_remove">Fjern omslag</string>
+    <string name="edit_metadata_cover_preview">Bildet du valgte</string>
+    <string name="edit_metadata_cover_remove_title">Fjerne dette omslaget?</string>
+    <string name="edit_metadata_cover_remove_body">Boken beholder metadataene og lydfilene sine. Bare omslagsbildet fjernes fra serveren, og en senere skanning kan finne et nytt.</string>
+    <string name="edit_metadata_cover_error_type">Den filen er ikke et PNG-, JPEG- eller WebP-bilde.</string>
+    <string name="edit_metadata_cover_error_decode">Den filen kunne ikke \u00e5pnes som et bilde.</string>
+    <string name="edit_metadata_cover_error_large">Bildet er st\u00f8rre enn 10 MB. Velg et mindre.</string>
+    <string name="edit_metadata_cover_error_small">Bildet er for lite til \u00e5 brukes som omslag.</string>
+
+    <!-- PRODUCT_SPEC MGR-003 / MGR-004 - match and scan. -->
+    <string name="edit_metadata_match">Finn metadata</string>
+    <string name="edit_metadata_scan">Skann filene p\u00e5 nytt</string>
+    <string name="edit_metadata_scan_result">Serveren svarte: %1$s</string>
+    <string name="edit_metadata_match_from">Treff fra %1$s</string>
+    <string name="edit_metadata_match_unknown">Ingen forfatter eller \u00e5rstall oppgitt</string>
+    <string name="edit_metadata_match_changes">Velg hvilke felter du vil bruke. Ingenting sendes f\u00f8r du lagrer.</string>
+    <string name="edit_metadata_match_apply">Bruk de avkryssede feltene</string>
+
+    <!-- PRODUCT_SPEC MGR-005 - removal from the server database. -->
+    <string name="book_menu_remove_from_server">Fjern fra Audiobookshelf-databasen</string>
+    <string name="book_remove_server_title">Fjerne fra Audiobookshelf-databasen?</string>
+    <string name="book_remove_server_body">Dette fjerner \u00ab%1$s\u00bb fra databasen p\u00e5 serveren. Mediefilene blir liggende p\u00e5 serveren, og en senere biblioteksskanning kan legge boken inn igjen.</string>
+    <string name="book_remove_server_downloads">Slett ogs\u00e5 kopien som er lastet ned p\u00e5 denne enheten</string>
+    <string name="book_remove_server_confirm">Fjern</string>
+    <string name="book_remove_server_cancel">Avbryt</string>
+
+    <!-- PRODUCT_SPEC EPIC USER - server account management. -->
+    <string name="users_title">Serverkontoer</string>
+    <string name="users_refresh">Oppdater</string>
+    <string name="users_state_active">Aktiv</string>
+    <string name="users_state_disabled">Deaktivert</string>
+    <string name="users_state_locked">L\u00e5st ute</string>
+    <string name="users_grant_download">nedlasting</string>
+    <string name="users_grant_update">redigering</string>
+    <string name="users_grant_delete">sletting</string>
+    <string name="users_grant_upload">opplasting</string>
+    <string name="users_grant_none">ingen tillatelser</string>
+    <string name="users_create_title">Legg til en konto</string>
+    <string name="users_username">Brukernavn</string>
+    <string name="users_password">Passord</string>
+    <string name="users_username_required">Skriv inn et brukernavn.</string>
+    <string name="users_password_required">Skriv inn et passord.</string>
+    <string name="users_create">Opprett konto</string>
+    <string name="settings_server_users">Administrer serverkontoer</string>
+    <string name="edit_metadata_match_empty">Ingen treff fra denne kilden. Pr\u00f8v en annen ovenfor.</string>
+
+    <!-- Phase 5 defect fixes: self-lockout, stale save, blocked action, removal confirmation. -->
+    <string name="users_you">%1$s (deg)</string>
+    <string name="users_self_disable_title">Du kan ikke deaktivere din egen konto</string>
+    <string name="users_self_disable_body">\u00c5 deaktivere kontoen du er logget inn med ville avslutte denne \u00f8kten, og ingen konto i appen kunne sl\u00e5tt den p\u00e5 igjen. Sp\u00f8r en annen administrator, eller bruk serveren direkte.</string>
+    <string name="users_self_disable_ok">Forst\u00e5tt</string>
+    <string name="users_username_taken">Det brukernavnet er allerede i bruk p\u00e5 denne serveren.</string>
+    <string name="edit_metadata_saved_stale">Lagret. Denne enheten klarte ikke \u00e5 lese boken tilbake, s\u00e5 det du ser kan v\u00e6re utdatert til neste synkronisering.</string>
+    <string name="edit_metadata_saved">Lagret.</string>
+    <string name="edit_metadata_blocked_now">Det er ikke tillatt akkurat n\u00e5. Sjekk tilkoblingen og tillatelsene dine.</string>
+    <string name="book_remove_server_done">Fjernet fra serverdatabasen.</string>
+
+    <!-- PRODUCT_SPEC 14.4 - the debug console. -->
+    <string name="debug_console_open">\u00c5pne feils\u00f8kingskonsollen</string>
+    <string name="debug_console_body">Alt denne versjonen vet om seg selv, som \u00e9n blokk du kan kopiere og lime inn i en rapport. Den inneholder ingen serveradresse, ingen biblioteks- eller boktitler og ingen enhetsnavn.</string>
+    <string name="debug_console_title">Feils\u00f8kingskonsoll</string>
+    <string name="debug_console_subtitle">Kopier dette og lim det inn der du melder fra om problemet.</string>
+    <string name="debug_console_copy">Kopier alt</string>
+    <!-- PRODUCT_SPEC 5.1 / 5.2 / USER-001 -->
+    <string name="settings_section_account">P\u00e5logget konto</string>
+    <string name="settings_account_none">Ingen konto er p\u00e5logget p\u00e5 denne enheten.</string>
+    <string name="settings_account_username">Brukernavn</string>
+    <string name="settings_account_role">Kontotype</string>
+    <string name="settings_account_role_admin">Administrator</string>
+    <string name="settings_account_role_manager">Forvalter</string>
+    <string name="settings_account_role_editor">Redigerer</string>
+    <string name="settings_account_role_listener">Lytter</string>
+    <string name="settings_account_may_download">Kan laste ned</string>
+    <string name="settings_account_may_update">Kan redigere metadata</string>
+    <string name="settings_account_may_upload">Kan laste opp omslag</string>
+    <string name="settings_account_may_delete">Kan slette</string>
+    <string name="settings_account_allowed">Tillatt</string>
+    <string name="settings_account_not_allowed">Ikke tillatt</string>
+    <string name="settings_account_grants_hint">Dette er serverens rettigheter for denne kontoen, ikke innstillinger appen kan endre. En handling serveren ikke har gitt tilgang til er skjult eller avvist ogs\u00e5 her. Endre dem p\u00e5 serveren, og \u00e5pne appen p\u00e5 nytt for \u00e5 hente dem inn.</string>
+    <string name="settings_server_users_blocked">Bare en serveradministrator kan administrere kontoer.</string>
+
+    <!-- PRODUCT_SPEC SET-002 -->
+    <string name="settings_section_appearance">Utseende</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Lyst</string>
+    <string name="settings_theme_dark">M\u00f8rkt</string>
+    <string name="settings_theme_hint">System bruker enhetens lyse eller m\u00f8rke innstilling, inkludert eventuell tidsplan. \u00c5 endre dette avbryter aldri noe som spilles.</string>
+    <string name="settings_dynamic_color">Bruk fargene fra bakgrunnsbildet mitt</string>
+    <string name="settings_dynamic_color_hint">Tilgjengelig p\u00e5 Android 12 og nyere. Av som standard, slik at appen ser like ut p\u00e5 hver enhet til du ber om dette.</string>
+    <string name="settings_language">Spr\u00e5k</string>
+    <string name="settings_language_system">Systemstandard</string>
+    <string name="settings_language_hint">Hvert spr\u00e5k er skrevet p\u00e5 sitt eget spr\u00e5k, slik at det er mulig \u00e5 finne uansett hvilket spr\u00e5k appen st\u00e5r p\u00e5 n\u00e5. P\u00e5 Android 13 og nyere er dette den samme innstillingen Android viser under Apper, og endrer du den der, endres den her.</string>
+    <!-- PRODUCT_SPEC MGR-007 -->
+    <string name="book_menu_embed_metadata">Bygg metadata inn i lydfilene</string>
+    <string name="book_embed_title">Skrive metadata inn i lydfilene?</string>
+    <string name="book_embed_body">Serveren din skriver om lydfilene til \u201c%1$s\u201d slik at de b\u00e6rer metadataene inni seg. Ingenting p\u00e5 denne enheten endres: ingen nedlasting ber\u00f8res, og posisjonen din beholdes.</string>
+    <string name="book_embed_backups">Dette endrer filer du eier. Ha sikkerhetskopier av biblioteket p\u00e5 serversiden f\u00f8r du bruker dette. BookWave ber serveren beholde en arbeidskopi mens den skriver, men den kopien ligger i serverens hurtiglager og er ikke en sikkerhetskopi du kan gjenopprette fra.</string>
+    <string name="book_embed_scope">Omslaget skrives sammen med metadataene. Audiobookshelf tilbyr ingen m\u00e5te \u00e5 velge det ene uten det andre.</string>
+    <string name="book_embed_confirm">Bygg inn metadata</string>
+    <string name="book_embed_cancel">Avbryt</string>
+    <string name="book_embed_requesting">Spør serveren\u2026</string>
+    <string name="book_embed_running">Serveren din skriver metadata inn i lydfilene til denne boken. P\u00e5 en lang bok tar dette flere minutter. Du kan forlate denne skjermen.</string>
+    <string name="book_embed_finished">Serveren din er ferdig med \u00e5 skrive metadataene inn i lydfilene.</string>
+    <string name="book_embed_server_failed">Serveren din kunne ikke fullf\u00f8re skrivingen av metadataene. Den noterte hvorfor \u2014 sjekk loggene dens.</string>
+    <string name="book_embed_server_failed_silent">Serveren din kunne ikke fullf\u00f8re skrivingen av metadataene, og oppgav ingen grunn.</string>
+    <string name="book_embed_unknown">Den direkte tilkoblingen falt ut mens serveren jobbet, s\u00e5 BookWave kan ikke si hvordan det endte. Sjekk boken p\u00e5 serveren f\u00f8r du pr\u00f8ver igjen.</string>
+    <string name="book_embed_dismiss">Lukk</string>
 </resources>

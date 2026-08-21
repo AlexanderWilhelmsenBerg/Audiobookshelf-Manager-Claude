@@ -28,7 +28,13 @@ object ShelfDestinations {
 
     /** PRODUCT_SPEC DL-003 / ADR-0018 decision 6 — every download on this device, in one list. */
     const val DOWNLOADS = "downloads"
+
+    /** PRODUCT_SPEC EPIC USER — the server's own accounts. Admin only; the screen and the server both check. */
+    const val SERVER_USERS = "server-users"
     const val BOOK = "book/{bookId}"
+
+    /** PRODUCT_SPEC MGR-001 — the metadata editor, addressed at the book it edits. */
+    const val EDIT_METADATA = "book/{bookId}/metadata"
     const val SERIES = "series/{seriesId}"
 
     const val ARG_BOOK_ID = "bookId"
@@ -44,6 +50,8 @@ object ShelfDestinations {
     private fun encode(value: String?): String = URLEncoder.encode(value.orEmpty(), Charsets.UTF_8.name())
 
     fun book(bookId: LibraryItemId): String = "book/${bookId.value}"
+
+    fun editMetadata(bookId: LibraryItemId): String = "book/${bookId.value}/metadata"
 
     /**
      * PRODUCT_SPEC LIB-003 — the bare server-side series id, exactly as the book route carries an item

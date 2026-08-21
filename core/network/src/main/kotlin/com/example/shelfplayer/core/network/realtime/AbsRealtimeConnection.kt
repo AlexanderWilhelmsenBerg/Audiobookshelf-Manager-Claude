@@ -170,12 +170,19 @@ internal class AbsRealtimeConnection @Inject constructor(
         }
 
         USER_UPDATED_EVENT -> frame.body?.let(::accountChanged)
+        // PRODUCT_SPEC MGR-007 — both, because the pair is what makes progress visible: `task_started`
+        // says the server picked the job up, and `task_finished` carries the outcome. The same shape
+        // arrives for tasks this app never asked for; the reader filters by action and item.
+        TASK_STARTED_EVENT, TASK_FINISHED_EVENT -> frame.body?.let(::taskChanged)
         else -> null
     }
 
     /** The decode and the mapping both live with the other `UserDto` handling; see [AuthMapper]. */
     private fun accountChanged(body: JsonObject): RealtimeEvent? =
         AuthMapper.toAccountState(json, body)?.let(RealtimeEvent::AccountChanged)
+
+    /** PRODUCT_SPEC MGR-007 — the decode lives in [TaskFrames], which documents what it refuses to read. */
+    private fun taskChanged(body: JsonObject): RealtimeEvent? = TaskFrames.parse(body)?.let(RealtimeEvent::TaskChanged)
 
     /**
      * Full jitter, and capped.
@@ -192,6 +199,11 @@ internal class AbsRealtimeConnection @Inject constructor(
     private companion object {
         const val INIT_EVENT = "init"
         const val USER_UPDATED_EVENT = "user_updated"
+
+        /** PRODUCT_SPEC MGR-007 — `TaskManager` emits both with the task's whole JSON. */
+        const val TASK_STARTED_EVENT = "task_started"
+        const val TASK_FINISHED_EVENT = "task_finished"
+
         const val BASE_BACKOFF_MILLIS = 1_000L
         const val MAX_BACKOFF_MILLIS = 60_000L
 

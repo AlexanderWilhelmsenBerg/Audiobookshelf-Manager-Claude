@@ -87,7 +87,8 @@ class SmartDownloadUseCase @Inject constructor(
 
         ordered.getOrNull(index + 1)?.let { (next, _) ->
             logger.info(LogCategory.Sync, "Halfway through a book, so the next in its series is being fetched")
-            downloadBook(next.id)
+            // `isAutomatic`: nobody pressed anything, so a paused book stays paused (DL-001).
+            downloadBook(next.id, isAutomatic = true)
         }
 
         if (deletePrevious) {

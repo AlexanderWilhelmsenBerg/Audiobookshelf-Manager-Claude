@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryId
@@ -30,6 +31,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -48,10 +52,20 @@ import kotlin.time.Duration.Companion.minutes
  * So these tests are about the **tabs a driver is offered**, from a library in a stated condition. The most
  * important one is [a library nobody has started still offers something to play].
  */
+/*
+ * Robolectric, because the tab titles are resources now.
+ *
+ * They were Kotlin literals until the car was found showing "ShelfPlayer" three phases after the rename.
+ * Resolving a string needs a real `Context`, and asserting on the resolved text is what makes a missing or
+ * misnamed resource fail here rather than in a car.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AutoBrowseTreeTest {
 
     private val books = MutableStateFlow<List<Book>>(emptyList())
+    private val chapters = MutableStateFlow<List<Chapter>>(emptyList())
 
     /**
      * The one case the owner hit: a full library, nothing played yet.
@@ -64,11 +78,11 @@ class AutoBrowseTreeTest {
     fun `a library nobody has started still offers something to play`() = runTest {
         books.value = listOf(book("book-1", "The Salt Harbour"), book("book-2", "Tide Tables"))
 
-        val tabs = auto().children(AutoLibrary.ROOT, currentBookId = null)
+        val tabs = auto().children(AutoLibrary.ROOT, now = null)
 
         assertTrue(AutoLibrary.TAB_DISCOVER in tabs.mediaIds(), "Discover is offered: ${tabs.titles()}")
         assertTrue(AutoLibrary.TAB_CONTINUE !in tabs.mediaIds(), "and Continue is not, because it is empty")
-        val discovered = auto().children(AutoLibrary.TAB_DISCOVER, currentBookId = null)
+        val discovered = auto().children(AutoLibrary.TAB_DISCOVER, now = null)
         assertEquals(setOf("The Salt Harbour", "Tide Tables"), discovered.titles().toSet())
     }
 
@@ -80,12 +94,12 @@ class AutoBrowseTreeTest {
             book("book-2", "Tide Tables"),
         )
 
-        val tabs = auto().children(AutoLibrary.ROOT, currentBookId = null)
+        val tabs = auto().children(AutoLibrary.ROOT, now = null)
 
         assertEquals(AutoLibrary.TAB_CONTINUE, tabs.mediaIds().first())
         assertEquals(
             listOf("The Salt Harbour"),
-            auto().children(AutoLibrary.TAB_CONTINUE, currentBookId = null).titles(),
+            auto().children(AutoLibrary.TAB_CONTINUE, now = null).titles(),
         )
     }
 
@@ -94,13 +108,13 @@ class AutoBrowseTreeTest {
     fun `a finished book appears under listen again and not under continue`() = runTest {
         books.value = listOf(book("book-1", "The Salt Harbour", progress(position = 11.hours, isFinished = true)))
 
-        val tabs = auto().children(AutoLibrary.ROOT, currentBookId = null)
+        val tabs = auto().children(AutoLibrary.ROOT, now = null)
 
         assertTrue(AutoLibrary.TAB_AGAIN in tabs.mediaIds(), "Listen again is offered: ${tabs.titles()}")
         assertTrue(AutoLibrary.TAB_CONTINUE !in tabs.mediaIds())
         assertEquals(
             listOf("The Salt Harbour"),
-            auto().children(AutoLibrary.TAB_AGAIN, currentBookId = null).titles(),
+            auto().children(AutoLibrary.TAB_AGAIN, now = null).titles(),
         )
     }
 
@@ -115,7 +129,7 @@ class AutoBrowseTreeTest {
     fun `chapters and history are offered even when the library has shelves`() = runTest {
         books.value = listOf(book("book-1", "The Salt Harbour"))
 
-        val ids = auto().children(AutoLibrary.ROOT, currentBookId = null).mediaIds()
+        val ids = auto().children(AutoLibrary.ROOT, now = null).mediaIds()
 
         assertTrue(AutoLibrary.TAB_CHAPTERS in ids)
         assertTrue(AutoLibrary.TAB_HISTORY in ids)
@@ -131,7 +145,7 @@ class AutoBrowseTreeTest {
     fun `an empty library explains itself in one unplayable row`() = runTest {
         books.value = emptyList()
 
-        val children = auto().children(AutoLibrary.ROOT, currentBookId = null)
+        val children = auto().children(AutoLibrary.ROOT, now = null)
 
         assertEquals(1, children.size, "one row, not two tabs about nothing")
         assertEquals(AutoLibrary.NOTICE_EMPTY, children.single().mediaId)
@@ -172,8 +186,9 @@ class AutoBrowseTreeTest {
 
     private fun auto(): AutoLibrary {
         val profiles = StubProfiles()
-        val library = StubLibrary(books)
+        val library = StubLibrary(books, chapters)
         return AutoLibrary(
+            context = ApplicationProvider.getApplicationContext(),
             profiles = profiles,
             library = library,
             history = StubHistory(),
@@ -245,7 +260,10 @@ class AutoBrowseTreeTest {
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
     }
 
-    private class StubLibrary(private val books: MutableStateFlow<List<Book>>) : LibraryRepository {
+    private class StubLibrary(
+        private val books: MutableStateFlow<List<Book>>,
+        private val chapters: MutableStateFlow<List<Chapter>>,
+    ) : LibraryRepository {
         override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = flowOf(emptyList())
 
         override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> = flowOf(null)
@@ -257,8 +275,7 @@ class AutoBrowseTreeTest {
         override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
             flowOf(books.value.firstOrNull { it.id == bookId })
 
-        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId): Flow<List<Chapter>> =
-            flowOf(emptyList())
+        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId): Flow<List<Chapter>> = chapters
 
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> = emptyFlow()
 

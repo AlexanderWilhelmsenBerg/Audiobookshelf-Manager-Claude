@@ -1,7 +1,10 @@
 package com.example.shelfplayer.core.network.api
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -254,6 +257,322 @@ class CapturedShapesTest {
 
         assertEquals(401, file.getValue("unauthenticatedStatus").jsonPrimitive.content.toInt())
     }
+
+    // --- Management (EPIC MGR / EPIC USER) --------------------------------------------------------
+
+    /**
+     * **`GET /api/users` returns every user's `token`.**
+     *
+     * This is the single most important thing the management captures found. The response carries a live
+     * API credential *for other accounts* to any client an admin signs in with — not a hash, not a
+     * placeholder, the token itself. The fixture shows `<redacted-secret>` because the capture script
+     * redacts it; the wire does not.
+     *
+     * USER-001 says tokens are never *displayed*. The stronger rule this forces is that the app must never
+     * **model** the field: no DTO property, so there is nothing to store, nothing to log, and nothing to
+     * put on a screen by accident. A field that is never parsed cannot leak.
+     *
+     * Pinned as a test so that a future reader who wonders why `UserDto` has no `token` finds the reason
+     * rather than adding one.
+     */
+    @Test
+    fun `the user list carries a live token for every account`() {
+        val users = json.parseToJsonElement(bodyOf("users-list")).jsonObject
+            .getValue("users").jsonArray
+
+        assertTrue(users.isNotEmpty())
+        users.forEach { user ->
+            assertTrue("token" in user.jsonObject, "a user object with no token would be the safe shape")
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC USER-002 — a user created through this endpoint arrives **inactive**.
+     *
+     * The request sent a username, a password and a type, and the server answered with `isActive: false`.
+     * So "create a user" does not produce an account that can sign in, and an app that reported success
+     * without saying so would leave an admin waiting for somebody to log in with credentials that cannot
+     * work yet.
+     */
+    @Test
+    fun `a created user is not active`() {
+        val user = json.parseToJsonElement(bodyOf("user-create")).jsonObject.getValue("user").jsonObject
+
+        assertEquals(false, user.getValue("isActive").jsonPrimitive.content.toBoolean())
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 — the metadata `PATCH` answers with the whole updated item.
+     *
+     * That settles how MGR-001's *"On success, Room updates immediately and then refreshes from server"* is
+     * satisfied: the refresh is the response, not a second `GET`. A client that re-fetched would be making
+     * a request for data it already had, and would have a window in which the two disagreed.
+     */
+    @Test
+    fun `updating metadata returns the updated library item`() {
+        val body = json.parseToJsonElement(bodyOf("item-update")).jsonObject
+
+        assertTrue("libraryItem" in body, "the PATCH response is the item, so no follow-up GET is needed")
+    }
+
+    /**
+     * Three management endpoints answer `text/plain`, not JSON.
+     *
+     * `OK` is the whole body. A client that assumed every 2xx carried JSON would fail to parse a success
+     * and report a failure for an operation that worked — which for the deletion would mean telling
+     * somebody their book is still there when it is gone.
+     */
+    @Test
+    fun `cover removal, library scan and item deletion answer in plain text`() {
+        listOf("item-cover-remove", "library-scan", "item-delete").forEach { fixture ->
+            val envelope = json.parseToJsonElement(rawEnvelope(fixture)).jsonObject
+            assertEquals(200, envelope.getValue("status").jsonPrimitive.content.toInt(), fixture)
+            assertTrue(
+                envelope.getValue("contentType").jsonPrimitive.content.startsWith("text/plain"),
+                "$fixture answered ${envelope.getValue("contentType")}",
+            )
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-005 — the deletion is confirmed by the item being gone, not by the response.
+     *
+     * `DELETE` answers `OK` and the item then `404`s. MGR-005 requires the local row to be removed *only
+     * after server confirmation*, and this pair is what confirmation looks like on this server: a plain-text
+     * acknowledgement plus an item that no longer resolves.
+     */
+    @Test
+    fun `a deleted item stops resolving`() {
+        val after = json.parseToJsonElement(rawEnvelope("item-after-delete")).jsonObject
+
+        assertEquals(404, after.getValue("status").jsonPrimitive.content.toInt())
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-004 — an item scan answers with a *result*, synchronously.
+     *
+     * `{"result": "UPTODATE"}`. No job id, nothing to poll. MGR-004 asks for "started, running if
+     * detectable, completed, and failed" — on this server an item scan has no detectable running state
+     * because it is over by the time the response arrives, while a **library** scan answers `OK`
+     * immediately and runs on. The two need different UI, and that is not something either response
+     * announces.
+     */
+    @Test
+    fun `an item scan answers with a result and a library scan does not`() {
+        val scan = json.parseToJsonElement(bodyOf("item-scan")).jsonObject
+
+        assertTrue("result" in scan, "the item scan is synchronous and says what it concluded")
+
+        val library = json.parseToJsonElement(rawEnvelope("library-scan")).jsonObject
+        assertTrue(
+            library.getValue("contentType").jsonPrimitive.content.startsWith("text/plain"),
+            "the library scan only acknowledges; it does not report a result",
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-003 — a quick match with no provider defaults to Google, and can find nothing.
+     *
+     * The capture is the **no-match** shape: `{"warning": "No google match found"}`. What a *successful*
+     * match returns is still unknown, because this container has no provider key and nothing to match
+     * against — so MGR-003's "user sees provider, candidate title, author, year, cover, and fields that
+     * will change" cannot be built from this capture alone. Recorded so that limitation is visible rather
+     * than discovered halfway through the slice.
+     */
+    @Test
+    fun `a quick match that finds nothing reports a warning rather than failing`() {
+        val envelope = json.parseToJsonElement(rawEnvelope("item-match")).jsonObject
+        assertEquals(200, envelope.getValue("status").jsonPrimitive.content.toInt())
+
+        val body = json.parseToJsonElement(bodyOf("item-match")).jsonObject
+        assertTrue("warning" in body, "a miss is a 200 with a warning, not an error status")
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-003 / 22.5 — the provider probe's fixture, which arrived one CI run after the probe.
+     *
+     * `AbsCapabilityResolver` was written from the Audiobookshelf project's source and shipped ahead of
+     * this file, failing closed on anything it did not recognise. This is the evidence that made that safe
+     * retroactively: the shape the code assumes is the shape a real 2.36.0 answered with.
+     *
+     * The bar the probe applies is asserted too — a provider needs a `value`, because that is what a
+     * search request sends. `text` is a display name and a provider without one would still work.
+     */
+    @Test
+    fun `the provider list names providers that a search can actually use`() {
+        val providers = json.parseToJsonElement(bodyOf("search-providers"))
+            .jsonObject.getValue("providers").jsonObject.getValue("books").jsonArray
+
+        assertTrue(providers.isNotEmpty())
+        assertTrue(providers.all { !it.jsonObject["value"]?.jsonPrimitive?.contentOrNull.isNullOrBlank() })
+        // Google is the default and needs no configuration, which is what makes the probe meaningful on a
+        // server whose administrator has set nothing up.
+        assertTrue(providers.any { it.jsonObject["value"]?.jsonPrimitive?.contentOrNull == "google" })
+    }
+
+    /**
+     * PRODUCT_SPEC USER-002 — `isActive` is honoured on creation, and defaults to `false` when omitted.
+     *
+     * `user-create.json` omits it and comes back inactive; this one sends `true` and comes back active. The
+     * pair is the finding: a client that creates a user without saying so has created an account nobody can
+     * sign in to, and USER-002 cannot report "created" and stop.
+     */
+    @Test
+    fun `a created user is active only when the request said so`() {
+        val omitted = json.parseToJsonElement(bodyOf("user-create")).jsonObject.getValue("user").jsonObject
+        val requested = json.parseToJsonElement(bodyOf("user-create-active"))
+            .jsonObject.getValue("user").jsonObject
+
+        assertEquals(false, omitted.getValue("isActive").jsonPrimitive.boolean)
+        assertEquals(true, requested.getValue("isActive").jsonPrimitive.boolean)
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-001 / MGR-002 / MGR-004 — the default grants of an ordinary `user` account.
+     *
+     * Download, and nothing else. This is what `ManagementPermissions` is built to reflect, and it is the
+     * reason an ordinary account sees an editor it cannot save from rather than no editor at all.
+     */
+    @Test
+    fun `an ordinary account may download and may not manage`() {
+        val permissions = json.parseToJsonElement(bodyOf("user-create-active"))
+            .jsonObject.getValue("user").jsonObject.getValue("permissions").jsonObject
+
+        assertEquals(true, permissions.getValue("download").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("update").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("delete").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("upload").jsonPrimitive.boolean)
+    }
+
+    /**
+     * PRODUCT_SPEC principle 4 — what the *second* enforcement is predicting, observed at last.
+     *
+     * Every management capture before these ran as `root`, so every response was the permitted one. These
+     * three ran as an active `user` account and are the refusals: `403`, `text/plain`, body `Forbidden`.
+     *
+     * The finding that generalises is the content type. These handlers end with Express's `sendStatus`,
+     * which writes the status *name* as a plain-text body — the same mechanism that makes cover removal,
+     * library scan and item deletion answer `text/plain "OK"` on success. A client that parsed a management
+     * failure as JSON would get a deserialization error where it should get a permission error, so
+     * `NetworkErrorMapper` keys on the status code and never on the body.
+     */
+    @Test
+    fun `a refused management request is plain text, not json`() {
+        for (fixture in listOf("item-update-forbidden", "item-delete-forbidden", "item-scan-forbidden")) {
+            val envelope = json.parseToJsonElement(rawEnvelope(fixture)).jsonObject
+
+            assertEquals(403, envelope.getValue("status").jsonPrimitive.int, fixture)
+            assertEquals("text", envelope.getValue("bodyKind").jsonPrimitive.content, fixture)
+            assertTrue(envelope.getValue("contentType").jsonPrimitive.content.startsWith("text/plain"), fixture)
+            assertEquals("Forbidden", envelope.getValue("bodyText").jsonPrimitive.content, fixture)
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-004 — the scan refusal is about the account **type**, not about a grant.
+     *
+     * The account that was refused holds `download` and nothing else, so the update and delete refusals are
+     * explained by its grants. The *scan* refusal is not: the server gates scanning on being admin or root,
+     * and this account would still be refused holding every permission there is. That is why `ProfileRole`
+     * does real work in `ManagementPermissions` rather than being a presentation bucket.
+     */
+    @Test
+    fun `the refused account is an ordinary user with only the download grant`() {
+        val user = json.parseToJsonElement(bodyOf("me-listener")).jsonObject
+        val permissions = user.getValue("permissions").jsonObject
+
+        assertEquals("user", user.getValue("type").jsonPrimitive.content)
+        assertEquals(true, permissions.getValue("download").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("update").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("delete").jsonPrimitive.boolean)
+        assertEquals(false, permissions.getValue("upload").jsonPrimitive.boolean)
+    }
+
+    /**
+     * `GET /api/me` carries the caller's own token, which the app already holds — so this is not the leak
+     * `GET /api/users` is. It is pinned anyway, because the *reason* `UserDto` models no token is that no
+     * response's token is ever worth parsing, and a reader who saw this one might conclude otherwise.
+     */
+    @Test
+    fun `even the caller's own account response carries a token that is never modelled`() {
+        val user = json.parseToJsonElement(bodyOf("me-listener")).jsonObject
+
+        assertTrue("token" in user)
+    }
+
+    // --- The book timeline (PRODUCT_SPEC PLAY-003, ADR-0016) --------------------------------------
+
+    /**
+     * **`media.tracks` is contiguous**, and the whole of PLAY-003's coordinate question rests on it.
+     *
+     * `docs/gaps.md` carried an open defect for four phases saying that a book with an excluded file
+     * resolves positions against the wrong offsets — the player concatenates only the playable tracks
+     * while the book timeline supposedly still counts the excluded one, leaving a hole. It cannot happen,
+     * and the server's own source says why (`server/models/Book.js`, read at 2.36.0):
+     *
+     * ```js
+     * get includedAudioFiles() { return this.audioFiles.filter((af) => !af.exclude) }
+     *
+     * getTracklist(libraryItemId) {
+     *   let startOffset = 0
+     *   return this.includedAudioFiles.map((af) => { ...; track.startOffset = startOffset
+     *                                                startOffset += track.duration; return track })
+     * }
+     * ```
+     *
+     * Excluded files are filtered out **before** the offsets are accumulated, so `media.tracks` never
+     * contains one and the offsets never contain a hole. The concatenation and the book share a
+     * coordinate space by construction.
+     *
+     * This test is what turns that reading into something that fails when it stops being true. If a
+     * future server ever emits a gap — or ships an excluded track in `tracks` — the arithmetic below
+     * breaks, and the defect surfaces here rather than as a resume landing in the wrong chapter.
+     */
+    @Test
+    fun `track offsets accumulate with no hole, so the player timeline is the book timeline`() {
+        val media = json.parseToJsonElement(bodyOf("library-item")).jsonObject
+            .getValue("media").jsonObject
+        val tracks = media.getValue("tracks").jsonArray
+
+        var expected = 0.0
+        tracks.forEach { element ->
+            val track = element.jsonObject
+            assertEquals(
+                false,
+                track.getValue("exclude").jsonPrimitive.boolean,
+                "media.tracks must never carry an excluded file — the server filters before it accumulates",
+            )
+            assertEquals(
+                expected,
+                track.getValue("startOffset").jsonPrimitive.double,
+                "startOffset must equal the durations before it; a hole here is PLAY-003's defect",
+            )
+            expected += track.getValue("duration").jsonPrimitive.double
+        }
+        assertEquals(expected, media.getValue("duration").jsonPrimitive.double)
+    }
+
+    /**
+     * The same, over the two-file book — the fixture that settled `startOffset` being global in the first
+     * place. A single-track book cannot tell a contiguous timeline from an accumulated one.
+     */
+    @Test
+    fun `a multi-file book's second track starts exactly where the first ends`() {
+        val tracks = json.parseToJsonElement(bodyOf("multi-item-play")).jsonObject
+            .getValue("audioTracks").jsonArray
+            .map { it.jsonObject }
+
+        assertEquals(2, tracks.size)
+        assertEquals(0.0, tracks[0].getValue("startOffset").jsonPrimitive.double)
+        assertEquals(
+            tracks[0].getValue("duration").jsonPrimitive.double,
+            tracks[1].getValue("startOffset").jsonPrimitive.double,
+        )
+        assertTrue(tracks.none { it.getValue("exclude").jsonPrimitive.boolean })
+    }
+
+    private fun bodyOf(fixture: String): String =
+        json.parseToJsonElement(rawEnvelope(fixture)).jsonObject.getValue("body").toString()
 
     private fun rawEnvelope(fixture: String): String {
         val stream = requireNotNull(javaClass.classLoader?.getResourceAsStream("contracts/$fixture.json")) {

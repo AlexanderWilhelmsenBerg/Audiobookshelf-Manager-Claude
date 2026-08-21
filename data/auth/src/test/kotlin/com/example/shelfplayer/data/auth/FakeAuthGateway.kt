@@ -30,6 +30,7 @@ import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import java.io.OutputStream
 
@@ -101,8 +102,12 @@ internal class FakeAuthGateway :
     val handshakes = mutableListOf<Handshake>()
 
     override val capabilities: CapabilityResolver = object : CapabilityResolver {
-        override suspend fun resolve(serverId: ServerId, serverUrl: String): AppResult<ServerCapabilities> {
-            handshakes += Handshake(serverId, serverUrl)
+        override suspend fun resolve(
+            serverId: ServerId,
+            serverUrl: String,
+            accessToken: AuthToken?,
+        ): AppResult<ServerCapabilities> {
+            handshakes += Handshake(serverId, serverUrl, accessToken)
             return capabilitiesResult
                 ?: AppResult.Success(
                     ServerCapabilities(
@@ -114,6 +119,15 @@ internal class FakeAuthGateway :
                 )
         }
     }
+
+    /**
+     * PRODUCT_SPEC EPIC MGR — not part of the auth tests, and refusing rather than pretending.
+     *
+     * `get() = unsupported()` rather than an anonymous object with a stub per method. The object form has to
+     * grow every time `ManagementApi` does, and it silently failed to: CI caught nine unimplemented members
+     * here that a local build had reported as fine. A property that throws cannot fall behind an interface.
+     */
+    override val management: ManagementApi get() = error("management is not part of these tests")
 
     override val library: LibraryApi = object : LibraryApi {
         override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> = unsupported()
@@ -130,6 +144,9 @@ internal class FakeAuthGateway :
             libraryId: LibraryId,
             query: String,
         ): AppResult<List<BookSnapshot>> = unsupported()
+
+        override suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> =
+            unsupported()
     }
 
     override val playback: PlaybackApi = object : PlaybackApi {
@@ -220,7 +237,7 @@ internal class FakeAuthGateway :
 
     internal data class CurrentAccount(val serverUrl: String, val accessToken: String)
 
-    internal data class Handshake(val serverId: ServerId, val serverUrl: String)
+    internal data class Handshake(val serverId: ServerId, val serverUrl: String, val accessToken: AuthToken? = null)
 
     internal companion object {
         fun session(

@@ -45,6 +45,20 @@ data class LibraryAccess(
      * this was persisted that criterion had no plumbing: the field was parsed off the wire and dropped.
      */
     val canDownload: Boolean = false,
+    /**
+     * PRODUCT_SPEC MGR-001 / MGR-002 / MGR-005 — the three grants EPIC MGR gates on.
+     *
+     * `user.permissions.update`, `.delete` and `.upload`, all present in `contracts/me.json` and all
+     * dropped on the floor until Phase 5. They ride here for the same reason [canDownload] does: they
+     * arrive in the same object and are persisted on the same row.
+     *
+     * Like every other grant here, absent means **no**. PRODUCT_SPEC principle 4 enforces permissions
+     * twice, and the second enforcement is only worth anything if an unknown grant is treated as withheld
+     * — a management action offered and then refused by the server is worse than one never offered.
+     */
+    val canUpdate: Boolean = false,
+    val canDelete: Boolean = false,
+    val canUpload: Boolean = false,
 ) {
 
     /**

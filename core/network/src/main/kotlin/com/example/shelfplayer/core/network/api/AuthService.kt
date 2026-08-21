@@ -66,6 +66,24 @@ internal interface AuthService {
     @POST("api/authorize")
     suspend fun authorize(@Header(AUTHORIZATION) bearer: String): Response<LoginResponseDto>
 
+    /**
+     * PRODUCT_SPEC SYNC-001 / MGR-003 — the metadata providers this deployment offers.
+     *
+     * The only endpoint in EPIC MGR that is an honest capability probe. It is read-only, has no side
+     * effects, needs no privilege beyond being signed in, and answers a question that genuinely varies
+     * between deployments rather than between versions: a server administrator can configure custom
+     * providers, and the list reflects them.
+     *
+     * A server too old to have the route answers `404`, which is exactly the "not confirmed" signal
+     * SYNC-001 wants and costs no version comparison (PRODUCT_SPEC 10.4).
+     *
+     * Source-derived, not yet captured — see `docs/api-compatibility.md`, "What the official project's
+     * own source settles". [MetadataProvidersDto] therefore reads as *unsupported* on any shape it does
+     * not recognise, which is what keeps PRODUCT_SPEC 22.5 satisfied until the fixture lands.
+     */
+    @GET("api/search/providers")
+    suspend fun metadataProviders(@Header(AUTHORIZATION) bearer: String): Response<MetadataProvidersDto>
+
     @POST("logout")
     suspend fun logout(@Header(AUTHORIZATION) bearer: String): Response<Unit>
 }

@@ -11,11 +11,13 @@ import androidx.navigation.navArgument
 import com.example.shelfplayer.feature.book.BookRoute
 import com.example.shelfplayer.feature.downloads.DownloadsRoute
 import com.example.shelfplayer.feature.home.HomeRoute
+import com.example.shelfplayer.feature.metadata.EditMetadataScreen
 import com.example.shelfplayer.feature.onboarding.SignInRoute
 import com.example.shelfplayer.feature.onboarding.SignInViewModel
 import com.example.shelfplayer.feature.profiles.ProfileSwitcherRoute
 import com.example.shelfplayer.feature.series.SeriesRoute
 import com.example.shelfplayer.feature.settings.SettingsRoute
+import com.example.shelfplayer.feature.users.ServerUsersScreen
 
 /**
  * PRODUCT_SPEC 6.1 / AUTH-002 — where the app opens, and how it gets back to sign-in.
@@ -90,6 +92,7 @@ fun ShelfPlayerNavHost(
             SettingsRoute(
                 onNavigateUp = navController::navigateUp,
                 onManageDownloads = { navController.navigate(ShelfDestinations.DOWNLOADS) },
+                onManageServerUsers = { navController.navigate(ShelfDestinations.SERVER_USERS) },
             )
         }
         // PRODUCT_SPEC DL-003 / ADR-0018 decision 6 — reachable from Settings and from a book's own menu,
@@ -106,7 +109,19 @@ fun ShelfPlayerNavHost(
             BookRoute(
                 onNavigateUp = navController::navigateUp,
                 onManageDownloads = { navController.navigate(ShelfDestinations.DOWNLOADS) },
+                onEditMetadata = { bookId -> navController.navigate(ShelfDestinations.editMetadata(bookId)) },
             )
+        }
+        composable(ShelfDestinations.SERVER_USERS) {
+            ServerUsersScreen(onBack = navController::navigateUp)
+        }
+        composable(
+            route = ShelfDestinations.EDIT_METADATA,
+            arguments = listOf(
+                navArgument(ShelfDestinations.ARG_BOOK_ID) { type = NavType.StringType },
+            ),
+        ) {
+            EditMetadataScreen(onBack = navController::navigateUp)
         }
         composable(
             route = ShelfDestinations.SERIES,

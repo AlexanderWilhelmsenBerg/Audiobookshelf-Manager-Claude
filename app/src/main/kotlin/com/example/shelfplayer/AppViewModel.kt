@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.ThemeMode
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +31,10 @@ class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileR
         AppUiState(
             themeMode = stored.themeMode,
             dynamicColor = stored.dynamicColor,
+            // PRODUCT_SPEC SET-002 — read here rather than in a screen because `AppLocale` wraps the whole
+            // app: the language has to be resolved before the first string is drawn, not when Settings is
+            // opened.
+            language = AppLanguage.ofTag(stored.appLanguageTag),
             // PRODUCT_SPEC LIB-004 — the addresses cover URLs are built from. Held app-wide because a
             // cover is rendered on every shelf and the address belongs to the server row, not the book.
             serverBaseUrls = servers.associate { it.id to it.baseUrl },
@@ -63,6 +68,8 @@ class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileR
 data class AppUiState(
     val themeMode: ThemeMode = ThemeMode.THEME_MODE_SYSTEM,
     val dynamicColor: Boolean = false,
+    /** PRODUCT_SPEC SET-002 — the chosen language, or [AppLanguage.System] to follow the device. */
+    val language: AppLanguage = AppLanguage.System,
     /** PRODUCT_SPEC LIB-004 — server id to base address, for resolving cover URLs. */
     val serverBaseUrls: Map<ServerId, String> = emptyMap(),
     val hasAnyProfile: Boolean = false,

@@ -55,6 +55,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * PRODUCT_SPEC PLAY-001 — the one player and the one media session, both owned by this service.
@@ -611,7 +612,22 @@ class PlaybackService : MediaLibraryService() {
      * falls back to the last book with progress, which is what "it always opens the last played book"
      * means when the app has been closed all night.
      */
-    private fun currentBookId(): LibraryItemId? = player?.currentMediaItem?.let(MediaItems::bookIdOf)
+    /**
+     * PRODUCT_SPEC PLAY-003 — where the player is, for the browse tree to draw chapter progress against.
+     *
+     * Read on the main thread, which is where a `MediaLibrarySession` callback already runs, because
+     * `currentPosition` is a `Player` call and Media3 asserts the application thread. The browse tree then
+     * uses it off-thread as a plain number, which is safe precisely because it was copied out here.
+     *
+     * `null` when nothing is loaded, and the tree falls back to stored progress. It deliberately does *not*
+     * fall back to zero: zero is a position, and it would draw every chapter bar empty for a book the
+     * listener is halfway through.
+     */
+    private fun nowPlaying(): NowPlaying? {
+        val current = player ?: return null
+        val bookId = current.currentMediaItem?.let(MediaItems::bookIdOf) ?: return null
+        return NowPlaying(bookId, current.currentPosition.coerceAtLeast(0).milliseconds)
+    }
 
     /**
      * Turns a browse item into something the player can actually load.
@@ -753,8 +769,15 @@ class PlaybackService : MediaLibraryService() {
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?,
-        ): ListenableFuture<LibraryResult<MediaItem>> =
-            Futures.immediateFuture(LibraryResult.ofItem(auto.root(), params))
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            // PRODUCT_SPEC ROUTE-001 — the car asking for a *resume tile* rather than for the browse tree.
+            //
+            // Android Auto sends this hint when it starts, before the driver has touched anything, and what
+            // comes back is the tile on the media home screen. It is a different question from "what can I
+            // browse", so it gets a different root: see `AutoLibrary.RECENT_ROOT`.
+            val root = if (params?.isRecent == true) auto.recentRoot() else auto.root()
+            return Futures.immediateFuture(LibraryResult.ofItem(root, params))
+        }
 
         override fun onGetChildren(
             session: MediaLibrarySession,
@@ -766,7 +789,7 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
             // Paged by the caller, so a long continue-listening list arrives a screen at a time rather
             // than as one binder transaction a head unit may refuse.
-            val all = auto.children(parentId, currentBookId())
+            val all = auto.children(parentId, nowPlaying())
             val from = (page * pageSize).coerceAtMost(all.size)
             val to = (from + pageSize).coerceAtMost(all.size)
             LibraryResult.ofItemList(ImmutableList.copyOf(all.subList(from, to)), params)
@@ -777,7 +800,7 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> = future {
-            auto.item(mediaId, currentBookId())
+            auto.item(mediaId, nowPlaying())
                 ?.let { item -> LibraryResult.ofItem(item, null) }
                 ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
         }

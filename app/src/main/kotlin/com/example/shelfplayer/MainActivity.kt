@@ -59,26 +59,31 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: AppViewModel = hiltViewModel()
             val appState by viewModel.state.collectAsStateWithLifecycle()
-            ShelfPlayerTheme(
-                darkTheme = appState.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme()),
-                dynamicColor = appState.dynamicColor,
-            ) {
-                // The graph is not composed until the start destination is known. Composing it early and
-                // correcting it would show a flash of the wrong screen on every cold start, and would put
-                // a spurious entry in the back stack.
-                if (appState.isResolved) {
-                    // PRODUCT_SPEC LIB-004 — provided once, here, because every shelf renders covers and
-                    // the address they need belongs to the server row rather than to any one screen.
-                    CompositionLocalProvider(
-                        LocalCoverUrls provides coverUrlsFor(appState.serverBaseUrls),
-                    ) {
-                        ShelfPlayerContent(
-                            startDestination = if (appState.hasAnyProfile) {
-                                ShelfDestinations.HOME
-                            } else {
-                                ShelfDestinations.SIGN_IN
-                            },
-                        )
+            // PRODUCT_SPEC SET-002 — outside the theme, because it decides what every string below says
+            // and the theme only decides what colour it is drawn in.
+            AppLocale(language = appState.language) {
+                ShelfPlayerTheme(
+                    darkTheme = appState.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme()),
+                    dynamicColor = appState.dynamicColor,
+                ) {
+                    // The graph is not composed until the start destination is known. Composing it early
+                    // and correcting it would show a flash of the wrong screen on every cold start, and
+                    // would put a spurious entry in the back stack.
+                    if (appState.isResolved) {
+                        // PRODUCT_SPEC LIB-004 — provided once, here, because every shelf renders covers
+                        // and the address they need belongs to the server row rather than to any one
+                        // screen.
+                        CompositionLocalProvider(
+                            LocalCoverUrls provides coverUrlsFor(appState.serverBaseUrls),
+                        ) {
+                            ShelfPlayerContent(
+                                startDestination = if (appState.hasAnyProfile) {
+                                    ShelfDestinations.HOME
+                                } else {
+                                    ShelfDestinations.SIGN_IN
+                                },
+                            )
+                        }
                     }
                 }
             }

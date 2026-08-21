@@ -111,6 +111,7 @@ class SettingsViewModelTest {
     private fun viewModel() = SettingsViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         observeServerDiagnostics = ObserveServerDiagnosticsUseCase(profiles, capabilities, StubRealtime()),
+        profiles = profiles,
         diagnostics = diagnostics,
         preferences = preferences,
         sleepTimer = sleepTimer,
@@ -120,9 +121,9 @@ class SettingsViewModelTest {
             car = car,
             launcherIcons = launcherIcons,
             metrics = PlaybackMetricsRecorder(TestAppClock()),
+            known = knownDevices,
         ),
         playbackSettings = playbackSettings,
-        devices = knownDevices,
     )
 
     private val knownDevices = FakeDevices()

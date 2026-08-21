@@ -66,3 +66,34 @@ official app tells us where to point the capture script; it is never itself the 
 - ShelfPlayer's licence is unchanged.
 - If the owner decides otherwise, this ADR is superseded rather than contradicted, and the change is
   additive: existing code stays, new code may be copied, and the project relicenses to GPL-3.0.
+
+---
+
+## Amendment, 2026-08-15: the server repository, on the same terms
+
+Phase 5 needed four API facts that no capture this project can run would produce, and reading
+`advplyr/audiobookshelf-app` produced none of them — the official mobile app has no management surface
+at all. The answers are in `advplyr/audiobookshelf`, the server itself, which is also **GPL-3.0**.
+
+**This ADR's decision extends to it unchanged: read it for API facts, do not copy code.** Same licence,
+same reasoning, same limits — and one that binds harder here than it did for the app.
+
+The app was read to learn what a client *sends*. The server is read to learn what it *answers*, which is
+closer to the thing this project must reproduce, and therefore closer to the line. So the rule is applied
+strictly:
+
+- What may be taken is the **observable HTTP behaviour**: the route, the parameters, the status codes, the
+  shape of the body, the order things must happen in, and which of them are gated on what. Those are facts
+  about a protocol that any integrator could establish by watching the wire with enough patience. Reading
+  the source is a shortcut to the same knowledge, not a different kind of knowledge.
+- What may not be taken is anything that is the server's *implementation*: its structures, its algorithms,
+  its naming, its control flow. None of it is needed. This app does not implement Audiobookshelf; it talks
+  to one.
+- Every finding is written in this project's own words, marked as source-derived rather than captured, and
+  is still subject to PRODUCT_SPEC 22.5 — the app does not rely on any of it until a fixture exists. The
+  first section of `docs/api-compatibility.md` written this way says so in its own opening paragraphs.
+
+Reading the server also settled a question in the *other* direction, which is worth recording as the kind
+of thing this permission is for: it established that the server **cannot** confirm a source-file deletion,
+which is why MGR-006 ships no feature (ADR-0021). A capture would never have found that — every capture
+that route can produce is a success, including the ones where the file is still there.

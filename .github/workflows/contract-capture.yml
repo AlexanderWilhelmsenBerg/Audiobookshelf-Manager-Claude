@@ -125,15 +125,40 @@ jobs:
             echo "::notice::No committed contracts yet — download the artifact and commit it."
             exit 0
           fi
-          if diff -ru "$committed" "$RUNNER_TEMP/captured"; then
-            echo "Committed contracts match the server."
-            exit 0
+          # Three findings share one directory comparison, and they need three different reactions.
+          # Comparing file by file is what keeps them apart.
+          #
+          # **Drift** — a fixture in both, with different contents — is the failure this job exists to
+          # catch: the server now answers something other than what the adapter was written against.
+          #
+          # **A new capture target** exists only in the capture, because somebody added an endpoint to the
+          # script and its fixture has never been committed. That is the expected state of the pull
+          # request that adds it, not a failure.
+          #
+          # **A skipped target** exists only in the committed set, because this run could not capture it.
+          # One capture leaves the server — the candidate search makes the configured metadata provider
+          # answer — and Google Books answers `429` to GitHub Actions' address ranges on every run. The
+          # capture script writes nothing when the provider returns nothing, so the committed evidence
+          # from a real deployment survives instead of being overwritten with an empty list.
+          #
+          # That last case is why this is not one `diff -ru`. It was, and the job was red on every run
+          # from a disagreement nobody could fix — which is worse than a job that does not run, because a
+          # permanently failing check teaches people to ignore a failing check. See docs/risks.md R-15.
+          drifted=""
+          for file in $(cd "$RUNNER_TEMP/captured" && find . -name '*.json' | sort); do
+            if [ -f "$committed/$file" ]; then
+              diff -u "$committed/$file" "$RUNNER_TEMP/captured/$file" || drifted="$drifted $file"
+            fi
+          done
+
+          skipped="$(comm -23 \
+            <(cd "$committed" && find . -name '*.json' | sort) \
+            <(cd "$RUNNER_TEMP/captured" && find . -name '*.json' | sort))"
+          if [ -n "$skipped" ]; then
+            echo "::notice::Not captured this run, so not compared:"
+            echo "$skipped"
           fi
-          # Two different findings share one diff, and they need different reactions. A fixture that
-          # exists only in the capture is a *new capture target* — somebody added an endpoint to the
-          # script and the fixture has never been committed, which is the expected state of the pull
-          # request that adds it. A fixture that changed is drift: the server now answers something the
-          # adapter was written against, which is the failure this job exists to catch.
+
           added="$(comm -13 \
             <(cd "$committed" && find . -name '*.json' | sort) \
             <(cd "$RUNNER_TEMP/captured" && find . -name '*.json' | sort))"
@@ -153,7 +178,11 @@ jobs:
               echo "::endgroup::"
             done
           fi
-          echo "::error::The captured contracts differ from the committed ones."
+          if [ -z "$drifted" ]; then
+            echo "Every fixture this run captured matches what is committed."
+            exit 0
+          fi
+          echo "::error::These captured contracts differ from the committed ones:$drifted"
           echo "Download the captured-contracts artifact, review the diff, and commit the update."
           exit 1
 

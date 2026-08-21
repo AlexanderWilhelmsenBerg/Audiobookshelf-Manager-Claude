@@ -12,6 +12,21 @@ android {
     buildFeatures {
         buildConfig = true
     }
+
+    /**
+     * PRODUCT_SPEC SET-002 / ADR-0022 — the language setting is why this is off.
+     *
+     * An app bundle splits resources by language by default and Play installs only the device's own. An
+     * in-app language picker then offers a language whose strings are not on the device, and every label
+     * silently falls back to English — which is exactly the failure the setting exists to fix. The
+     * alternative is Play Core's on-demand language download; disabling the split costs a few hundred
+     * kilobytes and no runtime dependency.
+     */
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
 }
 
 /**
@@ -81,6 +96,11 @@ dependencies {
  *
  * Nothing is lost. The debug variant is what `verifyDebug` gates on and what CI runs, and the code under
  * test is identical in both — a Compose semantics tree does not change with the build type.
+ *
+ * **The `ScreenTest` suffix is a contract, not a description.** Any test class that calls
+ * `createComposeRule` has to carry it, whether or not the thing it renders is a screen; one that does not
+ * fails only in the release variant, with an unresolvable launcher intent rather than an assertion.
+ * (Do not write the exclusion's glob inside a KDoc block — its `*` followed by `/` closes the comment.)
  */
 tasks.withType<Test>().configureEach {
     if (name == "testReleaseUnitTest") {

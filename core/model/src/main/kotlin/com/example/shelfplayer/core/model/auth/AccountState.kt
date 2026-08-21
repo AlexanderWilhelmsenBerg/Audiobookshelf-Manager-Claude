@@ -35,6 +35,16 @@ data class AccountState(
     val username: String,
     /** Re-read every time: an account promoted or demoted on the server changes which actions are offered. */
     val role: ProfileRole,
+    /**
+     * PRODUCT_SPEC 5.1 / USER-001 — the account type the server reports, verbatim.
+     *
+     * `root`, `admin`, `user` or `guest` in `contracts/me.json`. Kept as the server's own string rather than
+     * collapsed into [ProfileRole] on the way in, because the mapping is this app's opinion and a type it
+     * has never seen must be preservable — `ProfileRole.ofAccountType` maps an unknown one to the least
+     * privileged bucket, and losing the original would make that undiagnosable.
+     */
+    val accountType: String = "",
+
     val access: LibraryAccess,
     /**
      * PRODUCT_SPEC LIB-001 — every position this account has, as the server has them.

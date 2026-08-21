@@ -3,6 +3,7 @@ package com.example.shelfplayer.domain.usecase
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.isFailure
 import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.download.DownloadScheduler
@@ -39,8 +40,14 @@ class DownloadBookUseCase @Inject constructor(
      * @return the reason it will not happen, or success once the work is queued. Success means *queued*,
      *   not *downloaded* — the manifest is the thing to observe afterwards.
      */
+    /**
+     * @param isAutomatic whether nothing was pressed — smart download, or a sweep. **A paused book is
+     *   skipped when this is true**, and only then. A listener who stopped a download on a metered train
+     *   must not have it restarted by the app noticing Wi-Fi; the same listener pressing *Resume* is
+     *   asking for exactly that, so the manual path clears the pause instead.
+     */
     @Suppress("ReturnCount")
-    suspend operator fun invoke(bookId: LibraryItemId): AppResult<Unit> {
+    suspend operator fun invoke(bookId: LibraryItemId, isAutomatic: Boolean = false): AppResult<Unit> {
         val profile = profiles.observeActiveProfile().first()
             ?: return AppResult.Failure(AppError.Authentication(summary = "Sign in to a server before downloading."))
 
@@ -69,9 +76,21 @@ class DownloadBookUseCase @Inject constructor(
             )
         }
 
+        // PRODUCT_SPEC DL-001 — an unattended caller leaves a paused book alone.
+        //
+        // Checked here rather than in the scheduler because it is a *policy* about who asked, and the
+        // scheduler cannot tell a listener's tap from a sweep. Success rather than a failure: nothing went
+        // wrong, and a smart-download pass that reported an error for every book the user had paused would
+        // be noise about the app working correctly.
+        val existing = downloads.observe(profile.serverId, bookId).first()
+        if (isAutomatic && existing?.state == DownloadState.Paused) return AppResult.Success(Unit)
+
         val requested = downloads.request(profile.serverId, bookId, profile.id, book.files)
         if (requested.isFailure()) return AppResult.Failure(requested.error)
 
+        // `request` deliberately leaves an existing manifest untouched — it is the shared-copy path — so
+        // resuming has to lift the pause itself. A no-op for anything that is not paused.
+        downloads.markQueued(profile.serverId, bookId)
         scheduler.enqueue(profile.serverId, bookId)
         return AppResult.Success(Unit)
     }

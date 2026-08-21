@@ -26,6 +26,7 @@ import com.example.shelfplayer.core.network.gateway.CapabilityResolver
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.network.gateway.LibraryApi
+import com.example.shelfplayer.core.network.gateway.ManagementApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
@@ -361,6 +362,10 @@ class DefaultBookmarkRepositoryTest {
 
         override val auth: AuthApi get() = unused()
         override val capabilities: CapabilityResolver get() = unused()
+
+        /** PRODUCT_SPEC EPIC MGR — not exercised here, and refusing rather than pretending. */
+        override val management: ManagementApi get() = unused()
+
         override val library: LibraryApi get() = unused()
         override val playback: PlaybackApi get() = unused()
 

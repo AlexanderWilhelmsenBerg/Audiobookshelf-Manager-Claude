@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
+import com.example.shelfplayer.core.datastore.security.SessionTokenStore
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
@@ -16,6 +17,7 @@ import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.asFailure
+import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,15 +52,18 @@ class DefaultCapabilityRepositoryTest {
 
     private lateinit var database: ShelfPlayerDatabase
     private lateinit var repository: DefaultCapabilityRepository
+    private lateinit var tokens: SessionTokenProvider
 
     @Before
     fun setUp() {
         database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
             .allowMainThreadQueries()
             .build()
+        tokens = SessionTokenProvider(SessionTokenStore(context, ReversibleTestCipher(), dispatcher))
         repository = DefaultCapabilityRepository(
             gateway = gateway,
             profileDao = database.profileDao(),
+            tokens = tokens,
             clock = TestAppClock(),
             logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
             ioDispatcher = dispatcher,
@@ -107,6 +112,37 @@ class DefaultCapabilityRepositoryTest {
             listOf(FakeAuthGateway.Handshake(SERVER, "https://books.example")),
             gateway.handshakes,
         )
+    }
+
+    /**
+     * PRODUCT_SPEC MGR-003 / 5.2 — the authenticated probes travel with *this* profile's credential.
+     *
+     * The provider probe is the first thing in the handshake that needs a token, and a handshake that
+     * reached for an ambient one would attribute another account's session to this server.
+     */
+    @Test
+    fun `the handshake carries the profile's own access token`() = runTest {
+        seedServerAndProfile()
+        tokens.adopt(PROFILE, FakeAuthGateway.session(accessToken = "profile-a-token"))
+
+        repository.handshake(PROFILE)
+
+        assertEquals(AuthToken("profile-a-token"), gateway.handshakes.single().accessToken)
+    }
+
+    /**
+     * A cold start can hand the handshake a profile with no stored token, and that is not a failure: the
+     * version and the authentication modes come from `/status`, which needs no credential. Only the
+     * authenticated probes go unanswered, which SYNC-001 already defines as unsupported.
+     */
+    @Test
+    fun `a profile with no stored token still completes the handshake`() = runTest {
+        seedServerAndProfile()
+
+        val result = repository.handshake(PROFILE)
+
+        assertIs<AppResult.Success<*>>(result)
+        assertNull(gateway.handshakes.single().accessToken)
     }
 
     @Test

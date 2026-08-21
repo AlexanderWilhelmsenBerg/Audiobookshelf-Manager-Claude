@@ -44,7 +44,22 @@ fun interface CoverUrls {
 fun coverUrlsFor(baseUrls: Map<ServerId, String>): CoverUrls = CoverUrls { book ->
     if (book.coverPath == null) return@CoverUrls null
     val base = baseUrls[book.serverId]?.trimEnd('/') ?: return@CoverUrls null
-    "$base/api/items/${book.id.value}/cover"
+    // PRODUCT_SPEC MGR-002 — "cover cache invalidates after successful update".
+    //
+    // `?ts=` is the whole mechanism, and without it a changed cover is invisible forever. The image
+    // loader is configured with `respectCacheHeaders(false)` and a 128 MB disk cache that nothing
+    // evicts, so the URL *is* the cache key: same URL, same bytes, for the life of the install.
+    //
+    // The server bumps the item's `updatedAt` on every cover change and reads `ts` purely as a cache
+    // buster, so a URL that carries it changes exactly when the image does. A book whose timestamp is
+    // unknown gets the bare URL rather than a fabricated one — a wrong buster would be worse than none,
+    // because it would evict on every sync.
+    val version = book.remoteUpdatedAt?.toEpochMilli()
+    if (version == null) {
+        "$base/api/items/${book.id.value}/cover"
+    } else {
+        "$base/api/items/${book.id.value}/cover?ts=$version"
+    }
 }
 
 val LocalCoverUrls = staticCompositionLocalOf { CoverUrls.None }

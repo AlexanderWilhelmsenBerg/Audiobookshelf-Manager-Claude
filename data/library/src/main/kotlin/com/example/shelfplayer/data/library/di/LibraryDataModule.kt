@@ -3,6 +3,7 @@ package com.example.shelfplayer.data.library.di
 import com.example.shelfplayer.data.library.DefaultBookAssetSource
 import com.example.shelfplayer.data.library.DefaultBookmarkRepository
 import com.example.shelfplayer.data.library.DefaultLibraryRepository
+import com.example.shelfplayer.data.library.DefaultMetadataRepository
 import com.example.shelfplayer.data.library.DefaultPlaybackHistoryRepository
 import com.example.shelfplayer.data.library.DefaultPlaybackRepository
 import com.example.shelfplayer.data.library.DefaultProfileRepository
@@ -12,6 +13,7 @@ import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.MetadataRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -61,6 +63,11 @@ interface LibraryDataModule {
     @Binds
     @Singleton
     fun bindsBookmarkRepository(impl: DefaultBookmarkRepository): BookmarkRepository
+
+    /** PRODUCT_SPEC MGR-001 — the metadata editor's repository. */
+    @Binds
+    @Singleton
+    fun bindsMetadataRepository(impl: DefaultMetadataRepository): MetadataRepository
 
     @Binds
     @Singleton
