@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -194,13 +195,19 @@ private fun PasscodeField(isChecking: Boolean, onSubmit: (CharArray) -> Unit) {
 private fun FailureText(failure: UnlockFailure) {
     val text = when (failure) {
         is UnlockFailure.Wrong -> if (failure.remainingBeforeBackoff > 0) {
-            stringResource(R.string.lock_wrong_with_remaining, failure.remainingBeforeBackoff)
+            pluralStringResource(
+                R.plurals.lock_wrong_with_remaining,
+                failure.remainingBeforeBackoff,
+                failure.remainingBeforeBackoff,
+            )
         } else {
             stringResource(R.string.lock_wrong)
         }
 
-        is UnlockFailure.BackingOff ->
-            stringResource(R.string.lock_backing_off, failure.remaining.inWholeSeconds)
+        is UnlockFailure.BackingOff -> {
+            val seconds = failure.remaining.inWholeSeconds.toInt()
+            pluralStringResource(R.plurals.lock_backing_off, seconds, seconds)
+        }
 
         UnlockFailure.Exhausted -> stringResource(R.string.lock_exhausted)
         UnlockFailure.Unreadable -> stringResource(R.string.lock_unreadable)

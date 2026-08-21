@@ -49,6 +49,7 @@ import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.PlaybackMetrics
 import com.example.shelfplayer.feature.lock.LockPreferencesUi
+import com.example.shelfplayer.feature.lock.LockSettingsMessage
 import com.example.shelfplayer.feature.lock.LockSettingsUiState
 import com.example.shelfplayer.feature.lock.ProfileLockActions
 import com.example.shelfplayer.feature.lock.ProfileLockViewModel
@@ -80,6 +81,7 @@ fun SettingsRoute(
     val appearance by appearanceViewModel.state.collectAsStateWithLifecycle()
     val lock by lockViewModel.state.collectAsStateWithLifecycle()
     val lockPreferences by lockViewModel.preferences.collectAsStateWithLifecycle()
+    val lockMessage by lockViewModel.message.collectAsStateWithLifecycle()
     SettingsScreen(
         uiState = uiState,
         launcherIcon = launcherIcon,
@@ -103,6 +105,7 @@ fun SettingsRoute(
                 onRelockDelayChanged = lockViewModel::onRelockDelayChanged,
                 onLockNow = lockViewModel::onLockNow,
             ),
+            lockMessage = lockMessage,
         ),
         appearance = appearance,
         appearanceActions = AppearanceActions(
@@ -253,7 +256,7 @@ private fun LazyListScope.serverTab(uiState: SettingsUiState, inputs: ServerTabI
 
     // AUTH-005 / 3.3 — the passcode lock belongs to the **Profiles** group, beside the account
     // it protects rather than under Appearance with the things that only change how the app looks.
-    profileLockSection(inputs.lock, inputs.lockPreferences, inputs.lockActions)
+    profileLockSection(inputs.lock, inputs.lockPreferences, inputs.lockActions, inputs.lockMessage)
 
     item { SectionHeader(text = stringResource(R.string.settings_section_libraries)) }
     if (uiState.libraries.isEmpty()) {
@@ -508,6 +511,8 @@ data class ServerTabInputs(
     val lock: LockSettingsUiState = LockSettingsUiState(),
     val lockPreferences: LockPreferencesUi = LockPreferencesUi(),
     val lockActions: ProfileLockActions = ProfileLockActions(),
+    /** PRODUCT_SPEC 21 — what the last passcode write did, so a refusal is visible. */
+    val lockMessage: LockSettingsMessage? = null,
 )
 
 /**

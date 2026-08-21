@@ -778,8 +778,6 @@
     <string name="lock_unlock">L\u00e5s opp</string>
     <string name="lock_use_biometrics">L\u00e5s opp med fingeravtrykk</string>
     <string name="lock_wrong">Koden er ikke riktig.</string>
-    <string name="lock_wrong_with_remaining">Koden er ikke riktig. %1$d fors\u00f8k igjen f\u00f8r du m\u00e5 vente.</string>
-    <string name="lock_backing_off">For mange fors\u00f8k. Pr\u00f8v igjen om %1$d sekunder.</string>
     <string name="lock_exhausted">For mange fors\u00f8k. Logg inn p\u00e5 kontoen igjen for \u00e5 fjerne koden.</string>
     <string name="lock_unreadable">Denne l\u00e5sen kan ikke lenger leses p\u00e5 enheten. Logg inn p\u00e5 kontoen igjen for \u00e5 fjerne den.</string>
     <string name="lock_forgot_title">Har du glemt koden?</string>
@@ -814,5 +812,14 @@
     <string name="settings_passcode_length_error">En kode er mellom 6 og 12 sifre.</string>
     <string name="settings_passcode_simple_error">Velg en kode som ikke er gjentatte eller p\u00e5f\u00f8lgende sifre.</string>
     <string name="settings_passcode_wrong_current">Det er ikke n\u00e5v\u00e6rende kode.</string>
-    <string name="profile_locked_badge">L\u00e5st</string>
+    <plurals name="lock_wrong_with_remaining">
+        <item quantity="one">Koden er ikke riktig. %1$d fors\u00f8k igjen f\u00f8r du m\u00e5 vente.</item>
+        <item quantity="other">Koden er ikke riktig. %1$d fors\u00f8k igjen f\u00f8r du m\u00e5 vente.</item>
+    </plurals>
+    <plurals name="lock_backing_off">
+        <item quantity="one">For mange fors\u00f8k. Pr\u00f8v igjen om %1$d sekund.</item>
+        <item quantity="other">For mange fors\u00f8k. Pr\u00f8v igjen om %1$d sekunder.</item>
+    </plurals>
+    <string name="settings_passcode_saved">Koden er lagret.</string>
+    <string name="settings_passcode_failed">Dette kunne ikke lagres p\u00e5 denne enheten.</string>
 </resources>

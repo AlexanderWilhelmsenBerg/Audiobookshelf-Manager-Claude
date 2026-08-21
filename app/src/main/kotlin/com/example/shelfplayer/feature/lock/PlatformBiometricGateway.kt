@@ -7,6 +7,7 @@ import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
 import android.os.CancellationSignal
+import androidx.annotation.RequiresApi
 import com.example.shelfplayer.core.model.lock.BiometricAvailability
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -82,6 +83,15 @@ class PlatformBiometricGateway @Inject constructor(@param:ApplicationContext pri
         prompt(activity, onSuccess, onFailed)
     }
 
+    /**
+     * `@RequiresApi` rather than a second `SDK_INT` check.
+     *
+     * [authenticate] already returns early below API 28, but lint cannot follow that across a function
+     * boundary and reported nine `NewApi` errors here. The annotation states the contract lint needs and
+     * keeps the guard in the one place that decides it, rather than duplicating a version check that could
+     * later disagree with itself.
+     */
+    @RequiresApi(Build.VERSION_CODES.P)
     private fun prompt(activity: Activity, onSuccess: () -> Unit, onFailed: () -> Unit) {
         val strings = LockPromptStrings.of(activity)
         val builder = BiometricPrompt.Builder(activity)

@@ -968,8 +968,6 @@
     <string name="lock_unlock">Unlock</string>
     <string name="lock_use_biometrics">Unlock with fingerprint</string>
     <string name="lock_wrong">That passcode is not right.</string>
-    <string name="lock_wrong_with_remaining">That passcode is not right. %1$d more tries before a wait.</string>
-    <string name="lock_backing_off">Too many attempts. Try again in %1$d seconds.</string>
     <string name="lock_exhausted">Too many attempts. Sign in to this account again to clear its passcode.</string>
     <string name="lock_unreadable">This lock cannot be read on this device any more. Sign in to this account again to clear it.</string>
     <string name="lock_forgot_title">Forgotten your passcode?</string>
@@ -1004,5 +1002,14 @@
     <string name="settings_passcode_length_error">A passcode is between 6 and 12 digits.</string>
     <string name="settings_passcode_simple_error">Choose a passcode that is not a repeated or sequential run of digits.</string>
     <string name="settings_passcode_wrong_current">That is not the current passcode.</string>
-    <string name="profile_locked_badge">Locked</string>
+    <plurals name="lock_wrong_with_remaining">
+        <item quantity="one">That passcode is not right. %1$d more try before a wait.</item>
+        <item quantity="other">That passcode is not right. %1$d more tries before a wait.</item>
+    </plurals>
+    <plurals name="lock_backing_off">
+        <item quantity="one">Too many attempts. Try again in %1$d second.</item>
+        <item quantity="other">Too many attempts. Try again in %1$d seconds.</item>
+    </plurals>
+    <string name="settings_passcode_saved">Passcode saved.</string>
+    <string name="settings_passcode_failed">That could not be saved on this device.</string>
 </resources>

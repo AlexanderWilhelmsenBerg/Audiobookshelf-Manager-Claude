@@ -53,6 +53,7 @@ internal fun LazyListScope.profileLockSection(
     state: LockSettingsUiState,
     preferences: LockPreferencesUi,
     actions: ProfileLockActions,
+    message: LockSettingsMessage? = null,
 ) {
     item { SubHeader(text = stringResource(R.string.settings_section_passcode)) }
     item { Hint(text = stringResource(R.string.settings_passcode_hint)) }
@@ -64,6 +65,27 @@ internal fun LazyListScope.profileLockSection(
             isEnabled = state.profileId != null,
             actions = actions,
         )
+    }
+
+    // PRODUCT_SPEC 21 — the outcome of a write the user just asked for.
+    //
+    // `ProfileLockViewModel` produced this from the first version and nothing rendered it, so three strings
+    // sat unused and a rejected passcode was indistinguishable from an accepted one. Android lint's
+    // `UnusedResources` is what noticed, which is the second time in this project a written-but-unrendered
+    // string has been the visible end of a missing piece of feedback.
+    message?.let { outcome ->
+        item {
+            Text(
+                text = stringResource(outcome.messageRes()),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (outcome == LockSettingsMessage.Saved) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
     }
 
     if (!state.hasPasscode) return
@@ -212,6 +234,14 @@ private fun BiometricRow(availability: BiometricAvailability, enabled: Boolean, 
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/** Each outcome says which one it was, because "it did not work" is not an answer somebody can act on. */
+private fun LockSettingsMessage.messageRes(): Int = when (this) {
+    LockSettingsMessage.Saved -> R.string.settings_passcode_saved
+    LockSettingsMessage.Invalid -> R.string.settings_passcode_length_error
+    LockSettingsMessage.WrongCurrent -> R.string.settings_passcode_wrong_current
+    LockSettingsMessage.Failed -> R.string.settings_passcode_failed
 }
 
 private fun RelockDelay.labelRes(): Int = when (this) {
