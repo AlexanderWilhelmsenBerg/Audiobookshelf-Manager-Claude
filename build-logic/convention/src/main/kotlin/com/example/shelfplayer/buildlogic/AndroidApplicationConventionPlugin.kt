@@ -55,8 +55,23 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
 
 private fun ApplicationExtension.configureDefaultConfig(project: Project) {
     defaultConfig {
-        // PRODUCT_SPEC 16.4 / 24.1: placeholder application ID, replaced before release.
-        applicationId = "com.example.shelfplayer"
+        /*
+         * PRODUCT_SPEC 16.4 / 24.1 — the real application ID, chosen by the owner (ADR-0024).
+         *
+         * Reverse-DNS of a domain the owner controls, which is the convention and the only way the id is
+         * verifiable by anyone else. It replaces the `com.example.` placeholder that Play rejects outright.
+         *
+         * **This is the `applicationId`, not the `namespace`.** They are different things and only this one
+         * is the install's identity on a device and in Play. The Kotlin packages and every module's
+         * `namespace` remain `com.example.shelfplayer`: renaming those would touch every file in the
+         * repository, and Play neither sees nor cares about them. ADR-0024 records that split so nobody
+         * later "finishes the job" and rewrites five hundred files for no effect.
+         *
+         * Moved now, before any release, for the reason ADR-0019 gives: Android identifies an install by
+         * its `applicationId`, so changing it after somebody has the app installs a *second, empty* copy
+         * rather than renaming the first — costing a fresh sign-in and every downloaded book.
+         */
+        applicationId = "org.homebord.bookwave"
         minSdk = project.libs.intVersion("minSdk")
         targetSdk = project.libs.intVersion("targetSdk")
         versionCode = 37

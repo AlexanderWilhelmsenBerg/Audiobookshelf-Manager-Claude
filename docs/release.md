@@ -7,28 +7,24 @@ process, what it already does, and what still blocks a public build.
 
 ## Blocking open decisions
 
-From `PRODUCT_SPEC 24`, each of these must be resolved by an ADR before a public build. Three of the
-original five are now settled.
+**All five are now settled.** ADR-0021 closed source-file deletion; ADR-0024 closed the other four, after
+the owner was asked rather than guessed at.
 
-| Decision | State |
+| Decision | Settled as |
 | --- | --- |
-| **Application ID** — the placeholder `com.example.shelfplayer` must be replaced (`PRODUCT_SPEC 16.4`) | **Open.** Play rejects the `com.example.` prefix. ADR-0019 records why it did not move with the rename to BookWave: Android identifies an install by its `applicationId`, so changing it produces a second, empty app rather than a renamed one. The right moment is the first release, before anybody has an install to lose. |
-| **Licence** — see `LICENSE` | **Open**, and it gates distribution rather than development. It interacts with ADR-0012's posture towards the official project: read it for API facts, do not copy code. |
-| **Distribution channel** (Play, F-Droid, GitHub Releases, private) | **Open.** It decides the signing story, the version-code rule, and whether a bundle or an APK ships. F-Droid would additionally require a reproducible build. |
-| **Minimum supported Audiobookshelf server version** | **Open.** `docs/api-compatibility.md` pins 2.36.0 as the version everything was verified against, which is not the same as a floor. The capability probe confirms features rather than versions, so a floor still has to be chosen and enforced at sign-in. |
-| **Whether true source-file deletion can be exposed** (`MGR-006`) | **Settled: no.** ADR-0021. Both endpoints exist and neither can prove the deletion happened, so the app ships no such feature. |
+| **Application ID** | `org.homebord.bookwave` — reverse-DNS of a domain the owner controls. Only the `applicationId` moved; every module's `namespace` and every Kotlin package stay `com.example.shelfplayer`, because Play neither sees nor cares about those and renaming them would touch every file for no observable effect. Moved before the first release, which is the only moment it is free (ADR-0019). |
+| **Licence** | **GPL-3.0-or-later.** `LICENSE` carries the canonical text. ADR-0012's posture is what made this a free choice: this project reads Audiobookshelf's source for API facts and copied none of its code, so nothing obliged copyleft. ADR-0024 records the real interaction with Play — source must stay available, and Play App Signing versus GPLv3 §6 rests on a widely-relied-on but not authoritatively settled reading. |
+| **Distribution channel** | **Google Play.** An App Bundle, Play App Signing (so still no key material in the repository), and a data-safety declaration whose content `PRIVACY.md` already supplies. No reproducible-build requirement, which F-Droid would have imposed. |
+| **Minimum server version** | **2.26.0**, enforced in `SignInViewModel` before a password is typed. Below it the server issues no refresh token, so AUTH-004's silent renewal would fail hours later and read as a random sign-out. Chosen over 2.36.0 because the refreshable token is a behavioural boundary while 2.36.0 is a testing artefact. Accepted cost: 2.26–2.36 is allowed and unverified. |
+| **Whether true source-file deletion can be exposed** (`MGR-006`) | **No.** ADR-0021. Both endpoints exist and neither can prove the deletion happened. |
 
 ## Versioning
 
-`versionCode` and `versionName` live in the application convention plugin. The name states the build's
-phase, so a device-test result recorded against an APK can be traced to one; the code increments by one
-per build handed to a tester.
-
-`PRODUCT_SPEC 18` requires a *reproducible* version code, and that rule is chosen when a distribution
-channel is — Play needs a monotonic integer, F-Droid needs one derivable from a tag. Until then, the
-current scheme is a hand-maintained counter, and the failure mode it has already had is worth recording:
-it sat at `0.9.6-auto-shelves` for nine builds while the code advanced, so every field report in that
-window identified the wrong build. **The name moves with the code, or it is worse than absent.**
+`versionCode` and `versionName` live in the application convention plugin. The channel decided the rule:
+Play requires a strictly increasing integer per upload and never permits a code to be reused for a package,
+so it stays a **hand-incremented integer**. A derived scheme — a timestamp, or a commit count — was
+considered and rejected: both can go backwards or collide across branches, and Play's refusal of a reused
+code is permanent. See ADR-0024.
 
 ## Signing
 
