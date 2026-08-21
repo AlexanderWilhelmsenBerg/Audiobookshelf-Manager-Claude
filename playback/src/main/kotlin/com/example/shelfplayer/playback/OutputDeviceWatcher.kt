@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.KnownDevice
+import com.example.shelfplayer.domain.lock.ProfileLockGuard
 import com.example.shelfplayer.domain.repository.DeviceRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,13 @@ class OutputDeviceWatcher @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val devices: DeviceRepository,
     private val clock: AppClock,
+    /**
+     * PRODUCT_SPEC ROUTE-002 — "Auto-play never starts when the active profile is biometric/PIN locked."
+     *
+     * A one-method read interface, because this class runs with no window attached and could not show a
+     * passcode field even if it wanted to. See `ProfileLockGuard` for why it fails closed.
+     */
+    private val lock: ProfileLockGuard,
     private val logger: Logger,
 ) {
 
@@ -101,22 +109,32 @@ class OutputDeviceWatcher @Inject constructor(
         // the default rather than falling through a gap between the two.
         val policy = devices.policyFor(device.id)
         // A connection arriving mid-book is a route change, not a request to start something.
+        //
+        // Checked before the lock deliberately: a profile that is already playing is never touched by any
+        // of this, which keeps product priority 1 structural rather than a matter of comment.
         if (actions.isBusy()) return
 
-        when (policy) {
-            DevicePolicy.AutoPlay -> {
+        // PRODUCT_SPEC ROUTE-002 — asked after the debounce, so a connect while locked does not start
+        // playing later when the profile is unlocked. ROUTE-002 licenses that: it calls auto-play
+        // "best-effort", and a book beginning minutes after a headset was plugged in is worse than one
+        // that never began.
+        when (AutoStartDecision.decide(policy, isProfileLocked = lock.isActiveProfileLocked())) {
+            AutoStartAction.ArmAndPlay -> {
                 logger.log(device, "A device connected and its policy is to start playing")
                 actions.armAndPlay()
             }
             // `Ask` arms as well, and the paused media session is what puts a resume control in the shade —
             // which is the notification action ROUTE-002 asks for, using the session the app already has
             // rather than a second notification competing with it.
-            DevicePolicy.ArmOnly, DevicePolicy.Ask -> {
+            AutoStartAction.Arm -> {
                 logger.log(device, "A device connected and the last book was made ready")
                 actions.arm()
             }
 
-            DevicePolicy.Never -> Unit
+            AutoStartAction.Suppressed ->
+                logger.log(device, "A device connected while the active account was locked; nothing started")
+
+            AutoStartAction.None -> Unit
         }
     }
 

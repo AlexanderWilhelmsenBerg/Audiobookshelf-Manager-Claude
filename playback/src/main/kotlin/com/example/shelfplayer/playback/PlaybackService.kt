@@ -33,6 +33,7 @@ import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.model.resultOf
+import com.example.shelfplayer.domain.lock.ProfileLockGuard
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
@@ -102,6 +103,15 @@ class PlaybackService : MediaLibraryService() {
 
     @Inject
     internal lateinit var auto: AutoLibrary
+
+    /**
+     * PRODUCT_SPEC ROUTE-002 / AUTH-005 — whether the active profile is locked.
+     *
+     * Field-injected like everything else here: a `Service` is constructed by the framework, so Hilt fills
+     * these in rather than passing them through a constructor detekt would count.
+     */
+    @Inject
+    internal lateinit var lock: ProfileLockGuard
 
     @Inject
     internal lateinit var bookChanges: BookChanges
@@ -980,6 +990,13 @@ class PlaybackService : MediaLibraryService() {
             if (current.mediaItemCount > 0) return
             scope.launch {
                 if (!playbackSettings.observeSettings().first().autoPlayOnCarConnect) return@launch
+                // PRODUCT_SPEC ROUTE-002 / AUTH-005 — a car connecting is the clearest case the clause
+                // covers: nobody pressed anything, and the car is a speaker in a room with other people
+                // in it.
+                if (lock.isActiveProfileLocked()) {
+                    logger.info(LogCategory.Playback, "A car connected while the account was locked; nothing started")
+                    return@launch
+                }
                 val book = auto.lastPlayed() ?: return@launch
                 val queue = openQueue(book.id, startAt = null) ?: return@launch
                 logger.info(LogCategory.Playback, "A car connected and auto-play is on")

@@ -34,11 +34,8 @@ sealed interface ProfileLockState {
      *   lock-screen change, or a restore onto new hardware. Named separately because "wrong passcode" is
      *   a lie here, and a user told that would keep trying.
      */
-    data class Locked(
-        val profileId: ProfileId,
-        val canUsePasscode: Boolean = true,
-        val unreadable: Boolean = false,
-    ) : ProfileLockState
+    data class Locked(val profileId: ProfileId, val canUsePasscode: Boolean = true, val unreadable: Boolean = false) :
+        ProfileLockState
 }
 
 /**

@@ -1,10 +1,14 @@
 package com.example.shelfplayer.domain.usecase
 
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.flatMap
+import com.example.shelfplayer.domain.lock.ProfileLockGate
 import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import javax.inject.Inject
@@ -25,20 +29,35 @@ import javax.inject.Inject
  * password when the network is next needed. Refusing the switch would leave the user unable to reach an
  * account they can see in the switcher.
  *
- * ### What Phase 2 adds here
+ * ### The one case that does not switch
  *
- * PRODUCT_SPEC 6.5 also requires active progress to be flushed locally and remotely before the swap, and
- * playback to pause. Neither exists yet — there is no player — and this class is where both belong when
- * they do. It is named as the seam so nobody adds a second switching path later.
+ * PRODUCT_SPEC AUTH-005 — a target profile with a passcode and no live unlock is **refused**, before the
+ * selection is written. That is the single exception to the paragraph above, and the difference is what the
+ * refusal protects: a profile whose *credential* will not load is still that user's own account, and
+ * stranding them on it would be unhelpful; a profile whose *passcode* has not been entered is somebody
+ * else's, and switching to it is the boundary product priority 4 exists to hold.
+ *
+ * It is enforced here rather than in the switcher because a UI check is a suggestion. Every path that
+ * changes the active profile goes through this function, and this is where a second one would be noticed.
  */
 class SwitchProfileUseCase @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val authRepository: AuthRepository,
     private val syncAccount: SyncAccountUseCase,
     private val backgroundSync: BackgroundSync,
+    /** PRODUCT_SPEC AUTH-005 — which profiles are unlocked right now, in memory only. */
+    private val lockGate: ProfileLockGate,
+    private val locks: ProfileLockRepository,
 ) {
-    suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> =
-        profileRepository.setActiveProfile(profileId).flatMap {
+    suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> {
+        // Asked before anything is written. A refusal that had already changed the active profile would
+        // leave the app showing an account it then declined to open.
+        if (locks.hasPasscode(profileId) && !lockGate.isUnlocked(profileId)) {
+            return AppError.Security(
+                summary = "That account is locked. Enter its passcode to switch to it.",
+            ).asFailure()
+        }
+        return profileRepository.setActiveProfile(profileId).flatMap {
             authRepository.restoreSession(profileId).also { status ->
                 if (status.isActive()) {
                     refreshPermissions(profileId)
@@ -50,6 +69,7 @@ class SwitchProfileUseCase @Inject constructor(
                 }
             }
         }
+    }
 
     /**
      * PRODUCT_SPEC 5.2 — the incoming account's grant, re-read before its content fills the screen.

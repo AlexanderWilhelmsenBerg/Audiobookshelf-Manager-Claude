@@ -37,6 +37,14 @@ interface ProfileLockRepository {
     /** Which profiles have a passcode, for the switcher's lock badges and the settings row. */
     fun observeProtectedProfiles(): Flow<Set<ProfileId>>
 
+    /**
+     * Whether one profile has a passcode at all.
+     *
+     * A point read rather than a flow, because the caller that needs it — `SwitchProfileUseCase` — is
+     * answering a question about a single gesture and must not wait on a subscription to do it.
+     */
+    suspend fun hasPasscode(profileId: ProfileId): Boolean
+
     /** The lock's own preferences for one profile, or `null` when it has no passcode. */
     suspend fun preferences(profileId: ProfileId): ProfileLockPreferences?
 
@@ -47,11 +55,7 @@ interface ProfileLockRepository {
      * or an unlocked phone left on a desk is a passcode somebody else chose. It is ignored when there
      * is no existing passcode, because there is nothing to prove.
      */
-    suspend fun setPasscode(
-        profileId: ProfileId,
-        passcode: CharArray,
-        current: CharArray? = null,
-    ): AppResult<Unit>
+    suspend fun setPasscode(profileId: ProfileId, passcode: CharArray, current: CharArray? = null): AppResult<Unit>
 
     /** Turns the passcode off. Requires the current one for the reason [setPasscode] does. */
     suspend fun removePasscode(profileId: ProfileId, current: CharArray): AppResult<Unit>

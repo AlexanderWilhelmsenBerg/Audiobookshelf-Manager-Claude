@@ -63,7 +63,8 @@ class DefaultProfileLockRepository @Inject constructor(
     private val settings: AppSettingsDataSource,
     private val profileDao: ProfileDao,
     private val logger: Logger,
-) : ProfileLockRepository, ProfileLockGuard {
+) : ProfileLockRepository,
+    ProfileLockGuard {
 
     override fun observeLockState(): Flow<ProfileLockState> = combine(
         settings.activeProfileId,
@@ -110,6 +111,8 @@ class DefaultProfileLockRepository @Inject constructor(
         )
     }
 
+    override suspend fun hasPasscode(profileId: ProfileId): Boolean = passcodes.hasPasscode(keyFor(profileId))
+
     override suspend fun preferences(profileId: ProfileId): ProfileLockPreferences? =
         passcodes.preferences(keyFor(profileId))?.let { stored ->
             ProfileLockPreferences(
@@ -118,11 +121,7 @@ class DefaultProfileLockRepository @Inject constructor(
             )
         }
 
-    override suspend fun setPasscode(
-        profileId: ProfileId,
-        passcode: CharArray,
-        current: CharArray?,
-    ): AppResult<Unit> {
+    override suspend fun setPasscode(profileId: ProfileId, passcode: CharArray, current: CharArray?): AppResult<Unit> {
         passcodes.validate(passcode)?.let { rejection -> return rejection.asError().asFailure() }
         val key = keyFor(profileId)
         if (passcodes.hasPasscode(key)) {

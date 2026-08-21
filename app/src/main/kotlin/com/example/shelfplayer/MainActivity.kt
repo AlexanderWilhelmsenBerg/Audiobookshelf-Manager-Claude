@@ -28,6 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.feature.browse.LocalCoverUrls
 import com.example.shelfplayer.feature.browse.coverUrlsFor
+import com.example.shelfplayer.feature.lock.LockCurtain
+import com.example.shelfplayer.feature.lock.LockViewModel
 import com.example.shelfplayer.feature.player.BookmarkAddedNotice
 import com.example.shelfplayer.feature.player.BookmarkSheet
 import com.example.shelfplayer.feature.player.ChapterSheet
@@ -99,7 +101,30 @@ class MainActivity : ComponentActivity() {
  * when nothing is playing — see [MiniPlayer].
  */
 @Composable
-private fun ShelfPlayerContent(startDestination: String, playerViewModel: PlayerViewModel = hiltViewModel()) {
+private fun ShelfPlayerContent(
+    startDestination: String,
+    playerViewModel: PlayerViewModel = hiltViewModel(),
+    lockViewModel: LockViewModel = hiltViewModel(),
+) {
+    val lockState by lockViewModel.state.collectAsStateWithLifecycle()
+
+    // PRODUCT_SPEC AUTH-005 — the curtain replaces the app rather than covering it.
+    //
+    // An overlay would leave `MiniPlayer`'s title in the semantics tree, where it is marked as a polite
+    // live region — so TalkBack would read the locked account's book aloud over the passcode field, and its
+    // stop button and tap-to-expand would stay reachable. A lock that announces what it protects is not a
+    // lock. `Resolving` draws neither: showing the shelf for one frame before the curtain arrives is the
+    // exact leak this exists to prevent, and showing a passcode field to the majority who have none is the
+    // other way to be wrong.
+    when {
+        lockState.locked != null -> {
+            LockCurtain()
+            return
+        }
+
+        !lockState.isResolved -> return
+    }
+
     val playback by playerViewModel.playback.collectAsStateWithLifecycle()
     val timer by playerViewModel.timer.collectAsStateWithLifecycle()
     val isExpanded by playerViewModel.isExpanded.collectAsStateWithLifecycle()

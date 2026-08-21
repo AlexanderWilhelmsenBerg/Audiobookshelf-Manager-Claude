@@ -8,8 +8,8 @@ import com.example.shelfplayer.data.auth.DefaultProfileConnectionResolver
 import com.example.shelfplayer.data.auth.DefaultProfileLockRepository
 import com.example.shelfplayer.data.auth.DefaultServerUserRepository
 import com.example.shelfplayer.data.auth.SessionTokenProvider
-import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.lock.ProfileLockGuard
+import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ServerUserRepository

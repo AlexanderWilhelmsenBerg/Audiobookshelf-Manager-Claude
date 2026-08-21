@@ -21,6 +21,6 @@ package com.example.shelfplayer.domain.lock
  * "best-effort". The consequence of a wrong `false` is a locked account's book playing out loud to
  * whoever is holding the phone.
  */
-interface ProfileLockGuard {
+fun interface ProfileLockGuard {
     suspend fun isActiveProfileLocked(): Boolean
 }

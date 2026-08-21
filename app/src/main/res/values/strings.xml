@@ -957,4 +957,52 @@
     <string name="book_embed_server_failed_silent">Your server could not finish writing the metadata, and gave no reason.</string>
     <string name="book_embed_unknown">The live connection dropped while your server was working, so BookWave cannot tell how it ended. Check the book on your server before trying again.</string>
     <string name="book_embed_dismiss">Dismiss</string>
+
+    <!-- PRODUCT_SPEC AUTH-005 — the profile passcode lock. Every line the curtain shows, plus the
+         settings section. The disclosure strings are part of the feature: AUTH-003 says the lock protects
+         profile selection and not server authentication, so what it does *not* cover is stated where
+         somebody reads it. See ADR-0023. -->
+    <string name="lock_title">This account is locked</string>
+    <string name="lock_account_unknown">This account</string>
+    <string name="lock_passcode_label">Passcode</string>
+    <string name="lock_unlock">Unlock</string>
+    <string name="lock_use_biometrics">Unlock with fingerprint</string>
+    <string name="lock_wrong">That passcode is not right.</string>
+    <string name="lock_wrong_with_remaining">That passcode is not right. %1$d more tries before a wait.</string>
+    <string name="lock_backing_off">Too many attempts. Try again in %1$d seconds.</string>
+    <string name="lock_exhausted">Too many attempts. Sign in to this account again to clear its passcode.</string>
+    <string name="lock_unreadable">This lock cannot be read on this device any more. Sign in to this account again to clear it.</string>
+    <string name="lock_forgot_title">Forgotten your passcode?</string>
+    <string name="lock_forgot_signin">Sign in to this account again and its passcode is cleared. The account password is the stronger proof.</string>
+    <string name="lock_forgot_offline">That needs your server to be reachable. Offline, it will not work.</string>
+    <string name="lock_forgot_other_accounts">You can also switch to another account on this device.</string>
+    <string name="lock_not_covered_title">What this lock does not cover</string>
+    <string name="lock_not_covered_playback">Play, pause and skip stay available from the notification and the lock screen. The book\'s title and cover stay visible there.</string>
+    <string name="lock_not_covered_car">A connected car can still browse and play this account\'s library.</string>
+    <string name="lock_not_covered_downloads">Downloaded audio is stored as ordinary files and is not encrypted by this lock.</string>
+    <string name="lock_not_covered_files">This lock does not protect your data from someone who can read this phone\'s files.</string>
+    <string name="lock_biometric_title">Unlock BookWave</string>
+    <string name="lock_biometric_description">Confirm it is you to open this account.</string>
+    <string name="lock_biometric_cancel">Use passcode</string>
+    <string name="settings_section_passcode">Passcode lock</string>
+    <string name="settings_passcode_switch">Require a passcode for this account</string>
+    <string name="settings_passcode_hint">A passcode is asked for when you open the app. It protects which account this device shows — not your sign-in, and not your downloaded files.</string>
+    <string name="settings_passcode_new">New passcode</string>
+    <string name="settings_passcode_current">Current passcode</string>
+    <string name="settings_passcode_save">Save passcode</string>
+    <string name="settings_passcode_turn_off">Turn the passcode off</string>
+    <string name="settings_passcode_biometric">Allow fingerprint unlock</string>
+    <string name="settings_passcode_biometric_unsupported">Fingerprint unlock needs Android 9 or newer.</string>
+    <string name="settings_passcode_biometric_no_hardware">This phone has no fingerprint sensor this app can use.</string>
+    <string name="settings_passcode_biometric_none_enrolled">No fingerprint is set up on this phone.</string>
+    <string name="settings_passcode_relock">Lock again</string>
+    <string name="settings_passcode_relock_immediately">Immediately</string>
+    <string name="settings_passcode_relock_one_minute">After 1 minute</string>
+    <string name="settings_passcode_relock_fifteen_minutes">After 15 minutes</string>
+    <string name="settings_passcode_lock_now">Lock now</string>
+    <string name="settings_passcode_forgot_warning">If you forget this passcode you will have to sign in to the account again to clear it, and that needs your server to be reachable.</string>
+    <string name="settings_passcode_length_error">A passcode is between 6 and 12 digits.</string>
+    <string name="settings_passcode_simple_error">Choose a passcode that is not a repeated or sequential run of digits.</string>
+    <string name="settings_passcode_wrong_current">That is not the current passcode.</string>
+    <string name="profile_locked_badge">Locked</string>
 </resources>

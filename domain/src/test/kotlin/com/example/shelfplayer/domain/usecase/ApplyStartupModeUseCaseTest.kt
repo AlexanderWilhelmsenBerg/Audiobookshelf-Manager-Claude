@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.playback.StartupMode
 import com.example.shelfplayer.domain.FakeSettingsRepository
 import com.example.shelfplayer.domain.RecordingLogger
+import com.example.shelfplayer.domain.lock.ProfileLockGuard
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -61,9 +62,39 @@ class ApplyStartupModeUseCaseTest {
         assertTrue(player.armed.isEmpty())
     }
 
-    private fun useCase(mode: StartupMode) = ApplyStartupModeUseCase(
+    /**
+     * PRODUCT_SPEC AUTH-005 — a locked profile's book does not resume when the app opens.
+     *
+     * ROUTE-003 states no lock clause; extending it is a decision ADR-0023 records. The reasoning is that
+     * this and a connecting device are the same event from two sides: something other than a deliberate
+     * press is about to play a locked account's book out loud.
+     */
+    @Test
+    fun `a locked profile does not resume on open`() = runTest {
+        useCase(StartupMode.ResumeOnOpen, isLocked = true)(lastPlayed = BOOK)
+
+        assertTrue(player.played.isEmpty(), "a locked account must not start playing by itself")
+        assertTrue(player.armed.isEmpty())
+    }
+
+    /**
+     * Arming is suppressed too, and it makes no sound — which is exactly why it needs suppressing.
+     *
+     * `RestorePaused` would put the locked account's title, author and cover on the lock screen, one headset
+     * press from audio, and no code in this app can intercept that press.
+     */
+    @Test
+    fun `a locked profile is not even armed`() = runTest {
+        useCase(StartupMode.RestorePaused, isLocked = true)(lastPlayed = BOOK)
+
+        assertTrue(player.armed.isEmpty())
+        assertTrue(player.played.isEmpty())
+    }
+
+    private fun useCase(mode: StartupMode, isLocked: Boolean = false) = ApplyStartupModeUseCase(
         settings = FakeSettingsRepository(startupMode = mode),
         player = player,
+        lock = ProfileLockGuard { isLocked },
         logger = RecordingLogger(),
     )
 

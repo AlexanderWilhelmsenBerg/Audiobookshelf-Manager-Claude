@@ -48,6 +48,11 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.PlaybackMetrics
+import com.example.shelfplayer.feature.lock.LockPreferencesUi
+import com.example.shelfplayer.feature.lock.LockSettingsUiState
+import com.example.shelfplayer.feature.lock.ProfileLockActions
+import com.example.shelfplayer.feature.lock.ProfileLockViewModel
+import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
 import java.util.Locale
 import kotlin.time.Duration
@@ -63,6 +68,9 @@ fun SettingsRoute(
     // the language are read by the activity long before this screen exists, so the screen is their writer
     // and not their owner.
     appearanceViewModel: AppearanceViewModel = hiltViewModel(),
+    // PRODUCT_SPEC AUTH-005 — its own ViewModel for the same reason: `MainActivity` reads the lock to decide
+    // whether to draw the app at all, so this screen is its writer rather than its owner.
+    lockViewModel: ProfileLockViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
@@ -70,6 +78,8 @@ fun SettingsRoute(
     val knownDevices by viewModel.knownDevices.collectAsStateWithLifecycle()
     val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     val appearance by appearanceViewModel.state.collectAsStateWithLifecycle()
+    val lock by lockViewModel.state.collectAsStateWithLifecycle()
+    val lockPreferences by lockViewModel.preferences.collectAsStateWithLifecycle()
     SettingsScreen(
         uiState = uiState,
         launcherIcon = launcherIcon,
@@ -84,6 +94,15 @@ fun SettingsRoute(
             onDefaultLibraryChanged = viewModel::onDefaultLibraryChanged,
             account = account,
             onManageServerUsers = onManageServerUsers,
+            lock = lock,
+            lockPreferences = lockPreferences,
+            lockActions = ProfileLockActions(
+                onPasscodeSet = lockViewModel::onPasscodeSet,
+                onPasscodeRemoved = lockViewModel::onPasscodeRemoved,
+                onBiometricToggled = lockViewModel::onBiometricToggled,
+                onRelockDelayChanged = lockViewModel::onRelockDelayChanged,
+                onLockNow = lockViewModel::onLockNow,
+            ),
         ),
         appearance = appearance,
         appearanceActions = AppearanceActions(
@@ -231,6 +250,10 @@ private fun LazyListScope.serverTab(uiState: SettingsUiState, inputs: ServerTabI
 
     // PRODUCT_SPEC 5.1 / USER-001 — who is signed in, what they may do, and the administrators-only screen.
     accountSection(inputs.account, inputs.onManageServerUsers)
+
+    // PRODUCT_SPEC AUTH-005 / 3.3 — the passcode lock belongs to the **Profiles** group, beside the account
+    // it protects rather than under Appearance with the things that only change how the app looks.
+    profileLockSection(inputs.lock, inputs.lockPreferences, inputs.lockActions)
 
     item { SectionHeader(text = stringResource(R.string.settings_section_libraries)) }
     if (uiState.libraries.isEmpty()) {
@@ -475,6 +498,16 @@ data class ServerTabInputs(
      */
     val account: Profile? = null,
     val onManageServerUsers: () -> Unit = {},
+    /**
+     * PRODUCT_SPEC AUTH-005 — the passcode lock's state and controls.
+     *
+     * Carried in this bundle rather than added to `SettingsScreen`'s signature, which is already at
+     * detekt's readable limit. They belong here on merit too: the lock is a property of the *account* the
+     * Server tab is about.
+     */
+    val lock: LockSettingsUiState = LockSettingsUiState(),
+    val lockPreferences: LockPreferencesUi = LockPreferencesUi(),
+    val lockActions: ProfileLockActions = ProfileLockActions(),
 )
 
 /**

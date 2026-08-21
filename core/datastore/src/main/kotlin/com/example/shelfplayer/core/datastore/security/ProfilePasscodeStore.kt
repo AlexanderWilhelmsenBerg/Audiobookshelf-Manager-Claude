@@ -165,19 +165,18 @@ class ProfilePasscodeStore @Inject constructor(
     }
 
     /** Changes a preference without touching the verifier. A no-op when there is no passcode. */
-    suspend fun updatePreferences(profileKey: String, preferences: LockPreferences): Unit =
-        withContext(ioDispatcher) {
-            mutex.withLock {
-                val record = readOrFailClosed(profileKey) ?: return@withLock
-                write(
-                    profileKey,
-                    record.toBuilder()
-                        .setBiometricUnlockEnabled(preferences.biometricUnlock)
-                        .setRelockDelaySeconds(preferences.relockDelay.inWholeSeconds.toInt())
-                        .build(),
-                )
-            }
+    suspend fun updatePreferences(profileKey: String, preferences: LockPreferences): Unit = withContext(ioDispatcher) {
+        mutex.withLock {
+            val record = readOrFailClosed(profileKey) ?: return@withLock
+            write(
+                profileKey,
+                record.toBuilder()
+                    .setBiometricUnlockEnabled(preferences.biometricUnlock)
+                    .setRelockDelaySeconds(preferences.relockDelay.inWholeSeconds.toInt())
+                    .build(),
+            )
         }
+    }
 
     /**
      * Reads a record, or `null` for **any** reason at all.
