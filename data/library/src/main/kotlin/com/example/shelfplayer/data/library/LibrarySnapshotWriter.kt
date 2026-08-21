@@ -167,10 +167,17 @@ class LibrarySnapshotWriter @Inject constructor(
                 // would turn one timeout into a library that visibly loses books. A filtered profile is
                 // missing items because the server hid them, which is not the same as their being gone.
                 if (reconciles && fetched?.isComplete == true) {
-                    if (rows.isEmpty()) {
+                    val removedIds = fetched.removedIds.toSet()
+                    val presentKeys = fetched.visibleIds
+                        .asSequence()
+                        .filterNot(removedIds::contains)
+                        .distinct()
+                        .map { itemId -> EntityKey.of(library.serverId.value, itemId.value) }
+                        .toList()
+                    if (presentKeys.isEmpty()) {
                         libraryWriteDao.markAllBooksDeleted(libraryKey)
                     } else {
-                        libraryWriteDao.markMissingBooksDeleted(libraryKey, rows.map { it.book.bookKey })
+                        libraryWriteDao.markMissingBooksDeleted(libraryKey, presentKeys)
                     }
                 }
                 written += rows.size
@@ -192,6 +199,32 @@ class LibrarySnapshotWriter @Inject constructor(
     suspend fun writeBooks(profileId: ProfileId, library: Library, books: List<BookSnapshot>) {
         writeBooks(profileId, EntityKey.of(library.serverId.value, library.id.value), books) {
             libraryWriteDao.upsertLibraries(listOf(EntityMappers.toEntity(library)))
+        }
+    }
+
+    /**
+     * Writes first-stage catalogue previews without replacing an already-expanded book.
+     *
+     * The list endpoint deliberately omits structured authors, series, tracks and chapters. Inserting
+     * only when the book is new lets a first sync render immediately while an unchanged refresh keeps
+     * the complete cached row until an expanded response explicitly replaces it.
+     */
+    suspend fun writeCatalogueBooks(profileId: ProfileId, library: Library, books: List<BookSnapshot>) {
+        if (books.isEmpty()) return
+        val libraryKey = EntityKey.of(library.serverId.value, library.id.value)
+        val rows = books.map(EntityMappers::toEntities)
+        transaction {
+            libraryWriteDao.upsertLibraries(listOf(EntityMappers.toEntity(library)))
+            libraryWriteDao.insertCatalogueBooks(rows.map { it.book })
+            libraryWriteDao.insertVisibility(
+                rows.map { row ->
+                    ProfileVisibleBookEntity(
+                        profileId = profileId.value,
+                        bookKey = row.book.bookKey,
+                        libraryKey = libraryKey,
+                    )
+                },
+            )
         }
     }
 
@@ -264,8 +297,9 @@ class LibrarySnapshotWriter @Inject constructor(
     ) {
         if (fetched == null) return
         libraryWriteDao.clearVisibility(profileId.value, libraryKey)
+        val removedIds = fetched.removedIds.toSet()
         libraryWriteDao.insertVisibility(
-            fetched.visibleIds.map { itemId ->
+            fetched.visibleIds.filterNot(removedIds::contains).distinct().map { itemId ->
                 ProfileVisibleBookEntity(
                     profileId = profileId.value,
                     bookKey = EntityKey.of(library.serverId.value, itemId.value),

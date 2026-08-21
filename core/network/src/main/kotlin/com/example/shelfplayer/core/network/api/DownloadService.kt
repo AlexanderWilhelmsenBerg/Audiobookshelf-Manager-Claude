@@ -4,6 +4,7 @@ import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Headers
 import retrofit2.http.Path
 import retrofit2.http.Streaming
 
@@ -42,6 +43,10 @@ internal interface DownloadService {
      *   a conditional one and could answer `304` with no body at all.
      */
     @Streaming
+    // Byte offsets must describe the same representation on the first attempt and every later resume.
+    // Explicit identity also disables OkHttp's transparent gzip, whose decoded byte count is not a valid
+    // Range offset into the encoded representation held by the server.
+    @Headers("Accept-Encoding: identity")
     @GET("api/items/{itemId}/file/{fileId}")
     suspend fun file(
         @Header(AUTHORIZATION) bearer: String,

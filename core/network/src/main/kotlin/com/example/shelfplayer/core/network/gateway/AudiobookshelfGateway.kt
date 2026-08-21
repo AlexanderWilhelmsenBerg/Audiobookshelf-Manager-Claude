@@ -320,27 +320,29 @@ interface LibraryApi {
     /**
      * PRODUCT_SPEC LIB-001 — "the home screen can render partial cached content while sync continues".
      *
-     * [onBatch] is how that becomes true for a *large* library rather than only for a fast one. The
-     * catalogue is minified, so every item needs its own fetch, and a 490-book library that only
-     * appeared once all 490 had arrived left the shelf empty for minutes — which a device run duly
-     * reported. Batches let the caller store what has arrived so far.
+     * [onCatalogueBatch] and [onBatch] make that true for a *large* library rather than only for a fast
+     * one. A 490-book library that only appeared once all expanded items had arrived left the shelf
+     * empty for minutes — which a device run duly reported. Batches let the caller store previews and
+     * complete rows through paths with different replacement semantics.
      *
      * It carries books only. Deletions and the profile's item visibility are decided from the *whole*
      * catalogue and stay with the returned snapshot, because a partial view is exactly the thing that
      * must not be allowed to drive a deletion.
-     */
-    /**
-     * @param onBatch called with the catalogue rows first, then with each batch of expanded items, so
-     *   the shelf is populated after one request rather than after N+1 (P1-31).
+     * @param onBatch called with expanded items. Those rows replace every server-owned relation of the
+     *   cached book and therefore must never receive a minified catalogue preview.
      * @param cached what the caller already holds, which decides what is skipped and what is fetched
      *   first. The default knows nothing, which is the safe direction in both respects: everything is
      *   re-fetched, in catalogue order.
+     * @param onCatalogueBatch called with minified previews as catalogue pages arrive. It defaults to
+     *   [onBatch] for callers that only render batches; persistence callers supply a non-destructive
+     *   sink so a preview cannot erase already-expanded tracks or relationships.
      */
     suspend fun listBooks(
         profileId: ProfileId,
         libraryId: LibraryId,
         onBatch: suspend (List<BookSnapshot>) -> Unit = {},
         cached: CachedLibrary = CachedLibrary.Unknown,
+        onCatalogueBatch: suspend (List<BookSnapshot>) -> Unit = onBatch,
     ): AppResult<LibrarySnapshot>
 
     /**

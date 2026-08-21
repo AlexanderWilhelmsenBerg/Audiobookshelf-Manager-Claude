@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.database.RoomDatabaseTransactionRunner
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.model.AppResult
@@ -210,6 +211,71 @@ class DefaultLibraryRepositoryTest {
         assertEquals(
             5,
             repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().size,
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-001 — the first-stage catalogue is a preview, not a replacement.
+     *
+     * Minified rows deliberately carry no structured authors, series, tracks or chapters. Writing one
+     * through the expanded-item path therefore erases a complete cached book on an unchanged refresh.
+     */
+    @Test
+    fun `a catalogue batch preserves an already-expanded book`() = runTest {
+        repository.refresh(fixtureProfile)
+        val before = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first()
+            .single { it.id.value == "book-voyage-1" }
+        val library = fictionLibrary(before.serverId)
+
+        writer.writeCatalogueBooks(
+            profileId = fixtureProfile,
+            library = library,
+            books = listOf(
+                BookSnapshot(
+                    book = before.copy(authors = emptyList(), seriesMemberships = emptyList()),
+                    tracks = emptyList(),
+                    chapters = emptyList(),
+                ),
+            ),
+        )
+
+        val after = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first()
+            .single { it.id.value == "book-voyage-1" }
+        assertEquals(before.authors, after.authors)
+        assertEquals(before.seriesMemberships, after.seriesMemberships)
+        assertTrue(
+            database.libraryDao().expandedBookStamps(
+                fixtureProfile.value,
+                EntityKey.of(before.serverId.value, before.libraryId.value),
+            ).any { it.remoteId == before.id.value },
+            "the catalogue preview must not remove the tracks that make the cached book expanded",
+        )
+    }
+
+    /**
+     * An unchanged refresh legitimately returns no expanded books: every detail request was skipped.
+     * Reconciliation follows the unique catalogue-visible ids, not just the details fetched this run.
+     */
+    @Test
+    fun `unchanged skipped books remain present after final reconciliation`() = runTest {
+        repository.refresh(fixtureProfile)
+        val before = repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first()
+        val library = fictionLibrary(before.first().serverId)
+
+        writer.write(
+            profileId = fixtureProfile,
+            libraries = listOf(library),
+            snapshots = mapOf(
+                library.id to LibrarySnapshot(
+                    books = emptyList(),
+                    visibleIds = before.map { it.id } + before.first().id,
+                ),
+            ),
+        )
+
+        assertEquals(
+            before.map { it.id }.toSet(),
+            repository.observeBooks(fixtureProfile, LibraryId("lib-fiction")).first().map { it.id }.toSet(),
         )
     }
 
@@ -417,6 +483,8 @@ class DefaultLibraryRepositoryTest {
                 LibraryId("lib-fiction") to LibrarySnapshot(
                     books = listOf(BookSnapshot(before.first(), tracks = emptyList(), chapters = emptyList())),
                     removedCount = 4,
+                    visibleIds = before.map { it.id },
+                    removedIds = before.drop(1).map { it.id },
                 ),
             ),
         )

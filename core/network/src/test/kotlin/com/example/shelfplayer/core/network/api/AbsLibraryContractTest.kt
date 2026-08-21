@@ -114,6 +114,25 @@ class AbsLibraryContractTest {
         assertEquals(catalogueSize(), batches.single().size, "and it carries every row")
     }
 
+    /** The caller can persist minified catalogue previews without treating them as expanded rows. */
+    @Test
+    fun `catalogue and expanded batches have separate sinks`() = runTest {
+        server.enqueue(ContractFixtures.response("library-items"))
+        val catalogueBatches = mutableListOf<List<BookSnapshot>>()
+        val expandedBatches = mutableListOf<List<BookSnapshot>>()
+
+        api().listBooks(
+            PROFILE,
+            LIBRARY,
+            onBatch = { batch -> expandedBatches += batch },
+            cached = Cached(upToDate = true),
+            onCatalogueBatch = { batch -> catalogueBatches += batch },
+        )
+
+        assertEquals(1, catalogueBatches.size)
+        assertTrue(expandedBatches.isEmpty(), "unchanged items have no expanded batch")
+    }
+
     /**
      * "I cannot tell" has to mean "check".
      *
@@ -214,6 +233,52 @@ class AbsLibraryContractTest {
         api().listBooks(PROFILE, LIBRARY, cached = Cached(upToDate = true))
 
         assertEquals(1, server.requestCount, "everything arrived on the first page")
+    }
+
+    @Test
+    fun `a successful catalogue response without a body is rejected`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("body", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    @Test
+    fun `a catalogue envelope without total is rejected`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[]}"""))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("total", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    @Test
+    fun `a catalogue envelope without results is rejected`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"total":0}"""))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("results", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    @Test
+    fun `an empty page before the advertised total is rejected`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[],"total":1}"""))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("results", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    @Test
+    fun `a repeated page cannot make an incomplete catalogue look complete`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE],"total":2}"""))
+        server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE],"total":2}"""))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("page", assertIs<AppError.ApiCompatibility>(error).missingField)
     }
 
     // --- GET /api/libraries/{id}/search -------------------------------------------------------------
@@ -547,6 +612,7 @@ class AbsLibraryContractTest {
 
         assertTrue(snapshot.books.isEmpty())
         assertEquals(1, snapshot.removedCount)
+        assertEquals(listOf(LibraryItemId("item-1")), snapshot.removedIds)
         assertTrue(snapshot.isComplete, "a removal is an answer, so the fetch saw everything")
     }
 

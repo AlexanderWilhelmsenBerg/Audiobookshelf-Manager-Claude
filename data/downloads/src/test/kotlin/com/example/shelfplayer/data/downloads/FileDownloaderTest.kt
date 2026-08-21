@@ -37,6 +37,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -233,6 +234,93 @@ class FileDownloaderTest {
         downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
 
         assertEquals("the-whole-new-file", committed().readText(), "no trace of the stale head")
+    }
+
+    /**
+     * A server commonly answers `416` with its complete length when the connection died after every byte
+     * was written but before the client received completion. Matching the part to that authoritative length,
+     * then running the normal media verification, avoids downloading an already complete file again.
+     */
+    @Test
+    fun `a complete part reported by 416 is verified and committed without another request`() = runTest {
+        part().parentFile?.mkdirs()
+        part().writeText("complete")
+        api.rangeNotSatisfiableOnce = true
+        api.rangeNotSatisfiableTotalBytes = 8
+        api.rangeNotSatisfiableETag = "\"v1\""
+
+        val stored = assertNotNull(
+            downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")).getOrNull(),
+        )
+
+        assertEquals(listOf(8L), api.requests.map { it.first }, "the complete part was not fetched again")
+        assertEquals("complete", committed().readText())
+        assertEquals(DownloadState.Complete, stored.state)
+        assertEquals(8L, stored.downloadedBytes)
+    }
+
+    /** Matching length is insufficient when the server contradicts the validator that guarded the range. */
+    @Test
+    fun `a complete-length part with a changed validator is restarted`() = runTest {
+        part().parentFile?.mkdirs()
+        part().writeText("complete")
+        api.rangeNotSatisfiableOnce = true
+        api.rangeNotSatisfiableTotalBytes = 8
+        api.rangeNotSatisfiableETag = "\"v2\""
+        api.body = "fresh-file".toByteArray()
+        api.eTag = "\"v2\""
+
+        val stored = assertNotNull(
+            downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")).getOrNull(),
+        )
+
+        assertEquals(listOf(8L, 0L), api.requests.map { it.first })
+        assertEquals("fresh-file", committed().readText())
+        assertEquals("\"v2\"", stored.eTag)
+    }
+
+    /** A stale or oversized part is discarded and followed by exactly one unguarded request from zero. */
+    @Test
+    fun `a stale part reported by 416 is cleared and restarted once`() = runTest {
+        part().parentFile?.mkdirs()
+        part().writeText("stale")
+        api.rangeNotSatisfiableOnce = true
+        api.rangeNotSatisfiableTotalBytes = 3
+        api.rangeNotSatisfiableETag = "\"v1\""
+        api.body = "fresh-file".toByteArray()
+        api.eTag = "\"v2\""
+
+        val stored = assertNotNull(
+            downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")).getOrNull(),
+        )
+
+        assertEquals(listOf(5L, 0L), api.requests.map { it.first })
+        assertEquals(listOf("\"v1\"", null), api.requests.map { it.second })
+        assertEquals("fresh-file", committed().readText(), "the stale bytes were not retained")
+        assertEquals("\"v2\"", stored.eTag)
+    }
+
+    /**
+     * Clear the stale validator before the clean restart. If that restart fails, a later worker must begin
+     * cleanly rather than sending the same impossible range forever.
+     */
+    @Test
+    fun `a failed clean restart after 416 does not retain the stale part or validator`() = runTest {
+        part().parentFile?.mkdirs()
+        part().writeText("stale")
+        api.rangeNotSatisfiableOnce = true
+        api.rangeNotSatisfiableTotalBytes = 3
+        api.rangeNotSatisfiableETag = "\"v1\""
+        api.freshFailure = com.example.shelfplayer.core.model.AppError.Network()
+
+        assertIs<AppResult.Failure>(
+            downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")),
+        )
+
+        assertEquals(listOf(5L, 0L), api.requests.map { it.first }, "there is only one clean restart")
+        assertFalse(part().exists())
+        assertNull(storedFile().eTag)
+        assertEquals(0L, storedFile().downloadedBytes)
     }
 
     /**
@@ -438,9 +526,14 @@ class FileDownloaderTest {
         var lastModified: String? = null
         var contentType: String? = "audio/mpeg"
         var failure: com.example.shelfplayer.core.model.AppError? = null
+        var freshFailure: com.example.shelfplayer.core.model.AppError? = null
+        var rangeNotSatisfiableOnce: Boolean = false
+        var rangeNotSatisfiableTotalBytes: Long? = null
+        var rangeNotSatisfiableETag: String? = null
 
         var lastResumeFrom: Long = -1
         var lastValidator: String? = null
+        val requests = mutableListOf<Pair<Long, String?>>()
 
         override suspend fun fetchFile(
             profileId: ProfileId,
@@ -453,7 +546,23 @@ class FileDownloaderTest {
         ): AppResult<FileTransfer> {
             lastResumeFrom = resumeFrom
             lastValidator = validator
+            requests += resumeFrom to validator
             failure?.let { return AppResult.Failure(it) }
+            if (rangeNotSatisfiableOnce && resumeFrom > 0) {
+                rangeNotSatisfiableOnce = false
+                return AppResult.Success(
+                    FileTransfer(
+                        bytesWritten = 0,
+                        totalBytes = rangeNotSatisfiableTotalBytes,
+                        wasResumed = false,
+                        eTag = rangeNotSatisfiableETag,
+                        lastModified = lastModified,
+                        contentType = null,
+                        rangeNotSatisfiable = true,
+                    ),
+                )
+            }
+            if (resumeFrom == 0) freshFailure?.let { return AppResult.Failure(it) }
 
             val appended = wasResumed && resumeFrom > 0
             sink(appended).use { stream -> stream.write(body) }

@@ -74,8 +74,9 @@ internal data class LibrarySettingsDto(val markAsFinishedTimeRemaining: Long? = 
  */
 @Serializable
 internal data class LibraryItemsResponseDto(
-    val results: List<LibraryItemDto> = emptyList(),
-    val total: Int = 0,
+    val results: List<LibraryItemDto>? = null,
+    /** Negative means the required envelope field was absent, not that the library is empty. */
+    val total: Int = -1,
     val page: Int = 0,
     val limit: Int = 0,
 )

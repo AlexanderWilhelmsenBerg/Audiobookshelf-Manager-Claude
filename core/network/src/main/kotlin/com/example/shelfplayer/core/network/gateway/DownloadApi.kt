@@ -88,6 +88,9 @@ interface DownloadApi {
  *   Not a checksum: it is only guaranteed to change when the file changes.
  * @property contentType the server's MIME type, which is what decides the file's extension. The server's
  *   *filename* never does — DL-003 criterion 1.
+ * @property rangeNotSatisfiable `true` for a `416` response to a range request. No bytes were written;
+ *   [totalBytes] is the complete representation length from an unsatisfied `Content-Range`, when supplied.
+ *   The file layer uses that state to verify an already-complete part or restart once from byte zero.
  */
 data class FileTransfer(
     val bytesWritten: Long,
@@ -96,4 +99,5 @@ data class FileTransfer(
     val eTag: String?,
     val lastModified: String?,
     val contentType: String?,
+    val rangeNotSatisfiable: Boolean = false,
 )

@@ -18,13 +18,33 @@ import kotlin.random.Random
 /**
  * PRODUCT_SPEC 10.3 — one configured OkHttp stack per context.
  *
- * [AuthenticatedClient] is the ordinary API client. Long-lived transports (the websocket in Phase 1,
- * media streaming in Phase 2, downloads in Phase 3) get their own qualifiers and their own timeouts,
- * because a 30-second read timeout that is right for an API call would tear down a stream.
+ * [AuthenticatedClient] is the ordinary API client. [MediaStreamingClient] and [DownloadStreamingClient]
+ * keep the same authenticated stack and stall timeouts, but have no whole-call deadline: their response
+ * bodies can legitimately remain open far longer than an ordinary API exchange.
  */
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class AuthenticatedClient
+
+/**
+ * PRODUCT_SPEC 10.3 / PLAY-006 — the authenticated client used by Media3 remote streams.
+ *
+ * It shares the API client's dispatcher, connection pool and interceptor chain, while disabling the
+ * absolute call timeout that would otherwise cancel a healthy stream after 60 seconds.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class MediaStreamingClient
+
+/**
+ * PRODUCT_SPEC 10.3 / DL-001 — the authenticated client used by Retrofit `@Streaming` downloads.
+ *
+ * A download is bounded by WorkManager and caller cancellation, and its read timeout still detects a
+ * stalled server. It must not be bounded by the ordinary API client's whole-call deadline.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class DownloadStreamingClient
 
 /**
  * PRODUCT_SPEC 9.4 — "qualifiers for authenticated vs unauthenticated clients".
@@ -107,6 +127,25 @@ interface NetworkModule {
             .build()
 
         /**
+         * PRODUCT_SPEC 10.3 / PLAY-006 — a clone preserves authentication and shared transport
+         * infrastructure while changing only the endpoint-lifetime policy.
+         */
+        @Provides
+        @Singleton
+        @MediaStreamingClient
+        fun providesMediaStreamingClient(
+            @AuthenticatedClient authenticatedClient: OkHttpClient,
+        ): OkHttpClient = longLivedClient(authenticatedClient)
+
+        /** PRODUCT_SPEC 10.3 / DL-001 — downloads have the same long-lived response-body policy. */
+        @Provides
+        @Singleton
+        @DownloadStreamingClient
+        fun providesDownloadStreamingClient(
+            @AuthenticatedClient authenticatedClient: OkHttpClient,
+        ): OkHttpClient = longLivedClient(authenticatedClient)
+
+        /**
          * PRODUCT_SPEC 9.4 / AUTH-001 — the client the authentication endpoints use.
          *
          * Every credential those endpoints need is passed explicitly by the caller: the password in
@@ -136,5 +175,15 @@ interface NetworkModule {
             .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+
+        /**
+         * `newBuilder` deliberately shares the connection pool, dispatcher and interceptor instances.
+         * Connect/read/write remain bounded so a dead peer still fails; only the complete-call deadline is
+         * inappropriate for a body whose useful lifetime is measured in minutes or hours.
+         */
+        private fun longLivedClient(authenticatedClient: OkHttpClient): OkHttpClient = authenticatedClient
+            .newBuilder()
+            .callTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
     }
 }

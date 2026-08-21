@@ -223,7 +223,7 @@ class DefaultLibraryRepository @Inject constructor(
             is AppResult.Success -> {
                 val snapshots = mutableMapOf<LibraryId, LibrarySnapshot>()
                 for (library in libraries.value) {
-                    val onBatch: suspend (List<BookSnapshot>) -> Unit = { batch ->
+                    val onExpandedBatch: suspend (List<BookSnapshot>) -> Unit = { batch ->
                         // PRODUCT_SPEC LIB-001 — partial content on screen while the sync continues.
                         //
                         // Books only, and never a deletion: what may be *removed* is decided from the
@@ -232,11 +232,23 @@ class DefaultLibraryRepository @Inject constructor(
                         // reconciliation decisions in one place rather than spread across batches.
                         writer.writeBooks(profileId, library, batch)
                     }
+                    val onCatalogueBatch: suspend (List<BookSnapshot>) -> Unit = { batch ->
+                        // Minified catalogue rows are previews. They make new books browsable after one
+                        // response, but must not replace an existing expanded book with empty relations.
+                        writer.writeCatalogueBooks(profileId, library, batch)
+                    }
                     // PRODUCT_SPEC LIB-001 / LIB-002 — what the cache already holds, read once per
                     // library rather than once per item. Two queries decide the whole shape of the
                     // sweep: what can be skipped, and what is worth fetching first.
                     val cached = cachedLibrary(profileId, library)
-                    when (val books = gateway.library.listBooks(profileId, library.id, onBatch, cached)) {
+                    val books = gateway.library.listBooks(
+                        profileId = profileId,
+                        libraryId = library.id,
+                        onBatch = onExpandedBatch,
+                        cached = cached,
+                        onCatalogueBatch = onCatalogueBatch,
+                    )
+                    when (books) {
                         is AppResult.Failure -> {
                             recordFailure(profileId, books.error)
                             return@withContext books

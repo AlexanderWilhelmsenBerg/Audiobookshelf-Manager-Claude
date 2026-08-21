@@ -72,6 +72,11 @@ class AbsDownloadContractTest {
         assertEquals("GET", request.method)
         assertEquals("/api/items/$BOOK_ID/file/$FILE_ID", request.path)
         assertEquals("Bearer $TOKEN", request.getHeader("Authorization"))
+        assertEquals(
+            "identity",
+            request.getHeader("Accept-Encoding"),
+            "a later byte offset must refer to the same unencoded representation written now",
+        )
         assertNull(request.getHeader("Range"), "nothing to resume from")
         assertNull(request.getHeader("If-Range"), "and so nothing to guard")
         assertEquals("audio", sink.toString())
@@ -89,7 +94,7 @@ class AbsDownloadContractTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(206)
-                .setHeader("Content-Range", "bytes 1024-2047/2048")
+                .setHeader("Content-Range", "bytes 1024-1028/2048")
                 .setHeader("Content-Length", "5")
                 .setBody("tail!"),
         )
@@ -97,6 +102,7 @@ class AbsDownloadContractTest {
         api().fetchFile(PROFILE, BOOK, FILE_ID, { ByteArrayOutputStream() }, resumeFrom = 1024, validator = "\"v1\"")
 
         val request = server.takeRequest()
+        assertEquals("identity", request.getHeader("Accept-Encoding"))
         assertEquals("bytes=1024-", request.getHeader("Range"))
         assertEquals("\"v1\"", request.getHeader("If-Range"))
     }
@@ -123,7 +129,7 @@ class AbsDownloadContractTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(206)
-                .setHeader("Content-Range", "bytes 1024-2047/2048")
+                .setHeader("Content-Range", "bytes 1024-1028/2048")
                 .setHeader("ETag", "\"v1\"")
                 .setHeader("Last-Modified", "Thu, 14 Aug 2026 18:00:00 GMT")
                 .setBody("tail!"),
@@ -136,6 +142,21 @@ class AbsDownloadContractTest {
         assertEquals(5L, transfer.bytesWritten, "which is only what this attempt wrote")
         assertEquals("\"v1\"", transfer.eTag)
         assertEquals("Thu, 14 Aug 2026 18:00:00 GMT", transfer.lastModified)
+    }
+
+    /** An open-ended request makes the selected range's final byte the representation's current end. */
+    @Test
+    fun `an unknown complete length is derived from the validated open-ended range`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(206)
+                .setHeader("Content-Range", "bytes 4-8/*")
+                .setBody("tail!"),
+        )
+
+        val transfer = succeeds(resumeFrom = 4, validator = "\"v1\"")
+
+        assertEquals(9L, transfer.totalBytes)
     }
 
     /**
@@ -161,17 +182,135 @@ class AbsDownloadContractTest {
         assertEquals(18L, transfer.totalBytes, "Content-Length is the whole file on a 200")
     }
 
+    /** A `206` is appendable only when its range starts at the exact requested byte. */
+    @Test
+    fun `a 206 for a different offset is rejected before opening the destination`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(206)
+                .setHeader("Content-Range", "bytes 0-4/9")
+                .setBody("tail!"),
+        )
+        var opened = false
+
+        val result = api().fetchFile(
+            PROFILE,
+            BOOK,
+            FILE_ID,
+            {
+                opened = true
+                ByteArrayOutputStream()
+            },
+            resumeFrom = 4,
+            validator = "\"v1\"",
+        )
+
+        assertIs<AppError.ApiCompatibility>(assertIs<AppResult.Failure>(result).error)
+        assertFalse(opened, "untrusted bytes must never be appended")
+    }
+
+    /** The declared span, representation length and optional complete length must agree. */
+    @Test
+    fun `an internally inconsistent Content-Range is rejected`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(206)
+                .setHeader("Content-Range", "bytes 4-9/10")
+                .setBody("tail!"),
+        )
+
+        val result = api().fetchFile(
+            PROFILE,
+            BOOK,
+            FILE_ID,
+            { ByteArrayOutputStream() },
+            resumeFrom = 4,
+            validator = "\"v1\"",
+        )
+
+        assertIs<AppError.ApiCompatibility>(assertIs<AppResult.Failure>(result).error)
+    }
+
+    /** A complete length at or before the selected end cannot describe this representation. */
+    @Test
+    fun `a Content-Range whose end reaches the complete length is rejected`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(206)
+                .setHeader("Content-Range", "bytes 4-8/8")
+                .setBody("tail!"),
+        )
+
+        val result = api().fetchFile(
+            PROFILE,
+            BOOK,
+            FILE_ID,
+            { ByteArrayOutputStream() },
+            resumeFrom = 4,
+            validator = "\"v1\"",
+        )
+
+        assertIs<AppError.ApiCompatibility>(assertIs<AppResult.Failure>(result).error)
+    }
+
+    /** A partial response without a range request is not proof that appending is safe. */
+    @Test
+    fun `an unsolicited 206 is rejected`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(206)
+                .setHeader("Content-Range", "bytes 0-4/5")
+                .setBody("audio"),
+        )
+
+        val result = api().fetchFile(PROFILE, BOOK, FILE_ID, { ByteArrayOutputStream() })
+
+        assertIs<AppError.ApiCompatibility>(assertIs<AppResult.Failure>(result).error)
+    }
+
     /**
-     * `416` — the part on disk is longer than the file now is.
-     *
-     * A failure rather than an empty success, so the caller retries from zero rather than committing a file
-     * it never received.
+     * `416` carries state rather than becoming a generic retry: the file layer decides whether the exact
+     * complete length means the part is already done or whether it must restart once from byte zero.
      */
     @Test
-    fun `an unsatisfiable range is a failure`() = runTest {
-        server.enqueue(MockResponse().setResponseCode(416))
+    fun `an unsatisfiable range exposes the server's complete length without opening the destination`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(416)
+                .setHeader("Content-Range", "bytes */9999")
+                .setHeader("ETag", "\"v1\""),
+        )
+        var opened = false
 
-        val result = api().fetchFile(PROFILE, BOOK, FILE_ID, { ByteArrayOutputStream() }, resumeFrom = 9_999)
+        val result = api().fetchFile(
+            PROFILE,
+            BOOK,
+            FILE_ID,
+            {
+                opened = true
+                ByteArrayOutputStream()
+            },
+            resumeFrom = 9_999,
+            validator = "\"v1\"",
+        )
+
+        val transfer = assertIs<AppResult.Success<FileTransfer>>(result).value
+        assertTrue(transfer.rangeNotSatisfiable)
+        assertEquals(9_999L, transfer.totalBytes)
+        assertEquals("\"v1\"", transfer.eTag)
+        assertFalse(opened)
+    }
+
+    /** A `416` without a requested range is an ordinary server failure, never a recovery signal. */
+    @Test
+    fun `a 416 to a full request remains a failure`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(416)
+                .setHeader("Content-Range", "bytes */9999"),
+        )
+
+        val result = api().fetchFile(PROFILE, BOOK, FILE_ID, { ByteArrayOutputStream() })
 
         assertIs<AppResult.Failure>(result)
     }

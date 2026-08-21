@@ -4,6 +4,19 @@ Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.m
 
 ## Unreleased
 
+### Server-call hardening
+
+- **Catalogue refreshes preserve complete cached books** (LIB-001): minified list responses now use a
+  non-destructive preview write, while final visibility and deletion reconciliation follows the complete,
+  validated catalogue id set. Missing or inconsistent pagination envelopes fail closed instead of
+  authorizing deletions.
+- **Playback and downloads have endpoint-appropriate lifetimes** (PLAY-006, DL-001): ordinary API calls
+  retain their 60-second whole-call timeout, while Media3 streams and Retrofit file transfers share the
+  authenticated transport with no absolute call deadline. Connect and stalled-read timeouts remain bounded.
+- **Resumable downloads validate the representation before appending** (DL-001, DL-002): file requests use
+  identity encoding, `206` responses must match the requested byte offset and declared range, and `416`
+  responses either verify an already-complete part or clear stale state before one full retry.
+
 ### Phase 2 — Playback (closing)
 
 Written retrospectively. Five device runs shaped this phase and each one changed the plan, so

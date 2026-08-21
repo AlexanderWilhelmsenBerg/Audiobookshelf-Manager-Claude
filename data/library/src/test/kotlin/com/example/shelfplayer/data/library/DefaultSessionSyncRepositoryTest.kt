@@ -615,6 +615,7 @@ class DefaultSessionSyncRepositoryTest {
                 libraryId: LibraryId,
                 onBatch: suspend (List<BookSnapshot>) -> Unit,
                 cached: CachedLibrary,
+                onCatalogueBatch: suspend (List<BookSnapshot>) -> Unit,
             ): AppResult<LibrarySnapshot> = unsupported()
 
             override suspend fun searchBooks(

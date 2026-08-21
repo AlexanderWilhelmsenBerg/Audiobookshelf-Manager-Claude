@@ -50,6 +50,13 @@ interface LibraryWriteDao {
     @Upsert
     suspend fun upsertBooks(books: List<BookEntity>)
 
+    /**
+     * Minified catalogue rows are previews. Existing expanded books win the conflict so a preview with
+     * no tracks or structured relationships cannot overwrite complete cached data.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertCatalogueBooks(books: List<BookEntity>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertBookAuthors(crossRefs: List<BookAuthorCrossRef>)
 

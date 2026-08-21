@@ -68,8 +68,8 @@ class FileDownloader @Inject constructor(
      *
      * @param onProgress the running byte total for this file, for a notification. Called often; it must
      *   not block.
-     * @return the committed file's description, or the reason it is not committed. A failure leaves the
-     *   `.part` in place on purpose — that is what the next attempt resumes from.
+     * @return the committed file's description, or the reason it is not committed. Ordinary failures leave
+     *   the `.part` in place for resuming; an unsatisfied stale range clears it before one clean restart.
      */
     @Suppress("ReturnCount")
     suspend fun download(
@@ -92,19 +92,86 @@ class FileDownloader @Inject constructor(
         // everywhere rather than only against the servers that cannot do it. The capability is recorded for
         // diagnostics; the decision to try is made from what is on disk.
         val resumeFrom = if (file.eTag != null) onDisk else 0
+        var manifestFile = file
 
-        val transfer = fetch(profileId, itemId, file, part, resumeFrom, onProgress)
+        var transfer = fetch(profileId, itemId, file, part, resumeFrom, onProgress)
         if (transfer.isFailure()) {
-            record(serverId, itemId, file.copy(state = DownloadState.Failed, downloadedBytes = onDisk))
+            record(
+                serverId,
+                itemId,
+                file.copy(state = DownloadState.Failed, downloadedBytes = storage.bytesOnDisk(part)),
+            )
             return AppResult.Failure(transfer.error)
         }
-        val outcome = (transfer as AppResult.Success).value
+        var outcome = (transfer as AppResult.Success).value
         observe(serverId, askedForRange = resumeFrom > 0, outcome = outcome)
+
+        if (outcome.rangeNotSatisfiable && !canCommitUnsatisfiedPart(file, part, outcome)) {
+            val restartFile = file.copy(
+                expectedBytes = null,
+                downloadedBytes = 0,
+                eTag = null,
+                lastModified = null,
+            )
+            if (!storage.delete(part)) {
+                val error = AppError.Storage(summary = "The stale partial download could not be cleared.")
+                record(
+                    serverId,
+                    itemId,
+                    restartFile.copy(state = DownloadState.Failed, downloadedBytes = storage.bytesOnDisk(part)),
+                )
+                return AppResult.Failure(error)
+            }
+
+            // Persist the cleared validator before touching the network again. If this request or the
+            // process dies, the next worker starts from zero instead of sending the same impossible range.
+            record(serverId, itemId, restartFile)
+            manifestFile = restartFile
+            transfer = fetch(
+                profileId,
+                itemId,
+                restartFile,
+                part,
+                resumeFrom = 0,
+                onProgress = onProgress,
+            )
+            if (transfer.isFailure()) {
+                record(
+                    serverId,
+                    itemId,
+                    restartFile.copy(
+                        state = DownloadState.Failed,
+                        downloadedBytes = storage.bytesOnDisk(part),
+                    ),
+                )
+                return AppResult.Failure(transfer.error)
+            }
+            outcome = (transfer as AppResult.Success).value
+            if (outcome.rangeNotSatisfiable) {
+                val error = AppError.ApiCompatibility(
+                    summary = "The server rejected a full-file download as an unsatisfied range.",
+                )
+                record(
+                    serverId,
+                    itemId,
+                    restartFile.copy(
+                        state = DownloadState.Failed,
+                        downloadedBytes = storage.bytesOnDisk(part),
+                    ),
+                )
+                return AppResult.Failure(error)
+            }
+            observe(serverId, askedForRange = false, outcome = outcome)
+        }
 
         verify(part, outcome)?.let { problem ->
             // The part is left where it is. A short file resumes; a corrupt one is replaced by the next
             // attempt, which cannot resume because the validator will not match.
-            record(serverId, itemId, file.copy(state = DownloadState.Failed, downloadedBytes = part.length()))
+            record(
+                serverId,
+                itemId,
+                manifestFile.copy(state = DownloadState.Failed, downloadedBytes = part.length()),
+            )
             return AppResult.Failure(problem)
         }
 
@@ -113,14 +180,14 @@ class FileDownloader @Inject constructor(
                 AppError.Unknown(summary = "The downloaded file could not be moved into place."),
             )
 
-        val stored = file.copy(
+        val stored = manifestFile.copy(
             uri = committed.toURI().toString(),
             state = DownloadState.Complete,
-            expectedBytes = outcome.totalBytes ?: file.expectedBytes,
+            expectedBytes = outcome.totalBytes ?: manifestFile.expectedBytes,
             downloadedBytes = committed.length(),
-            mimeType = outcome.contentType ?: file.mimeType,
-            eTag = outcome.eTag ?: file.eTag,
-            lastModified = outcome.lastModified ?: file.lastModified,
+            mimeType = outcome.contentType ?: manifestFile.mimeType,
+            eTag = outcome.eTag ?: manifestFile.eTag,
+            lastModified = outcome.lastModified ?: manifestFile.lastModified,
         )
         record(serverId, itemId, stored)
 
@@ -131,6 +198,18 @@ class FileDownloader @Inject constructor(
             LogField.Public("resumed", outcome.wasResumed.toString()),
         )
         return AppResult.Success(stored)
+    }
+
+    /**
+     * A `416` can mean the interrupted request actually wrote the final byte before the connection ended.
+     * Commit only when the server's authoritative complete length matches, a returned validator does not
+     * contradict the one that guarded the request, and the ordinary media checks pass.
+     */
+    private fun canCommitUnsatisfiedPart(file: OfflineFile, part: File, outcome: FileTransfer): Boolean {
+        val total = outcome.totalBytes ?: return false
+        if (total <= 0 || part.length() != total) return false
+        if (outcome.eTag != null && file.eTag != null && outcome.eTag != file.eTag) return false
+        return verify(part, outcome) == null
     }
 
     /**
@@ -146,7 +225,11 @@ class FileDownloader @Inject constructor(
      */
     private suspend fun observe(serverId: ServerId, askedForRange: Boolean, outcome: FileTransfer) {
         if (askedForRange) {
-            capabilities.record(serverId, ServerCapability.RangeDownload, outcome.wasResumed)
+            capabilities.record(
+                serverId,
+                ServerCapability.RangeDownload,
+                outcome.wasResumed || outcome.rangeNotSatisfiable,
+            )
         }
         if (outcome.eTag != null || outcome.lastModified != null) {
             capabilities.record(serverId, ServerCapability.ChecksumOrETag, isSupported = true)
