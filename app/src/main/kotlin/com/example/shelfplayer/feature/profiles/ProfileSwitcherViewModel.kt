@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.lock.UnlockFailure
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -16,6 +17,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -36,16 +38,29 @@ class ProfileSwitcherViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val removeProfile: RemoveProfileUseCase,
     /**
-     * AUTH-005 — which accounts carry a passcode, so the card can say so before it is tapped.
+     * AUTH-005 — which accounts carry a passcode, and the field that opens one.
      *
-     * Added because the lock made a silent switcher misleading: `SwitchProfileUseCase` now *refuses* a
-     * locked profile, so a card with no indication of that offers an action it will decline. A control
-     * that fails when used is worse than one that explains itself first.
+     * Two jobs, both forced by the lock. The card says a passcode is needed before it is tapped, because
+     * `SwitchProfileUseCase` refuses a locked profile and a control that fails when used is worse than one
+     * that explains itself first. And this screen is the **only** place a non-active profile's passcode can
+     * be typed: the curtain draws for the active profile alone, so without the prompt below a locked
+     * profile that is not the current one cannot be opened at all — the refusal names a field that exists
+     * nowhere.
      */
-    locks: ProfileLockRepository,
+    private val locks: ProfileLockRepository,
 ) : ViewModel() {
 
     private val action = MutableStateFlow(ActionState())
+
+    /**
+     * The passcode prompt, or `null` when none is open.
+     *
+     * Kept out of [uiState]'s `combine` on purpose: it is driven by a tap rather than by any of those
+     * flows, and folding it in would mean a repository emission could dismiss a half-typed passcode.
+     */
+    private val unlock = MutableStateFlow<UnlockPrompt?>(null)
+
+    val unlockPrompt: StateFlow<UnlockPrompt?> = unlock.asStateFlow()
 
     val uiState: StateFlow<ProfileSwitcherUiState> = combine(
         profileRepository.observeProfiles(),
@@ -75,7 +90,61 @@ class ProfileSwitcherViewModel @Inject constructor(
         initialValue = ProfileSwitcherUiState(),
     )
 
-    fun onProfileSelected(profileId: ProfileId) = run(profileId) { switchProfile(it).discardValue() }
+    /**
+     * AUTH-005 — a locked profile opens a passcode prompt instead of failing.
+     *
+     * The lock is asked *before* the switch rather than after it, because `SwitchProfileUseCase` reports
+     * its refusal as an ordinary [AppError.Security] and keying the prompt off an error type would open it
+     * for any other security failure in the switch path too.
+     *
+     * Asked per tap rather than read from [ProfileRow.hasPasscode]: a profile that carries a passcode may
+     * already hold a live unlock ticket, and prompting somebody who is already unlocked is friction with
+     * nothing behind it.
+     */
+    fun onProfileSelected(profileId: ProfileId) {
+        if (action.value.inFlight) return
+        action.update { it.copy(inFlight = true, error = null) }
+        viewModelScope.launch {
+            if (locks.isLocked(profileId)) {
+                action.update { it.copy(inFlight = false) }
+                unlock.value = UnlockPrompt(profileId = profileId)
+                return@launch
+            }
+            val result = switchProfile(profileId)
+            action.update { it.copy(inFlight = false, error = (result as? AppResult.Failure)?.error) }
+        }
+    }
+
+    /**
+     * Checks the typed passcode and, if it is right, performs the switch that was refused.
+     *
+     * The array is wiped whatever happens. It is the caller's copy — `String` would leave the digits in the
+     * heap until a garbage collection nobody controls, which is why the whole lock surface takes
+     * `CharArray`.
+     */
+    fun onUnlockSubmitted(passcode: CharArray) {
+        val target = unlock.value?.takeIf { !it.isChecking } ?: return
+        unlock.value = target.copy(isChecking = true, failure = null)
+        viewModelScope.launch {
+            val failure = try {
+                locks.submitPasscode(target.profileId, passcode)
+            } finally {
+                passcode.fill('\u0000')
+            }
+            if (failure != null) {
+                unlock.value = target.copy(isChecking = false, failure = failure)
+                return@launch
+            }
+            unlock.value = null
+            val result = switchProfile(target.profileId)
+            action.update { it.copy(error = (result as? AppResult.Failure)?.error) }
+        }
+    }
+
+    fun onUnlockDismissed() {
+        if (unlock.value?.isChecking == true) return
+        unlock.value = null
+    }
 
     /**
      * PRODUCT_SPEC AUTH-004 — signing out keeps the profile, its downloads and its local progress.
@@ -106,11 +175,6 @@ class ProfileSwitcherViewModel @Inject constructor(
         }
     }
 
-    private fun <T> AppResult<T>.discardValue(): AppResult<Unit> = when (this) {
-        is AppResult.Success -> AppResult.Success(Unit)
-        is AppResult.Failure -> this
-    }
-
     private data class ActionState(val inFlight: Boolean = false, val error: AppError? = null)
 
     private companion object {
@@ -134,6 +198,18 @@ data class ProfileRow(val profile: Profile, val server: Server?, val hasPasscode
      */
     val serverUrl: String? get() = server?.baseUrl
 }
+
+/**
+ * AUTH-005 — an open passcode prompt for a profile the switcher refused to open.
+ *
+ * Carries no passcode of its own. The digits live in the field's own state and reach the view model as a
+ * `CharArray` that is wiped on arrival, so nothing that survives a recomposition ever holds them.
+ *
+ * @property isChecking a submission is in flight. Both the field and the dismiss are refused while it is
+ *   true, because the derivation takes a noticeable moment on an older phone and a second submission would
+ *   spend one of the four free attempts on the same passcode.
+ */
+data class UnlockPrompt(val profileId: ProfileId, val isChecking: Boolean = false, val failure: UnlockFailure? = null)
 
 /** PRODUCT_SPEC AUTH-002 — the switcher shows server, username and role. */
 data class ProfileSwitcherUiState(

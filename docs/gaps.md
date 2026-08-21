@@ -21,12 +21,13 @@ be built now and has not been.
 | Requirement | Gap | State |
 | --- | --- | --- |
 | AUTH-005 | **Profile PIN / biometric lock.** A per-profile passcode with an optional biometric prompt, so `Optional profile PIN or biometric gate` (§3.2) is built and PRODUCT_SPEC 24.14 is answered as version 1. | **Closed 2026-08-21 — ADR-0023** |
-| AUTH-005 | **The recovery the curtain promises is copy and not code.** `ProfileLockRepository.forget` exists and nothing calls it, and the curtain offers no control that leaves it. | Open, and the one that matters |
-| AUTH-005 | **The relock delay never fires.** `ProfileLockGate.onBackgrounded` has no production caller, so a profile stays unlocked until the process dies and the setting's three values are indistinguishable. | Open, and the second unwired half |
+| AUTH-005 | **The recovery the curtain promises is now code.** `SignInUseCase` calls `clearIfLocked`, and the curtain carries the password field that reaches it — for an exhausted record and an unreadable one alike, neither of which offers a passcode field. | **Closed 2026-08-21 — R-42.** The residual hazard, that the same call is silent from the ordinary sign-in screen, is R-44 |
+| AUTH-005 | **The relock delay fires.** `ProcessLockWatcher` calls `onBackgrounded` and `onForegrounded` from `Application.ActivityLifecycleCallbacks`, ignoring `isChangingConfigurations` so a rotation is not treated as leaving the app. | **Closed 2026-08-21 — R-41.** Whether `Immediately` is the right default still needs a device |
+| AUTH-005 | **A locked profile that is not the active one is reachable.** The curtain draws for the active profile alone and the switch is refused before a locked profile becomes active, which left the refusal naming a passcode field that existed nowhere. The switcher now prompts. | **Closed 2026-08-21 — R-45** |
 | AUTH-005 / §3.2 | **API 26 and 27 get no biometrics at all.** The passcode is the floor there, and on 28 and 29 no sensor-strength claim is made. | Open, by the platform |
 | AUTH-005 / §15 | **The app-switcher thumbnail is not suppressed on any API level.** Checked, not assumed: nothing in the tree suppresses it. | Open |
 | §8.12 | **Nothing obliges an admin account to take a passcode.** The lock is offered per profile with no policy behind it, and 8.12 asks for it *"especially for admin accounts"*. | Open, needs a decision |
-| AUTH-005 | **The Keystore wrap, the biometric prompt and the curtain are exercised by nothing**, and `LockCurtain`'s own KDoc names a screen test that does not exist. | Open, needs R-07 |
+| AUTH-005 | **The Keystore wrap and the biometric prompt are exercised by nothing.** Robolectric has no `AndroidKeyStore` provider and the prompt is a window the system draws. | Open, needs R-07. **The curtain half is closed:** `LockCurtainScreenTest` exists and asserts the disclosure block, which the KDoc had been promising against a test that did not |
 
 **The lock is built, and what it is worth is stated rather than implied.** Six to twelve digits behind
 PBKDF2, or the platform's own biometric prompt from API 28 where the user asks for it. Unlock tickets live

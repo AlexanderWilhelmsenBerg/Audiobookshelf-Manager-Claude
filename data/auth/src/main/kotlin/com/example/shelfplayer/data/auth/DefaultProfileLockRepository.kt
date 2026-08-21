@@ -120,11 +120,14 @@ class DefaultProfileLockRepository @Inject constructor(
     override suspend fun hasPasscode(profileId: ProfileId): Boolean = passcodes.hasPasscode(keyFor(profileId))
 
     /**
-     * AUTH-005 — whether [profileId] may become active.
+     * AUTH-005 — the switcher's side of [mayActivate].
      *
-     * Fails closed for the reason the interface states: a refused switch is recoverable by typing the
-     * passcode, and the alternative is opening an account because a disk read failed.
+     * Deliberately the negation of that one call rather than a second reading of the same state. If the
+     * switcher decided for itself whether to prompt, the two could disagree: the prompt would not appear
+     * for a profile the use case then refused, which is the defect this exists to close.
      */
+    override suspend fun isLocked(profileId: ProfileId): Boolean = !mayActivate(profileId)
+
     /**
      * AUTH-005 — clears the passcode of a profile that was locked, and only such a profile.
      *
@@ -141,6 +144,12 @@ class DefaultProfileLockRepository @Inject constructor(
         )
     }
 
+    /**
+     * AUTH-005 — whether [profileId] may become active.
+     *
+     * Fails closed for the reason the interface states: a refused switch is recoverable by typing the
+     * passcode, and the alternative is opening an account because a disk read failed.
+     */
     override suspend fun mayActivate(profileId: ProfileId): Boolean = resultOf {
         if (!passcodes.hasPasscode(keyFor(profileId))) return@resultOf true
         gate.isUnlocked(profileId)

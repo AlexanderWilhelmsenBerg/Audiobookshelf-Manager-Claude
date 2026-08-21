@@ -99,6 +99,11 @@
     <string name="profiles_remove_confirm">Fjern profil</string>
     <string name="profiles_remove_cancel">Avbryt</string>
 
+    <!-- AUTH-005 — kodel\u00e5s for en konto som ikke er den aktive. -->
+    <string name="profiles_unlock_title">Denne kontoen er l\u00e5st</string>
+    <string name="profiles_unlock_body">Skriv inn koden for %1$s for \u00e5 bytte til den.</string>
+    <string name="profiles_unlock_body_unknown">Skriv inn koden til denne kontoen for \u00e5 bytte til den.</string>
+
     <string name="library_sort_last_played">Sist spilt</string>
     <string name="library_sort_title">Tittel (A–Å)</string>
     <string name="library_sort_title_desc">Tittel (Å–A)</string>

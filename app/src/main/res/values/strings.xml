@@ -99,6 +99,14 @@
     <string name="profiles_remove_confirm">Remove profile</string>
     <string name="profiles_remove_cancel">Cancel</string>
 
+    <!--
+      AUTH-005 — the passcode prompt for a profile that is not the active one. The switcher is the only
+      place this can be asked: the curtain draws for the active profile alone.
+    -->
+    <string name="profiles_unlock_title">This account is locked</string>
+    <string name="profiles_unlock_body">Enter the passcode for %1$s to switch to it.</string>
+    <string name="profiles_unlock_body_unknown">Enter this account\'s passcode to switch to it.</string>
+
     <string name="library_sort_last_played">Last played</string>
     <string name="library_sort_title">Title (A–Z)</string>
     <string name="library_sort_title_desc">Title (Z–A)</string>

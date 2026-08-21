@@ -21,6 +21,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.lock.RelockDelay
+import com.example.shelfplayer.core.model.lock.UnlockFailure
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.AuthRepository
@@ -71,7 +72,11 @@ class ProfileSwitcherViewModelTest {
             auth,
             SyncAccountUseCase(profiles, auth, libraries, StubBookmarks()),
             backgroundSync,
-            // AUTH-005 — no profile in this test has a passcode, so every switch is allowed.
+            // AUTH-005 — always allows, which is right rather than lax. In production this guard and the
+            // view model's `isLocked` are the same object, so by the time the switch is attempted the
+            // passcode has already been accepted and the guard would allow it too. Refusing here would
+            // test a state the app cannot be in.
+            //
             // A lambda rather than a fake: `ProfileActivationGuard` is a `fun interface` so that this test
             // needs no double it would otherwise have to keep in step with `:domain`'s copy.
             ProfileActivationGuard { true },
@@ -215,6 +220,128 @@ class ProfileSwitcherViewModelTest {
         val rows = state.value.profiles.associateBy { it.profile.displayName }
         assertEquals(false, rows.getValue("ada").hasPasscode)
         assertEquals(true, rows.getValue("grace").hasPasscode, "grace has a passcode and the card must say so")
+    }
+
+    /**
+     * **The dead end this closes.**
+     *
+     * The curtain draws for the *active* profile only — `observeLockState` reads `activeProfileId` — and
+     * `SwitchProfileUseCase` refuses a locked profile *before* it becomes active. Those two rules met in a
+     * dead end: tapping a locked card produced "That account is locked. Enter its passcode to switch to
+     * it", and the app contained no field in which to enter it. A profile locked while a different account
+     * was active could not be opened at all.
+     *
+     * The lock is asked before the switch, so the refusal is never reached and the switch never happens.
+     */
+    @Test
+    fun `selecting a locked profile asks for its passcode instead of failing`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        locks.setProtected(setOf(grace.id))
+        locks.setLocked(grace.id, passcode = "492817")
+        val viewModel = viewModel()
+        val state = observed(viewModel)
+
+        viewModel.onProfileSelected(grace.id)
+
+        assertEquals(grace.id, viewModel.unlockPrompt.value?.profileId, "the prompt names the locked profile")
+        assertNull(state.value.error, "a prompt is not an error")
+        assertEquals(ada.id, state.value.activeProfileId, "the switch must not happen before the passcode")
+    }
+
+    /** The whole point: the right passcode performs the switch that was refused. */
+    @Test
+    fun `the right passcode unlocks and completes the switch`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        locks.setLocked(grace.id, passcode = "492817")
+        val viewModel = viewModel()
+        val state = observed(viewModel)
+        viewModel.onProfileSelected(grace.id)
+
+        viewModel.onUnlockSubmitted("492817".toCharArray())
+
+        assertNull(viewModel.unlockPrompt.value, "the prompt closes on success")
+        assertNull(state.value.error)
+        assertEquals(grace.id, state.value.activeProfileId, "the switch the passcode was typed for happens")
+    }
+
+    /**
+     * A wrong passcode keeps the prompt open with its reason, and does **not** switch.
+     *
+     * The failure is carried rather than dropped into the screen's general error line, because the two say
+     * different things: one is "try again here", the other is "that action did not happen".
+     */
+    @Test
+    fun `a wrong passcode keeps the prompt open and does not switch`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        locks.setLocked(grace.id, passcode = "492817")
+        val viewModel = viewModel()
+        val state = observed(viewModel)
+        viewModel.onProfileSelected(grace.id)
+
+        viewModel.onUnlockSubmitted("111111".toCharArray())
+
+        assertEquals(UnlockFailure.Wrong(remainingBeforeBackoff = 3), viewModel.unlockPrompt.value?.failure)
+        assertEquals(ada.id, state.value.activeProfileId, "a wrong passcode switches nothing")
+    }
+
+    /**
+     * The passcode is wiped by the view model, whatever the outcome.
+     *
+     * Asserted on the caller's own array, because that array is the copy the screen made from a `String`
+     * it cannot wipe: leaving it populated would keep the digits reachable for as long as the composition
+     * lived.
+     */
+    @Test
+    fun `the submitted passcode is wiped`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        locks.setLocked(grace.id, passcode = "492817")
+        val viewModel = viewModel()
+        // No `observed` here: this test asserts on the array alone, and `unlockPrompt` is a plain
+        // `StateFlow` that needs no subscriber to hold a value.
+        viewModel.onProfileSelected(grace.id)
+        val typed = "492817".toCharArray()
+
+        viewModel.onUnlockSubmitted(typed)
+
+        assertEquals(CharArray(6).concatToString(), typed.concatToString(), "the array must not still hold digits")
+    }
+
+    /** A profile carrying a passcode that is already unlocked must not be asked for it again. */
+    @Test
+    fun `an unlocked profile with a passcode is switched to without a prompt`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        // Protected, but holding a live ticket — which is what `isLocked` answers `false` for.
+        locks.setProtected(setOf(grace.id))
+        val viewModel = viewModel()
+        val state = observed(viewModel)
+
+        viewModel.onProfileSelected(grace.id)
+
+        assertNull(viewModel.unlockPrompt.value, "an unlocked profile is not asked for a passcode")
+        assertEquals(0, locks.submitted, "and nothing was submitted on its behalf")
+        assertEquals(grace.id, state.value.activeProfileId)
+    }
+
+    /** Dismissing the prompt leaves the active profile alone rather than half-switching. */
+    @Test
+    fun `dismissing the prompt changes nothing`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        locks.setLocked(grace.id, passcode = "492817")
+        val viewModel = viewModel()
+        val state = observed(viewModel)
+        viewModel.onProfileSelected(grace.id)
+
+        viewModel.onUnlockDismissed()
+
+        assertNull(viewModel.unlockPrompt.value)
+        assertEquals(ada.id, state.value.activeProfileId)
+        assertNull(state.value.error, "cancelling is not a failure")
     }
 
     private fun TestScope.observed(viewModel: ProfileSwitcherViewModel): StateFlow<ProfileSwitcherUiState> =
@@ -411,11 +538,34 @@ private class StubBookmarks : BookmarkRepository {
 private class FakeLocks : ProfileLockRepository {
     private val protectedProfiles = MutableStateFlow<Set<ProfileId>>(emptySet())
 
+    /** Which profiles answer `true` to [isLocked] — carrying a passcode is not the same as being locked. */
+    private val locked = mutableSetOf<ProfileId>()
+
+    /** Passcodes that [submitPasscode] accepts, by profile. Anything else is [UnlockFailure.Wrong]. */
+    private val accepts = mutableMapOf<ProfileId, String>()
+
+    var submitted = 0
+        private set
+
     fun setProtected(ids: Set<ProfileId>) {
         protectedProfiles.value = ids
     }
 
+    fun setLocked(id: ProfileId, passcode: String) {
+        locked += id
+        accepts[id] = passcode
+    }
+
     override fun observeProtectedProfiles(): Flow<Set<ProfileId>> = protectedProfiles
+
+    override suspend fun isLocked(profileId: ProfileId): Boolean = profileId in locked
+
+    override suspend fun submitPasscode(profileId: ProfileId, passcode: CharArray): UnlockFailure? {
+        submitted++
+        if (String(passcode) != accepts[profileId]) return UnlockFailure.Wrong(remainingBeforeBackoff = 3)
+        locked -= profileId
+        return null
+    }
 
     override fun observeLockState() = error("the switcher does not observe the lock state")
     override fun validate(passcode: CharArray) = error("not reached")
@@ -425,7 +575,6 @@ private class FakeLocks : ProfileLockRepository {
         error("not reached")
 
     override suspend fun removePasscode(profileId: ProfileId, current: CharArray) = error("not reached")
-    override suspend fun submitPasscode(profileId: ProfileId, passcode: CharArray) = error("not reached")
     override suspend fun acceptBiometricUnlock(profileId: ProfileId) = error("not reached")
     override suspend fun setBiometricUnlockEnabled(profileId: ProfileId, enabled: Boolean) = error("not reached")
 

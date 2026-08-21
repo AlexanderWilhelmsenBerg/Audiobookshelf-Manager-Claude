@@ -57,6 +57,20 @@ interface ProfileLockRepository {
      */
     suspend fun hasPasscode(profileId: ProfileId): Boolean
 
+    /**
+     * AUTH-005 — whether [profileId] would be refused if it were selected right now.
+     *
+     * The switcher needs this and `hasPasscode` cannot answer it: a profile that carries a passcode may
+     * still hold a live unlock ticket, and prompting somebody who was already unlocked is friction with no
+     * security behind it. This is the same question `ProfileActivationGuard` answers for
+     * `SwitchProfileUseCase`, asked from the UI side so that the switcher can offer the passcode field
+     * *instead of* an error naming a field that does not exist.
+     *
+     * Fails closed, like every other read here: an unanswerable question produces a prompt, and a prompt
+     * is recoverable by typing six digits.
+     */
+    suspend fun isLocked(profileId: ProfileId): Boolean
+
     /** The lock's own preferences for one profile, or `null` when it has no passcode. */
     suspend fun preferences(profileId: ProfileId): ProfileLockPreferences?
 

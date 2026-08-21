@@ -773,7 +773,7 @@ nothing. R-38 records the smaller trap left behind — `onCatalogueBatch` defaul
 persistence caller that forgets the sink silently gets the destructive behaviour the parameter exists to
 avoid.
 
-## AUTH-005 — the work in flight
+## AUTH-005 — complete and verified, unseen on hardware
 
 The profile passcode lock, on `claude/auth-005-profile-lock`. `PRODUCT_SPEC 24.14` asked whether profile
 PIN or biometric protection belonged to version 1 or 1.1, and **the owner has decided version 1**, which
@@ -789,9 +789,10 @@ sentences in the specification and all of it follows from the threat: **somebody
 unlocked, who is not the account's owner.** Not a stolen device, not an attacker with the filesystem, not a
 rooted phone, and not the server's own authorisation model.
 
-This section was written while the branch was still moving: the lock landed in one commit, the ADR and the
-recovery route in the next, and the wiring described at the end of this section may have moved again since.
-Read the code rather than this summary wherever the two disagree.
+The branch is finished and `verifyDebug` is green on it. **Seven defects were found in this feature after it
+first looked complete, and four of them were the same shape: correct code that nothing reached.** That ratio
+is the most useful thing in this section — see R-43, and the closing paragraphs below, which say what each
+one was.
 
 - **The record is its own proto, deliberately.** `AppSettingsDataSource.settings` catches `IOException` and
   emits `getDefaultInstance()`, which for a settings screen is a sensible default and for a lock would be
@@ -861,31 +862,56 @@ Read the code rather than this summary wherever the two disagree.
   it. The profiles table was rejected for a second reason: every other column there is server-derived and is
   rewritten on each permission refresh.
 
-**What is unfinished is the wiring, and it was found by reading for callers rather than by a failing test.**
-`ProfileLockGate.onBackgrounded` has no production caller, so the relock delay never fires: a profile stays
-unlocked until the process dies, and the setting's three values are indistinguishable on a device. The
-recovery is half done — `SignInUseCase` calls `clearIfLocked`, so signing in really does clear a locked
-profile's passcode, while the curtain's recovery block is still prose. It names signing in again, says that
-this needs a reachable server, and mentions that other accounts exist when they do, and it offers no
-control that leads anywhere except back to the passcode field.
+**The seven defects, because the pattern in them is worth more than the list.** Four were code with no
+caller or no control:
 
-`docs/gaps.md` and `docs/risks.md` own both, at R-40 to R-42, and **R-42 is the one to take seriously**: ten
-wrong attempts, or a record the Keystore can no longer unwrap after a lock-screen change, ends at a screen
-with no exit, and the only route left is Android's own "clear storage", which takes every download and every
-sign-in with it. That reaches product priority 2 from an unexpected direction — the progress is not lost, it
-is unreachable, and the app did it deliberately. One correction to those documents while it is fresh:
-gaps.md's row saying nothing calls the clearing was written before the call existed, and only its second
-half — that the curtain offers no control — still stands.
+1. **The lock was inert.** Nothing in production called `ProfileLockGate.onBackgrounded`, so `backgroundedAt`
+   was never stamped, `isUnlocked` returned `true` for the life of the process, and all three relock delays
+   behaved identically — the curtain guarded a cold start and nothing else. Ten passing tests covered the
+   arithmetic. Fixed by `ProcessLockWatcher`, whose own test fails if the wiring is removed, and which
+   ignores `isChangingConfigurations` so a rotation is not treated as leaving the app.
+2. **The curtain was a dead end.** The recovery *logic* was wired — `SignInUseCase` called `clearIfLocked` —
+   and the curtain offered no control that reached it. An exhausted or unreadable record left only Android's
+   "clear storage". Fixed with an inline re-authentication field.
+3. **A locked profile that was not the active one could not be opened at all.** The curtain reads
+   `activeProfileId`, so it draws for one profile; the switch is refused before a locked profile becomes
+   active. Tapping such a card produced "That account is locked. Enter its passcode to switch to it" and the
+   app contained no such field anywhere. Fixed by a passcode dialogue in the switcher, driven by
+   `ProfileLockRepository.isLocked` — defined as the negation of the same `mayActivate` the refusal uses, so
+   the prompt and the refusal cannot disagree. This was R-43's shape for the third time in one feature.
+4. **`USE_BIOMETRIC` was designed and never added to the manifest.**
 
-Tests, all pure JVM: ten for the key derivation and its passcode policy, ten for the gate's ticket
+The other three were honesty defects:
+
+5. `LockCurtain`'s KDoc cited a `LockCurtainScreenTest` that did not exist. Writing it required splitting
+   `LockCurtainContent` out of the Hilt-bound composable — which is worth knowing, because the same shape is
+   needed for any future screen test here.
+6. Three distinct refusal reasons were collapsed into one message, so `111111` was refused with "a passcode
+   is between 6 and 12 digits". Fixed by moving `PasscodeRejection` into `:core:model` and carrying it.
+7. `ProfilePasscodeStore` documented a `[LockedByFailure]` state that does not exist.
+
+**Tests, all pure JVM.** Ten for the key derivation and its passcode policy, ten for the gate's ticket
 lifetime, five for ROUTE-002's truth table — the first coverage `OutputDeviceWatcher`'s policy branch has
-ever had — six for the startup-mode clause, and extensions to the sign-in and switch tests for the refusal
-and the clearing. **No verification has been run against this working tree from the session that wrote this
-document, so nothing here is a claim about a green build.** Nothing about the lock has been seen by a
-person: no passcode has been typed on hardware, no biometric prompt has ever been drawn by this app, the
-disabled row has never been seen on an API 26 or 27 device, and the curtain has no screen test at all —
-which also puts it outside the accessibility net (R-39). The app-switcher thumbnail is not suppressed on any
-level, which was checked rather than assumed.
+ever had — six for the startup-mode clause, five for `ProcessLockWatcher`'s wiring, seven for the curtain
+under Robolectric including the disclosure block, six for the switcher's prompt, and extensions to the
+sign-in and switch tests. `verifyDebug -Pshelfplayer.warningsAsErrors=true` passes.
+
+**Two guards were proved by reverting the fix and watching the test fail** — the switcher prompt (four of six
+tests go red) and, earlier on this branch, PR #29's catalogue reconciliation. That step is worth keeping:
+R-37 and R-43 are both cases where a test passed over a real defect, and the only way to know a new test
+would have caught it is to remove the fix.
+
+**Nothing about the lock has been seen by a person.** No passcode has been typed on hardware, no biometric
+prompt has ever been drawn by this app, and the disabled row has never been seen on an API 26 or 27 device.
+The app-switcher thumbnail is not suppressed on any level, which was checked rather than assumed. R-39 holds
+the Keystore wrap and the prompt; both need R-07's absent instrumented tier.
+
+**One residual hazard is recorded rather than fixed: R-44.** `clearIfLocked` fires from the ordinary sign-in
+screen too, where the user may only have meant to refresh an expired session, and nothing there mentions the
+lock — so a passcode can be removed silently. It is bounded (the profile must be locked at that moment, and
+for the active profile the only reachable sign-in is the curtain's own disclosed one) and recoverable, and
+reporting it properly needs a place to put the sentence on a screen that navigates away on success. That is
+a design question, not an oversight.
 
 ## What has never been verified
 

@@ -159,17 +159,43 @@ AUTH-003's backup criterion asks for.
 who can sign in has cleared a strictly higher bar than six digits, and AUTH-003 already says this lock is
 not about server authentication — so it is a feature rather than a bypass, and its cost is on screen before
 the passcode is set: it needs the server to be reachable, so it is no help offline.
-`ProfileLockRepository.forget` exists for that call, and until the sign-in path makes it, the route is a
-promise the copy makes and the code does not yet keep.
+`SignInUseCase` makes that call, through `LockedProfileRecovery.clearIfLocked`, and the curtain carries the
+password field that reaches it — so the route the copy describes is one the code now keeps. It is
+conditional on purpose: a profile that was already unlocked is somebody re-authenticating after an expired
+session, and their lock is left exactly as they set it.
+
+**A locked profile that is not the active one is opened from the switcher, not the curtain.** The curtain
+reads `activeProfileId`, so it draws for one profile only, and `SwitchProfileUseCase` refuses a locked
+target *before* it becomes active. Those two rules first met in a dead end: the refusal said "Enter its
+passcode to switch to it" and the app contained no field in which to. `ProfileSwitcherViewModel` now asks
+`ProfileLockRepository.isLocked` before attempting the switch and opens a passcode dialogue instead of
+producing an error. `isLocked` is defined as the negation of the same `mayActivate` the use case calls, so
+the prompt and the refusal cannot disagree about one profile. The dialogue offers no biometrics — stacking
+the platform's activity-level prompt on a dialogue is a shape nothing here can test — and no recovery
+field, because re-authenticating destroys a passcode and that does not belong behind a gesture meaning
+"show me my other account". A profile whose record is exhausted or unreadable is served by the card's own
+*Sign in again*, which is the route that clears it.
 
 **Nothing obliges an admin account to take a passcode.** 8.12 asks for the lock *"especially for admin
 accounts"*, and what ships is offered per profile with no policy behind it. That half of 8.12 is unmet
 rather than satisfied by proximity.
 
-**The automated evidence is three JVM tests and no more.** `PasscodeKdfTest`, `AutoStartDecisionTest` and
-`ProfileLockGateTest` cover the derivation and its policy, ROUTE-002's truth table, and the gate's clock
-arithmetic. The Keystore wrap, the biometric prompt and the curtain's disclosure block are exercised by
-nothing in this repository. That is recorded here so the covered half is not read as coverage of the whole.
+**The automated evidence is JVM tests only, and what they reach is worth naming exactly.**
+`PasscodeKdfTest`, `AutoStartDecisionTest` and `ProfileLockGateTest` cover the derivation and its policy,
+ROUTE-002's truth table, and the gate's clock arithmetic. `LockCurtainScreenTest` covers the curtain under
+Robolectric, including the disclosure block and the two states that offer no passcode field.
+`ProcessLockWatcherTest` covers the caller none of the others could notice was missing —
+see the paragraph below. `ProfileSwitcherViewModelTest` covers the switcher's prompt.
+
+**The Keystore wrap and the biometric prompt are exercised by nothing here, and cannot be.** Both need a
+device. That is recorded so the covered half is not read as coverage of the whole; R-07 holds the absent
+instrumented tier.
+
+**A component's arithmetic being tested is not the same as it being reached.** `ProfileLockGateTest` passed
+in full while the lock was inert on a device, because nothing in production called `onBackgrounded` — so
+`isUnlocked` was true for the life of the process and all three relock delays behaved identically. Four of
+the seven defects found in this feature after it first looked finished were of that shape: correct code
+nothing reached. R-43 records the habit that catches it — grep for callers once a component builds.
 
 **`docs/gaps.md` changes on both sides.** The AUTH-005 row closes, and the ROUTE-002 row marked *"Blocked on
 AUTH-005"* is unblocked by a decision function rather than by a promise.

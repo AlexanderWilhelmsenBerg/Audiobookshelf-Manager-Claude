@@ -202,9 +202,13 @@ private fun PasscodeField(isChecking: Boolean, onSubmit: (CharArray) -> Unit) {
  * Each case says something different because each has a different next step: try again, wait, or stop
  * trying and re-authenticate. "Wrong passcode" for an unreadable record would send somebody to keep
  * guessing at something that cannot succeed.
+ *
+ * `internal` rather than private because the profile switcher now has a passcode field too — the only
+ * place a *non-active* profile's lock can be opened. Two mappings of the same four cases would drift, and
+ * the case that would drift first is `Unreadable`, whose whole point is that it does not say "wrong".
  */
 @Composable
-private fun FailureText(failure: UnlockFailure) {
+internal fun FailureText(failure: UnlockFailure) {
     val text = when (failure) {
         is UnlockFailure.Wrong -> if (failure.remainingBeforeBackoff > 0) {
             pluralStringResource(
