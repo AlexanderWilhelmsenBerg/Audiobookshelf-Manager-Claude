@@ -842,7 +842,7 @@ deferred: a baseline profile is *generated* by running a macrobenchmark on a dev
 would be guesswork of exactly the kind this project refuses elsewhere.
 
 **The instrumented tier exists now, and holds one module (R-07).** `:core:datastore` has an `androidTest`
-source set: `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest`, 21 tests over the AndroidKeyStore
+source set: `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest`, 27 tests over the AndroidKeyStore
 wrap, the staged write and the rate limit that lives inside the encrypted record. That slice was chosen
 first because it needs no Hilt, no Compose, no UI and no biometric hardware, so it is deterministic on any
 attached device and fails for one reason only — and because R-39 had recorded it as untested since AUTH-005
@@ -1060,11 +1060,12 @@ Stated plainly because several of these look done from the code. `docs/risks.md`
 with a blast radius and a cheapest mitigation for each; this is the short list, and the first entry is the
 one that explains most of the others.
 
-- **No instrumented test exists anywhere in the repository.** There is no `androidTest` source set in any
-  module: 111 test files, all of them on the JVM, and the UI tier is Robolectric at `sdk = 34` apart from
-  two files that run at more than one level because the level changes the mechanism. Everything in
-  `PRODUCT_SPEC 17.2` is therefore untested, and every device run so far has found defects the whole suite
-  passed through — eight in the audit of 2026-08-16, four in the run of 2026-08-20 (R-07, R-08).
+- **The instrumented tier covers one module.** `:core:datastore` has an `androidTest` source set over the
+  profile lock's Keystore storage, and no other module has one; it runs against an attached device and
+  never in CI. Everything else is on the JVM, and the UI tier is Robolectric at `sdk = 34` apart from two
+  files that run at more than one level because the level changes the mechanism. Most of
+  `PRODUCT_SPEC 17.2` is therefore still untested, and every device run so far has found defects the whole
+  suite passed through — eight in the audit of 2026-08-16, four in the run of 2026-08-20 (R-07, R-08).
 - **The two-hour playback soak has never run** (R-09), and **process death has never been measured**
   against `PRODUCT_SPEC 17.3`'s ten-second progress budget (R-11). Product priority 2 is "do not lose
   progress", and its acceptance number has never been checked.

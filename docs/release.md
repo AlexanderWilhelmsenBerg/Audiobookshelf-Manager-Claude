@@ -54,7 +54,7 @@ R-31.
 
 | Step | Requirement | Blocked on |
 | --- | --- | --- |
-| Managed-device tests | 18, 17.2 | CI has no emulator. This is the largest single hole: no instrumented test exists at all. |
+| Managed-device tests | 18, 17.2 | CI has no emulator. Still the largest single hole, though no longer a total one: `:core:datastore` has an instrumented suite over the profile lock's storage, runnable with `connectedDebugAndroidTest` against an attached device. No other module has one, and none of it runs in CI. |
 | Two-hour playback soak; process-death progress budget | 25, 17.3 | A device and patience. No new infrastructure. |
 | Android Auto verification in the Desktop Head Unit | 17.2 | Nothing. The browse tree is built and has never been run in a car. |
 | Launch the release APK once | 15 | Nothing. R8 runs in CI and its output is never executed. |

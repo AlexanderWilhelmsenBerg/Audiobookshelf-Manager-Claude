@@ -141,7 +141,9 @@ does not have to invent a policy in a hurry.
 Stated because an invariant nobody has tested is a claim, not a guarantee. The transport, credential and
 logging invariants above are enforced by tests that run on every pull request. These are not:
 
-- **No instrumented test exists.** The whole UI tier is Robolectric on the JVM at API 34; `minSdk` is 26.
+- **The UI tier has no instrumented test.** It is Robolectric on the JVM at API 34; `minSdk` is 26. The
+  instrumented tier exists but holds one module — `:core:datastore`, covering the profile lock's Keystore
+  storage — and it runs only on an attached device, never in CI (R-07).
 - **The release build is assembled but never launched**, so R8's effect on reflection-shaped code —
   Room, Hilt, Media3, serialization — is unexercised.
 - **Two of the management contracts are derived from the server's source rather than captured**, because
