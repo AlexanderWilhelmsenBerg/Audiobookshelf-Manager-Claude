@@ -288,22 +288,21 @@ internal class AbsLibraryApi @Inject constructor(
                 .toResult(::validateCatalogueBody)
         }
 
-    private fun validateCatalogueBody(body: LibraryItemsResponseDto?): AppResult<LibraryItemsResponseDto> =
-        when {
-            body == null -> AppResult.Failure(
-                catalogueCompatibility("This server returned an empty catalogue response.", "body"),
-            )
+    private fun validateCatalogueBody(body: LibraryItemsResponseDto?): AppResult<LibraryItemsResponseDto> = when {
+        body == null -> AppResult.Failure(
+            catalogueCompatibility("This server returned an empty catalogue response.", "body"),
+        )
 
-            body.results == null -> AppResult.Failure(
-                catalogueCompatibility("This server did not include catalogue results.", "results"),
-            )
+        body.results == null -> AppResult.Failure(
+            catalogueCompatibility("This server did not include catalogue results.", "results"),
+        )
 
-            body.total < 0 -> AppResult.Failure(
-                catalogueCompatibility("This server did not report the catalogue total.", "total"),
-            )
+        body.total < 0 -> AppResult.Failure(
+            catalogueCompatibility("This server did not report the catalogue total.", "total"),
+        )
 
-            else -> AppResult.Success(body)
-        }
+        else -> AppResult.Success(body)
+    }
 
     private fun catalogueCompatibility(summary: String, missingField: String) =
         AppError.ApiCompatibility(summary = summary, missingField = missingField)

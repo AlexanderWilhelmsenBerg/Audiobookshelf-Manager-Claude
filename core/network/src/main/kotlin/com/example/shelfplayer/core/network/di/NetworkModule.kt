@@ -133,17 +133,15 @@ interface NetworkModule {
         @Provides
         @Singleton
         @MediaStreamingClient
-        fun providesMediaStreamingClient(
-            @AuthenticatedClient authenticatedClient: OkHttpClient,
-        ): OkHttpClient = longLivedClient(authenticatedClient)
+        fun providesMediaStreamingClient(@AuthenticatedClient authenticatedClient: OkHttpClient): OkHttpClient =
+            longLivedClient(authenticatedClient)
 
         /** PRODUCT_SPEC 10.3 / DL-001 — downloads have the same long-lived response-body policy. */
         @Provides
         @Singleton
         @DownloadStreamingClient
-        fun providesDownloadStreamingClient(
-            @AuthenticatedClient authenticatedClient: OkHttpClient,
-        ): OkHttpClient = longLivedClient(authenticatedClient)
+        fun providesDownloadStreamingClient(@AuthenticatedClient authenticatedClient: OkHttpClient): OkHttpClient =
+            longLivedClient(authenticatedClient)
 
         /**
          * PRODUCT_SPEC 9.4 / AUTH-001 — the client the authentication endpoints use.

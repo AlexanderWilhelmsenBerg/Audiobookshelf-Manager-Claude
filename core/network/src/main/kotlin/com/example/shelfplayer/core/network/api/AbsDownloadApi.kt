@@ -264,10 +264,7 @@ internal class AbsDownloadApi @Inject constructor(
      * `Content-Length` where present and remain strictly inside the complete representation length.
      */
     @Suppress("ReturnCount")
-    private fun partialRangeOf(
-        response: retrofit2.Response<ResponseBody>,
-        resumeFrom: Long,
-    ): PartialRange? {
+    private fun partialRangeOf(response: retrofit2.Response<ResponseBody>, resumeFrom: Long): PartialRange? {
         if (resumeFrom <= 0) return null
         val match = SATISFIED_CONTENT_RANGE.matchEntire(response.headers()[CONTENT_RANGE]?.trim().orEmpty())
             ?: return null
