@@ -70,8 +70,12 @@ class FileDownloader @Inject constructor(
      *   not block.
      * @return the committed file's description, or the reason it is not committed. Ordinary failures leave
      *   the `.part` in place for resuming; an unsatisfied stale range clears it before one clean restart.
+     *
+     * `LongMethod` is suppressed because this is an ordered durability protocol: persist, fetch, recover,
+     * verify, atomically commit, then publish the completed manifest. Keeping those transitions together
+     * makes the crash boundary visible; extracting them would hide the order behind parameter-heavy helpers.
      */
-    @Suppress("ReturnCount")
+    @Suppress("LongMethod", "ReturnCount")
     suspend fun download(
         profileId: ProfileId,
         serverId: ServerId,

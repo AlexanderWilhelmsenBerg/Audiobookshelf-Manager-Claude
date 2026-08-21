@@ -1,7 +1,9 @@
 package com.example.shelfplayer.core.network.api
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -24,12 +26,25 @@ internal object ContractFixtures {
     /** The recorded response for [name], ready to be enqueued. */
     fun response(name: String): MockResponse {
         val envelope = envelope(name)
-        val status = envelope.getValue("status").jsonPrimitive.content.toInt()
-        val contentType = envelope["contentType"]?.jsonPrimitive?.contentOrNull() ?: "application/json"
-        return MockResponse()
-            .setResponseCode(status)
-            .setHeader("Content-Type", contentType)
-            .setBody(bodyOf(envelope))
+        return responseOf(envelope, bodyOf(envelope))
+    }
+
+    /**
+     * The captured catalogue with deterministic, distinct top-level item ids.
+     *
+     * Capture redaction deliberately replaces every volatile id with the same literal. That preserves
+     * the wire shape, but it cannot model a production catalogue's uniqueness invariant — the invariant
+     * used to detect a repeated page before it can authorize deletion. Only the adapter tests restore
+     * that lost distinction; the committed evidence remains untouched.
+     */
+    fun catalogueResponse(): MockResponse {
+        val envelope = envelope("library-items")
+        val body = envelope.getValue("body").jsonObject
+        val results = body.getValue("results").jsonArray.mapIndexed { index, element ->
+            JsonObject(element.jsonObject + ("id" to JsonPrimitive("fixture-item-$index")))
+        }
+        val distinctBody = JsonObject(body + ("results" to JsonArray(results))).toString()
+        return responseOf(envelope, distinctBody)
     }
 
     /** The recorded body as a raw string, for a test that wants to alter one field before serving it. */
@@ -56,6 +71,15 @@ internal object ContractFixtures {
         envelope["body"] != null -> envelope.getValue("body").toString()
         envelope["bodyText"] != null -> envelope.getValue("bodyText").jsonPrimitive.content
         else -> ""
+    }
+
+    private fun responseOf(envelope: JsonObject, body: String): MockResponse {
+        val status = envelope.getValue("status").jsonPrimitive.content.toInt()
+        val contentType = envelope["contentType"]?.jsonPrimitive?.contentOrNull() ?: "application/json"
+        return MockResponse()
+            .setResponseCode(status)
+            .setHeader("Content-Type", contentType)
+            .setBody(body)
     }
 
     private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? = content.takeIf { it != "null" }

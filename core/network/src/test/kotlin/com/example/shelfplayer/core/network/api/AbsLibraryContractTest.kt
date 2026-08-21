@@ -98,7 +98,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `an item whose stored copy matches the server revision is not re-fetched`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         val batches = mutableListOf<List<BookSnapshot>>()
 
         val result = api().listBooks(
@@ -117,7 +117,7 @@ class AbsLibraryContractTest {
     /** The caller can persist minified catalogue previews without treating them as expanded rows. */
     @Test
     fun `catalogue and expanded batches have separate sinks`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         val catalogueBatches = mutableListOf<List<BookSnapshot>>()
         val expandedBatches = mutableListOf<List<BookSnapshot>>()
 
@@ -142,7 +142,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `an item with no known revision is fetched`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         enqueueExpansions()
 
         api().listBooks(PROFILE, LIBRARY, onBatch = {})
@@ -162,7 +162,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `the catalogue is handed over before any item is expanded`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         enqueueExpansions()
         val batches = mutableListOf<List<BookSnapshot>>()
 
@@ -185,7 +185,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `the catalogue is requested one page at a time`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         server.enqueue(ContractFixtures.response("library-item"))
 
         api().listBooks(PROFILE, LIBRARY)
@@ -367,7 +367,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `a catalogue row carries the metadata but not the structured links`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         server.enqueue(MockResponse().setResponseCode(503))
         repeat(RETRY_ATTEMPTS) { server.enqueue(MockResponse().setResponseCode(503)) }
         val batches = mutableListOf<List<BookSnapshot>>()
@@ -475,7 +475,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `each item is fetched expanded so the snapshot has tracks and chapters`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         enqueueExpansions()
 
         val books = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value.books
@@ -533,7 +533,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `a library whose every item fails is a failure, not an empty library`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         server.enqueue(MockResponse().setResponseCode(503))
 
         val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error

@@ -562,7 +562,7 @@ class FileDownloaderTest {
                     ),
                 )
             }
-            if (resumeFrom == 0) freshFailure?.let { return AppResult.Failure(it) }
+            if (resumeFrom == 0L) freshFailure?.let { return AppResult.Failure(it) }
 
             val appended = wasResumed && resumeFrom > 0
             sink(appended).use { stream -> stream.write(body) }

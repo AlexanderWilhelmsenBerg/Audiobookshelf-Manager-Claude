@@ -143,33 +143,14 @@ internal class AbsDownloadApi @Inject constructor(
         resumeFrom: Long,
         onProgress: (Long) -> Unit,
     ): AppResult<FileTransfer> {
-        if (response.code() == HTTP_RANGE_NOT_SATISFIABLE && resumeFrom > 0) {
-            val headers = response.headers()
-            return AppResult.Success(
-                FileTransfer(
-                    bytesWritten = 0,
-                    totalBytes = unsatisfiedTotalFrom(headers[CONTENT_RANGE]),
-                    wasResumed = false,
-                    eTag = headers[ETAG],
-                    lastModified = headers[LAST_MODIFIED],
-                    contentType = null,
-                    rangeNotSatisfiable = true,
-                ),
-            )
-        }
+        unsatisfiedRangeOf(response, resumeFrom)?.let { return AppResult.Success(it) }
         if (!response.isSuccessful) {
             return AppResult.Failure(errors.fromStatus(response.code()))
         }
 
-        val partialRange = if (response.code() == HTTP_PARTIAL_CONTENT) {
-            partialRangeOf(response, resumeFrom) ?: return AppResult.Failure(
-                AppError.ApiCompatibility(
-                    summary = "The server returned an invalid partial-file response.",
-                    missingField = CONTENT_RANGE,
-                ),
-            )
-        } else {
-            null
+        val partialRange = when (val validated = validatedPartialRange(response, resumeFrom)) {
+            is AppResult.Failure -> return validated
+            is AppResult.Success -> validated.value
         }
         val body = response.body() ?: return AppResult.Failure(
             AppError.ApiCompatibility(
@@ -178,14 +159,7 @@ internal class AbsDownloadApi @Inject constructor(
             ),
         )
 
-        if (partialRange != null && body.contentLength() >= 0 && body.contentLength() != partialRange.length) {
-            return AppResult.Failure(
-                AppError.ApiCompatibility(
-                    summary = "The server's partial-file body length does not match Content-Range.",
-                    missingField = CONTENT_LENGTH,
-                ),
-            )
-        }
+        partialBodyProblem(body, partialRange)?.let { return AppResult.Failure(it) }
 
         // A 206 reaches this point only after its range was proven safe to append. Anything else successful
         // means the range was not honoured and the body starts at byte zero.
@@ -196,13 +170,7 @@ internal class AbsDownloadApi @Inject constructor(
         val written = sink(wasResumed).use { stream ->
             copy(body, stream, alreadyOnDisk = if (wasResumed) resumeFrom else 0, onProgress)
         }
-        if (partialRange != null && written != partialRange.length) {
-            return AppResult.Failure(
-                AppError.Download(
-                    summary = "The server ended the partial-file response before all declared bytes arrived.",
-                ),
-            )
-        }
+        partialCopyProblem(written, partialRange)?.let { return AppResult.Failure(it) }
 
         logger.debug(
             LogCategory.Sync,
@@ -224,6 +192,49 @@ internal class AbsDownloadApi @Inject constructor(
                 lastModified = headers[LAST_MODIFIED],
                 contentType = body.contentType()?.let { "${it.type}/${it.subtype}" },
             ),
+        )
+    }
+
+    private fun unsatisfiedRangeOf(response: retrofit2.Response<ResponseBody>, resumeFrom: Long): FileTransfer? {
+        if (response.code() != HTTP_RANGE_NOT_SATISFIABLE || resumeFrom <= 0) return null
+        val headers = response.headers()
+        return FileTransfer(
+            bytesWritten = 0,
+            totalBytes = unsatisfiedTotalFrom(headers[CONTENT_RANGE]),
+            wasResumed = false,
+            eTag = headers[ETAG],
+            lastModified = headers[LAST_MODIFIED],
+            contentType = null,
+            rangeNotSatisfiable = true,
+        )
+    }
+
+    private fun validatedPartialRange(
+        response: retrofit2.Response<ResponseBody>,
+        resumeFrom: Long,
+    ): AppResult<PartialRange?> {
+        if (response.code() != HTTP_PARTIAL_CONTENT) return AppResult.Success(null)
+        val range = partialRangeOf(response, resumeFrom) ?: return AppResult.Failure(
+            AppError.ApiCompatibility(
+                summary = "The server returned an invalid partial-file response.",
+                missingField = CONTENT_RANGE,
+            ),
+        )
+        return AppResult.Success(range)
+    }
+
+    private fun partialBodyProblem(body: ResponseBody, range: PartialRange?): AppError.ApiCompatibility? {
+        if (range == null || body.contentLength() < 0 || body.contentLength() == range.length) return null
+        return AppError.ApiCompatibility(
+            summary = "The server's partial-file body length does not match Content-Range.",
+            missingField = CONTENT_LENGTH,
+        )
+    }
+
+    private fun partialCopyProblem(bytesWritten: Long, range: PartialRange?): AppError.Download? {
+        if (range == null || bytesWritten == range.length) return null
+        return AppError.Download(
+            summary = "The server ended the partial-file response before all declared bytes arrived.",
         )
     }
 
@@ -268,16 +279,10 @@ internal class AbsDownloadApi @Inject constructor(
         if (resumeFrom <= 0) return null
         val match = SATISFIED_CONTENT_RANGE.matchEntire(response.headers()[CONTENT_RANGE]?.trim().orEmpty())
             ?: return null
-        val start = match.groupValues[1].toLongOrNull() ?: return null
-        val end = match.groupValues[2].toLongOrNull() ?: return null
-        val rawTotal = match.groupValues[3]
-        val total = if (rawTotal == "*") {
-            if (end == Long.MAX_VALUE) return null
-            // The request was open-ended, so the selected range ends with the representation.
-            end + 1
-        } else {
-            rawTotal.toLongOrNull() ?: return null
-        }
+        val (rawStart, rawEnd, rawTotal) = match.destructured
+        val start = rawStart.toLongOrNull() ?: return null
+        val end = rawEnd.toLongOrNull() ?: return null
+        val total = completeLength(rawTotal, end) ?: return null
 
         if (start != resumeFrom || end < start) return null
         if (total <= 0 || end >= total) return null
@@ -289,6 +294,13 @@ internal class AbsDownloadApi @Inject constructor(
             if (rawLength.toLongOrNull() != length) return null
         }
         return PartialRange(total = total, length = length)
+    }
+
+    /** An open-ended requested range makes its selected end the current representation end. */
+    private fun completeLength(rawTotal: String, selectedEnd: Long): Long? = when {
+        rawTotal != "*" -> rawTotal.toLongOrNull()
+        selectedEnd < Long.MAX_VALUE -> selectedEnd + 1
+        else -> null
     }
 
     /** The complete length from the only valid form of an unsatisfied byte range. */
