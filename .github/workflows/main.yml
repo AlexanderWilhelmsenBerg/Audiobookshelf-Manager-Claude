@@ -51,10 +51,36 @@ jobs:
       - name: Release lint
         run: ./gradlew :app:lintRelease -Pshelfplayer.warningsAsErrors=true
 
+      # PRODUCT_SPEC 18 — the Software Bill of Materials, unblocked by ADR-0024's licence decision.
+      #
+      # Run before the release assembly rather than after it: the task resolves
+      # `releaseRuntimeClasspath` and builds nothing, so a component that reaches the app without a
+      # pinned checksum fails here in seconds instead of after a full R8 run. It is also the reason
+      # this step is not `if: always()` — a failing SBOM is a supply-chain finding, and continuing to
+      # produce an APK past one would be the wrong order of business.
+      - name: Software Bill of Materials
+        run: ./gradlew :app:sbom
+
       # PRODUCT_SPEC 18 — the release build is unsigned here on purpose. Signing happens only in a
       # protected environment with the key material, never in a workflow triggered by a push.
       - name: Assemble release (unsigned)
         run: ./gradlew :app:assembleRelease -Pshelfplayer.warningsAsErrors=true
+
+      # PRODUCT_SPEC 18 — the mapping archive. R8 writes these whenever minification runs, so this
+      # needs no signing key and was never actually blocked on one; `docs/release.md` said it was.
+      # Kept for the life of the build's retention rather than a release's, which is a gap this
+      # cannot close: a crash report arriving months after a release needs the mapping from *that*
+      # build, and that is a job for the store's own upload rather than for CI.
+      - name: Upload mapping and SBOM
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-supply-chain
+          path: |
+            app/build/reports/sbom/bom.json
+            app/build/outputs/mapping/release/**
+          if-no-files-found: ignore
+          retention-days: 90
 
       - name: Upload reports
         if: always()

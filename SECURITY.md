@@ -120,9 +120,21 @@ down in [ADR-0023](docs/adr/0023-the-profile-passcode-is-a-curtain-not-a-vault.m
 
 ## Supported versions
 
-Pre-release. No version is supported for security updates yet, and there is no distribution channel to
-ship one through — `LICENSE` and the channel are both open decisions (`PRODUCT_SPEC 24`). The first
-release will name a supported version here.
+**Still pre-release: no version is supported for security updates yet.** What has changed is that the
+reasons are no longer open questions. ADR-0024 settled the licence as **GPL-3.0-or-later** and the channel
+as **Google Play**, so the route by which a fix would reach anybody now exists on paper.
+
+What that means for this section once there is a first release:
+
+- **The latest release on Google Play is the supported version, and only that one.** A single-maintainer
+  project cannot honestly promise backports, and Play's staged rollout is the delivery mechanism.
+- **Fixes ship as a new `versionCode`.** Play requires a strictly increasing integer and never permits
+  reuse, so there is no such thing as re-issuing a version in place.
+- **Building from source is always available**, which GPL-3.0 guarantees and which is the fallback for
+  anybody who does not want the store's copy.
+
+Nothing above is in force yet, because there is no release. It is written now so that the first release
+does not have to invent a policy in a hurry.
 
 ## What has not been verified
 
@@ -136,10 +148,12 @@ logging invariants above are enforced by tests that run on every pull request. T
   they need permissions the public demo account does not hold: cover upload and embed metadata.
 - **The profile lock's platform half is exercised by nothing.** The Keystore wrap cannot run under
   Robolectric, which has no `AndroidKeyStore` provider, and a biometric prompt is a window the system
-  draws, so neither is reachable without a device. The curtain has no screen test either, so the
-  disclosure block that carries this feature's honesty could be deleted without a red build. What is
-  covered is three JVM suites — `PasscodeKdfTest`, `ProfileLockGateTest` and `AutoStartDecisionTest` —
-  over the derivation and its policy, the gate's clock arithmetic and `ROUTE-002`'s truth table
-  (`docs/risks.md` R-39).
+  draws, so neither is reachable without a device (`docs/risks.md` R-39). What *is* covered, on the JVM:
+  the derivation and its passcode policy, the gate's clock arithmetic, `ROUTE-002`'s truth table, the
+  process-lifecycle wiring that makes the relock delay fire at all, the curtain under Robolectric —
+  including the disclosure block, which is asserted line by line so this feature's honesty cannot be
+  deleted without a red build — and the profile switcher's passcode prompt.
+- **Nothing about the lock has been seen by a person.** No passcode has been typed on hardware and no
+  biometric prompt has ever been drawn by this app.
 
 `docs/risks.md` carries the full accounting, with the cheapest thing that would retire each one.

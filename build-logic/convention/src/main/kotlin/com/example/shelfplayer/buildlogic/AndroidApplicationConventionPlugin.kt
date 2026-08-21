@@ -5,6 +5,7 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.dependencies
+import org.gradle.kotlin.dsl.register
 
 /**
  * Baseline for `:app`.
@@ -42,6 +43,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             }
 
             configureKotlinCompilation()
+            registerSbomTask()
 
             dependencies {
                 add("implementation", libs.findLibrary("kotlinx-coroutines-core").get())
@@ -115,5 +117,45 @@ private fun ApplicationExtension.configurePackaging() {
                 "META-INF/*.kotlin_module",
             )
         }
+    }
+}
+
+/**
+ * PRODUCT_SPEC 18 — registers `sbom`, which describes what the release build actually contains.
+ *
+ * Wired to `releaseRuntimeClasspath` rather than to a variant's artefacts, because that configuration is
+ * the post-conflict-resolution answer to "what is in the shipped application" and it resolves without
+ * assembling anything — so the SBOM can be produced and reviewed on a pull request that never builds a
+ * release APK.
+ *
+ * The licence written into the document's own metadata component is `GPL-3.0-or-later` (ADR-0024). It is a
+ * literal here rather than read from `LICENSE`, so that changing the project's licence has to touch this
+ * line: an SBOM claiming the wrong licence for the work itself is the one field in it nobody would think
+ * to check.
+ */
+private fun Project.registerSbomTask() {
+    // Captured here rather than reached for inside the configuration block below. `Task` is itself
+    // `ExtensionAware`, so an `extensions` lookup in there resolves against the *task* and fails with
+    // "Extension of type 'ApplicationExtension' does not exist" — at execution time, not at configuration
+    // time, which is the worst place for it to surface.
+    val android = extensions.getByType(ApplicationExtension::class.java)
+
+    tasks.register<SbomTask>("sbom") {
+        group = "verification"
+        description = "Writes a CycloneDX 1.5 SBOM for the release runtime classpath (PRODUCT_SPEC 18)."
+
+        rootComponent.set(
+            configurations.named("releaseRuntimeClasspath").flatMap { configuration ->
+                configuration.incoming.resolutionResult.rootComponent
+            },
+        )
+        verificationMetadata.set(rootProject.layout.projectDirectory.file("gradle/verification-metadata.xml"))
+        gradleUserHome.set(project.layout.dir(provider { gradle.gradleUserHomeDir }))
+        applicationId.set(provider { android.defaultConfig.applicationId ?: "unknown" })
+        versionName.set(provider { android.defaultConfig.versionName ?: "unknown" })
+        projectLicense.set("GPL-3.0-or-later")
+        failOnUnpinned.set(true)
+        excludedModules.set(emptySet<String>())
+        outputFile.set(layout.buildDirectory.file("reports/sbom/bom.json"))
     }
 }
