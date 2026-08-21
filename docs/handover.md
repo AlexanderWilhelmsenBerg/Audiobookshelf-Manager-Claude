@@ -789,8 +789,8 @@ sentences in the specification and all of it follows from the threat: **somebody
 unlocked, who is not the account's owner.** Not a stolen device, not an attacker with the filesystem, not a
 rooted phone, and not the server's own authorisation model.
 
-The branch is finished and `verifyDebug` is green on it. **Seven defects were found in this feature after it
-first looked complete, and four of them were the same shape: correct code that nothing reached.** That ratio
+The branch is finished and `verifyDebug` is green on it. **Eight defects were found in this feature after it
+first looked complete, and five of them were the same shape: correct code that nothing reached.** That ratio
 is the most useful thing in this section — see R-43, and the closing paragraphs below, which say what each
 one was.
 
@@ -862,8 +862,9 @@ one was.
   it. The profiles table was rejected for a second reason: every other column there is server-derived and is
   rewritten on each permission refresh.
 
-**The seven defects, because the pattern in them is worth more than the list.** Four were code with no
-caller or no control:
+**The eight defects, because the pattern in them is worth more than the list.** Numbers 1–4 and 6 are the
+same shape — code with no caller, no control or no renderer, which is R-43. The rest are prose that
+described something the repository did not contain.
 
 1. **The lock was inert.** Nothing in production called `ProfileLockGate.onBackgrounded`, so `backgroundedAt`
    was never stamped, `isUnlocked` returned `true` for the life of the process, and all three relock delays
@@ -878,17 +879,19 @@ caller or no control:
    active. Tapping such a card produced "That account is locked. Enter its passcode to switch to it" and the
    app contained no such field anywhere. Fixed by a passcode dialogue in the switcher, driven by
    `ProfileLockRepository.isLocked` — defined as the negation of the same `mayActivate` the refusal uses, so
-   the prompt and the refusal cannot disagree. This was R-43's shape for the third time in one feature.
-4. **`USE_BIOMETRIC` was designed and never added to the manifest.**
-
-The other three were honesty defects:
-
+   the prompt and the refusal cannot disagree.
+4. **`USE_BIOMETRIC` was designed and never added to the manifest**, so the biometric row would have been
+   offered and then refused by the platform. Caught by lint rather than by a test.
 5. `LockCurtain`'s KDoc cited a `LockCurtainScreenTest` that did not exist. Writing it required splitting
-   `LockCurtainContent` out of the Hilt-bound composable — which is worth knowing, because the same shape is
-   needed for any future screen test here.
-6. Three distinct refusal reasons were collapsed into one message, so `111111` was refused with "a passcode
-   is between 6 and 12 digits". Fixed by moving `PasscodeRejection` into `:core:model` and carrying it.
-7. `ProfilePasscodeStore` documented a `[LockedByFailure]` state that does not exist.
+   `LockCurtainContent` out of the Hilt-bound composable — worth knowing, because the same shape is needed
+   for any future screen test here.
+6. **Three distinct refusal reasons were collapsed into one message**, so `111111` was refused with "a
+   passcode is between 6 and 12 digits" — two of the three reasons could not be rendered at all. Fixed by
+   moving `PasscodeRejection` into `:core:model` and carrying it through.
+7. `ProfilePasscodeStore` documented a `[LockedByFailure]` state that does not exist; the real one is
+   `PasscodeVerdict.Unreadable`.
+8. The dependency-verification figures in ADR-0023 were quoted from memory as 852 components and 1,540
+   checksums. Measured, they are **887 and 1,612**.
 
 **Tests, all pure JVM.** Ten for the key derivation and its passcode policy, ten for the gate's ticket
 lifetime, five for ROUTE-002's truth table — the first coverage `OutputDeviceWatcher`'s policy branch has
