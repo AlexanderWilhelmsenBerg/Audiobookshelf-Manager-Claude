@@ -41,6 +41,8 @@ import com.example.shelfplayer.core.model.lock.UnlockFailure
 /** So a test can find the field and the confirm control without depending on their labels. */
 internal const val LOCK_PASSCODE_FIELD = "lock-passcode-field"
 internal const val LOCK_SUBMIT = "lock-submit"
+internal const val LOCK_RECOVERY_FIELD = "lock-recovery-field"
+internal const val LOCK_RECOVERY_SUBMIT = "lock-recovery-submit"
 
 /**
  * AUTH-005 — the curtain, drawn *instead of* the app rather than over it.
@@ -67,6 +69,7 @@ fun LockCurtain(modifier: Modifier = Modifier, viewModel: LockViewModel = hiltVi
     val failure by viewModel.failure.collectAsStateWithLifecycle()
     val isChecking by viewModel.isChecking.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
+    val recovery by viewModel.recovery.collectAsStateWithLifecycle()
 
     LockCurtainContent(
         state = state,
@@ -75,6 +78,8 @@ fun LockCurtain(modifier: Modifier = Modifier, viewModel: LockViewModel = hiltVi
         isBiometricEnabled = biometricEnabled,
         onSubmit = viewModel::onPasscodeSubmitted,
         onBiometricAccepted = viewModel::onBiometricAccepted,
+        recovery = recovery,
+        onReauthenticate = viewModel::onReauthenticate,
         modifier = modifier,
     )
 }
@@ -96,6 +101,8 @@ internal fun LockCurtainContent(
     onSubmit: (CharArray) -> Unit,
     onBiometricAccepted: () -> Unit,
     modifier: Modifier = Modifier,
+    recovery: RecoveryState = RecoveryState.Idle,
+    onReauthenticate: (CharArray) -> Unit = {},
 ) {
     val locked = state.locked ?: return
 
@@ -142,7 +149,12 @@ internal fun LockCurtainContent(
                     BiometricButton(onAccepted = onBiometricAccepted)
                 }
 
-                RecoveryBlock(hasOtherAccounts = state.others.isNotEmpty())
+                RecoveryBlock(
+                    hasOtherAccounts = state.others.isNotEmpty(),
+                    canReauthenticate = state.serverAddress != null && state.account != null,
+                    recovery = recovery,
+                    onReauthenticate = onReauthenticate,
+                )
                 DisclosureBlock()
             }
         }
@@ -248,7 +260,12 @@ private fun BiometricButton(onAccepted: () -> Unit) {
  * a train is not recoverable by it.
  */
 @Composable
-private fun RecoveryBlock(hasOtherAccounts: Boolean) {
+private fun RecoveryBlock(
+    hasOtherAccounts: Boolean,
+    canReauthenticate: Boolean,
+    recovery: RecoveryState,
+    onReauthenticate: (CharArray) -> Unit,
+) {
     Text(
         text = stringResource(R.string.lock_forgot_title),
         style = MaterialTheme.typography.titleSmall,
@@ -269,6 +286,50 @@ private fun RecoveryBlock(hasOtherAccounts: Boolean) {
             text = stringResource(R.string.lock_forgot_other_accounts),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    if (canReauthenticate) ReauthenticateField(recovery = recovery, onReauthenticate = onReauthenticate)
+}
+
+/**
+ * AUTH-005 — the field that makes the sentence above true.
+ *
+ * Inline rather than a navigation target, because the curtain is composed outside the navigation host:
+ * there is nowhere to navigate to. Without it, ten wrong attempts or a record the Keystore can no longer
+ * unwrap left the app with no exit but Android's "clear storage", which destroys **every** profile's
+ * downloads and sign-ins to recover one. That is a data-loss path reached from a security feature, which
+ * is the worst way to arrive at one.
+ */
+@Composable
+private fun ReauthenticateField(recovery: RecoveryState, onReauthenticate: (CharArray) -> Unit) {
+    var password by remember { mutableStateOf("") }
+    OutlinedTextField(
+        value = password,
+        onValueChange = { password = it },
+        label = { Text(stringResource(R.string.lock_forgot_password_label)) },
+        singleLine = true,
+        enabled = recovery != RecoveryState.Working,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(LOCK_RECOVERY_FIELD),
+    )
+    TextButton(
+        onClick = {
+            onReauthenticate(password.toCharArray())
+            password = ""
+        },
+        enabled = recovery != RecoveryState.Working && password.isNotEmpty(),
+        modifier = Modifier.testTag(LOCK_RECOVERY_SUBMIT),
+    ) {
+        Text(stringResource(R.string.lock_forgot_submit))
+    }
+    if (recovery == RecoveryState.Failed) {
+        Text(
+            text = stringResource(R.string.lock_forgot_failed),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
         )
     }
 }

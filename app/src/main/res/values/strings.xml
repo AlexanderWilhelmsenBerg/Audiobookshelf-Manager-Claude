@@ -1013,4 +1013,7 @@
     <string name="settings_passcode_saved">Passcode saved.</string>
     <string name="settings_passcode_failed">That could not be saved on this device.</string>
     <string name="settings_passcode_digits_error">A passcode is digits only.</string>
+    <string name="lock_forgot_password_label">Account password</string>
+    <string name="lock_forgot_submit">Sign in and clear the passcode</string>
+    <string name="lock_forgot_failed">That did not work. Check the password, and that your server is reachable.</string>
 </resources>

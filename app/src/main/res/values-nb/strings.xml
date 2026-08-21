@@ -823,4 +823,7 @@
     <string name="settings_passcode_saved">Koden er lagret.</string>
     <string name="settings_passcode_failed">Dette kunne ikke lagres p\u00e5 denne enheten.</string>
     <string name="settings_passcode_digits_error">En kode best\u00e5r bare av sifre.</string>
+    <string name="lock_forgot_password_label">Passord for kontoen</string>
+    <string name="lock_forgot_submit">Logg inn og fjern koden</string>
+    <string name="lock_forgot_failed">Det fungerte ikke. Sjekk passordet, og at serveren er tilgjengelig.</string>
 </resources>

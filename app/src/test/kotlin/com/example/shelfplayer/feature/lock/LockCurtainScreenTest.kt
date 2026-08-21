@@ -3,8 +3,11 @@ package com.example.shelfplayer.feature.lock
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.lock.BiometricAvailability
 import com.example.shelfplayer.core.model.lock.ProfileLockState
@@ -128,18 +131,47 @@ class LockCurtainScreenTest {
         }
     }
 
+    /**
+     * **The lockout must have an exit.**
+     *
+     * Ten wrong attempts, or a record the Keystore can no longer unwrap, removes the passcode field. If
+     * that were the end of the screen the app would be unusable, and the only recovery Android offers is
+     * "clear storage" — which destroys every profile's downloads and sign-ins to rescue one. The recovery
+     * field is what stops a security feature becoming a data-loss path.
+     */
+    @Test
+    fun `an exhausted lock still offers a way back in`() {
+        render(
+            locked = ProfileLockState.Locked(PROFILE, canUsePasscode = false, unreadable = false),
+        )
+
+        composeRule.onNodeWithTag(LOCK_RECOVERY_FIELD).assertIsDisplayed()
+        composeRule.onNodeWithTag(LOCK_RECOVERY_SUBMIT).assertIsDisplayed()
+    }
+
+    /** And so must an unreadable one, which is the case no passcode can ever satisfy. */
+    @Test
+    fun `an unreadable record still offers a way back in`() {
+        render(locked = ProfileLockState.Locked(PROFILE, canUsePasscode = false, unreadable = true))
+
+        composeRule.onNodeWithTag(LOCK_RECOVERY_FIELD).assertIsDisplayed()
+    }
+
     private fun render(
         locked: ProfileLockState.Locked = ProfileLockState.Locked(PROFILE),
         failure: UnlockFailure? = null,
+        account: Profile? = ACCOUNT,
+        serverAddress: String? = "https://books.example",
     ) {
         composeRule.setContent {
             LockCurtainContent(
                 state = LockUiState(
                     locked = locked,
                     isResolved = true,
-                    account = null,
+                    account = account,
                     others = emptyList(),
                     biometrics = BiometricAvailability.UnsupportedAndroidVersion,
+                    serverAddress = serverAddress,
                 ),
                 failure = failure,
                 isChecking = false,
@@ -153,5 +185,15 @@ class LockCurtainScreenTest {
     private companion object {
         val PROFILE = ProfileId("prf_test")
         val SERVER = ServerId("srv_test")
+        val ACCOUNT = Profile(
+            id = PROFILE,
+            serverId = SERVER,
+            username = "listener",
+            displayName = "listener",
+            role = ProfileRole.Listener,
+            requiresReauthentication = false,
+            lastUsedAt = null,
+            isFixture = false,
+        )
     }
 }
