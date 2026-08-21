@@ -74,12 +74,12 @@ private fun ApplicationExtension.configureDefaultConfig(project: Project) {
         applicationId = "org.homebord.bookwave"
         minSdk = project.libs.intVersion("minSdk")
         targetSdk = project.libs.intVersion("targetSdk")
-        versionCode = 37
+        versionCode = 38
         // The name states what the build is, so a device-test result recorded against an APK can be
         // traced to one. It has to move with the code: it sat at `0.9.6-auto-shelves` for nine builds
         // while the code advanced, and every field report in that window named the wrong build — which
         // matters more now that the debug console prints this string for the user to paste.
-        versionName = "0.9.11-car-and-pause"
+        versionName = "0.9.12-passcode"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
