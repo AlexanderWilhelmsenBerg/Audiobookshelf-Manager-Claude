@@ -30,7 +30,7 @@ class ApplyStartupModeUseCase @Inject constructor(
     private val settings: PlaybackSettingsRepository,
     private val player: StartupPlayer,
     /**
-     * PRODUCT_SPEC AUTH-005 — a locked profile's book is not restored, and does not resume.
+     * AUTH-005 — a locked profile's book is not restored, and does not resume.
      *
      * ROUTE-003 states no lock clause; ROUTE-002 does, for a connecting device. Extending it here is a
      * decision this app makes and ADR-0023 records, on the reasoning that the two are the same event seen

@@ -36,7 +36,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * PRODUCT_SPEC AUTH-005 — the profile passcode lock, joined to the profile that is active.
+ * AUTH-005 — the profile passcode lock, joined to the profile that is active.
  *
  * ### Two interfaces, one implementation
  *
@@ -118,13 +118,13 @@ class DefaultProfileLockRepository @Inject constructor(
     override suspend fun hasPasscode(profileId: ProfileId): Boolean = passcodes.hasPasscode(keyFor(profileId))
 
     /**
-     * PRODUCT_SPEC AUTH-005 — whether [profileId] may become active.
+     * AUTH-005 — whether [profileId] may become active.
      *
      * Fails closed for the reason the interface states: a refused switch is recoverable by typing the
      * passcode, and the alternative is opening an account because a disk read failed.
      */
     /**
-     * PRODUCT_SPEC AUTH-005 — clears the passcode of a profile that was locked, and only such a profile.
+     * AUTH-005 — clears the passcode of a profile that was locked, and only such a profile.
      *
      * The condition is the whole point: see [LockedProfileRecovery]. A profile that was already unlocked is
      * somebody re-authenticating after an expired session, and their lock is left exactly as they set it.

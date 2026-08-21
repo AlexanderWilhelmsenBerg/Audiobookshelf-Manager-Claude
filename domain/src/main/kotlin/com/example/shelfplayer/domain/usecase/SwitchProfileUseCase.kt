@@ -30,7 +30,7 @@ import javax.inject.Inject
  *
  * ### The one case that does not switch
  *
- * PRODUCT_SPEC AUTH-005 — a target profile with a passcode and no live unlock is **refused**, before the
+ * AUTH-005 — a target profile with a passcode and no live unlock is **refused**, before the
  * selection is written. That is the single exception to the paragraph above, and the difference is what the
  * refusal protects: a profile whose *credential* will not load is still that user's own account, and
  * stranding them on it would be unhelpful; a profile whose *passcode* has not been entered is somebody
@@ -44,7 +44,7 @@ class SwitchProfileUseCase @Inject constructor(
     private val authRepository: AuthRepository,
     private val syncAccount: SyncAccountUseCase,
     private val backgroundSync: BackgroundSync,
-    /** PRODUCT_SPEC AUTH-005 — whether the incoming profile may be opened at all. */
+    /** AUTH-005 — whether the incoming profile may be opened at all. */
     private val activation: ProfileActivationGuard,
 ) {
     suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> {

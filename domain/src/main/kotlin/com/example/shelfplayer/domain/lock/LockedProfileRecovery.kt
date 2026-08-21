@@ -3,7 +3,7 @@ package com.example.shelfplayer.domain.lock
 import com.example.shelfplayer.core.model.ProfileId
 
 /**
- * PRODUCT_SPEC AUTH-005 — the way back in after a forgotten passcode.
+ * AUTH-005 — the way back in after a forgotten passcode.
  *
  * The curtain tells the user, in as many words, that signing in to the account again clears its passcode.
  * Something has to make that true, or the sentence is a promise made in a *security disclosure* and not

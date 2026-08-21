@@ -1,7 +1,7 @@
 package com.example.shelfplayer.core.datastore.security
 
 /**
- * PRODUCT_SPEC AUTH-005 — the seam between "a lock record is stored" and "it is encrypted at rest".
+ * AUTH-005 — the seam between "a lock record is stored" and "it is encrypted at rest".
  *
  * ### Why this is not [TokenCipher]
  *

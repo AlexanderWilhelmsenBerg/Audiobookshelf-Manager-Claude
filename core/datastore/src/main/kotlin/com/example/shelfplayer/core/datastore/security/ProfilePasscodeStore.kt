@@ -22,7 +22,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * PRODUCT_SPEC AUTH-005 — where a profile's passcode lock lives on disk.
+ * AUTH-005 — where a profile's passcode lock lives on disk.
  *
  * ### One source of truth, and it is the file
  *
@@ -38,9 +38,11 @@ import kotlin.time.Duration.Companion.seconds
  * ### Fail closed
  *
  * Every failure to read, unwrap or parse resolves to *this profile is locked*, never to *this profile
- * has no passcode*. [readOrFailClosed] is the single place that decision is made, and
- * [LockedByFailure] is what it returns — a distinct outcome, so the UI can say "this lock cannot be
- * read" rather than silently rejecting every correct passcode.
+ * has no passcode*. [readOrFailClosed] is the single place that decision is made, and it returns `null`
+ * for every cause alike. The *caller* turns that into something a user can act on: [verify] answers
+ * [PasscodeVerdict.Unreadable], which the curtain renders as "this lock cannot be read on this device any
+ * more" rather than as a wrong passcode — telling somebody they mistyped when no value can succeed would
+ * send them to keep trying.
  *
  * ### The rate limit is inside the encrypted record
  *
@@ -81,7 +83,7 @@ class ProfilePasscodeStore @Inject constructor(
     }
 
     /**
-     * PRODUCT_SPEC AUTH-005 — whether this would be accepted as a passcode, without storing anything.
+     * AUTH-005 — whether this would be accepted as a passcode, without storing anything.
      *
      * Exposed here rather than by [PasscodeKdf] directly, which stays `internal`: the derivation, the
      * iteration count and the salt handling are this module's business, and a caller that could reach

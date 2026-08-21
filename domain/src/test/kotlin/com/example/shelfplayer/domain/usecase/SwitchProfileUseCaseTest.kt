@@ -146,7 +146,7 @@ class SwitchProfileUseCaseTest {
     }
 
     /**
-     * PRODUCT_SPEC AUTH-005 — a locked profile is refused, and nothing is written.
+     * AUTH-005 — a locked profile is refused, and nothing is written.
      *
      * The assertion that matters is the second one. Refusing *after* writing the selection would leave the
      * app showing an account it then declined to open, and every screen reads its content from the active

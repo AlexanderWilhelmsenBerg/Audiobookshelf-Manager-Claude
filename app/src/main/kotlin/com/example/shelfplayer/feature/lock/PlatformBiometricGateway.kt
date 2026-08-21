@@ -12,7 +12,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
 /**
- * PRODUCT_SPEC AUTH-005 — the platform's own biometric prompt, and no new dependency.
+ * AUTH-005 — the platform's own biometric prompt, and no new dependency.
  *
  * ### Why not `androidx.biometric`
  *

@@ -11,7 +11,7 @@ import javax.inject.Singleton
 import kotlin.time.Duration
 
 /**
- * PRODUCT_SPEC AUTH-005 — who is currently unlocked, held in memory and nowhere else.
+ * AUTH-005 — who is currently unlocked, held in memory and nowhere else.
  *
  * ### Not persisted, on purpose
  *

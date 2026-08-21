@@ -5,8 +5,9 @@ backed by a file that exists and a check that ran.
 
 Phases 0 to 5 are complete but for one requirement, Phase 6 is open, and the work in flight is that
 requirement: AUTH-005, the profile passcode lock, on the branch `claude/auth-005-profile-lock`. It belongs
-to Phase 1, it was optional in the specification, and the owner has now pulled it into version 1 —
-`PRODUCT_SPEC 24.14`.
+to Phase 1, it was optional in the specification, and the owner has now pulled it into version 1
+(`PRODUCT_SPEC 24.14`). The lock is built and it is not finished — the last section of this document says
+which parts of it are wired and which are not.
 
 Three documents carry what this one deliberately does not: `docs/gaps.md` is every requirement this build
 does not meet, `docs/risks.md` is everything it does that could go wrong, and `docs/release.md` is what
@@ -696,9 +697,11 @@ count.
 Phase 6 delivers seven things, and **two of them were already built** because earlier phases needed them:
 the browsable media library and the diagnostics screens. What has landed since the phase opened in PR #27:
 
-- **A risk register.** `docs/risks.md`, 38 entries, each carrying what goes wrong, how bad it is if it
-  does, and the cheapest thing that would retire it. It is a separate document from `docs/gaps.md` on
-  purpose: a gap asks what this build does not do, and a risk asks what it does that could go wrong.
+- **A risk register.** `docs/risks.md`, 42 entries as this is written, each carrying what goes wrong, how
+  bad it is if it does, and the cheapest thing that would retire it. It is a separate document from
+  `docs/gaps.md` on purpose: a gap asks what this build does not do, and a risk asks what it does that
+  could go wrong. It grows as work lands rather than only as work is finished — the last four entries are
+  AUTH-005's own, and one of them retired the entry that had described the absence of a lock.
 - **Adaptive layouts** for tablets, foldables and split screen — two panes on the book screen and the
   player, capped sign-in, centred lists rather than stretched ones. Unverified on hardware (R-07).
 - **Accessibility enforced by test.** `AccessibilityAssertions` walks everything the semantics tree reports
@@ -773,10 +776,11 @@ avoid.
 ## AUTH-005 — the work in flight
 
 The profile passcode lock, on `claude/auth-005-profile-lock`. `PRODUCT_SPEC 24.14` asked whether profile
-PIN or biometric protection belonged to version 1 or 1.1 and **the owner has decided version 1**, which
-also unblocks ROUTE-002's last criterion and answers 8.12's concern about admin accounts. The spec text it
-serves is four sentences spread over 3.2, 3.3, AUTH-003 and ROUTE-002, and `docs/gaps.md` labels the set
-AUTH-005.
+PIN or biometric protection belonged to version 1 or 1.1, and **the owner has decided version 1**, which
+also unblocks ROUTE-002's last criterion. The specification asks for the lock five times — 3.2, 3.3,
+AUTH-003, 8.12 and ROUTE-002 — and only ROUTE-002 says anything about behaviour. `docs/gaps.md` collects
+them under the label AUTH-005, which is this project's name for the set and not a section the specification
+has.
 
 **ADR-0023 is the decision, and it is titled honestly:** *the profile passcode is a curtain, not a vault*.
 Ten files across four modules cite it by number for decisions they do not restate, so it had to exist before
@@ -785,9 +789,9 @@ sentences in the specification and all of it follows from the threat: **somebody
 unlocked, who is not the account's owner.** Not a stolen device, not an attacker with the filesystem, not a
 rooted phone, and not the server's own authorisation model.
 
-This section is being written while the branch is still moving. The lock itself is committed; the recovery
-wiring and a profile-activation guard were uncommitted at the time of writing, and the ADR file itself was
-not yet committed either. Read the code rather than this summary wherever the two disagree.
+This section was written while the branch was still moving: the lock landed in one commit, the ADR and the
+recovery route in the next, and the wiring described at the end of this section may have moved again since.
+Read the code rather than this summary wherever the two disagree.
 
 - **The record is its own proto, deliberately.** `AppSettingsDataSource.settings` catches `IOException` and
   emits `getDefaultInstance()`, which for a settings screen is a sensible default and for a lock would be
@@ -804,11 +808,11 @@ not yet committed either. Read the code rather than this summary wherever the tw
   would delete a fourth on sign-out, `clearAll()` calls `cipher.clear()` and would destroy the key the
   verifier is wrapped with, and `storedCredentialCount()` counts file stems and would report a lock as a
   saved sign-in.
-- **The honest arithmetic**, which the ADR has to carry: a six-digit passcode behind 210,000 PBKDF2
-  iterations is roughly 2×10¹¹ hash iterations of search space, which one modern GPU exhausts in minutes.
-  The verifier does not resist an attacker holding the file. What the Keystore wrap buys is exactly one
-  thing — obtaining the record requires executing code on the device rather than copying a file off it —
-  and the product says so rather than implying more.
+- **The honest arithmetic**, which the ADR carries rather than implies: a six-digit passcode behind
+  210,000 PBKDF2 iterations is roughly 2×10¹¹ hash iterations of search space, which one modern GPU
+  exhausts in minutes. The verifier does not resist an attacker holding the file. What the Keystore wrap
+  buys is exactly one thing — obtaining the record requires executing code on the device rather than
+  copying a file off it — and the product says so rather than implying more.
 - **Biometric unlock is app-enforced policy, not cryptography.** The stored verifier is a one-way
   derivation, so a fingerprint cannot produce it; the gateway trusts the platform's answer and grants a
   ticket. The device credential is **refused** as an unlock factor, because the threat this lock addresses
@@ -857,17 +861,21 @@ not yet committed either. Read the code rather than this summary wherever the tw
   it. The profiles table was rejected for a second reason: every other column there is server-derived and is
   rewritten on each permission refresh.
 
-**Two halves are built and not yet wired, and both were found by reading for callers rather than by a
-failing test.** `ProfileLockGate.onBackgrounded` has no production caller, so the relock delay never fires:
-a profile stays unlocked until the process dies, and the setting's three values are indistinguishable on a
-device. And the curtain's recovery block is prose — it names signing in again, says so costs a reachable
-server, and mentions that other accounts exist when they do — while offering no control that leads anywhere
-except back to the passcode field. `docs/gaps.md` and `docs/risks.md` own both, at R-40 to R-42, and R-42 is
-the one to take seriously: ten wrong attempts, or a record the Keystore can no longer unwrap, ends at a
-screen with no exit, which reaches product priority 2 from an unexpected direction — the progress is not
-lost, it is unreachable, and the app did that deliberately. Note that gaps.md's row saying the clearing
-itself is uncalled was written before `SignInUseCase` called it; the clearing half is wired, the curtain's
-controls are not.
+**What is unfinished is the wiring, and it was found by reading for callers rather than by a failing test.**
+`ProfileLockGate.onBackgrounded` has no production caller, so the relock delay never fires: a profile stays
+unlocked until the process dies, and the setting's three values are indistinguishable on a device. The
+recovery is half done — `SignInUseCase` calls `clearIfLocked`, so signing in really does clear a locked
+profile's passcode, while the curtain's recovery block is still prose. It names signing in again, says that
+this needs a reachable server, and mentions that other accounts exist when they do, and it offers no
+control that leads anywhere except back to the passcode field.
+
+`docs/gaps.md` and `docs/risks.md` own both, at R-40 to R-42, and **R-42 is the one to take seriously**: ten
+wrong attempts, or a record the Keystore can no longer unwrap after a lock-screen change, ends at a screen
+with no exit, and the only route left is Android's own "clear storage", which takes every download and every
+sign-in with it. That reaches product priority 2 from an unexpected direction — the progress is not lost, it
+is unreachable, and the app did it deliberately. One correction to those documents while it is fresh:
+gaps.md's row saying nothing calls the clearing was written before the call existed, and only its second
+half — that the curtain offers no control — still stands.
 
 Tests, all pure JVM: ten for the key derivation and its passcode policy, ten for the gate's ticket
 lifetime, five for ROUTE-002's truth table — the first coverage `OutputDeviceWatcher`'s policy branch has

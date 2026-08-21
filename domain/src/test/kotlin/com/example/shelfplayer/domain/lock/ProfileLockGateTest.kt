@@ -10,7 +10,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * PRODUCT_SPEC AUTH-005 — the relock timing, which is the subtlest part of the lock.
+ * AUTH-005 — the relock timing, which is the subtlest part of the lock.
  *
  * The interesting property is not "does a ticket expire" but **who observes the expiry**. The lock is
  * consulted from two places with completely different lifecycles: the curtain, which recomposes when a flow

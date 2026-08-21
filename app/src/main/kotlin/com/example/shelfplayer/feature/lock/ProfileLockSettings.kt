@@ -34,7 +34,7 @@ internal const val SETTINGS_PASSCODE_SWITCH = "settings-passcode-switch"
 internal const val SETTINGS_PASSCODE_NEW = "settings-passcode-new"
 
 /**
- * PRODUCT_SPEC AUTH-005 / 3.3 — the passcode controls, under **Profiles** where 3.3 lists them.
+ * AUTH-005 / 3.3 — the passcode controls, under **Profiles** where 3.3 lists them.
  *
  * ### The warning comes before the switch, not after
  *
@@ -188,7 +188,7 @@ private fun PasscodeField(label: String, value: String, onValueChange: (String) 
 }
 
 /**
- * PRODUCT_SPEC AUTH-005 — "or biometric", offered where it can work and explained where it cannot.
+ * AUTH-005 — "or biometric", offered where it can work and explained where it cannot.
  */
 @Composable
 private fun BiometricRow(availability: BiometricAvailability, enabled: Boolean, onToggled: (Boolean) -> Unit) {

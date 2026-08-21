@@ -6,7 +6,7 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
 /**
- * PRODUCT_SPEC AUTH-005 — turns a passcode into something that can be checked but not read back.
+ * AUTH-005 — turns a passcode into something that can be checked but not read back.
  *
  * ### Hashed, not encrypted, and the distinction matters
  *
@@ -91,7 +91,7 @@ internal object PasscodeKdf {
         MessageDigest.isEqual(derive(passcode, salt, iterations), verifier)
 
     /**
-     * PRODUCT_SPEC AUTH-005 — what this app will accept as a passcode.
+     * AUTH-005 — what this app will accept as a passcode.
      *
      * Digits only, and the rejections are the three shapes that are chosen precisely because they are
      * easy to type: one repeated digit, a run upwards, a run downwards. There is no word list and no

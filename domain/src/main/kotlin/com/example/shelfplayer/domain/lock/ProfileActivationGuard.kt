@@ -3,7 +3,7 @@ package com.example.shelfplayer.domain.lock
 import com.example.shelfplayer.core.model.ProfileId
 
 /**
- * PRODUCT_SPEC AUTH-005 — whether a profile may become the active one right now.
+ * AUTH-005 — whether a profile may become the active one right now.
  *
  * ### Why one method and not two collaborators
  *

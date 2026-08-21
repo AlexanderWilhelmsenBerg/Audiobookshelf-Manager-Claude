@@ -68,7 +68,7 @@ fun SettingsRoute(
     // the language are read by the activity long before this screen exists, so the screen is their writer
     // and not their owner.
     appearanceViewModel: AppearanceViewModel = hiltViewModel(),
-    // PRODUCT_SPEC AUTH-005 — its own ViewModel for the same reason: `MainActivity` reads the lock to decide
+    // AUTH-005 — its own ViewModel for the same reason: `MainActivity` reads the lock to decide
     // whether to draw the app at all, so this screen is its writer rather than its owner.
     lockViewModel: ProfileLockViewModel = hiltViewModel(),
 ) {
@@ -251,7 +251,7 @@ private fun LazyListScope.serverTab(uiState: SettingsUiState, inputs: ServerTabI
     // PRODUCT_SPEC 5.1 / USER-001 — who is signed in, what they may do, and the administrators-only screen.
     accountSection(inputs.account, inputs.onManageServerUsers)
 
-    // PRODUCT_SPEC AUTH-005 / 3.3 — the passcode lock belongs to the **Profiles** group, beside the account
+    // AUTH-005 / 3.3 — the passcode lock belongs to the **Profiles** group, beside the account
     // it protects rather than under Appearance with the things that only change how the app looks.
     profileLockSection(inputs.lock, inputs.lockPreferences, inputs.lockActions)
 
@@ -499,7 +499,7 @@ data class ServerTabInputs(
     val account: Profile? = null,
     val onManageServerUsers: () -> Unit = {},
     /**
-     * PRODUCT_SPEC AUTH-005 — the passcode lock's state and controls.
+     * AUTH-005 — the passcode lock's state and controls.
      *
      * Carried in this bundle rather than added to `SettingsScreen`'s signature, which is already at
      * detekt's readable limit. They belong here on merit too: the lock is a property of the *account* the

@@ -8,7 +8,7 @@ import com.example.shelfplayer.core.model.lock.UnlockFailure
 import kotlinx.coroutines.flow.Flow
 
 /**
- * PRODUCT_SPEC AUTH-005 — the profile passcode lock.
+ * AUTH-005 — the profile passcode lock.
  *
  * ### What this protects, and what it does not
  *

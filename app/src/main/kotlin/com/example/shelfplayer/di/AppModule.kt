@@ -61,7 +61,7 @@ interface AppModule {
     fun bindsDownloadScheduler(impl: WorkManagerDownloadScheduler): DownloadScheduler
 
     /**
-     * PRODUCT_SPEC AUTH-005 — the platform's biometric prompt, and the only binding for it.
+     * AUTH-005 — the platform's biometric prompt, and the only binding for it.
      *
      * `PlatformBiometricGateway` rather than an `androidx.biometric` wrapper: that library's API 26/27 path
      * builds an AppCompat dialog which throws under this app's platform theme, and there is no instrumented

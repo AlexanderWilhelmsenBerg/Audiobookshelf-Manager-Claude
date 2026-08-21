@@ -46,7 +46,7 @@ import javax.inject.Inject
 class SignInUseCase @Inject constructor(
     private val authRepository: AuthRepository,
     private val capabilityRepository: CapabilityRepository,
-    /** PRODUCT_SPEC AUTH-005 — makes the curtain's "sign in again" route real. */
+    /** AUTH-005 — makes the curtain's "sign in again" route real. */
     private val lockRecovery: LockedProfileRecovery,
 ) {
     /**

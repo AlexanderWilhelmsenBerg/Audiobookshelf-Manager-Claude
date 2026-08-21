@@ -5,7 +5,14 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
 /**
- * PRODUCT_SPEC AUTH-005 — whether the app's own screens are behind the curtain.
+ * AUTH-005 — whether the app's own screens are behind the curtain.
+ *
+ * **"AUTH-005" is `docs/gaps.md`'s label, not a PRODUCT_SPEC identifier.** The specification stops at
+ * AUTH-004; what this feature implements is a cluster of real sections that never got a number of their
+ * own — 3.2's "optional profile PIN or biometric gate", AUTH-003's "optional biometric locking protects
+ * profile selection, not server authentication semantics", 3.3's Profiles group, ROUTE-002's
+ * "auto-play never starts when the active profile is biometric/PIN locked", and 24.14's open decision
+ * about whether any of it ships in version 1. ADR-0023 answers that last one and quotes the rest.
  *
  * ### Why [Resolving] exists
  *
@@ -39,7 +46,7 @@ sealed interface ProfileLockState {
 }
 
 /**
- * PRODUCT_SPEC AUTH-005 — how long after leaving the app a protected profile relocks.
+ * AUTH-005 — how long after leaving the app a protected profile relocks.
  *
  * [Immediately] is the default, and it is the default because the threat this lock is for is somebody
  * picking up an unlocked phone — a grace period is exactly the window that person is in. The two
@@ -64,7 +71,7 @@ enum class RelockDelay(val delay: Duration) {
 }
 
 /**
- * PRODUCT_SPEC AUTH-005 — why the biometric option is or is not offered.
+ * AUTH-005 — why the biometric option is or is not offered.
  *
  * Every unavailable case is a distinct value rather than one `false`, because the row is *shown*
  * disabled with the reason on it. A device run in Phase 5 established why: a hidden row is

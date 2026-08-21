@@ -4,7 +4,7 @@ import android.app.Activity
 import com.example.shelfplayer.core.model.lock.BiometricAvailability
 
 /**
- * PRODUCT_SPEC AUTH-005 — "Optional profile PIN **or biometric** gate".
+ * AUTH-005 — "Optional profile PIN **or biometric** gate".
  *
  * An interface because the implementation is one of the few things in this app that cannot be tested at
  * all: a fingerprint prompt needs a finger. Everything that *decides* whether to offer it — the

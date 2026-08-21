@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * PRODUCT_SPEC AUTH-005 — the one half of the profile lock that CI can actually prove.
+ * AUTH-005 — the one half of the profile lock that CI can actually prove.
  *
  * `SecretKeyFactory` is a platform class with a JVM implementation, so the derivation, the salting, the
  * comparison and the policy all run here on the build machine. The Keystore wrap around the record and the

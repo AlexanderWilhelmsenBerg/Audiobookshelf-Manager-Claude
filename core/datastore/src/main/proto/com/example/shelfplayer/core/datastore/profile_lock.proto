@@ -5,7 +5,7 @@ package shelfplayer.lock;
 option java_package = "com.example.shelfplayer.core.datastore";
 option java_multiple_files = true;
 
-// PRODUCT_SPEC AUTH-005 / AUTH-003 — one profile's passcode lock, as stored bytes.
+// AUTH-005 / AUTH-003 — one profile's passcode lock, as stored bytes.
 //
 // A separate file from `app_settings.proto`, and that separation is load-bearing rather than tidy:
 //
@@ -40,7 +40,7 @@ message ProfileLockRecord {
   // The derived bytes. Not the passcode, and not reversible into it.
   bytes verifier = 5;
 
-  // PRODUCT_SPEC AUTH-005 — rate limiting, kept **inside the encrypted record** rather than in
+  // AUTH-005 — rate limiting, kept **inside the encrypted record** rather than in
   // settings.
   //
   // The reason is the attack it defends against: a counter in `AppSettings` could be reset by
@@ -50,7 +50,7 @@ message ProfileLockRecord {
   int32 consecutive_failures = 6;
   int64 retry_not_before_epoch_millis = 7;
 
-  // PRODUCT_SPEC AUTH-005 — "or biometric". App-enforced policy, not cryptography: the verifier is a
+  // AUTH-005 — "or biometric". App-enforced policy, not cryptography: the verifier is a
   // hash, so a biometric success cannot derive it. ADR-0023 states that plainly.
   bool biometric_unlock_enabled = 8;
 

@@ -39,7 +39,7 @@ interface SecurityModule {
     fun bindsTokenCipher(impl: KeystoreTokenCipher): TokenCipher
 
     /**
-     * PRODUCT_SPEC AUTH-005 — the only sanctioned [LockCipher] binding.
+     * AUTH-005 — the only sanctioned [LockCipher] binding.
      *
      * A second cipher rather than a second user of the first, under its own Keystore alias. [LockCipher]
      * lists the three bugs that sharing one would have caused; the shortest of them is that

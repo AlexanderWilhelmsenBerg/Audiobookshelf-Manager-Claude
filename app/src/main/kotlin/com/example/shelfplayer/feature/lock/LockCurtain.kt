@@ -42,7 +42,7 @@ internal const val LOCK_PASSCODE_FIELD = "lock-passcode-field"
 internal const val LOCK_SUBMIT = "lock-submit"
 
 /**
- * PRODUCT_SPEC AUTH-005 — the curtain, drawn *instead of* the app rather than over it.
+ * AUTH-005 — the curtain, drawn *instead of* the app rather than over it.
  *
  * ### Why it replaces the content and does not overlay it
  *
@@ -57,8 +57,8 @@ internal const val LOCK_SUBMIT = "lock-submit"
  * The disclosure block is part of the feature, not an apology for it. AUTH-003 says this protects "profile
  * selection, not server authentication semantics", and the honest consequences of that — the notification
  * still works, a car can still browse, downloaded files are ordinary files — are stated where somebody
- * reads them, not only in an ADR. `LockCurtainScreenTest` asserts the block is present, because a
- * disclosure that can be silently deleted is not a disclosure.
+ * reads them, not only in an ADR. `LockCurtainScreenTest` asserts each of the four lines is present,
+ * because a disclosure that can be silently deleted is not a disclosure.
  */
 @Composable
 fun LockCurtain(modifier: Modifier = Modifier, viewModel: LockViewModel = hiltViewModel()) {
@@ -66,6 +66,36 @@ fun LockCurtain(modifier: Modifier = Modifier, viewModel: LockViewModel = hiltVi
     val failure by viewModel.failure.collectAsStateWithLifecycle()
     val isChecking by viewModel.isChecking.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
+
+    LockCurtainContent(
+        state = state,
+        failure = failure,
+        isChecking = isChecking,
+        isBiometricEnabled = biometricEnabled,
+        onSubmit = viewModel::onPasscodeSubmitted,
+        onBiometricAccepted = viewModel::onBiometricAccepted,
+        modifier = modifier,
+    )
+}
+
+/**
+ * The curtain without its ViewModel, so `LockCurtainScreenTest` can render it.
+ *
+ * The split is not ceremony. The disclosure block is the part of this feature that has to be *enforced*
+ * rather than trusted, and a composable that can only be reached through `hiltViewModel()` cannot be
+ * rendered by a Robolectric test without standing up a whole graph. Splitting the state out makes the
+ * promise checkable, which is the difference between a comment and a guarantee.
+ */
+@Composable
+internal fun LockCurtainContent(
+    state: LockUiState,
+    failure: UnlockFailure?,
+    isChecking: Boolean,
+    isBiometricEnabled: Boolean,
+    onSubmit: (CharArray) -> Unit,
+    onBiometricAccepted: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val locked = state.locked ?: return
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -92,10 +122,7 @@ fun LockCurtain(modifier: Modifier = Modifier, viewModel: LockViewModel = hiltVi
                 )
 
                 if (locked.canUsePasscode) {
-                    PasscodeField(
-                        isChecking = isChecking,
-                        onSubmit = viewModel::onPasscodeSubmitted,
-                    )
+                    PasscodeField(isChecking = isChecking, onSubmit = onSubmit)
                 } else {
                     // A field that will refuse every value, including the right one, is worse than no
                     // field. `unreadable` and `exhausted` both land here and both say what to do instead.
@@ -110,8 +137,8 @@ fun LockCurtain(modifier: Modifier = Modifier, viewModel: LockViewModel = hiltVi
 
                 failure?.let { reason -> FailureText(reason) }
 
-                if (biometricEnabled && state.biometrics == BiometricAvailability.Available) {
-                    BiometricButton(onAccepted = viewModel::onBiometricAccepted)
+                if (isBiometricEnabled && state.biometrics == BiometricAvailability.Available) {
+                    BiometricButton(onAccepted = onBiometricAccepted)
                 }
 
                 RecoveryBlock(hasOtherAccounts = state.others.isNotEmpty())
@@ -204,7 +231,7 @@ private fun BiometricButton(onAccepted: () -> Unit) {
 }
 
 /**
- * PRODUCT_SPEC AUTH-005 — what to do when the passcode is gone.
+ * AUTH-005 — what to do when the passcode is gone.
  *
  * Three routes, in order of how much they cost. Signing in again is the primary one and is a *feature*
  * rather than a bypass: somebody holding the account password has cleared a strictly higher bar than a

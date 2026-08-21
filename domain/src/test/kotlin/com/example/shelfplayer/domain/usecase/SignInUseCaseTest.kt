@@ -98,7 +98,7 @@ class SignInUseCaseTest {
     }
 
     /**
-     * PRODUCT_SPEC AUTH-005 — the curtain promises that signing in again clears a forgotten passcode, and
+     * AUTH-005 — the curtain promises that signing in again clears a forgotten passcode, and
      * this asserts the promise is kept.
      *
      * The disclosure is on screen whether or not the code honours it, so without this test the sentence

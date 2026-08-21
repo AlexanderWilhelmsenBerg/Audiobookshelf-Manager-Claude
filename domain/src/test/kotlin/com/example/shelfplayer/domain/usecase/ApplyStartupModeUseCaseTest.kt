@@ -63,7 +63,7 @@ class ApplyStartupModeUseCaseTest {
     }
 
     /**
-     * PRODUCT_SPEC AUTH-005 — a locked profile's book does not resume when the app opens.
+     * AUTH-005 — a locked profile's book does not resume when the app opens.
      *
      * ROUTE-003 states no lock clause; extending it is a decision ADR-0023 records. The reasoning is that
      * this and a connecting device are the same event from two sides: something other than a deliberate

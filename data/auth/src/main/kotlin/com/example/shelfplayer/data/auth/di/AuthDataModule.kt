@@ -63,7 +63,7 @@ interface AuthDataModule {
     @Singleton
     fun bindsProfileConnectionResolver(impl: DefaultProfileConnectionResolver): ProfileConnectionResolver
 
-    /** PRODUCT_SPEC AUTH-005 — the profile passcode lock. */
+    /** AUTH-005 — the profile passcode lock. */
     @Binds
     @Singleton
     fun bindsProfileLockRepository(impl: DefaultProfileLockRepository): ProfileLockRepository
@@ -81,7 +81,7 @@ interface AuthDataModule {
     fun bindsProfileLockGuard(impl: DefaultProfileLockRepository): ProfileLockGuard
 
     /**
-     * PRODUCT_SPEC AUTH-005 — the same object again, for the question `SwitchProfileUseCase` asks.
+     * AUTH-005 — the same object again, for the question `SwitchProfileUseCase` asks.
      *
      * `@Provides` rather than `@Binds`, and that is a tool limitation rather than a design choice worth
      * defending. Dagger's KSP processor cannot resolve a Kotlin `fun interface` whose single method takes a
@@ -97,7 +97,7 @@ interface AuthDataModule {
         @Singleton
         fun providesProfileActivationGuard(impl: DefaultProfileLockRepository): ProfileActivationGuard = impl
 
-        /** PRODUCT_SPEC AUTH-005 — same object, same `@Provides` reason as above. */
+        /** AUTH-005 — same object, same `@Provides` reason as above. */
         @Provides
         @Singleton
         fun providesLockedProfileRecovery(impl: DefaultProfileLockRepository): LockedProfileRecovery = impl

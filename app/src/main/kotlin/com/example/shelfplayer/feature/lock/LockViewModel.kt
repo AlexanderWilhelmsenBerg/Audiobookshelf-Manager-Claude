@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * PRODUCT_SPEC AUTH-005 — the curtain's state, and the two ways through it.
+ * AUTH-005 — the curtain's state, and the two ways through it.
  *
  * ### Why the passcode is a `CharArray` all the way down
  *
@@ -53,7 +53,7 @@ class LockViewModel @Inject constructor(
             isResolved = lockState != ProfileLockState.Resolving,
             // Named, so the curtain says *which* account is locked rather than showing an anonymous field.
             account = locked?.let { state -> allProfiles.firstOrNull { it.id == state.profileId } },
-            // PRODUCT_SPEC AUTH-005 — the other accounts on this device, so a forgotten passcode and an
+            // AUTH-005 — the other accounts on this device, so a forgotten passcode and an
             // unreachable server cannot leave the app unusable. Listing them exposes that these accounts
             // exist, which is disclosed rather than fought: the alternative is a brick.
             others = allProfiles.filter { it.id != locked?.profileId },

@@ -108,7 +108,7 @@ private fun ShelfPlayerContent(
 ) {
     val lockState by lockViewModel.state.collectAsStateWithLifecycle()
 
-    // PRODUCT_SPEC AUTH-005 — the curtain replaces the app rather than covering it.
+    // AUTH-005 — the curtain replaces the app rather than covering it.
     //
     // An overlay would leave `MiniPlayer`'s title in the semantics tree, where it is marked as a polite
     // live region — so TalkBack would read the locked account's book aloud over the passcode field, and its

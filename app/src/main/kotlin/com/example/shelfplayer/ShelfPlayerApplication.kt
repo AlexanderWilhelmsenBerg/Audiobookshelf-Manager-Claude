@@ -13,6 +13,7 @@ import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ApplyStartupModeUseCase
 import com.example.shelfplayer.domain.usecase.CleanUpDownloadsUseCase
+import com.example.shelfplayer.lock.ProcessLockWatcher
 import com.example.shelfplayer.playback.AutoLibrary
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -100,12 +101,22 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var auto: AutoLibrary
 
+    /**
+     * AUTH-005 — stamps the lock gate when the app leaves the foreground.
+     *
+     * Registered here because the gate follows the *process*, not any one screen, and because without it
+     * the relock delay never fires at all — see `ProcessLockWatcher`.
+     */
+    @Inject
+    lateinit var lockWatcher: ProcessLockWatcher
+
     @Inject
     lateinit var logger: Logger
 
     override fun onCreate() {
         super.onCreate()
         logger.info(LogCategory.App, "Application started")
+        lockWatcher.attach(this)
         applicationScope.launch {
             sessionRestorer.restoreActiveSession()
             // PRODUCT_SPEC ROUTE-003 — after the session is restored, because arming a book needs a signed-in

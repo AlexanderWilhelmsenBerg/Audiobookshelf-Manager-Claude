@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * PRODUCT_SPEC AUTH-005 / 3.3 — the Profiles settings group's passcode controls.
+ * AUTH-005 / 3.3 — the Profiles settings group's passcode controls.
  *
  * ### Its own ViewModel, for the reason `AppearanceViewModel` has one
  *
@@ -111,7 +111,7 @@ class ProfileLockViewModel @Inject constructor(
         viewModelScope.launch { report(locks.setRelockDelay(profileId, delay)) }
     }
 
-    /** PRODUCT_SPEC AUTH-005 — locks now without changing anything stored. */
+    /** AUTH-005 — locks now without changing anything stored. */
     fun onLockNow() {
         viewModelScope.launch { locks.lockNow() }
     }

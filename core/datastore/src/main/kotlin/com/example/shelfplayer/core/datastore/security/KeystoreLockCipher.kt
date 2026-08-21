@@ -11,7 +11,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 
 /**
- * PRODUCT_SPEC AUTH-005 / AUTH-003 — AES-GCM under a non-extractable Keystore key, for lock records.
+ * AUTH-005 / AUTH-003 — AES-GCM under a non-extractable Keystore key, for lock records.
  *
  * The same shape as [KeystoreTokenCipher] and deliberately a separate class under a separate alias;
  * [LockCipher] documents the three bugs sharing one would have caused.
