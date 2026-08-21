@@ -46,20 +46,23 @@ class ProfileLockViewModel @Inject constructor(
         profiles.observeActiveProfile(),
         locks.observeProtectedProfiles(),
     ) { profile, protectedProfiles ->
-        val id = profile?.id
-        val hasPasscode = id != null && id in protectedProfiles
+        val protectedId = profile?.id?.takeIf { it in protectedProfiles }
         // Read here rather than in a second flow: the preferences live in the record, so there is nothing
         // to read at all until one exists, and re-reading on every emission keeps the two in step.
-        _preferences.value = if (hasPasscode && id != null) {
-            locks.preferences(id)?.let { stored ->
-                LockPreferencesUi(stored.biometricUnlock, stored.relockDelay)
-            } ?: LockPreferencesUi()
-        } else {
-            LockPreferencesUi()
-        }
+        //
+        // `hasPasscode` comes from the record's **existence**, never from whether its preferences could be
+        // read, and the two are deliberately different. An unreadable record still means this profile has a
+        // passcode; collapsing them would show the switch as *off* for a profile whose record is corrupt,
+        // and turning it back on would then take the no-existing-passcode path — letting somebody set a new
+        // passcode without proving the old one. The repository refuses that anyway, but a UI that invites a
+        // refusal is a UI that has already misled.
+        _preferences.value = protectedId
+            ?.let { id -> locks.preferences(id) }
+            ?.let { stored -> LockPreferencesUi(stored.biometricUnlock, stored.relockDelay) }
+            ?: LockPreferencesUi()
         LockSettingsUiState(
-            profileId = id,
-            hasPasscode = hasPasscode,
+            profileId = profile?.id,
+            hasPasscode = protectedId != null,
             biometrics = biometrics.availability(),
         )
     }.stateIn(

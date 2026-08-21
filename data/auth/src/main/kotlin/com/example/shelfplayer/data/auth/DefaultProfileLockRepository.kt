@@ -19,6 +19,8 @@ import com.example.shelfplayer.core.model.lock.ProfileLockState
 import com.example.shelfplayer.core.model.lock.RelockDelay
 import com.example.shelfplayer.core.model.lock.UnlockFailure
 import com.example.shelfplayer.core.model.resultOf
+import com.example.shelfplayer.domain.lock.LockedProfileRecovery
+import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.lock.ProfileLockGate
 import com.example.shelfplayer.domain.lock.ProfileLockGuard
 import com.example.shelfplayer.domain.repository.ProfileLockPreferences
@@ -64,7 +66,9 @@ class DefaultProfileLockRepository @Inject constructor(
     private val profileDao: ProfileDao,
     private val logger: Logger,
 ) : ProfileLockRepository,
-    ProfileLockGuard {
+    ProfileLockGuard,
+    ProfileActivationGuard,
+    LockedProfileRecovery {
 
     override fun observeLockState(): Flow<ProfileLockState> = combine(
         settings.activeProfileId,
@@ -112,6 +116,38 @@ class DefaultProfileLockRepository @Inject constructor(
     }
 
     override suspend fun hasPasscode(profileId: ProfileId): Boolean = passcodes.hasPasscode(keyFor(profileId))
+
+    /**
+     * PRODUCT_SPEC AUTH-005 — whether [profileId] may become active.
+     *
+     * Fails closed for the reason the interface states: a refused switch is recoverable by typing the
+     * passcode, and the alternative is opening an account because a disk read failed.
+     */
+    /**
+     * PRODUCT_SPEC AUTH-005 — clears the passcode of a profile that was locked, and only such a profile.
+     *
+     * The condition is the whole point: see [LockedProfileRecovery]. A profile that was already unlocked is
+     * somebody re-authenticating after an expired session, and their lock is left exactly as they set it.
+     */
+    override suspend fun clearIfLocked(profileId: ProfileId) {
+        if (mayActivate(profileId)) return
+        forget(profileId)
+        logger.info(
+            LogCategory.Auth,
+            "A locked profile was signed in to again, so its passcode was cleared",
+            LogField.Identifier("profile", profileId.value),
+        )
+    }
+
+    override suspend fun mayActivate(profileId: ProfileId): Boolean = resultOf {
+        if (!passcodes.hasPasscode(keyFor(profileId))) return@resultOf true
+        gate.isUnlocked(profileId)
+    }.let { result ->
+        when (result) {
+            is AppResult.Success -> result.value
+            is AppResult.Failure -> false
+        }
+    }
 
     override suspend fun preferences(profileId: ProfileId): ProfileLockPreferences? =
         passcodes.preferences(keyFor(profileId))?.let { stored ->

@@ -6,9 +6,8 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.flatMap
-import com.example.shelfplayer.domain.lock.ProfileLockGate
+import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.AuthRepository
-import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import javax.inject.Inject
@@ -45,14 +44,13 @@ class SwitchProfileUseCase @Inject constructor(
     private val authRepository: AuthRepository,
     private val syncAccount: SyncAccountUseCase,
     private val backgroundSync: BackgroundSync,
-    /** PRODUCT_SPEC AUTH-005 — which profiles are unlocked right now, in memory only. */
-    private val lockGate: ProfileLockGate,
-    private val locks: ProfileLockRepository,
+    /** PRODUCT_SPEC AUTH-005 — whether the incoming profile may be opened at all. */
+    private val activation: ProfileActivationGuard,
 ) {
     suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> {
         // Asked before anything is written. A refusal that had already changed the active profile would
         // leave the app showing an account it then declined to open.
-        if (locks.hasPasscode(profileId) && !lockGate.isUnlocked(profileId)) {
+        if (!activation.mayActivate(profileId)) {
             return AppError.Security(
                 summary = "That account is locked. Enter its passcode to switch to it.",
             ).asFailure()

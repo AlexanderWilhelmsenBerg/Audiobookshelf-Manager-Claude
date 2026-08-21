@@ -4,15 +4,12 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.auth.SessionStatus
-import com.example.shelfplayer.core.model.lock.RelockDelay
-import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.FakeAuthRepository
 import com.example.shelfplayer.domain.FakeBackgroundSync
 import com.example.shelfplayer.domain.FakeBookmarkRepository
 import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.FakeProfileRepository
-import com.example.shelfplayer.domain.lock.ProfileLockGate
-import com.example.shelfplayer.domain.repository.ProfileLockRepository
+import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -27,20 +24,17 @@ class SwitchProfileUseCaseTest {
     private val libraries = FakeLibraryRepository()
     private val backgroundSync = FakeBackgroundSync()
 
-    private val clock = TestAppClock()
-    private val gate = ProfileLockGate(clock)
-
     /**
-     * @param lockedProfiles profiles that have a passcode. The gate decides whether each is *currently*
-     *   unlocked, so a profile can be in this set and still switch once a ticket has been granted.
+     * @param lockedProfiles profiles that may not be activated. A lambda rather than a fake class: the
+     *   guard is a `fun interface` precisely so this test needs no double — see `ProfileActivationGuard`,
+     *   which records why a duplicated fake was the thing to avoid.
      */
     private fun useCase(lockedProfiles: Set<ProfileId> = emptySet()) = SwitchProfileUseCase(
         profiles,
         auth,
         SyncAccountUseCase(profiles, auth, libraries, FakeBookmarkRepository()),
         backgroundSync,
-        gate,
-        FakeProfileLockRepository(lockedProfiles),
+        ProfileActivationGuard { profileId -> profileId !in lockedProfiles },
     )
 
     @Test
@@ -170,40 +164,12 @@ class SwitchProfileUseCaseTest {
         assertEquals(emptyList(), auth.restoredProfiles, "no credential may be loaded for a refused switch")
     }
 
-    /** With a live unlock the same profile switches normally. */
+    /** With the guard allowing it — the passcode entered — the same profile switches normally. */
     @Test
-    fun `a profile whose passcode has been entered switches`() = runTest {
-        gate.grant(OTHER, relockDelay = kotlin.time.Duration.ZERO)
-
-        val result = useCase(lockedProfiles = setOf(OTHER))(OTHER)
+    fun `a profile the guard allows switches normally`() = runTest {
+        val result = useCase(lockedProfiles = emptySet())(OTHER)
 
         assertEquals(AppResult.Success(SessionStatus.Active), result)
         assertEquals(OTHER, profiles.activeProfileId())
-    }
-
-    /**
-     * A minimal lock repository: only `hasPasscode` is reached by this use case.
-     *
-     * The rest throw rather than returning a plausible default. A fake that silently answers a question the
-     * subject was not supposed to ask is how a test stops testing what it claims to — see R-37, where a fake
-     * that ignored one argument hid a defect that emptied libraries.
-     */
-    private class FakeProfileLockRepository(private val locked: Set<ProfileId>) : ProfileLockRepository {
-        override suspend fun hasPasscode(profileId: ProfileId) = profileId in locked
-
-        override fun observeLockState() = error("the switch path does not observe the lock state")
-        override fun observeProtectedProfiles() = error("the switch path does not observe protected profiles")
-        override suspend fun preferences(profileId: ProfileId) = error("not reached")
-        override suspend fun setPasscode(profileId: ProfileId, passcode: CharArray, current: CharArray?) =
-            error("not reached")
-
-        override suspend fun removePasscode(profileId: ProfileId, current: CharArray) = error("not reached")
-        override suspend fun submitPasscode(profileId: ProfileId, passcode: CharArray) = error("not reached")
-        override suspend fun acceptBiometricUnlock(profileId: ProfileId) = error("not reached")
-        override suspend fun setBiometricUnlockEnabled(profileId: ProfileId, enabled: Boolean) = error("not reached")
-
-        override suspend fun setRelockDelay(profileId: ProfileId, delay: RelockDelay) = error("not reached")
-        override suspend fun lockNow() = error("not reached")
-        override suspend fun forget(profileId: ProfileId) = error("not reached")
     }
 }

@@ -8,6 +8,8 @@ import com.example.shelfplayer.data.auth.DefaultProfileConnectionResolver
 import com.example.shelfplayer.data.auth.DefaultProfileLockRepository
 import com.example.shelfplayer.data.auth.DefaultServerUserRepository
 import com.example.shelfplayer.data.auth.SessionTokenProvider
+import com.example.shelfplayer.domain.lock.LockedProfileRecovery
+import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.lock.ProfileLockGuard
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.CapabilityRepository
@@ -15,6 +17,7 @@ import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ServerUserRepository
 import dagger.Binds
 import dagger.Module
+import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
@@ -76,4 +79,27 @@ interface AuthDataModule {
     @Binds
     @Singleton
     fun bindsProfileLockGuard(impl: DefaultProfileLockRepository): ProfileLockGuard
+
+    /**
+     * PRODUCT_SPEC AUTH-005 — the same object again, for the question `SwitchProfileUseCase` asks.
+     *
+     * `@Provides` rather than `@Binds`, and that is a tool limitation rather than a design choice worth
+     * defending. Dagger's KSP processor cannot resolve a Kotlin `fun interface` whose single method takes a
+     * `value class` parameter — it reports the type as unresolvable. `ProfileLockGuard` binds normally
+     * because its method takes none, so the two look inconsistent for a reason that is entirely external.
+     *
+     * The `fun interface` is kept because it is what lets a test supply a lambda instead of a fake, which
+     * is the whole reason the interface is one method wide. Trading that away to satisfy `@Binds` would be
+     * letting a processor bug pick the architecture.
+     */
+    companion object {
+        @Provides
+        @Singleton
+        fun providesProfileActivationGuard(impl: DefaultProfileLockRepository): ProfileActivationGuard = impl
+
+        /** PRODUCT_SPEC AUTH-005 — same object, same `@Provides` reason as above. */
+        @Provides
+        @Singleton
+        fun providesLockedProfileRecovery(impl: DefaultProfileLockRepository): LockedProfileRecovery = impl
+    }
 }

@@ -21,6 +21,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.testing.MainDispatcherRule
+import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -67,6 +68,10 @@ class ProfileSwitcherViewModelTest {
             auth,
             SyncAccountUseCase(profiles, auth, libraries, StubBookmarks()),
             backgroundSync,
+            // PRODUCT_SPEC AUTH-005 — no profile in this test has a passcode, so every switch is allowed.
+            // A lambda rather than a fake: `ProfileActivationGuard` is a `fun interface` so that this test
+            // needs no double it would otherwise have to keep in step with `:domain`'s copy.
+            ProfileActivationGuard { true },
         ),
         auth,
         RemoveProfileUseCase(auth, backgroundSync, preferences),
