@@ -343,13 +343,27 @@ class FakeAudiobookshelfGateway @Inject constructor(
         cached: CachedLibrary,
         onCatalogueBatch: suspend (List<BookSnapshot>) -> Unit,
     ): AppResult<LibrarySnapshot> = requireProfile(profileId).flatMap {
-        val result = withMapper { mapper -> mapper.books(libraryId, clock.now()) }
-            .map { books -> LibrarySnapshot(books = books) }
-        // The fixture library is small enough to arrive at once, so one batch is the honest report. It
-        // is still emitted, because a caller that never sees a batch from the fake would never exercise
-        // the incremental path at all.
-        if (result is AppResult.Success) onBatch(result.value.books)
-        result
+        withMapper { mapper -> mapper.books(libraryId, clock.now()) }.map { books ->
+            // PRODUCT_SPEC LIB-001 — the fake honours `cached` because the real gateway does, and the
+            // difference used to hide a defect that emptied whole libraries.
+            //
+            // `AbsLibraryApi` skips any item the server reports unchanged, so on a second refresh its
+            // snapshot carries **no books at all** while `visibleIds` still names the whole catalogue.
+            // This fake returned every book every time, so `books` was never empty, and
+            // `refresh is idempotent and does not duplicate rows` passed against a production path that
+            // marked the entire library deleted. A fake that does not reproduce the shape of the thing it
+            // stands in for is not a test double; it is a second implementation that agrees with nothing.
+            val changed = books.filterNot { snapshot ->
+                cached.isUpToDate(snapshot.book.id, snapshot.book.remoteUpdatedAt?.toEpochMilli())
+            }
+            // Previews first, then the expanded rows, in the order the real gateway emits them.
+            onCatalogueBatch(books)
+            // The fixture library is small enough to arrive at once, so one batch is the honest report.
+            // It is still emitted, because a caller that never sees a batch from the fake would never
+            // exercise the incremental path at all.
+            if (changed.isNotEmpty()) onBatch(changed)
+            LibrarySnapshot(books = changed, visibleIds = books.map { it.book.id })
+        }
     }
 
     /**

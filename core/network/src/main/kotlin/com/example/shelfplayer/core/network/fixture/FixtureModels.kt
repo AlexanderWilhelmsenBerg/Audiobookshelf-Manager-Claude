@@ -91,6 +91,15 @@ data class FixtureBook(
     @SerialName("tracks") val tracks: List<FixtureTrack> = emptyList(),
     @SerialName("chapters") val chapters: List<FixtureChapter> = emptyList(),
     @SerialName("progress") val progress: FixtureProgress? = null,
+    /**
+     * PRODUCT_SPEC LIB-001 — the server's own "last changed" stamp for this item.
+     *
+     * Optional, like `isbn` and `asin`, so a fixture written before this field still parses. It exists
+     * because the *absence* of a stamp disables the skip-unchanged path entirely — `isUpToDate` requires
+     * a non-null value — and a fake library with no stamps therefore cannot exercise the single most
+     * important behaviour of a real refresh. A library-emptying defect shipped through that blind spot.
+     */
+    @SerialName("updatedAtEpochSeconds") val updatedAtEpochSeconds: Long? = null,
 )
 
 @Serializable
