@@ -59,7 +59,6 @@ R-31.
 | Android Auto verification in the Desktop Head Unit | 17.2 | Nothing. The browse tree is built and has never been run in a car. |
 | Launch the release APK once | 15 | Nothing. R8 runs in CI and its output is never executed. |
 | Baseline profile and a benchmark module | 17.3 | A device; lands with managed-device tests. |
-| Changelog generated from labelled changes | 18 | A label convention. `CHANGELOG.md` exists and is written by hand; what is missing is the mapping from a pull-request label to a section, so that the note is generated rather than remembered. |
 
 ## The Software Bill of Materials
 
@@ -120,6 +119,26 @@ build exactly like one in a library it calls on every screen. That is the right 
 gate: deciding a vulnerability is unreachable is a judgement that belongs in a written exemption, not in a
 script's silence. There is no exemption mechanism yet, and the first time one is genuinely needed is the
 right time to design it.
+
+## The release note, and where it stops
+
+`.github/release.yml` maps pull-request labels to sections, so GitHub's own "Generate release notes"
+produces the note for a tag. No action and no script — the same first-party-only reasoning that kept the
+vulnerability scan to `curl`.
+
+**It does not replace `CHANGELOG.md`, and the division matters.** The generated note is an index of what
+merged. The changelog is where a decision is *explained* — why the version gate fails open while the lock
+fails closed, why the passcode is a curtain, why `applicationId` moved before the first release. None of
+that fits in a pull-request title, and it is the part of this project's history worth keeping.
+
+The labels, in the order the note presents them: `breaking`, `migration`, `playback`, `downloads`,
+`library`, `sync`, `auth`, `security`, `auto`, `routing`, `accessibility`, `layout`, `bug`, `build`,
+`tests`, `supply-chain`, `docs`. `chore` and `dependencies` are excluded from the note. **Anything
+unlabelled lands in "Other changes" rather than being dropped**, so a forgotten label costs a misfiled line
+and never a missing one.
+
+Nothing enforces a label. A check that failed a pull request for missing one would block the fix for a
+labelling mistake, which is a poor trade for a note nobody reads twice.
 
 ## Pre-release checklist
 

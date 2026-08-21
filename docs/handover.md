@@ -836,10 +836,29 @@ the browsable media library and the diagnostics screens. What has landed since t
   seven Log4Shell entries. The workflow also archives the R8 mapping, which `docs/release.md` had wrongly
   listed as blocked on a signing key; R8 writes one whenever minification runs.
 
-**Still not started: performance profiling.** No baseline profile, no benchmark module, none of
-`PRODUCT_SPEC 17.3`'s four numbers measured (R-25 to R-27). This is genuinely blocked rather than
-deferred: a baseline profile is *generated* by running a macrobenchmark on a device, and hand-writing one
-would be guesswork of exactly the kind this project refuses elsewhere.
+**Performance profiling: one blocker removed, the rest still needing a device.** No baseline profile, no
+benchmark module, none of `PRODUCT_SPEC 17.3`'s numbers measured (R-25, R-27). A baseline profile is
+*generated* by running a macrobenchmark on a device, and hand-writing one would be guesswork of the kind
+this project refuses elsewhere — so that half waits for hardware. Worth knowing: the *consuming* half is
+already free, because `androidx.profileinstaller:1.4.0` is on the release classpath transitively, so
+shipping a `baseline-prof.txt` needs no new dependency.
+
+**What did get resolved is what to measure, and the answer changed the target (ADR-0025).** 17.3 asks for
+a *"scrolling grid … on 2,000-item fixture library"*, and R-26 had flagged that this might be describing a
+screen the app does not have. It is: `LazyVerticalGrid`, `LazyHorizontalGrid` and `GridCells` appear **zero
+times** in the repository. Home is a `LazyColumn` of `LazyRow` shelves capped at 20 items each, the flat
+"all books" view is a list, and the library-browse destination was deliberately removed. Building the
+benchmark first would have meant inventing a grid to satisfy a measurement — the ADR-0016 mistake again,
+where a "known defect" stood for four phases on one unchecked premise.
+
+The target now measures `BooksView.List`. ADR-0025 also adds the one 17.3 could not have named, because it
+describes a grid rather than an architecture: **there is no paging anywhere**, `Flow<List<Book>>`
+materialises every visible book on every emission, and `HomeViewModel` reasons explicitly about that cost
+at 490 books — 2,000 is four times the number the code was thought about at. Whether to adopt paging is
+left to the measurement rather than assumed, for R-27's reason.
+
+The cheap prerequisite for all of it is a **seeded 2,000-item fixture generator**; the committed demo
+fixture holds 7 books, and a two-thousand-entry JSON file nobody will read a diff of is not the answer.
 
 **The instrumented tier exists now, and holds one module (R-07).** `:core:datastore` has an `androidTest`
 source set: `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest`, 27 tests over the AndroidKeyStore

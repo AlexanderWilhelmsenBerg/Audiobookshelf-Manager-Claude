@@ -1,0 +1,78 @@
+# PRODUCT_SPEC 18 — "changelog generated from labeled changes".
+#
+# GitHub reads this when release notes are generated for a tag, and groups merged pull requests into the
+# sections below by their labels. No action, no script and no third-party dependency: the one first-party
+# mechanism that already exists for this, which is the same reasoning that kept the vulnerability scan to
+# `curl` against a documented endpoint.
+#
+# ## What this does and does not replace
+#
+# It generates the *release* note. `CHANGELOG.md` stays hand-written and stays the place where a decision
+# is explained — why the version gate fails open, why the lock is a curtain — because that reasoning does
+# not fit in a pull-request title and is the part of this project's history worth keeping. The generated
+# note is the index; the changelog is the account.
+#
+# ## The labels are ordered by what a reader needs first
+#
+# A user opening a release note wants to know what broke, then what is new, then what was fixed. A
+# maintainer wants the rest. Anything unlabelled lands in "Other changes" rather than being dropped, so a
+# forgotten label costs a misfiled line and never a missing one.
+#
+# Applying a label is the author's job at merge time. There is no bot enforcing it, deliberately: a check
+# that fails a pull request over a missing label would block a fix for a labelling mistake.
+changelog:
+  exclude:
+    labels:
+      # Work that changes no shipped behaviour. Excluded from the note, not from the repository.
+      - chore
+      - dependencies
+    authors:
+      - dependabot
+
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking
+    - title: Requires attention on upgrade
+      # A change that is not breaking but that a user will notice and might not expect — a new
+      # permission, a moved setting, a changed default. PRODUCT_SPEC 14.4 asks that a user-facing
+      # change state its impact; this is where that lands in a release note.
+      labels:
+        - migration
+    - title: Playback
+      labels:
+        - playback
+    - title: Downloads and offline
+      labels:
+        - downloads
+    - title: Library and sync
+      labels:
+        - library
+        - sync
+    - title: Accounts and security
+      labels:
+        - auth
+        - security
+    - title: Android Auto and output routing
+      labels:
+        - auto
+        - routing
+    - title: Accessibility and layout
+      labels:
+        - accessibility
+        - layout
+    - title: Fixes
+      labels:
+        - bug
+    - title: Build, tests and supply chain
+      labels:
+        - build
+        - tests
+        - supply-chain
+    - title: Documentation
+      labels:
+        - docs
+    # Catch-all. Its presence is why a missing label cannot silently drop a change from the note.
+    - title: Other changes
+      labels:
+        - "*"
