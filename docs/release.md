@@ -59,7 +59,6 @@ R-31.
 | Android Auto verification in the Desktop Head Unit | 17.2 | Nothing. The browse tree is built and has never been run in a car. |
 | Launch the release APK once | 15 | Nothing. R8 runs in CI and its output is never executed. |
 | Baseline profile and a benchmark module | 17.3 | A device; lands with managed-device tests. |
-| Dependency vulnerability scan | 18 | Nothing — can be added at any time. It needs network access from CI to an advisory database, which is the only reason it is not done alongside the SBOM. |
 | Changelog generated from labelled changes | 18 | A label convention. `CHANGELOG.md` exists and is written by hand; what is missing is the mapping from a pull-request label to a section, so that the note is generated rather than remembered. |
 
 ## The Software Bill of Materials
@@ -102,6 +101,25 @@ Gradle cache would only prove the cache agrees with itself.
 The document's own metadata component carries `GPL-3.0-or-later` (ADR-0024), written as a literal in the
 convention plugin so that changing the project's licence has to touch that line — an SBOM naming the wrong
 licence for the work itself is the one field in it nobody would think to check.
+
+## The dependency vulnerability scan
+
+`./scripts/vulnerability-scan.sh` reads the SBOM and asks OSV whether any component has a known advisory.
+It runs in the main-branch workflow immediately after `:app:sbom`, and it exits non-zero on a finding.
+
+**As of 2026-08-21 there are no known advisories against any of the 175 components.** That is a result
+rather than a default: the script was checked against a poisoned SBOM carrying
+`org.apache.logging.log4j:log4j-core:2.14.1`, and it reported all seven Log4Shell advisories and failed.
+
+`curl` against OSV's documented batch endpoint rather than a third-party scanning action. Every other
+action in this repository is first-party — `actions/*` and `gradle/*` — and the SBOM already carries every
+purl the query needs, so the scan introduces nothing new to trust.
+
+**It says nothing about reachability.** An advisory in a transitive library the app never calls fails the
+build exactly like one in a library it calls on every screen. That is the right default for a release
+gate: deciding a vulnerability is unreachable is a judgement that belongs in a written exemption, not in a
+script's silence. There is no exemption mechanism yet, and the first time one is genuinely needed is the
+right time to design it.
 
 ## Pre-release checklist
 

@@ -61,6 +61,19 @@ jobs:
       - name: Software Bill of Materials
         run: ./gradlew :app:sbom
 
+      # PRODUCT_SPEC 18 — the dependency vulnerability scan, over the SBOM produced above.
+      #
+      # `curl` against OSV's documented batch endpoint rather than a third-party scanning action: every
+      # other action in this repository is first-party, and the SBOM already carries every purl the query
+      # needs. `jq` is present on GitHub's Ubuntu runners.
+      #
+      # This reports what OSV knows about a published coordinate and says nothing about reachability, so
+      # an advisory in a library the app never calls fails the build exactly like one in a library it
+      # calls constantly. That is deliberate: deciding a vulnerability is unreachable belongs in a written
+      # exemption rather than in a script's silence.
+      - name: Dependency vulnerability scan
+        run: ./scripts/vulnerability-scan.sh
+
       # PRODUCT_SPEC 18 — the release build is unsigned here on purpose. Signing happens only in a
       # protected environment with the key material, never in a workflow triggered by a push.
       - name: Assemble release (unsigned)
