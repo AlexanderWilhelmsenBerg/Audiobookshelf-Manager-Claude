@@ -29,7 +29,7 @@ A full pass over `app/src/main/kotlin/com/example/shelfplayer/feature/**` and th
 - **There is no grid anywhere in the repository.** `LazyVerticalGrid`, `LazyHorizontalGrid`,
   `LazyVerticalStaggeredGrid` and `GridCells` appear zero times.
 - **Home is a `LazyColumn`** (`HomeScreen.kt:427`) which, in shelves mode, hosts up to five `LazyRow`
-  shelves (`HomeShelvesUi.kt:42`). Each shelf is a **capped preview** — `HomeShelves.SHELF_LIMIT = 20` — so
+  shelves (`HomeShelvesUi.kt:42`). Each shelf is a **capped preview** — `SHELF_LIMIT = 20` in `HomeShelves.kt` — so
   no shelf ever holds a library's worth of anything.
 - **The flat "all books" view exists but is a list, not a grid.** `BooksView.List`
   (`HomeScreen.kt:440-448`) renders one full-width `BookCard` per row in the same `LazyColumn`. It is
