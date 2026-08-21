@@ -111,7 +111,7 @@ down in [ADR-0023](docs/adr/0023-the-profile-passcode-is-a-curtain-not-a-vault.m
 **Build**
 
 - Every dependency version is pinned; repositories are restricted and content-filtered.
-- Dependency verification is **strict**, over 887 pinned components with SHA-256 checksums generated
+- Dependency verification is **strict**, over 890 pinned components with SHA-256 checksums generated
   against the resolved version set. An artifact whose checksum is absent or wrong fails the build rather
   than warning. `verify-signatures` stays false because several AndroidX and Google artifacts are
   unsigned; see [ADR-0006](docs/adr/0006-dependency-locking-and-verification.md).

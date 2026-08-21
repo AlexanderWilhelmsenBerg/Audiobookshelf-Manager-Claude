@@ -44,7 +44,7 @@ warnings-as-errors, Room schema diff, debug APK, dependency report.
 
 `verifyDebug` itself fans out to every module: ktlint, detekt with type resolution, Android Lint with
 warnings as errors, the unit suite, and Kover's coverage gate over domain and core. Dependency
-verification is `strict` over 887 pinned components.
+verification is `strict` over 890 pinned components.
 
 **Verify with `--rerun-tasks`.** Gradle can consider a test-compile task up to date when only its
 classpath changed, which once let two stale test doubles pass locally and fail in CI. See `docs/risks.md`

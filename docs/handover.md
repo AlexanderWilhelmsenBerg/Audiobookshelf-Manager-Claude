@@ -495,11 +495,115 @@ In dependency order.
      cleartext a debug-build capability, so a release build keeps the platform's guarantee and there is
      no advanced screen to grant an exception in.
 
-## Environment notes for the next session
+## Running this locally
 
-The environment that produced the Phase 1 work came up **without** an Android SDK and with `~/.gradle`
-empty, so "caches are warm" was not true, and later sessions have come up the same way. Recovering it takes
-two steps and both are reliable:
+Everything below assumes a checkout on your own machine with a device or emulator available. **That is a
+different environment from the one most of this project was built in**, and the difference is not cosmetic:
+a cloud session has no device attached, which is the single reason the instrumented tier and the
+performance work stayed unbuilt for six phases. If you are running locally, you can do both.
+
+### One-time setup
+
+```bash
+# 1. JDK 17. Anything newer fails: the build pins sourceCompatibility and jvmTarget to 17.
+java -version
+
+# 2. Android SDK. Android Studio installs one; point the build at it.
+echo "sdk.dir=$HOME/Android/Sdk" > local.properties     # macOS: $HOME/Library/Android/sdk
+
+# 3. Platform 36 and build-tools 36.0.0, which compileSdk/targetSdk require.
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+```
+
+No `ANDROID_HOME` export is needed once `local.properties` exists. Nothing else is required — the Gradle
+wrapper fetches Gradle 8.14.3 itself, and the first build populates `~/.gradle` from scratch.
+
+### The commands, and which question each answers
+
+```bash
+./gradlew ktlintFormat                                   # always first; formatting failures are noise
+./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true # the gate: ktlint, detekt, lint, unit tests, Kover
+./gradlew :app:assembleDebug                             # the APK, at app/build/outputs/apk/debug/
+```
+
+`verifyDebug` is what CI runs and what a change has to pass. Cold it takes 5–8 minutes; incremental runs
+are 10–90 seconds. **Add `--rerun-tasks` before believing a green result on a branch that changed a
+classpath** — Gradle has considered test-compile tasks up to date when only the classpath moved, and that
+once let two stale test doubles pass locally and fail in CI (R-31).
+
+### The tiers that need a device — the reason to run locally at all
+
+```bash
+adb devices                                              # confirm one is attached and authorised
+./gradlew :core:datastore:connectedDebugAndroidTest      # the profile lock's storage, on real hardware
+```
+
+`connectedDebugAndroidTest` is **not** part of `verifyDebug` and never runs in CI, because CI has no
+emulator. It is the only way to execute `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest`, which
+between them cover the AndroidKeyStore wrap, the staged write, and the rate limit that lives inside the
+encrypted record — none of which Robolectric can reach, and all of which R-39 recorded as untested from
+the day AUTH-005 landed.
+
+Results land in `core/datastore/build/reports/androidTests/connected/`. The tests clean the Keystore alias
+and the `locks/` directory at both ends of every run, so a crashed run does not poison the next one.
+
+**They are safe to run on a device you actually use BookWave on**, which is not obvious and was checked
+rather than assumed. The tests delete the Keystore alias `shelfplayer.lock.v1` and wipe a `locks/`
+directory — the same names the real app uses — but the test APK installs as
+`com.example.shelfplayer.core.datastore.test`, a different package and therefore a different UID.
+AndroidKeyStore entries and `filesDir` are both scoped per UID, so the two never meet. Verified with
+`aapt2 dump badging` on the test APK rather than reasoned about.
+
+**An emulator with no lock screen configured is fine too.** `KeystoreLockCipher` sets
+`setUserAuthenticationRequired(false)` on purpose (ADR-0023), so key generation does not need a secure
+lock screen to exist.
+
+### The supply-chain checks
+
+```bash
+./gradlew :app:sbom              # CycloneDX 1.5 -> app/build/reports/sbom/bom.json
+./scripts/vulnerability-scan.sh  # asks OSV about every component in it; needs network and jq
+```
+
+`:app:sbom` fails if any component reaching the release classpath has no pinned checksum. It also prints
+the current component count, which is the authoritative source for the figures quoted in prose here and in
+ADR-0023 — those are snapshots and go stale every time a dependency moves.
+
+### Adding a dependency
+
+Not a one-line change. `org.gradle.dependency.verification` is `strict`, so a new library fails the build
+until its checksums are recorded. For a small addition, let Gradle merge them:
+
+```bash
+./gradlew --write-verification-metadata sha256 <the task that failed>
+git diff gradle/verification-metadata.xml     # review every added component before committing
+```
+
+That merges rather than rewrites — adding the instrumented tier appended exactly three components and six
+checksums, and touched nothing else. `scripts/bootstrap-dependency-verification.sh` regenerates the whole
+file and is for a version-catalogue sweep, not for one library. Budget for this before deciding a library
+is the cheap option; AUTH-005 weighed it as one of three reasons not to take `androidx.biometric`.
+
+### The contract-capture harness
+
+Only needed when a server response shape changes. It runs a real Audiobookshelf container:
+
+```bash
+docker pull ghcr.io/advplyr/audiobookshelf:2.36.0
+./scripts/seed-contract-media.sh   # then the capture task; see docs/api-compatibility.md
+```
+
+**Capture twice against the same container and `diff -ru` the outputs before committing.** CI asserts
+byte-identical captures, and the first version of the library fixtures failed that check because `lastScan`
+and the file id inside `contentUrl` vary per capture and were not scrubbed. Both are in the scrubber now. A
+*second* capture against an already-initialised server legitimately differs in `init.json`,
+`status-uninitialized.json` and `userDefaultLibraryId` — those come from the fresh-server sequence, and CI
+always starts a new container.
+
+### Notes from the cloud sessions, kept because they still apply there
+
+The container that produced most of this work came up **without** an Android SDK and with `~/.gradle`
+empty, so "caches are warm" was not true. Recovering it takes two steps and both are reliable:
 
 ```bash
 # Android SDK (dl.google.com is reachable)
@@ -511,29 +615,17 @@ $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;an
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 ```
 
-A cold `verifyDebug` took about four minutes; incremental runs are 10-90 seconds.
+**Docker needs starting by hand there**: the daemon is installed but not running. `dockerd &` works (the
+session runs as root).
 
-**Docker needs starting by hand**: the daemon is installed but not running. `dockerd &` works (the
-session runs as root). Then `docker pull ghcr.io/advplyr/audiobookshelf:2.36.0` succeeds.
+**`docker exec` and attached `docker run` hang in that sandbox.** `docker run -d` works. Any container
+command that needs output has to be run detached and its result read from a bind mount or `docker logs` —
+which is why `seed-contract-media.sh` uses `docker run --rm`, fine when CI invokes it and awkward
+interactively.
 
-**`docker exec` and attached `docker run` hang in this sandbox.** `docker run -d` works. Any
-container command that needs output has to be run detached and its result read from a bind mount or
-`docker logs` — that is why `seed-contract-media.sh` uses `docker run --rm` (which works when the
-caller is a script CI runs, but had to be run detached interactively here).
-
-**Two captures against one server should be byte-identical.** That is what CI's drift check asserts, and
-the first version of the library fixtures failed it: `lastScan` and the file id inside `contentUrl` vary
-per capture and were not scrubbed. Both are now in the scrubber. Before committing a re-captured fixture,
-capture twice against the same container and `diff -ru` the two output directories — a false drift report
-is worse than none, because it trains a reader to ignore the check. Note that a *second* capture against
-an already-initialized server legitimately differs in `init.json`, `status-uninitialized.json` and
-`userDefaultLibraryId`: those come from the fresh-server sequence and CI always starts a new container.
-
-**Adding a dependency is not a one-line change any more.** `org.gradle.dependency.verification` is
-`strict` over 887 pinned components, so a new library means regenerating the verification metadata with
-`scripts/bootstrap-dependency-verification.sh` against the resolved version set. Budget for that before
-deciding a library is the cheap option — AUTH-005 weighed it as one of three reasons not to take
-`androidx.biometric`.
+**And no device is attached**, which is the constraint that shaped six phases of this project: the
+instrumented tier, the baseline profile, the Android Auto head unit and the two-hour soak are all blocked
+there and none of them are blocked locally.
 
 ## Phase 2 — complete
 
@@ -749,12 +841,35 @@ the browsable media library and the diagnostics screens. What has landed since t
 deferred: a baseline profile is *generated* by running a macrobenchmark on a device, and hand-writing one
 would be guesswork of exactly the kind this project refuses elsewhere.
 
-**And no instrumented tier (R-07).** `app/build.gradle.kts` states the project's own position on why —
-"a test suite nothing runs is not a regression net" — and it still holds. Worth knowing for whoever picks
-this up: the dependencies are mostly already there. `androidx.test:runner`, `core-ktx`, `espresso-core` and
-`compose-ui-test-junit4` all carry verification checksums, `testInstrumentationRunner` is set, and the
-compose convention plugin already wires `androidTestImplementation`. What is missing is a **runner** — an
-emulator in CI, or a decision that the owner runs `connectedDebugAndroidTest` locally — not the plumbing.
+**The instrumented tier exists now, and holds one module (R-07).** `:core:datastore` has an `androidTest`
+source set: `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest`, 21 tests over the AndroidKeyStore
+wrap, the staged write and the rate limit that lives inside the encrypted record. That slice was chosen
+first because it needs no Hilt, no Compose, no UI and no biometric hardware, so it is deterministic on any
+attached device and fails for one reason only — and because R-39 had recorded it as untested since AUTH-005
+landed.
+
+**They compile and package here; they have not been run.** A cloud session has no device. `./gradlew
+:core:datastore:assembleDebugAndroidTest` produces `datastore-debug-androidTest.apk`, which is most of the
+authoring risk gone but is not the same as a green run. Run
+`./gradlew :core:datastore:connectedDebugAndroidTest` locally with a device attached — see "Running this
+locally".
+
+Three things learnt building it, which the next module's tier will need:
+
+- **`junit-ktx` is the one `androidx.test` artifact with no checksum here**, so `@RunWith(AndroidJUnit4)`
+  costs a metadata regeneration. `AndroidJUnitRunner` runs a plain JUnit 4 class without it, and these
+  tests do.
+- **Adding the tier still needed three components pinned** — `androidx.test:runner:1.6.2`,
+  `androidx.test.services:storage:1.5.0` and an old `lifecycle-common`. `--write-verification-metadata
+  sha256` scoped to the failing task *merges* rather than rewrites: exactly 24 lines added, nothing else
+  touched.
+- **The test APK is its own package**, `com.example.shelfplayer.core.datastore.test`, so its UID differs
+  from the app's. The tests delete the alias `shelfplayer.lock.v1` and wipe a `locks/` directory using the
+  real names, and cannot reach the installed app's records — checked with `aapt2 dump badging`, not assumed.
+
+`verifyDebug` does **not** include `connectedDebugAndroidTest` and CI still has no emulator, so
+`app/build.gradle.kts`'s objection — "a test suite nothing runs is not a regression net" — is answered by a
+person running it locally rather than by CI.
 
 What remains of the release pipeline is three items and one decision: launching the release APK once,
 managed-device tests, the two-hour soak — all needing hardware — and a pull-request **label convention**,
@@ -864,7 +979,7 @@ one was.
   `appcompat-resources` is on the classpath; its API 26 and 27 compatibility path constructs an AppCompat
   dialog, which throws under this app's platform-parented theme — a crash on the two oldest supported
   levels, in a path no test here can reach, because there is no instrumented tier at all. Adding it would
-  also mean regenerating the verification metadata for 887 pinned components. So biometrics are
+  also mean regenerating the verification metadata for the pinned component set. So biometrics are
   `android.hardware.biometrics.BiometricPrompt` from API 28, and **API 26 and 27 get no biometrics at
   all** and are shown a disabled row that names the reason. The passcode is the floor on every level.
 - **The product discloses what the lock does not cover**, on the curtain itself: the notification and
@@ -912,7 +1027,9 @@ described something the repository did not contain.
 7. `ProfilePasscodeStore` documented a `[LockedByFailure]` state that does not exist; the real one is
    `PasscodeVerdict.Unreadable`.
 8. The dependency-verification figures in ADR-0023 were quoted from memory as 852 components and 1,540
-   checksums. Measured, they are **887 and 1,612**.
+   checksums. Measured at the time they were 887 and 1,612; the instrumented tier has since added three
+   components, so they are now **890 and 1,618**. Any figure written into prose here is a snapshot — the
+   commands that produce it are in the "Running this locally" section.
 
 **Tests, all pure JVM.** Ten for the key derivation and its passcode policy, ten for the gate's ticket
 lifetime, five for ROUTE-002's truth table — the first coverage `OutputDeviceWatcher`'s policy branch has

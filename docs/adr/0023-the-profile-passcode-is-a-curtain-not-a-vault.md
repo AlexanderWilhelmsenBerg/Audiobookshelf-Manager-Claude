@@ -130,7 +130,7 @@ constructs an `androidx.appcompat.app.AlertDialog`, which throws
 `IllegalStateException("You need to use a Theme.AppCompat theme")` under this app's platform-parented
 `Theme.ShelfPlayer`: a crash on the two oldest levels this app supports, in a code path no test in this
 repository can reach, because there is no instrumented tier at all. Third, `strict` dependency verification
-is on — 887 components and 1,612 checksums as this is written — so adopting it means regenerating that
+is on — 890 components and 1,618 checksums as this is written — so adopting it means regenerating that
 metadata for an optional feature. What was *not* the objection: `androidx.fragment:1.5.1` is already on the
 classpath, so `FragmentActivity` was never in the way.
 

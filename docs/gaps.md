@@ -27,7 +27,7 @@ be built now and has not been.
 | AUTH-005 / §3.2 | **API 26 and 27 get no biometrics at all.** The passcode is the floor there, and on 28 and 29 no sensor-strength claim is made. | Open, by the platform |
 | AUTH-005 / §15 | **The app-switcher thumbnail is not suppressed on any API level.** Checked, not assumed: nothing in the tree suppresses it. | Open |
 | §8.12 | **Nothing obliges an admin account to take a passcode.** The lock is offered per profile with no policy behind it, and 8.12 asks for it *"especially for admin accounts"*. | Open, needs a decision |
-| AUTH-005 | **The Keystore wrap and the biometric prompt are exercised by nothing.** Robolectric has no `AndroidKeyStore` provider and the prompt is a window the system draws. | Open, needs R-07. **The curtain half is closed:** `LockCurtainScreenTest` exists and asserts the disclosure block, which the KDoc had been promising against a test that did not |
+| AUTH-005 | **The biometric prompt is exercised by nothing.** It is a window the system draws, so nothing short of a person with a fingerprint reaches it. | Open, needs a person. **The Keystore half is closed:** `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest` run the wrap, the staged write and the encrypted rate limit on a device via `connectedDebugAndroidTest` (R-39) |
 
 **The lock is built, and what it is worth is stated rather than implied.** Six to twelve digits behind
 PBKDF2, or the platform's own biometric prompt from API 28 where the user asks for it. Unlock tickets live
@@ -286,7 +286,7 @@ audit on 2026-08-20 found for the rest, rather than what the phase heading impli
 | **Accessibility** | **Enforced by test, unverified on a device.** The net covers every screen including the player, the mini player and the shelf, several at a doubled font scale. It has found two real defects. R-29. |
 | **Privacy/security docs** | **Rewritten 2026-08-20.** |
 | **Performance profiling** | **Not started.** No baseline profile, no benchmark module, none of PRODUCT_SPEC 17.3's four numbers measured. R-25 to R-27. |
-| **Release pipeline** | **Partly.** PR and main workflows run wrapper validation, a secret scan, `verifyDebug` with warnings-as-errors, a Room schema diff, release lint and an unsigned release assembly. Dependency verification is `strict` over 887 pinned components. Missing: SBOM, vulnerability scan, changelog, mapping archive, managed-device tests — each blocked on a decision rather than on work. R-01 to R-06. |
+| **Release pipeline** | **Partly.** PR and main workflows run wrapper validation, a secret scan, `verifyDebug` with warnings-as-errors, a Room schema diff, release lint and an unsigned release assembly. Dependency verification is `strict` over 890 pinned components. **The SBOM, the vulnerability scan and the mapping archive have landed**, the first two unblocked by ADR-0024's licence decision and the third never actually blocked. Missing: a changelog generated from labelled changes (needs a label convention) and managed-device tests (needs a runner). R-05, R-07. |
 
 | Requirement | Gap | State |
 | --- | --- | --- |
