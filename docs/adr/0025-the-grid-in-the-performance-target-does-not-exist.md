@@ -94,7 +94,13 @@ not that anybody suspects.
 - R-26 closes. R-25 stays open, with a target that describes a real screen.
 - The benchmark module, when it is built, scrolls `BooksView.List` and measures Home's time to interactive
   and its memory at 2,000 items. It does not scroll a grid.
-- A seeded fixture generator is a prerequisite for both, and is cheaper than either.
+- A seeded fixture generator is a prerequisite for both, and is cheaper than either. **The domain half is
+  built:** `LargeLibrary` produces a seeded library of any size, and `LargeLibraryScaleTest` runs every
+  pure function in `:domain`'s library package over 2,000 books on every pull request. It asserts
+  correctness and the shelf cap, never a duration — a JVM stopwatch on a CI runner measures the runner's
+  contention, and a threshold written from one fails on a busy machine and passes on a broken change. The
+  benchmark's own fixture, a seeded Room database or fake server behind the real UI, is a different
+  artefact and still to build.
 - **PRODUCT_SPEC 17.3's wording is now known to be inaccurate for this build.** It is left as written
   rather than edited, because the specification is the contract and this ADR is the record of how one of
   its clauses was interpreted. A reader who finds the mismatch should find this file.
