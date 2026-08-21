@@ -1016,4 +1016,5 @@
     <string name="lock_forgot_password_label">Account password</string>
     <string name="lock_forgot_submit">Sign in and clear the passcode</string>
     <string name="lock_forgot_failed">That did not work. Check the password, and that your server is reachable.</string>
+    <string name="profiles_locked">Passcode required</string>
 </resources>

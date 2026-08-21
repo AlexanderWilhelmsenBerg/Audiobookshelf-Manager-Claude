@@ -826,4 +826,5 @@
     <string name="lock_forgot_password_label">Passord for kontoen</string>
     <string name="lock_forgot_submit">Logg inn og fjern koden</string>
     <string name="lock_forgot_failed">Det fungerte ikke. Sjekk passordet, og at serveren er tilgjengelig.</string>
+    <string name="profiles_locked">Krever kode</string>
 </resources>

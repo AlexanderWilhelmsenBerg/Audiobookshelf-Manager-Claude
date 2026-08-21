@@ -20,11 +20,13 @@ import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.lock.RelockDelay
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.domain.usecase.RemoveProfileUseCase
@@ -60,6 +62,7 @@ class ProfileSwitcherViewModelTest {
     private val libraries = StubLibraries()
     private val backgroundSync = RecordingBackgroundSync()
     private val preferences = FakePreferences()
+    private val locks = FakeLocks()
 
     private fun viewModel() = ProfileSwitcherViewModel(
         profiles,
@@ -75,6 +78,7 @@ class ProfileSwitcherViewModelTest {
         ),
         auth,
         RemoveProfileUseCase(auth, backgroundSync, preferences),
+        locks,
     )
 
     @Test
@@ -194,6 +198,25 @@ class ProfileSwitcherViewModelTest {
      * made the first version of these tests fragile: the number of intermediate states a combine produces
      * is an implementation detail, while the state the user ends up looking at is the requirement.
      */
+    /**
+     * AUTH-005 — a locked account says so before it is tapped.
+     *
+     * This exists because the lock made a silent switcher actively misleading: `SwitchProfileUseCase`
+     * refuses a locked profile, so a card giving no sign of it offered an action the app would decline.
+     */
+    @Test
+    fun `a passcode-protected profile is marked in the switcher`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        locks.setProtected(setOf(grace.id))
+
+        val state = observed(viewModel())
+
+        val rows = state.value.profiles.associateBy { it.profile.displayName }
+        assertEquals(false, rows.getValue("ada").hasPasscode)
+        assertEquals(true, rows.getValue("grace").hasPasscode, "grace has a passcode and the card must say so")
+    }
+
     private fun TestScope.observed(viewModel: ProfileSwitcherViewModel): StateFlow<ProfileSwitcherUiState> =
         viewModel.uiState.also { flow ->
             backgroundScope.launch(mainDispatcherRule.testDispatcher) { flow.collect { } }
@@ -376,4 +399,37 @@ private class StubBookmarks : BookmarkRepository {
         profileId: ProfileId,
         bookmarks: List<AccountBookmark>,
     ): AppResult<Int> = AppResult.Success(bookmarks.size)
+}
+
+/**
+ * AUTH-005 — a lock repository that answers only the question the switcher asks.
+ *
+ * Everything else throws rather than returning a plausible default. R-37 is why: a fake that silently
+ * answers a question its subject was not supposed to ask stops testing what it claims to, and in this
+ * codebase that has already hidden a defect which emptied libraries.
+ */
+private class FakeLocks : ProfileLockRepository {
+    private val protectedProfiles = MutableStateFlow<Set<ProfileId>>(emptySet())
+
+    fun setProtected(ids: Set<ProfileId>) {
+        protectedProfiles.value = ids
+    }
+
+    override fun observeProtectedProfiles(): Flow<Set<ProfileId>> = protectedProfiles
+
+    override fun observeLockState() = error("the switcher does not observe the lock state")
+    override fun validate(passcode: CharArray) = error("not reached")
+    override suspend fun hasPasscode(profileId: ProfileId) = error("not reached")
+    override suspend fun preferences(profileId: ProfileId) = error("not reached")
+    override suspend fun setPasscode(profileId: ProfileId, passcode: CharArray, current: CharArray?) =
+        error("not reached")
+
+    override suspend fun removePasscode(profileId: ProfileId, current: CharArray) = error("not reached")
+    override suspend fun submitPasscode(profileId: ProfileId, passcode: CharArray) = error("not reached")
+    override suspend fun acceptBiometricUnlock(profileId: ProfileId) = error("not reached")
+    override suspend fun setBiometricUnlockEnabled(profileId: ProfileId, enabled: Boolean) = error("not reached")
+
+    override suspend fun setRelockDelay(profileId: ProfileId, delay: RelockDelay) = error("not reached")
+    override suspend fun lockNow() = error("not reached")
+    override suspend fun forget(profileId: ProfileId) = error("not reached")
 }

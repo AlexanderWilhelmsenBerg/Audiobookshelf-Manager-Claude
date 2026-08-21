@@ -242,6 +242,16 @@ private fun ProfileCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // AUTH-005 — the same reasoning as the reauthentication mark below, and it arrived for the
+            // same reason: `SwitchProfileUseCase` refuses a locked profile, so a card that gave no sign of
+            // it offered an action the app would decline. Stating it turns a failure into an expectation.
+            if (row.hasPasscode) {
+                Text(
+                    text = stringResource(R.string.profiles_locked),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             // PRODUCT_SPEC AUTH-004 — the mark is visible rather than only enforced, so the user learns why
             // a refresh is refused before they try one.
             if (profile.requiresReauthentication) {

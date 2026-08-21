@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.RemoveProfileUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
@@ -34,6 +35,14 @@ class ProfileSwitcherViewModel @Inject constructor(
     private val switchProfile: SwitchProfileUseCase,
     private val authRepository: AuthRepository,
     private val removeProfile: RemoveProfileUseCase,
+    /**
+     * AUTH-005 — which accounts carry a passcode, so the card can say so before it is tapped.
+     *
+     * Added because the lock made a silent switcher misleading: `SwitchProfileUseCase` now *refuses* a
+     * locked profile, so a card with no indication of that offers an action it will decline. A control
+     * that fails when used is worse than one that explains itself first.
+     */
+    locks: ProfileLockRepository,
 ) : ViewModel() {
 
     private val action = MutableStateFlow(ActionState())
@@ -42,13 +51,17 @@ class ProfileSwitcherViewModel @Inject constructor(
         profileRepository.observeProfiles(),
         profileRepository.observeServers(),
         profileRepository.observeActiveProfile(),
+        locks.observeProtectedProfiles(),
         action,
-    ) { profiles, servers, active, current ->
+    ) { profiles, servers, active, protectedProfiles, current ->
         val byId = servers.associateBy(Server::id)
         ProfileSwitcherUiState(
             // Joined here rather than in the screen: a composable reaching into a second list to find its
-            // row's server is how a list ends up rendering the wrong one during a recomposition.
-            profiles = profiles.map { profile -> ProfileRow(profile, byId[profile.serverId]) },
+            // row's server is how a list ends up rendering the wrong one during a recomposition. The
+            // passcode flag joins for the same reason.
+            profiles = profiles.map { profile ->
+                ProfileRow(profile, byId[profile.serverId], hasPasscode = profile.id in protectedProfiles)
+            },
             activeProfileId = active?.id,
             isBusy = current.inFlight,
             error = current.error,
@@ -112,7 +125,7 @@ class ProfileSwitcherViewModel @Inject constructor(
  * between a cascade delete and the next emission. A card with no server line is right for that instant; a
  * card showing *some other* server would not be.
  */
-data class ProfileRow(val profile: Profile, val server: Server?) {
+data class ProfileRow(val profile: Profile, val server: Server?, val hasPasscode: Boolean = false) {
     /**
      * The address a profile that has to sign in again should be sent back to.
      *
