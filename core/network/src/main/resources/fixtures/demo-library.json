@@ -45,6 +45,8 @@
   "books": [
     {
       "id": "book-voyage-1",
+
+      "updatedAtEpochSeconds": 1767225600,
       "libraryId": "lib-fiction",
       "title": "The Salt Harbour",
       "subtitle": "The Long Voyage, Book One",
@@ -75,6 +77,8 @@
     },
     {
       "id": "book-voyage-2",
+
+      "updatedAtEpochSeconds": 1767229200,
       "libraryId": "lib-fiction",
       "title": "The Weather Glass",
       "subtitle": "The Long Voyage, Book Two",
@@ -103,6 +107,8 @@
     },
     {
       "id": "book-voyage-2-5",
+
+      "updatedAtEpochSeconds": 1767232800,
       "libraryId": "lib-fiction",
       "title": "A Chart of Small Islands",
       "subtitle": "The Long Voyage, Book Two and a Half",
@@ -132,6 +138,8 @@
     },
     {
       "id": "book-voyage-10",
+
+      "updatedAtEpochSeconds": 1767236400,
       "libraryId": "lib-fiction",
       "title": "The Last Sounding",
       "subtitle": "The Long Voyage, Book Ten",
@@ -162,6 +170,8 @@
     },
     {
       "id": "book-voyage-prequel",
+
+      "updatedAtEpochSeconds": 1767240000,
       "libraryId": "lib-fiction",
       "title": "Before the Harbour",
       "subtitle": "The Long Voyage, a prequel",
@@ -189,6 +199,8 @@
     },
     {
       "id": "book-quiet-1",
+
+      "updatedAtEpochSeconds": 1767243600,
       "libraryId": "lib-nonfiction",
       "title": "Quiet Machines",
       "subtitle": "How self-hosting changed the shape of software",
@@ -219,6 +231,8 @@
     },
     {
       "id": "book-tide-tables",
+
+      "updatedAtEpochSeconds": 1767247200,
       "libraryId": "lib-nonfiction",
       "title": "Tide Tables and Other Poems",
       "subtitle": null,

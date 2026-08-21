@@ -133,7 +133,10 @@ internal class FixtureMapper(private val document: FixtureLibraryDocument) {
         // PRODUCT_SPEC PLAY-003: an excluded server track is not playable, so it is not counted.
         trackCount = fixture.tracks.count { !it.excluded },
         sizeBytes = fixture.sizeBytes,
-        remoteUpdatedAt = null,
+        // Carried through so the fixture can exercise the skip-unchanged path. `isUpToDate` needs a
+        // non-null stamp, so a fixture without one makes every refresh a full re-fetch and hides the
+        // shape a second refresh actually has.
+        remoteUpdatedAt = fixture.updatedAtEpochSeconds?.let(Instant::ofEpochSecond),
         addedAt = null,
         lastFetchedAt = fetchedAt,
         progress = progressOf(fixture, bookId),
