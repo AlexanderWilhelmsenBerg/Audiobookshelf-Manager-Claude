@@ -732,12 +732,33 @@ the browsable media library and the diagnostics screens. What has landed since t
   the server's behaviour, and four phases of "known defect" followed from one unchecked premise.
   `CapturedShapesTest` now fails if a fixture ever shows a hole or a flagged track.
 
-Not started: performance profiling. There is no baseline profile, no benchmark module and none of
-`PRODUCT_SPEC 17.3`'s four numbers measured (R-25 to R-27). Partly done: the release pipeline, which runs
-wrapper validation, a secret scan, `verifyDebug` with warnings as errors, a Room schema diff, release lint
-and an unsigned release assembly over 887 strictly verified components, and which is missing an SBOM, a
-vulnerability scan, a changelog, a mapping archive and managed-device tests — each blocked on a decision
-rather than on work (R-01 to R-06).
+- **The supply-chain half of the release pipeline**, which ADR-0024's licence decision unblocked.
+  `./gradlew :app:sbom` writes a CycloneDX 1.5 document — **175 components, 130 with a pinned SHA-256** —
+  from two sources, each authoritative for one thing: scope from `releaseRuntimeClasspath`'s resolution
+  result, integrity from `verification-metadata.xml`. The 45 components without a hash each carry a
+  property saying why, and all 45 are `no-binary-published` (a Kotlin Multiplatform parent, or a BOM).
+  **None is `not-pinned`**, and that value fails the task rather than appearing quietly in the document —
+  verified by deleting a component's block from the metadata and watching the build name it.
+  `scripts/vulnerability-scan.sh` then asks OSV about every component: **no known advisories today**,
+  confirmed to be a real answer by poisoning the SBOM with `log4j-core:2.14.1` and watching it report all
+  seven Log4Shell entries. The workflow also archives the R8 mapping, which `docs/release.md` had wrongly
+  listed as blocked on a signing key; R8 writes one whenever minification runs.
+
+**Still not started: performance profiling.** No baseline profile, no benchmark module, none of
+`PRODUCT_SPEC 17.3`'s four numbers measured (R-25 to R-27). This is genuinely blocked rather than
+deferred: a baseline profile is *generated* by running a macrobenchmark on a device, and hand-writing one
+would be guesswork of exactly the kind this project refuses elsewhere.
+
+**And no instrumented tier (R-07).** `app/build.gradle.kts` states the project's own position on why —
+"a test suite nothing runs is not a regression net" — and it still holds. Worth knowing for whoever picks
+this up: the dependencies are mostly already there. `androidx.test:runner`, `core-ktx`, `espresso-core` and
+`compose-ui-test-junit4` all carry verification checksums, `testInstrumentationRunner` is set, and the
+compose convention plugin already wires `androidTestImplementation`. What is missing is a **runner** — an
+emulator in CI, or a decision that the owner runs `connectedDebugAndroidTest` locally — not the plumbing.
+
+What remains of the release pipeline is three items and one decision: launching the release APK once,
+managed-device tests, the two-hour soak — all needing hardware — and a pull-request **label convention**,
+without which the changelog stays hand-written rather than generated.
 
 ## The two hardening merges after Phase 6 opened
 

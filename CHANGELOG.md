@@ -6,6 +6,19 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Supply chain (PRODUCT_SPEC 18)
+
+- **A Software Bill of Materials**, in CycloneDX 1.5, written by `./gradlew :app:sbom`: 175 components,
+  130 of them with a pinned SHA-256. Scope comes from `releaseRuntimeClasspath` after conflict resolution
+  and integrity from `gradle/verification-metadata.xml`, each being authoritative for one of the two. The
+  45 components with no hash each say why they have none, and all 45 publish no binary of their own — a
+  Kotlin Multiplatform parent, or a BOM. A component that *ships* without a pinned checksum fails the
+  task rather than appearing quietly in the document.
+- **A dependency vulnerability scan** over that document, against OSV. No known advisories against any
+  component as of 2026-08-21.
+- **The R8 mapping is archived** by the main-branch workflow, which needed no signing key and had been
+  recorded as though it did.
+
 ### The profile lock (AUTH-005, ADR-0023)
 
 - **A per-profile passcode, and biometrics where the device has them.** Six to twelve digits behind
