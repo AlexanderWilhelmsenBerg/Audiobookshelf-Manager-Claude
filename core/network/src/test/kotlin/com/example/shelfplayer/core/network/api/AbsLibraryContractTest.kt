@@ -98,7 +98,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `an item whose stored copy matches the server revision is not re-fetched`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         val batches = mutableListOf<List<BookSnapshot>>()
 
         val result = api().listBooks(
@@ -114,6 +114,25 @@ class AbsLibraryContractTest {
         assertEquals(catalogueSize(), batches.single().size, "and it carries every row")
     }
 
+    /** The caller can persist minified catalogue previews without treating them as expanded rows. */
+    @Test
+    fun `catalogue and expanded batches have separate sinks`() = runTest {
+        server.enqueue(ContractFixtures.catalogueResponse())
+        val catalogueBatches = mutableListOf<List<BookSnapshot>>()
+        val expandedBatches = mutableListOf<List<BookSnapshot>>()
+
+        api().listBooks(
+            PROFILE,
+            LIBRARY,
+            onBatch = { batch -> expandedBatches += batch },
+            cached = Cached(upToDate = true),
+            onCatalogueBatch = { batch -> catalogueBatches += batch },
+        )
+
+        assertEquals(1, catalogueBatches.size)
+        assertTrue(expandedBatches.isEmpty(), "unchanged items have no expanded batch")
+    }
+
     /**
      * "I cannot tell" has to mean "check".
      *
@@ -123,7 +142,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `an item with no known revision is fetched`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         enqueueExpansions()
 
         api().listBooks(PROFILE, LIBRARY, onBatch = {})
@@ -143,7 +162,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `the catalogue is handed over before any item is expanded`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         enqueueExpansions()
         val batches = mutableListOf<List<BookSnapshot>>()
 
@@ -166,7 +185,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `the catalogue is requested one page at a time`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         server.enqueue(ContractFixtures.response("library-item"))
 
         api().listBooks(PROFILE, LIBRARY)
@@ -214,6 +233,52 @@ class AbsLibraryContractTest {
         api().listBooks(PROFILE, LIBRARY, cached = Cached(upToDate = true))
 
         assertEquals(1, server.requestCount, "everything arrived on the first page")
+    }
+
+    @Test
+    fun `a successful catalogue response without a body is rejected`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("body", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    @Test
+    fun `a catalogue envelope without total is rejected`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[]}"""))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("total", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    @Test
+    fun `a catalogue envelope without results is rejected`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"total":0}"""))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("results", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    @Test
+    fun `an empty page before the advertised total is rejected`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[],"total":1}"""))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("results", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    @Test
+    fun `a repeated page cannot make an incomplete catalogue look complete`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE],"total":2}"""))
+        server.enqueue(MockResponse().setBody("""{"results":[$CATALOGUE_ROW_ONE],"total":2}"""))
+
+        val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
+
+        assertEquals("page", assertIs<AppError.ApiCompatibility>(error).missingField)
     }
 
     // --- GET /api/libraries/{id}/search -------------------------------------------------------------
@@ -302,7 +367,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `a catalogue row carries the metadata but not the structured links`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         server.enqueue(MockResponse().setResponseCode(503))
         repeat(RETRY_ATTEMPTS) { server.enqueue(MockResponse().setResponseCode(503)) }
         val batches = mutableListOf<List<BookSnapshot>>()
@@ -410,7 +475,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `each item is fetched expanded so the snapshot has tracks and chapters`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         enqueueExpansions()
 
         val books = assertIs<AppResult.Success<LibrarySnapshot>>(api().listBooks(PROFILE, LIBRARY)).value.books
@@ -468,7 +533,7 @@ class AbsLibraryContractTest {
      */
     @Test
     fun `a library whose every item fails is a failure, not an empty library`() = runTest {
-        server.enqueue(ContractFixtures.response("library-items"))
+        server.enqueue(ContractFixtures.catalogueResponse())
         server.enqueue(MockResponse().setResponseCode(503))
 
         val error = assertIs<AppResult.Failure>(api().listBooks(PROFILE, LIBRARY)).error
@@ -547,6 +612,7 @@ class AbsLibraryContractTest {
 
         assertTrue(snapshot.books.isEmpty())
         assertEquals(1, snapshot.removedCount)
+        assertEquals(listOf(LibraryItemId("item-1")), snapshot.removedIds)
         assertTrue(snapshot.isComplete, "a removal is an answer, so the fetch saw everything")
     }
 

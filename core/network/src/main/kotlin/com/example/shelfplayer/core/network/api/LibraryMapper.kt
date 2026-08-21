@@ -68,7 +68,9 @@ internal object LibraryMapper {
      * browsable before that pass has run.
      */
     fun toItemIds(dto: LibraryItemsResponseDto): AppResult<List<LibraryItemId>> {
-        val ids = dto.results.map { item ->
+        val results = dto.results
+            ?: return AppResult.Failure(missingField("results"))
+        val ids = results.map { item ->
             val id = item.id?.takeIf(String::isNotBlank)
                 ?: return AppResult.Failure(missingField("results[].id"))
             LibraryItemId(id)
@@ -102,7 +104,7 @@ internal object LibraryMapper {
         libraryId: LibraryId,
         dto: LibraryItemsResponseDto,
         fetchedAt: Instant,
-    ): List<BookSnapshot> = dto.results.mapNotNull { item ->
+    ): List<BookSnapshot> = dto.results.orEmpty().mapNotNull { item ->
         if (catalogueRejectionFor(item) != null) return@mapNotNull null
         val media = checkNotNull(item.media)
         val metadata = checkNotNull(media.metadata)

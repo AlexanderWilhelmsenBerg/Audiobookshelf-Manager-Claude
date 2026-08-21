@@ -21,7 +21,12 @@ import com.example.shelfplayer.core.database.entity.SeriesEntity
  * Nothing here returns a [kotlinx.coroutines.flow.Flow] and nothing here is called by a screen. Every
  * function is meant to run inside one transaction (see `DatabaseTransactionRunner`), so that a
  * partially applied sync is never observable — the counterpart of [LibraryDao], which only reads.
+ *
+ * `TooManyFunctions` is suppressed because these operations are one cohesive Room transaction boundary.
+ * Splitting an interface only to satisfy a count would scatter the same library write protocol across
+ * multiple injected DAOs without reducing its responsibility.
  */
+@Suppress("TooManyFunctions")
 @Dao
 interface LibraryWriteDao {
     /**
@@ -49,6 +54,13 @@ interface LibraryWriteDao {
 
     @Upsert
     suspend fun upsertBooks(books: List<BookEntity>)
+
+    /**
+     * Minified catalogue rows are previews. Existing expanded books win the conflict so a preview with
+     * no tracks or structured relationships cannot overwrite complete cached data.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertCatalogueBooks(books: List<BookEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertBookAuthors(crossRefs: List<BookAuthorCrossRef>)

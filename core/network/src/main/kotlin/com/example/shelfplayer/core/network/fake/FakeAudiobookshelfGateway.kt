@@ -341,6 +341,7 @@ class FakeAudiobookshelfGateway @Inject constructor(
         libraryId: LibraryId,
         onBatch: suspend (List<BookSnapshot>) -> Unit,
         cached: CachedLibrary,
+        onCatalogueBatch: suspend (List<BookSnapshot>) -> Unit,
     ): AppResult<LibrarySnapshot> = requireProfile(profileId).flatMap {
         val result = withMapper { mapper -> mapper.books(libraryId, clock.now()) }
             .map { books -> LibrarySnapshot(books = books) }

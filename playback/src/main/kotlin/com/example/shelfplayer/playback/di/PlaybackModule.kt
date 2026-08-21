@@ -8,7 +8,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import com.example.shelfplayer.core.network.di.AuthenticatedClient
+import com.example.shelfplayer.core.network.di.MediaStreamingClient
 import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.DefaultCarReadinessReader
 import com.example.shelfplayer.playback.DefaultNotificationAccessReader
@@ -30,13 +30,15 @@ import javax.inject.Singleton
 /**
  * PRODUCT_SPEC PLAY-001 / 14.5 — how audio and artwork are fetched.
  *
- * ### The data source is the app's authenticated client
+ * ### The data source is the app's long-lived authenticated client
  *
  * Audiobookshelf sends track URLs as credential-free paths, so the `Authorization` header is what
  * fetches them. ExoPlayer's default HTTP stack has no such header, and the usual workaround — a token
  * in the query string — is exactly what PRODUCT_SPEC 14.5 forbids. Wrapping the app's own client is
  * both the correct answer and the smaller one: the interceptor that signs a library request signs a
- * media request, and there is no second credential path to keep in step.
+ * media request, and there is no second credential path to keep in step. PRODUCT_SPEC 10.3 requires
+ * endpoint-appropriate lifetimes, so this client shares the ordinary API stack but has no absolute
+ * whole-call timeout; the read timeout still detects a stream that has stopped delivering bytes.
  *
  * [DefaultDataSource.Factory] wraps it rather than [OkHttpDataSource.Factory] being used alone, so that
  * a `file://` URI resolves too. That costs nothing today and is what Phase 3's downloaded books will
@@ -65,7 +67,7 @@ internal interface PlaybackModule {
         @OptIn(UnstableApi::class)
         fun providesMediaDataSourceFactory(
             @ApplicationContext context: Context,
-            @AuthenticatedClient client: OkHttpClient,
+            @MediaStreamingClient client: OkHttpClient,
         ): DataSource.Factory = DefaultDataSource.Factory(context, OkHttpDataSource.Factory(client))
 
         /**

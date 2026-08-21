@@ -1,6 +1,7 @@
 package com.example.shelfplayer.core.network.api
 
 import com.example.shelfplayer.core.network.di.AuthenticatedClient
+import com.example.shelfplayer.core.network.di.DownloadStreamingClient
 import com.example.shelfplayer.core.network.di.UnauthenticatedClient
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
@@ -21,16 +22,28 @@ import javax.inject.Singleton
  * The [OkHttpClient]s are shared across servers on purpose: their connection pools, dispatchers and
  * thread pools are expensive, and Retrofit adds no per-host state that would make sharing unsafe.
  *
- * Which client a service gets is a security decision, not a performance one. [authService] uses the
+ * Which client a service gets is a security and endpoint-lifetime decision. [authService] uses the
  * unauthenticated client because its endpoints are addressed at a server the user may not be signed in
- * to and must never receive another profile's ambient token (PRODUCT_SPEC 9.4).
+ * to and must never receive another profile's ambient token (PRODUCT_SPEC 9.4). [downloadService] uses a
+ * long-lived clone because Retrofit leaves its response body open while the file is copied.
  */
 @Singleton
 class AudiobookshelfServiceFactory @Inject constructor(
     @param:AuthenticatedClient private val authenticatedClient: OkHttpClient,
     @param:UnauthenticatedClient private val unauthenticatedClient: OkHttpClient,
+    @param:DownloadStreamingClient private val downloadStreamingClient: OkHttpClient,
     private val json: Json,
 ) {
+    /**
+     * Test-only convenience for contract tests that verify wire shapes rather than Hilt's timeout policy.
+     * Production injection always uses the qualified four-argument primary constructor above.
+     */
+    internal constructor(
+        authenticatedClient: OkHttpClient,
+        unauthenticatedClient: OkHttpClient,
+        json: Json,
+    ) : this(authenticatedClient, unauthenticatedClient, authenticatedClient, json)
+
     internal fun authService(baseUrl: String): AuthService =
         retrofitFor(baseUrl, unauthenticatedClient).create(AuthService::class.java)
 
@@ -39,7 +52,7 @@ class AudiobookshelfServiceFactory @Inject constructor(
      *
      * Every call still passes its own `Authorization` header, and `AuthorizationInterceptor` yields to
      * one, so the ambient token is not what authenticates a sync. The authenticated client is used
-     * anyway because it is the stack that cover-art loading and media streaming will share — same
+     * anyway because it is the stack that cover-art loading and media streaming derive from — same
      * connection pool, same host — and because a request that somehow arrives without an explicit
      * credential should be signed as the active profile rather than sent bare.
      */
@@ -47,11 +60,11 @@ class AudiobookshelfServiceFactory @Inject constructor(
         retrofitFor(baseUrl, authenticatedClient).create(LibraryService::class.java)
 
     /**
-     * PRODUCT_SPEC PLAY-001 — opening a session, on the same authenticated stack the tracks stream over.
+     * PRODUCT_SPEC PLAY-001 — opening a session, on the authenticated stack the streaming client derives from.
      *
-     * Sharing the client with the media data source is the point rather than an incidental saving: the
-     * session request and the first track request go to the same host moments apart, so the connection
-     * the session was opened over is the one the audio arrives on.
+     * The clients share their connection pool: the session request and the first track request go to the
+     * same host moments apart, so the connection the session was opened over can carry the audio too. Only
+     * their complete-call deadlines differ.
      */
     internal fun playbackService(baseUrl: String): PlaybackService =
         retrofitFor(baseUrl, authenticatedClient).create(PlaybackService::class.java)
@@ -63,14 +76,14 @@ class AudiobookshelfServiceFactory @Inject constructor(
         retrofitFor(baseUrl, authenticatedClient).create(BookmarkService::class.java)
 
     /**
-     * PRODUCT_SPEC DL-001 — the audio file endpoint, on the authenticated stack.
+     * PRODUCT_SPEC 10.3 / DL-001 — the audio file endpoint, on the long-lived authenticated stack.
      *
-     * The same client the player streams over, deliberately: a download and a stream fetch the same bytes
-     * from the same host, and sharing the connection pool means a download that starts while a book is
-     * playing reuses the connection rather than opening a second one to the same server.
+     * The client is a clone of the ordinary authenticated API client, so it shares that client's connection
+     * pool, dispatcher and interceptors. Its whole-call timeout is disabled because `@Streaming` keeps the
+     * response body open while the caller copies the file; read timeout still detects a stalled transfer.
      */
     internal fun downloadService(baseUrl: String): DownloadService =
-        retrofitFor(baseUrl, authenticatedClient).create(DownloadService::class.java)
+        retrofitFor(baseUrl, downloadStreamingClient).create(DownloadService::class.java)
 
     /**
      * PRODUCT_SPEC EPIC MGR — the management writes, on the authenticated stack.

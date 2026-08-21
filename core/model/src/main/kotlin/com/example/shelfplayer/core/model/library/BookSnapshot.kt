@@ -33,12 +33,15 @@ data class BookSnapshot(val book: Book, val tracks: List<AudioTrack>, val chapte
  *   per profile rather than inferred from a shared cache. It comes from the catalogue rather than from the
  *   fetched snapshots deliberately: an item whose expanded fetch timed out is still visible to this
  *   account, and dropping it here would hide a book on the strength of a dropped connection.
+ * @property removedIds items that were listed but answered `404` when expanded. They are excluded from
+ *   reconciliation even though they remain part of the catalogue visibility evidence.
  */
 data class LibrarySnapshot(
     val books: List<BookSnapshot>,
     val removedCount: Int = 0,
     val unreachableCount: Int = 0,
     val visibleIds: List<LibraryItemId> = books.map { it.book.id },
+    val removedIds: List<LibraryItemId> = emptyList(),
 ) {
     /**
      * Whether every item the server listed was accounted for.

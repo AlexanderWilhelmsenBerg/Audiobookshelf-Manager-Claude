@@ -29,7 +29,8 @@ import kotlin.coroutines.coroutineContext
  *
  * ### Three ways a range request can end, and only one of them is what was asked for
  *
- * `206` — the range was honoured. Append.
+ * `206` — the range was honoured **only** when `Content-Range` starts at the exact requested offset and
+ * its span, body length and complete length agree. Append after those checks, never before.
  *
  * `200` — the range was **declined**, and the body is the whole file from byte zero. Either the server
  * does not do ranges, or `If-Range` did not match because the file changed. Both mean the same thing to
@@ -37,8 +38,8 @@ import kotlin.coroutines.coroutineContext
  * must be replaced, not appended to. Getting this wrong produces a file of exactly the right size made of
  * two different files, which passes every length check there is.
  *
- * `416` — the range is unsatisfiable, which happens when the local part is *longer* than the file now is.
- * Mapped to a plain failure; the retry starts from zero because the caller discards the part.
+ * `416` — the range is unsatisfiable. Its `Content-Range` complete-length state is returned without
+ * opening the sink so the file layer can verify an already-complete part or clear it and restart once.
  *
  * ### Cancellation is checked inside the copy loop
  *
@@ -135,14 +136,21 @@ internal class AbsDownloadApi @Inject constructor(
      * Returns a nested result that the caller flattens, rather than throwing: a `403` from a server that
      * revoked the download permission is an ordinary answer to record, not an exception to unwind through.
      */
+    @Suppress("ReturnCount")
     private suspend fun transferOf(
         response: retrofit2.Response<ResponseBody>,
         sink: (Boolean) -> OutputStream,
         resumeFrom: Long,
         onProgress: (Long) -> Unit,
     ): AppResult<FileTransfer> {
+        unsatisfiedRangeOf(response, resumeFrom)?.let { return AppResult.Success(it) }
         if (!response.isSuccessful) {
             return AppResult.Failure(errors.fromStatus(response.code()))
+        }
+
+        val partialRange = when (val validated = validatedPartialRange(response, resumeFrom)) {
+            is AppResult.Failure -> return validated
+            is AppResult.Success -> validated.value
         }
         val body = response.body() ?: return AppResult.Failure(
             AppError.ApiCompatibility(
@@ -151,15 +159,18 @@ internal class AbsDownloadApi @Inject constructor(
             ),
         )
 
-        // 206 means the range was honoured. Anything else successful means it was not, and the body is
-        // the file from its beginning — whatever is already on disk is stale.
-        val wasResumed = response.code() == HTTP_PARTIAL_CONTENT
+        partialBodyProblem(body, partialRange)?.let { return AppResult.Failure(it) }
+
+        // A 206 reaches this point only after its range was proven safe to append. Anything else successful
+        // means the range was not honoured and the body starts at byte zero.
+        val wasResumed = partialRange != null
         val headers = response.headers()
         // Opened only now, and only on a successful response: a failed attempt must not be able to
         // truncate a part that a later one could have resumed from.
         val written = sink(wasResumed).use { stream ->
             copy(body, stream, alreadyOnDisk = if (wasResumed) resumeFrom else 0, onProgress)
         }
+        partialCopyProblem(written, partialRange)?.let { return AppResult.Failure(it) }
 
         logger.debug(
             LogCategory.Sync,
@@ -171,12 +182,59 @@ internal class AbsDownloadApi @Inject constructor(
         return AppResult.Success(
             FileTransfer(
                 bytesWritten = written,
-                totalBytes = totalFrom(headers[CONTENT_RANGE], headers[CONTENT_LENGTH], wasResumed, resumeFrom),
+                totalBytes = if (partialRange != null) {
+                    partialRange.total
+                } else {
+                    headers[CONTENT_LENGTH]?.toLongOrNull()
+                },
                 wasResumed = wasResumed,
                 eTag = headers[ETAG],
                 lastModified = headers[LAST_MODIFIED],
                 contentType = body.contentType()?.let { "${it.type}/${it.subtype}" },
             ),
+        )
+    }
+
+    private fun unsatisfiedRangeOf(response: retrofit2.Response<ResponseBody>, resumeFrom: Long): FileTransfer? {
+        if (response.code() != HTTP_RANGE_NOT_SATISFIABLE || resumeFrom <= 0) return null
+        val headers = response.headers()
+        return FileTransfer(
+            bytesWritten = 0,
+            totalBytes = unsatisfiedTotalFrom(headers[CONTENT_RANGE]),
+            wasResumed = false,
+            eTag = headers[ETAG],
+            lastModified = headers[LAST_MODIFIED],
+            contentType = null,
+            rangeNotSatisfiable = true,
+        )
+    }
+
+    private fun validatedPartialRange(
+        response: retrofit2.Response<ResponseBody>,
+        resumeFrom: Long,
+    ): AppResult<PartialRange?> {
+        if (response.code() != HTTP_PARTIAL_CONTENT) return AppResult.Success(null)
+        val range = partialRangeOf(response, resumeFrom) ?: return AppResult.Failure(
+            AppError.ApiCompatibility(
+                summary = "The server returned an invalid partial-file response.",
+                missingField = CONTENT_RANGE,
+            ),
+        )
+        return AppResult.Success(range)
+    }
+
+    private fun partialBodyProblem(body: ResponseBody, range: PartialRange?): AppError.ApiCompatibility? {
+        if (range == null || body.contentLength() < 0 || body.contentLength() == range.length) return null
+        return AppError.ApiCompatibility(
+            summary = "The server's partial-file body length does not match Content-Range.",
+            missingField = CONTENT_LENGTH,
+        )
+    }
+
+    private fun partialCopyProblem(bytesWritten: Long, range: PartialRange?): AppError.Download? {
+        if (range == null || bytesWritten == range.length) return null
+        return AppError.Download(
+            summary = "The server ended the partial-file response before all declared bytes arrived.",
         )
     }
 
@@ -210,22 +268,47 @@ internal class AbsDownloadApi @Inject constructor(
     }
 
     /**
-     * The file's full length, which is not always `Content-Length`.
+     * Parses and validates the response to `Range: bytes=<resumeFrom>-` before the sink can be opened.
      *
-     * On a `206`, `Content-Length` is the length of the *part*. The total is the number after the slash in
-     * `Content-Range: bytes 1024-9999/10000`, and a server is allowed to write `*` there instead, in which
-     * case there is no total to be had and `null` is the honest answer. On a `200` the two coincide.
+     * A merely present `Content-Range` is insufficient: a cache or proxy can return another request's
+     * offset, and appending it would silently duplicate or skip audio. The range span must also agree with
+     * `Content-Length` where present and remain strictly inside the complete representation length.
      */
-    private fun totalFrom(
-        contentRange: String?,
-        contentLength: String?,
-        wasResumed: Boolean,
-        resumeFrom: Long,
-    ): Long? = when {
-        wasResumed -> contentRange?.substringAfterLast('/')?.toLongOrNull()
-            ?: contentLength?.toLongOrNull()?.let { it + resumeFrom }
-        else -> contentLength?.toLongOrNull()
+    @Suppress("ReturnCount")
+    private fun partialRangeOf(response: retrofit2.Response<ResponseBody>, resumeFrom: Long): PartialRange? {
+        if (resumeFrom <= 0) return null
+        val match = SATISFIED_CONTENT_RANGE.matchEntire(response.headers()[CONTENT_RANGE]?.trim().orEmpty())
+            ?: return null
+        val (rawStart, rawEnd, rawTotal) = match.destructured
+        val start = rawStart.toLongOrNull() ?: return null
+        val end = rawEnd.toLongOrNull() ?: return null
+        val total = completeLength(rawTotal, end) ?: return null
+
+        if (start != resumeFrom || end < start) return null
+        if (total <= 0 || end >= total) return null
+
+        val difference = end - start
+        if (difference == Long.MAX_VALUE) return null
+        val length = difference + 1
+        response.headers()[CONTENT_LENGTH]?.let { rawLength ->
+            if (rawLength.toLongOrNull() != length) return null
+        }
+        return PartialRange(total = total, length = length)
     }
+
+    /** An open-ended requested range makes its selected end the current representation end. */
+    private fun completeLength(rawTotal: String, selectedEnd: Long): Long? = when {
+        rawTotal != "*" -> rawTotal.toLongOrNull()
+        selectedEnd < Long.MAX_VALUE -> selectedEnd + 1
+        else -> null
+    }
+
+    /** The complete length from the only valid form of an unsatisfied byte range. */
+    private fun unsatisfiedTotalFrom(contentRange: String?): Long? =
+        UNSATISFIED_CONTENT_RANGE.matchEntire(contentRange?.trim().orEmpty())
+            ?.groupValues
+            ?.get(1)
+            ?.toLongOrNull()
 
     /** Unwraps the result the call produced from the one `resultOf` wrapped around it. */
     private fun <T> AppResult<AppResult<T>>.flatten(): AppResult<T> = when (this) {
@@ -238,14 +321,23 @@ internal class AbsDownloadApi @Inject constructor(
             block(this)
         } finally {
             body()?.close()
+            errorBody()?.close()
         }
+
+    private data class PartialRange(val total: Long, val length: Long)
 
     private companion object {
         const val HTTP_PARTIAL_CONTENT = 206
+        const val HTTP_RANGE_NOT_SATISFIABLE = 416
         const val BUFFER_BYTES = 64 * 1024
         const val CONTENT_RANGE = "Content-Range"
         const val CONTENT_LENGTH = "Content-Length"
         const val ETAG = "ETag"
         const val LAST_MODIFIED = "Last-Modified"
+        val SATISFIED_CONTENT_RANGE = Regex(
+            "^bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)$",
+            RegexOption.IGNORE_CASE,
+        )
+        val UNSATISFIED_CONTENT_RANGE = Regex("^bytes\\s+\\*/(\\d+)$", RegexOption.IGNORE_CASE)
     }
 }

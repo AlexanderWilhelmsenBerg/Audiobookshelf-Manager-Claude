@@ -89,19 +89,21 @@ internal class AbsLibraryApi @Inject constructor(
      * tracks, and PRODUCT_SPEC 2.3 needs track offsets stored beside the book or offline resume cannot
      * work. What changed is that the N is no longer on the critical path.
      *
-     * The catalogue response is handed to `onBatch` **before** any item is expanded, so the shelf is
-     * populated after **one** round trip instead of after 491 on the library a device run used. The
-     * expansion pass then rewrites each book in place, adding its tracks, chapters, authors and series.
+     * The catalogue response is handed to `onCatalogueBatch` **before** any item is expanded, so the
+     * shelf is populated after **one** round trip instead of after 491 on the library a device run used.
+     * The expansion pass then hands complete books to `onBatch`, adding their tracks, chapters, authors
+     * and series.
      *
-     * Both writes go through the same `onBatch`, so a book is never half-written: a catalogue row is a
-     * complete, browsable book that is missing exactly the fields the list endpoint does not carry. See
-     * `LibraryMapper.toCatalogueSnapshots` for which those are and why they cannot be faked from it.
+     * The sinks are deliberately separate. A catalogue row is a browsable preview missing exactly the
+     * fields the list endpoint does not carry; persisting it through the complete-book sink would erase
+     * an unchanged cached book's relationships. See `LibraryMapper.toCatalogueSnapshots` for the gap.
      */
     override suspend fun listBooks(
         profileId: ProfileId,
         libraryId: LibraryId,
         onBatch: suspend (List<BookSnapshot>) -> Unit,
         cached: CachedLibrary,
+        onCatalogueBatch: suspend (List<BookSnapshot>) -> Unit,
     ): AppResult<LibrarySnapshot> = withConnection(profileId) { connection, service ->
         // Checked again rather than trusted from listLibraries: a caller can ask for any library id,
         // including one it never saw in a listing (a deep link, a stale cached id). PRODUCT_SPEC 15
@@ -117,7 +119,7 @@ internal class AbsLibraryApi @Inject constructor(
         val bearer = bearerOf(connection.accessToken.value)
         val fetchedAt = clock.now()
         val target = Target(connection, libraryId, service, bearer)
-        when (val catalogue = catalogue(target, fetchedAt, onBatch)) {
+        when (val catalogue = catalogue(target, fetchedAt, onCatalogueBatch)) {
             is AppResult.Failure -> catalogue
             is AppResult.Success -> {
                 logger.info(
@@ -229,12 +231,12 @@ internal class AbsLibraryApi @Inject constructor(
      * response measured in megabytes that nothing can render until the last byte of it arrives. Asking
      * for [PAGE_SIZE] at a time means the first shelf is drawn after the first hundred books.
      *
-     * Three independent stopping conditions, because one of them is a guess about server behaviour and
-     * the other two are not:
+     * Two completion bounds and one fail-closed consistency check:
      *
      *  - the envelope's `total` has been reached — the normal exit, and the one that also covers a
      *    server that ignores `limit` and sends everything on page zero;
-     *  - a page came back empty — the exit for a `total` that disagrees with what is actually sent;
+     *  - an empty or repeated page before `total` is reached — an invalid/incomplete listing, never
+     *    permission to reconcile deletions;
      *  - [MAX_PAGES] — the backstop for a server that ignores `page` and answers the same rows forever.
      *    Hitting it is logged as a warning, never silently treated as the end of the library, because a
      *    truncated catalogue that read as complete would let reconciliation delete the remainder.
@@ -242,57 +244,68 @@ internal class AbsLibraryApi @Inject constructor(
     private suspend fun catalogue(
         target: Target,
         fetchedAt: Instant,
-        onBatch: suspend (List<BookSnapshot>) -> Unit,
+        onCatalogueBatch: suspend (List<BookSnapshot>) -> Unit,
     ): AppResult<Catalogue> {
-        val ids = mutableListOf<LibraryItemId>()
-        val stamps = mutableMapOf<LibraryItemId, Long?>()
-        var browsable = 0
-        var received = 0
+        val collected = CatalogueAccumulator()
         var page = 0
-        while (true) {
-            val response = retries.readOnly("listItems") {
-                target.service.items(target.bearer, target.libraryId.value, PAGE_SIZE, page)
-                    .toResult { body -> AppResult.Success(body ?: LibraryItemsResponseDto()) }
-            }
-            if (response is AppResult.Failure) {
-                // A later page failing is still a failure. The earlier pages are already on screen —
-                // `onBatch` wrote them — but the id list is now incomplete, and returning it as the
-                // catalogue would tell reconciliation that every unlisted book had been deleted.
-                return AppResult.Failure(response.error)
-            }
-            val body = (response as AppResult.Success).value
-            when (val pageIds = LibraryMapper.toItemIds(body)) {
-                is AppResult.Failure -> return AppResult.Failure(pageIds.error)
-                is AppResult.Success -> ids += pageIds.value
-            }
-            body.results.forEach { item ->
-                item.id?.takeIf(String::isNotBlank)?.let { stamps[LibraryItemId(it)] = item.updatedAt }
+        while (page < MAX_PAGES) {
+            val response = cataloguePage(target, page)
+            val body = when (response) {
+                is AppResult.Failure -> {
+                    // A later page failing is still a failure. Earlier pages are already on screen, but
+                    // returning their ids would tell reconciliation every unlisted book had been deleted.
+                    return response
+                }
+
+                is AppResult.Success -> response.value
             }
             val rows = LibraryMapper.toCatalogueSnapshots(target.connection.serverId, target.libraryId, body, fetchedAt)
-            // Before a single item is expanded. This is the whole of P1-31: one round trip, and the user
-            // has a library — now one round trip regardless of how large that library is.
-            if (rows.isNotEmpty()) onBatch(rows)
-            browsable += rows.size
-            received += body.results.size
-            if (body.results.isEmpty() || received >= body.total) break
-            page++
-            if (page >= MAX_PAGES) {
-                logger.warn(
-                    LogCategory.Sync,
-                    "Stopped paging the catalogue at the page limit; the listing is incomplete",
-                    LogField.Count("pages", page),
-                    LogField.Count("received", received),
-                )
-                return AppResult.Failure(
-                    AppError.ApiCompatibility(
-                        summary = "This server did not finish listing the library.",
-                        missingField = "page",
-                    ),
-                )
+            when (val accepted = collected.accept(body, rows.size)) {
+                is AppResult.Failure -> return accepted
+                is AppResult.Success -> {
+                    // Before a single item is expanded. This is the whole of P1-31: one round trip, and
+                    // the user has a library — now one round trip regardless of how large that library is.
+                    if (rows.isNotEmpty()) onCatalogueBatch(rows)
+                    if (accepted.value) return AppResult.Success(collected.snapshot())
+                }
             }
+            page++
         }
-        return AppResult.Success(Catalogue(ids = ids, browsable = browsable, stamps = stamps))
+        logger.warn(
+            LogCategory.Sync,
+            "Stopped paging the catalogue at the page limit; the listing is incomplete",
+            LogField.Count("pages", page),
+            LogField.Count("received", collected.size),
+        )
+        return AppResult.Failure(
+            catalogueCompatibility("This server did not finish listing the library.", "page"),
+        )
     }
+
+    private suspend fun cataloguePage(target: Target, page: Int): AppResult<LibraryItemsResponseDto> =
+        retries.readOnly("listItems") {
+            target.service.items(target.bearer, target.libraryId.value, PAGE_SIZE, page)
+                .toResult(::validateCatalogueBody)
+        }
+
+    private fun validateCatalogueBody(body: LibraryItemsResponseDto?): AppResult<LibraryItemsResponseDto> = when {
+        body == null -> AppResult.Failure(
+            catalogueCompatibility("This server returned an empty catalogue response.", "body"),
+        )
+
+        body.results == null -> AppResult.Failure(
+            catalogueCompatibility("This server did not include catalogue results.", "results"),
+        )
+
+        body.total < 0 -> AppResult.Failure(
+            catalogueCompatibility("This server did not report the catalogue total.", "total"),
+        )
+
+        else -> AppResult.Success(body)
+    }
+
+    private fun catalogueCompatibility(summary: String, missingField: String) =
+        AppError.ApiCompatibility(summary = summary, missingField = missingField)
 
     /**
      * PRODUCT_SPEC LIB-001 — "failed optional sections do not fail the whole sync".
@@ -333,7 +346,7 @@ internal class AbsLibraryApi @Inject constructor(
                 // wrong date must not be able to convince the app that a changed book is current.
                 skipped++
             } else {
-                sweep.record(fetchItem(target, id, fetchedAt))
+                sweep.record(id, fetchItem(target, id, fetchedAt))
             }
             // Handed over in batches rather than per item: one transaction per book on a 490-book
             // library is 490 transactions, and the shelf cannot redraw that fast anyway. Twenty is
@@ -379,6 +392,7 @@ internal class AbsLibraryApi @Inject constructor(
                 // visibility is observable: an account restricted by tag inside a shared library gets a
                 // shorter list here and an identical response everywhere else.
                 visibleIds = ids,
+                removedIds = sweep.removedIds.toList(),
             ),
         )
     }
@@ -496,7 +510,7 @@ internal class AbsLibraryApi @Inject constructor(
     /**
      * What every page of the catalogue added up to.
      *
-     * [browsable] is a count rather than the rows: each page's rows were handed to `onBatch` as it
+     * [browsable] is a count rather than the rows: each page's rows were handed to `onCatalogueBatch` as it
      * arrived, so holding all of them here would keep a second copy of the whole library in memory for
      * the length of the expansion pass — which is exactly the cost paging was added to avoid.
      */
@@ -507,8 +521,64 @@ internal class AbsLibraryApi @Inject constructor(
         val stamps: Map<LibraryItemId, Long?>,
     )
 
+    /**
+     * Accumulates validated pages and refuses to call an incomplete or repeated listing complete.
+     * Unique ids are the reconciliation evidence; raw row counts can be inflated by a repeated page.
+     */
+    private inner class CatalogueAccumulator {
+        private val ids = linkedSetOf<LibraryItemId>()
+        private val stamps = mutableMapOf<LibraryItemId, Long?>()
+        private var advertisedTotal: Int? = null
+        private var browsable = 0
+
+        val size: Int get() = ids.size
+
+        fun accept(body: LibraryItemsResponseDto, browsableRows: Int): AppResult<Boolean> {
+            val expectedTotal = advertisedTotal ?: body.total.also { advertisedTotal = it }
+            if (body.total != expectedTotal) {
+                return AppResult.Failure(
+                    catalogueCompatibility("The catalogue total changed while it was being listed.", "total"),
+                )
+            }
+            val pageIds = when (val mapped = LibraryMapper.toItemIds(body)) {
+                is AppResult.Failure -> return mapped
+                is AppResult.Success -> mapped.value
+            }
+            val beforePage = ids.size
+            ids.addAll(pageIds)
+            body.results.orEmpty().forEach { item ->
+                item.id?.takeIf(String::isNotBlank)?.let { stamps[LibraryItemId(it)] = item.updatedAt }
+            }
+            val error = when {
+                ids.size > expectedTotal -> catalogueCompatibility(
+                    "The server listed more unique items than its catalogue total.",
+                    "total",
+                )
+
+                ids.size == expectedTotal -> null
+                body.results.isNullOrEmpty() -> catalogueCompatibility(
+                    "The server stopped listing items before reaching its catalogue total.",
+                    "results",
+                )
+
+                ids.size == beforePage -> catalogueCompatibility(
+                    "The server repeated a catalogue page without making progress.",
+                    "page",
+                )
+
+                else -> null
+            }
+            if (error != null) return AppResult.Failure(error)
+            browsable += browsableRows
+            return AppResult.Success(ids.size == expectedTotal)
+        }
+
+        fun snapshot() = Catalogue(ids = ids.toList(), browsable = browsable, stamps = stamps.toMap())
+    }
+
     private class Sweep {
         val books = mutableListOf<BookSnapshot>()
+        val removedIds = linkedSetOf<LibraryItemId>()
         var removed = 0
             private set
         var unreachable = 0
@@ -525,7 +595,7 @@ internal class AbsLibraryApi @Inject constructor(
             unreachable++
         }
 
-        fun record(outcome: ItemOutcome) {
+        fun record(id: LibraryItemId, outcome: ItemOutcome) {
             when (outcome) {
                 is ItemOutcome.Fetched -> {
                     books += outcome.snapshot
@@ -534,6 +604,7 @@ internal class AbsLibraryApi @Inject constructor(
 
                 ItemOutcome.Removed -> {
                     removed++
+                    removedIds += id
                     consecutiveFailures = 0
                 }
 
