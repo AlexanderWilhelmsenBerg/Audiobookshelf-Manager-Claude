@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package shelfplayer.lock;
+
+option java_package = "com.example.shelfplayer.core.datastore";
+option java_multiple_files = true;
+
+// PRODUCT_SPEC AUTH-005 / AUTH-003 — one profile's passcode lock, as stored bytes.
+//
+// A separate file from `app_settings.proto`, and that separation is load-bearing rather than tidy:
+//
+//  1. `app_settings.proto` says in its own header that only non-sensitive values belong there.
+//  2. `AppSettingsDataSource.settings` catches `IOException` and emits `getDefaultInstance()`, so a
+//     disk error there reads as "the setting is unset". For a preference that is the right call — the
+//     app stays usable. For a lock it is **fail-open**: an unreadable record would read as "no
+//     passcode" and the curtain would never be drawn. This record is therefore never routed through
+//     that DataStore; it is read by `ProfilePasscodeStore`, which fails closed.
+//
+// These bytes are never written to disk as they stand. `ProfilePasscodeStore` serializes this message
+// and hands it to `LockCipher`, whose Keystore-held key is what makes obtaining the record require
+// executing code on the device rather than copying a file off it. See ADR-0023 for exactly how much
+// that is worth, which is less than it sounds.
+message ProfileLockRecord {
+  // Bumped when the *meaning* of a field changes, so the store can migrate rather than misread.
+  // Distinct from `kdf`/`iterations`, which describe the verifier and can move without this moving.
+  int32 record_version = 1;
+
+  // The key-derivation function's JCA name, stored rather than assumed.
+  //
+  // A verifier is only comparable against a derivation identical to the one that produced it, so the
+  // recipe travels with the result. That is what lets `iterations` be raised in a later build: the old
+  // record still verifies with its own cost, and the next successful unlock re-derives at the new one.
+  string kdf = 2;
+  int32 iterations = 3;
+
+  // 16 bytes from `java.security.SecureRandom`. Per record, so two profiles with the same passcode do
+  // not produce the same verifier.
+  bytes salt = 4;
+
+  // The derived bytes. Not the passcode, and not reversible into it.
+  bytes verifier = 5;
+
+  // PRODUCT_SPEC AUTH-005 — rate limiting, kept **inside the encrypted record** rather than in
+  // settings.
+  //
+  // The reason is the attack it defends against: a counter in `AppSettings` could be reset by
+  // force-stopping the app and clearing its data, or simply by editing a file on a rooted device,
+  // which would turn a locked-out passcode back into an unlimited guessing oracle. Here, resetting it
+  // requires the key.
+  int32 consecutive_failures = 6;
+  int64 retry_not_before_epoch_millis = 7;
+
+  // PRODUCT_SPEC AUTH-005 — "or biometric". App-enforced policy, not cryptography: the verifier is a
+  // hash, so a biometric success cannot derive it. ADR-0023 states that plainly.
+  bool biometric_unlock_enabled = 8;
+
+  // How long after leaving the app the profile relocks. Zero is "immediately", which is both the
+  // default and proto3's zero value, so a record written by a build without this field locks at once —
+  // the safe direction.
+  int32 relock_delay_seconds = 9;
+}

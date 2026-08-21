@@ -9,7 +9,9 @@ import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.datastore.AppSettings
 import com.example.shelfplayer.core.datastore.AppSettingsSerializer
+import com.example.shelfplayer.core.datastore.security.KeystoreLockCipher
 import com.example.shelfplayer.core.datastore.security.KeystoreTokenCipher
+import com.example.shelfplayer.core.datastore.security.LockCipher
 import com.example.shelfplayer.core.datastore.security.TokenCipher
 import dagger.Binds
 import dagger.Module
@@ -35,6 +37,18 @@ interface SecurityModule {
     @Binds
     @Singleton
     fun bindsTokenCipher(impl: KeystoreTokenCipher): TokenCipher
+
+    /**
+     * PRODUCT_SPEC AUTH-005 — the only sanctioned [LockCipher] binding.
+     *
+     * A second cipher rather than a second user of the first, under its own Keystore alias. [LockCipher]
+     * lists the three bugs that sharing one would have caused; the shortest of them is that
+     * `SessionTokenStore.clearAll()` destroys the session key, which would leave every passcode-protected
+     * profile permanently locked the moment somebody signed out of everything.
+     */
+    @Binds
+    @Singleton
+    fun bindsLockCipher(impl: KeystoreLockCipher): LockCipher
 }
 
 @Module
