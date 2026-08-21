@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.lock.BiometricAvailability
+import com.example.shelfplayer.core.model.lock.PasscodeRejection
 import com.example.shelfplayer.core.model.lock.RelockDelay
 import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -82,6 +83,14 @@ class ProfileLockViewModel @Inject constructor(
         val profileId = state.value.profileId ?: return
         viewModelScope.launch {
             try {
+                // Validated here so the refusal can name its reason. The repository validates again — it
+                // must, because it is the boundary — but by the time a rejection has become an
+                // `AppError.Validation` the *which* is gone.
+                val rejection = locks.validate(passcode)
+                if (rejection != null) {
+                    _message.value = LockSettingsMessage.Invalid(rejection)
+                    return@launch
+                }
                 report(locks.setPasscode(profileId, passcode, current))
             } finally {
                 passcode.fill(' ')
@@ -131,7 +140,8 @@ class ProfileLockViewModel @Inject constructor(
     private fun report(result: AppResult<Unit>) {
         _message.value = when {
             result is AppResult.Success -> LockSettingsMessage.Saved
-            result is AppResult.Failure && result.error is AppError.Validation -> LockSettingsMessage.Invalid
+            result is AppResult.Failure && result.error is AppError.Validation ->
+                LockSettingsMessage.Invalid(PasscodeRejection.Length)
             result is AppResult.Failure && result.error is AppError.Security -> LockSettingsMessage.WrongCurrent
             else -> LockSettingsMessage.Failed
         }
@@ -159,4 +169,18 @@ data class LockPreferencesUi(
 )
 
 /** What to tell the user after a write. Mapped to a translated string by the section. */
-enum class LockSettingsMessage { Saved, Invalid, WrongCurrent, Failed }
+sealed interface LockSettingsMessage {
+    data object Saved : LockSettingsMessage
+
+    /**
+     * The passcode was refused, and [reason] says which rule it broke.
+     *
+     * A reason rather than a flat "invalid": telling somebody who typed `111111` that a passcode must be
+     * between six and twelve digits is both wrong and useless, and that is exactly what the first version
+     * did.
+     */
+    data class Invalid(val reason: PasscodeRejection) : LockSettingsMessage
+
+    data object WrongCurrent : LockSettingsMessage
+    data object Failed : LockSettingsMessage
+}

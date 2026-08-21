@@ -8,13 +8,13 @@ import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.security.LockPreferences
-import com.example.shelfplayer.core.datastore.security.PasscodeRejection
 import com.example.shelfplayer.core.datastore.security.PasscodeVerdict
 import com.example.shelfplayer.core.datastore.security.ProfilePasscodeStore
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.asFailure
+import com.example.shelfplayer.core.model.lock.PasscodeRejection
 import com.example.shelfplayer.core.model.lock.ProfileLockState
 import com.example.shelfplayer.core.model.lock.RelockDelay
 import com.example.shelfplayer.core.model.lock.UnlockFailure
@@ -114,6 +114,8 @@ class DefaultProfileLockRepository @Inject constructor(
             unreadable = preferences == null,
         )
     }
+
+    override fun validate(passcode: CharArray): PasscodeRejection? = passcodes.validate(passcode)
 
     override suspend fun hasPasscode(profileId: ProfileId): Boolean = passcodes.hasPasscode(keyFor(profileId))
 

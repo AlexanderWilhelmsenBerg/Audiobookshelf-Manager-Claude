@@ -95,3 +95,23 @@ sealed interface UnlockFailure {
     /** The record cannot be decrypted. Only re-authentication or removal can clear this. */
     data object Unreadable : UnlockFailure
 }
+
+/**
+ * AUTH-005 — why a proposed passcode was refused.
+ *
+ * In `:core:model` rather than beside the KDF that produces it, because three different layers need it:
+ * the store validates, the repository reports, and the settings section has to say *which* rule was
+ * broken. Collapsing them into one "invalid" was a real defect — a passcode of `111111` was refused with
+ * "a passcode is between 6 and 12 digits", which is not true of it and tells the user nothing they can act
+ * on. Android lint found it, by noticing that the string explaining the third case was never rendered.
+ */
+enum class PasscodeRejection {
+    /** Shorter than six digits or longer than twelve. */
+    Length,
+
+    /** Contains something that is not a digit. */
+    NotDigits,
+
+    /** A single repeated digit, or a run straight up or down. */
+    TooSimple,
+}

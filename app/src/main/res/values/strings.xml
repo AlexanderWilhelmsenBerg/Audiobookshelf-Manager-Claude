@@ -1012,4 +1012,5 @@
     </plurals>
     <string name="settings_passcode_saved">Passcode saved.</string>
     <string name="settings_passcode_failed">That could not be saved on this device.</string>
+    <string name="settings_passcode_digits_error">A passcode is digits only.</string>
 </resources>

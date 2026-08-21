@@ -822,4 +822,5 @@
     </plurals>
     <string name="settings_passcode_saved">Koden er lagret.</string>
     <string name="settings_passcode_failed">Dette kunne ikke lagres p\u00e5 denne enheten.</string>
+    <string name="settings_passcode_digits_error">En kode best\u00e5r bare av sifre.</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.example.shelfplayer.core.datastore.security
 
+import com.example.shelfplayer.core.model.lock.PasscodeRejection
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
@@ -109,12 +110,3 @@ internal object PasscodeKdf {
     private fun isRun(passcode: CharArray, step: Int): Boolean =
         passcode.indices.drop(1).all { i -> passcode[i] - passcode[i - 1] == step }
 }
-
-/**
- * Why a passcode was refused.
- *
- * An enum rather than a message, because the string that explains it is a localised resource in `:app`
- * and this module has no access to one — and because a reason a test can assert on is worth more than
- * a sentence it has to match.
- */
-enum class PasscodeRejection { Length, NotDigits, TooSimple }

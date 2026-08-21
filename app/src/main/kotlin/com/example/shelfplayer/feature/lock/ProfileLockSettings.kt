@@ -23,6 +23,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.lock.BiometricAvailability
+import com.example.shelfplayer.core.model.lock.PasscodeRejection
 import com.example.shelfplayer.core.model.lock.RelockDelay
 import com.example.shelfplayer.feature.settings.ChoiceRow
 import com.example.shelfplayer.feature.settings.Hint
@@ -239,7 +240,12 @@ private fun BiometricRow(availability: BiometricAvailability, enabled: Boolean, 
 /** Each outcome says which one it was, because "it did not work" is not an answer somebody can act on. */
 private fun LockSettingsMessage.messageRes(): Int = when (this) {
     LockSettingsMessage.Saved -> R.string.settings_passcode_saved
-    LockSettingsMessage.Invalid -> R.string.settings_passcode_length_error
+    is LockSettingsMessage.Invalid -> when (reason) {
+        PasscodeRejection.Length -> R.string.settings_passcode_length_error
+        PasscodeRejection.NotDigits -> R.string.settings_passcode_digits_error
+        PasscodeRejection.TooSimple -> R.string.settings_passcode_simple_error
+    }
+
     LockSettingsMessage.WrongCurrent -> R.string.settings_passcode_wrong_current
     LockSettingsMessage.Failed -> R.string.settings_passcode_failed
 }

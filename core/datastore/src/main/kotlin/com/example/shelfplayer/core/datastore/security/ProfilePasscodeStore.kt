@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.datastore.ProfileLockRecord
+import com.example.shelfplayer.core.model.lock.PasscodeRejection
 import com.google.protobuf.InvalidProtocolBufferException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher

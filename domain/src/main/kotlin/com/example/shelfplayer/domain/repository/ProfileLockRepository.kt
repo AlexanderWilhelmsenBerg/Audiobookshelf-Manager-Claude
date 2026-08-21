@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.lock.PasscodeRejection
 import com.example.shelfplayer.core.model.lock.ProfileLockState
 import com.example.shelfplayer.core.model.lock.RelockDelay
 import com.example.shelfplayer.core.model.lock.UnlockFailure
@@ -36,6 +37,17 @@ interface ProfileLockRepository {
 
     /** Which profiles have a passcode, for the switcher's lock badges and the settings row. */
     fun observeProtectedProfiles(): Flow<Set<ProfileId>>
+
+    /**
+     * AUTH-005 — whether [passcode] would be accepted, and if not, which rule it broke.
+     *
+     * Separate from [setPasscode] so the caller can say *which* rule, in its own language. Routing the
+     * reason through `AppError.Validation`'s summary lost it: `:data:auth` has no resources, so its
+     * summaries are English sentences a Norwegian user would have been shown, and the caller could not tell
+     * the three cases apart anyway. Returning the reason lets the settings section pick the right
+     * translated string.
+     */
+    fun validate(passcode: CharArray): PasscodeRejection?
 
     /**
      * Whether one profile has a passcode at all.

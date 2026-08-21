@@ -1,5 +1,6 @@
 package com.example.shelfplayer.core.datastore.security
 
+import com.example.shelfplayer.core.model.lock.PasscodeRejection
 import org.junit.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
