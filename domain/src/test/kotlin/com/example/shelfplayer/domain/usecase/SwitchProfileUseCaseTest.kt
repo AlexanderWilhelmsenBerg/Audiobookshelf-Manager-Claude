@@ -9,6 +9,7 @@ import com.example.shelfplayer.domain.FakeBackgroundSync
 import com.example.shelfplayer.domain.FakeBookmarkRepository
 import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.FakeProfileRepository
+import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -23,11 +24,17 @@ class SwitchProfileUseCaseTest {
     private val libraries = FakeLibraryRepository()
     private val backgroundSync = FakeBackgroundSync()
 
-    private fun useCase() = SwitchProfileUseCase(
+    /**
+     * @param lockedProfiles profiles that may not be activated. A lambda rather than a fake class: the
+     *   guard is a `fun interface` precisely so this test needs no double — see `ProfileActivationGuard`,
+     *   which records why a duplicated fake was the thing to avoid.
+     */
+    private fun useCase(lockedProfiles: Set<ProfileId> = emptySet()) = SwitchProfileUseCase(
         profiles,
         auth,
         SyncAccountUseCase(profiles, auth, libraries, FakeBookmarkRepository()),
         backgroundSync,
+        ProfileActivationGuard { profileId -> profileId !in lockedProfiles },
     )
 
     @Test
@@ -136,5 +143,33 @@ class SwitchProfileUseCaseTest {
         useCase()(OTHER)
 
         assertTrue(backgroundSync.scheduled.isEmpty())
+    }
+
+    /**
+     * AUTH-005 — a locked profile is refused, and nothing is written.
+     *
+     * The assertion that matters is the second one. Refusing *after* writing the selection would leave the
+     * app showing an account it then declined to open, and every screen reads its content from the active
+     * profile — so the refusal has to come first or it is not a refusal at all.
+     */
+    @Test
+    fun `switching to a locked profile is refused before anything is written`() = runTest {
+        val before = profiles.activeProfileId()
+
+        val result = useCase(lockedProfiles = setOf(OTHER))(OTHER)
+
+        assertIs<AppResult.Failure>(result)
+        assertIs<AppError.Security>(result.error)
+        assertEquals(before, profiles.activeProfileId(), "the active profile must not have moved")
+        assertEquals(emptyList(), auth.restoredProfiles, "no credential may be loaded for a refused switch")
+    }
+
+    /** With the guard allowing it — the passcode entered — the same profile switches normally. */
+    @Test
+    fun `a profile the guard allows switches normally`() = runTest {
+        val result = useCase(lockedProfiles = emptySet())(OTHER)
+
+        assertEquals(AppResult.Success(SessionStatus.Active), result)
+        assertEquals(OTHER, profiles.activeProfileId())
     }
 }

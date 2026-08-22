@@ -42,6 +42,16 @@
       query. A suppression for something unimplemented would be the wrong call; this one is for a check
       that is looking in the wrong module.
     -->
+    <!--
+      AUTH-005 — the profile passcode's optional biometric unlock.
+
+      A normal permission, granted at install: it lets the app ask the platform to run its own prompt, and
+      carries no access to anything the app could read itself. Required from API 28 by both
+      `BiometricManager.canAuthenticate` and `BiometricPrompt.authenticate`; below that the app offers no
+      biometric option at all and says so. See ADR-0023.
+    -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
     <application
         android:name=".ShelfPlayerApplication"
         tools:ignore="MissingMediaBrowserServiceIntentFilter,MissingIntentFilterForMediaSearch"

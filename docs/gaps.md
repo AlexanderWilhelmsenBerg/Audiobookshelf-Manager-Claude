@@ -1,6 +1,6 @@
 # Open gaps
 
-**As of:** 2026-08-20, entering Phase 6.
+**As of:** 2026-08-21, entering Phase 6.
 
 Every requirement this app has *not* fully met, and why. Kept as one document rather than a note per phase,
 because the question anybody actually asks is "what is missing" and not "what was missing in April".
@@ -20,15 +20,98 @@ be built now and has not been.
 
 | Requirement | Gap | State |
 | --- | --- | --- |
-| AUTH-005 | **Profile PIN / biometric lock.** No lock exists, so `Optional profile PIN or biometric gate` (§3.2) is unbuilt. | Open |
+| AUTH-005 | **Profile PIN / biometric lock.** A per-profile passcode with an optional biometric prompt, so `Optional profile PIN or biometric gate` (§3.2) is built and PRODUCT_SPEC 24.14 is answered as version 1. | **Closed 2026-08-21 — ADR-0023** |
+| AUTH-005 | **The recovery the curtain promises is now code.** `SignInUseCase` calls `clearIfLocked`, and the curtain carries the password field that reaches it — for an exhausted record and an unreadable one alike, neither of which offers a passcode field. | **Closed 2026-08-21 — R-42.** The residual hazard, that the same call is silent from the ordinary sign-in screen, is R-44 |
+| AUTH-005 | **The relock delay fires.** `ProcessLockWatcher` calls `onBackgrounded` and `onForegrounded` from `Application.ActivityLifecycleCallbacks`, ignoring `isChangingConfigurations` so a rotation is not treated as leaving the app. | **Closed 2026-08-21 — R-41.** Whether `Immediately` is the right default still needs a device |
+| AUTH-005 | **A locked profile that is not the active one is reachable.** The curtain draws for the active profile alone and the switch is refused before a locked profile becomes active, which left the refusal naming a passcode field that existed nowhere. The switcher now prompts. | **Closed 2026-08-21 — R-45** |
+| AUTH-005 / §3.2 | **API 26 and 27 get no biometrics at all.** The passcode is the floor there, and on 28 and 29 no sensor-strength claim is made. | Open, by the platform |
+| AUTH-005 / §15 | **The app-switcher thumbnail is not suppressed on any API level.** Checked, not assumed: nothing in the tree suppresses it. | Open |
+| §8.12 | **Nothing obliges an admin account to take a passcode.** The lock is offered per profile with no policy behind it, and 8.12 asks for it *"especially for admin accounts"*. | Open, needs a decision |
+| AUTH-005 | **The biometric prompt is exercised by nothing.** It is a window the system draws, so nothing short of a person with a fingerprint reaches it. | Open, needs a person. **The Keystore half is closed:** `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest` run the wrap, the staged write and the encrypted rate limit on a device via `connectedDebugAndroidTest` (R-39) |
 
-**What it costs today:** anyone holding the unlocked phone can switch profiles and see another household
-member's library and progress. On a personal device that is the same exposure as the home screen; on a
-shared one it is not.
+**The lock is built, and what it is worth is stated rather than implied.** Six to twelve digits behind
+PBKDF2, or the platform's own biometric prompt from API 28 where the user asks for it. Unlock tickets live
+in memory and nowhere else, so a cold start is locked and no reboot or background kill can leave one open,
+and the delay before a relock is evaluated against the clock when the ticket is read rather than expired by
+an event — otherwise the media service and the UI could answer the same question differently. The curtain
+replaces the app's content instead of covering it, because an overlay leaves what it hides in the semantics
+tree and `MiniPlayer` marks its title as a polite live region, so TalkBack would read the locked account's
+book aloud over the passcode field. There is no schema change: the record's existence *is* the fact, so
+there is no flag anywhere that can disagree with it. ADR-0023 carries the threat model this all follows
+from — somebody holding this phone, already unlocked, who is not the account's owner — and the arithmetic
+that says the verifier does not resist an attacker holding the file. Everything below is what that leaves
+open.
 
-**What it blocks:** ROUTE-002's *"Auto-play never starts when the active profile is biometric/PIN locked"*
-cannot be satisfied, because there is no locked state to check. `OutputDeviceWatcher.onConnected` is where
-that check goes.
+**The recovery is the serious one, and it is the reason this feature is not finished.** The curtain tells a
+locked-out user that signing in to the account again clears its passcode. `DefaultProfileLockRepository`
+implements `forget` and does exactly that, and **no production code calls it** — the sign-in path does not
+reference the lock repository at all. The two fallbacks are in no better state: `LockViewModel` computes
+`others`, every other account on the device, and the curtain uses that list only to decide whether to print
+one sentence saying such accounts exist. There is no control to switch to one, no route to sign in, and no
+way to remove the account from behind the curtain. So the honest reading is that a forgotten passcode is
+not recoverable inside this app at all — online or off — and ten wrong attempts or a record the Keystore
+can no longer unwrap land in the same place. What remains is Android's own "clear storage", which takes every
+download and every sign-in with it. ADR-0023 calls the sign-in route *"a promise the copy makes and the code
+does not yet keep"*, which is accurate and understates what the user meets: three sentences of advice and
+one field that cannot help them. The offline caveat the curtain states is real and would still be real once
+this is wired, because the account password needs the server; it is the smaller half of the problem.
+
+**The relock delay is the same failure a second time, and it is the one a user would notice first.**
+`ProfileLockGate` is built to stamp every live ticket when the app leaves the foreground and to compare that
+stamp against the clock on each read, which is the right design and is what makes the media service and the
+UI agree. The two functions that supply the stamp — `onBackgrounded` and `onForegrounded` — have no
+production caller. `MainActivity`'s one lifecycle observer drives the player's sync-on-background and
+touches nothing here. So `backgroundedAt` stays null for the whole life of the process, `isUnlocked` takes
+its `?: return true` branch every time, and a profile unlocked once is unlocked until Android kills the
+app. The three values the settings row offers are therefore indistinguishable in practice, `Immediately`
+included, and the only thing that re-arms the curtain is process death — which is real protection, since
+tickets are deliberately never persisted, but it is not what the row says. `ProfileLockGateTest`'s ten tests
+pass over all of this, because they call the two functions directly; the arithmetic is correct and nothing
+in the app reaches it.
+
+**API 26 and 27** have no `android.hardware.biometrics.BiometricPrompt` — it starts at 28 — and the older
+`FingerprintManager` would need this app to draw its own dialogue, could not report whether the sensor is
+strong, and could not be exercised by any test here either. Those two levels get a row disabled with the
+reason written on it rather than a hidden one, because a hidden row was reported from a Phase 5 device run
+as a feature that had never been built. ADR-0023 records why `androidx.biometric` was refused instead of
+adopted, including the measured detail that decided it: its own API 26/27 compatibility path constructs an
+`androidx.appcompat.app.AlertDialog`, which throws under this app's platform-parented theme. That is a
+crash on the two oldest supported levels, in a path nothing in this repository can reach. The passcode is
+the floor on every release, so no level is left without a lock; what §3.2 offers as *"PIN or biometric"* is
+one option rather than two on the oldest two.
+
+**The app-switcher thumbnail is not suppressed anywhere, and this was checked rather than assumed.** There
+is no `setRecentsScreenshotEnabled`, no `FLAG_SECURE` and no `excludeFromRecents` in the tree at any level,
+so the preview a locked profile leaves in the app switcher can still show the shelf it was last on, and the
+curtain is drawn only once the app is resumed. §15 makes screenshot protection *optional* for these screens,
+so this is a gap against ADR-0023's own threat model rather than against a stated criterion — and it is the
+threat model that makes it matter, because the person holding the unlocked phone is exactly the person who
+can open the app switcher. The shape of a fix is known and the trade is not settled:
+`setRecentsScreenshotEnabled(false)` exists from API 33 and covers 33 and above only, while below that the
+one available tool is `FLAG_SECURE`, which blocks screenshots for the whole window rather than only its
+thumbnail — and §15's other half says not to do that globally without a reason.
+
+**8.12's other half is unmet rather than satisfied by proximity.** The requirement asks for the lock
+*"especially for admin accounts"*, and what ships is offered per profile with nothing behind it: an
+administrator can decline it and nothing asks twice. Closing it needs a decision before it needs work —
+whether this app may nag, or refuse to proceed for, an admin account with no passcode — and nobody has made
+that decision.
+
+**The automated evidence covers one half of the feature, and the half CI can prove is the smaller one.**
+`PasscodeKdfTest` (ten tests) covers the derivation and the digit policy, `AutoStartDecisionTest` (five)
+covers ROUTE-002's truth table, and `ProfileLockGateTest` (ten) covers the gate's clock arithmetic — which,
+as above, is arithmetic the app itself never reaches. All three are pure JVM. Nothing touches the Keystore
+wrap, because Robolectric has no `AndroidKeyStore` provider; nothing
+touches the biometric prompt, because it is a window the system draws and there is no instrumented tier;
+and nothing touches the curtain, which has no screen test at all. That last one is worse than absent:
+`LockCurtain`'s KDoc says `LockCurtainScreenTest` asserts the disclosure block *"because a disclosure that
+can be silently deleted is not a disclosure"*, and the test it names is not in this repository, so the
+disclosure is precisely as deletable as the comment says it must not be. The curtain also sits outside the
+accessibility net described in R-29. Two of these need R-07; the screen test needs nobody's hardware.
+
+**The four bypasses the curtain names on itself are not in this table**, because a disclosed limit of a
+feature is not an unmet requirement. They are in this document's final section with the reason each one
+stays.
 
 ---
 
@@ -89,10 +172,25 @@ restart itself when Wi-Fi comes back.
 
 | Requirement | Gap | State |
 | --- | --- | --- |
-| ROUTE-002 | **Auto-play never starts when the profile is locked.** | Blocked on AUTH-005 |
+| ROUTE-002 | **Auto-play never starts when the profile is locked.** | **Closed 2026-08-21** |
 | ROUTE-002 | **`Ask` is `Ready` plus the media notification**, not a separate dismissible prompt. | Open |
 | ROUTE-002 | **The global "auto-play when a car connects" switch still exists** and overlaps the Car device's own policy. | Open |
 | PLAY-006 | **Advanced buffer values** — explicit minimum, maximum, playback-start, rebuffer-start, target bytes. Only the five presets are offered. | Open |
+
+**The lock clause is enforced**, and by a pure function rather than by a branch buried in the watcher.
+`AutoStartDecision.decide` takes a device's policy and one boolean and returns what should happen, which
+turns ROUTE-002's sentence into a truth table that can be pointed at — `OutputDeviceWatcher` previously had
+no test of its policy `when` at all, so this is also the first coverage that branch has ever had. It
+suppresses `ArmOnly` and `Ask` as well as `AutoPlay`, which is stricter than the sentence and is argued in
+ADR-0023 rather than assumed: arming makes no sound, and it puts the locked account's title, author and
+cover on the lock screen one headset press from audio, and this app has no way to intercept that press —
+there is no `onPlayerCommandRequest` and no `ForwardingPlayer` anywhere in it. `DevicePolicy.Never` still
+reports `None` rather than `Suppressed`, because the lock changed nothing about that device and a log line
+claiming otherwise would be false. The car-connect path in `PlaybackService.onPostConnect` and ROUTE-003's
+startup restore are gated by the same guard; ROUTE-003 has no lock clause of its own, so extending it was a
+decision and is recorded as one. Product priority 1 is untouched, structurally rather than by comment: the
+watcher consults the guard *after* `actions.isBusy()`, so a profile already playing is never interfered
+with.
 
 **`Ask`** currently arms the book, and the paused media session puts a resume control in the notification
 shade — which is literally *"show a notification action to resume"*, using the notification the app already
@@ -188,7 +286,7 @@ audit on 2026-08-20 found for the rest, rather than what the phase heading impli
 | **Accessibility** | **Enforced by test, unverified on a device.** The net covers every screen including the player, the mini player and the shelf, several at a doubled font scale. It has found two real defects. R-29. |
 | **Privacy/security docs** | **Rewritten 2026-08-20.** |
 | **Performance profiling** | **Not started.** No baseline profile, no benchmark module, none of PRODUCT_SPEC 17.3's four numbers measured. R-25 to R-27. |
-| **Release pipeline** | **Partly.** PR and main workflows run wrapper validation, a secret scan, `verifyDebug` with warnings-as-errors, a Room schema diff, release lint and an unsigned release assembly. Dependency verification is `strict` over 887 pinned components. Missing: SBOM, vulnerability scan, changelog, mapping archive, managed-device tests — each blocked on a decision rather than on work. R-01 to R-06. |
+| **Release pipeline** | **Partly.** PR and main workflows run wrapper validation, a secret scan, `verifyDebug` with warnings-as-errors, a Room schema diff, release lint and an unsigned release assembly. Dependency verification is `strict` over 890 pinned components. **The SBOM, the vulnerability scan and the mapping archive have landed**, the first two unblocked by ADR-0024's licence decision and the third never actually blocked. Missing: a changelog generated from labelled changes (needs a label convention) and managed-device tests (needs a runner). R-05, R-07. |
 
 | Requirement | Gap | State |
 | --- | --- | --- |
@@ -199,7 +297,7 @@ audit on 2026-08-20 found for the rest, rather than what the phase heading impli
 | 18 | **`docs/release.md` lists resolved blockers.** **Closed 2026-08-20.** Rewritten; it had named MGR-006 as open after ADR-0021 settled it, and and lists integration tests as blocked on "endpoints to test", which Phase 1 delivered. | **Closed** |
 | 18 / 24 | **Closed 2026-08-20.** `versionName` had stuck at `0.9.6-auto-shelves` for nine builds; it moves with each one now (`0.9.11-car-and-pause`, code 37). The debug console prints it, so a field report identifies the wrong build. | **Closed** |
 | PLAY-001 / 11.1 | **The car's now-playing screen names the book, not the chapter.** The browse tree answers "how far through each chapter am I" (a completion bar per row, and a header row giving progress through the whole book), but the *playback* screen still shows title and author only. An app cannot draw in a car, so the only way to change that line is to change what the session reports as the current item's `MediaMetadata` — and the book is one `MediaItem` over a custom concatenating source (ADR-0016), so `replaceMediaItem` re-prepares it and stops the audio. The supported alternative is a `ForwardingSimpleBasePlayer` wrapping the ExoPlayer and rewriting the metadata in `getState()`, plus a ticker calling `invalidateState()` at each chapter boundary because position alone raises no event. **Deliberately not built here:** that wrapper sits between the media session and the player, so a mistake in it breaks the notification, the lock screen, the headset and the car at once — product priority 1 — and there is no instrumented test or head unit to catch one (R-07, R-10). | Open, needs a device first |
-| 17.2 / 17.3 | **Nothing has been verified on hardware.** No instrumented test exists anywhere in the repository; the whole UI tier is Robolectric at `sdk = 34`. The API matrix, the two-hour soak, the process-death budget, Android Auto and the release APK are all unexercised. Three device runs have each found defects the suite passed through. | Open, and the largest |
+| 17.2 / 17.3 | **Almost nothing has been verified on hardware by a test.** The instrumented tier exists in one module — `:core:datastore`, over the profile lock's Keystore storage — and runs only against an attached device, never in CI. The whole UI tier is still Robolectric at `sdk = 34`. The API matrix, the two-hour soak, the process-death budget, Android Auto and the release APK are all unexercised. Three device runs have each found defects the suite passed through. | Open, and the largest |
 
 The full accounting of the last row, with blast radius and the cheapest mitigation for each, is
 `docs/risks.md`. It is a separate document because a gap and a risk are different questions: a gap asks
@@ -217,3 +315,19 @@ what this build does not do, and a risk asks what it does that could go wrong.
 - **Changing the download volume moves nothing.** By design — the manifest holds absolute locations, which
   is what makes the setting safe to change.
 - **Auto-play from a cold start is unreliable.** Android's, not this app's. The setting says so.
+- **The four bypasses the profile lock names on its own curtain** (AUTH-005). The media notification and the
+  lock-screen transport keep working; a connected car can still browse and play; downloaded audio is
+  ordinary unencrypted files; and the lock does nothing against somebody who can read this phone's files.
+  Each of those follows from the boundary AUTH-003 drew — *"protects profile selection, not server
+  authentication semantics"* — rather than from a criterion this build failed to meet, and each has a reason
+  it stays: there is no interception point for a media button in this app and ROUTE-001 treats one as
+  explicit intent; blanking a head unit mid-drive to hide the active profile's own content from a physically
+  present person is the worse trade; and encrypting downloaded audio is a different feature answering a
+  different threat. They are accepted exposures rather than gaps **because they are disclosed in the
+  product**, on the curtain, where the person relying on the lock reads them before they rely on it. A
+  bypass the user has been told about is a limit of the feature; one they have not been told about is a
+  defect.
+- **The device credential is refused as an unlock factor.** The obvious fallback is
+  `KeyguardManager.createConfirmDeviceCredentialIntent`, and it is deliberately not offered, because
+  ADR-0023's threat is somebody holding the already-unlocked phone and that person holds the device
+  credential by construction. A factor the attacker already has is not a factor.

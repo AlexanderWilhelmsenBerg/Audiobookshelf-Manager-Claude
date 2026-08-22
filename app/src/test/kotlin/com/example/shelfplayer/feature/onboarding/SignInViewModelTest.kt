@@ -23,6 +23,7 @@ import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.testing.MainDispatcherRule
+import com.example.shelfplayer.domain.lock.LockedProfileRecovery
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -65,7 +66,7 @@ class SignInViewModelTest {
         ),
         profileRepository = FakeProfiles(),
         authRepository = auth,
-        signIn = SignInUseCase(auth, capabilities),
+        signIn = SignInUseCase(auth, capabilities, LockedProfileRecovery { }),
     )
 
     /** PRODUCT_SPEC AUTH-001 — the address stage offers the servers this device already knows. */

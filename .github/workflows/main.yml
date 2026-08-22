@@ -51,10 +51,49 @@ jobs:
       - name: Release lint
         run: ./gradlew :app:lintRelease -Pshelfplayer.warningsAsErrors=true
 
+      # PRODUCT_SPEC 18 — the Software Bill of Materials, unblocked by ADR-0024's licence decision.
+      #
+      # Run before the release assembly rather than after it: the task resolves
+      # `releaseRuntimeClasspath` and builds nothing, so a component that reaches the app without a
+      # pinned checksum fails here in seconds instead of after a full R8 run. It is also the reason
+      # this step is not `if: always()` — a failing SBOM is a supply-chain finding, and continuing to
+      # produce an APK past one would be the wrong order of business.
+      - name: Software Bill of Materials
+        run: ./gradlew :app:sbom
+
+      # PRODUCT_SPEC 18 — the dependency vulnerability scan, over the SBOM produced above.
+      #
+      # `curl` against OSV's documented batch endpoint rather than a third-party scanning action: every
+      # other action in this repository is first-party, and the SBOM already carries every purl the query
+      # needs. `jq` is present on GitHub's Ubuntu runners.
+      #
+      # This reports what OSV knows about a published coordinate and says nothing about reachability, so
+      # an advisory in a library the app never calls fails the build exactly like one in a library it
+      # calls constantly. That is deliberate: deciding a vulnerability is unreachable belongs in a written
+      # exemption rather than in a script's silence.
+      - name: Dependency vulnerability scan
+        run: ./scripts/vulnerability-scan.sh
+
       # PRODUCT_SPEC 18 — the release build is unsigned here on purpose. Signing happens only in a
       # protected environment with the key material, never in a workflow triggered by a push.
       - name: Assemble release (unsigned)
         run: ./gradlew :app:assembleRelease -Pshelfplayer.warningsAsErrors=true
+
+      # PRODUCT_SPEC 18 — the mapping archive. R8 writes these whenever minification runs, so this
+      # needs no signing key and was never actually blocked on one; `docs/release.md` said it was.
+      # Kept for the life of the build's retention rather than a release's, which is a gap this
+      # cannot close: a crash report arriving months after a release needs the mapping from *that*
+      # build, and that is a job for the store's own upload rather than for CI.
+      - name: Upload mapping and SBOM
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-supply-chain
+          path: |
+            app/build/reports/sbom/bom.json
+            app/build/outputs/mapping/release/**
+          if-no-files-found: ignore
+          retention-days: 90
 
       - name: Upload reports
         if: always()

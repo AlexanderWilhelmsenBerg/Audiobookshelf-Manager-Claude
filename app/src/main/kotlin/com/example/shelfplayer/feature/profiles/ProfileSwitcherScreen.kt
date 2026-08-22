@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -18,6 +19,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -30,17 +32,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.model.Profile
+import com.example.shelfplayer.feature.lock.FailureText
 
 @Composable
 fun ProfileSwitcherRoute(
@@ -51,8 +58,12 @@ fun ProfileSwitcherRoute(
     viewModel: ProfileSwitcherViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val unlockPrompt by viewModel.unlockPrompt.collectAsStateWithLifecycle()
     ProfileSwitcherScreen(
         uiState = uiState,
+        unlockPrompt = unlockPrompt,
+        onUnlockSubmitted = viewModel::onUnlockSubmitted,
+        onUnlockDismissed = viewModel::onUnlockDismissed,
         actions = ProfileSwitcherActions(
             onProfileSelected = viewModel::onProfileSelected,
             onSignOut = viewModel::onSignOut,
@@ -72,6 +83,9 @@ fun ProfileSwitcherScreen(
     uiState: ProfileSwitcherUiState,
     actions: ProfileSwitcherActions,
     modifier: Modifier = Modifier,
+    unlockPrompt: UnlockPrompt? = null,
+    onUnlockSubmitted: (CharArray) -> Unit = {},
+    onUnlockDismissed: () -> Unit = {},
 ) {
     var pendingRemoval by remember { mutableStateOf<Profile?>(null) }
 
@@ -148,6 +162,15 @@ fun ProfileSwitcherScreen(
                 }
             }
         }
+    }
+
+    unlockPrompt?.let { prompt ->
+        UnlockProfileDialog(
+            prompt = prompt,
+            username = uiState.profiles.firstOrNull { it.profile.id == prompt.profileId }?.profile?.username,
+            onSubmit = onUnlockSubmitted,
+            onDismiss = onUnlockDismissed,
+        )
     }
 
     pendingRemoval?.let { profile ->
@@ -242,6 +265,16 @@ private fun ProfileCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // AUTH-005 — the same reasoning as the reauthentication mark below, and it arrived for the
+            // same reason: `SwitchProfileUseCase` refuses a locked profile, so a card that gave no sign of
+            // it offered an action the app would decline. Stating it turns a failure into an expectation.
+            if (row.hasPasscode) {
+                Text(
+                    text = stringResource(R.string.profiles_locked),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             // PRODUCT_SPEC AUTH-004 — the mark is visible rather than only enforced, so the user learns why
             // a refresh is refused before they try one.
             if (profile.requiresReauthentication) {
@@ -321,3 +354,91 @@ private fun RemoveProfileDialog(profile: Profile, onConfirm: () -> Unit, onDismi
         },
     )
 }
+
+/**
+ * AUTH-005 — the passcode field for a profile that is not the active one.
+ *
+ * ### Why this exists at all
+ *
+ * The curtain draws for the **active** profile and only that one, because `observeLockState` reads
+ * `activeProfileId`. `SwitchProfileUseCase` refuses a locked target *before* it becomes active, so without
+ * this dialog the two rules meet in a dead end: tapping a locked card produced "That account is locked.
+ * Enter its passcode to switch to it", and there was no field anywhere in the app in which to enter it. A
+ * profile locked on a device whose active account is a different one could not be opened at all — only
+ * signed in to again, which silently discards the passcode.
+ *
+ * ### What it does not do
+ *
+ * No biometric button. The platform prompt is an activity-level dialogue and stacking it on top of this one
+ * is a shape no test here can reach; the passcode is the floor on every supported release anyway, and the
+ * curtain still offers biometrics once the profile is active.
+ *
+ * No recovery block either. Re-authenticating clears a passcode, and offering that on a *switch* would put
+ * a destructive action behind a gesture that meant "show me my other account". The route stays on the
+ * curtain, where the account is the one in front of you.
+ */
+@Composable
+private fun UnlockProfileDialog(
+    prompt: UnlockPrompt,
+    username: String?,
+    onSubmit: (CharArray) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var typed by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.profiles_unlock_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = username
+                        ?.let { stringResource(R.string.profiles_unlock_body, it) }
+                        ?: stringResource(R.string.profiles_unlock_body_unknown),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedTextField(
+                    value = typed,
+                    onValueChange = { next -> typed = next.filter(Char::isDigit) },
+                    label = { Text(stringResource(R.string.lock_passcode_label)) },
+                    singleLine = true,
+                    enabled = !prompt.isChecking,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        imeAction = ImeAction.Done,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(SWITCHER_PASSCODE_FIELD),
+                )
+                // Shared with the curtain rather than mapped again here. The case that would drift first is
+                // `Unreadable`, whose whole point is that it must not read as "wrong passcode".
+                prompt.failure?.let { FailureText(it) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    // Converted to an array as late as possible and wiped by the view model. The `String`
+                    // behind the field cannot be wiped, which is `OutlinedTextField`'s limitation rather
+                    // than a choice.
+                    onSubmit(typed.toCharArray())
+                    typed = ""
+                },
+                enabled = !prompt.isChecking && typed.isNotEmpty(),
+                modifier = Modifier.testTag(SWITCHER_PASSCODE_SUBMIT),
+            ) {
+                Text(text = stringResource(R.string.lock_unlock))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !prompt.isChecking) {
+                Text(text = stringResource(R.string.profiles_remove_cancel))
+            }
+        },
+    )
+}
+
+internal const val SWITCHER_PASSCODE_FIELD = "switcher-passcode-field"
+internal const val SWITCHER_PASSCODE_SUBMIT = "switcher-passcode-submit"

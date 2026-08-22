@@ -11,6 +11,7 @@ import com.example.shelfplayer.domain.FakeAuthRepository
 import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.TEST_SERVER
+import com.example.shelfplayer.domain.lock.LockedProfileRecovery
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,7 +40,11 @@ class SignInUseCaseTest {
     private val capabilities = FakeCapabilityRepository()
     private val libraries = FakeLibraryRepository()
 
-    private fun useCase() = SignInUseCase(auth, capabilities)
+    /** Records which profiles were offered for recovery, so the sign-in route can be asserted. */
+    private val cleared = mutableListOf<ProfileId>()
+    private val recovery = LockedProfileRecovery { profileId -> cleared += profileId }
+
+    private fun useCase() = SignInUseCase(auth, capabilities, recovery)
 
     private suspend fun signIn() = useCase()("https://books.example", "ada", "pw")
 
@@ -90,6 +95,31 @@ class SignInUseCaseTest {
         assertIs<AppError.Network>(assertNotNull(outcome.warning))
         // A server whose capabilities are unknown is still signed in and still browsable.
         assertEquals(false, outcome.profile.requiresReauthentication)
+    }
+
+    /**
+     * AUTH-005 — the curtain promises that signing in again clears a forgotten passcode, and
+     * this asserts the promise is kept.
+     *
+     * The disclosure is on screen whether or not the code honours it, so without this test the sentence
+     * could be true today and quietly false after any refactor. A promise made in a security disclosure is
+     * exactly the kind that has to be pinned.
+     */
+    @Test
+    fun `a successful sign-in offers the profile for passcode recovery`() = runTest {
+        signIn()
+
+        assertEquals(listOf(TEST_PROFILE), cleared)
+    }
+
+    /** A refused credential must not reach the recovery path: nothing has been proved. */
+    @Test
+    fun `refused credentials clear no passcode`() = runTest {
+        auth.willFailToSignIn(AppError.Authentication())
+
+        useCase()("https://books.example", "ada", "wrong")
+
+        assertTrue(cleared.isEmpty())
     }
 
     private class FakeCapabilityRepository : CapabilityRepository {

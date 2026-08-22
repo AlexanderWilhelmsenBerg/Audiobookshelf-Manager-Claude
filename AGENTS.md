@@ -4,7 +4,9 @@ Read `PRODUCT_SPEC.md` before making changes.
 
 ## Mission
 
-Build ShelfPlayer as a native, offline-first Android client for Audiobookshelf. Protect playback continuity, progress accuracy, user privacy, and permission boundaries above implementation speed.
+Build BookWave as a native, offline-first Android client for Audiobookshelf. (The Kotlin packages and
+Gradle namespaces are still `com.example.shelfplayer`, deliberately — ADR-0024 moved only the
+`applicationId`, which is the part Play sees.) Protect playback continuity, progress accuracy, user privacy, and permission boundaries above implementation speed.
 
 ## Required stack
 
@@ -24,10 +26,20 @@ Build ShelfPlayer as a native, offline-first Android client for Audiobookshelf. 
 
 ```bash
 ./gradlew ktlintFormat
-./gradlew verifyDebug
+./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true
 ```
 
 Never mark work complete when `verifyDebug` fails.
+
+Add `--rerun-tasks` before believing a green result on a branch that changed a classpath (`docs/risks.md`
+R-31).
+
+On a machine with a device attached:
+
+```bash
+./scripts/check-local-environment.sh                  # what is missing, and what to do about each
+./gradlew :core:datastore:connectedDebugAndroidTest   # the instrumented tier; never runs in CI
+```
 
 ## Coding rules
 
@@ -48,6 +60,11 @@ Never mark work complete when `verifyDebug` fails.
 - Never use a database-only item removal endpoint as if it deleted source files.
 - Do not copy code from the official Audiobookshelf app without license review.
 - Preserve playback during UI refreshes and management actions.
+- After building a component, grep for its callers. Five of the eight defects in the last feature were
+  correct code that nothing reached, and no unit test detects an absent caller (`docs/risks.md` R-43).
+- When a test guards a fix, revert the fix and watch it fail before trusting it.
+- Treat prose as a deliverable of the change that invalidates it. Documentation drift has been this
+  project's most frequent defect (R-32).
 
 ## Change workflow
 

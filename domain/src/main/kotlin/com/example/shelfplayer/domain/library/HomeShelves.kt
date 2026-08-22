@@ -136,4 +136,11 @@ private fun recentlyAdded(books: List<Book>, limit: Int): List<Book> = books
     .sortedWith(compareByDescending<Book> { it.addedAt }.thenBy { it.id.value })
     .take(limit)
 
-private const val SHELF_LIMIT = 20
+/**
+ * How many items a shelf shows.
+ *
+ * `internal` rather than private so `LargeLibraryScaleTest` can assert the **shipped default** holds at
+ * 2,000 books, not merely that an explicitly passed limit is honoured. A change that made the default
+ * unbounded would be invisible on the seven-book fixture and ruinous on a real library (ADR-0025).
+ */
+internal const val SHELF_LIMIT = 20

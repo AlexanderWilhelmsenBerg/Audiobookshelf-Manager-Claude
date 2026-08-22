@@ -1256,3 +1256,17 @@ What is **not** settled is what the *web client* does when a user excludes a fil
 part-way through. The server recomputes offsets, so a stored progress position taken before the exclusion
 now points somewhere else in a shorter book. That is a server-side data question, it affects every client
 equally, and this app has no way to detect it.
+
+## The supported version range, and what is actually verified
+
+**Floor: 2.26.0.** Enforced at sign-in by `ServerVersion.Minimum` (ADR-0024). Below it the server issues no
+refresh token, so a session could not be renewed and AUTH-004's silent renewal would fail hours after a
+successful sign-in.
+
+**Verified: 2.36.0, and only 2.36.0.** Every fixture in `core/network/src/test/resources/contracts/` was
+captured against that version.
+
+So the range 2.26.0 to 2.35.x is **accepted and unverified**, and that is a decision rather than an
+oversight: refusing it would turn an untested-but-probably-fine server away for the sake of a claim this app
+cannot make either way, since 2.30 has been tested exactly as much as 2.26 has. If a report ever arrives
+from a server in that range, this is the paragraph that explains why it was allowed to connect.

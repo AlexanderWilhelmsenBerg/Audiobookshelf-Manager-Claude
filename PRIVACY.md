@@ -1,7 +1,7 @@
 # Privacy
 
 BookWave is an unofficial client for an Audiobookshelf server **you** run. This describes what the app
-does with your data, as of version 0.9.10.
+does with your data, as of version 0.9.11.
 
 ## What leaves your device
 
@@ -36,6 +36,49 @@ The app never contacts them directly, and the search terms it sends to your serv
 - Settings, in Proto DataStore. Nothing sensitive is stored there.
 - Authentication tokens, encrypted with a key held in the Android Keystore. **Passwords are never
   stored** (`AUTH-003`).
+- A profile's passcode lock, if you set one — as a verifier rather than the passcode itself, described
+  below (`AUTH-005`).
+
+## The profile passcode
+
+A profile can ask for a passcode, or for the phone's own fingerprint prompt where the phone offers one,
+when you open the app (`PRODUCT_SPEC 3.2`, `AUTH-005`). What it protects is **which account this device
+shows**: your library, your position in it, your bookmarks and your history, from somebody else holding
+your unlocked phone. A locked account cannot be switched to from another one on the device either. It is
+not a second sign-in and it changes nothing your server will accept from anybody — `AUTH-003` puts the lock
+around profile selection and not around server authentication.
+
+**The passcode itself is never stored.** What is written is a value derived from it — PBKDF2-HMAC-SHA256,
+over a salt generated for that record alone — which can confirm a later guess and cannot produce the
+original. That record is then encrypted under a key held in the Android Keystore, a separate key from the
+one the tokens use, and neither key can leave this device.
+
+That is worth stating precisely, because it is less than it sounds like. A six-digit passcode behind a key
+derivation function is not a defence against somebody who has the file: the possibilities are few enough
+that a graphics card gets through all of them. What the Keystore wrap buys is one thing, which is that
+reading the record needs code running on this phone rather than a copy of a file taken off it. The lock is
+a curtain in front of an account on a phone in somebody's hand, and that is the whole of what it is for.
+
+Your fingerprint never reaches the app. The prompt belongs to Android, which answers yes or no, and the app
+takes that answer as permission to open the account — so biometric unlock here is a rule the app follows
+rather than something the encryption enforces.
+
+Four things the lock does not cover, and the app names the same four on the screen that asks for the
+passcode rather than leaving you to discover them:
+
+- Play, pause and skip stay available from the media notification and from the phone's lock screen, and
+  the book's title and cover stay visible there.
+- A connected car can still browse and play that account's library.
+- Downloaded audio stays ordinary, unencrypted files. The passcode does not encrypt them.
+- The lock is no defence at all against somebody who can read this phone's files.
+
+If you forget the passcode, signing in to that account again with its server password clears it. That is a
+feature rather than a hole: the account password is a higher bar than six digits, and this lock was never
+about server authentication in the first place. Its cost is on screen before you choose a passcode — it
+needs your server to be reachable, so it does not work offline. The same route is the way back if the
+record becomes unreadable, which a change to the phone's own lock screen can cause: an unreadable record
+counts as locked rather than as unlocked, because the alternative is a lock that opens when a disk read
+fails.
 
 ## Backup
 

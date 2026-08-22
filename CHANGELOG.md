@@ -1,8 +1,76 @@
 # Changelog
 
-Notable changes to ShelfPlayer. Requirement identifiers refer to `PRODUCT_SPEC.md`.
+Notable changes to BookWave. Requirement identifiers refer to `PRODUCT_SPEC.md`; `AUTH-005` is
+`docs/gaps.md`'s label for the profile lock, which the specification asks for five times without ever
+giving it a section of its own.
 
 ## Unreleased
+
+### Supply chain (PRODUCT_SPEC 18)
+
+- **A Software Bill of Materials**, in CycloneDX 1.5, written by `./gradlew :app:sbom`: 175 components,
+  130 of them with a pinned SHA-256. Scope comes from `releaseRuntimeClasspath` after conflict resolution
+  and integrity from `gradle/verification-metadata.xml`, each being authoritative for one of the two. The
+  45 components with no hash each say why they have none, and all 45 publish no binary of their own — a
+  Kotlin Multiplatform parent, or a BOM. A component that *ships* without a pinned checksum fails the
+  task rather than appearing quietly in the document.
+- **A dependency vulnerability scan** over that document, against OSV. No known advisories against any
+  component as of 2026-08-21.
+- **The R8 mapping is archived** by the main-branch workflow, which needed no signing key and had been
+  recorded as though it did.
+
+### The profile lock (AUTH-005, ADR-0023)
+
+- **A per-profile passcode, and biometrics where the device has them.** Six to twelve digits behind
+  PBKDF2-HMAC-SHA256 at 210,000 iterations, with the verifier and the rate limit inside an
+  AndroidKeyStore-wrapped record under its own alias and directory. The platform biometric prompt is offered
+  from API 28; API 26 and 27 see the row disabled with the reason on it rather than hidden. Unlock tickets
+  live in memory only, so a cold start is locked and no background kill can leave one open.
+- **The curtain says what the lock does not cover.** Four bypasses named on screen: the media notification
+  and lock-screen transport keep working, a connected car can still browse and play, downloaded audio is
+  ordinary unencrypted files, and the lock does nothing against somebody who can read the phone's files.
+  ADR-0023 states the arithmetic behind that — a six-digit secret does not resist an attacker holding the
+  file, and the threat this defends against is somebody holding the already-unlocked phone.
+- **Auto-play, arming and startup restore are all suppressed while locked** (ROUTE-002, ROUTE-003). Stricter
+  than ROUTE-002's wording, which names auto-play alone: arming makes no sound but puts the locked account's
+  title, author and cover on the lock screen one headset press from audio, and there is no interception
+  point for that press. A profile that is *already playing* is never touched — the guard is consulted after
+  the busy check, so product priority 1 holds structurally.
+- **A locked profile that is not the active one is opened from the switcher.** The curtain draws for the
+  active profile alone and the switch is refused before a locked profile becomes active, which first left
+  the refusal — "Enter its passcode to switch to it" — naming a field that existed nowhere. Tapping such a
+  card now opens a passcode dialogue, driven by the same `mayActivate` the refusal uses so the two cannot
+  disagree. A profile already holding a live ticket is not asked again.
+- **Forgetting a passcode has a way out.** Signing in to the account again clears its lock, and the curtain
+  carries the password field that does it — including for a record that has exhausted its ten attempts or
+  that the Keystore can no longer unwrap, both of which offer no passcode field at all rather than one that
+  would refuse the correct value. Its cost is stated on screen: it needs the server, so it is no help
+  offline.
+- **The relock delay actually fires.** `Immediately`, `After 1 minute` and `After 15 minutes`, evaluated
+  against the clock when the ticket is read rather than expired by an event, so the media service and the UI
+  cannot give different answers. A configuration change is not treated as leaving the app, which a naive
+  activity counter would have done — demanding a passcode every time the phone turned sideways.
+- **No database migration.** The record's existence is the fact, so there is no flag that could disagree
+  with it. Schema stays at version 19.
+
+### Release decisions (ADR-0024)
+
+- **Application ID `org.homebord.bookwave`**, replacing `com.example.shelfplayer`, which Play rejects. The
+  `applicationId` only — every module's `namespace` and every Kotlin package are unchanged, because Play
+  neither sees nor cares about those and renaming them would touch the whole repository to change nothing
+  observable. Moved before any release, because Android identifies an install by this string: changing it
+  later installs a *second, empty* copy rather than renaming the first.
+- **GPL-3.0-or-later.** `LICENSE` carries the canonical text with this project's notice and an explicit
+  statement that BookWave is unaffiliated with the Audiobookshelf project. No code has been copied from
+  Audiobookshelf (ADR-0012), so this was a free choice rather than a forced one.
+- **Google Play**, which settles the artefact as an App Bundle, keeps signing keys out of the repository,
+  and requires a data-safety declaration — short and honest here, since the only network destination is the
+  user's own server.
+- **Minimum server 2.26.0, enforced at sign-in.** Below it the server issues no refreshable token, so
+  everything would appear to work and AUTH-004's silent renewal would fail hours later, reading as a random
+  sign-out. The gate **fails open** on a version it cannot parse, which is deliberately the opposite of the
+  lock: uncertainty resolves towards whichever outcome is recoverable, and refusing an unrecognised build
+  string would strand somebody with a working server.
 
 ### Server-call hardening
 

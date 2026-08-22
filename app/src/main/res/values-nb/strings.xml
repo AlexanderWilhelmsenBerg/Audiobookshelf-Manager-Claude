@@ -99,6 +99,11 @@
     <string name="profiles_remove_confirm">Fjern profil</string>
     <string name="profiles_remove_cancel">Avbryt</string>
 
+    <!-- AUTH-005 — kodel\u00e5s for en konto som ikke er den aktive. -->
+    <string name="profiles_unlock_title">Denne kontoen er l\u00e5st</string>
+    <string name="profiles_unlock_body">Skriv inn koden for %1$s for \u00e5 bytte til den.</string>
+    <string name="profiles_unlock_body_unknown">Skriv inn koden til denne kontoen for \u00e5 bytte til den.</string>
+
     <string name="library_sort_last_played">Sist spilt</string>
     <string name="library_sort_title">Tittel (A–Å)</string>
     <string name="library_sort_title_desc">Tittel (Å–A)</string>
@@ -770,4 +775,61 @@
     <string name="book_embed_server_failed_silent">Serveren din kunne ikke fullf\u00f8re skrivingen av metadataene, og oppgav ingen grunn.</string>
     <string name="book_embed_unknown">Den direkte tilkoblingen falt ut mens serveren jobbet, s\u00e5 BookWave kan ikke si hvordan det endte. Sjekk boken p\u00e5 serveren f\u00f8r du pr\u00f8ver igjen.</string>
     <string name="book_embed_dismiss">Lukk</string>
+
+    <!-- PRODUCT_SPEC AUTH-005 — kodelaas for profilen. -->
+    <string name="lock_title">Denne kontoen er l\u00e5st</string>
+    <string name="lock_account_unknown">Denne kontoen</string>
+    <string name="lock_passcode_label">Kode</string>
+    <string name="lock_unlock">L\u00e5s opp</string>
+    <string name="lock_use_biometrics">L\u00e5s opp med fingeravtrykk</string>
+    <string name="lock_wrong">Koden er ikke riktig.</string>
+    <string name="lock_exhausted">For mange fors\u00f8k. Logg inn p\u00e5 kontoen igjen for \u00e5 fjerne koden.</string>
+    <string name="lock_unreadable">Denne l\u00e5sen kan ikke lenger leses p\u00e5 enheten. Logg inn p\u00e5 kontoen igjen for \u00e5 fjerne den.</string>
+    <string name="lock_forgot_title">Har du glemt koden?</string>
+    <string name="lock_forgot_signin">Logg inn p\u00e5 kontoen igjen, og koden fjernes. Passordet til kontoen er sterkere bevis.</string>
+    <string name="lock_forgot_offline">Det krever at serveren er tilgjengelig. Frakoblet fungerer det ikke.</string>
+    <string name="lock_forgot_other_accounts">Du kan ogs\u00e5 bytte til en annen konto p\u00e5 denne enheten.</string>
+    <string name="lock_not_covered_title">Hva denne l\u00e5sen ikke dekker</string>
+    <string name="lock_not_covered_playback">Spill, pause og hopp er fortsatt tilgjengelig fra varselet og l\u00e5seskjermen. Tittelen og omslaget vises der.</string>
+    <string name="lock_not_covered_car">En tilkoblet bil kan fortsatt bla i og spille denne kontoens bibliotek.</string>
+    <string name="lock_not_covered_downloads">Nedlastet lyd lagres som vanlige filer og krypteres ikke av denne l\u00e5sen.</string>
+    <string name="lock_not_covered_files">Denne l\u00e5sen beskytter ikke dataene dine mot noen som kan lese filene p\u00e5 telefonen.</string>
+    <string name="lock_biometric_title">L\u00e5s opp BookWave</string>
+    <string name="lock_biometric_description">Bekreft at det er deg for \u00e5 \u00e5pne kontoen.</string>
+    <string name="lock_biometric_cancel">Bruk kode</string>
+    <string name="settings_section_passcode">Kodel\u00e5s</string>
+    <string name="settings_passcode_switch">Krev kode for denne kontoen</string>
+    <string name="settings_passcode_hint">Koden kreves n\u00e5r du \u00e5pner appen. Den beskytter hvilken konto enheten viser \u2014 ikke innloggingen din, og ikke de nedlastede filene.</string>
+    <string name="settings_passcode_new">Ny kode</string>
+    <string name="settings_passcode_current">N\u00e5v\u00e6rende kode</string>
+    <string name="settings_passcode_save">Lagre kode</string>
+    <string name="settings_passcode_turn_off">Sl\u00e5 av koden</string>
+    <string name="settings_passcode_biometric">Tillat oppl\u00e5sing med fingeravtrykk</string>
+    <string name="settings_passcode_biometric_unsupported">Fingeravtrykk krever Android 9 eller nyere.</string>
+    <string name="settings_passcode_biometric_no_hardware">Denne telefonen har ingen fingeravtrykksleser appen kan bruke.</string>
+    <string name="settings_passcode_biometric_none_enrolled">Ingen fingeravtrykk er satt opp p\u00e5 denne telefonen.</string>
+    <string name="settings_passcode_relock">L\u00e5s igjen</string>
+    <string name="settings_passcode_relock_immediately">Umiddelbart</string>
+    <string name="settings_passcode_relock_one_minute">Etter 1 minutt</string>
+    <string name="settings_passcode_relock_fifteen_minutes">Etter 15 minutter</string>
+    <string name="settings_passcode_lock_now">L\u00e5s n\u00e5</string>
+    <string name="settings_passcode_forgot_warning">Glemmer du koden, m\u00e5 du logge inn p\u00e5 kontoen igjen for \u00e5 fjerne den, og det krever at serveren er tilgjengelig.</string>
+    <string name="settings_passcode_length_error">En kode er mellom 6 og 12 sifre.</string>
+    <string name="settings_passcode_simple_error">Velg en kode som ikke er gjentatte eller p\u00e5f\u00f8lgende sifre.</string>
+    <string name="settings_passcode_wrong_current">Det er ikke n\u00e5v\u00e6rende kode.</string>
+    <plurals name="lock_wrong_with_remaining">
+        <item quantity="one">Koden er ikke riktig. %1$d fors\u00f8k igjen f\u00f8r du m\u00e5 vente.</item>
+        <item quantity="other">Koden er ikke riktig. %1$d fors\u00f8k igjen f\u00f8r du m\u00e5 vente.</item>
+    </plurals>
+    <plurals name="lock_backing_off">
+        <item quantity="one">For mange fors\u00f8k. Pr\u00f8v igjen om %1$d sekund.</item>
+        <item quantity="other">For mange fors\u00f8k. Pr\u00f8v igjen om %1$d sekunder.</item>
+    </plurals>
+    <string name="settings_passcode_saved">Koden er lagret.</string>
+    <string name="settings_passcode_failed">Dette kunne ikke lagres p\u00e5 denne enheten.</string>
+    <string name="settings_passcode_digits_error">En kode best\u00e5r bare av sifre.</string>
+    <string name="lock_forgot_password_label">Passord for kontoen</string>
+    <string name="lock_forgot_submit">Logg inn og fjern koden</string>
+    <string name="lock_forgot_failed">Det fungerte ikke. Sjekk passordet, og at serveren er tilgjengelig.</string>
+    <string name="profiles_locked">Krever kode</string>
 </resources>

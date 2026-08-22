@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.playback.StartupMode
+import com.example.shelfplayer.domain.lock.ProfileLockGuard
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import kotlinx.coroutines.flow.first
@@ -28,6 +29,15 @@ import javax.inject.Inject
 class ApplyStartupModeUseCase @Inject constructor(
     private val settings: PlaybackSettingsRepository,
     private val player: StartupPlayer,
+    /**
+     * AUTH-005 — a locked profile's book is not restored, and does not resume.
+     *
+     * ROUTE-003 states no lock clause; ROUTE-002 does, for a connecting device. Extending it here is a
+     * decision this app makes and ADR-0023 records, on the reasoning that the two are the same event seen
+     * from different sides: something other than a person's deliberate press is about to put a locked
+     * account's book on the lock screen, or play it out loud.
+     */
+    private val lock: ProfileLockGuard,
     private val logger: Logger,
 ) {
 
@@ -40,6 +50,13 @@ class ApplyStartupModeUseCase @Inject constructor(
         val mode = settings.observeSettings().first().startupMode
         if (mode == StartupMode.OnMediaCommand) return
         val bookId = lastPlayed ?: return
+        // Both remaining modes are suppressed, not just the one that makes a sound: `RestorePaused` would
+        // put a locked account's title, author and cover on the lock screen, one uninterceptable headset
+        // press from audio. `AutoStartDecision` documents the same reading for a connecting device.
+        if (lock.isActiveProfileLocked()) {
+            logger.info(LogCategory.Playback, "The app opened with the account locked; the player was left alone")
+            return
+        }
 
         when (mode) {
             // ROUTE-003 — "restore last item paused". A media notification appears; nothing makes a sound.

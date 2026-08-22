@@ -25,6 +25,22 @@ dependencies {
     testImplementation(projects.core.testing)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
+
+    /*
+     * PRODUCT_SPEC 17.2 / AUTH-005 — the instrumented tier, and the one place in this repository that
+     * has a reason to exist.
+     *
+     * Robolectric has no `AndroidKeyStore` provider, so `KeystoreLockCipher` and everything built on it
+     * — which is the whole profile lock's storage — is unreachable from the JVM suite. `docs/risks.md`
+     * R-39 has recorded that as untested since the feature landed. These tests run against the real
+     * provider on a real device and need nothing else: no Hilt, no UI, no biometric hardware.
+     *
+     * `:core:testing` is a JVM module, so it serves both tiers. Nothing here needs `junit-ktx`, which is
+     * the one androidx.test artifact this project has no verification checksum for.
+     */
+    androidTestImplementation(projects.core.testing)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
 }
 
 protobuf {

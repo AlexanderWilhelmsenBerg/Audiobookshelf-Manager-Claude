@@ -1,32 +1,47 @@
 # Handover
 
-Status as verified against the repository on 2026-08-05, not from recollection. Every "done" below is
+Status as verified against the repository on 2026-08-21, not from recollection. Every "done" below is
 backed by a file that exists and a check that ran.
+
+Phases 0 to 5 are complete but for one requirement, Phase 6 is open, and the work in flight is that
+requirement: AUTH-005, the profile passcode lock, on the branch `claude/auth-005-profile-lock`. It belongs
+to Phase 1, it was optional in the specification, and the owner has now pulled it into version 1
+(`PRODUCT_SPEC 24.14`). The lock is built and it is not finished — the last section of this document says
+which parts of it are wired and which are not.
+
+Three documents carry what this one deliberately does not: `docs/gaps.md` is every requirement this build
+does not meet, `docs/risks.md` is everything it does that could go wrong, and `docs/release.md` is what
+still blocks a public build. `CHANGELOG.md`'s own sections stop at Phase 2, so from Phase 3 onward this
+document and `docs/gaps.md` are the record.
 
 ## Phase 0 — complete
 
 Merged in PR #1. `./gradlew verifyDebug` green: ktlintCheck, detekt with type resolution, Android
 Lint, unit tests (including Robolectric), Room schema export and equality check, `assembleDebug`.
 
-## Phase 1 — **not complete**
+## Phase 1 — complete, with one requirement outstanding
 
-> **Read `docs/phase-1-remaining.md` first.** The table below tracks `PRODUCT_SPEC 20`'s *deliverables*,
-> and every one of them exists. That is not the same as Phase 1 being close to done: `PRODUCT_SPEC 21`
-> makes a requirement complete only when its **acceptance criteria** are met, and an audit of Phase 0 and
-> Phase 1 against those criteria found 30 open tasks — including LIB-001's websocket criterion, which
-> this plan lost entirely, and a permission refresh that `PRODUCT_SPEC 5.2` requires and no code performs.
-> Marking a deliverable done here says a screen or a repository exists, nothing more.
+> **`docs/gaps.md` is the live list.** The table below tracks `PRODUCT_SPEC 20`'s *deliverables*, and
+> marking one done here says a screen or a repository exists, nothing more — `PRODUCT_SPEC 21` makes a
+> requirement complete only when its **acceptance criteria** are met. The audit that found 30 open tasks
+> against those criteria, `docs/phase-1-remaining.md` (P1-01 to P1-30), has since been worked through:
+> per-profile item visibility is a table of its own (`profile_visible_books`, joined on every read), the
+> permission refresh `PRODUCT_SPEC 5.2` requires runs over the already-captured `POST /api/authorize`, and
+> LIB-001's websocket criterion — the one the original plan lost entirely — is `AbsRealtimeConnection` over
+> engine.io frames, with `RealtimeContractTest` and `EngineIoFramesTest` behind it. What is left of Phase 1
+> is **AUTH-005**, the optional profile lock, and it is the work in progress described at the end of this
+> document.
 
 `PRODUCT_SPEC 20` lists seven deliverables.
 
 | Deliverable | Status | Evidence |
 | --- | --- | --- |
-| Server profile | **done at the repository layer** | `:data:auth`, `DefaultAuthRepository.signIn` writes the server and profile rows, stores the token, selects the profile. No screen calls it. |
-| Login | **done at the repository layer** | `AbsAuthApi` + `AbsAuthContractTest` against the committed fixtures. No screen calls it. |
+| Server profile | **done** | `:data:auth`, `DefaultAuthRepository.signIn` writes the server and profile rows, stores the token, selects the profile. Reached from the sign-in screen since step 9. |
+| Login | **done** | `AbsAuthApi` + `AbsAuthContractTest` against the committed fixtures, and a real sign-in against a real server on hardware. |
 | Secure token storage | **done** | `KeystoreTokenCipher`, `SessionTokenStore`, `SessionTokenProvider` in `:data:auth`. |
-| Capability handshake | **done** | `AbsCapabilityResolver`, `DefaultCapabilityRepository`. Runs against the bound real gateway; confirms no capability, correctly. |
+| Capability handshake | **done** | `AbsCapabilityResolver`, `DefaultCapabilityRepository`. Runs against the bound real gateway. It confirmed *no* capability, correctly, because `/status` speaks to none of them; the set fills in from observation and from Phase 5's probe. |
 | Libraries/items sync | **done** | `AbsLibraryApi`, `LibraryMapper`, `AbsLibraryContractTest`. The real gateway is bound; the demo bootstrapper is gone. |
-| Room-backed home/library/search/details | **partly done** | Reads server data, rendered on a device. Home is the shelf of all accessible books with LIB-002 search and sort; per-library browse and book details exist. **Covers are not built** (LIB-001, LIB-004), deferred by the owner. |
+| Room-backed home/library/search/details | **done** | Reads server data, rendered on a device. Home is the shelf of every accessible book with LIB-002 search and sort, and the book, series and download screens read the same Room rows. Covers were the deferral recorded below and are built: `ImageModule` gives Coil the profile's credential, so a cover path fetches as an authenticated request rather than as a public URL. |
 | Profile switch | **done** | `ProfileSwitcherScreen` + `ProfileSwitcherViewModel`, driving `SwitchProfileUseCase`. |
 | Sign-in UI | **done** | `SignInScreen` + `SignInViewModel`, two stages, address confirmed before the password. |
 
@@ -156,19 +171,25 @@ Two bugs, both fixed, and neither was where the earlier runs suggested.
    on and outlives the navigation that reaches it; home also adopts a sync recorded as running that nothing
    is running.
 
-#### Progress freshness — the remaining gap
+#### Progress freshness — closed, and how
 
-Playing in the web interface does not reach the app until a refresh, and that is the current design rather
-than a bug: PRODUCT_SPEC LIB-001 wants websocket events to update Room with a REST refresh as the fallback,
-and only the fallback exists. A full refresh is an N+1 over every item, so it is far too expensive to run
-on every foreground.
+At the time of this run, playing in the web interface did not reach the app until a refresh. That was the
+design rather than a bug — LIB-001 wants websocket events to update Room with a REST refresh as the
+fallback, and only the fallback existed — and a full refresh is an N+1 over every item, so it could not be
+run on every foreground.
 
-The cheap fix is a **progress-only sync**, and it is nearly reachable: `POST /api/authorize` already returns
-`user.mediaProgress` for the signed-in account in one request, and that endpoint is already captured and
-contract-tested. What is *not* captured is the shape of a `mediaProgress` **element** — the fixture's array
-is empty, because the seeded contract server had never played anything. Building on it now would be
-guessing at a response shape, which PRODUCT_SPEC 22.4 forbids. The next contract capture should play or seek
-an item before capturing so the array has contents; the sync is small work once it does.
+Both halves are built now, in the order the captures allowed. The cheap half came first: `POST
+/api/authorize` returns `user.mediaProgress` for the signed-in account in one request, and the capture was
+re-run with an item played first so that the shape of an *element* was recorded rather than guessed at —
+the earlier fixture's array was empty because the seeded contract server had never played anything, and
+`PRODUCT_SPEC 22.4` forbids building on an unobserved shape. `me-after-session.json` is that element and
+`socket-event-after-progress.json` is the frame that follows it. The socket came next, as
+`AbsRealtimeConnection` over engine.io frames, and `ObserveRealtimeUpdatesUseCase` deliberately writes
+nothing of its own: it hands the pushed payload to the same repository call the REST path uses, because two
+implementations of "what does a changed account mean" would drift, and the REST one is the one with the
+careful rules about not overwriting an unsynced local position. The socket's contribution is latency, not
+data. `PRODUCT_SPEC SYNC-003` keeps a persistent background connection out of scope, so the connection
+lives as long as something collects it.
 
 ### Fifth device run — the acceptance plan, in the app
 
@@ -253,60 +274,62 @@ The plan was run end to end. Most of it passed; four findings are defects and tw
   and displays the username the *server* returned rather than what was typed, so it cannot show one
   account under another's name.
 
-#### Asked for and not built — the next slice
+#### Asked for and not built — and what became of each
 
-These are real, and each is more than a fix:
+These were real, and each was more than a fix. All five are settled now, four of them by being built:
 
-- **Websocket for live progress** (LIB-001's last bullet, SYNC-002). Audiobookshelf uses socket.io, which
-  is a new dependency and a new contract to capture. Until it exists, progress played elsewhere arrives on
-  the next refresh.
-- **Server-reachable indicator**, on the shelf and against each known server on the sign-in screen. Needs
-  a reachability probe plus `ConnectivityManager` observation.
-- **Refresh when the server comes back**, which falls out of the same connectivity observation.
-- **Books appearing as the sync runs.** The write is one transaction at the end; showing them progressively
-  means chunking the fetch and writing per chunk, with reconciliation still once at the end.
-- The per-library screen has no refresh, profile or settings action.
+- **Websocket for live progress** (LIB-001's last bullet, SYNC-002) — built, as described under *Progress
+  freshness* above.
+- **Server-reachable indicator** — built on the shelf, as three distinct states rather than two:
+  unreachable, reachable, and *unknown* when the device itself is offline, because a phone with no radio
+  has learned nothing about the server. The per-server indicator on the sign-in screen was not built and
+  does not need to be: picking a known server re-probes it, which is the same information at the moment it
+  matters.
+- **Refresh when the server comes back** — built, and deliberately narrow. Only a transition *into* online
+  triggers it, and only when the last attempt actually failed: refreshing on every connectivity change
+  would re-sync the whole library each time a phone hops between Wi-Fi and mobile, which on a 490-book
+  library is 491 requests for nothing.
+- **Books appearing as the sync runs** — built, and it is the mechanism PR #28's defect lived in. The
+  catalogue list writes non-destructive previews as it arrives and the expanded fetch fills them in, with
+  reconciliation still once at the end.
+- **The per-library screen's missing actions** went away with the screen. The shelf is the only book list,
+  and the settings list of libraries became a default-library choice rather than a way in.
 
-### Exit criteria: 0 of 3 *demonstrated*, all 3 now reachable
+### Exit criteria: all 3 demonstrated on hardware
 
-Every deliverable is built, and the device run above verified a good deal of the machinery underneath
-them. What is missing for the criteria themselves is a second account, a restricted account, and an
-offline test — not code.
+The fourth device run put two real accounts on one server with one of them library-restricted, and the
+sixth ran `docs/phase-1-acceptance.md` end to end. That is what closed these, and it is worth naming the
+evidence rather than the conclusion.
 
-- Two accounts on one server can switch — **built, never run**. The repository creates both profiles
-  sharing one server row, the switcher lists them, and `SwitchProfileUseCase` swaps between them. Proven
-  by unit tests at every layer; never performed by a human on hardware.
-- Offline cached browse works — **built, never run**. The sync writes server data to Room and the UI reads
-  Room, so pulling the network cable should leave the library on screen. Nobody has tried it.
-- Unauthorized libraries never appear — **enforced, never demonstrated against a real restricted account**.
-  `AbsLibraryApi` drops an ungranted library before it can reach Room; `AbsLibraryContractTest` covers it
-  against a MockWebServer with a fabricated grant. Since the third device run the grant is also applied on
-  every read, so a grant that shrinks after a sync hides the revoked library too — proven against a real
-  in-memory database, still not against a real restricted account.
+- Two accounts on one server can switch — **demonstrated**. Both profiles share one server row, the
+  switcher lists them, and `SwitchProfileUseCase` swaps between them; the fourth run switched between a
+  root account and a restricted one, and each saw its own library.
+- Offline cached browse works — **demonstrated for the network-off case** (TC-42). What has still never
+  been performed is TC-39, force-stop and reopen with no network, which is the case that would prove the
+  cache survives the process rather than the connection. It shares its evidence with R-11.
+- Unauthorized libraries never appear — **demonstrated against a real restricted account**, and it was
+  the run that found the worst defect this project has had: a restricted account was deleting the
+  unrestricted account's books, because absence from a filtered account's sync reads exactly like
+  absence from the server. The grant is now enforced on read as well as on write, and only an account
+  holding all libraries and all tags may drive a deletion.
 
-### What closing them takes
+### What closing them took
 
-An APK, a real Audiobookshelf server, and a human. **`docs/phase-1-acceptance.md` is the executable
-version of this list** — 53 numbered cases with the exact `adb` commands, the accounts to prepare, and the
-gaps that are expected to fail so nobody raises them as defects. The short form:
+An APK, a real Audiobookshelf server, and a human — six times over, and each run found defects the whole
+test suite had passed through. **`docs/phase-1-acceptance.md` is the executable form of the criteria**: 53
+numbered cases with the exact `adb` commands, the accounts to prepare, and the gaps that are expected to
+fail so nobody raises them as defects. It is still the template for a device run, and Phase 2's waves each
+left a script of their own beside it.
 
-1. Sign in. Confirm the version and the encryption line appear before the password field, and that a
-   deliberately wrong host is rejected there rather than at the password.
-2. Sign in a **second** account on the same server, switch between them, and confirm each sees its own
-   library and its own progress.
-3. Give one account access to a subset of libraries on the server, sign it in, and confirm the others do
-   not appear. Then check the database — the requirement is that they were never *written*, which the UI
-   cannot show.
-4. Turn off the network and confirm the library is still browsable.
-5. Let a session expire, or revoke it server-side, and confirm the profile is marked rather than signed
-   out, and that the reauthentication banner appears.
+Nothing in this environment can perform any of them: `verifyDebug` compiles and unit-tests, and there is
+still no device or emulator. That has not changed in six phases, and it is the single fact that explains
+most of `docs/risks.md`.
 
-Nothing in this environment can do any of that: `verifyDebug` compiles and unit-tests, and there is no
-device or emulator.
+## Phase 1's authentication layer, in detail
 
-## What was added in this session
-
-Each commit with `verifyDebug` green. **248 unit tests pass, 0 failures.**
+Written when this was the newest work in the tree, and kept because nothing since has replaced any of it.
+Each commit landed with `verifyDebug` green; the suite was 248 unit tests then and is 111 test files today,
+still with no instrumented tier.
 
 ### `:data:auth` (AUTH-001, AUTH-002)
 
@@ -386,8 +409,12 @@ sign-out.
 stub: `/status` reports `app`, `serverVersion`, `isInit` and `authMethods`, and none of those is a
 `ServerCapability`. A version-derived capability map is rejected because a self-hosted server sits
 behind reverse proxies that break websockets and filesystems that break range requests — version is
-evidence about the software, not the deployment. Every row in `docs/api-compatibility.md`'s capability
-table still reads "No", correctly.
+evidence about the software, not the deployment.
+
+That is still the rule, and it is no longer the whole picture: Phase 3 made `RangeDownload` and
+`ChecksumOrETag` **observed** from a download that already happened rather than probed for, and Phase 5
+added a probe for the management capabilities. A capability is set by evidence in both cases; what changed
+is that a completed transfer is evidence and a version number is not.
 
 `capabilitiesDetectedAt` stays null until a handshake runs, so "we have not asked" is distinguishable
 from "the server does not support this" — SYNC-001 requires an explanation, and those are different
@@ -401,8 +428,9 @@ The previous `libraries.json` was `{"libraries": []}`: it proved the envelope ke
 A fresh container has no media, which is why. `scripts/seed-contract-media.sh` now generates one
 eight-second audiobook — silence with metadata and two chapters — using the **server image's own
 ffmpeg**, and `scripts/capture-contracts.sh` creates a library, waits for the scan to produce an item,
-and records five library shapes. Twelve fixtures are committed and CI re-captures on every
-`:core:network` change.
+and records five library shapes. Twelve fixtures were committed then; **57 are committed now**, because
+every phase since has added its own captures before it was allowed to rely on a shape, and CI re-captures
+on every `:core:network` change.
 
 **The finding that decides how LIB-001 has to be built: the item list is minified.** Each result in
 `GET /api/libraries/{id}/items` carries `media.numTracks`, `media.numChapters` and
@@ -422,12 +450,13 @@ Two capture artefacts, so they are not mistaken for server behaviour: `size` and
 `0` and `<volatile>`, and the fixture library has no series, so `library-series.json` records an empty
 `results`.
 
-## Remaining Phase 1 work
+## The Phase 1 deliverable plan, as it was built
 
-Steps 1–9 below are the *deliverable* plan and are all complete. **They were never the whole of Phase 1.**
-The acceptance-criteria audit in `docs/phase-1-remaining.md` supersedes this list: steps 10 onward
-(P1-01 … P1-30 there) are what actually remains, starting with per-profile item visibility, permission
-refresh, and the websocket criterion this list omitted.
+Steps 1–9 below are the *deliverable* plan and are all complete. **They were never the whole of Phase 1**,
+and the acceptance-criteria audit in `docs/phase-1-remaining.md` is what caught the difference: its P1-01
+to P1-30 are the criteria this list omitted, and they were built out over the phases that followed rather
+than in a step 10. The list is kept because the order is the useful part — each step needed the one above
+it, and a later phase that skipped that discipline is a later phase that had to capture a contract twice.
 
 In dependency order.
 
@@ -448,59 +477,147 @@ In dependency order.
 9. ~~**Sign-in UI and profile switch.**~~ **Done.** Two-stage sign-in, a profile switcher with sign-out and
    remove, a start destination decided from observed state, and AUTH-004's mark shown in both places.
 
-   What step 9 deliberately did *not* build, so nobody looks for it:
+   What step 9 deliberately did *not* build, and what has become of each:
 
-   - **The switcher shows no server name.** It shows display name and role. `Profile` carries a `serverId`
-     but not the server's own name, and joining the two needs a repository read the domain layer does not
-     expose. A switcher that showed the wrong server would be worse than one that shows none
-     (PRODUCT_SPEC AUTH-002 does ask for it, so this is an open item rather than a decision).
-   - **No avatar or colour.** AUTH-002 lists them as optional.
-   - **No biometric lock on profile selection.** AUTH-003 lists it as optional and explicitly not an
-     authentication mechanism.
-   - **No settings screen**, so cleartext cannot be opted into per server. The sign-in screen warns about
-     it; PRODUCT_SPEC 15's per-server exception is a SET-002 item.
+   - **The switcher showed no server name.** `Profile` carried a `serverId` and not the server's own
+     name, and a switcher that showed the wrong server would have been worse than one that showed none.
+     The fourth device run made the omission a defect rather than a trade — a household with two servers
+     cannot tell the cards apart — so each card now carries its server address, resolved through the
+     join the domain layer previously did not expose.
+   - **No avatar or colour.** AUTH-002 lists them as optional and they are still absent.
+   - **No lock on profile selection.** AUTH-003 lists it as optional and explicitly not an authentication
+     mechanism, and `PRODUCT_SPEC 24.14` left it open whether it belonged to version 1 at all. The owner
+     has since decided version 1, and that is AUTH-005 — the work in flight at the end of this document.
+   - **No settings screen**, so cleartext could not be opted into per server. Settings arrived with
+     LIB-002's shelf and now carries the server, the libraries, playback, downloads, storage, devices,
+     the launcher icon, appearance, language and diagnostics. The per-server cleartext exception is the
+     one item that never appeared, and deliberately: ADR-0009 settled `PRODUCT_SPEC 24.13` by making
+     cleartext a debug-build capability, so a release build keeps the platform's guarantee and there is
+     no advanced screen to grant an exception in.
 
-   The old text, for whoever compares: this was written as the only remaining Phase 1 work, and it was.
+## Running this locally
 
-   Ready for it:
+Everything below assumes a checkout on your own machine with a device or emulator available. **That is a
+different environment from the one most of this project was built in**, and the difference is not cosmetic:
+a cloud session has no device attached, which is the single reason the instrumented tier and the
+performance work stayed unbuilt for six phases. If you are running locally, you can do both.
 
-   - `SignInUseCase` — probe-free entry point taking URL, username and password; runs the handshake and
-     the first sync; returns the profile plus an optional warning. Tested.
-   - `SwitchProfileUseCase` — selection then credential, in that order, for the reason recorded on it.
-     Tested.
-   - `AuthRepository.probeServer` returns a `ServerCandidate` carrying the normalized URL, the detected
-     version, whether HTTPS was assumed and whether the connection is cleartext — which is exactly the
-     four things PRODUCT_SPEC 6.1 steps 3-4 want on screen before the password field.
-   - `SessionRestorer.restoreActiveSession()` returns `null` when no profile is selected, which is the
-     signal for "show onboarding rather than an empty library".
+### One-time setup
 
-   What step 9 has to build:
+Run the checker first. It reports what is missing and what to do about each thing, and it writes
+`local.properties` for you if it can find an SDK:
 
-   - `feature/onboarding`: a server-address screen (submit → `probeServer`, show version and a cleartext
-     warning), then a credentials screen (submit → `SignInUseCase`). PRODUCT_SPEC AUTH-001 wants the
-     certificate error distinguishable from a wrong password — `AppError.Security` versus
-     `AppError.Authentication`, both already produced by `NetworkErrorMapper`.
-   - `feature/profiles`: a switcher listing `ProfileRepository.observeProfiles()` with server name,
-     username and role (AUTH-002 wants all three), calling `SwitchProfileUseCase`, plus sign-out and
-     remove-profile actions calling `AuthRepository`. Removing a profile is destructive and
-     PRODUCT_SPEC 21 requires its wording reviewed: it deletes that profile's progress and downloads and
-     nothing else, and the confirmation should say so.
-   - `ShelfPlayerNavHost`: a start-destination decision. There is no profile on first launch, so the
-     graph cannot start at `home`. The decision needs to be made from state, not from a one-shot check,
-     because removing the last profile has to return the user to onboarding.
-   - A `requiresReauthentication` banner. AUTH-004's "pauses new network actions and marks the profile"
-     is enforced in the data layer already; the profile carries the flag and nothing displays it.
-   - ViewModel tests for each, and `PRODUCT_SPEC 21`'s full state list per screen: error, loading, empty,
-     offline and permission.
+```bash
+./scripts/check-local-environment.sh            # report
+./scripts/check-local-environment.sh --install  # and install missing Android SDK packages
+```
 
-   Only after that do the exit criteria become demonstrable, and demonstrating them needs a device or an
-   emulator — neither exists in this environment. Building an APK and having a human sign in to a real
-   server is the honest way to close them.
+It exits non-zero only for something that will actually stop the build. A missing device or a missing
+`jq` is a warning, because they block one task each rather than the build.
 
-## Environment notes for the next session
+What it checks, and why each:
 
-The environment this session ran in came up **without** an Android SDK and with `~/.gradle` empty, so
-"caches are warm" was not true. Recovering it took two steps and both are reliable:
+| | Needed for | Note |
+| --- | --- | --- |
+| **JDK 17 or newer** | everything | The build *targets* 17 bytecode and there is no Gradle toolchain, so the JDK running Gradle is the one that compiles. **17 is a floor, not a pin** — CI and every session so far have used 21. Android Studio bundles a suitable JDK. |
+| **Android SDK + `local.properties`** | everything | The build reads `sdk.dir` from `local.properties` and nothing else. An SDK that exists but is not written down is the commonest way a first local build fails, so the checker writes the line rather than reporting it. |
+| **`platforms;android-36`, `build-tools;36.0.0`, `platform-tools`** | everything | `compileSdk` and `targetSdk` are 36. `minSdk` is 26 and needs no platform installed. |
+| **A device or emulator** | `connectedDebugAndroidTest` only | The one capability a cloud session does not have, and the reason to run locally at all. |
+| **`jq`** | `scripts/vulnerability-scan.sh` only | `brew install jq` / `apt install jq`. `:app:sbom` works without it. |
+| **Docker** | re-capturing contract fixtures only | Not needed for ordinary work. |
+
+`--install` runs `sdkmanager` for missing SDK packages. It will **not** install a JDK or `jq`: those need
+a system package manager and `sudo`, and a script that installs a JDK unasked is one nobody should run.
+
+Nothing else is required — the Gradle wrapper fetches Gradle 8.14.3 itself, and the first build populates
+`~/.gradle` from scratch.
+
+### The commands, and which question each answers
+
+```bash
+./gradlew ktlintFormat                                   # always first; formatting failures are noise
+./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true # the gate: ktlint, detekt, lint, unit tests, Kover
+./gradlew :app:assembleDebug                             # the APK, at app/build/outputs/apk/debug/
+```
+
+`verifyDebug` is what CI runs and what a change has to pass. Cold it takes 5–8 minutes; incremental runs
+are 10–90 seconds. **Add `--rerun-tasks` before believing a green result on a branch that changed a
+classpath** — Gradle has considered test-compile tasks up to date when only the classpath moved, and that
+once let two stale test doubles pass locally and fail in CI (R-31).
+
+### The tiers that need a device — the reason to run locally at all
+
+```bash
+adb devices                                              # confirm one is attached and authorised
+./gradlew :core:datastore:connectedDebugAndroidTest      # the profile lock's storage, on real hardware
+```
+
+`connectedDebugAndroidTest` is **not** part of `verifyDebug` and never runs in CI, because CI has no
+emulator. It is the only way to execute `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest`, which
+between them cover the AndroidKeyStore wrap, the staged write, and the rate limit that lives inside the
+encrypted record — none of which Robolectric can reach, and all of which R-39 recorded as untested from
+the day AUTH-005 landed.
+
+Results land in `core/datastore/build/reports/androidTests/connected/`. The tests clean the Keystore alias
+and the `locks/` directory at both ends of every run, so a crashed run does not poison the next one.
+
+**They are safe to run on a device you actually use BookWave on**, which is not obvious and was checked
+rather than assumed. The tests delete the Keystore alias `shelfplayer.lock.v1` and wipe a `locks/`
+directory — the same names the real app uses — but the test APK installs as
+`com.example.shelfplayer.core.datastore.test`, a different package and therefore a different UID.
+AndroidKeyStore entries and `filesDir` are both scoped per UID, so the two never meet. Verified with
+`aapt2 dump badging` on the test APK rather than reasoned about.
+
+**An emulator with no lock screen configured is fine too.** `KeystoreLockCipher` sets
+`setUserAuthenticationRequired(false)` on purpose (ADR-0023), so key generation does not need a secure
+lock screen to exist.
+
+### The supply-chain checks
+
+```bash
+./gradlew :app:sbom              # CycloneDX 1.5 -> app/build/reports/sbom/bom.json
+./scripts/vulnerability-scan.sh  # asks OSV about every component in it; needs network and jq
+```
+
+`:app:sbom` fails if any component reaching the release classpath has no pinned checksum. It also prints
+the current component count, which is the authoritative source for the figures quoted in prose here and in
+ADR-0023 — those are snapshots and go stale every time a dependency moves.
+
+### Adding a dependency
+
+Not a one-line change. `org.gradle.dependency.verification` is `strict`, so a new library fails the build
+until its checksums are recorded. For a small addition, let Gradle merge them:
+
+```bash
+./gradlew --write-verification-metadata sha256 <the task that failed>
+git diff gradle/verification-metadata.xml     # review every added component before committing
+```
+
+That merges rather than rewrites — adding the instrumented tier appended exactly three components and six
+checksums, and touched nothing else. `scripts/bootstrap-dependency-verification.sh` regenerates the whole
+file and is for a version-catalogue sweep, not for one library. Budget for this before deciding a library
+is the cheap option; AUTH-005 weighed it as one of three reasons not to take `androidx.biometric`.
+
+### The contract-capture harness
+
+Only needed when a server response shape changes. It runs a real Audiobookshelf container:
+
+```bash
+docker pull ghcr.io/advplyr/audiobookshelf:2.36.0
+./scripts/seed-contract-media.sh   # then the capture task; see docs/api-compatibility.md
+```
+
+**Capture twice against the same container and `diff -ru` the outputs before committing.** CI asserts
+byte-identical captures, and the first version of the library fixtures failed that check because `lastScan`
+and the file id inside `contentUrl` vary per capture and were not scrubbed. Both are in the scrubber now. A
+*second* capture against an already-initialised server legitimately differs in `init.json`,
+`status-uninitialized.json` and `userDefaultLibraryId` — those come from the fresh-server sequence, and CI
+always starts a new container.
+
+### Notes from the cloud sessions, kept because they still apply there
+
+The container that produced most of this work came up **without** an Android SDK and with `~/.gradle`
+empty, so "caches are warm" was not true. Recovering it takes two steps and both are reliable:
 
 ```bash
 # Android SDK (dl.google.com is reachable)
@@ -512,64 +629,502 @@ $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;an
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 ```
 
-A cold `verifyDebug` took about four minutes; incremental runs are 10-90 seconds.
+**Docker needs starting by hand there**: the daemon is installed but not running. `dockerd &` works (the
+session runs as root).
 
-**Docker needs starting by hand**: the daemon is installed but not running. `dockerd &` works (the
-session runs as root). Then `docker pull ghcr.io/advplyr/audiobookshelf:2.36.0` succeeds.
+**`docker exec` and attached `docker run` hang in that sandbox.** `docker run -d` works. Any container
+command that needs output has to be run detached and its result read from a bind mount or `docker logs` —
+which is why `seed-contract-media.sh` uses `docker run --rm`, fine when CI invokes it and awkward
+interactively.
 
-**`docker exec` and attached `docker run` hang in this sandbox.** `docker run -d` works. Any
-container command that needs output has to be run detached and its result read from a bind mount or
-`docker logs` — that is why `seed-contract-media.sh` uses `docker run --rm` (which works when the
-caller is a script CI runs, but had to be run detached interactively here).
+**And no device is attached**, which is the constraint that shaped six phases of this project: the
+instrumented tier, the baseline profile, the Android Auto head unit and the two-hour soak are all blocked
+there and none of them are blocked locally.
 
-**Two captures against one server should be byte-identical.** That is what CI's drift check asserts, and
-the first version of the library fixtures failed it: `lastScan` and the file id inside `contentUrl` vary
-per capture and were not scrubbed. Both are now in the scrubber. Before committing a re-captured fixture,
-capture twice against the same container and `diff -ru` the two output directories — a false drift report
-is worse than none, because it trains a reader to ignore the check. Note that a *second* capture against
-an already-initialized server legitimately differs in `init.json`, `status-uninitialized.json` and
-`userDefaultLibraryId`: those come from the fresh-server sequence and CI always starts a new container.
+## Phase 2 — complete
 
-## Phase 2 preparation
+The streaming player, built in six waves and closed over four further pull requests, with device runs
+shaping it throughout — six of them on wave 5's branch alone, which is why `docs/phase-2-gaps.md` rather
+than the plan is that phase's authoritative checklist.
+`:playback` is the only module in the build that may name ExoPlayer, a `MediaSession` or a `Service`, which
+is what makes PLAY-001's "a single media session" structural rather than a convention somebody has to
+remember.
 
-`PRODUCT_SPEC 20` Phase 2 is the streaming player: MediaLibraryService, ExoPlayer, global timeline,
-progress sync, notification/lockscreen/headset controls, speed/skip, buffer presets, audio focus.
+Wave 0 captured 31 fixtures before anything was built, and three of its findings decided the design rather
+than being worked around. `startOffset` is a **global** offset into the book — track two of a two-file book
+reports the duration of track one — so the global timeline is arithmetic over values the server already
+sends rather than a sum this app derives and can get wrong. The offline outbox has to drain through
+`POST /api/session/local-all`, because that is the only route that reports a per-session result. And
+"finished" is thirty seconds remaining rather than PLAY-004's 95%, decided by the owner in ADR-0013,
+because 95% of a ten-hour book is half an hour from the end.
 
-**Phase 2 cannot be completed in this environment, and that is not a scheduling problem.** Its exit
-criteria are a two-hour streaming soak, process and activity recreation, media-button resume, and
-progress verified against a server. All four need a device or emulator. `verifyDebug` compiles and
-unit-tests; it does not launch the app.
+Then, in order: audio at all, with the play session's request body pinned field-for-field to the capture,
+because `supportedMimeTypes` is what makes the server direct-play rather than transcode and a transcoded
+session is a shape no fixture covers; the sleep timer, built early at the owner's request, where ADR-0014
+records that a shake **restarts** the timer rather than extending it, since a shake is made in the dark by
+somebody who has lost track of how long is left and "put it back to what I set" is the only answer they can
+predict; the global timeline and the full-screen player; progress persistence and PLAY-005's outbox, where
+every write reaches a local table before anything touches the network, because a position that was
+attempted and lost is indistinguishable afterwards from one that was never recorded; speed, skips,
+auto-rewind and buffer presets, with the presets applied when the player is *constructed*, since recreating
+a live player mid-book to honour a setting is what product priority 1 forbids; and Android Auto with
+media-button resume, which is ROUTE-001 and was the last of the phase's exit criteria.
 
-What *can* be done here without a device: the `MediaLibraryService` skeleton, the global audiobook
-timeline (`PRODUCT_SPEC 11.3` — pure arithmetic over the `startOffset` values the fixtures now
-confirm, and the highest-value thing to unit-test because errors there corrupt saved progress),
-playback source selection as a policy class, progress persistence with fake transports, and buffer and
-speed policy.
+ADR-0016 is the one to read. **A book is one timeline window.** Media3 reports the current *item's*
+position to every controller, so a playlist of files made the notification describe the file — "time left
+in this chapter" on a library with one file per chapter — and one arithmetic error in it produced a
+527-hour book. A book is now one `MediaItem` over a concatenating source, and most of that change was
+deletion: nothing converts positions any more.
 
-**Recommendation unchanged:** do not open Phase 2 until Phase 1's exit criteria pass. Progress sync
-depends on a real session and a real library, and Phase 2 built on fixture data would need reworking.
+Two failures from this phase are worth carrying forward. Bookmarks shipped in 0.9.0 with **no way to create
+one** — every layer was tested and correct, and the tests asked whether a bookmark could be *stored* and
+never whether it could be *made*. And database version 14 shipped in a build, was then edited in place, and
+crashed the one device that had installed it, so version 15 exists to undo an edit that should have been a
+new version. A shipped schema is immutable, and the exported schemas are what make that checkable.
+
+Confirmed in a car on 2026-08-14: Android Auto discovery and media-button resume. Never run at all: the
+two-hour soak (R-09).
+
+## Phase 3 — complete
+
+Downloads and offline playback, in eight slices, against the eight answers the owner gave to the plan's
+open questions (ADR-0018).
+
+The pipeline is the phase. A file is fetched into `<name>.part`, verified, and renamed; nothing is ever
+written under a final name, so a name that exists has been through the check — which is what lets the
+player and the start-up verifier trust a name instead of re-reading a hundred megabytes. The rename is
+atomic within a filesystem, so a crash leaves either a resumable part or a finished file and there is no
+third state.
+
+Resume is guarded with `If-Range`, and that is the load-bearing detail: a server that declines a range
+answers `200` with the whole file, and appending that to a partial file produces a file made of two
+different recordings — one that passes every size check there is, if the lengths happen to line up. So the
+destination is opened only once the status is known, with append set to what the response justifies, and a
+failed request never opens it at all. Verification is DL-002's four minimums, and the fourth earns its
+cost: a captive-portal login page arrives with a `200` and a truthful `Content-Length`, and only opening it
+as media fails.
+
+What this app deliberately does not claim is that the bytes match the server's. An ETag is a validator and
+not a checksum, so "Check downloaded files" verifies presence, recorded length and openability, and is
+labelled for exactly that. Retention (DL-006) is off by default, because deleting somebody's audiobook
+unattended is the most destructive thing this app can do, and when it is on it refuses four cases
+explicitly: the book that is playing, a pinned copy, a book whose progress has not reached the server, and
+a book finished more recently than the cutoff.
+
+Network policy is one switch per category rather than DL-004's three-way picker, at the owner's request:
+Wi-Fi is always allowed and is not a setting at all. Metering comes from `NET_CAPABILITY_NOT_METERED`
+rather than from the transport type, because the two disagree in both directions and both cases are common
+— a phone hotspot reports Wi-Fi and is metered, an unmetered mobile plan reports cellular.
+
+Two things landed after the slices, in the gaps pull request. `RangeDownload` and `ChecksumOrETag` became
+**observed** from a transfer that already happened, because `/status` cannot be asked whether a server
+honours a range, and the diagnostics screen was reporting a server as unable to do something it had just
+done. The gate deliberately does not skip the range request when the capability reads false: `supports`
+cannot tell "this server refused" from "nothing has asked yet", so gating on it would disable resuming
+everywhere rather than only where it does not work. And downloads learned to live on an SD card — ADR-0020
+splits the volume from the folder, because `getExternalFilesDirs` hands back ordinary `File` paths the whole
+pipeline works on unchanged, while an arbitrary folder needs SAF, where there is no atomic rename — and the
+atomic rename is the property DL-001's "atomic commit prevents a false complete state" rests on.
+
+## Phase 4 — complete
+
+`PRODUCT_SPEC 20` calls this phase the smart downloader and device automation. The smart downloader arrived
+early, as Phase 3's last slice and under ADR-0017, so what this phase actually built was the automation,
+the rename, and the three playback requirements its closeout swept up.
+
+The app is **BookWave**. `app_name` changed in both locales, along with every string that named the product
+and the `User-Agent` the server sees in its own logs. The `applicationId` deliberately did not: Android
+identifies an install by it, so changing it produces a second, empty app beside the first rather than a
+renamed one, costing a fresh sign-in and every downloaded book (ADR-0019). It is still
+`com.example.shelfplayer`, it still blocks a release, and the right moment is the first release, before
+anybody has an install to lose. Six launcher icons ship as `activity-alias` entries of which exactly one is
+enabled, and the two writes are ordered enable-then-disable — the other order leaves a window with no
+enabled launcher component, and a launcher that samples the package during it drops the app from the
+drawer and does not put it back.
+
+ROUTE-002 gives every headset, speaker, hearing aid and car this app has seen its own answer to "what
+happens when this connects". **No permission is requested, and none is needed:** `AudioDeviceCallback`
+reports every kind of output through one callback, and `AudioDeviceInfo` gives a product name without a
+grant, so a device is identified by its kind and its advertised name and never by a hardware address. Two
+identically named headsets share one policy, and the owner confirmed that trade over a permission prompt.
+Arm only is the default and auto-play is never global: arming loads the last book paused, so the button on
+the headphones starts it instantly with no app to open and no book to find, which is most of the value of
+auto-play without the part that makes noise in a quiet room.
+
+The closeout took PLAY-002's pause-or-duck, expressed as the audio *content type* the player is built with
+so that Media3's own focus handling stays in charge of the phone call and the permanent loss; ROUTE-003's
+startup mode, applied from `Application.onCreate` because opening the app means this process starting, and
+a listener who paused to read a message must not find their book restarted; and PLAY-006's rebuffer count,
+where the whole thing rests on `STATE_BUFFERING` meaning two different things — the first fill of an item
+is startup latency, running dry mid-sentence is a rebuffer, and counting the first as the second would
+report a rebuffer on every book that ever played.
+
+`docs/gaps.md` was written here, and it is the document to read before believing any status in this one.
+
+ROUTE-002's single unmet criterion was the profile lock, because there was no locked state to check. That
+is AUTH-005.
+
+## Phase 5 — complete
+
+Management tools: nine slices, one of which ships no feature at all, and the first phase in which this app
+**writes to somebody's library**.
+
+Every phase before this one could be wrong and cost the user a re-sync; this one can be wrong and cost them
+their metadata, their covers or an item. So slice 1 was not a metadata editor but a capture run, and the
+four questions the captures could not answer were settled from the Audiobookshelf project's own source
+rather than guessed at. `docs/phase-5-plan.md` numbers eight slices and MGR-007's embed metadata arrived on
+2026-08-20 as a ninth; PR #27 counts all nine, and the headline counts in the plan and in `docs/gaps.md`
+have not caught up with the ninth.
+
+What shipped: the four server-side grants persisted and enforced twice (database version 18), a capability
+probe, the metadata editor with a three-way conflict comparison (version 19), covers validated by this app
+rather than by the server, match built on a read-only search — quick match turned out not to be a preview
+at all, but to apply the change and then report it — removal from the database that never sends `?hard=1`,
+user management that never *parses* a token, and embed metadata whose outcome exists only on the websocket
+and which reports "unknown" when the connection drops, because nothing replays a missed `task_finished` and
+MGR-007's last criterion is a rule against guessing.
+
+Slice 7 is the one to read. Source-file deletion has two endpoints and **neither can prove the deletion
+happened** — a failed filesystem removal is logged on the server and discarded, and the request succeeds
+either way — so ADR-0021 records the decision to ship no such feature. MGR-006 requires the response to
+confirm the removal, and no wording could have made the app's claim true.
+
+Twelve defects were found and fixed along the way: eight by an adversarial audit against every acceptance
+criterion on 2026-08-16, and four by a device run on 2026-08-20, three of those the same shape — **a
+feature that worked perfectly and could not be reached.** The account-management row was hidden from
+non-admins, which on a device is indistinguishable from a feature that was never built and was reported as
+exactly that; `theme_mode` and `dynamic_color` had been in the settings proto since the first build with
+nothing anywhere that could write them; and a complete Norwegian translation was reachable only by changing
+the whole phone's language. `docs/gaps.md` lists all twelve, because the shapes are more useful than the
+count.
+
+## Phase 6 — in progress
+
+Phase 6 delivers seven things, and **two of them were already built** because earlier phases needed them:
+the browsable media library and the diagnostics screens. What has landed since the phase opened in PR #27:
+
+- **A risk register.** `docs/risks.md`, 42 entries as this is written, each carrying what goes wrong, how
+  bad it is if it does, and the cheapest thing that would retire it. It is a separate document from
+  `docs/gaps.md` on purpose: a gap asks what this build does not do, and a risk asks what it does that
+  could go wrong. It grows as work lands rather than only as work is finished — the last four entries are
+  AUTH-005's own, and one of them retired the entry that had described the absence of a lock.
+- **Adaptive layouts** for tablets, foldables and split screen — two panes on the book screen and the
+  player, capped sign-in, centred lists rather than stretched ones. Unverified on hardware (R-07).
+- **Accessibility enforced by test.** `AccessibilityAssertions` walks everything the semantics tree reports
+  as clickable and fails on an unlabelled control or one under Material's minimum target size, over every
+  screen with a destructive action and several at a doubled font scale. It has found two real defects, and
+  the second is one no reading of the code would have caught: at a doubled font scale the player's
+  secondary control row laid out **4dp tall** — present, announced and impossible to hit — because the
+  square artwork claimed the column's whole width as its height regardless of what was left. What no JVM
+  test can reach at all is whether a label is *useful*, whether contrast is sufficient, and what TalkBack
+  does with the reading order (R-29, R-35).
+- **Documents that describe this build.** `PRIVACY.md` and `SECURITY.md` had described Phase 0 for five
+  phases, which matters most for the one document a user reads before trusting a client with their server's
+  credentials. `docs/release.md` had listed a blocker ADR-0021 had settled. And `versionName` had stuck at
+  `0.9.6-auto-shelves` for nine builds while the code advanced, so every field report in that window
+  identified the wrong build; it moves with the code now, at `0.9.11-car-and-pause` and code 37.
+- **The car's resume tile and per-chapter progress**, and **download pause** — where the mechanism was
+  always there, since cancelling leaves the parts and enqueueing again resumes from them, and what was
+  missing was a *state*. A cancelled job left the manifest reading `Failed`, so a listener who stopped a
+  download deliberately came back to "Download failed" and an offer to retry: the app apologising for
+  having obeyed. Nothing automatic lifts a pause, so a download stopped on a metered train does not
+  restart itself when Wi-Fi comes back.
+- **PLAY-003 closed as correct rather than defective.** A gap entry had stood for four phases claiming that
+  a book whose track list excludes a file resolves positions against the wrong offsets. The server's own
+  source disposes of it: the track list is built from the *included* files and accumulates `startOffset` as
+  it goes, so an excluded file is removed before any offset exists, and the player's concatenation and the
+  book's timeline are the same coordinate space by construction. The entry had been written from the shape
+  of this app's own model — `AudioTrack.isExcluded` exists, so the server must send it — rather than from
+  the server's behaviour, and four phases of "known defect" followed from one unchecked premise.
+  `CapturedShapesTest` now fails if a fixture ever shows a hole or a flagged track.
+
+- **The supply-chain half of the release pipeline**, which ADR-0024's licence decision unblocked.
+  `./gradlew :app:sbom` writes a CycloneDX 1.5 document — **175 components, 130 with a pinned SHA-256** —
+  from two sources, each authoritative for one thing: scope from `releaseRuntimeClasspath`'s resolution
+  result, integrity from `verification-metadata.xml`. The 45 components without a hash each carry a
+  property saying why, and all 45 are `no-binary-published` (a Kotlin Multiplatform parent, or a BOM).
+  **None is `not-pinned`**, and that value fails the task rather than appearing quietly in the document —
+  verified by deleting a component's block from the metadata and watching the build name it.
+  `scripts/vulnerability-scan.sh` then asks OSV about every component: **no known advisories today**,
+  confirmed to be a real answer by poisoning the SBOM with `log4j-core:2.14.1` and watching it report all
+  seven Log4Shell entries. The workflow also archives the R8 mapping, which `docs/release.md` had wrongly
+  listed as blocked on a signing key; R8 writes one whenever minification runs.
+
+**Performance profiling: one blocker removed, the rest still needing a device.** No baseline profile, no
+benchmark module, none of `PRODUCT_SPEC 17.3`'s numbers measured (R-25, R-27). A baseline profile is
+*generated* by running a macrobenchmark on a device, and hand-writing one would be guesswork of the kind
+this project refuses elsewhere — so that half waits for hardware. Worth knowing: the *consuming* half is
+already free, because `androidx.profileinstaller:1.4.0` is on the release classpath transitively, so
+shipping a `baseline-prof.txt` needs no new dependency.
+
+**What did get resolved is what to measure, and the answer changed the target (ADR-0025).** 17.3 asks for
+a *"scrolling grid … on 2,000-item fixture library"*, and R-26 had flagged that this might be describing a
+screen the app does not have. It is: `LazyVerticalGrid`, `LazyHorizontalGrid` and `GridCells` appear **zero
+times** in the repository. Home is a `LazyColumn` of `LazyRow` shelves capped at 20 items each, the flat
+"all books" view is a list, and the library-browse destination was deliberately removed. Building the
+benchmark first would have meant inventing a grid to satisfy a measurement — the ADR-0016 mistake again,
+where a "known defect" stood for four phases on one unchecked premise.
+
+The target now measures `BooksView.List`. ADR-0025 also adds the one 17.3 could not have named, because it
+describes a grid rather than an architecture: **there is no paging anywhere**, `Flow<List<Book>>`
+materialises every visible book on every emission, and `HomeViewModel` reasons explicitly about that cost
+at 490 books — 2,000 is four times the number the code was thought about at. Whether to adopt paging is
+left to the measurement rather than assumed, for R-27's reason.
+
+The cheap prerequisite for all of it is a **seeded 2,000-item fixture generator**; the committed demo
+fixture holds 7 books, and a two-thousand-entry JSON file nobody will read a diff of is not the answer.
+
+**The instrumented tier exists now, and holds one module (R-07).** `:core:datastore` has an `androidTest`
+source set: `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest`, 27 tests over the AndroidKeyStore
+wrap, the staged write and the rate limit that lives inside the encrypted record. That slice was chosen
+first because it needs no Hilt, no Compose, no UI and no biometric hardware, so it is deterministic on any
+attached device and fails for one reason only — and because R-39 had recorded it as untested since AUTH-005
+landed.
+
+**They compile and package here; they have not been run.** A cloud session has no device. `./gradlew
+:core:datastore:assembleDebugAndroidTest` produces `datastore-debug-androidTest.apk`, which is most of the
+authoring risk gone but is not the same as a green run. Run
+`./gradlew :core:datastore:connectedDebugAndroidTest` locally with a device attached — see "Running this
+locally".
+
+Three things learnt building it, which the next module's tier will need:
+
+- **`junit-ktx` is the one `androidx.test` artifact with no checksum here**, so `@RunWith(AndroidJUnit4)`
+  costs a metadata regeneration. `AndroidJUnitRunner` runs a plain JUnit 4 class without it, and these
+  tests do.
+- **Adding the tier still needed three components pinned** — `androidx.test:runner:1.6.2`,
+  `androidx.test.services:storage:1.5.0` and an old `lifecycle-common`. `--write-verification-metadata
+  sha256` scoped to the failing task *merges* rather than rewrites: exactly 24 lines added, nothing else
+  touched.
+- **The test APK is its own package**, `com.example.shelfplayer.core.datastore.test`, so its UID differs
+  from the app's. The tests delete the alias `shelfplayer.lock.v1` and wipe a `locks/` directory using the
+  real names, and cannot reach the installed app's records — checked with `aapt2 dump badging`, not assumed.
+
+`verifyDebug` does **not** include `connectedDebugAndroidTest` and CI still has no emulator, so
+`app/build.gradle.kts`'s objection — "a test suite nothing runs is not a regression net" — is answered by a
+person running it locally rather than by CI.
+
+What remains of the release pipeline is three items and one decision: launching the release APK once,
+managed-device tests, the two-hour soak — all needing hardware — and a pull-request **label convention**,
+without which the changelog stays hand-written rather than generated.
+
+## The two hardening merges after Phase 6 opened
+
+PRs #28 and #29 are the most consequential merges in the tree, and #29 is the more important of the two.
+
+**#28 fixed four fail-closed defects, two of them serious.** Catalogue reconciliation was **deleting an
+entire library on any unchanged refresh**: a `LibrarySnapshot` carries only *expanded* items, an item the
+server reports unchanged is deliberately skipped, so a second sync of an unchanged library produced an
+empty book list, took the `rows.isEmpty()` branch and called `markAllBooksDeleted` — and every read filters
+`isDeleted = 0`, so the shelf went blank. Reconciliation now follows the validated catalogue id set minus
+the items an item-detail `404` actually proved gone. Separately, a **60-second OkHttp `callTimeout` bounded
+the Media3 stream**: `callTimeout` covers reading the body, and the media data source shared the ordinary
+API client, so any track longer than a minute was torn down mid-playback. Media3 and streaming file
+transfers now use clones of the same transport with no absolute deadline, while connect, read and write
+stay bounded so a dead peer still fails. The other two are the same shape as the first: an empty page
+mid-listing read as end-of-library and authorised deletion of the remainder, and a `206` was appended
+without checking where it started, so a cache answering another request's offset produced a file of exactly
+the right size made of two different files.
+
+**#29 answered the question #28 raised: why did nothing catch this?** A test named `refresh is idempotent
+and does not duplicate rows` had existed for months, refreshed twice, and passed, while the production path
+it covered emptied a library. It passed because `FakeAudiobookshelfGateway.listBooks` **ignored its
+`cached` argument** and returned every book on every call, so the fake never produced the shape the real
+gateway produces. Underneath that, fixture books carried no `updatedAt` stamp and `isUpToDate` requires
+one, so the skip path was unreachable regardless of what the fake did — and that absence was the blind
+spot. The fake now honours `cached.isUpToDate`, fixture books carry a stamp, and **reverting the production
+fix now fails the previously-blind test through the full repository path**, which is the only evidence
+there is that a test covers what it claims to.
+
+R-37 records the general form: a test double that does not reproduce the shape of the real thing hides
+defects behind a passing test, and this fake was not a double but a second implementation that agreed with
+nothing. R-38 records the smaller trap left behind — `onCatalogueBatch` defaults to `onBatch`, so a future
+persistence caller that forgets the sink silently gets the destructive behaviour the parameter exists to
+avoid.
+
+## AUTH-005 — complete and verified, unseen on hardware
+
+The profile passcode lock, on `claude/auth-005-profile-lock`. `PRODUCT_SPEC 24.14` asked whether profile
+PIN or biometric protection belonged to version 1 or 1.1, and **the owner has decided version 1**, which
+also unblocks ROUTE-002's last criterion. The specification asks for the lock five times — 3.2, 3.3,
+AUTH-003, 8.12 and ROUTE-002 — and only ROUTE-002 says anything about behaviour. `docs/gaps.md` collects
+them under the label AUTH-005, which is this project's name for the set and not a section the specification
+has.
+
+**ADR-0023 is the decision, and it is titled honestly:** *the profile passcode is a curtain, not a vault*.
+Ten files across four modules cite it by number for decisions they do not restate, so it had to exist before
+any of them could be reviewed. It names the threat first, because none of the design follows from the five
+sentences in the specification and all of it follows from the threat: **somebody holding this phone, already
+unlocked, who is not the account's owner.** Not a stolen device, not an attacker with the filesystem, not a
+rooted phone, and not the server's own authorisation model.
+
+The branch is finished and `verifyDebug` is green on it. **Eight defects were found in this feature after it
+first looked complete, and five of them were the same shape: correct code that nothing reached.** That ratio
+is the most useful thing in this section — see R-43, and the closing paragraphs below, which say what each
+one was.
+
+- **The record is its own proto, deliberately.** `AppSettingsDataSource.settings` catches `IOException` and
+  emits `getDefaultInstance()`, which for a settings screen is a sensible default and for a lock would be
+  **fail-open** — a corrupt file would unlock every profile. `ProfileLockRecord` is a separate schema behind
+  a separate reader, one file per profile under `filesDir/locks/`, and any failure to read, unwrap or parse
+  it returns null, which every caller treats as **locked**. Every write is staged and renamed under a mutex
+  for the same reason read the other way round: a half-written verifier fails closed, and failing closed
+  with no way back is somebody locked out of their own library permanently.
+- **The rate limit lives inside the encrypted record**, not in memory and not in settings, so a force-stop
+  cannot reset it: four free attempts, then thirty seconds doubling to a fifteen-minute cap, and at ten
+  consecutive failures the passcode is refused permanently and only signing in again clears it.
+- **The Keystore alias is separate from the session token's**, and that is not tidiness. Three mechanisms in
+  `SessionTokenStore` would otherwise reach the verifier: `clear(profileId)` iterates the token kinds and
+  would delete a fourth on sign-out, `clearAll()` calls `cipher.clear()` and would destroy the key the
+  verifier is wrapped with, and `storedCredentialCount()` counts file stems and would report a lock as a
+  saved sign-in.
+- **The honest arithmetic**, which the ADR carries rather than implies: a six-digit passcode behind
+  210,000 PBKDF2 iterations is roughly 2×10¹¹ hash iterations of search space, which one modern GPU
+  exhausts in minutes. The verifier does not resist an attacker holding the file. What the Keystore wrap
+  buys is exactly one thing — obtaining the record requires executing code on the device rather than
+  copying a file off it — and the product says so rather than implying more.
+- **Biometric unlock is app-enforced policy, not cryptography.** The stored verifier is a one-way
+  derivation, so a fingerprint cannot produce it; the gateway trusts the platform's answer and grants a
+  ticket. The device credential is **refused** as an unlock factor, because the threat this lock addresses
+  is somebody holding the already-unlocked phone, and that person has the device credential by
+  construction.
+- **The gate is in memory only.** A cold start is therefore locked, and the relock delay is evaluated
+  against the clock at *read* time, so the media service and the UI cannot disagree about whether a profile
+  is currently unlocked.
+- **ROUTE-002 is a truth table now.** `AutoStartDecision` is a pure function, and it suppresses arming and
+  asking as well as auto-play, which is **stricter than the sentence in the specification**. Arming makes no
+  sound, but it puts the locked account's title, author and cover on the lock screen, one headset press from
+  audio — and that press cannot be intercepted, because there is no `onPlayerCommandRequest` and no
+  `ForwardingPlayer` anywhere in this app. Product priority 4 decides it where the specification is silent.
+  A device set to never do anything still reports "none" rather than "suppressed", because the lock changed
+  nothing about that device and a diagnostic line claiming otherwise would be false.
+- **Nothing already playing is touched.** `OutputDeviceWatcher` consults the guard only after it has asked
+  whether the session is busy, so product priority 1 stays structural rather than remembered.
+  `SwitchProfileUseCase` refuses a switch to a locked profile *before* writing the selection, with
+  `AppError.Security`.
+- **The curtain replaces the app's content rather than overlaying it.** An overlay would leave the mini
+  player's polite live region in the semantics tree for TalkBack to read aloud over the lock, and its stop
+  button reachable. `MainActivity` draws the curtain or the app and never both, and neither while the lock
+  state is still resolving — a shelf shown for one frame before the curtain arrives is a leak with a
+  screenshot.
+- **The platform biometric API, not `androidx.biometric`**, and the reasons were measured rather than
+  assumed. The library resolves, but pulls in the full `androidx.appcompat`, where today only
+  `appcompat-resources` is on the classpath; its API 26 and 27 compatibility path constructs an AppCompat
+  dialog, which throws under this app's platform-parented theme — a crash on the two oldest supported
+  levels, in a path no test here can reach, because there is no instrumented tier at all. Adding it would
+  also mean regenerating the verification metadata for the pinned component set. So biometrics are
+  `android.hardware.biometrics.BiometricPrompt` from API 28, and **API 26 and 27 get no biometrics at
+  all** and are shown a disabled row that names the reason. The passcode is the floor on every level.
+- **The product discloses what the lock does not cover**, on the curtain itself: the notification and
+  lock-screen transport keep working, a connected car can still browse and play, downloaded audio is
+  ordinary unencrypted files, and the lock does not protect against somebody who can read the phone's
+  files.
+- **A forgotten passcode is cleared by signing in to the account again**, and that is stated as a feature
+  rather than a bypass — AUTH-003 says the lock is not about server authentication, and the account
+  password is a strictly higher bar. Its cost is on screen *before* the passcode is set: it needs the server
+  to be reachable, so it does not work offline. `SignInUseCase` calls `clearIfLocked`, which clears the
+  record of a profile that was locked and deliberately leaves alone the lock of one that was not — a profile
+  that was already unlocked is somebody re-authenticating after an expired session, and their passcode is
+  theirs.
+- **No migration.** The schema stays at 19. There is no `isLockEnabled` column and no settings field,
+  because the record's existence *is* the fact and a second copy could only agree with it or be wrong about
+  it. The profiles table was rejected for a second reason: every other column there is server-derived and is
+  rewritten on each permission refresh.
+
+**The eight defects, because the pattern in them is worth more than the list.** Numbers 1–4 and 6 are the
+same shape — code with no caller, no control or no renderer, which is R-43. The rest are prose that
+described something the repository did not contain.
+
+1. **The lock was inert.** Nothing in production called `ProfileLockGate.onBackgrounded`, so `backgroundedAt`
+   was never stamped, `isUnlocked` returned `true` for the life of the process, and all three relock delays
+   behaved identically — the curtain guarded a cold start and nothing else. Ten passing tests covered the
+   arithmetic. Fixed by `ProcessLockWatcher`, whose own test fails if the wiring is removed, and which
+   ignores `isChangingConfigurations` so a rotation is not treated as leaving the app.
+2. **The curtain was a dead end.** The recovery *logic* was wired — `SignInUseCase` called `clearIfLocked` —
+   and the curtain offered no control that reached it. An exhausted or unreadable record left only Android's
+   "clear storage". Fixed with an inline re-authentication field.
+3. **A locked profile that was not the active one could not be opened at all.** The curtain reads
+   `activeProfileId`, so it draws for one profile; the switch is refused before a locked profile becomes
+   active. Tapping such a card produced "That account is locked. Enter its passcode to switch to it" and the
+   app contained no such field anywhere. Fixed by a passcode dialogue in the switcher, driven by
+   `ProfileLockRepository.isLocked` — defined as the negation of the same `mayActivate` the refusal uses, so
+   the prompt and the refusal cannot disagree.
+4. **`USE_BIOMETRIC` was designed and never added to the manifest**, so the biometric row would have been
+   offered and then refused by the platform. Caught by lint rather than by a test.
+5. `LockCurtain`'s KDoc cited a `LockCurtainScreenTest` that did not exist. Writing it required splitting
+   `LockCurtainContent` out of the Hilt-bound composable — worth knowing, because the same shape is needed
+   for any future screen test here.
+6. **Three distinct refusal reasons were collapsed into one message**, so `111111` was refused with "a
+   passcode is between 6 and 12 digits" — two of the three reasons could not be rendered at all. Fixed by
+   moving `PasscodeRejection` into `:core:model` and carrying it through.
+7. `ProfilePasscodeStore` documented a `[LockedByFailure]` state that does not exist; the real one is
+   `PasscodeVerdict.Unreadable`.
+8. The dependency-verification figures in ADR-0023 were quoted from memory as 852 components and 1,540
+   checksums. Measured at the time they were 887 and 1,612; the instrumented tier has since added three
+   components, so they are now **890 and 1,618**. Any figure written into prose here is a snapshot — the
+   commands that produce it are in the "Running this locally" section.
+
+**Tests, all pure JVM.** Ten for the key derivation and its passcode policy, ten for the gate's ticket
+lifetime, five for ROUTE-002's truth table — the first coverage `OutputDeviceWatcher`'s policy branch has
+ever had — six for the startup-mode clause, five for `ProcessLockWatcher`'s wiring, seven for the curtain
+under Robolectric including the disclosure block, six for the switcher's prompt, and extensions to the
+sign-in and switch tests. `verifyDebug -Pshelfplayer.warningsAsErrors=true` passes.
+
+**Two guards were proved by reverting the fix and watching the test fail** — the switcher prompt (four of six
+tests go red) and, earlier on this branch, PR #29's catalogue reconciliation. That step is worth keeping:
+R-37 and R-43 are both cases where a test passed over a real defect, and the only way to know a new test
+would have caught it is to remove the fix.
+
+**Nothing about the lock has been seen by a person.** No passcode has been typed on hardware, no biometric
+prompt has ever been drawn by this app, and the disabled row has never been seen on an API 26 or 27 device.
+The app-switcher thumbnail is not suppressed on any level, which was checked rather than assumed. R-39 holds
+the Keystore wrap and the prompt; both need R-07's absent instrumented tier.
+
+**One residual hazard is recorded rather than fixed: R-44.** `clearIfLocked` fires from the ordinary sign-in
+screen too, where the user may only have meant to refresh an expired session, and nothing there mentions the
+lock — so a passcode can be removed silently. It is bounded (the profile must be locked at that moment, and
+for the active profile the only reachable sign-in is the curtain's own disclosed one) and recoverable, and
+reporting it properly needs a place to put the sentence on a screen that navigates away on success. That is
+a design question, not an oversight.
 
 ## What has never been verified
 
-Stated plainly because several of these look done from the code.
+Stated plainly because several of these look done from the code. `docs/risks.md` is the full accounting,
+with a blast radius and a cheapest mitigation for each; this is the short list, and the first entry is the
+one that explains most of the others.
 
-- **No screen in this app has ever been rendered**, on a device or an emulator. The Compose code
-  compiles and the ViewModels are unit-tested; nothing more.
-- **No sign-in has ever completed end to end from the app.** The gateway is contract-tested against
-  MockWebServer serving captured fixtures, and the repository is tested against a fake gateway. The
-  two have never been connected to a real server through the app.
-- **`KeyPermanentlyInvalidatedException` handling is covered only against a fake cipher.** Robolectric
-  does not reproduce key invalidation.
-- **The `servers`/`profiles` migration has never run on a device**, only on Robolectric's SQLite.
-- **Every capability in `docs/api-compatibility.md` reads "No"** and that is accurate — the handshake
-  confirms none.
-- **No library has ever been synced from a server by the app.** `AbsLibraryContractTest` drives the real
-  adapter against MockWebServer serving the captured fixtures, and `DefaultLibraryRepositoryTest` drives
-  the repository against the fake gateway. The two have never met a live server through the app.
-- **The grant filter has never been exercised by a genuinely restricted account.** It is enforced at the
-  gateway and covered by tests that fabricate the grant.
-- **Websocket, playback, progress, downloads, management and users are entirely unimplemented** and
-  their endpoints uncaptured.
+- **The instrumented tier covers one module.** `:core:datastore` has an `androidTest` source set over the
+  profile lock's Keystore storage, and no other module has one; it runs against an attached device and
+  never in CI. Everything else is on the JVM, and the UI tier is Robolectric at `sdk = 34` apart from two
+  files that run at more than one level because the level changes the mechanism. Most of
+  `PRODUCT_SPEC 17.2` is therefore still untested, and every device run so far has found defects the whole
+  suite passed through — eight in the audit of 2026-08-16, four in the run of 2026-08-20 (R-07, R-08).
+- **The two-hour playback soak has never run** (R-09), and **process death has never been measured**
+  against `PRODUCT_SPEC 17.3`'s ten-second progress budget (R-11). Product priority 2 is "do not lose
+  progress", and its acceptance number has never been checked.
+- **What the car has seen is two runs of an older build.** Android Auto discovery and media-button resume
+  passed in a car on 2026-08-14, and a run before that is what found the empty *Continue* tab. Everything
+  added since — the resume tile behind the *recent* root, the per-chapter completion badges, the spoken-query
+  path — has never been in a car or in the Desktop Head Unit, and every one of those is a rendering
+  contract a head unit decides (R-10).
+- **The release build is assembled and never executed** (R-12). R8 and resource shrinking run in CI and
+  nothing installs the result, so a missing keep rule is a release-only crash with a minified stack trace.
+- **`KeyPermanentlyInvalidatedException` handling is covered only against a fake cipher**, and the Keystore
+  configuration itself — GCM, the non-extractable key, `setUserAuthenticationRequired(false)` — has never
+  been exercised on hardware. Robolectric does not reproduce key invalidation. AUTH-005's lock cipher
+  inherits the whole of that gap.
+- **Two contracts are read from the server's own source rather than captured from it**, and one is captured
+  from somewhere CI cannot reach. Cover *upload* needs a multipart body and an image the capture script
+  should not invent; MGR-007's embed metadata needs an administrator on a reachable server, so neither its
+  `200` nor the `task_finished` frame carrying the outcome has been recorded from a live run. MGR-003's
+  candidate shape comes from a run against a public demo server, because Google Books answers `429` to CI's
+  addresses every time, so the committed shape and the CI fixture will keep disagreeing. Each is labelled
+  for what it is where it is used.
+- **Nothing about the lock has been seen by a person.** See the AUTH-005 section above for the specifics.
+
+The migrations, by contrast, have now run on devices — that is how the version 14 crash was found — and the
+grant filter has been exercised by a genuinely restricted account, which is how the deletion defect in the
+sixth device run was found. Both were on this list for good reason, and both came off it the hard way.
 
 ## Security note
 

@@ -211,7 +211,10 @@ Phase 1's exit criteria are exactly three:
 0.1.9 G-series. Covers, which the earlier version of this section carried forward, shipped at 0.1.9.
 
 The honest close is therefore *"Phase 1 exit criteria demonstrated; the quality gates are not"*. What is
-carried forward is no longer product scope but tooling: **no `androidTest` source set exists**, so the
+carried forward is no longer product scope but tooling. *(As of Phase 6, three of the four below have
+changed: coverage tooling, dependency verification and `values-nb` all landed, and an instrumented source
+set now exists in `:core:datastore`. This section records the state at Phase 1 close.)* **No `androidTest`
+source set existed**, so the
 UI tests PRODUCT_SPEC 17.1 lists — login, profile switching, offline home, TalkBack semantics,
 large-font and landscape layouts — have only ever been performed by hand; there is **no coverage
 tooling**, so 17.3's 80%/90% thresholds are unmeasured; **dependency verification is `off`**; and there

@@ -15,6 +15,8 @@ import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.domain.usecase.SmartDownloadUseCase
 import com.example.shelfplayer.download.WorkManagerDownloadScheduler
+import com.example.shelfplayer.feature.lock.BiometricGateway
+import com.example.shelfplayer.feature.lock.PlatformBiometricGateway
 import com.example.shelfplayer.launcher.AndroidLauncherIcons
 import com.example.shelfplayer.launcher.LauncherIcons
 import com.example.shelfplayer.log.FanOutLogSink
@@ -57,6 +59,17 @@ interface AppModule {
     @Binds
     @Singleton
     fun bindsDownloadScheduler(impl: WorkManagerDownloadScheduler): DownloadScheduler
+
+    /**
+     * AUTH-005 — the platform's biometric prompt, and the only binding for it.
+     *
+     * `PlatformBiometricGateway` rather than an `androidx.biometric` wrapper: that library's API 26/27 path
+     * builds an AppCompat dialog which throws under this app's platform theme, and there is no instrumented
+     * tier here to catch it. ADR-0023 records the trade, including what API 26 and 27 lose.
+     */
+    @Binds
+    @Singleton
+    fun bindsBiometricGateway(impl: PlatformBiometricGateway): BiometricGateway
 
     /**
      * PRODUCT_SPEC 14.4 — `logcat` and the in-app event log, from one rendered line. See [FanOutLogSink].

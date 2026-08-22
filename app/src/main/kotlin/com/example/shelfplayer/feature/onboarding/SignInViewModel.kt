@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerCandidate
+import com.example.shelfplayer.core.model.ServerVersion
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.SignInUseCase
@@ -116,15 +117,34 @@ class SignInViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = authRepository.probeServer(state.value.serverUrl)) {
                 is AppResult.Failure -> state.update { it.copy(isBusy = false, error = result.error) }
-                is AppResult.Success -> state.update {
-                    it.copy(
-                        isBusy = false,
-                        stage = SignInStage.Credentials,
-                        candidate = result.value,
-                        // The normalized address replaces what was typed, so the user can see what will
-                        // actually be contacted before they authenticate to it.
-                        serverUrl = result.value.serverUrl,
-                    )
+                is AppResult.Success -> state.update { current ->
+                    // PRODUCT_SPEC 24.4 / ADR-0024 — the version floor, enforced before a password is
+                    // typed.
+                    //
+                    // This is the only honest place for it. Below 2.26.0 the server issues no refresh
+                    // token, so `POST /login` would succeed, everything would appear to work, and
+                    // AUTH-004's silent renewal would fail hours later on a device — reading to the user
+                    // as a random sign-out with no cause they could name. A capability probe cannot catch
+                    // that, because the absence only shows up at the first renewal.
+                    if (!ServerVersion.isSupported(result.value.probe.serverVersion)) {
+                        current.copy(
+                            isBusy = false,
+                            error = AppError.ApiCompatibility(
+                                summary = "This server is too old for BookWave. It needs Audiobookshelf " +
+                                    "${ServerVersion.Minimum} or newer.",
+                                missingField = "serverVersion",
+                            ),
+                        )
+                    } else {
+                        current.copy(
+                            isBusy = false,
+                            stage = SignInStage.Credentials,
+                            candidate = result.value,
+                            // The normalized address replaces what was typed, so the user can see what will
+                            // actually be contacted before they authenticate to it.
+                            serverUrl = result.value.serverUrl,
+                        )
+                    }
                 }
             }
         }
