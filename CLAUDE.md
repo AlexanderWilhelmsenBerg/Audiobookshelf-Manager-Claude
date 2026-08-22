@@ -47,11 +47,33 @@ The authoritative requirements are in `PRODUCT_SPEC.md`. Treat its identifiers a
 
 ## Verification
 
-Run:
-
 ```bash
 ./gradlew ktlintFormat
-./gradlew verifyDebug
+./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true
+```
+
+That is the gate CI runs. Never report work complete while it fails.
+
+Add `--rerun-tasks` before believing a green result on a branch that changed a classpath: Gradle has
+considered test-compile tasks up to date when only the classpath moved, and that let two stale test
+doubles pass locally and fail in CI (`docs/risks.md` R-31).
+
+### On a machine with a device attached
+
+```bash
+./scripts/check-local-environment.sh                  # what is missing, and what to do about it
+./gradlew :core:datastore:connectedDebugAndroidTest   # the profile lock's Keystore storage, on hardware
+```
+
+`connectedDebugAndroidTest` is **not** part of `verifyDebug` and never runs in CI, which has no emulator.
+It is the only way to execute the instrumented tier. `docs/handover.md`'s "Running this locally" section
+covers the rest.
+
+### Supply chain, before a release
+
+```bash
+./gradlew :app:sbom              # fails if anything shipped is not pinned
+./scripts/vulnerability-scan.sh  # asks OSV about every component; needs jq
 ```
 
 For playback/download work, also run the relevant integration or managed-device tests.
