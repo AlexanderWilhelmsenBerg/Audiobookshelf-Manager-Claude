@@ -50,6 +50,12 @@ verification is `strict` over 890 pinned components.
 classpath changed, which once let two stale test doubles pass locally and fail in CI. See `docs/risks.md`
 R-31.
 
+## Building this locally
+
+`./scripts/check-local-environment.sh` reports whether this machine can build, test and device-test the
+app, and `--install` adds any missing Android SDK packages. `docs/handover.md`'s "Running this locally"
+section explains each requirement and which task it gates.
+
 ## What must be added before a release
 
 | Step | Requirement | Blocked on |

@@ -504,19 +504,33 @@ performance work stayed unbuilt for six phases. If you are running locally, you 
 
 ### One-time setup
 
+Run the checker first. It reports what is missing and what to do about each thing, and it writes
+`local.properties` for you if it can find an SDK:
+
 ```bash
-# 1. JDK 17. Anything newer fails: the build pins sourceCompatibility and jvmTarget to 17.
-java -version
-
-# 2. Android SDK. Android Studio installs one; point the build at it.
-echo "sdk.dir=$HOME/Android/Sdk" > local.properties     # macOS: $HOME/Library/Android/sdk
-
-# 3. Platform 36 and build-tools 36.0.0, which compileSdk/targetSdk require.
-sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+./scripts/check-local-environment.sh            # report
+./scripts/check-local-environment.sh --install  # and install missing Android SDK packages
 ```
 
-No `ANDROID_HOME` export is needed once `local.properties` exists. Nothing else is required — the Gradle
-wrapper fetches Gradle 8.14.3 itself, and the first build populates `~/.gradle` from scratch.
+It exits non-zero only for something that will actually stop the build. A missing device or a missing
+`jq` is a warning, because they block one task each rather than the build.
+
+What it checks, and why each:
+
+| | Needed for | Note |
+| --- | --- | --- |
+| **JDK 17 or newer** | everything | The build *targets* 17 bytecode and there is no Gradle toolchain, so the JDK running Gradle is the one that compiles. **17 is a floor, not a pin** — CI and every session so far have used 21. Android Studio bundles a suitable JDK. |
+| **Android SDK + `local.properties`** | everything | The build reads `sdk.dir` from `local.properties` and nothing else. An SDK that exists but is not written down is the commonest way a first local build fails, so the checker writes the line rather than reporting it. |
+| **`platforms;android-36`, `build-tools;36.0.0`, `platform-tools`** | everything | `compileSdk` and `targetSdk` are 36. `minSdk` is 26 and needs no platform installed. |
+| **A device or emulator** | `connectedDebugAndroidTest` only | The one capability a cloud session does not have, and the reason to run locally at all. |
+| **`jq`** | `scripts/vulnerability-scan.sh` only | `brew install jq` / `apt install jq`. `:app:sbom` works without it. |
+| **Docker** | re-capturing contract fixtures only | Not needed for ordinary work. |
+
+`--install` runs `sdkmanager` for missing SDK packages. It will **not** install a JDK or `jq`: those need
+a system package manager and `sudo`, and a script that installs a JDK unasked is one nobody should run.
+
+Nothing else is required — the Gradle wrapper fetches Gradle 8.14.3 itself, and the first build populates
+`~/.gradle` from scratch.
 
 ### The commands, and which question each answers
 
