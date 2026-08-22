@@ -40,9 +40,21 @@ capture from yet, so the gateway ships with a fake implementation and no wire ty
 
 ## Prerequisites
 
-- JDK 17 (the build targets Java 17 bytecode; a newer JDK works if it can run Gradle 8.14).
-- Android SDK with API 36 installed, and `ANDROID_HOME` (or `sdk.dir` in `local.properties`) set.
-- No global Gradle installation. The repository uses the Gradle Wrapper.
+```bash
+./scripts/check-local-environment.sh            # what is missing, and what to do about each
+./scripts/check-local-environment.sh --install  # and install missing Android SDK packages
+```
+
+It exits non-zero only for something that will stop the build, and writes `local.properties` for you if
+it finds an SDK that is not written down. What it looks for:
+
+- **JDK 17 or newer.** The build targets Java 17 bytecode and configures no Gradle toolchain, so the JDK
+  running Gradle is the one that compiles — 17 is a floor rather than a pin, and 21 is what CI uses.
+- **Android SDK** with `platforms;android-36`, `build-tools;36.0.0` and `platform-tools`, and `sdk.dir`
+  in `local.properties`.
+- **A device or emulator**, for `connectedDebugAndroidTest` only — see below.
+- **`jq`**, for the vulnerability scan only.
+- **No global Gradle installation.** The repository uses the Gradle Wrapper.
 
 ## Build and run
 
@@ -74,6 +86,24 @@ Individual gates:
 ./gradlew detektMain detektDebug   # detekt with type resolution
 ./gradlew lintDebug
 ./gradlew test
+```
+
+### What only runs on a device
+
+```bash
+./gradlew :core:datastore:connectedDebugAndroidTest
+```
+
+Not part of `verifyDebug`, and never run in CI, which has no emulator. It is the only way to execute the
+instrumented tier — the profile lock's AndroidKeyStore storage, which Robolectric cannot reach because it
+ships no `AndroidKeyStore` provider. Safe to run on a phone that has the app installed: the test APK has
+its own package and therefore its own UID, so it cannot touch the app's records.
+
+### Supply chain
+
+```bash
+./gradlew :app:sbom              # CycloneDX 1.5; fails if anything shipped is not pinned
+./scripts/vulnerability-scan.sh  # asks OSV about every component in it
 ```
 
 ## Connecting a test server
