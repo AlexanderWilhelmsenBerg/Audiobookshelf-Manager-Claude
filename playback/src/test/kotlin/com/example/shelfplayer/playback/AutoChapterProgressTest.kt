@@ -424,6 +424,7 @@ class AutoChapterProgressTest {
             to: Duration,
             detail: Duration?,
             at: Instant?,
+            owner: ProfileId?,
         ) = Unit
 
         override suspend fun clear(bookId: LibraryItemId) = Unit

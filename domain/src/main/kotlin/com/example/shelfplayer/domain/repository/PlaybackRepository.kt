@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import kotlin.time.Duration
 
@@ -45,9 +46,26 @@ interface PlaybackRepository {
      * A book already finished stays finished: this call moves a position, and un-finishing is a decision the
      * user makes through [setFinished], not a side effect of the last few seconds playing again.
      *
+     * ### Whose row it is, is the caller's to say
+     *
+     * [owner] closes PRODUCT_SPEC 6.5's race. The journal writes every five seconds and a profile switch takes
+     * microseconds, so a write that resolved "the active profile" *here* could start under one account and
+     * finish under another — landing one listener's position on the other's row, which is product priority 4.
+     * The player therefore names the account whose session produced the loaded book, read from the item's own
+     * extras (`MediaItems.ownerOf`), and this call honours it even when that account is no longer active.
+     *
+     * `null` falls back to the active profile, which is what every caller did before the parameter existed. It
+     * is for a caller that genuinely has no session — not a shortcut for one that could not be bothered.
+     *
      * @param position on the **global** book timeline, not a position within a file.
+     * @param owner the profile the write belongs to, or `null` to use whichever is active.
      */
-    suspend fun recordPosition(bookId: LibraryItemId, position: Duration, duration: Duration): AppResult<Unit>
+    suspend fun recordPosition(
+        bookId: LibraryItemId,
+        position: Duration,
+        duration: Duration,
+        owner: ProfileId? = null,
+    ): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC PLAY-004 — "marking finished is explicit", and so is un-marking it.

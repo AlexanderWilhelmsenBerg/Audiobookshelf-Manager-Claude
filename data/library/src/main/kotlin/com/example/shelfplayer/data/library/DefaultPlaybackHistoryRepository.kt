@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
@@ -63,8 +64,11 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
         to: Duration,
         detail: Duration?,
         at: Instant?,
+        owner: ProfileId?,
     ) = withContext(ioDispatcher) {
-        val profileId = profileRepository.activeProfileId() ?: return@withContext
+        // PRODUCT_SPEC 6.5 — the account the event belongs to, named by the player from the loaded book's
+        // own extras. Falling back to the active profile only when the caller has no session to name.
+        val profileId = owner ?: profileRepository.activeProfileId() ?: return@withContext
         val profile = profileDao.findProfile(profileId.value) ?: return@withContext
         history.record(
             entry = PlaybackHistoryEntity(

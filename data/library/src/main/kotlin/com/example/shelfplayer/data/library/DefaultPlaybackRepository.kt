@@ -172,13 +172,20 @@ class DefaultPlaybackRepository @Inject constructor(
      * server reported finished, stays finished even though replaying the last minute puts the position
      * back below the threshold. Un-finishing is a thing the user does deliberately; it is not something
      * the last few seconds of audio should be able to do on its own.
+     *
+     * ### PRODUCT_SPEC 6.5 — [owner] wins over whoever is signed in
+     *
+     * A write named for a profile is written to that profile, even when the app has since switched away. That
+     * is the point: the alternative — resolving the active profile here — is what let a journal tick that
+     * began under one account land its position on the next account's row.
      */
     override suspend fun recordPosition(
         bookId: LibraryItemId,
         position: Duration,
         duration: Duration,
+        owner: ProfileId?,
     ): AppResult<Unit> = withContext(ioDispatcher) {
-        val profileId = profileRepository.activeProfileId()
+        val profileId = owner ?: profileRepository.activeProfileId()
             ?: return@withContext AppResult.Failure(AppError.Authentication())
         val profile = profileDao.findProfile(profileId.value)
             ?: return@withContext AppResult.Failure(AppError.Authentication())
@@ -212,17 +219,34 @@ class DefaultPlaybackRepository @Inject constructor(
                 LogField.Millis("remaining", (duration - position).inWholeMilliseconds),
             )
         }
-        // PRODUCT_SPEC DL-005 — the halfway mark, considered on the position that just moved past it. It
-        // is the journal rather than the player that knows both the old position and the new one, and the
+        // PRODUCT_SPEC DL-005 / 6.5 — the halfway mark, considered on the position that just moved past it.
+        // It is the journal rather than the player that knows both the old position and the new one, and the
         // use case reads one boolean and returns when the feature is off, which is the usual case.
-        downloads.smartDownload(
-            bookId = bookId,
-            previousPosition = stored?.positionMillis ?: 0,
-            position = position.inWholeMilliseconds,
-            duration = duration.inWholeMilliseconds.takeIf { it > 0 } ?: stored?.durationMillis ?: 0,
-        )
+        //
+        // Skipped for a write that belongs to an account the app has switched away from. `SmartDownloadUseCase`
+        // resolves the *active* profile to decide what to queue, so a late journal tick from the outgoing
+        // listener would otherwise start downloading the next book in a series onto the incoming listener's
+        // storage and cellular allowance — the outgoing account's listening spending the incoming one's data.
+        if (isStillActive(profileId)) {
+            downloads.smartDownload(
+                bookId = bookId,
+                previousPosition = stored?.positionMillis ?: 0,
+                position = position.inWholeMilliseconds,
+                duration = duration.inWholeMilliseconds.takeIf { it > 0 } ?: stored?.durationMillis ?: 0,
+            )
+        }
         AppResult.Success(Unit)
     }
+
+    /**
+     * Whether [profileId] is still the account the app is acting as.
+     *
+     * Only asked by the side effects of a write, never by the write itself. A position belongs to whoever
+     * listened and is stored regardless (product priority 2); a *download* it would trigger belongs to
+     * whoever is using the app now, and starting one for somebody who has just been switched away from is
+     * the cross-account behaviour product priority 4 rules out.
+     */
+    private suspend fun isStillActive(profileId: ProfileId): Boolean = profileRepository.activeProfileId() == profileId
 
     /**
      * PRODUCT_SPEC PLAY-004 — the explicit flag, in both directions.
