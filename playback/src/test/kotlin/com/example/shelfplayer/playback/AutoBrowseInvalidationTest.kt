@@ -21,6 +21,7 @@ import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -57,6 +58,7 @@ import kotlin.time.Duration
  * `AutoBrowseInvalidationTest` proving the flow and a DHU run proving the car acts on it are two different
  * jobs; only the first one runs here.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class AutoBrowseInvalidationTest {
