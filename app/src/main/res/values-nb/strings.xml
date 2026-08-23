@@ -346,8 +346,7 @@
     <string name="settings_network_downloads">Last ned over mobildata</string>
     <string name="settings_network_smart_downloads">Last ned neste bok over mobildata</string>
     <string name="settings_section_car">I bilen</string>
-    <string name="settings_car_hint">BookWave vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på.</string>
-    <string name="settings_car_autoplay">Start avspilling når en bil kobles til</string>
+    <string name="settings_car_hint">BookWave vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på. Hva som skjer når en bil kobles til, settes sammen med de andre enhetene nedenfor.</string>
     <string name="sleep_timer_settings">Standardverdier</string>
     <string name="sleep_timer_default_length">Standard lengde</string>
     <string name="sleep_timer_rewind">Spol tilbake når sovetiden stopper avspillingen</string>

@@ -164,7 +164,6 @@ class PlaybackSettingsTabScreenTest {
                         onSkipsChanged = {},
                         onAutoRewindChanged = {},
                         onBufferChanged = {},
-                        onAutoPlayChanged = {},
                     ),
                 )
             }

@@ -281,7 +281,6 @@ class AppSettingsDataSource @Inject constructor(
                     ?: SkipIntervals.Default.forward,
             ),
             autoRewind = stored.autoRewind(),
-            autoPlayOnCarConnect = stored.autoPlayOnCarConnect,
             buffer = BufferPreset.byNameOrDefault(stored.bufferPreset.takeIf(String::isNotBlank)),
             focusBehaviour = when (stored.focusBehaviour) {
                 StoredFocusBehaviour.FOCUS_BEHAVIOUR_DUCK -> FocusBehaviour.Duck
@@ -386,9 +385,6 @@ class AppSettingsDataSource @Inject constructor(
     }
 
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */
-    suspend fun setAutoPlayOnCarConnect(enabled: Boolean) {
-        dataStore.updateData { current -> current.toBuilder().setAutoPlayOnCarConnect(enabled).build() }
-    }
 
     /**
      * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — which categories may spend cellular data.
@@ -454,6 +450,7 @@ class AppSettingsDataSource @Inject constructor(
     val knownDevices: Flow<List<KnownDevice>> = settings.map { stored ->
         stored.knownDevicesMap
             .map { (id, device) -> device.toModel(id) }
+            .withCarSeededFromLegacyFlag(stored.autoPlayOnCarConnect)
             .sortedByDescending(KnownDevice::lastSeenAt)
     }
 
@@ -558,6 +555,7 @@ class AppSettingsDataSource @Inject constructor(
     suspend fun current(): AppSettings = dataStore.updateData { it }
 
     private companion object {
+
         /** The speed's storage unit. One place, so the write and the read cannot disagree. */
         const val HUNDREDTHS = 100f
 
@@ -569,4 +567,39 @@ class AppSettingsDataSource @Inject constructor(
          */
         const val FADE_OFF = -1
     }
+}
+
+/**
+ * PRODUCT_SPEC ROUTE-002 — the retired global "auto-play when a car connects" switch, as a policy.
+ *
+ * ### Why a seed rather than a migration
+ *
+ * Until this landed there were two controls for one decision: this boolean, read by
+ * `PlaybackService.onPostConnect`, and the per-device policy, read by `OutputDeviceWatcher`. The boolean
+ * bypassed the policy's warning and its `Arm only` default, so a listener who had set their car to
+ * *Never react* could still be auto-played by a switch on a different screen. The boolean is gone from
+ * the model and from Settings; only its stored bit survives, and only as the answer to one question:
+ * what should the car's policy be for somebody who had already turned it on?
+ *
+ * A **pure read-time seed** rather than a `updateData` migration, for two reasons. It writes nothing, so
+ * a read cannot fail or race a concurrent write; and it is self-retiring — the moment the car has a
+ * stored policy of its own, that policy wins and this function stops mattering. A migration would have
+ * to run exactly once and prove it, which is a lot of machinery for one boolean.
+ *
+ * The proto field is deliberately **not** removed. Field 26 stays reserved by remaining in the schema,
+ * because a number reused later would silently read this bit as something else.
+ */
+internal fun List<KnownDevice>.withCarSeededFromLegacyFlag(legacyAutoPlay: Boolean): List<KnownDevice> {
+    // A stored car policy is the user's own, later decision. It always wins.
+    if (!legacyAutoPlay || any { it.id == KnownDevice.CAR_ID }) return this
+    return this + KnownDevice(
+        id = KnownDevice.CAR_ID,
+        kind = DeviceKind.Car,
+        displayName = KnownDevice.CAR_DISPLAY_NAME,
+        policy = DevicePolicy.AutoPlay,
+        // Epoch, so the seeded row sorts last: it describes a setting somebody once chose, not a
+        // connection that just happened, and putting it at the top of the list would be a lie about
+        // what the list is ordered by.
+        lastSeenAt = Instant.EPOCH,
+    )
 }

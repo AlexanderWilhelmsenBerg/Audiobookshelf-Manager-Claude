@@ -54,7 +54,6 @@ interface PlaybackSettingsRepository {
      * Off unless explicitly chosen. ROUTE-002 will replace this with a policy per device; one global switch
      * is the honest interim, and the setting says so.
      */
-    suspend fun setAutoPlayOnCarConnect(enabled: Boolean): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC PLAY-002 — pause or duck when something interrupts briefly.
