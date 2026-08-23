@@ -117,7 +117,7 @@ internal fun LazyListScope.playbackTab(
     finishedSection(libraries)
     downloadsSection(housekeeping, actions.onHousekeepingChanged, actions.onManageDownloads)
     networkSection(networkPolicy, actions.onNetworkPolicyChanged)
-    carSection(settings.autoPlayOnCarConnect, actions.onAutoPlayChanged)
+    carSection()
     interruptionSection(settings.focusBehaviour, actions.onFocusBehaviourChanged)
     startupSection(settings.startupMode, actions.onStartupModeChanged)
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) }
@@ -345,16 +345,20 @@ private fun LazyListScope.networkSection(policy: NetworkPolicy, onChanged: (Netw
     }
 }
 
-private fun LazyListScope.carSection(autoPlay: Boolean, onAutoPlayChanged: (Boolean) -> Unit) {
+/**
+ * PRODUCT_SPEC ROUTE-002 — what the car does, and where that is now decided.
+ *
+ * No control of its own any more. This section used to carry a global "start playing when a car connects"
+ * switch that bypassed the per-device policy's warning and its `Arm only` default, so a listener who had set
+ * their car to *Never react* in the device list could still be auto-played from here. One decision, one
+ * place: the car appears in *When a device connects* like every headset and speaker, and the hint says so.
+ *
+ * The section stays because the rest of it is still true and still worth reading — what the tabs are, and
+ * that the car opens on the last book.
+ */
+private fun LazyListScope.carSection() {
     item { SectionHeader(text = stringResource(R.string.settings_section_car)) }
     item { Hint(text = stringResource(R.string.settings_car_hint)) }
-    item {
-        SwitchRow(
-            label = stringResource(R.string.settings_car_autoplay),
-            checked = autoPlay,
-            onCheckedChange = onAutoPlayChanged,
-        )
-    }
 }
 
 /**
@@ -371,7 +375,6 @@ data class PlaybackSettingsActions(
     val onAutoRewindChanged: (AutoRewind) -> Unit,
     val onBufferChanged: (BufferPreset) -> Unit,
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. */
-    val onAutoPlayChanged: (Boolean) -> Unit,
     val onFocusBehaviourChanged: (FocusBehaviour) -> Unit = {},
     val onStartupModeChanged: (StartupMode) -> Unit = {},
     /** PRODUCT_SPEC DL-004 — which categories may spend cellular data. */

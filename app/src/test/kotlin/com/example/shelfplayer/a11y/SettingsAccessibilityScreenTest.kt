@@ -79,7 +79,6 @@ class SettingsAccessibilityScreenTest {
                     onSkipsChanged = {},
                     onAutoRewindChanged = {},
                     onBufferChanged = {},
-                    onAutoPlayChanged = {},
                     onNetworkPolicyChanged = {},
                     onHousekeepingChanged = {},
                     onFocusBehaviourChanged = {},

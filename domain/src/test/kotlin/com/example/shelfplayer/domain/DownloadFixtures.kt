@@ -225,8 +225,6 @@ internal class FakeSettingsRepository(
 
     override suspend fun setNetworkPolicy(policy: NetworkPolicy): AppResult<Unit> = notUsed()
 
-    override suspend fun setAutoPlayOnCarConnect(enabled: Boolean): AppResult<Unit> = notUsed()
-
     override fun observeSpeedFor(bookId: LibraryItemId): Flow<PlaybackSpeed?> = flowOf(null)
 
     override suspend fun speedFor(bookId: LibraryItemId): PlaybackSpeed = PlaybackSpeed.Normal

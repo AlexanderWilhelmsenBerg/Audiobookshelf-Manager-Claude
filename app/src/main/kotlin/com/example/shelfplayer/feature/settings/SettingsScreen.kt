@@ -124,7 +124,6 @@ fun SettingsRoute(
             onSkipsChanged = viewModel::onSkipIntervalsChanged,
             onAutoRewindChanged = viewModel::onAutoRewindChanged,
             onBufferChanged = viewModel::onBufferPresetChanged,
-            onAutoPlayChanged = viewModel::onAutoPlayOnCarConnectChanged,
             onNetworkPolicyChanged = viewModel::onNetworkPolicyChanged,
             onHousekeepingChanged = viewModel::onHousekeepingChanged,
             onFocusBehaviourChanged = viewModel::onFocusBehaviourChanged,

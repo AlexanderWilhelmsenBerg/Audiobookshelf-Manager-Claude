@@ -26,6 +26,7 @@ import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
+import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
@@ -37,6 +38,7 @@ import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.domain.lock.ProfileLockGuard
 import com.example.shelfplayer.domain.repository.BookmarkRepository
+import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
@@ -121,6 +123,19 @@ class PlaybackService : MediaLibraryService() {
     /** PRODUCT_SPEC ROUTE-002 — what happens when a headset, a car or a speaker connects. */
     @Inject
     internal lateinit var outputDevices: OutputDeviceWatcher
+
+    /**
+     * PRODUCT_SPEC ROUTE-002 — the car's own policy, which used to be a global switch on another screen.
+     *
+     * The same repository `OutputDeviceWatcher` reads, so a car and a headset are governed by one set of
+     * rules rather than two that can disagree.
+     */
+    @Inject
+    internal lateinit var devices: DeviceRepository
+
+    /** For stamping the car's `lastSeenAt` when it connects, like any other remembered device. */
+    @Inject
+    internal lateinit var clock: AppClock
 
     /** PRODUCT_SPEC PLAY-006 — the two readings that say whether the buffer preset is the right one. */
     @Inject
@@ -1033,37 +1048,71 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — a car connected, and the setting says start playing.
+         * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — a car connected, and its **own policy** decides what happens.
          *
-         * The **only** path in this app that starts audio without anybody pressing anything, and it is
-         * fenced accordingly: the setting is off by default, the controller has to be a car, and there has
-         * to be nothing already loaded. With the setting off a car still opens on the last book — Media3
-         * gives it the session, and the driver presses play — which is ROUTE-002's `Arm only` default
-         * arriving before per-device policy does.
+         * The only path in this app that can start audio with nobody pressing anything, and it is fenced
+         * accordingly: the controller has to be a car, there has to be nothing already loaded, and the car's
+         * policy has to say so — which by default it does not.
          *
-         * ROUTE-002's per-device policies (`Never react`, `Auto-play`, `Ask`) are not built. One global
-         * switch is the honest interim and `docs/phase-2-gaps.md` says so.
+         * ### This used to read a global switch, and that was the defect
+         *
+         * The comment here claimed ROUTE-002's per-device policies "are not built. One global switch is the
+         * honest interim". They *were* built — `AutoStartDecision` and `OutputDeviceWatcher` shipped in
+         * Phase 4 — and the interim was never retired, so two controls decided one thing. The global one
+         * bypassed the other's warning and its `Arm only` default, which meant a listener who had set their
+         * car to *Never react* could still be auto-played from a switch on a different screen. A warning that
+         * does not describe what happens is worse than no warning.
+         *
+         * ### Why the car is not left to `OutputDeviceWatcher`
+         *
+         * Because it would not see it. That watcher listens to `AudioDeviceCallback` — *audio outputs* — and
+         * a projected Android Auto or Automotive OS connection arrives here, as a media controller from a car
+         * package. `DeviceKind.Car`'s own KDoc says as much: *"a car, which reaches this app as a media
+         * controller rather than as an audio device."* So the trigger stays; only the policy moves.
+         *
+         * `remember` before `policyFor`, in that order and for the reason `OutputDeviceWatcher.onConnected`
+         * does it: a first-ever connection has to be stored before it can be asked about, or it falls through
+         * the gap between the two and gets no policy at all. It also puts the car in Settings, which is where
+         * the listener changes their mind.
          */
         override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
             if (!controller.isCar()) return
             val current = player ?: return
             if (current.mediaItemCount > 0) return
             scope.launch {
-                if (!playbackSettings.observeSettings().first().autoPlayOnCarConnect) return@launch
-                // PRODUCT_SPEC ROUTE-002 / AUTH-005 — a car connecting is the clearest case the clause
-                // covers: nobody pressed anything, and the car is a speaker in a room with other people
-                // in it.
-                if (lock.isActiveProfileLocked()) {
-                    logger.info(LogCategory.Playback, "A car connected while the account was locked; nothing started")
-                    return@launch
+                // PRODUCT_SPEC ROUTE-002 / AUTH-005 — a car connecting is the clearest case the lock clause
+                // covers: nobody pressed anything, and the car is a speaker in a room with other people in
+                // it. `CarConnection` holds the three lines so a test can reach them; see its comment on
+                // why the wiring rather than the decision is what needed covering.
+                when (CarConnection.decide(devices, lock, clock.now())) {
+                    AutoStartAction.ArmAndPlay -> startLastBook(current, play = true)
+                    // `Ask` arms as well: the paused session is what puts a resume control in the car's
+                    // shade, which is the notification ROUTE-002 asks for without a second one competing.
+                    AutoStartAction.Arm -> startLastBook(current, play = false)
+                    AutoStartAction.Suppressed -> logger.info(
+                        LogCategory.Playback,
+                        "A car connected while the account was locked; nothing started",
+                    )
+                    AutoStartAction.None -> Unit
                 }
-                val book = auto.lastPlayed() ?: return@launch
-                val queue = openQueue(book.id, startAt = null) ?: return@launch
-                logger.info(LogCategory.Playback, "A car connected and auto-play is on")
-                current.setMediaItem(queue.item, queue.startPositionMs)
-                current.prepare()
-                current.play()
             }
+        }
+
+        /** Loads the last played book, playing it or leaving it paused. Silent when there is nothing to load. */
+        private suspend fun startLastBook(current: ExoPlayer, play: Boolean) {
+            val book = auto.lastPlayed() ?: return
+            val queue = openQueue(book.id, startAt = null) ?: return
+            logger.info(
+                LogCategory.Playback,
+                if (play) {
+                    "A car connected and its policy is to start playing"
+                } else {
+                    "A car connected and the last book was made ready"
+                },
+            )
+            current.setMediaItem(queue.item, queue.startPositionMs)
+            current.prepare()
+            if (play) current.play()
         }
 
         /**
