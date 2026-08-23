@@ -258,6 +258,8 @@ Two findings are not gaps but standing rules:
 
 ---
 
+| MGR-002 / MGR-007 / USER-003 | **The three privileged writes are contract-proven.** Cover upload, metadata embed and user activation now have captured fixtures for the permitted *and* refused shapes, plus the duplicate-embed `400`, all against a real 2.36.0. `AbsManagementContractTest` replays them through the real Retrofit adapter and asserts path, method, bearer, multipart field name, query string, exact PATCH body and error mapping. | **Closed 2026-08-23 — R-51.** The review's third P0 |
+
 ## Phase 6 — Android Auto, polish, release
 
 Phase 6 delivers seven things (PRODUCT_SPEC 1750): a browsable media library, adaptive UI, accessibility,

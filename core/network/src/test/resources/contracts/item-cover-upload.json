@@ -1,0 +1,9 @@
+{
+  "body": {
+    "cover": "/metadata/items/<volatile>/cover.jpg",
+    "success": true
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}
