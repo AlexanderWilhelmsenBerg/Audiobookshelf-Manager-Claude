@@ -139,7 +139,13 @@ internal interface ManagementService {
      * **`200` means accepted, not finished.** The handler queues a task and answers immediately; the
      * outcome arrives on the websocket as `task_finished` with `action == "embed-metadata"`. Two `400`s are
      * worth telling apart from a generic failure — "already in queue or processing", and an item with no
-     * audio tracks — and both arrive as `text/plain`, like every other `sendStatus` route on this API.
+     * audio tracks.
+     *
+     * **The duplicate one arrives as `text/html`, not `text/plain`.** This comment asserted the opposite —
+     * "like every other `sendStatus` route on this API" — until `item-embed-metadata-repeated.json` was
+     * captured against 2.36.0 and showed otherwise. Nothing breaks, because `acceptanceOf` matches on the
+     * sentence rather than on the type; it is recorded because the next person to reach for the declared
+     * content type should not have to find this out the way it was found.
      *
      * `backup` is always `1` and is deliberately not a setting. Its effect is narrower than the word
      * suggests: the server copies each audio file into the *item's cache directory* before rewriting it,

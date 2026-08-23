@@ -86,7 +86,7 @@
       "deviceId": "capture",
       "deviceName": "capture capture",
       "id": "<volatile>",
-      "ipAddress": "::ffff:172.17.0.1",
+      "ipAddress": "<volatile>",
       "manufacturer": "capture",
       "model": "capture",
       "sdkVersion": "36",

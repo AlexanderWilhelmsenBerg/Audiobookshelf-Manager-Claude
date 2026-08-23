@@ -1,0 +1,6 @@
+{
+  "bodyKind": "text",
+  "bodyText": "Library item is already in queue or processing",
+  "contentType": "text/html",
+  "status": 400
+}
