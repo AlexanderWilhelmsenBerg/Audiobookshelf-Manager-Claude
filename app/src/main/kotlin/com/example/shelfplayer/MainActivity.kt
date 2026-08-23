@@ -26,7 +26,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
+import com.example.shelfplayer.feature.browse.LocalAuthorUrls
 import com.example.shelfplayer.feature.browse.LocalCoverUrls
+import com.example.shelfplayer.feature.browse.authorUrlsFor
 import com.example.shelfplayer.feature.browse.coverUrlsFor
 import com.example.shelfplayer.feature.lock.LockCurtain
 import com.example.shelfplayer.feature.lock.LockViewModel
@@ -77,6 +79,7 @@ class MainActivity : ComponentActivity() {
                         // screen.
                         CompositionLocalProvider(
                             LocalCoverUrls provides coverUrlsFor(appState.serverBaseUrls),
+                            LocalAuthorUrls provides authorUrlsFor(appState.serverBaseUrls),
                         ) {
                             ShelfPlayerContent(
                                 startDestination = if (appState.hasAnyProfile) {
@@ -134,6 +137,7 @@ private fun ShelfPlayerContent(
     val history by playerViewModel.history.collectAsStateWithLifecycle()
     val bookmarks by playerViewModel.bookmarkList.collectAsStateWithLifecycle()
     val bookmarkAdded by playerViewModel.bookmarkAdded.collectAsStateWithLifecycle()
+    val playbackMessage by playerViewModel.message.collectAsStateWithLifecycle()
     val skipControls = SkipControls(
         intervals = playbackSettings.skips,
         onBack = playerViewModel::onSkipBack,
@@ -150,6 +154,9 @@ private fun ShelfPlayerContent(
     Column(modifier = Modifier.fillMaxSize()) {
         ShelfPlayerNavHost(
             startDestination = startDestination,
+            onBookPlaySelected = playerViewModel::onPlayFromShelf,
+            playbackMessage = playbackMessage,
+            onPlaybackMessageShown = playerViewModel::onMessageShown,
             modifier = Modifier.weight(WEIGHT_FILL),
         )
         MiniPlayer(

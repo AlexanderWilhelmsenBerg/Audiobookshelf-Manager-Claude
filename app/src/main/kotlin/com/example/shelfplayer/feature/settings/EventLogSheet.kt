@@ -70,6 +70,7 @@ fun EventLogSheet(
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val formatter = remember { DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault()) }
+    val clipboardLabel = stringResource(R.string.event_log_clipboard_label)
 
     val shown = remember(events, problemsOnly) {
         events.filter { !problemsOnly || it.isProblem }.asReversed()
@@ -110,7 +111,9 @@ fun EventLogSheet(
                 TextButton(
                     onClick = {
                         val text = AnnotatedString(shown.joinToString("\n") { it.asLine(formatter) })
-                        scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(LABEL, text))) }
+                        scope.launch {
+                            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(clipboardLabel, text)))
+                        }
                     },
                     enabled = shown.isNotEmpty(),
                 ) {
@@ -165,9 +168,6 @@ private fun EventRow(event: LoggedEvent, formatter: DateTimeFormatter, modifier:
  */
 private fun LoggedEvent.asLine(formatter: DateTimeFormatter): String =
     "${formatter.format(at)} ${level.name.first()} $tag $line"
-
-/** What the clipboard entry calls itself in a paste preview. */
-private const val LABEL = "ShelfPlayer event log"
 
 /** Nearly full screen. A log at half height shows six lines, which is not a log. */
 private const val SHEET_HEIGHT = 0.92f

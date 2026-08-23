@@ -866,6 +866,7 @@ class MigrationTest {
         val migrated = openWithMigrations()
         val migratedProfiles = columnsOf(migrated.openHelper.readableDatabase, "profiles")
         val migratedServers = columnsOf(migrated.openHelper.readableDatabase, "servers")
+        val migratedAuthors = columnsOf(migrated.openHelper.readableDatabase, "authors")
         migrated.close()
         database = null
         databaseFile.delete()
@@ -874,6 +875,7 @@ class MigrationTest {
 
         assertEquals(migratedProfiles, columnsOf(fresh.openHelper.readableDatabase, "profiles"))
         assertEquals(migratedServers, columnsOf(fresh.openHelper.readableDatabase, "servers"))
+        assertEquals(migratedAuthors, columnsOf(fresh.openHelper.readableDatabase, "authors"))
     }
 
     /**
@@ -953,6 +955,29 @@ class MigrationTest {
             "profileId" in columnsOf(migrated.openHelper.writableDatabase, "metadata_draft"),
             "the draft table is scoped by profile, like every other per-account table",
         )
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-001 / 13.2 — version 20 adds author portrait facts without inventing them.
+     *
+     * Existing authors predate the listing that reports `imagePath`, so they migrate to "no confirmed
+     * portrait" and an unknown remote revision. Their identity and name remain untouched.
+     */
+    @Test
+    fun `version 20 preserves authors and defaults portrait metadata safely`() = runTest {
+        createVersion(9)
+
+        val migrated = openWithMigrations()
+
+        migrated.openHelper.readableDatabase.query(
+            "SELECT name, hasPortrait, remoteUpdatedAt FROM authors WHERE authorKey = ?",
+            arrayOf(AUTHOR_KEY),
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst(), "the existing author row was lost")
+            assertEquals("Marisol Holt", cursor.getString(0))
+            assertEquals(0, cursor.getInt(1), "unknown must not cause an image request")
+            assertTrue(cursor.isNull(2), "a server revision must not be fabricated by the migration")
+        }
     }
 
     private fun openWithMigrations(): ShelfPlayerDatabase =
@@ -1129,6 +1154,10 @@ class MigrationTest {
                 "VALUES (?, ?, 'Succeeded', 1000, 1000, NULL, NULL)",
             arrayOf(PROFILE_ID, SERVER_ID),
         )
+        db.execSQL(
+            "INSERT INTO authors (authorKey, serverId, remoteId, name) VALUES (?, ?, 'author-1', 'Marisol Holt')",
+            arrayOf(AUTHOR_KEY, SERVER_ID),
+        )
     }
 
     /** Version 6 is version 5 plus two nullable columns this seed leaves unset, as an upgrade would. */
@@ -1201,6 +1230,7 @@ class MigrationTest {
         const val LIBRARY_KEY = "srv_test:library-1"
 
         const val BOOK_KEY = "srv_test:item-1"
+        const val AUTHOR_KEY = "srv_test:author-1"
 
         /** Room's placeholder for the table name in an exported `createSql`. */
         const val TABLE_NAME_PLACEHOLDER = "\${TABLE_NAME}"

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  One of the six launcher icons SET-003 lets the listener choose between. Every variant is the same
+  The fresh-install BookWave launcher icon. Every variant is the same
   three layers, so a launcher that supports themed icons gets one from all of them.
 
   The foreground bitmaps are the artwork trimmed to its alpha bounding box and fitted into the inner
   66dp of the 108dp layer — the only region a circular mask is guaranteed to keep.
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background_indigo" />
-    <foreground android:drawable="@mipmap/ic_launcher_indigo_foreground" />
-    <monochrome android:drawable="@mipmap/ic_launcher_themed" />
+    <background android:drawable="@color/ic_launcher_background_bookwave" />
+    <foreground android:drawable="@mipmap/ic_launcher_bookwave_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_bookwave_themed" />
 </adaptive-icon>

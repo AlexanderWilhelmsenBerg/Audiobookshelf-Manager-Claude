@@ -12,6 +12,7 @@ import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
@@ -19,12 +20,15 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SeriesSequence
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
+import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
+import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -56,6 +60,7 @@ class DefaultLibraryRepositoryTest {
     private lateinit var database: ShelfPlayerDatabase
     private lateinit var repository: DefaultLibraryRepository
     private lateinit var writer: LibrarySnapshotWriter
+    private lateinit var gateway: FakeAudiobookshelfGateway
     private val sink = RecordingLogSink()
     private val fixtureProfile = ProfileId("fixture-profile")
 
@@ -75,17 +80,18 @@ class DefaultLibraryRepositoryTest {
             historyDao = database.playbackHistoryDao(),
         )
 
+        gateway = FakeAudiobookshelfGateway(
+            loader = FixtureLibraryLoader(),
+            clock = TestAppClock(),
+            logger = logger,
+            ioDispatcher = dispatcher,
+        )
         repository = DefaultLibraryRepository(
             libraryDao = database.libraryDao(),
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
             syncStateDao = database.syncStateDao(),
-            gateway = FakeAudiobookshelfGateway(
-                loader = FixtureLibraryLoader(),
-                clock = TestAppClock(),
-                logger = logger,
-                ioDispatcher = dispatcher,
-            ),
+            gateway = gateway,
             writer = writer,
             clock = TestAppClock(),
             logger = logger,
@@ -168,6 +174,64 @@ class DefaultLibraryRepositoryTest {
             SeriesSequence.Numeric("1", 1.0),
             salt.seriesMemberships.single().sequence,
         )
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-001 — an expanded book knows an author's id and name, but not portrait metadata.
+     * Re-reading that book must not turn a previously confirmed portrait back into "unknown/absent".
+     */
+    @Test
+    fun `expanded book author upserts preserve portrait metadata`() = runTest {
+        repository.refresh(fixtureProfile)
+        val before = repository.observeBook(fixtureProfile, LibraryItemId("book-voyage-1")).first()!!
+        val author = before.authors.single()
+        val revision = Instant.ofEpochMilli(1_725_000_000_000L)
+        writer.writeAuthors(listOf(author.copy(hasPortrait = true, remoteUpdatedAt = revision)))
+
+        writer.writeBook(
+            fixtureProfile,
+            BookSnapshot(
+                book = before.copy(
+                    authors = listOf(Author(author.serverId, author.id, "Marisol Holt (updated)")),
+                ),
+                tracks = emptyList(),
+                chapters = emptyList(),
+            ),
+        )
+
+        val after = repository.observeBook(fixtureProfile, before.id).first()!!.authors.single()
+        assertEquals("Marisol Holt (updated)", after.name, "the expanded response may still refresh the name")
+        assertTrue(after.hasPortrait, "but its absent portrait fields are not authoritative")
+        assertEquals(revision, after.remoteUpdatedAt)
+    }
+
+    /** Portrait decoration is optional: its endpoint failing must not make the audiobook catalogue fail. */
+    @Test
+    fun `author decoration failure does not fail a library refresh`() = runTest {
+        val failingLibrary = object : LibraryApi by gateway.library {
+            override suspend fun listAuthors(profileId: ProfileId, libraryId: LibraryId): AppResult<List<Author>> =
+                AppResult.Failure(AppError.Network())
+        }
+        val failingGateway = object : AudiobookshelfGateway by gateway {
+            override val library: LibraryApi = failingLibrary
+        }
+        repository = DefaultLibraryRepository(
+            libraryDao = database.libraryDao(),
+            profileDao = database.profileDao(),
+            progressDao = database.progressDao(),
+            syncStateDao = database.syncStateDao(),
+            gateway = failingGateway,
+            writer = writer,
+            clock = TestAppClock(),
+            logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default)),
+            ioDispatcher = UnconfinedTestDispatcher(),
+        )
+
+        val result = repository.refresh(fixtureProfile)
+
+        assertIs<AppResult.Success<Int>>(result)
+        assertEquals(7, result.value)
+        assertTrue(sink.text.contains("Author decoration refresh failed"))
     }
 
     /** PRODUCT_SPEC 5.2 — progress belongs to the profile that recorded it. */

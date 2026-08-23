@@ -12,6 +12,7 @@ import com.example.shelfplayer.core.model.ServerUser
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
+import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
@@ -316,6 +317,14 @@ interface LibraryApi {
      * the wrong account after a profile switch (PRODUCT_SPEC 5.2).
      */
     suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>>
+
+    /**
+     * PRODUCT_SPEC LIB-001 — author portrait availability for one accessible library.
+     *
+     * The result carries no server filesystem path. A caller treats this decorative section as optional;
+     * book/catalogue failures still use [listBooks]'s ordinary sync policy.
+     */
+    suspend fun listAuthors(profileId: ProfileId, libraryId: LibraryId): AppResult<List<Author>>
 
     /**
      * PRODUCT_SPEC LIB-001 — "the home screen can render partial cached content while sync continues".

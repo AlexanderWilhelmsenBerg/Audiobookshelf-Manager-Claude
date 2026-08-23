@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.feature.book.BookRoute
 import com.example.shelfplayer.feature.downloads.DownloadsRoute
 import com.example.shelfplayer.feature.home.HomeRoute
@@ -29,6 +30,9 @@ import com.example.shelfplayer.feature.users.ServerUsersScreen
 @Composable
 fun ShelfPlayerNavHost(
     startDestination: String,
+    onBookPlaySelected: (LibraryItemId) -> Unit,
+    playbackMessage: String?,
+    onPlaybackMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
 ) {
@@ -64,12 +68,15 @@ fun ShelfPlayerNavHost(
                 onBookSelected = { bookId ->
                     navController.navigate(ShelfDestinations.book(bookId))
                 },
+                onBookPlaySelected = onBookPlaySelected,
                 onSeriesSelected = { seriesId ->
                     navController.navigate(ShelfDestinations.series(seriesId))
                 },
                 onProfilesSelected = { navController.navigate(ShelfDestinations.PROFILES) },
                 onSettingsSelected = { navController.navigate(ShelfDestinations.SETTINGS) },
                 onSignInSelected = { navController.navigate(ShelfDestinations.signIn()) },
+                playbackMessage = playbackMessage,
+                onPlaybackMessageShown = onPlaybackMessageShown,
             )
         }
         composable(ShelfDestinations.PROFILES) {

@@ -1,7 +1,9 @@
 # ADR-0024 — The four release decisions
 
-**Status:** Accepted, 2026-08-21. Supersedes the "Blocking open decisions" table in `docs/release.md` and
-closes PRODUCT_SPEC 24 items 1, 2, 3 and 4.
+**Status:** Accepted, 2026-08-21. Supersedes the "Blocking open decisions" table in `docs/release.md`,
+closes PRODUCT_SPEC 24 items 1, 2, 3 and 4, and supersedes only ADR-0019's temporary decision to retain the
+old `applicationId`. ADR-0019's BookWave name, launcher-alias strategy, and decision to retain
+`com.example.shelfplayer` Kotlin packages/namespaces remain in force.
 
 ## Context
 

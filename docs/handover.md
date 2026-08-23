@@ -1,25 +1,122 @@
 # Handover
 
-Status as verified against the repository on 2026-08-21, not from recollection. Every "done" below is
-backed by a file that exists and a check that ran.
+Status rechecked against `main` and a signed-in physical device on 2026-08-23, not from recollection. Every
+"done" below is backed by a file that exists, an explicit artifact, or a named observation; those evidence
+types are not treated as interchangeable.
 
-Phases 0 to 5 are complete but for one requirement, Phase 6 is open, and the work in flight is that
-requirement: AUTH-005, the profile passcode lock, on the branch `claude/auth-005-profile-lock`. It belongs
-to Phase 1, it was optional in the specification, and the owner has now pulled it into version 1
-(`PRODUCT_SPEC 24.14`). The lock is built and it is not finished — the last section of this document says
-which parts of it are wired and which are not.
+Phases 0 to 5 are complete and Phase 6 remains open. AUTH-005, the profile passcode lock described by the
+older phase narrative below, closed on 2026-08-21 with ADR-0023; its remaining device-only evidence and
+accepted limitations are recorded under "What has never been verified" rather than as unfinished code.
 
 Three documents carry what this one deliberately does not: `docs/gaps.md` is every requirement this build
 does not meet, `docs/risks.md` is everything it does that could go wrong, and `docs/release.md` is what
-still blocks a public build. `CHANGELOG.md`'s own sections stop at Phase 2, so from Phase 3 onward this
-document and `docs/gaps.md` are the record.
+still blocks a public build. The focused 2026-08-22 server/Android Auto audit is
+`docs/reviews/2026-08-22-server-android-auto.md`; the implementation/spec/UI gap analysis and signed-in
+phone review are `docs/reviews/2026-08-23-product-ui-ux-gap-analysis.md`.
+
+## Current work in flight — presentation, genre repair, identity, and review
+
+The working tree adds the user-requested cover-led browse treatment, guided genre repair, and BookWave
+launcher mark. It is not a text-only mockup:
+
+- Home shelf cards use covers and a separate labelled play/resume action. Series uses cover stacks; Authors
+  uses cover fans or a synchronized server portrait; Genres uses cover mosaics.
+- A metadata-update-capable profile can consolidate one source genre into one or more replacement labels
+  across every accessible matching book. Each item is reloaded and patched sequentially through the
+  existing metadata repository, only the genre field is sent, existing drafts are preserved, systemic
+  failures stop the remaining sequence, and partial completion is reported. One approved server mutation
+  and its exact adapter contract are still missing, so this is not yet release-proven management I/O.
+- The supplied wave/open-book mark is the fresh-install default and remains one of seven Settings choices.
+  The release identity is `org.homebord.bookwave`; debug installs as `org.homebord.bookwave.debug`; Kotlin
+  packages and Gradle namespaces intentionally remain `com.example.shelfplayer` (ADR-0024). Android App
+  info on the reviewed Samsung showed exactly **BookWave** and rendered the adaptive icon under its
+  circular-ish mask without visible clipping. The decoded density assets are valid at their expected sizes,
+  and a separate 512×512, sub-1-MB Play listing PNG is checked in. Themed mode and live alias switching
+  remain unexercised.
+- Author-directory synchronization records only whether a portrait exists and its server revision. It
+  never persists the server's private filesystem path. A real portrait rendered on the signed-in device,
+  but there is still no scrubbed successful author-image response fixture and restricted-tag accounts do
+  not request the directory until that privacy boundary is captured.
+- Session-token and profile-passcode staged writes now commit with explicit replace-existing semantics.
+  The former `File.renameTo` behavior worked on Android/Linux but refused to overwrite an existing record
+  on the Windows JVM, which made repeated sign-in/renewal and passcode replacement fail locally. The new
+  shared helper attempts an atomic replace first and falls back only when the filesystem provider explicitly
+  reports that atomic moves are unsupported. JVM overwrite regressions cover both stores; reverting the
+  helper to `renameTo` made both tests fail before the fix was restored.
+
+### First physical execution of the datastore instrumented tier — passed
+
+`./gradlew :core:datastore:connectedDebugAndroidTest` ran on a Samsung SM-S928B running Android 16 and
+reported **27 tests, 0 failures, 0 errors, 0 skipped**. That is the first hardware execution of this tier.
+It verifies `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest`: the AndroidKeyStore wrap, staged record
+write, encrypted rate limit, and store behavior. It does **not** verify the lock curtain/biometric prompt,
+Compose routes, playback service/Binder behavior, Android Auto, installed migrations, release/R8, or the
+API/device matrix. Connected tests still do not run in CI.
+
+### Signed-in route review — complete within the safe phone scope
+
+After a clean uninstall the user signed in interactively. Thirty-six private local captures cover every
+naturally reachable route-level page and non-destructive sheet available in that session:
+
+- Home Books shelves/list, Series, Authors, Genres, focused author/genre books, and search with the keyboard;
+- Profiles; Downloads empty state; Book detail, overflow, History, More Info, and metadata editor; Series
+  detail;
+- Settings Server, Playback, Sleep, and About across their scroll ranges, launcher picker, Event Log, Debug
+  Console, server-account list, and the blank create-account form.
+
+The raw images remain in an ignored local artifact directory. They disclose real server/account identity,
+media titles/authors, and listening state, so they must not be committed or attached to a public pull
+request without explicit approval and redaction. Sign-in was deliberately not captured while credentials
+were entered. Locked/reauthentication, offline/error, active/failed/completed download, destructive user or
+metadata operations, cover upload/match, and other unavailable role/state combinations were not
+manufactured merely to make screenshots.
+
+Mini/Full Player and its sheets are still outside this capture set: starting an arbitrary title writes real
+server progress, so the review waits for an explicitly approved safe book. Android Auto is not a phone
+screen and still needs a DHU/head-unit host. TalkBack, 2.0x font, landscape/wide window, themed icons, and
+launcher switching remain separate checks.
+
+### What the signed-in pass found
+
+The cover/play direction works visually. The play targets are clear, series/author/genre artwork makes the
+axes immediately distinguishable, one author portrait arrived through the authenticated client, and the
+responsive home header retained its actions by dropping the decorative logo where space required it.
+
+It also found three browse defects in the first reviewed APK:
+
+1. Series, Authors, and Genres each said **0 books** while populated cards were directly visible below.
+2. Tapping Genre **Edit** opened that genre's focused Books view; the clickable parent card intercepted the
+   nested edit action, so the guided repair UI was not reachable.
+3. Switching axes could reuse the previous list's scroll offset, initially presenting the new destination
+   part-way down.
+
+All three are fixed in the branch. Focused tests cover unique counts for every content shape and independent
+physical-pointer Browse/Edit dispatch; deliberately reintroducing both defects made those tests fail. The
+corrected APK was installed over the signed-in session and recaptured: Series reported 468 books, Authors 496,
+Genres 372, and Genre Edit opened its confirmation without navigation or a server write. List composition is
+also keyed by axis/view/focus so destinations no longer inherit another axis's offset. The Settings tabs are
+long enough that their navigation
+disappears deep in a page; Book detail duplicates its title and gives a destructive database-removal action
+the same hierarchy as benign overflow items; Metadata is a long flat form without a current-cover preview
+and its trailing blank series pair looks duplicated; and Series detail is a sparse list without the useful
+cover/progress/play header the Home treatment establishes. Downloads has a clear but naturally sparse empty
+state. Event Log is privacy-conscious but a raw 500-row sheet needs search/filtering. Debug Console reported
+notifications **Blocked** on the fresh install with no onboarding path, a discoverability gap for foreground
+playback controls.
+
+The code/security findings remain more important than visual polish: the exported Media3 surface can accept
+a caller-chosen URI that the ambient bearer interceptor may authenticate; profile switching is not the
+ordered pause/flush/clear/activate/restore transaction PRODUCT_SPEC 6.5 requires; privileged management
+adapters lack captured contracts; and the smart-download scheduler evaluates the manual-download traffic
+category. The car browse root also lacks Downloads, Series, Authors, and Genres destinations. See the two
+dated review documents for evidence and required tests. None was silently fixed as part of visual review.
 
 ## Phase 0 — complete
 
 Merged in PR #1. `./gradlew verifyDebug` green: ktlintCheck, detekt with type resolution, Android
 Lint, unit tests (including Robolectric), Room schema export and equality check, `assembleDebug`.
 
-## Phase 1 — complete, with one requirement outstanding
+## Phase 1 — complete
 
 > **`docs/gaps.md` is the live list.** The table below tracks `PRODUCT_SPEC 20`'s *deliverables*, and
 > marking one done here says a screen or a repository exists, nothing more — `PRODUCT_SPEC 21` makes a
@@ -28,9 +125,9 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 > per-profile item visibility is a table of its own (`profile_visible_books`, joined on every read), the
 > permission refresh `PRODUCT_SPEC 5.2` requires runs over the already-captured `POST /api/authorize`, and
 > LIB-001's websocket criterion — the one the original plan lost entirely — is `AbsRealtimeConnection` over
-> engine.io frames, with `RealtimeContractTest` and `EngineIoFramesTest` behind it. What is left of Phase 1
-> is **AUTH-005**, the optional profile lock, and it is the work in progress described at the end of this
-> document.
+> engine.io frames, with `RealtimeContractTest` and `EngineIoFramesTest` behind it. AUTH-005 subsequently
+> closed with the passcode/biometric curtain, recovery path and process relock wiring described near the end
+> of this document.
 
 `PRODUCT_SPEC 20` lists seven deliverables.
 
@@ -733,14 +830,18 @@ early, as Phase 3's last slice and under ADR-0017, so what this phase actually b
 the rename, and the three playback requirements its closeout swept up.
 
 The app is **BookWave**. `app_name` changed in both locales, along with every string that named the product
-and the `User-Agent` the server sees in its own logs. The `applicationId` deliberately did not: Android
-identifies an install by it, so changing it produces a second, empty app beside the first rather than a
-renamed one, costing a fresh sign-in and every downloaded book (ADR-0019). It is still
-`com.example.shelfplayer`, it still blocks a release, and the right moment is the first release, before
-anybody has an install to lose. Six launcher icons ship as `activity-alias` entries of which exactly one is
-enabled, and the two writes are ordered enable-then-disable — the other order leaves a window with no
+and the `User-Agent` the server sees in its own logs. This phase deliberately left the `applicationId`
+alone because changing it after users install produces a second, empty app; ADR-0024 later closed that
+release blocker before publication by choosing `org.homebord.bookwave`. Kotlin packages and Gradle
+namespaces remain `com.example.shelfplayer`. Seven launcher icons ship as `activity-alias` entries of which
+exactly one is enabled, and the two writes are ordered enable-then-disable — the other order leaves a window with no
 enabled launcher component, and a launcher that samples the package during it drops the app from the
-drawer and does not put it back.
+drawer and does not put it back. The owner-supplied wave/book mark is the fresh-install default; an older
+explicit choice wins during an upgrade so adding that default cannot create a duplicate drawer entry.
+The component-name mismatch is intentional: the old manifest-default `IndigoAlias` now renders BookWave,
+the old Indigo artwork lives at `IndigoClassicAlias`, and a `MY_PACKAGE_REPLACED` receiver moves an
+explicitly enabled legacy Indigo choice to that replacement immediately. Renaming those aliases for
+tidiness would undo the no-duplicate upgrade strategy (ADR-0019).
 
 ROUTE-002 gives every headset, speaker, hearing aid and car this app has seen its own answer to "what
 happens when this connects". **No permission is requested, and none is needed:** `AudioDeviceCallback`
@@ -881,11 +982,11 @@ first because it needs no Hilt, no Compose, no UI and no biometric hardware, so 
 attached device and fails for one reason only — and because R-39 had recorded it as untested since AUTH-005
 landed.
 
-**They compile and package here; they have not been run.** A cloud session has no device. `./gradlew
-:core:datastore:assembleDebugAndroidTest` produces `datastore-debug-androidTest.apk`, which is most of the
-authoring risk gone but is not the same as a green run. Run
-`./gradlew :core:datastore:connectedDebugAndroidTest` locally with a device attached — see "Running this
-locally".
+**They now compile, package, and pass on one physical device.** The 2026-08-23 run of
+`./gradlew :core:datastore:connectedDebugAndroidTest` on a Samsung SM-S928B / Android 16 reported 27 tests,
+0 failures, 0 errors, and 0 skipped. That retires the narrow “has never executed” gap for this source set,
+not R-07's wider lack of UI/playback/Auto/device-matrix instrumentation. A cloud session still has no device,
+and CI still does not execute this task.
 
 Three things learnt building it, which the next module's tier will need:
 
@@ -942,9 +1043,9 @@ nothing. R-38 records the smaller trap left behind — `onCatalogueBatch` defaul
 persistence caller that forgets the sink silently gets the destructive behaviour the parameter exists to
 avoid.
 
-## AUTH-005 — complete and verified, unseen on hardware
+## AUTH-005 — complete; Keystore store verified on hardware, curtain/biometric unseen
 
-The profile passcode lock, on `claude/auth-005-profile-lock`. `PRODUCT_SPEC 24.14` asked whether profile
+The profile passcode lock originally landed from `claude/auth-005-profile-lock`. `PRODUCT_SPEC 24.14` asked whether profile
 PIN or biometric protection belonged to version 1 or 1.1, and **the owner has decided version 1**, which
 also unblocks ROUTE-002's last criterion. The specification asks for the lock five times — 3.2, 3.3,
 AUTH-003, 8.12 and ROUTE-002 — and only ROUTE-002 says anything about behaviour. `docs/gaps.md` collects
@@ -958,7 +1059,7 @@ sentences in the specification and all of it follows from the threat: **somebody
 unlocked, who is not the account's owner.** Not a stolen device, not an attacker with the filesystem, not a
 rooted phone, and not the server's own authorisation model.
 
-The branch is finished and `verifyDebug` is green on it. **Eight defects were found in this feature after it
+That feature branch finished with `verifyDebug` green. **Eight defects were found in this feature after it
 first looked complete, and five of them were the same shape: correct code that nothing reached.** That ratio
 is the most useful thing in this section — see R-43, and the closing paragraphs below, which say what each
 one was.
@@ -1011,7 +1112,7 @@ one was.
   assumed. The library resolves, but pulls in the full `androidx.appcompat`, where today only
   `appcompat-resources` is on the classpath; its API 26 and 27 compatibility path constructs an AppCompat
   dialog, which throws under this app's platform-parented theme — a crash on the two oldest supported
-  levels, in a path no test here can reach, because there is no instrumented tier at all. Adding it would
+  levels, in a path the current instrumented tier does not reach. Adding the biometric compatibility path would
   also mean regenerating the verification metadata for the pinned component set. So biometrics are
   `android.hardware.biometrics.BiometricPrompt` from API 28, and **API 26 and 27 get no biometrics at
   all** and are shown a disabled row that names the reason. The passcode is the floor on every level.
@@ -1026,7 +1127,8 @@ one was.
   record of a profile that was locked and deliberately leaves alone the lock of one that was not — a profile
   that was already unlocked is somebody re-authenticating after an expired session, and their passcode is
   theirs.
-- **No migration.** The schema stays at 19. There is no `isLockEnabled` column and no settings field,
+- **The lock needed no migration.** At that point the schema stayed at 19. The current tree is schema 20 for
+  unrelated author-artwork fields. There is no `isLockEnabled` column and no settings field,
   because the record's existence *is* the fact and a second copy could only agree with it or be wrong about
   it. The profiles table was rejected for a second reason: every other column there is server-derived and is
   rewritten on each permission refresh.
@@ -1064,21 +1166,24 @@ described something the repository did not contain.
    components, so they are now **890 and 1,618**. Any figure written into prose here is a snapshot — the
    commands that produce it are in the "Running this locally" section.
 
-**Tests, all pure JVM.** Ten for the key derivation and its passcode policy, ten for the gate's ticket
+**The behavioral screen/policy tests are pure JVM.** Ten for the key derivation and its passcode policy, ten for the gate's ticket
 lifetime, five for ROUTE-002's truth table — the first coverage `OutputDeviceWatcher`'s policy branch has
 ever had — six for the startup-mode clause, five for `ProcessLockWatcher`'s wiring, seven for the curtain
 under Robolectric including the disclosure block, six for the switcher's prompt, and extensions to the
-sign-in and switch tests. `verifyDebug -Pshelfplayer.warningsAsErrors=true` passes.
+sign-in and switch tests. The separate connected tier now adds 27 passing AndroidKeyStore/store cases on
+hardware. The final branch-wide `verifyDebug -Pshelfplayer.warningsAsErrors=true --rerun-tasks` result must
+still be recorded after all current working-tree changes settle.
 
 **Two guards were proved by reverting the fix and watching the test fail** — the switcher prompt (four of six
 tests go red) and, earlier on this branch, PR #29's catalogue reconciliation. That step is worth keeping:
 R-37 and R-43 are both cases where a test passed over a real defect, and the only way to know a new test
 would have caught it is to remove the fix.
 
-**Nothing about the lock has been seen by a person.** No passcode has been typed on hardware, no biometric
+**The lock UI has not been exercised by a person.** No passcode has been typed on hardware, no biometric
 prompt has ever been drawn by this app, and the disabled row has never been seen on an API 26 or 27 device.
-The app-switcher thumbnail is not suppressed on any level, which was checked rather than assumed. R-39 holds
-the Keystore wrap and the prompt; both need R-07's absent instrumented tier.
+The app-switcher thumbnail is not suppressed on any level, which was checked rather than assumed. R-39's
+Keystore wrap/store half is now exercised by the 27-test device run; key invalidation, the prompt, curtain,
+and API-26/27 row remain outside it.
 
 **One residual hazard is recorded rather than fixed: R-44.** `clearIfLocked` fires from the ordinary sign-in
 screen too, where the user may only have meant to refresh an expired session, and nothing there mentions the
@@ -1094,8 +1199,9 @@ with a blast radius and a cheapest mitigation for each; this is the short list, 
 one that explains most of the others.
 
 - **The instrumented tier covers one module.** `:core:datastore` has an `androidTest` source set over the
-  profile lock's Keystore storage, and no other module has one; it runs against an attached device and
-  never in CI. Everything else is on the JVM, and the UI tier is Robolectric at `sdk = 34` apart from two
+  profile lock's Keystore storage, and no other module has one. Its first physical run passed 27/27 on
+  2026-08-23, but it still never runs in CI. Everything else is on the JVM, and the UI tier is Robolectric
+  at `sdk = 34` apart from two
   files that run at more than one level because the level changes the mechanism. Most of
   `PRODUCT_SPEC 17.2` is therefore still untested, and every device run so far has found defects the whole
   suite passed through — eight in the audit of 2026-08-16, four in the run of 2026-08-20 (R-07, R-08).
@@ -1109,10 +1215,9 @@ one that explains most of the others.
   contract a head unit decides (R-10).
 - **The release build is assembled and never executed** (R-12). R8 and resource shrinking run in CI and
   nothing installs the result, so a missing keep rule is a release-only crash with a minified stack trace.
-- **`KeyPermanentlyInvalidatedException` handling is covered only against a fake cipher**, and the Keystore
-  configuration itself — GCM, the non-extractable key, `setUserAuthenticationRequired(false)` — has never
-  been exercised on hardware. Robolectric does not reproduce key invalidation. AUTH-005's lock cipher
-  inherits the whole of that gap.
+- **`KeyPermanentlyInvalidatedException` handling is covered only against a fake cipher.** The connected
+  tier now exercises the real AndroidKeyStore GCM/non-extractable-key configuration and staged record
+  writes, but it does not reproduce permanent key invalidation or biometric enrollment changes.
 - **Two contracts are read from the server's own source rather than captured from it**, and one is captured
   from somewhere CI cannot reach. Cover *upload* needs a multipart body and an image the capture script
   should not invent; MGR-007's embed metadata needs an administrator on a reachable server, so neither its
@@ -1120,7 +1225,8 @@ one that explains most of the others.
   candidate shape comes from a run against a public demo server, because Google Books answers `429` to CI's
   addresses every time, so the committed shape and the CI fixture will keep disagreeing. Each is labelled
   for what it is where it is used.
-- **Nothing about the lock has been seen by a person.** See the AUTH-005 section above for the specifics.
+- **The lock curtain and biometric UX have not been seen by a person.** See the AUTH-005 section above for
+  the specifics; this no longer includes the Keystore store itself.
 
 The migrations, by contrast, have now run on devices — that is how the version 14 crash was found — and the
 grant filter has been exercised by a genuinely restricted account, which is how the deletion defect in the

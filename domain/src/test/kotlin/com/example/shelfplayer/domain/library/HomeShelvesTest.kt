@@ -130,7 +130,20 @@ class HomeShelvesTest {
             book(id = "b$index", title = "Book $index", playedAt = at(index.toLong()))
         }
 
-        assertEquals(5, homeShelvesOf(many, limit = 5).continueListening.size)
+        val shelves = homeShelvesOf(many, limit = 5)
+
+        assertEquals(5, shelves.continueListening.size)
+        assertEquals(30, shelves.totalBookCount, "the status count describes the source, not its capped preview")
+    }
+
+    /** The source count is a count of books, so a repeated emission row cannot inflate it. */
+    @Test
+    fun `source count is de duplicated by book id`() {
+        val book = book(id = "b1", title = "One")
+
+        val shelves = homeShelvesOf(listOf(book, book.copy(title = "Repeated row")))
+
+        assertEquals(1, shelves.totalBookCount)
     }
 
     @Test

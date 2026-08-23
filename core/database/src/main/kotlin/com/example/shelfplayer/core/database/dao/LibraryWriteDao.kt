@@ -49,6 +49,17 @@ interface LibraryWriteDao {
     @Upsert
     suspend fun upsertAuthors(authors: List<AuthorEntity>)
 
+    /**
+     * Expanded book responses carry only an author's id and name. Insert new rows, but do not replace an
+     * existing row whose portrait facts came from the richer library-author response.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertBookAuthors(authors: List<AuthorEntity>)
+
+    /** The one authoritative author field an expanded book does carry. */
+    @Query("UPDATE authors SET name = :name WHERE authorKey = :authorKey")
+    suspend fun updateAuthorName(authorKey: String, name: String)
+
     @Upsert
     suspend fun upsertSeries(series: List<SeriesEntity>)
 

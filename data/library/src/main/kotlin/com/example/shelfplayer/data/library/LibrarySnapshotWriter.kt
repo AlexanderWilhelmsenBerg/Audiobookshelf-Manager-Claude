@@ -4,12 +4,14 @@ import com.example.shelfplayer.core.database.DatabaseTransactionRunner
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.PlaybackHistoryDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
+import com.example.shelfplayer.core.database.entity.AuthorEntity
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.database.entity.ProfileVisibleBookEntity
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
@@ -42,6 +44,21 @@ class LibrarySnapshotWriter @Inject constructor(
     private val progressDao: ProgressDao,
     private val historyDao: PlaybackHistoryDao,
 ) {
+    /**
+     * PRODUCT_SPEC LIB-001 — portrait decoration from the richer library-author response.
+     *
+     * This is the only author write allowed to replace portrait metadata. Expanded book responses know
+     * only id and name and go through [writeBookAuthors], which deliberately preserves these fields.
+     */
+    suspend fun writeAuthors(authors: List<Author>) {
+        if (authors.isEmpty()) return
+        transaction {
+            libraryWriteDao.upsertAuthors(
+                authors.map { author -> EntityMappers.toEntity(author) }.distinctBy { it.authorKey },
+            )
+        }
+    }
+
     /**
      * PRODUCT_SPEC PLAY-004 / SYNC-002 — positions the server reported, and the history they make.
      *
@@ -144,7 +161,7 @@ class LibrarySnapshotWriter @Inject constructor(
             libraries.forEach { library ->
                 val fetched = snapshots[library.id]
                 val rows = fetched?.books.orEmpty().map(EntityMappers::toEntities)
-                libraryWriteDao.upsertAuthors(rows.flatMap { it.authors }.distinctBy { it.authorKey })
+                writeBookAuthors(rows.flatMap { it.authors })
                 libraryWriteDao.upsertSeries(rows.flatMap { it.series }.distinctBy { it.seriesKey })
                 libraryWriteDao.upsertBooks(rows.map { it.book })
                 rows.forEach { row ->
@@ -249,7 +266,7 @@ class LibrarySnapshotWriter @Inject constructor(
         val rows = books.map(EntityMappers::toEntities)
         transaction {
             upsertLibrary()
-            libraryWriteDao.upsertAuthors(rows.flatMap { it.authors }.distinctBy { it.authorKey })
+            writeBookAuthors(rows.flatMap { it.authors })
             libraryWriteDao.upsertSeries(rows.flatMap { it.series }.distinctBy { it.seriesKey })
             libraryWriteDao.upsertBooks(rows.map { it.book })
             rows.forEach { row ->
@@ -307,6 +324,16 @@ class LibrarySnapshotWriter @Inject constructor(
                 )
             },
         )
+    }
+
+    /**
+     * Insert book-sourced authors and refresh their names without overwriting portrait facts this response
+     * does not carry. Running inside the caller's transaction keeps the insert/update pair atomic.
+     */
+    private suspend fun writeBookAuthors(authors: List<AuthorEntity>) {
+        val distinct = authors.distinctBy { it.authorKey }
+        libraryWriteDao.insertBookAuthors(distinct)
+        distinct.forEach { author -> libraryWriteDao.updateAuthorName(author.authorKey, author.name) }
     }
 
     /**

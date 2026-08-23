@@ -9,8 +9,10 @@ known endpoint differences, the fixtures used, and the date last verified.
 | --- | --- | --- | --- | --- |
 | 2.36.0 | 2026-08-05 | local (`authMethods: ["local"]`) | not verified | Login, refresh-token behaviour and API-key bearer auth observed directly. Contract capture in CI runs against the same version. |
 
-Verified by observation, not by a released build: the app does not yet make these calls (see
-`docs/handover.md`). What is confirmed is the *contract*, not an end-to-end sign-in.
+The app now makes these calls and has signed in/synchronized against real servers on hardware. The table's
+date remains the date the server version and contract were explicitly recorded; the private signed-in UI
+review on 2026-08-23 did not capture the server version and therefore does not add an inferred matrix row.
+No released build has been tested.
 
 This table is a release blocker for anything that talks to a server (`PRODUCT_SPEC 17.1`: contract
 tests against the selected server versions are release blockers). It must have at least one row
@@ -77,7 +79,7 @@ Captured on 2026-08-05 against 2.36.0, from a library the capture itself creates
 | `GET /api/libraries` | `{"libraries": [...]}` | `id`, `name`, `mediaType`, `displayOrder`, `folders`, `lastScan`, `lastUpdate`, `settings` |
 | `GET /api/libraries/{id}/items` | `{"results": [...], "total", "page", "limit", ...}` | **minified** items |
 | `GET /api/items/{id}?expanded=1&include=progress` | the item | the full item |
-| `GET /api/libraries/{id}/authors` | `{"authors": [...]}` | `id`, `name`, `numBooks` |
+| `GET /api/libraries/{id}/authors` | `{"authors": [...]}` | `id`, `name`, `numBooks`, `imagePath`, `updatedAt` |
 | `GET /api/libraries/{id}/series` | `{"results": [...], "total", ...}` | same envelope as items |
 
 The distinction that decides how `LIB-001` has to be built: **the item list is minified.** Each result
@@ -94,6 +96,35 @@ The consequence is that a sync which stores playable books cannot be one request
 gives the catalogue, and each item needs its own expanded fetch before it can be persisted as a
 `BookSnapshot`. `PRODUCT_SPEC 2.3` ("offline means genuinely offline") is what makes that non-optional —
 a book stored without its track offsets cannot be resumed.
+
+### Author portraits: persist the fact, not the path
+
+`library-authors.json` confirms that each author carries nullable `imagePath` and a server `updatedAt`.
+The path is an absolute path on the Audiobookshelf host, so the client deliberately reduces it to a
+non-sensitive `hasPortrait` flag at the network boundary and never stores or logs the path. The real
+`updatedAt` is retained as the image cache key; the fixture's `0` is the capture scrubber replacing a
+volatile timestamp, not a client-generated value.
+
+The [published Audiobookshelf OpenAPI](https://github.com/advplyr/audiobookshelf/blob/master/docs/openapi.json)
+separately documents `GET /api/authors/{id}/image` and its `ts` query parameter. The UI may construct that
+documented endpoint only when `hasPortrait` is true, with
+`ts=<updatedAt>` when the server supplied a revision. An author-directory failure is an optional-section
+failure under LIB-001: it is logged by typed error code and counted, while the book sync continues and the
+UI uses its cover-based fallback. Expanded item responses contain only author id/name, so their Room write
+updates the name without erasing portrait facts learned from the richer directory response.
+
+There is not yet a committed request/response capture of a successful author-image response: the contract
+fixture's author has `imagePath = null`. A signed-in physical-device review on 2026-08-23 did render one
+real server author portrait through the authenticated image client, so the route, credential delivery, and
+decoding worked end to end on that deployment. That observation is not an adapter contract: its private
+bytes and server identity were not retained, it does not pin headers/status/content type, and it does not
+exercise a revision change. The route and `ts` syntax therefore still need a scrubbed successful fixture.
+The client never puts a credential in the URL.
+
+The capture used an account with unrestricted item-tag access. It does **not** prove that the author
+directory applies the same tag filter as the item catalogue, so profiles with `accessAllTags = false` do
+not request it and receive cover-based author artwork only. Returning an unverified directory would expose
+names outside that profile's item grant; portrait enrichment waits for a restricted-account capture.
 
 Two artefacts of the capture, so a reader does not mistake them for server behaviour: `size` and `ino`
 are scrubbed to `0` and `<volatile>` by `scripts/capture-contracts.sh`, and the fixture library has no
@@ -142,7 +173,7 @@ No code in this repository may present one as the other.
 | Fixture | Kind | Purpose |
 | --- | --- | --- |
 | `core/network/src/main/resources/fixtures/demo-library.json` | **ShelfPlayer-owned format** | The Phase 0 demo library. Not an Audiobookshelf response; see [ADR-0005](adr/0005-fake-gateway-and-fixtures.md). |
-| `core/network/src/test/resources/contracts/` | Captured server responses | **Twelve fixtures**, committed. `contract-capture.yml` re-captures on every `:core:network` change and fails on drift. |
+| `core/network/src/test/resources/contracts/` | Contract fixtures | **57 files**, committed as of 2026-08-23. Most are scrubbed running-server captures; later sections identify the public-demo and source-derived exceptions and must remain authoritative about their weaker evidence. |
 
 ## The websocket contract — observed 2026-08-06, Audiobookshelf 2.36.0
 

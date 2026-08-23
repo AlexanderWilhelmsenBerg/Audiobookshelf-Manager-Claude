@@ -58,13 +58,10 @@ class SessionTokenStore @Inject constructor(
         target.parentFile?.mkdirs()
         try {
             staging.writeBytes(cipher.encrypt(token))
-            // renameTo is atomic within a filesystem, so a reader sees either the old token or the
-            // new one, never a partial write. Its Boolean result must be checked: a silent false
-            // would leave the caller believing a session was stored when it was not, and the user
-            // signed out at the next cold start with no indication why.
-            if (!staging.renameTo(target)) {
-                throw IOException("could not commit the session token file")
-            }
+            // Replacement has to be explicit: File.renameTo refuses to replace an existing target on
+            // the Windows JVM even though Android's implementation does. The shared commit helper keeps
+            // the interruption-safe atomic move and makes a second token save portable.
+            staging.commitReplacing(target)
         } finally {
             staging.delete()
         }

@@ -143,7 +143,7 @@ internal object EntityMappers {
         val bookKey = EntityKey.of(book.serverId.value, book.id.value)
         return BookRows(
             book = bookEntity(book, bookKey),
-            authors = book.authors.map(::authorEntity),
+            authors = book.authors.map { author -> toEntity(author) },
             authorLinks = book.authors.mapIndexed { index, author ->
                 BookAuthorCrossRef(
                     bookKey = bookKey,
@@ -198,11 +198,13 @@ internal object EntityMappers {
         localAvailability = book.localAvailability.name,
     )
 
-    private fun authorEntity(author: Author) = AuthorEntity(
+    fun toEntity(author: Author) = AuthorEntity(
         authorKey = EntityKey.of(author.serverId.value, author.id.value),
         serverId = author.serverId.value,
         remoteId = author.id.value,
         name = author.name,
+        hasPortrait = author.hasPortrait,
+        remoteUpdatedAt = author.remoteUpdatedAt?.toEpochMilli(),
     )
 
     private fun seriesEntity(series: Series) = SeriesEntity(
@@ -250,6 +252,7 @@ internal object EntityMappers {
         )
     }
 
+    @Suppress("LongMethod") // Explicit field mapping is safer than hiding schema fields in reflection/helpers.
     fun toDomain(relations: BookWithRelations, progress: MediaProgressEntity?): Book {
         val entity = relations.book
         val serverId = ServerId(entity.serverId)
@@ -260,7 +263,13 @@ internal object EntityMappers {
             title = entity.title,
             subtitle = entity.subtitle,
             authors = relations.authors.map { author ->
-                Author(ServerId(author.serverId), AuthorId(author.remoteId), author.name)
+                Author(
+                    serverId = ServerId(author.serverId),
+                    id = AuthorId(author.remoteId),
+                    name = author.name,
+                    hasPortrait = author.hasPortrait,
+                    remoteUpdatedAt = author.remoteUpdatedAt?.let(Instant::ofEpochMilli),
+                )
             },
             narrators = decode(entity.narratorsJson),
             seriesMemberships = relations.seriesMemberships.map { membership ->

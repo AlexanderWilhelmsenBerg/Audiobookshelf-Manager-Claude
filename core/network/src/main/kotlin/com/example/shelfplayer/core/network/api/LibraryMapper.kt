@@ -61,6 +61,30 @@ internal object LibraryMapper {
     }
 
     /**
+     * PRODUCT_SPEC LIB-001 — portrait facts from the captured library-author response.
+     *
+     * The required envelope is validated explicitly. The private [LibraryAuthorDto.imagePath] becomes only
+     * a boolean, while `updatedAt` stays the server's real timestamp for image cache busting.
+     */
+    fun toAuthors(serverId: ServerId, dto: LibraryAuthorsResponseDto?): AppResult<List<Author>> {
+        val entries = dto?.authors ?: return AppResult.Failure(missingField("authors"))
+        val authors = entries.map { author ->
+            val id = author.id?.takeIf(String::isNotBlank)
+                ?: return AppResult.Failure(missingField("authors[].id"))
+            val name = author.name?.takeIf(String::isNotBlank)
+                ?: return AppResult.Failure(missingField("authors[].name"))
+            Author(
+                serverId = serverId,
+                id = AuthorId(id),
+                name = name,
+                hasPortrait = !author.imagePath.isNullOrBlank(),
+                remoteUpdatedAt = author.updatedAt?.let(Instant::ofEpochMilli),
+            )
+        }
+        return AppResult.Success(authors)
+    }
+
+    /**
      * The ids in one library's catalogue, in server order.
      *
      * Used to decide *which* items the expansion pass has to fetch and which the sweep may treat as

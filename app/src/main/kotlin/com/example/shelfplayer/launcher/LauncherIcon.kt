@@ -31,8 +31,16 @@ enum class LauncherIcon(
     @param:DrawableRes val foreground: Int,
     @param:ColorRes val background: Int,
 ) {
-    Indigo(
+    BookWave(
+        // Keep the original default component name. Reusing it prevents an update from briefly exposing
+        // both the old explicitly enabled alias and a newly enabled default in the launcher.
         alias = "IndigoAlias",
+        label = R.string.settings_icon_bookwave,
+        foreground = R.mipmap.ic_launcher_bookwave_foreground,
+        background = R.color.ic_launcher_background_bookwave,
+    ),
+    Indigo(
+        alias = "IndigoClassicAlias",
         label = R.string.settings_icon_indigo,
         foreground = R.mipmap.ic_launcher_indigo_foreground,
         background = R.color.ic_launcher_background_indigo,
@@ -75,12 +83,12 @@ enum class LauncherIcon(
      * Built from the module's **namespace**, not from `context.packageName`. An `android:name` beginning
      * with `.` in the manifest is resolved against the namespace, while the installed package can differ
      * from it — the debug build carries an `applicationIdSuffix`, so it is installed as
-     * `com.example.shelfplayer.debug` and its aliases are still `com.example.shelfplayer.launcher.*`.
+     * `org.homebord.bookwave.debug` and its aliases are still `com.example.shelfplayer.launcher.*`.
      * Deriving this from the package name instead produced components that resolved on release and threw
      * `NameNotFoundException` on every debug install.
      *
      * A literal rather than a reflected package name, because R8 renames packages in a minified build and
-     * would silently point this at nothing. `LauncherIconsTest` resolves all six against the merged
+     * would silently point this at nothing. `LauncherIconsTest` resolves every entry against the merged
      * manifest, so a namespace change fails the build rather than the app.
      */
     val component: String get() = "$NAMESPACE.launcher.$alias"
@@ -95,7 +103,7 @@ enum class LauncherIcon(
          * It must stay in step with the one alias declared `android:enabled="true"`, because that is the
          * icon a device with no stored choice will actually draw. `LauncherIconsTest` asserts the pair.
          */
-        val Default: LauncherIcon = Indigo
+        val Default: LauncherIcon = BookWave
     }
 }
 
@@ -109,11 +117,16 @@ enum class LauncherIcon(
  */
 interface LauncherIcons {
 
-    /** The alias currently enabled, or [LauncherIcon.Default] when nothing has been chosen. */
+    /**
+     * The alias currently enabled, or [LauncherIcon.Default] when nothing has been chosen.
+     *
+     * This also reconciles legacy/corrupted component state to exactly one enabled alias. PackageManager
+     * is the source of truth, so repairing it here is part of reading an honest current value.
+     */
     fun current(): LauncherIcon
 
     /**
-     * Enables [icon]'s alias and disables the other five.
+     * Enables [icon]'s alias and disables every other alias.
      *
      * Enabling first, then disabling, deliberately: a moment with no enabled `LAUNCHER` component is a
      * moment in which some launchers drop the app from the drawer and do not put it back.

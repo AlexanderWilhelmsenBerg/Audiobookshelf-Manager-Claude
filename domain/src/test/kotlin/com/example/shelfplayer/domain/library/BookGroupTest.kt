@@ -51,6 +51,20 @@ class BookGroupTest {
         assertEquals(2, group.bookCount)
     }
 
+    /** One malformed item must not inflate the card count by repeating the same case-insensitive genre. */
+    @Test
+    fun `case variant genre duplicates within one book contribute one membership`() {
+        val duplicated = book(id = "b1", title = "One book").copy(
+            genres = listOf("Sci-Fi", "SCI-FI", "sci-fi"),
+        )
+
+        val group = groupBooks(listOf(duplicated), BookGroupKind.Genre).single()
+
+        assertEquals("Sci-Fi", group.label, "the first spelling and stable order are preserved")
+        assertEquals(1, group.bookCount)
+        assertEquals(listOf("b1"), group.books.map { it.id.value })
+    }
+
     /** Blank genres are dropped rather than becoming a nameless group at the top of the list. */
     @Test
     fun `a blank genre produces no group`() {

@@ -213,9 +213,9 @@ class ProfilePasscodeStore @Inject constructor(
         target.parentFile?.mkdirs()
         try {
             staging.writeBytes(cipher.wrap(record.toByteArray()))
-            // Atomic within a filesystem, so a reader sees the old record or the new one and never a
-            // half-written verifier — which would fail closed and lock somebody out permanently.
-            if (!staging.renameTo(target)) throw IOException("could not commit the lock record")
+            // Explicit replacement is portable across Android and the Windows JVM verification tier.
+            // The shared helper preserves the atomic commit whenever the filesystem supports it.
+            staging.commitReplacing(target)
         } finally {
             staging.delete()
         }

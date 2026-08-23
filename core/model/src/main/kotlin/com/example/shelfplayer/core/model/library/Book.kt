@@ -58,7 +58,23 @@ enum class LocalAvailability {
     Complete,
 }
 
-data class Author(val serverId: ServerId, val id: AuthorId, val name: String)
+/**
+ * PRODUCT_SPEC LIB-001 — an author and the non-sensitive facts needed to render portrait artwork.
+ *
+ * [hasPortrait] is derived from the library-author response's private `imagePath`; that filesystem path
+ * deliberately does not cross the network adapter. [remoteUpdatedAt] is the server's own `updatedAt` and
+ * may be used as the public image endpoint's `ts` cache key. It is never replaced with a device timestamp.
+ *
+ * Expanded book metadata carries only id and name, so both portrait fields default to the safe direction:
+ * do not issue an image request until the author listing has positively confirmed one.
+ */
+data class Author(
+    val serverId: ServerId,
+    val id: AuthorId,
+    val name: String,
+    val hasPortrait: Boolean = false,
+    val remoteUpdatedAt: Instant? = null,
+)
 
 data class Series(val serverId: ServerId, val id: SeriesId, val name: String)
 

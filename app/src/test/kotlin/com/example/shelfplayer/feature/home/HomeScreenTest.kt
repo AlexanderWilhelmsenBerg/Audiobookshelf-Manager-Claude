@@ -6,17 +6,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerStatus
 import com.example.shelfplayer.core.model.SyncStatus
@@ -24,7 +34,14 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.domain.library.BookGroup
+import com.example.shelfplayer.domain.library.BookGroupKind
+import com.example.shelfplayer.domain.library.HomeShelves
+import com.example.shelfplayer.domain.library.SeriesShelf
+import com.example.shelfplayer.domain.usecase.BulkGenreEditFailure
+import com.example.shelfplayer.domain.usecase.BulkGenreEditStage
+import com.example.shelfplayer.domain.usecase.BulkGenreEditSummary
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,6 +49,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.time.Duration
 
 /**
@@ -225,6 +243,100 @@ class HomeScreenTest {
         compose.onNodeWithText("Fiction").assertExists()
     }
 
+    /**
+     * PRODUCT_SPEC LIB-001 — status describes whichever Room-backed browse axis is actually visible.
+     *
+     * Series, authors and genres deliberately do not collect the flat book flow. Their count therefore
+     * comes from their own rows, de-duplicated because one book may belong to several series or groups.
+     * Shelves keep the uncapped source count rather than mistaking their preview limit for the library.
+     */
+    @Test
+    fun `sync status counts unique books on every populated browse shape`() {
+        val first = book()
+        val second = book().copy(id = LibraryItemId("item-2"), title = "Second book")
+        var shown by mutableStateOf(
+            state(
+                books = emptyList(),
+                booksView = BooksView.Shelves,
+                shelves = HomeShelves(
+                    continueListening = emptyList(),
+                    continueSeries = emptyList(),
+                    recentlyAdded = emptyList(),
+                    discover = listOf(first),
+                    listenAgain = emptyList(),
+                    totalBookCount = 30,
+                ),
+            ),
+        )
+        compose.setContent { HomeScreen(uiState = shown, actions = noActions()) }
+
+        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("30 books")
+
+        shown = state(
+            books = emptyList(),
+            axis = HomeAxis.Series,
+            series = listOf(
+                SeriesShelf(
+                    series = Series(ServerId("srv_books"), SeriesId("series-1"), "First series"),
+                    books = listOf(first, second),
+                ),
+                SeriesShelf(
+                    series = Series(ServerId("srv_books"), SeriesId("series-2"), "Second series"),
+                    books = listOf(first),
+                ),
+            ),
+        )
+        compose.waitForIdle()
+        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("2 books")
+
+        val groups = listOf(
+            BookGroup(BookGroupKind.Author, "author-1", "First author", listOf(first, second)),
+            BookGroup(BookGroupKind.Author, "author-2", "Second author", listOf(first)),
+        )
+        shown = state(books = emptyList(), axis = HomeAxis.Authors, groups = groups)
+        compose.waitForIdle()
+        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("2 books")
+
+        shown = state(
+            books = emptyList(),
+            axis = HomeAxis.Genres,
+            groups = groups.map { it.copy(kind = BookGroupKind.Genre) },
+        )
+        compose.waitForIdle()
+        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("2 books")
+    }
+
+    /** Selecting a new axis opens its beginning instead of inheriting the previous list's position. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w412dp-h732dp")
+    fun `switching browse axes resets the list position`() {
+        fun groups(kind: BookGroupKind, prefix: String) = List(20) { index ->
+            genreGroup("$prefix ${index + 1}").copy(
+                kind = kind,
+                key = "$prefix-$index",
+            )
+        }
+        var shown by mutableStateOf(
+            state(
+                books = emptyList(),
+                axis = HomeAxis.Authors,
+                groups = groups(BookGroupKind.Author, "Author"),
+            ),
+        )
+        compose.setContent { HomeScreen(uiState = shown, actions = noActions()) }
+        compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performScrollToNode(hasText("Author 20"))
+        compose.onNodeWithText("Author 20").assertIsDisplayed()
+
+        shown = state(
+            books = emptyList(),
+            axis = HomeAxis.Genres,
+            groups = groups(BookGroupKind.Genre, "Genre"),
+        )
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Genre 1").assertIsDisplayed()
+    }
+
     @Test
     fun `the search button opens the field`() {
         var toggles = 0
@@ -238,6 +350,258 @@ class HomeScreenTest {
     }
 
     /**
+     * PRODUCT_SPEC PLAY-001 / LIB-002 — the shelf's play affordance starts the named book directly.
+     *
+     * The card itself still opens details. Keeping the two actions distinct is what makes the overlaid
+     * play symbol honest: a control labelled "Play" must not merely navigate to another screen.
+     */
+    @Test
+    fun `the shelf play button names and starts its book`() {
+        val book = book()
+        var played: LibraryItemId? = null
+        compose.setContent {
+            HomeScreen(
+                uiState = state(
+                    books = listOf(book),
+                    booksView = BooksView.Shelves,
+                    shelves = HomeShelves(
+                        continueListening = emptyList(),
+                        continueSeries = emptyList(),
+                        recentlyAdded = emptyList(),
+                        discover = listOf(book),
+                        listenAgain = emptyList(),
+                        totalBookCount = 1,
+                    ),
+                ),
+                actions = noActions().copy(onBookPlaySelected = { played = it }),
+            )
+        }
+
+        compose.onNodeWithContentDescription("Play The Salt Harbour").performClick()
+
+        assertEquals(book.id, played)
+    }
+
+    /** PRODUCT_SPEC MGR-008 — only an update-capable Genres card owns the named secondary action. */
+    @Test
+    fun `genre edit is named and permission gated without changing author cards`() {
+        val genre = genreGroup("Science Fiction", count = 2)
+        var selected: BookGroup? = null
+        var edited: BookGroup? = null
+        var shown by mutableStateOf(
+            state(
+                profile = profile(canUpdate = true),
+                axis = HomeAxis.Genres,
+                groups = listOf(genre),
+            ),
+        )
+        compose.setContent {
+            HomeScreen(
+                uiState = shown,
+                actions = noActions().copy(
+                    onGroupSelected = { selected = it },
+                    onGenreEditRequested = { edited = it },
+                ),
+            )
+        }
+
+        // Inject a physical pointer tap. A semantics click calls the child action directly and did not
+        // catch the former clickable Card consuming this exact tap on real hardware.
+        compose.onNodeWithContentDescription("Edit genre Science Fiction").performTouchInput { click() }
+        assertEquals(genre, edited)
+        assertNull(selected, "the secondary action must not open the group")
+
+        compose.onNodeWithText("Science Fiction").performTouchInput { click() }
+        assertEquals(genre, selected, "the rest of the card must still open the group")
+
+        shown = shown.copy(
+            axis = HomeAxis.Authors,
+            groups = listOf(genre.copy(kind = BookGroupKind.Author, key = "author-1", label = "Ada Writer")),
+        )
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Edit genre Ada Writer").assertDoesNotExist()
+
+        shown = shown.copy(
+            profile = profile(canUpdate = false),
+            axis = HomeAxis.Genres,
+            groups = listOf(genre),
+        )
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Edit genre Science Fiction").assertDoesNotExist()
+    }
+
+    /** An authorized profile can see why the operation is unavailable without trying a doomed write. */
+    @Test
+    fun `offline genre edit remains visible but disabled with an explanation`() {
+        compose.setContent {
+            HomeScreen(
+                uiState = state(
+                    isOffline = true,
+                    profile = profile(canUpdate = true),
+                    axis = HomeAxis.Genres,
+                    groups = listOf(genreGroup("Science Fiction")),
+                ),
+                actions = noActions(),
+            )
+        }
+
+        compose.onNodeWithContentDescription("Edit genre Science Fiction")
+            .assertIsNotEnabled()
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.StateDescription,
+                    "Connect to edit genres.",
+                ),
+            )
+    }
+
+    /** The replacement may change freely, but no domain callback fires until the named confirmation. */
+    @Test
+    fun `genre dialog confirms its source count and comma separated replacement explicitly`() {
+        val request = GenreEditRequest(
+            profileId = profile().id,
+            sourceGenre = "Sci fi",
+            cachedMatchCount = 3,
+        )
+        var confirms = 0
+        var dismisses = 0
+        var shown by mutableStateOf(
+            state(genreEdit = GenreEditUiState.Confirming(request)),
+        )
+        compose.setContent {
+            HomeScreen(
+                uiState = shown,
+                actions = noActions().copy(
+                    onGenreEditReplacementChanged = { replacement ->
+                        val current = shown.genreEdit as GenreEditUiState.Confirming
+                        shown = shown.copy(
+                            genreEdit = current.copy(
+                                request = current.request.copy(replacementGenres = replacement),
+                            ),
+                        )
+                    },
+                    onGenreEditConfirmed = { confirms++ },
+                    onGenreEditDismissed = { dismisses++ },
+                ),
+            )
+        }
+
+        compose.onNodeWithText("Source genre: Sci fi").assertExists()
+        compose.onNodeWithText("3 cached books match").assertExists()
+        compose.onNodeWithText("Update books").assertIsNotEnabled()
+        compose.onNodeWithText("Replacement genres").performTextInput("Science Fiction, Fantasy")
+        assertEquals(0, confirms)
+        compose.onNodeWithText("Update books").assertIsEnabled().performClick()
+        assertEquals(1, confirms)
+        assertEquals(0, dismisses)
+    }
+
+    /** Before confirmation, cancel is a true no-write dismissal. */
+    @Test
+    fun `canceling genre confirmation never invokes the update`() {
+        var confirms = 0
+        var dismisses = 0
+        compose.setContent {
+            HomeScreen(
+                uiState = state(
+                    genreEdit = GenreEditUiState.Confirming(
+                        GenreEditRequest(
+                            profileId = profile().id,
+                            sourceGenre = "Sci fi",
+                            cachedMatchCount = 1,
+                            replacementGenres = "Science Fiction",
+                        ),
+                    ),
+                ),
+                actions = noActions().copy(
+                    onGenreEditConfirmed = { confirms++ },
+                    onGenreEditDismissed = { dismisses++ },
+                ),
+            )
+        }
+
+        compose.onNodeWithText("Cancel").performClick()
+
+        assertEquals(0, confirms)
+        assertEquals(1, dismisses)
+    }
+
+    /** A partial batch names every count separately; no earlier server write is implied to roll back. */
+    @Test
+    fun `genre result announces every partial success count and stop reason`() {
+        val request = GenreEditRequest(
+            profileId = profile().id,
+            sourceGenre = "Sci fi",
+            cachedMatchCount = 7,
+            replacementGenres = "Science Fiction, Fantasy",
+        )
+        val networkError = AppError.Network(summary = "The connection was lost, so remaining books were not tried.")
+        val result = BulkGenreEditSummary(
+            matchedCount = 7,
+            updatedCount = 2,
+            unchangedCount = 1,
+            locallyStaleCount = 1,
+            failures = listOf(
+                BulkGenreEditFailure(
+                    bookId = LibraryItemId("draft"),
+                    stage = BulkGenreEditStage.Draft,
+                    error = AppError.Conflict(summary = "This book has an unsaved draft."),
+                ),
+                BulkGenreEditFailure(
+                    bookId = LibraryItemId("failed"),
+                    stage = BulkGenreEditStage.Save,
+                    error = networkError,
+                ),
+            ),
+            stopReason = networkError,
+        )
+        compose.setContent {
+            HomeScreen(
+                uiState = state(genreEdit = GenreEditUiState.Complete(request, result)),
+                actions = noActions(),
+            )
+        }
+
+        listOf(
+            "Genre update partially complete",
+            "Sci fi → Science Fiction, Fantasy",
+            "Matched: 7",
+            "Updated: 2",
+            "Unchanged: 1",
+            "Draft conflicts: 1",
+            "Failed: 1",
+            "Stale local copies: 1",
+            "Unprocessed: 2",
+            "Stop reason: The connection was lost, so remaining books were not tried.",
+        ).forEach { text -> compose.onNodeWithText(text).assertExists() }
+        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).assertExists()
+    }
+
+    /** Progress is announced and deliberately has no cancel that could discard a partial result. */
+    @Test
+    fun `running genre update is an announced non dismissible progress state`() {
+        compose.setContent {
+            HomeScreen(
+                uiState = state(
+                    genreEdit = GenreEditUiState.Running(
+                        GenreEditRequest(
+                            profileId = profile().id,
+                            sourceGenre = "Sci fi",
+                            cachedMatchCount = 2,
+                            replacementGenres = "Science Fiction",
+                        ),
+                    ),
+                ),
+                actions = noActions(),
+            )
+        }
+
+        compose.onNodeWithContentDescription("Updating genre…")
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion))
+        compose.onNodeWithText("Cancel").assertDoesNotExist()
+    }
+
+    /**
      * PRODUCT_SPEC 3.1 — the layout survives the largest font setting a user can choose.
      *
      * Rendered at a 2x font scale, which is beyond Android's own slider. The assertion is only that the
@@ -246,12 +610,29 @@ class HomeScreenTest {
      * comparison, and it is worth having because the failure it catches is a crash on somebody's phone.
      */
     @Test
-    @Config(sdk = [34], fontScale = 2.0f)
-    fun `the shelf still composes at twice the font size`() {
-        compose.setContent { HomeScreen(uiState = state(), actions = noActions()) }
+    @Config(sdk = [34], qualifiers = "w320dp-h640dp", fontScale = 2.0f)
+    fun `the compact top bar prioritises its title and actions at twice the font size`() {
+        val longLibraryName = "The very long science fiction library"
+        compose.setContent {
+            HomeScreen(
+                uiState = state(scopedTo = library(longLibraryName)),
+                actions = noActions(),
+            )
+        }
 
+        compose.onNodeWithText(longLibraryName).assertExists()
         compose.onNodeWithContentDescription("Settings").assertExists()
         compose.onNodeWithContentDescription("Refresh").assertExists()
+        compose.onNodeWithTag(HOME_MARK_TEST_TAG).assertDoesNotExist()
+    }
+
+    /** The supplied brand mark remains visible when it does not compete with navigation controls. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w600dp-h800dp")
+    fun `the home brand mark is retained when the top bar has room`() {
+        compose.setContent { HomeScreen(uiState = state(), actions = noActions()) }
+
+        compose.onNodeWithTag(HOME_MARK_TEST_TAG).assertExists()
     }
 
     /**
@@ -267,15 +648,27 @@ class HomeScreenTest {
         serverStatus: ServerStatus = ServerStatus.Reachable,
         error: AppError? = null,
         scopedTo: Library? = null,
+        profile: Profile = profile(),
         books: List<Book> = listOf(book()),
+        booksView: BooksView = BooksView.List,
+        shelves: HomeShelves = HomeShelves.Empty,
+        axis: HomeAxis = HomeAxis.Books,
+        series: List<SeriesShelf> = emptyList(),
+        groups: List<BookGroup> = emptyList(),
+        genreEdit: GenreEditUiState = GenreEditUiState.Hidden,
     ) = HomeUiState(
         isOffline = isOffline,
         // Without this the screen renders its one blocking state and none of the assertions below are
         // looking at the screen they name.
         isLoaded = true,
-        profile = profile(),
+        profile = profile,
         books = books,
-        booksView = BooksView.List,
+        booksView = booksView,
+        shelves = shelves,
+        axis = axis,
+        series = series,
+        groups = groups,
+        genreEdit = genreEdit,
         syncStatus = syncStatus,
         serverStatus = serverStatus,
         error = error,
@@ -312,7 +705,7 @@ class HomeScreenTest {
         localAvailability = LocalAvailability.NotDownloaded,
     )
 
-    private fun profile() = Profile(
+    private fun profile(canUpdate: Boolean = false) = Profile(
         id = ProfileId("prf_ada"),
         serverId = ServerId("srv_books"),
         username = "ada",
@@ -321,6 +714,19 @@ class HomeScreenTest {
         requiresReauthentication = false,
         lastUsedAt = Instant.EPOCH,
         isFixture = false,
+        canUpdate = canUpdate,
+    )
+
+    private fun genreGroup(label: String, count: Int = 1): BookGroup = BookGroup(
+        kind = BookGroupKind.Genre,
+        key = label.lowercase(),
+        label = label,
+        books = List(count) { index ->
+            book().copy(
+                id = LibraryItemId("genre-book-$index"),
+                genres = listOf(label),
+            )
+        },
     )
 
     private fun library(name: String) = Library(
@@ -336,8 +742,13 @@ class HomeScreenTest {
 
     private fun noActions() = HomeActions(
         onBookSelected = {},
+        onBookPlaySelected = {},
         onSeriesSelected = {},
         onGroupSelected = { _: BookGroup -> },
+        onGenreEditRequested = { _: BookGroup -> },
+        onGenreEditReplacementChanged = {},
+        onGenreEditConfirmed = {},
+        onGenreEditDismissed = {},
         onQueryChanged = {},
         onSearchToggled = {},
         onAxisChanged = {},

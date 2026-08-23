@@ -193,6 +193,10 @@ data class AuthorEntity(
     val serverId: String,
     val remoteId: String,
     val name: String,
+    /** Derived from `imagePath`; the private server filesystem path itself is never persisted. */
+    @ColumnInfo(defaultValue = "0") val hasPortrait: Boolean = false,
+    /** The author's real server `updatedAt`, used as the image endpoint's cache-busting `ts`. */
+    val remoteUpdatedAt: Long? = null,
 )
 
 @Entity(tableName = "series", indices = [Index("serverId")])

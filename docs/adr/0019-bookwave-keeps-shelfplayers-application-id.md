@@ -1,6 +1,7 @@
-# ADR-0019 — BookWave keeps ShelfPlayer's application id
+# ADR-0019 — BookWave initially keeps ShelfPlayer's application id
 
-- **Status:** Accepted
+- **Status:** Superseded in part by ADR-0024 on 2026-08-21. The launcher-icon, product-name, namespace, and
+  Kotlin-package decisions remain accepted; only the temporary `applicationId` decision was superseded.
 - **Date:** 2026-08-15
 - **Requirements:** PRODUCT_SPEC 1, SET-003
 
@@ -8,6 +9,9 @@
 
 The owner renamed the product from **ShelfPlayer** to **BookWave**, and supplied six launcher icons to
 choose between.
+
+On 2026-08-22 the owner supplied the wave-and-open-book brand mark as a seventh choice and made it the
+fresh-install default. Existing explicit icon choices continue to win during an upgrade.
 
 "The name of the app" is four different things on Android, and they are not renamed together:
 
@@ -21,10 +25,12 @@ choose between.
 The name that was actually asked about is the first one. The third and fourth are invisible, and the
 second is the one that can do harm.
 
-## Decision
+## Decision at the 2026-08-15 rename
 
-**`app_name` becomes BookWave. `applicationId`, the Kotlin package and the Gradle namespace stay
-`com.example.shelfplayer`.**
+**`app_name` becomes BookWave. At this rename step, `applicationId`, the Kotlin package and the Gradle
+namespace stay `com.example.shelfplayer`.** ADR-0024 subsequently moved the release `applicationId` to
+`org.homebord.bookwave` before the first public release. Kotlin packages and Gradle namespaces still remain
+`com.example.shelfplayer`, exactly as this ADR intended.
 
 Also renamed, because they are user-visible and were the product's name rather than an identifier:
 
@@ -38,7 +44,7 @@ each is load-bearing somewhere a rename could break silently — the theme name 
 manifest, the database class name is not part of the schema but the *file* name is, and the package is
 compiled into every generated Hilt component.
 
-## Why the application id must not change
+## Why the application id did not change during the rename
 
 Android identifies an installed app by its `applicationId`. Changing it does not rename the installed
 app; it produces a **different app**. On the owner's phone that would mean:
@@ -52,12 +58,12 @@ That trades away product priority 2 — *do not lose progress* — to change a s
 right moment to change an `applicationId` is the first release to a store, before anybody has an
 install to lose, and it needs its own decision about whether to migrate the database or start clean.
 
-`com.example.` is a placeholder that Google Play will reject, so this decision has a deadline; it does
-not have one today.
+`com.example.` is a placeholder that Google Play rejects, so this was explicitly a temporary decision with
+a pre-release deadline. ADR-0024 met that deadline while there was still no public install to migrate.
 
 ## The icons
 
-Six `activity-alias` entries, one enabled at a time, is the only mechanism Android offers for a
+Multiple `activity-alias` entries, one enabled at a time, is the only mechanism Android offers for a
 user-chosen launcher icon — an activity's own `android:icon` is fixed at build time.
 
 Three consequences follow, and each is handled rather than discovered:
@@ -76,14 +82,27 @@ The choice is **not** stored in DataStore. Android already persists component en
 restarts and updates, and that state is what the launcher reads; a stored copy could only agree with it
 or be wrong about it. `LauncherIcons.current()` asks the package manager.
 
+Adding the BookWave mark as a new default has one upgrade trap: Android preserves an alias explicitly
+enabled by an older install, while also applying a newly enabled manifest default, which can expose two
+drawer entries before Settings is ever opened. The migration therefore keeps the original component name
+`IndigoAlias` as the manifest default and deliberately changes the artwork it renders to BookWave. The old
+Indigo artwork moves to disabled `IndigoClassicAlias`. An implicit old default (`DEFAULT`) becomes the new
+BookWave default; an explicitly enabled legacy `IndigoAlias` is moved once to `IndigoClassicAlias` by
+`LauncherIconUpgradeReceiver` on `MY_PACKAGE_REPLACED`. Other explicit choices remain enabled and the
+reconciliation normalizes any corrupted multi-enabled state back to one alias. An all-disabled state is
+also repaired by explicitly enabling BookWave; otherwise reading “BookWave” and then applying it would
+both be no-ops while the app remained absent from the drawer.
+
 ## Consequences
 
-- The owner's existing install keeps its data and gains the new name on next update.
+- The owner's pre-release install under the old debug identity could keep its data through the rename, but
+  moving to ADR-0024's final application ID later required one deliberate clean install. No released user
+  had an old application ID to migrate.
 - A home-screen shortcut placed by hand before this change needs placing again.
-- The app's icon in Android *Settings → Apps* is the default (Indigo) whatever alias is enabled, because
+- The app's icon in Android *Settings → Apps* is the default (BookWave) whatever alias is enabled, because
   `android:icon` on `<application>` is fixed at build time. Every app that offers icon choice behaves
   this way.
 - `com.example.shelfplayer` remains in the source tree, in `logcat` tags, and in crash traces. It is now
   a name with no product behind it, which is a readability cost paid deliberately.
-- Renaming the package and the application id is still available, as one deliberate change with a data
-  migration, whenever publishing makes it necessary.
+- The release application ID is now `org.homebord.bookwave`. Renaming the Kotlin package or Gradle namespace
+  is neither necessary for publishing nor planned.

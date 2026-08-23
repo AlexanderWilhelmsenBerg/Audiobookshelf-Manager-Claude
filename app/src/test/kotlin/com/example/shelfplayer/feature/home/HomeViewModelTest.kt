@@ -22,22 +22,32 @@ import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.BookMetadataEdit
+import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.Bookmark
+import com.example.shelfplayer.core.model.library.EmbedRequest
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.MediaProgress
+import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.core.testing.RecordingLogSink
+import com.example.shelfplayer.domain.library.BookGroup
+import com.example.shelfplayer.domain.library.BookGroupKind
 import com.example.shelfplayer.domain.library.BookSortOrder
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.MetadataRepository
+import com.example.shelfplayer.domain.repository.MetadataSaveResult
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.BrowseUseCases
+import com.example.shelfplayer.domain.usecase.BulkEditGenresUseCase
 import com.example.shelfplayer.domain.usecase.ObserveAccessibleBooksUseCase
 import com.example.shelfplayer.domain.usecase.ObserveBookGroupsUseCase
 import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
@@ -64,9 +74,11 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -86,8 +98,15 @@ class HomeViewModelTest {
      */
     private val network = MutableStateFlow(true)
 
+    private val networkMonitor = object : NetworkMonitor {
+        /** Not exercised here: metering governs downloads, not metadata updates. */
+        override val isUnmetered: Flow<Boolean> = flowOf(true)
+        override val isOnline: Flow<Boolean> = network
+    }
+
     /** PRODUCT_SPEC SET-001 — the shelf's sort order and default library live here now, not in the ViewModel. */
     private val preferences = FakePreferences()
+    private val metadata = RecordingMetadata(libraries)
 
     /**
      * Home opens on the three shelves, so a test about the flat list has to ask for it.
@@ -110,11 +129,7 @@ class HomeViewModelTest {
         observeSyncState = ObserveSyncStateUseCase(profiles, libraries),
         profileRepository = profiles,
         preferences = preferences,
-        networkMonitor = object : NetworkMonitor {
-            /** Not exercised here: this test is about the shelf, and metering only governs downloads. */
-            override val isUnmetered: Flow<Boolean> = flowOf(true)
-            override val isOnline: Flow<Boolean> = network
-        },
+        networkMonitor = networkMonitor,
         syncAccount = SyncAccountUseCase(profiles, NeverRenewingAuth(), libraries, StubBookmarks()),
         // A connection that never connects, which is the case PRODUCT_SPEC LIB-001 requires to be
         // uneventful: everything the socket would deliver also arrives over REST.
@@ -128,6 +143,13 @@ class HomeViewModelTest {
             logger = RecordingLogSink().let { RedactingLogger(it, DefaultRedactor(RedactionPolicy.Default)) },
         ),
         refreshLibrary = RefreshLibraryUseCase(profiles, libraries, NeverRenewingAuth()),
+        bulkEditGenres = BulkEditGenresUseCase(
+            profiles = profiles,
+            libraries = libraries,
+            metadata = metadata,
+            auth = NeverRenewingAuth(),
+            network = networkMonitor,
+        ),
     )
 
     /**
@@ -561,6 +583,125 @@ class HomeViewModelTest {
         }
     }
 
+    /** PRODUCT_SPEC MGR-008 — the UI hands one explicit profile and one confirmed genre edit to domain. */
+    @Test
+    fun `confirmed genre replacement invokes the use case and exposes its full result`() = runTest {
+        val updateProfile = demoProfile.copy(canUpdate = true)
+        val matching = book("space", "A Space Opera").copy(genres = listOf("Adventure", "Sci fi"))
+        val outsideCurrentView = book("history", "A History of Mars").copy(genres = listOf(" SCI FI "))
+        profiles.setActive(updateProfile)
+        libraries.emitBooks(listOf(matching, outsideCurrentView))
+        val viewModel = viewModel()
+        backgroundScope.launch(mainDispatcherRule.testDispatcher) { viewModel.uiState.collect { } }
+        runCurrent()
+        viewModel.onAxisChanged(HomeAxis.Genres)
+        runCurrent()
+
+        viewModel.onGenreEditRequested(
+            BookGroup(
+                kind = BookGroupKind.Genre,
+                key = "sci fi",
+                label = "Sci fi",
+                books = listOf(matching),
+            ),
+        )
+        runCurrent()
+
+        val confirming = viewModel.uiState.value.genreEdit as GenreEditUiState.Confirming
+        assertEquals(updateProfile.id, confirming.request.profileId)
+        assertEquals("Sci fi", confirming.request.sourceGenre)
+        assertEquals(2, confirming.request.cachedMatchCount, "confirmation counts the profile, not a scoped card")
+
+        viewModel.onGenreEditReplacementChanged("Science Fiction, Fantasy")
+        viewModel.onGenreEditConfirmed()
+        runCurrent()
+
+        assertEquals(2, metadata.saves.size)
+        assertEquals(
+            setOf(updateProfile.id),
+            metadata.saves.map { it.profileId }.toSet(),
+            "every privileged write must keep its originating profile",
+        )
+        assertEquals(
+            setOf(setOf(BookMetadataField.Genres)),
+            metadata.saves.map { it.changed }.toSet(),
+        )
+        assertEquals(
+            listOf("Adventure", "Science Fiction", "Fantasy"),
+            metadata.saves.single { it.bookId == matching.id }.edit.genres,
+        )
+        val complete = viewModel.uiState.value.genreEdit as GenreEditUiState.Complete
+        assertEquals(2, complete.summary.matchedCount)
+        assertEquals(2, complete.summary.updatedCount)
+        assertEquals(0, complete.summary.unprocessedCount)
+    }
+
+    /** An account-scoped confirmation must never follow the user across a profile switch. */
+    @Test
+    fun `switching profiles dismisses an unconfirmed genre edit`() = runTest {
+        val updateProfile = demoProfile.copy(canUpdate = true)
+        val matching = book("space", "A Space Opera").copy(genres = listOf("Sci fi"))
+        profiles.setActive(updateProfile)
+        libraries.emitBooks(listOf(matching))
+        val viewModel = viewModel()
+        val emissions = mutableListOf<HomeUiState>()
+        backgroundScope.launch(mainDispatcherRule.testDispatcher) { viewModel.uiState.collect(emissions::add) }
+        runCurrent()
+        viewModel.onAxisChanged(HomeAxis.Genres)
+        runCurrent()
+        viewModel.onGenreEditRequested(
+            BookGroup(BookGroupKind.Genre, "sci fi", "Sci fi", listOf(matching)),
+        )
+        runCurrent()
+        assertEquals(true, viewModel.uiState.value.genreEdit is GenreEditUiState.Confirming)
+
+        val otherProfile = updateProfile.copy(id = ProfileId("other-profile"), username = "other")
+        profiles.setActive(otherProfile)
+        runCurrent()
+
+        assertEquals(GenreEditUiState.Hidden, viewModel.uiState.value.genreEdit)
+        assertEquals(emptyList(), metadata.saves)
+        assertEquals(
+            emptyList(),
+            emissions.filter { state ->
+                state.profile?.id == otherProfile.id && state.genreEdit != GenreEditUiState.Hidden
+            },
+            "no emitted frame may pair the new profile with the old account's genre operation",
+        )
+    }
+
+    /** PRODUCT_SPEC 5.2 — switching accounts cancels a suspended privileged write and its draft recovery. */
+    @Test
+    fun `switching profiles cancels an in flight genre write without a draft`() = runTest {
+        val updateProfile = demoProfile.copy(canUpdate = true)
+        val matching = book("space", "A Space Opera").copy(genres = listOf("Sci fi"))
+        profiles.setActive(updateProfile)
+        libraries.emitBooks(listOf(matching))
+        metadata.saveGate = CompletableDeferred()
+        val viewModel = viewModel()
+        backgroundScope.launch(mainDispatcherRule.testDispatcher) { viewModel.uiState.collect { } }
+        runCurrent()
+        viewModel.onAxisChanged(HomeAxis.Genres)
+        runCurrent()
+        viewModel.onGenreEditRequested(
+            BookGroup(BookGroupKind.Genre, "sci fi", "Sci fi", listOf(matching)),
+        )
+        runCurrent()
+        viewModel.onGenreEditReplacementChanged("Science Fiction")
+        viewModel.onGenreEditConfirmed()
+        metadata.saveStarted.await()
+
+        profiles.setActive(updateProfile.copy(id = ProfileId("other-profile"), username = "other"))
+        runCurrent()
+        metadata.saveGate?.complete(Unit)
+        runCurrent()
+
+        assertEquals(GenreEditUiState.Hidden, viewModel.uiState.value.genreEdit)
+        assertTrue(metadata.saveWasCanceled)
+        assertEquals(emptyList(), metadata.saves)
+        assertEquals(emptyList(), metadata.savedDrafts)
+    }
+
     private val demoProfile = Profile(
         id = ProfileId("fixture-profile"),
         serverId = ServerId("fixture-server"),
@@ -771,6 +912,84 @@ class HomeViewModelTest {
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
     }
 
+    private data class SavedMetadataEdit(
+        val profileId: ProfileId,
+        val bookId: LibraryItemId,
+        val edit: BookMetadataEdit,
+        val changed: Set<BookMetadataField>,
+    )
+
+    /** The real bulk use case is under test; only its repository edge is recorded. */
+    private class RecordingMetadata(private val libraries: FakeLibraries) : MetadataRepository {
+        val saves = mutableListOf<SavedMetadataEdit>()
+        val savedDrafts = mutableListOf<Pair<ProfileId, LibraryItemId>>()
+        val saveStarted = CompletableDeferred<Unit>()
+        var saveGate: CompletableDeferred<Unit>? = null
+        var saveWasCanceled = false
+
+        override fun observeDraft(profileId: ProfileId, bookId: LibraryItemId): Flow<BookMetadataEdit?> = flowOf(null)
+
+        override suspend fun saveDraft(profileId: ProfileId, bookId: LibraryItemId, edit: BookMetadataEdit) {
+            savedDrafts += profileId to bookId
+        }
+
+        override suspend fun discardDraft(profileId: ProfileId, bookId: LibraryItemId) = Unit
+
+        override suspend fun reload(profileId: ProfileId, bookId: LibraryItemId): AppResult<Book> =
+            libraries.book(bookId)?.let { AppResult.Success(it) }
+                ?: AppResult.Failure(AppError.ApiCompatibility(summary = "Test book was not cached."))
+
+        override suspend fun save(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            edit: BookMetadataEdit,
+            changed: Set<BookMetadataField>,
+        ): AppResult<MetadataSaveResult> {
+            saveStarted.complete(Unit)
+            try {
+                saveGate?.await()
+            } catch (cancellation: CancellationException) {
+                saveWasCanceled = true
+                throw cancellation
+            }
+            val current = libraries.book(bookId)
+                ?: return AppResult.Failure(AppError.ApiCompatibility(summary = "Test book was not cached."))
+            saves += SavedMetadataEdit(profileId, bookId, edit, changed)
+            val updated = current.copy(genres = edit.genres)
+            libraries.updateBook(updated)
+            return AppResult.Success(MetadataSaveResult(book = updated, isLocalCopyStale = false))
+        }
+
+        override suspend fun uploadCover(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+            bytes: ByteArray,
+            mimeType: String,
+        ): AppResult<Book> = notUsed()
+
+        override suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<Book> = notUsed()
+
+        override suspend fun findCandidates(
+            profileId: ProfileId,
+            provider: String,
+            title: String,
+            author: String,
+        ): AppResult<List<MatchCandidate>> = notUsed()
+
+        override suspend fun metadataProviders(profileId: ProfileId): AppResult<List<MetadataProvider>> = notUsed()
+
+        override suspend fun scanItem(profileId: ProfileId, bookId: LibraryItemId): AppResult<String> = notUsed()
+
+        override suspend fun removeFromDatabase(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
+            notUsed()
+
+        override suspend fun embedMetadata(profileId: ProfileId, bookId: LibraryItemId): AppResult<EmbedRequest> =
+            notUsed()
+
+        private fun <T> notUsed(): AppResult<T> =
+            AppResult.Failure(AppError.ApiCompatibility(summary = "Not part of this test fake."))
+    }
+
     private class FakeLibraries : LibraryRepository {
         private val stored = MutableStateFlow<List<Library>>(emptyList())
 
@@ -796,6 +1015,12 @@ class HomeViewModelTest {
             storedBooks.value = books
         }
 
+        fun book(bookId: LibraryItemId): Book? = storedBooks.value.firstOrNull { it.id == bookId }
+
+        fun updateBook(book: Book) {
+            storedBooks.value = storedBooks.value.map { cached -> if (cached.id == book.id) book else cached }
+        }
+
         override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
             storedBooks.map { all -> all.filter { it.libraryId == libraryId } }
 
@@ -805,7 +1030,8 @@ class HomeViewModelTest {
 
             kotlinx.coroutines.flow.flowOf(emptyList<com.example.shelfplayer.core.model.library.Chapter>())
 
-        override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = MutableStateFlow(null)
+        override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
+            storedBooks.map { books -> books.firstOrNull { it.id == bookId } }
 
         private val syncState = MutableStateFlow<SyncState?>(null)
 

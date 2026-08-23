@@ -24,6 +24,7 @@ import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.flatMap
+import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.BookSnapshot
@@ -334,6 +335,15 @@ class FakeAudiobookshelfGateway @Inject constructor(
     override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> =
         requireProfile(profileId).flatMap {
             withMapper { mapper -> mapper.libraries(clock.now()) }
+        }
+
+    override suspend fun listAuthors(profileId: ProfileId, libraryId: LibraryId): AppResult<List<Author>> =
+        requireProfile(profileId).flatMap {
+            withMapper { mapper ->
+                mapper.books(libraryId, clock.now())
+                    .flatMap { snapshot -> snapshot.book.authors }
+                    .distinctBy { author -> author.id }
+            }
         }
 
     override suspend fun listBooks(

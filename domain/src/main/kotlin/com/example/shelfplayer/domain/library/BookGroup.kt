@@ -73,9 +73,15 @@ fun Book.inGroup(kind: BookGroupKind, key: String): Boolean = keysFor(kind).any 
  *
  * A genre keys on its lowercased text so that `Sci-Fi` and `sci-fi` — which one library will contain
  * both of, because the value is whatever a tag editor typed — are one group rather than two. The label
- * kept is the first spelling encountered, which makes the result depend on nothing but the sort.
+ * kept is the first spelling encountered, which makes the result depend on nothing but the sort. A
+ * single malformed item can also contain both spellings; [distinctBy] keeps that book from inflating
+ * the group's count while preserving its first label and genre order.
  */
 private fun Book.keysFor(kind: BookGroupKind): List<Pair<String, String>> = when (kind) {
     BookGroupKind.Author -> authors.map { it.id.value to it.name }
-    BookGroupKind.Genre -> genres.filter(String::isNotBlank).map { it.lowercase() to it }
+    BookGroupKind.Genre ->
+        genres
+            .filter(String::isNotBlank)
+            .map { it.lowercase() to it }
+            .distinctBy { it.first }
 }

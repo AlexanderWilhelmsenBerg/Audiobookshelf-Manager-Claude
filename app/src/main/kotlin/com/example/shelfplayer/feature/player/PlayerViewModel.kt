@@ -173,10 +173,25 @@ class PlayerViewModel @Inject constructor(
      * both the message and the way back.
      */
     fun onPlay(bookId: LibraryItemId) {
+        startPlayback(bookId, onSuccess = ::onExpand)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — starts a shelf book while preserving the listener's browse context.
+     *
+     * The media session update makes the mini player appear. Expanding here would turn the shelf's
+     * compact play affordance into an unexpected navigation action and discard the value of keeping
+     * the shelf composed beneath the player.
+     */
+    fun onPlayFromShelf(bookId: LibraryItemId) {
+        startPlayback(bookId, onSuccess = {})
+    }
+
+    private fun startPlayback(bookId: LibraryItemId, onSuccess: () -> Unit) {
         viewModelScope.launch {
             when (val result = controller.play(bookId)) {
                 is AppResult.Failure -> _message.value = result.error.summary
-                is AppResult.Success -> onExpand()
+                is AppResult.Success -> onSuccess()
             }
         }
     }

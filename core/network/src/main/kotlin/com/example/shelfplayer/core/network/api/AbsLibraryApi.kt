@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
@@ -59,6 +60,34 @@ internal class AbsLibraryApi @Inject constructor(
                     LibraryMapper.toLibraries(connection.serverId, body ?: LibrariesResponseDto(), clock.now())
                 }
             }.map { libraries -> accessible(connection, libraries) }
+        }
+
+    /**
+     * PRODUCT_SPEC LIB-001 — the optional author-decoration section.
+     *
+     * Access is checked before the request just as it is for books and search. The richer response is the
+     * authority for portrait presence; the adapter returns no private `imagePath` to its caller.
+     */
+    override suspend fun listAuthors(profileId: ProfileId, libraryId: LibraryId): AppResult<List<Author>> =
+        withConnection(profileId) { connection, service ->
+            if (!connection.access.allows(libraryId)) {
+                return@withConnection AppResult.Failure(
+                    AppError.Authorization(
+                        summary = "This account is not allowed to see that library.",
+                        missingPermission = "library.read",
+                    ),
+                )
+            }
+            // The capture proves this directory for an unrestricted account only. Audiobookshelf filters
+            // item catalogues by tag, but nothing yet proves the author directory applies the same filter.
+            // Returning all author names for a restricted profile would cross its permission boundary even
+            // if those rows were not linked to books, so portraits remain unavailable until that contract is
+            // captured (PRODUCT_SPEC 5.2 / 22.5).
+            if (!connection.access.hasAllTagAccess) return@withConnection AppResult.Success(emptyList())
+            retries.readOnly("listAuthors") {
+                service.authors(bearerOf(connection.accessToken.value), libraryId.value)
+                    .toResult { body -> LibraryMapper.toAuthors(connection.serverId, body) }
+            }
         }
 
     /**
