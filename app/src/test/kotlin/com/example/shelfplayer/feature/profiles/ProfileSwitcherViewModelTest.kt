@@ -1,5 +1,8 @@
 package com.example.shelfplayer.feature.profiles
 
+import com.example.shelfplayer.core.common.log.DefaultRedactor
+import com.example.shelfplayer.core.common.log.RedactingLogger
+import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
@@ -20,11 +23,15 @@ import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
+import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.lock.RelockDelay
 import com.example.shelfplayer.core.model.lock.UnlockFailure
 import com.example.shelfplayer.core.testing.MainDispatcherRule
+import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.playback.PlaybackHandover
+import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -32,6 +39,7 @@ import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.domain.usecase.RemoveProfileUseCase
+import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import com.example.shelfplayer.testing.FakePreferences
@@ -52,6 +60,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 
 /** PRODUCT_SPEC AUTH-002 / 6.5 — the switcher's states and the actions it exposes. */
 class ProfileSwitcherViewModelTest {
@@ -65,6 +74,9 @@ class ProfileSwitcherViewModelTest {
     private val backgroundSync = RecordingBackgroundSync()
     private val preferences = FakePreferences()
     private val locks = FakeLocks()
+
+    /** PRODUCT_SPEC 6.5.6 — what the restore asked the player to do, if anything. */
+    private val startupPlayer = RecordingStartupPlayer()
 
     private fun viewModel() = ProfileSwitcherViewModel(
         profiles,
@@ -85,6 +97,11 @@ class ProfileSwitcherViewModelTest {
             // interface documents is the right double here. `SwitchProfileUseCaseTest` is where the
             // ordering this seam exists to guarantee is actually asserted.
             PlaybackHandover.None,
+        ),
+        RestoreProfilePlaybackUseCase(
+            library = libraries,
+            player = startupPlayer,
+            logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
         ),
         auth,
         RemoveProfileUseCase(auth, backgroundSync, preferences),
@@ -389,7 +406,15 @@ class ProfileSwitcherViewModelTest {
 
         override suspend fun activeProfileId(): ProfileId? = active.value
 
+        private var refuse = false
+
+        /** What the real repository does for a profile id that no longer resolves to a saved row. */
+        fun refuseSwitches() {
+            refuse = true
+        }
+
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
+            if (refuse) return AppResult.Failure(AppError.Validation(summary = "That profile is no longer saved."))
             active.value = profileId
             return AppResult.Success(Unit)
         }
@@ -422,10 +447,13 @@ class ProfileSwitcherViewModelTest {
         override suspend fun signIn(serverUrl: String, username: String, password: String): AppResult<Profile> =
             error("not part of this fake")
 
+        /** PRODUCT_SPEC 6.5.6 — a profile with no usable credential must not be armed. */
+        var restoreStatus: SessionStatus = SessionStatus.Active
+
         override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> {
             restoredProfiles += profileId
             gate?.await()
-            return AppResult.Success(SessionStatus.Active)
+            return AppResult.Success(restoreStatus)
         }
 
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
@@ -457,8 +485,146 @@ class ProfileSwitcherViewModelTest {
      * switch. Everything here fails loudly rather than returning empty, so a test that starts depending
      * on the library cannot pass by accident — [writeProgress] is the one call the switch really makes.
      */
+    // ---------------------------------------------- PRODUCT_SPEC 6.5.6, the last step of the switch
+
+    /**
+     * **The wiring 6.5.6 asks for.** Switching accounts leaves the incoming one's book ready to play.
+     *
+     * `RestoreProfilePlaybackUseCaseTest` proves the selection rule; this proves something reaches it. That
+     * split is deliberate: R-43 records that in this codebase the arithmetic is never what ships broken, and
+     * a use case nobody calls is exactly how 6.5 step 6 stayed unbuilt after steps 2 to 5 landed.
+     */
+    @Test
+    fun `switching accounts restores the incoming profile's last book, paused`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        libraries.books = listOf(playedBook("half-finished"))
+
+        viewModel().onProfileSelected(grace.id)
+
+        assertEquals(listOf(LibraryItemId("half-finished")), startupPlayer.armed)
+        assertTrue(startupPlayer.played.isEmpty(), "6.5.8 — a switch must never start audio")
+        assertEquals(listOf(grace.id), libraries.accessibleBooksRequestedFor, "the incoming account's library")
+    }
+
+    /**
+     * A profile that could not open a session is not armed.
+     *
+     * Arming opens one, so a profile with no usable credential would spend a network round trip to be told
+     * what `restoreSession` has already reported — the same reasoning `SwitchProfileUseCase` applies before
+     * refreshing permissions.
+     */
+    @Test
+    fun `a profile that needs reauthentication is not restored`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        libraries.books = listOf(playedBook("half-finished"))
+        auth.restoreStatus = SessionStatus.ReauthenticationRequired
+
+        viewModel().onProfileSelected(grace.id)
+
+        assertTrue(startupPlayer.armed.isEmpty(), "no session, nothing to arm")
+    }
+
+    /** And a switch that failed outright restores nothing: there is no incoming account to restore. */
+    @Test
+    fun `a refused switch restores nothing`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        libraries.books = listOf(playedBook("half-finished"))
+        profiles.refuseSwitches()
+
+        viewModel().onProfileSelected(grace.id)
+
+        assertTrue(startupPlayer.armed.isEmpty())
+    }
+
+    /**
+     * The passcode path restores too, which is the call site most easily forgotten.
+     *
+     * There are two switches in this view model — a tap and an unlock — and a restore added to only the
+     * first would work every time somebody tested it on an unlocked account.
+     */
+    @Test
+    fun `unlocking a protected profile also restores its last book`() = runTest {
+        profiles.setProfiles(listOf(ada, grace))
+        profiles.setActive(ada.id)
+        libraries.books = listOf(playedBook("half-finished"))
+        locks.setLocked(grace.id, passcode = PASSCODE)
+        val viewModel = viewModel()
+        viewModel.onProfileSelected(grace.id)
+
+        viewModel.onUnlockSubmitted(PASSCODE.toCharArray())
+
+        assertEquals(listOf(LibraryItemId("half-finished")), startupPlayer.armed)
+    }
+
+    /** A book the incoming account is part-way through, which is the only kind 6.5.6 restores. */
+    private fun playedBook(id: String) = Book(
+        serverId = BOOKS_SERVER,
+        id = LibraryItemId(id),
+        libraryId = LibraryId("library-1"),
+        title = id,
+        subtitle = null,
+        authors = emptyList(),
+        narrators = emptyList(),
+        seriesMemberships = emptyList(),
+        duration = 60.minutes,
+        description = null,
+        genres = emptyList(),
+        tags = emptyList(),
+        publishedYear = null,
+        publisher = null,
+        language = null,
+        isbn = null,
+        asin = null,
+        isExplicit = false,
+        isAbridged = false,
+        coverPath = null,
+        trackCount = 1,
+        sizeBytes = 0,
+        remoteUpdatedAt = null,
+        addedAt = null,
+        lastFetchedAt = Instant.EPOCH,
+        progress = MediaProgress(
+            serverId = BOOKS_SERVER,
+            profileId = grace.id,
+            bookId = LibraryItemId(id),
+            position = 10.minutes,
+            duration = 60.minutes,
+            isFinished = false,
+            updatedAt = Instant.parse("2026-08-20T10:00:00Z"),
+            hasUnsyncedChanges = false,
+        ),
+        localAvailability = LocalAvailability.NotDownloaded,
+    )
+
+    private companion object {
+        val BOOKS_SERVER = ServerId("srv_books")
+
+        /** The same passcode the other unlock tests in this file use. */
+        const val PASSCODE = "492817"
+    }
+
+    private class RecordingStartupPlayer : StartupPlayer {
+        val armed = mutableListOf<LibraryItemId>()
+        val played = mutableListOf<LibraryItemId>()
+
+        override suspend fun arm(bookId: LibraryItemId) {
+            armed += bookId
+        }
+
+        override suspend fun play(bookId: LibraryItemId) {
+            played += bookId
+        }
+    }
+
     private class StubLibraries : LibraryRepository {
         val writtenFor = mutableListOf<ProfileId>()
+
+        /** PRODUCT_SPEC 6.5.6 — what the incoming account has, and which account was asked about. */
+        var books: List<Book> = emptyList()
+        val accessibleBooksRequestedFor = mutableListOf<ProfileId>()
 
         override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> {
             writtenFor += profileId
@@ -475,7 +641,10 @@ class ProfileSwitcherViewModelTest {
         override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
             error("not part of this fake")
 
-        override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = error("not part of this fake")
+        override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> {
+            accessibleBooksRequestedFor += profileId
+            return flowOf(books)
+        }
 
         override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId) =
 

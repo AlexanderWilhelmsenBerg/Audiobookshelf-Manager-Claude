@@ -240,7 +240,18 @@ internal class FakeLibraryRepository(books: List<Book> = emptyList(), libraries:
     override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> =
         storedBooks.map { all -> all.filter { it.libraryId == libraryId } }
 
-    override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = storedBooks
+    /**
+     * PRODUCT_SPEC 6.5.6 — which profile each read named.
+     *
+     * The restore after a profile switch has to read the *incoming* account's library, and "it read
+     * something" is not the same claim as "it read theirs".
+     */
+    val accessibleBooksRequestedFor = mutableListOf<ProfileId>()
+
+    override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> {
+        accessibleBooksRequestedFor += profileId
+        return storedBooks
+    }
 
     override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
         storedBooks.map { all -> all.firstOrNull { it.id == bookId } }

@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.domain.library.HomeShelves
+import com.example.shelfplayer.domain.library.lastPlayedBook
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -24,7 +25,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -316,14 +316,10 @@ class AutoLibrary @Inject constructor(
      * The most recently updated progress that is not finished. Finished books are excluded deliberately:
      * a headset press the morning after finishing something should not start it again from the end.
      */
-    suspend fun lastPlayed(): Book? = books()
-        .filter { book -> book.progress?.isFinished == false }
-        .maxByOrNull { book -> book.progress?.updatedAt ?: Instant.MIN }
-
-    // `lastPlayed` deliberately does **not** go through the Continue shelf, even though the two answer nearly
-    // the same question. ROUTE-001 is "resume what was playing", so a book with no progress row has nothing to
-    // resume and must not be offered to a headset press; the shelf is a browsing surface and may reasonably
-    // show more. Sharing one list would mean a media button eventually starting a book at random.
+    // The rule itself is `lastPlayedBook` in `:domain`, shared with 6.5.6's restore-after-switch — which
+    // needs the answer for a profile that is not the active one, and so could not reuse a function that
+    // resolved the active profile itself. Its KDoc carries the reasoning that used to live here.
+    suspend fun lastPlayed(): Book? = lastPlayedBook(books())
 
     private suspend fun books(): List<Book> {
         val profileId = profiles.activeProfileId() ?: return emptyList()
