@@ -788,7 +788,11 @@ class PlaybackService : MediaLibraryService() {
         val item = current.currentMediaItem ?: return
         val bookId = MediaItems.bookIdOf(item)
         val at = Bookmark.roundedFrom(current.bookPosition())
-        applicationScope.launch { bookmarks.add(bookId, at, title = "") }
+        // PRODUCT_SPEC 6.5 — read here, on the main thread with the position, not inside the launch. The
+        // same reasoning as `flushProgress`: the far end of an application-scoped launch is the wrong place
+        // to ask who is signed in, because the whole point of that scope is outliving this moment.
+        val owner = MediaItems.ownerOf(item)
+        applicationScope.launch { bookmarks.add(bookId, at, title = "", owner = owner) }
     }
 
     private fun skipBy(delta: Duration) {
