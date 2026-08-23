@@ -77,6 +77,9 @@ class DefaultBookmarkRepositoryTest {
     private val sink = RecordingLogSink()
     private val profileId = ProfileId("fixture-profile")
 
+    /** PRODUCT_SPEC 6.5 — mutable, so a test can switch accounts between a bookmark's read and its write. */
+    private val profiles = StubProfiles(profileId)
+
     @Before
     fun setUp() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -84,7 +87,7 @@ class DefaultBookmarkRepositoryTest {
             .allowMainThreadQueries()
             .build()
         repository = DefaultBookmarkRepository(
-            profileRepository = StubProfiles(profileId),
+            profileRepository = profiles,
             profileDao = database.profileDao(),
             bookmarkDao = database.bookmarkDao(),
             gateway = gateway,
@@ -253,7 +256,54 @@ class DefaultBookmarkRepositoryTest {
         createdAt = Instant.ofEpochMilli(1_000),
     )
 
-    private suspend fun seedProfile() {
+    // ------------------------------------------- PRODUCT_SPEC 6.5 / R-50, whose bookmark it is
+
+    /**
+     * **A bookmark named for the listener lands on the listener, not on whoever arrives next.**
+     *
+     * R-49 closed this for positions and history and left the bookmark write behind, because it needs two
+     * simultaneous human actions rather than a timer against one. `PlaybackService.bookmarkHere` is still
+     * launched on the application scope — a bookmark dropped as a car disconnects is the one most worth
+     * keeping — so the write can finish after a switch has changed what `activeProfileId` answers.
+     *
+     * The switch happens between the read and the write here, which is the gap under test.
+     */
+    @Test
+    fun `a bookmark named for the outgoing profile lands on that profile after a switch`() = runTest {
+        seedProfile(OTHER_PROFILE)
+        profiles.setActiveProfile(OTHER_PROFILE)
+
+        repository.add(BOOK, at = 31.seconds, title = "", owner = profileId)
+
+        val theirs = database.bookmarkDao().findAllFor(profileId.value)
+        assertEquals(listOf(31L), theirs.map { it.atSeconds }, "the listener's own bookmark")
+        assertTrue(
+            database.bookmarkDao().findAllFor(OTHER_PROFILE.value).isEmpty(),
+            "the account switched *to* must not gain a bookmark it never made",
+        )
+    }
+
+    /**
+     * A caller with no book loaded still gets the old behaviour.
+     *
+     * The phone's own sheet passes nothing: it is bound to the profile on screen, and naming one would be
+     * ceremony. Product priority 2 outranks precision here — a bookmark stored against the active profile
+     * is better than one dropped.
+     */
+    @Test
+    fun `a bookmark with no owner follows the active profile`() = runTest {
+        repository.add(BOOK, at = 12.seconds, title = "")
+
+        assertEquals(listOf(12L), database.bookmarkDao().findAllFor(profileId.value).map { it.atSeconds })
+    }
+
+    /**
+     * A profile row and its server.
+     *
+     * Parameterised since PRODUCT_SPEC 6.5: a test about a write landing on the wrong account needs a second
+     * account for it to land on, and the write reads the row to find the server key.
+     */
+    private suspend fun seedProfile(id: ProfileId = profileId) {
         database.profileDao().upsertServer(
             ServerEntity(
                 serverId = SERVER,
@@ -269,7 +319,7 @@ class DefaultBookmarkRepositoryTest {
         )
         database.profileDao().upsertProfile(
             ProfileEntity(
-                profileId = profileId.value,
+                profileId = id.value,
                 serverId = SERVER,
                 remoteUserId = null,
                 username = "demo",
@@ -373,7 +423,7 @@ class DefaultBookmarkRepositoryTest {
     }
 
     /** The active profile, without a database of profiles behind it. */
-    private class StubProfiles(private val activeProfileId: ProfileId?) : ProfileRepository {
+    private class StubProfiles(private var active: ProfileId?) : ProfileRepository {
         override fun observeProfiles(): Flow<List<Profile>> = flowOf(emptyList())
 
         override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
@@ -385,7 +435,7 @@ class DefaultBookmarkRepositoryTest {
          * and every assertion in this file pass for the wrong reason.
          */
         override fun observeActiveProfile(): Flow<Profile?> = MutableStateFlow(
-            activeProfileId?.let { id ->
+            active?.let { id ->
                 Profile(
                     id = id,
                     serverId = ServerId(SERVER),
@@ -399,13 +449,19 @@ class DefaultBookmarkRepositoryTest {
             },
         )
 
-        override suspend fun activeProfileId(): ProfileId? = activeProfileId
+        override suspend fun activeProfileId(): ProfileId? = active
 
-        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
+            active = profileId
+            return AppResult.Success(Unit)
+        }
     }
 
     private companion object {
         const val SERVER = "fixture-server"
+
+        /** PRODUCT_SPEC 6.5 — the account a switch moves *to*, which must not inherit the other's bookmark. */
+        val OTHER_PROFILE = ProfileId("other-profile")
         val BOOK = LibraryItemId("book-salt-harbour")
     }
 }

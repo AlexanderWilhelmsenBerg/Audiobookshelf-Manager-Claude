@@ -39,8 +39,19 @@ interface BookmarkRepository {
      *
      * @param at truncated to whole seconds by [Bookmark.roundedFrom] before it reaches here; passing a
      *   finer position stores something the server can never be asked to delete.
+     * @param owner PRODUCT_SPEC 6.5 — the profile the bookmark belongs to, or `null` for the active one.
+     *
+     * ### Why only this write takes an owner
+     *
+     * `rename` and `remove` do not, and that asymmetry is deliberate rather than unfinished. They are driven
+     * from a sheet on the phone, by somebody looking at the bookmark they are editing; the profile cannot
+     * change under them without the same person also opening the switcher. This one has a second caller —
+     * `PlaybackService.bookmarkHere`, a car's custom command, launched on the application scope so it
+     * survives the car disconnecting — and a write that outlives its trigger is a write that can land after
+     * a profile switch. That is the shape R-49 closed for positions and history; this is the same argument
+     * for the one write it left behind (R-50).
      */
-    suspend fun add(bookId: LibraryItemId, at: Duration, title: String): AppResult<Unit>
+    suspend fun add(bookId: LibraryItemId, at: Duration, title: String, owner: ProfileId? = null): AppResult<Unit>
 
     /** Renames the bookmark at [at]. The position does not move — that would be a different bookmark. */
     suspend fun rename(bookId: LibraryItemId, at: Duration, title: String): AppResult<Unit>
