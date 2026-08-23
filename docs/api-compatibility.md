@@ -832,6 +832,58 @@ contradict what a client written from the requirements alone would have assumed.
 | `DELETE /api/items/{id}` | 200 | `OK` | **text/plain** |
 | `GET /api/items/{id}` after deletion | 404 | `Not Found` | text/plain |
 
+## The three privileged writes, captured 2026-08-23 against 2.36.0
+
+The 2026-08-22 review's third P0: cover upload, metadata embedding and user activation were live
+production writes with **no captured contract**. They are captured now, together with each one's refusal —
+and one of the four findings contradicts a claim this repository had written down as fact.
+
+| Endpoint | Status | Body | Content type |
+| --- | --- | --- | --- |
+| `POST /api/items/{id}/cover` (multipart) | 200 | `{"cover": "…", "success": true}` | **JSON** |
+| `POST /api/tools/item/{id}/embed-metadata?backup=1` | 200 | `OK` | text/plain |
+| the same request again, immediately | **400** | `Library item is already in queue or processing` | **text/html** |
+| `PATCH /api/users/{id}` | 200 | `{"success": true, "user": { … }}` | JSON |
+| any of the three, as a non-admin | **403** | `Forbidden` | text/plain |
+
+### The upload answers JSON, and it is the only write here that does
+
+Every other write on this API answers `OK` as `text/plain`. This one returns an object — and what it
+returns is a **server filesystem path** plus a flag, neither of which a screen can render. That is why
+`AbsManagementApi.uploadCover` follows a success with `library.fetchBook`: the response confirms the write
+and describes nothing, so the book has to be read back. Pinned by
+`AbsManagementContractTest`, including the absence of that second read after a refusal.
+
+### The multipart part must be named `cover`
+
+A part named `image` is refused. `AbsManagementApi` therefore builds the part by hand rather than letting
+Retrofit name it from the parameter, and the contract test asserts the encoded body contains
+`name="cover"` — the only place in the request where that name survives.
+
+### The duplicate-embed `400` is `text/html`, and this file used to say otherwise
+
+`ManagementService`'s KDoc asserted both embed `400`s arrive as `text/plain`, *"like every other
+`sendStatus` route on this API"*. The capture shows `text/html`. Nothing breaks — `acceptanceOf` matches on
+the sentence, not the declared type — but the comment was wrong and is now corrected in place. It is
+recorded here because it is a small, exact instance of what PRODUCT_SPEC 23 warns about: a plausible
+generalisation from the routes somebody had already seen, believed because it was written down.
+
+### `PATCH /api/users/{id}` also returns a live token
+
+The section below records that `GET /api/users` hands back every user's working credential. The activation
+route does the same thing for the single user it updates: the `user` object in its response carries a
+`token`. The same rule applies and is now proven by test rather than by inspection — `setUserActive`
+returns `AppResult<Unit>` and closes the body without parsing it, and
+`AbsManagementContractTest` fails if that ever changes.
+
+### The refusals carry no JSON at all
+
+All three answer `403` with the bare text `Forbidden`. A client that tried to read an error envelope for a
+message to show the user would find none, which is why every refusal path in this app produces its own
+sentence rather than relaying the server's.
+
+---
+
 ### `GET /api/users` returns every user's live token
 
 **The most important thing these captures found.** Each element of `users` carries a `token` field, and it

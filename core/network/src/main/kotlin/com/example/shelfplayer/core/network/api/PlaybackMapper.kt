@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.network.api
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlayableTrack
@@ -35,6 +36,7 @@ import kotlin.time.Duration.Companion.milliseconds
 internal object PlaybackMapper {
 
     fun toSession(
+        profileId: ProfileId,
         serverId: ServerId,
         serverUrl: String,
         bookId: LibraryItemId,
@@ -61,6 +63,9 @@ internal object PlaybackMapper {
         return AppResult.Success(
             PlaybackSession(
                 id = id,
+                // PRODUCT_SPEC 6.5 — the account this session was opened as, carried by the session itself
+                // so nothing downstream has to ask who is signed in *now*.
+                profileId = profileId,
                 bookId = bookId,
                 title = dto.displayTitle?.takeIf(String::isNotBlank) ?: bookId.value,
                 author = dto.displayAuthor?.takeIf(String::isNotBlank),

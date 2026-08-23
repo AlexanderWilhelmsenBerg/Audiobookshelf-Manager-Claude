@@ -28,6 +28,7 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.SkipIntervals
@@ -348,6 +349,7 @@ class PlaybackService : MediaLibraryService() {
             bookId = snapshot.bookId,
             position = snapshot.position,
             duration = snapshot.duration,
+            owner = snapshot.owner,
         )
     }
 
@@ -357,6 +359,12 @@ class PlaybackService : MediaLibraryService() {
      * [scope] is cancelled in [onDestroy], so a `launch` on it would be cancelled before the row reached
      * Room — precisely the moment the position matters most. The application scope is PRODUCT_SPEC
      * 22.10's sanctioned alternative to `GlobalScope`, and this is the case it exists for.
+     *
+     * **PRODUCT_SPEC 6.5 — outliving the service is exactly why the owner has to travel with it.** A launch
+     * on a scope that survives this object is a launch that can still be pending when the app switches
+     * profile, and a write that resolved the account at the far end of it would file the departing
+     * listener's position against the arriving one. [PositionSnapshot.owner] is read here, on this side of
+     * the suspension, from the loaded book's own extras.
      */
     private fun flushProgress() {
         val snapshot = positionSnapshot() ?: return
@@ -365,6 +373,7 @@ class PlaybackService : MediaLibraryService() {
                 bookId = snapshot.bookId,
                 position = snapshot.position,
                 duration = snapshot.duration,
+                owner = snapshot.owner,
             )
         }
     }
@@ -387,10 +396,19 @@ class PlaybackService : MediaLibraryService() {
             bookId = MediaItems.bookIdOf(item),
             position = current.bookPosition(),
             duration = current.bookDuration(),
+            // PRODUCT_SPEC 6.5 — read here, with the position, rather than resolved at the far end of the
+            // write. The two facts are one observation: this position, of this account's book.
+            owner = MediaItems.ownerOf(item),
         )
     }
 
-    private data class PositionSnapshot(val bookId: LibraryItemId, val position: Duration, val duration: Duration)
+    private data class PositionSnapshot(
+        val bookId: LibraryItemId,
+        val position: Duration,
+        val duration: Duration,
+        /** PRODUCT_SPEC 6.5 — whose book this is; `null` for an item this app did not build. */
+        val owner: ProfileId?,
+    )
 
     /**
      * The moments a five-second timer would round off.
@@ -638,7 +656,11 @@ class PlaybackService : MediaLibraryService() {
         if (current.mediaItemCount == 0) return
         val bookId = MediaItems.bookIdOf(item)
         val at = current.bookPosition()
-        applicationScope.launch { history.record(bookId, event, from = null, to = at) }
+        // PRODUCT_SPEC 6.5 — the owner is read now, on the main thread with the position, not inside the
+        // launch. See [flushProgress] for why the far end of an application-scoped launch is the wrong
+        // place to ask who is signed in.
+        val owner = MediaItems.ownerOf(item)
+        applicationScope.launch { history.record(bookId, event, from = null, to = at, owner = owner) }
     }
 
     /**

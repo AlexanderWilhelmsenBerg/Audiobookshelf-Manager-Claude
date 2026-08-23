@@ -93,6 +93,9 @@ class OfflineSessionBuilder @Inject constructor(
         return PlaybackSession(
             // Blank on purpose. See the class comment: this is what routes the listening to the outbox.
             id = "",
+            // PRODUCT_SPEC 6.5 — an offline session is owned exactly as a server one is. The profile was
+            // already an argument here; now it is recorded rather than only used to find the progress row.
+            profileId = profileId,
             bookId = bookId,
             title = stored.book.title,
             author = stored.authors.firstOrNull()?.name,

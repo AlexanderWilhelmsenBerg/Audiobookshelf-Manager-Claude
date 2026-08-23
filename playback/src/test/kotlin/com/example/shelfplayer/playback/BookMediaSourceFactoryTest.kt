@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogLevel
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlayableTrack
@@ -154,6 +155,7 @@ class BookMediaSourceFactoryTest {
     }
 
     private companion object {
+        val OWNER = ProfileId("prf_ada")
         val BOOK = LibraryItemId("tidewatch")
         val SERVER = ServerId("server-1")
 
@@ -172,6 +174,7 @@ class BookMediaSourceFactoryTest {
                 track(2, 6.seconds, 4.seconds),
             ),
         ) = PlaybackSession(
+            profileId = OWNER,
             id = "session-1",
             bookId = BOOK,
             title = "The Tidewatch Cycle",

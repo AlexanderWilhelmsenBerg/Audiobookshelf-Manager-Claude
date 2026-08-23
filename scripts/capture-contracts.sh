@@ -69,6 +69,13 @@ VOLATILE_KEYS = {
     # engine.io's session id. Not secret in the credential sense — it is useless without the
     # connection — but it changes on every handshake, so leaving it in would report drift on every run.
     "sid", "libraryItemId", "episodeId",
+    # The address the *client* connected from, which a play session records. Two reasons, and either
+    # alone would be enough. It is environment, not contract: a GitHub runner's Docker bridge reports
+    # `::ffff:172.17.0.1` and a local one reports `172.17.0.1`, so the committed fixtures drifted on this
+    # field and nothing else — the exact false positive the `lastScan` note above describes. And it is
+    # the one field in this whole capture that could carry somebody's real address if the script were
+    # ever pointed at a server outside a throwaway container, which PRODUCT_SPEC 14.5 forbids committing.
+    "ipAddress",
     # A play session carries the calendar day it was opened on. The 2026-08-13 re-run reported drift on
     # `item-play.json` and `multi-item-play.json` for these two fields and nothing else, which is the
     # false positive this whole set exists to prevent — and it hid the real result, which was that five
@@ -204,6 +211,24 @@ capture() {
   log "$method $path -> $name.json"
   meta="$(curl -sS -X "$method" "$BASE_URL$path" \
     -H 'Content-Type: application/json' "$@" \
+    -o "$raw" -w '%{http_code} %{content_type}')"
+  record "$raw" "$OUT_DIR/$name.json" "${meta%% *}" "${meta#* }"
+}
+
+# The same, for a body curl has to build itself.
+#
+# Separate from [capture] rather than a flag on it because the two cannot share a header: `capture` sets
+# `Content-Type: application/json` for every call, and an explicit content type on a `-F` request replaces
+# the multipart one — boundary and all — so the server receives a body it cannot parse. Leaving curl to
+# set it is the whole point.
+capture_upload() {
+  local name="$1" method="$2" path="$3"
+  shift 3
+  local raw="$RAW_DIR/$name.raw"
+  local meta
+  log "$method $path (multipart) -> $name.json"
+  meta="$(curl -sS -X "$method" "$BASE_URL$path" \
+    "$@" \
     -o "$raw" -w '%{http_code} %{content_type}')"
   record "$raw" "$OUT_DIR/$name.json" "${meta%% *}" "${meta#* }"
 }
@@ -638,20 +663,57 @@ else
   # looking for and the capture that followed recorded `2` — an engine.io ping against an empty queue. The
   # fixture went from carrying a race to carrying nothing.
   #
-  # So the poll that finds the frame has to be the poll that is recorded. Each attempt overwrites the last,
-  # which is safe because a poll with nothing in it is not evidence of anything. Bounded: a server that
-  # never sends `init` leaves the final empty capture in place, and that absence is itself the finding.
+  # So the poll that finds the frame has to be the poll that is recorded. Bounded: a server that never
+  # sends `init` leaves an empty capture, and that absence is itself the finding.
   #
-  # Residual, and honest about it: `user_online` and `init` are emitted together and are therefore almost
-  # always in one poll, but nothing guarantees it. If they ever split, this records the one with `init`.
+  # **And the frames are accumulated rather than overwritten, which is the third mistake.** The residual
+  # this comment used to describe — "`user_online` and `init` are emitted together and are therefore almost
+  # always in one poll, but nothing guarantees it" — stopped being hypothetical on 2026-08-23, when a
+  # GitHub runner split them and the drift check went red on a pull request that had not touched a socket.
+  #
+  # The two frames have different triggers: `user_online` is broadcast when the `40` CONNECT lands, `init`
+  # answers the `auth` event posted after it. They are queued in that order, always — but on a slow runner
+  # the first poll drains `user_online` alone, and an implementation that *overwrote* on each attempt then
+  # threw it away when the second poll brought `init`. The fixture lost a frame the server had genuinely
+  # sent, which is the worst kind of contract evidence: quietly incomplete.
+  #
+  # Accumulating is safe precisely because long-polling is destructive. Each frame is delivered to exactly
+  # one poll, so appending cannot double-count, and the causal ordering above means the assembled sequence
+  # is the same whether it arrived in one poll or five.
+  #
+  # Keepalives are dropped. A bare `2` is engine.io asking whether anybody is still there; keeping them
+  # would make the fixture depend on how many polls the race happened to take, which is the very
+  # non-determinism this loop exists to remove.
+  SOCKET_AUTH_RAW="$RAW_DIR/socket-auth.raw"
+  SOCKET_AUTH_ATTEMPT="$RAW_DIR/socket-auth-attempt.raw"
+  SOCKET_AUTH_META="200 text/plain"
+  : >"$SOCKET_AUTH_RAW"
   for _ in $(seq 1 "$SOCKET_INIT_POLLS"); do
-    capture socket-auth GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
-    if grep -q '"init"' "$OUT_DIR/socket-auth.json" 2>/dev/null; then
+    SOCKET_AUTH_META="$(curl -sS "$SOCKET_URL&sid=$SOCKET_SID" \
+      -o "$SOCKET_AUTH_ATTEMPT" -w '%{http_code} %{content_type}')"
+    python3 - "$SOCKET_AUTH_ATTEMPT" "$SOCKET_AUTH_RAW" <<'APPEND'
+import sys
+
+attempt, accumulated = sys.argv[1], sys.argv[2]
+try:
+    arrived = open(attempt).read()
+except OSError:
+    raise SystemExit
+# `2` and `3` are engine.io PING and PONG. Everything else is a frame the contract cares about.
+frames = [f for f in arrived.strip().split("\x1e") if f and f not in ("2", "3")]
+if not frames:
+    raise SystemExit
+held = open(accumulated).read()
+with open(accumulated, "w") as handle:
+    handle.write("\x1e".join(([held] if held else []) + frames))
+APPEND
+    if grep -q '"init"' "$SOCKET_AUTH_RAW" 2>/dev/null; then
       log "the socket's init frame arrived in the auth poll"
       break
     fi
     sleep "$SOCKET_INIT_INTERVAL"
   done
+  record "$SOCKET_AUTH_RAW" "$OUT_DIR/socket-auth.json" "${SOCKET_AUTH_META%% *}" "${SOCKET_AUTH_META#* }"
 
   # A progress change made over REST, then a poll: if the server broadcasts progress at all, this is
   # the frame that carries it, and it is exactly what TC-10 needs.
@@ -927,9 +989,46 @@ if [ -n "$ITEM_ID" ]; then
 
   capture item-after-update GET "/api/items/$ITEM_ID?expanded=1" -H "$AUTH_HEADER"
 
-  # MGR-002 — removing a cover. Captured rather than uploading one: an upload needs a multipart body this
-  # script has no image for, and the removal's response shape is the half the app has to understand before
-  # it can claim a cover is gone.
+  # MGR-002 — **uploading** a cover, which until now was the half nobody had seen.
+  #
+  # The old comment here said an upload "needs a multipart body this script has no image for". That
+  # stopped being true when `seed-contract-media.sh` started placing a `cover.jpg` beside the audio, and
+  # the 2026-08-22 review named this one of three privileged writes shipping with no captured contract.
+  #
+  # The bytes are the server's own cover, fetched back and posted in. Nothing is invented and nothing is
+  # committed: the image is written to the raw directory, which is temporary and outside `OUT_DIR`.
+  #
+  # **The filename matters and that is the finding worth recording.** `AbsManagementApi` builds its part
+  # with an explicit `cover.png` because a part named `image` is refused; sending the same bytes under the
+  # field name `cover` is what this capture proves, rather than what the app currently assumes.
+  curl -sS -o "$RAW_DIR/cover-upload.jpg" "$BASE_URL/api/items/$ITEM_ID/cover" -H "$AUTH_HEADER"
+  if [ -s "$RAW_DIR/cover-upload.jpg" ]; then
+    capture_upload item-cover-upload POST "/api/items/$ITEM_ID/cover" \
+      -H "$AUTH_HEADER" -F "cover=@$RAW_DIR/cover-upload.jpg;filename=cover.jpg;type=image/jpeg"
+  else
+    log "the cover could not be read back, so the upload shape was not captured"
+  fi
+
+  # MGR-007 — embedding metadata into the audio files. The third of the review's uncaptured writes, and
+  # the only one that rewrites bytes on the server's disk rather than a database row.
+  #
+  # Safe here and nowhere else: the file is eight seconds of silence this script generated a few minutes
+  # ago, inside a container that is thrown away when the run ends. `backup=1` is what the app always
+  # sends — see `ALWAYS_BACK_UP` — and its effect is narrower than the word suggests, so the fixture is
+  # evidence for what the confirmation text is allowed to promise.
+  #
+  # **`200` means queued, not finished.** The outcome arrives later on the websocket as `task_finished`.
+  # That distinction is the reason this capture exists: an app that reads 200 as "done" would tell the
+  # user their files were rewritten before the server had opened one.
+  capture item-embed-metadata POST "/api/tools/item/$ITEM_ID/embed-metadata?backup=1" -H "$AUTH_HEADER"
+
+  # And immediately again, which is the documented second `400`: "already in queue or processing".
+  # `AbsManagementApi` claims this response exists and distinguishes it from a generic failure; nothing
+  # had ever observed it. Sent with no delay on purpose — the first task is still running.
+  capture item-embed-metadata-repeated POST "/api/tools/item/$ITEM_ID/embed-metadata?backup=1" -H "$AUTH_HEADER"
+
+  # MGR-002 — removing a cover. Captured after the upload so both halves of the requirement are recorded
+  # in the order a user performs them.
   capture item-cover-remove DELETE "/api/items/$ITEM_ID/cover" -H "$AUTH_HEADER"
 fi
 
@@ -964,6 +1063,34 @@ capture user-create-active POST /api/users \
   -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
   -d '{"username":"contractactive","password":"contract-active-password","type":"user","isActive":true}'
 
+# USER-003 — **activating and deactivating an account**, the last of the three privileged writes the
+# 2026-08-22 review found shipping with no captured contract.
+#
+# The id comes from the create above rather than from a second list call: `POST /api/users` answers with
+# the created user, and reading the id out of that response is also what proves the response carries one.
+ACTIVE_USER_ID="$(python3 -c '
+import json, sys
+try:
+    body = json.load(open(sys.argv[1]))
+except Exception:
+    print(""); raise SystemExit
+user = (body or {}).get("user") or body or {}
+print(user.get("id") or "")
+' "$RAW_DIR/user-create-active.raw" 2>/dev/null || true)"
+
+if [ -n "$ACTIVE_USER_ID" ]; then
+  # Deactivate, then put it back. Both directions, because the app offers both and a fixture for only
+  # one would leave the other written from assumption — and because the account has to be active again
+  # for the refusal captures below to be able to sign in at all.
+  capture user-update-deactivate PATCH "/api/users/$ACTIVE_USER_ID" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d '{"isActive":false}'
+
+  capture user-update-activate PATCH "/api/users/$ACTIVE_USER_ID" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d '{"isActive":true}'
+else
+  log "the created user carried no id, so the activation shapes were not captured"
+fi
+
 LISTENER_TOKEN="$(curl -sS -X POST "$BASE_URL/login" \
   -H 'Content-Type: application/json' -H 'x-return-tokens: true' \
   -d '{"username":"contractactive","password":"contract-active-password"}' |
@@ -994,6 +1121,28 @@ if [ -n "$LISTENER_TOKEN" ] && [ -n "$ITEM_ID" ]; then
   # MGR-004 — refused on account *type* rather than on a grant. The distinction matters: this account
   # could hold every permission the server has and still be refused here.
   capture item-scan-forbidden POST "/api/items/$ITEM_ID/scan" -H "$LISTENER_HEADER"
+
+  # MGR-002 — refused for want of the upload grant. The permitted shape is captured above; this is what
+  # the app has to render when a listener taps *Change cover*, and it was written from `me.json`'s grants
+  # rather than from anything the server had actually been seen to answer.
+  #
+  # No image is attached. The permission check runs before the body is read, so the refusal is the same
+  # with or without one, and sending bytes that will be discarded only makes the capture slower.
+  capture_upload item-cover-upload-forbidden POST "/api/items/$ITEM_ID/cover" -H "$LISTENER_HEADER"
+
+  # MGR-007 — refused on account *type*, like the scan. This is the one refusal the app most needs to get
+  # right: embedding is the only operation that rewrites a listener's audio files, so a grant check that
+  # let it through would be the most expensive of these three to be wrong about.
+  capture item-embed-metadata-forbidden POST "/api/tools/item/$ITEM_ID/embed-metadata?backup=1" \
+    -H "$LISTENER_HEADER"
+
+  # USER-003 — a non-admin trying to change an account. Captured against the listener's *own* id, which is
+  # the case a permission model is most likely to get wrong: "may edit users" and "may edit myself" are
+  # different questions, and the app must not infer one from the other.
+  if [ -n "$ACTIVE_USER_ID" ]; then
+    capture user-update-forbidden PATCH "/api/users/$ACTIVE_USER_ID" \
+      -H 'Content-Type: application/json' -H "$LISTENER_HEADER" -d '{"isActive":false}'
+  fi
 else
   log "the non-admin account could not sign in; the refusal shapes were not captured"
 fi

@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlayableTrack
@@ -250,7 +251,37 @@ class MediaItemsTest {
         assertTrue(MediaItems.isReadyToPlay(foreign))
     }
 
+    // ------------------------------------------------ PRODUCT_SPEC 6.5, whose book this is
+
+    /**
+     * The item names the account that opened it, and names it for as long as it stays loaded.
+     *
+     * That is what makes a journal tick, a headset pause and a car's transport control able to write to the
+     * right row without asking who is signed in — an answer that is wrong for the moment either side of a
+     * profile switch, which is exactly when a switch is happening.
+     */
+    @Test
+    fun `an item carries the profile whose session built it`() {
+        val item = MediaItems.queueFor(session()).item
+
+        assertEquals(OWNER, MediaItems.ownerOf(item))
+    }
+
+    /**
+     * An item this app did not build has no owner, and that is a `null` rather than a guess.
+     *
+     * The writers fall back to the active profile for one, which is what every write did before the owner
+     * existed. Inventing an owner here would turn a missing fact into a confident wrong one.
+     */
+    @Test
+    fun `an item from somewhere else has no owner`() {
+        val foreign = MediaItem.Builder().setMediaId(BOOK.value).build()
+
+        assertNull(MediaItems.ownerOf(foreign))
+    }
+
     private companion object {
+        val OWNER = ProfileId("prf_ada")
         val BOOK = LibraryItemId("tidewatch")
         val SERVER = ServerId("server-1")
         const val COVER = "https://books.example/api/items/tidewatch/cover"
@@ -281,6 +312,7 @@ class MediaItemsTest {
                 track(2, 6.seconds, 4.seconds),
             ),
         ) = PlaybackSession(
+            profileId = OWNER,
             id = "session-1",
             bookId = BOOK,
             title = "The Tidewatch Cycle",
