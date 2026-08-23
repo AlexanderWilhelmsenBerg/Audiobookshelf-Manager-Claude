@@ -71,8 +71,8 @@ class DefaultBookmarkRepository @Inject constructor(
             }
         }
 
-    override suspend fun add(bookId: LibraryItemId, at: Duration, title: String): AppResult<Unit> =
-        withScope(bookId) { profileId, bookKey ->
+    override suspend fun add(bookId: LibraryItemId, at: Duration, title: String, owner: ProfileId?): AppResult<Unit> =
+        withScope(bookId, owner) { profileId, bookKey ->
             val seconds = at.inWholeSeconds.coerceAtLeast(0)
             bookmarkDao.upsert(
                 listOf(
@@ -182,14 +182,21 @@ class DefaultBookmarkRepository @Inject constructor(
     /**
      * The profile and book key every write needs, or an authentication failure.
      *
-     * `activeProfileId` rather than a parameter: a bookmark is made by whoever is listening, and there is no
-     * caller that could sensibly name a different profile.
+     * [owner] wins over the active profile when the caller supplies one. The comment here used to say
+     * `activeProfileId` was right because "there is no caller that could sensibly name a different profile";
+     * `PlaybackService.bookmarkHere` is that caller. It launches on the application scope so a bookmark
+     * dropped as a car disconnects still lands, which means the write can finish after a profile switch has
+     * changed what `activeProfileId` answers — the race R-49 closed for positions, arriving one write later.
+     *
+     * `null` still means the active profile, which is what the phone's own sheet wants: it is bound to the
+     * profile on screen, and naming one would be ceremony.
      */
     private suspend fun withScope(
         bookId: LibraryItemId,
+        owner: ProfileId? = null,
         block: suspend (ProfileId, String) -> AppResult<Unit>,
     ): AppResult<Unit> = withContext(ioDispatcher) {
-        val profileId = profileRepository.activeProfileId()
+        val profileId = owner ?: profileRepository.activeProfileId()
             ?: return@withContext AppResult.Failure(AppError.Authentication())
         val profile = profileDao.findProfile(profileId.value)
             ?: return@withContext AppResult.Failure(AppError.Authentication())

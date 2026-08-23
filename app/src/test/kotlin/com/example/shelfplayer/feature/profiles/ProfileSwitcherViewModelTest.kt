@@ -519,7 +519,7 @@ private val booksServer = Server(
 private class StubBookmarks : BookmarkRepository {
     override fun observe(bookId: LibraryItemId): Flow<List<Bookmark>> = flowOf(emptyList())
 
-    override suspend fun add(bookId: LibraryItemId, at: Duration, title: String): AppResult<Unit> =
+    override suspend fun add(bookId: LibraryItemId, at: Duration, title: String, owner: ProfileId?): AppResult<Unit> =
         AppResult.Success(Unit)
 
     override suspend fun rename(bookId: LibraryItemId, at: Duration, title: String): AppResult<Unit> =
