@@ -6,6 +6,8 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.common.time.ServerClock
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Response
 import javax.inject.Inject
@@ -18,9 +20,24 @@ import javax.inject.Singleton
  * effect on the next call instead of after an app restart.
  */
 fun interface TokenProvider {
-    /** The current token for the active profile, or `null` when there is none. */
-    fun currentToken(): String?
+    /** The active profile's credential and the server that issued it, or `null` when there is none. */
+    fun current(): ActiveCredential?
 }
+
+/**
+ * A bearer token together with the origin it is valid for.
+ *
+ * The origin is not decoration. Without it [AuthorizationInterceptor] has no way to tell a request to the
+ * user's own server from a request to an address chosen by somebody else, and this app has a code path
+ * where an outside caller can choose that address: `PlaybackService` is necessarily exported for Android
+ * Auto and the platform media controls, and a Media3 controller can hand it a pre-resolved stream URI.
+ * The streaming client is a clone of the authenticated one, so before this type existed the ambient bearer
+ * was attached to whatever host that URI named.
+ *
+ * @property serverBaseUrl the profile's server address as stored. Compared by scheme, host and port only;
+ *   the path is irrelevant because a server may be hosted under a sub-path and its media served beside it.
+ */
+data class ActiveCredential(val token: String, val serverBaseUrl: String)
 
 /**
  * Phase 0 has no authentication, so there is no token to supply.
@@ -31,29 +48,53 @@ fun interface TokenProvider {
  */
 @Singleton
 class NoTokenProvider @Inject constructor() : TokenProvider {
-    override fun currentToken(): String? = null
+    override fun current(): ActiveCredential? = null
 }
 
 /**
- * PRODUCT_SPEC 10.3 — authorization is sent as a header, never as a query parameter.
+ * PRODUCT_SPEC 10.3 / 15 — authorization is sent as a header, to the issuing server and nowhere else.
  *
- * A request that already carries its own `Authorization` is left alone. That is what lets a call name
+ * Two independent rules, and the second one is a credential boundary rather than a convenience.
+ *
+ * **A request that already carries its own `Authorization` is left alone.** That is what lets a call name
  * the profile it is acting for instead of inheriting whichever profile happens to be active: a library
  * sync for profile B must not be signed with profile A's token just because A is on screen
- * (PRODUCT_SPEC 5.2, product priority 4). Overwriting an explicit header with the ambient one is
- * exactly that bug, and `.header()` overwrites by default — hence the check rather than an ordering
- * assumption about where this interceptor sits in the chain.
+ * (PRODUCT_SPEC 5.2, product priority 4). Overwriting an explicit header with the ambient one is exactly
+ * that bug, and `.header()` overwrites by default — hence the check rather than an ordering assumption
+ * about where this interceptor sits in the chain.
+ *
+ * **The ambient token is attached only to the origin that issued it.** `PlaybackService` must stay
+ * exported for Android Auto and the platform media controls, and a Media3 controller can submit a
+ * pre-resolved stream URI; the media and download clients are clones of this one, so an unbound ambient
+ * bearer meant another application could name a host and have this app deliver the user's server
+ * credential to it. Matching on scheme, host and port closes that at the transport layer, independently
+ * of whatever the playback layer decides to accept — two boundaries, either of which alone would do.
+ *
+ * Anything unparseable resolves to *not attached*. A credential withheld costs a `401` the caller already
+ * handles; a credential sent to the wrong host cannot be recalled.
  */
 class AuthorizationInterceptor @Inject constructor(private val tokenProvider: TokenProvider) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         if (request.header(HEADER) != null) return chain.proceed(request)
-        val token = tokenProvider.currentToken()
-            ?: return chain.proceed(request)
+        val credential = tokenProvider.current() ?: return chain.proceed(request)
+        if (!request.url.isSameOriginAs(credential.serverBaseUrl)) return chain.proceed(request)
         val authorized = request.newBuilder()
-            .header(HEADER, "$SCHEME $token")
+            .header(HEADER, "$SCHEME ${credential.token}")
             .build()
         return chain.proceed(authorized)
+    }
+
+    /**
+     * Whether this URL addresses the same server as [serverBaseUrl].
+     *
+     * `HttpUrl` normalises the scheme and host to lower case and fills in the default port, so `https://a`
+     * and `HTTPS://A:443/` compare equal without this having to normalise anything itself. A base URL that
+     * does not parse returns `false`, which withholds the token.
+     */
+    private fun HttpUrl.isSameOriginAs(serverBaseUrl: String): Boolean {
+        val issuer = serverBaseUrl.toHttpUrlOrNull() ?: return false
+        return scheme == issuer.scheme && host == issuer.host && port == issuer.port
     }
 
     private companion object {

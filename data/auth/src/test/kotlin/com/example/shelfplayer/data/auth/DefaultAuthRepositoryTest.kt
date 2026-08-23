@@ -192,7 +192,7 @@ class DefaultAuthRepositoryTest {
         assertNotNull(storedProfile)
         assertEquals("remote-user-1", storedProfile.remoteUserId)
 
-        assertEquals("access-1", tokens.currentToken())
+        assertEquals("access-1", tokens.current()?.token)
         assertEquals(profile.id, settings.activeProfileId.first())
     }
 
@@ -218,7 +218,7 @@ class DefaultAuthRepositoryTest {
         assertIs<AppResult.Failure>(result)
         assertTrue(database.profileDao().observeProfiles().first().isEmpty())
         assertNull(database.profileDao().findServer(SessionIdentity.serverIdFor("https://books.example").value))
-        assertNull(tokens.currentToken())
+        assertNull(tokens.current()?.token)
         assertNull(settings.activeProfileId.first())
     }
 
@@ -235,7 +235,7 @@ class DefaultAuthRepositoryTest {
 
         assertEquals(first.id, second.id)
         assertEquals(1, database.profileDao().observeProfiles().first().size)
-        assertEquals("access-2", tokens.currentToken())
+        assertEquals("access-2", tokens.current()?.token)
     }
 
     /** PRODUCT_SPEC AUTH-002 — two accounts on one server are two profiles sharing one server row. */
@@ -287,7 +287,7 @@ class DefaultAuthRepositoryTest {
         val profile = successfulSignIn()
 
         assertNull(tokens.refreshTokenFor(profile.id))
-        assertEquals("access-1", tokens.currentToken())
+        assertEquals("access-1", tokens.current()?.token)
     }
 
     /** A renewable sign-in must not leave the previous session's refresh token behind. */
@@ -316,7 +316,7 @@ class DefaultAuthRepositoryTest {
         val profile = successfulSignIn()
 
         assertEquals(AppResult.Success(SessionStatus.Active), repository.restoreSession(profile.id))
-        assertEquals("access-1", tokens.currentToken())
+        assertEquals("access-1", tokens.current()?.token)
     }
 
     /**
@@ -332,7 +332,7 @@ class DefaultAuthRepositoryTest {
         val status = repository.restoreSession(profile.id)
 
         assertEquals(AppResult.Success(SessionStatus.ReauthenticationRequired), status)
-        assertNull(tokens.currentToken())
+        assertNull(tokens.current()?.token)
         val stored = assertNotNull(database.profileDao().findProfile(profile.id.value))
         assertTrue(stored.requiresReauthentication, "the profile must be marked, not removed")
     }
@@ -370,7 +370,7 @@ class DefaultAuthRepositoryTest {
             listOf(FakeAuthGateway.Refresh("https://books.example", "refresh-1")),
             gateway.refreshCalls,
         )
-        assertEquals("access-2", tokens.currentToken())
+        assertEquals("access-2", tokens.current()?.token)
         // The server issues a new refresh token each time; keeping the old one would work once and then
         // fail at the following renewal.
         assertEquals("refresh-2", tokens.refreshTokenFor(profile.id)?.value)
@@ -441,7 +441,7 @@ class DefaultAuthRepositoryTest {
 
         repository.signOut(profile.id)
 
-        assertNull(tokens.currentToken())
+        assertNull(tokens.current()?.token)
         assertNull(tokens.accessTokenFor(profile.id))
         assertNull(tokens.refreshTokenFor(profile.id))
     }
@@ -477,7 +477,7 @@ class DefaultAuthRepositoryTest {
         gateway.signOutResult = AppError.Network().asFailure()
 
         assertIs<AppResult.Success<*>>(repository.signOut(profile.id))
-        assertNull(tokens.currentToken())
+        assertNull(tokens.current()?.token)
     }
 
     // --- 5.2: refreshing permissions ---------------------------------------------------------------

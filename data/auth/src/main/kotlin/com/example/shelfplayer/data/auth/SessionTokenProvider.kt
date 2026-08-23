@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.datastore.security.SessionTokenStore
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
+import com.example.shelfplayer.core.network.http.ActiveCredential
 import com.example.shelfplayer.core.network.http.TokenProvider
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
@@ -39,13 +40,24 @@ import javax.inject.Singleton
  * tagged with its profile, so a switch that fails to load the new profile's token cannot leave the
  * previous profile's credential attached to requests the caller believes belong to the new one
  * (PRODUCT_SPEC 5.2, product priority 4).
+ *
+ * ### Why the server address is a parameter
+ *
+ * `AuthorizationInterceptor` attaches the ambient bearer only to the origin that issued it, so the cache
+ * has to carry that origin. It is passed in rather than looked up here on purpose: this class is a
+ * credential cache, and giving it a `ProfileDao` would make it a second place that resolves profiles to
+ * servers. Both callers already hold the address — sign-in has just normalised it, and a session restore
+ * has just read the profile row. Making it required means a third caller has to supply one rather than
+ * silently inheriting whichever origin happened to be cached last.
  */
 @Singleton
 class SessionTokenProvider @Inject constructor(private val store: SessionTokenStore) : TokenProvider {
 
     private val cached = AtomicReference<CachedToken?>(null)
 
-    override fun currentToken(): String? = cached.get()?.token
+    override fun current(): ActiveCredential? = cached.get()?.let { held ->
+        ActiveCredential(token = held.token, serverBaseUrl = held.serverBaseUrl)
+    }
 
     /** The profile whose credential is currently attached to outgoing requests, if any. */
     fun activeProfileId(): ProfileId? = cached.get()?.profileId
@@ -62,10 +74,10 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
      * serving the previously active profile's token to calls the caller now believes are authenticated
      * as somebody else.
      */
-    suspend fun activate(profileId: ProfileId): Boolean {
+    suspend fun activate(profileId: ProfileId, serverBaseUrl: String): Boolean {
         cached.set(null)
         val token = store.load(profileId.value, SessionTokenKind.Access) ?: return false
-        cached.set(CachedToken(profileId, token))
+        cached.set(CachedToken(profileId, token, serverBaseUrl))
         return true
     }
 
@@ -76,7 +88,7 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
      * over from an earlier sign-in of the same profile is removed. Keeping a stale one would let
      * `AUTH-004` renewal try a credential the current session never issued.
      */
-    suspend fun adopt(profileId: ProfileId, session: AuthSession) {
+    suspend fun adopt(profileId: ProfileId, session: AuthSession, serverBaseUrl: String) {
         store.save(profileId.value, SessionTokenKind.Access, session.accessToken.value)
         val refresh = session.refreshToken
         if (refresh == null) {
@@ -84,7 +96,7 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
         } else {
             store.save(profileId.value, SessionTokenKind.Refresh, refresh.value)
         }
-        cached.set(CachedToken(profileId, session.accessToken.value))
+        cached.set(CachedToken(profileId, session.accessToken.value, serverBaseUrl))
     }
 
     /** PRODUCT_SPEC AUTH-004 — the credential a renewal needs, or `null` when the session cannot be renewed. */
@@ -114,5 +126,5 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
         store.clear(profileId.value)
     }
 
-    private data class CachedToken(val profileId: ProfileId, val token: String)
+    private data class CachedToken(val profileId: ProfileId, val token: String, val serverBaseUrl: String)
 }

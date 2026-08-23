@@ -3,6 +3,7 @@ package com.example.shelfplayer.playback
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
+import android.os.Process
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -672,9 +673,13 @@ class PlaybackService : MediaLibraryService() {
      *
      * An item that is **already** complete is returned untouched — see [MediaItems.isReadyToPlay], which is
      * where the reasoning for that lives, because it is the part worth testing.
+     *
+     * @param trusted whether the submitting controller is this application. Only then may a pre-resolved
+     *   item pass through as given; otherwise the item must name a browse id this service resolves itself,
+     *   because "already complete" is satisfied by a bare URI and an outside caller chooses that URI.
      */
-    private suspend fun resolvePlayable(item: MediaItem): MediaItem? =
-        if (MediaItems.isReadyToPlay(item)) item else resolveQueue(item)?.item
+    private suspend fun resolvePlayable(item: MediaItem, trusted: Boolean): MediaItem? =
+        if (trusted && MediaItems.isReadyToPlay(item)) item else resolveQueue(item)?.item
 
     private suspend fun resolveQueue(item: MediaItem): MediaItems.Queue? {
         val target = AutoLibrary.resolve(item.mediaId) ?: return null
@@ -896,7 +901,8 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
         ): ListenableFuture<MutableList<MediaItem>> = future {
-            mediaItems.mapNotNull { item -> resolvePlayable(item) }.toMutableList()
+            val trusted = controller.isThisApplication()
+            mediaItems.mapNotNull { item -> resolvePlayable(item, trusted) }.toMutableList()
         }
 
         override fun onSetMediaItems(
@@ -917,7 +923,14 @@ class PlaybackService : MediaLibraryService() {
                 // The app's own call. The index and the position are the caller's — it opened the session and
                 // knows where the book resumes — and the list is handed back whole rather than collapsed to
                 // one item, because this callback is not the place to decide what a queue contains.
-                mediaItems.isNotEmpty() && mediaItems.all(MediaItems::isReadyToPlay) ->
+                //
+                // Gated on the caller's UID. `isReadyToPlay` is satisfied by any item carrying a
+                // `localConfiguration`, and a bare URI carries one — so without this check an outside
+                // controller could put a URI of its choosing straight into the player, on the
+                // authenticated streaming client. See [isThisApplication].
+                controller.isThisApplication() &&
+                    mediaItems.isNotEmpty() &&
+                    mediaItems.all(MediaItems::isReadyToPlay) ->
                     MediaSession.MediaItemsWithStartPosition(mediaItems.toList(), startIndex, startPositionMs)
 
                 else -> mediaItems.firstNotNullOfOrNull { item -> resolveQueue(item) }
@@ -1038,6 +1051,22 @@ class PlaybackService : MediaLibraryService() {
          * listed: `gearhead` is Android Auto's projected head unit, `androidauto` is Automotive OS.
          */
         private fun MediaSession.ControllerInfo.isCar(): Boolean = packageName in CAR_PACKAGES
+
+        /**
+         * Whether this controller is BookWave itself.
+         *
+         * **Matched on UID, not on package name.** The UID is assigned by the platform and a caller cannot
+         * choose it; a package name arrives over IPC and is a claim. Media3 populates both, and only one of
+         * them is evidence.
+         *
+         * What it gates is narrow and deliberate: submitting a *pre-resolved* item — a URI or a track list
+         * the player will fetch as given. Every other controller keeps the whole browse surface and may
+         * submit app-issued `book/…` and `at/…` ids, which this service resolves itself after checking the
+         * profile's access. Android Auto, Assistant and a headset lose nothing they legitimately do.
+         *
+         * `Process.myUid()` is the service's own UID because this code runs in the app's process.
+         */
+        private fun MediaSession.ControllerInfo.isThisApplication(): Boolean = uid == Process.myUid()
 
         override fun onCustomCommand(
             session: MediaSession,
