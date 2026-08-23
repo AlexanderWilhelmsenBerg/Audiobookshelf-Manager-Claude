@@ -7,11 +7,13 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.lock.UnlockFailure
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.RemoveProfileUseCase
+import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +37,14 @@ import javax.inject.Inject
 class ProfileSwitcherViewModel @Inject constructor(
     profileRepository: ProfileRepository,
     private val switchProfile: SwitchProfileUseCase,
+    /**
+     * PRODUCT_SPEC 6.5 step 6 — the incoming account's last book, restored paused.
+     *
+     * Called here rather than inside [SwitchProfileUseCase] because it must not be awaited: it opens a
+     * session, and AUTH-002 gives the switch 500 ms. Both switch paths below call it, which is every path
+     * that exists — see the note on [RestoreProfilePlaybackUseCase] about a future third one.
+     */
+    private val restorePlayback: RestoreProfilePlaybackUseCase,
     private val authRepository: AuthRepository,
     private val removeProfile: RemoveProfileUseCase,
     /**
@@ -112,6 +122,7 @@ class ProfileSwitcherViewModel @Inject constructor(
             }
             val result = switchProfile(profileId)
             action.update { it.copy(inFlight = false, error = (result as? AppResult.Failure)?.error) }
+            restoreAfter(profileId, result)
         }
     }
 
@@ -138,7 +149,25 @@ class ProfileSwitcherViewModel @Inject constructor(
             unlock.value = null
             val result = switchProfile(target.profileId)
             action.update { it.copy(error = (result as? AppResult.Failure)?.error) }
+            restoreAfter(target.profileId, result)
         }
+    }
+
+    /**
+     * PRODUCT_SPEC 6.5 step 6 — arms the incoming account's last book, once the switch has actually happened.
+     *
+     * Only for a switch that produced a **live session**. A profile that restored into
+     * `ReauthenticationRequired` has no token to open a session with, so arming it would spend a network
+     * round trip to be told what is already known — the same reasoning `SwitchProfileUseCase` applies before
+     * refreshing permissions.
+     *
+     * Not awaited, and its failures are not shown. The switch has already succeeded and been reported; this
+     * is the courtesy afterwards, and a listener does not need an error about a book they did not ask for
+     * (product priority 1).
+     */
+    private fun restoreAfter(profileId: ProfileId, result: AppResult<SessionStatus>) {
+        if (result !is AppResult.Success || result.value != SessionStatus.Active) return
+        viewModelScope.launch { restorePlayback(profileId) }
     }
 
     fun onUnlockDismissed() {
