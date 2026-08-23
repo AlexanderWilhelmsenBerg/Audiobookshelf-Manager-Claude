@@ -50,6 +50,25 @@ verification is `strict` over 890 pinned components.
 classpath changed, which once let two stale test doubles pass locally and fail in CI. See `docs/risks.md`
 R-31.
 
+## Getting an APK without building one
+
+GitHub → **Actions** → **Build APK** → *Run workflow*. Choose the branch and `debug` or `release`; the APK
+lands on the run's summary page under **Artifacts**, which a phone can download directly. `run_checks`
+adds `verifyDebug` first, off by default so a quick device build stays quick.
+
+`workflow_dispatch` only. Every pull request already runs `verifyDebug` and `main` runs the full release
+gate, so an APK built for a commit nobody asked about is storage and runner time for an artefact that
+expires unread.
+
+**The release variant is unsigned and cannot be installed.** Play App Signing holds the key and it is not
+in this repository (ADR-0024), so that variant is for inspecting what R8 produced — which nothing has ever
+done. Use `debug` for a phone. The release run also uploads the R8 mapping, because an APK kept without
+its mapping is one whose crashes cannot be read.
+
+The artefact is named from the version read back **out of the built APK**, not out of the build script.
+R-04 is why: a `versionName` that had not moved in nine builds made every field report name the wrong
+build.
+
 ## Building this locally
 
 `./scripts/check-local-environment.sh` reports whether this machine can build, test and device-test the
