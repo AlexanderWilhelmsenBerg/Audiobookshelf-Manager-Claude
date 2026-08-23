@@ -6,11 +6,13 @@ import com.example.shelfplayer.core.common.AppBuild
 import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
 import com.example.shelfplayer.core.common.log.LogSink
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.network.di.RemoteGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.http.UserAgent
 import com.example.shelfplayer.domain.download.DownloadScheduler
 import com.example.shelfplayer.domain.download.SmartDownload
+import com.example.shelfplayer.domain.playback.PlaybackHandover
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.domain.usecase.SmartDownloadUseCase
@@ -133,6 +135,21 @@ interface AppModule {
 
             override suspend fun play(bookId: LibraryItemId) {
                 controller.play(bookId)
+            }
+        }
+
+        /**
+         * PRODUCT_SPEC 6.5 steps 2–3 — the profile switch's hands on the player, bound here for the same
+         * reason [StartupPlayer] is.
+         *
+         * The same [PlaybackController] singleton the app plays through, so the flush reads the position of
+         * the book the user can actually see and the controller that is dropped is the one they were using.
+         */
+        @Provides
+        @Singleton
+        fun providesPlaybackHandover(controller: PlaybackController): PlaybackHandover = object : PlaybackHandover {
+            override suspend fun handOver(outgoing: ProfileId) {
+                controller.handOver(outgoing)
             }
         }
 

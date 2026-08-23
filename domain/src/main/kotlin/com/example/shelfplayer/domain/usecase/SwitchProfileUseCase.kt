@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.flatMap
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
+import com.example.shelfplayer.domain.playback.PlaybackHandover
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
@@ -38,6 +39,17 @@ import javax.inject.Inject
  *
  * It is enforced here rather than in the switcher because a UI check is a suggestion. Every path that
  * changes the active profile goes through this function, and this is where a second one would be noticed.
+ *
+ * ### The player is stopped before the context changes, and that is awaited
+ *
+ * 6.5 steps 2 and 3 come before step 4, and until [handover] existed they did not happen at all: the
+ * selection was written while the previous account's book kept playing and kept journaling a position every
+ * five seconds. The flush is therefore awaited rather than launched — see [PlaybackHandover] — because
+ * "flush, then switch" expressed as two concurrent launches is not an order.
+ *
+ * Awaiting it is also why the flush must not be able to fail the switch. A player that cannot be reached is
+ * not a reason to strand somebody on the account they are leaving, which is the same judgement the
+ * paragraph above makes about a credential that will not load.
  */
 class SwitchProfileUseCase @Inject constructor(
     private val profileRepository: ProfileRepository,
@@ -46,6 +58,8 @@ class SwitchProfileUseCase @Inject constructor(
     private val backgroundSync: BackgroundSync,
     /** AUTH-005 — whether the incoming profile may be opened at all. */
     private val activation: ProfileActivationGuard,
+    /** PRODUCT_SPEC 6.5 steps 2–3 — the outgoing account's player, stopped and flushed before step 4. */
+    private val handover: PlaybackHandover,
 ) {
     suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> {
         // Asked before anything is written. A refusal that had already changed the active profile would
@@ -55,6 +69,18 @@ class SwitchProfileUseCase @Inject constructor(
                 summary = "That account is locked. Enter its passcode to switch to it.",
             ).asFailure()
         }
+        // PRODUCT_SPEC 6.5 steps 2–3, and they happen *here* — while `activeProfileId` still names the
+        // account being left, so every write the flush produces is unambiguously theirs.
+        //
+        // Skipped when the target is already active. Re-selecting the current profile is a no-op the
+        // switcher can produce with a stray tap, and tearing down a playing book for one would stop
+        // playback for no reason at all (product priority 1).
+        val outgoing = profileRepository.activeProfileId()
+        if (outgoing != null && outgoing != profileId) {
+            handover.handOver(outgoing)
+        }
+        // Step 4. Everything above this line belongs to the outgoing account; everything below it to the
+        // incoming one.
         return profileRepository.setActiveProfile(profileId).flatMap {
             authRepository.restoreSession(profileId).also { status ->
                 if (status.isActive()) {

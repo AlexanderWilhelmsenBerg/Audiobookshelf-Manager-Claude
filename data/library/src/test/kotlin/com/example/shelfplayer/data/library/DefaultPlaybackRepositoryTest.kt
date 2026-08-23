@@ -45,6 +45,7 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -68,6 +69,12 @@ class DefaultPlaybackRepositoryTest {
     private val sink = RecordingLogSink()
     private val profileId = ProfileId("fixture-profile")
 
+    /** PRODUCT_SPEC 6.5 — mutable, so a test can switch the app to another account mid-journal. */
+    private val profiles = StubProfileRepository(profileId)
+
+    /** PRODUCT_SPEC DL-005 / 6.5 — records the halfway triggers a write produced, so absence is assertable. */
+    private val smartDownloads = mutableListOf<LibraryItemId>()
+
     @Before
     fun setUp() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -84,7 +91,7 @@ class DefaultPlaybackRepositoryTest {
         )
 
         repository = DefaultPlaybackRepository(
-            profileRepository = StubProfileRepository(profileId),
+            profileRepository = profiles,
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
             libraryDao = database.libraryDao(),
@@ -95,9 +102,11 @@ class DefaultPlaybackRepositoryTest {
                     progressDao = database.progressDao(),
                     downloads = NoDownloads,
                 ),
-                // PRODUCT_SPEC DL-005 — off, which is its default. These cases are about the journal, and
-                // a trigger that fetched a book would make every one of them depend on a catalogue.
-                smartDownload = SmartDownload.Disabled,
+                // PRODUCT_SPEC DL-005 — recorded rather than performed. These cases are about the journal,
+                // and a trigger that fetched a book would make every one of them depend on a catalogue; but
+                // 6.5 needs to assert that a write for a departed account produces *no* trigger, and
+                // `SmartDownload.Disabled` cannot tell "not called" from "called and did nothing".
+                smartDownload = SmartDownload { bookId, _, _, _ -> smartDownloads += bookId },
             ),
             clock = TestAppClock(),
             logger = logger,
@@ -124,8 +133,13 @@ class DefaultPlaybackRepositoryTest {
         libraryRepository.refresh(profileId)
     }
 
-    /** The one profile these tests act as, and the server it belongs to. */
-    private suspend fun seedProfile() {
+    /**
+     * A profile row, and the server it belongs to.
+     *
+     * Parameterised since PRODUCT_SPEC 6.5: a test about a write landing on the wrong account needs a
+     * second account for it to land on, and `recordPosition` reads the row to find the server key.
+     */
+    private suspend fun seedProfile(id: ProfileId = profileId) {
         database.profileDao().upsertServer(
             ServerEntity(
                 serverId = SERVER,
@@ -141,7 +155,7 @@ class DefaultPlaybackRepositoryTest {
         )
         database.profileDao().upsertProfile(
             ProfileEntity(
-                profileId = profileId.value,
+                profileId = id.value,
                 serverId = SERVER,
                 remoteUserId = null,
                 username = "demo",
@@ -243,7 +257,7 @@ class DefaultPlaybackRepositoryTest {
     @Test
     fun `no active profile is an authentication failure rather than a stray row`() = runTest {
         val orphaned = DefaultPlaybackRepository(
-            profileRepository = StubProfileRepository(activeProfileId = null),
+            profileRepository = StubProfileRepository(active = null),
             profileDao = database.profileDao(),
             progressDao = database.progressDao(),
             libraryDao = database.libraryDao(),
@@ -453,16 +467,86 @@ class DefaultPlaybackRepositoryTest {
         }
 
     /** The active profile, without a database of profiles behind it. */
-    private class StubProfileRepository(private val activeProfileId: ProfileId?) : ProfileRepository {
+    // ------------------------------------------- PRODUCT_SPEC 6.5, whose row a write lands on
+
+    /**
+     * **The write goes where the listener was, not where the app is now.**
+     *
+     * This is the profile-switch race in one test. The journal writes every five seconds and a switch takes
+     * microseconds, so a tick can begin under one account and reach Room under another. Before the owner
+     * existed the position resolved `activeProfileId()` *here*, at the far end of that gap, and a book
+     * Ada was listening to wrote its position onto Grace's row — a stranger's progress bar moving on its
+     * own, which is product priority 4 rather than a cosmetic defect.
+     *
+     * The switch is performed between the read and the write to make the gap the thing under test.
+     */
+    @Test
+    fun `a position named for the outgoing profile lands on that profile after a switch`() = runTest {
+        seedProfile(OTHER_PROFILE)
+        profiles.setActiveProfile(OTHER_PROFILE)
+
+        repository.recordPosition(BOOK, position = 42.minutes, duration = 2.hours, owner = profileId)
+
+        val theirs = database.progressDao().findProgress(profileId.value, EntityKey.of(SERVER, BOOK.value))
+        assertEquals(42.minutes.inWholeMilliseconds, theirs?.positionMillis, "the listener's own row moved")
+        val strangers = database.progressDao().findProgress(OTHER_PROFILE.value, EntityKey.of(SERVER, BOOK.value))
+        assertNull(strangers, "the account switched *to* must not gain a row it never listened to")
+    }
+
+    /**
+     * A caller with no session to name still gets the old behaviour.
+     *
+     * `owner` is nullable because some caller may genuinely have no book loaded to ask, and the fallback has
+     * to be a position stored somewhere rather than a position dropped — product priority 2 outranks the
+     * precision here.
+     */
+    @Test
+    fun `a position with no owner follows the active profile`() = runTest {
+        repository.recordPosition(BOOK, position = 9.minutes, duration = 2.hours)
+
+        val stored = database.progressDao().findProgress(profileId.value, EntityKey.of(SERVER, BOOK.value))
+        assertEquals(9.minutes.inWholeMilliseconds, stored?.positionMillis)
+    }
+
+    /**
+     * PRODUCT_SPEC DL-005 / 6.5 — a departed account's listening does not spend the arriving account's data.
+     *
+     * `SmartDownloadUseCase` resolves the **active** profile to decide what to fetch, so a late journal tick
+     * from the outgoing listener would queue the next book in *their* series against the incoming
+     * listener's storage and cellular allowance. The position is still written — that belongs to whoever
+     * listened — but the download it would have triggered is not.
+     */
+    @Test
+    fun `a position for a departed profile triggers no smart download`() = runTest {
+        seedProfile(OTHER_PROFILE)
+        profiles.setActiveProfile(OTHER_PROFILE)
+
+        repository.recordPosition(BOOK, position = 42.minutes, duration = 2.hours, owner = profileId)
+
+        assertTrue(smartDownloads.isEmpty(), "the outgoing account's listening must not download for the incoming one")
+    }
+
+    /** And the ordinary case still triggers it, so the guard above is a guard rather than a removal. */
+    @Test
+    fun `a position for the account in use still considers a smart download`() = runTest {
+        repository.recordPosition(BOOK, position = 42.minutes, duration = 2.hours, owner = profileId)
+
+        assertEquals(listOf(BOOK), smartDownloads)
+    }
+
+    private class StubProfileRepository(private var active: ProfileId?) : ProfileRepository {
         override fun observeProfiles(): Flow<List<Profile>> = flowOf(emptyList())
 
         override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
 
         override fun observeActiveProfile(): Flow<Profile?> = flowOf(null)
 
-        override suspend fun activeProfileId(): ProfileId? = activeProfileId
+        override suspend fun activeProfileId(): ProfileId? = active
 
-        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
+            active = profileId
+            return AppResult.Success(Unit)
+        }
     }
 
     /**
@@ -525,6 +609,9 @@ class DefaultPlaybackRepositoryTest {
 
     private companion object {
         const val SERVER = "fixture-server"
+
+        /** PRODUCT_SPEC 6.5 — the account a switch moves *to*, which must not inherit the other's writes. */
+        val OTHER_PROFILE = ProfileId("other-profile")
 
         /** A book the fixture library actually holds, so the row has something to attach to. */
         val BOOK = LibraryItemId("book-voyage-1")

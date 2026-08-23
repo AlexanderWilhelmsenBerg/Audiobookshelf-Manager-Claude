@@ -1,6 +1,7 @@
 package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,11 @@ interface PlaybackHistoryRepository {
      *   is the one recording a change the **server** made: the row belongs where the change happened, not
      *   where the refresh that noticed it happened, and a sync after a night's sleep would otherwise stack a
      *   week of other devices' listening at the top of the list. `null` means the clock.
+     * @param owner PRODUCT_SPEC 6.5 — the profile the event belongs to, or `null` for the active one. The
+     *   player names it from the loaded book's own extras, so a pause that arrives while a profile switch is
+     *   in flight is filed against whoever was listening rather than whoever is signed in a moment later.
+     *   Same reasoning as [PlaybackRepository.recordPosition]; a history row on a stranger's book is a
+     *   smaller loss than a position on one, but it is the same boundary.
      */
     suspend fun record(
         bookId: LibraryItemId,
@@ -39,6 +45,7 @@ interface PlaybackHistoryRepository {
         to: Duration,
         detail: Duration? = null,
         at: Instant? = null,
+        owner: ProfileId? = null,
     )
 
     suspend fun clear(bookId: LibraryItemId)

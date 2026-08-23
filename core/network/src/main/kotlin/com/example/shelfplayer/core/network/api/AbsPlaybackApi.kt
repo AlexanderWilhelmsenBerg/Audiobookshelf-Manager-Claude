@@ -65,11 +65,12 @@ internal class AbsPlaybackApi @Inject constructor(
         }
         return when (transported) {
             is AppResult.Failure -> AppResult.Failure(transported.error)
-            is AppResult.Success -> sessionFrom(connection, bookId, transported.value).also(::logOpened)
+            is AppResult.Success -> sessionFrom(profileId, connection, bookId, transported.value).also(::logOpened)
         }
     }
 
     private fun sessionFrom(
+        profileId: ProfileId,
         connection: ProfileConnection,
         bookId: LibraryItemId,
         response: Response<PlaybackSessionDto>,
@@ -84,7 +85,7 @@ internal class AbsPlaybackApi @Inject constructor(
                 missingField = "body",
             ),
         )
-        return PlaybackMapper.toSession(connection.serverId, connection.serverUrl, bookId, body)
+        return PlaybackMapper.toSession(profileId, connection.serverId, connection.serverUrl, bookId, body)
     }
 
     private fun logOpened(session: AppResult<PlaybackSession>) {

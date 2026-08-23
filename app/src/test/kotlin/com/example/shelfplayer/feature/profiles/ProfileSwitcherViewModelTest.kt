@@ -24,6 +24,7 @@ import com.example.shelfplayer.core.model.lock.RelockDelay
 import com.example.shelfplayer.core.model.lock.UnlockFailure
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
+import com.example.shelfplayer.domain.playback.PlaybackHandover
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -80,6 +81,10 @@ class ProfileSwitcherViewModelTest {
             // A lambda rather than a fake: `ProfileActivationGuard` is a `fun interface` so that this test
             // needs no double it would otherwise have to keep in step with `:domain`'s copy.
             ProfileActivationGuard { true },
+            // PRODUCT_SPEC 6.5 — the switcher's own tests do not exercise the player, so the no-op the
+            // interface documents is the right double here. `SwitchProfileUseCaseTest` is where the
+            // ordering this seam exists to guarantee is actually asserted.
+            PlaybackHandover.None,
         ),
         auth,
         RemoveProfileUseCase(auth, backgroundSync, preferences),

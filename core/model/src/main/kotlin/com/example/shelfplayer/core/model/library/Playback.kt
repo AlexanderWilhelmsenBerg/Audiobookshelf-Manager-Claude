@@ -107,6 +107,19 @@ data class PlayableTrack(
  */
 data class PlaybackSession(
     val id: String,
+    /**
+     * PRODUCT_SPEC 6.5 — **whose** session this is, stamped where it is opened rather than looked up later.
+     *
+     * A session is opened as a particular account, and everything the player subsequently writes about it —
+     * a position, a play, a pause — belongs to that account for as long as the book stays loaded. Resolving
+     * "the active profile" at write time instead is the profile-switch race 6.5 exists to close: the journal
+     * writes every five seconds, a switch takes microseconds, and a write that started under one account and
+     * finished under another lands one listener's position on the other's row.
+     *
+     * Carried through to the player in [`MediaItems.queueFor`]'s extras, so the ownership survives process
+     * death, a media button and a car — none of which can be asked who was signed in when the book started.
+     */
+    val profileId: ProfileId,
     val bookId: LibraryItemId,
     val title: String,
     val author: String?,

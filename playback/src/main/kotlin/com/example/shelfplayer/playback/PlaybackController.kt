@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
@@ -148,7 +149,17 @@ class PlaybackController @Inject constructor(
             // Only for a book that is actually playing. Arming one on app open is not listening, and recording
             // it would put a Resume in the history for every launch of a build set to restore.
             if (startPlaying) {
-                applicationScope.launch { history.record(session.bookId, PlaybackEvent.Resume, null, session.startAt) }
+                applicationScope.launch {
+                    history.record(
+                        session.bookId,
+                        PlaybackEvent.Resume,
+                        from = null,
+                        to = session.startAt,
+                        // PRODUCT_SPEC 6.5 — the session says whose it is, so a launch that outlives a
+                        // profile switch still files the entry against the account that opened the book.
+                        owner = session.profileId,
+                    )
+                }
             }
             AppResult.Success(Unit)
         }
@@ -226,6 +237,7 @@ class PlaybackController @Inject constructor(
             val media = controller ?: return@launch
             if (media.mediaItemCount == 0) return@launch
             val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf)
+            val owner = media.currentMediaItem?.let(MediaItems::ownerOf)
             val from = media.bookPosition()
             // ADR-0016 — a book position *is* a player position. The clamp that `GlobalTimeline.cursorFor`
             // used to apply is now Media3's own: it refuses a seek past the window's duration.
@@ -234,7 +246,7 @@ class PlaybackController @Inject constructor(
             publish(media)
             // After the seek, never before: a jump that did not happen is not history. Launched rather than
             // awaited because a database write must not sit between a finger and a position.
-            if (bookId != null) applicationScope.launch { history.record(bookId, event, from, to) }
+            if (bookId != null) applicationScope.launch { history.record(bookId, event, from, to, owner = owner) }
         }
     }
 
@@ -339,11 +351,65 @@ class PlaybackController @Inject constructor(
     }
 
     /**
+     * PRODUCT_SPEC 6.5 steps 2–3 — ends [outgoing]'s playback and does not return until its position is
+     * written.
+     *
+     * ### Suspending is the whole feature
+     *
+     * 6.5 orders the switch: flush, pause, *then* change the profile context. Every other write in this
+     * class is launched and forgotten, deliberately, because a database write must not sit between a finger
+     * and a position. This one is awaited, because the thing on the other side of it is the profile context
+     * changing — and "flush, then switch" written as two launches is not an order, it is a hope.
+     *
+     * ### And clearing the queue is what stops the next write
+     *
+     * Pausing alone leaves the book loaded, and a loaded book keeps a five-second journal, a session sync
+     * and a metrics recorder pointed at it. `stop()` plus `clearMediaItems()` empties the player, so
+     * `PlaybackService.positionSnapshot` returns `null` and there is no further write to get wrong. The
+     * writes that were already in flight when this began are covered by the other half of 6.5 — they carry
+     * [outgoing] in the item's extras and land on the right row whatever the active profile becomes.
+     *
+     * ### 6.5.8 — nothing resumes
+     *
+     * "Optional continue playing across profile switch is not supported in version 1." The incoming account
+     * gets a stopped player, and the listener presses play.
+     *
+     * Doing nothing when no controller was ever built is correct rather than lazy: no controller means the
+     * service was never started, which means nothing is loaded and there is no position to lose.
+     */
+    suspend fun handOver(outgoing: ProfileId) {
+        withContext(mainDispatcher) {
+            val media = controller ?: return@withContext
+            // Paused first. The flush that follows reads a position that has stopped moving, and a listener
+            // hears the switch take effect immediately rather than after a database write.
+            media.pause()
+            val item = media.currentMediaItem
+            if (item != null && media.currentPosition > 0) {
+                // Awaited. This is the step 6.5 puts before the context change, and the only way to put it
+                // there is to be here when it finishes.
+                playbackRepository.recordPosition(
+                    bookId = MediaItems.bookIdOf(item),
+                    position = media.bookPosition(),
+                    duration = media.bookDuration(),
+                    // The outgoing profile by name, not by lookup: `setActiveProfile` may already be queued
+                    // behind this call, and the item's own owner is the same answer read a different way.
+                    owner = MediaItems.ownerOf(item) ?: outgoing,
+                )
+            }
+            media.stop()
+            media.clearMediaItems()
+        }
+        // The connection itself, so the incoming account does not inherit a controller aimed at a session
+        // opened as somebody else.
+        release()
+    }
+
+    /**
      * Releases the controller.
      *
      * Not the *service*: a released controller leaves playback running, which is the point. This only
-     * exists so a test — or a future profile switch, which must not leave one account's controller
-     * pointed at another's session — can drop the connection deliberately.
+     * exists so a test — or [handOver], which must not leave one account's controller pointed at another's
+     * session — can drop the connection deliberately.
      */
     fun release() {
         ticker?.cancel()

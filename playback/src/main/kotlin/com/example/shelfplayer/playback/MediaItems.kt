@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -47,6 +48,24 @@ object MediaItems {
     /** Each track's mime type, parallel to [KEY_TRACK_URLS]. An entry may be empty when the server sent none. */
     const val KEY_TRACK_MIME_TYPES = "com.example.shelfplayer.playback.TRACK_MIME_TYPES"
 
+    /**
+     * PRODUCT_SPEC 6.5 — the profile whose session produced this item.
+     *
+     * ### Why the owner travels with the book rather than being looked up
+     *
+     * Everything the player writes about a loaded book — a journaled position, a play, a pause — belongs to
+     * the account that opened it. The writers cannot ask who that was: a journal tick, a headset press and a
+     * car's transport control all arrive with a `MediaItem` and nothing else, and the obvious answer, "the
+     * profile that is active right now", is wrong for the few hundred milliseconds either side of a switch.
+     * A five-second journal against a microsecond switch is a race that loses somebody's position onto
+     * somebody else's row, which is product priority 4 and not a cosmetic one.
+     *
+     * Putting it in the extras makes the item a complete description of *whose* book it is, for the same
+     * reason [KEY_TRACK_URLS] makes it a complete description of what it plays: it survives process death,
+     * a media button, and a controller that has never heard of this app's session types.
+     */
+    const val KEY_OWNER_PROFILE_ID = "com.example.shelfplayer.playback.OWNER_PROFILE_ID"
+
     /** A book plus where to start it. */
     data class Queue(val item: MediaItem, val startPositionMs: Long)
 
@@ -65,6 +84,7 @@ object MediaItems {
             putStringArray(KEY_TRACK_URLS, tracks.map { it.url }.toTypedArray())
             putLongArray(KEY_TRACK_DURATIONS_MS, tracks.map { it.duration.inWholeMilliseconds }.toLongArray())
             putStringArray(KEY_TRACK_MIME_TYPES, tracks.map { it.mimeType.orEmpty() }.toTypedArray())
+            putString(KEY_OWNER_PROFILE_ID, session.profileId.value)
         }
         val item = MediaItem.Builder()
             .setMediaId(session.bookId.value)
@@ -88,6 +108,17 @@ object MediaItems {
 
     /** The book this item belongs to. */
     fun bookIdOf(item: MediaItem): LibraryItemId = LibraryItemId(item.mediaId)
+
+    /**
+     * PRODUCT_SPEC 6.5 — the profile that opened this item, or `null` when the item did not come from
+     * [queueFor].
+     *
+     * `null` is not a failure and must not stop a write. It means the caller has no better answer than the
+     * active profile, which is what every write did before the owner existed — so the fallback is exactly
+     * today's behaviour rather than a new way to lose a position (product priority 2).
+     */
+    fun ownerOf(item: MediaItem): ProfileId? =
+        item.mediaMetadata.extras?.getString(KEY_OWNER_PROFILE_ID)?.takeIf(String::isNotBlank)?.let(::ProfileId)
 
     /**
      * The tracks an item describes, or an empty list when it is not one of ours.
