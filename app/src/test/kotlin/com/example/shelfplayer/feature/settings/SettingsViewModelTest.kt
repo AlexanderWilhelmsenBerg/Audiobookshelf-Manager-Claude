@@ -535,11 +535,6 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
         return AppResult.Success(Unit)
     }
 
-    override suspend fun setAutoPlayOnCarConnect(enabled: Boolean): AppResult<Unit> {
-        controls.value = controls.value.copy(autoPlayOnCarConnect = enabled)
-        return AppResult.Success(Unit)
-    }
-
     override suspend fun setFocusBehaviour(behaviour: FocusBehaviour): AppResult<Unit> {
         controls.value = controls.value.copy(focusBehaviour = behaviour)
         return AppResult.Success(Unit)
