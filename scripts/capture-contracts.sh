@@ -663,20 +663,57 @@ else
   # looking for and the capture that followed recorded `2` — an engine.io ping against an empty queue. The
   # fixture went from carrying a race to carrying nothing.
   #
-  # So the poll that finds the frame has to be the poll that is recorded. Each attempt overwrites the last,
-  # which is safe because a poll with nothing in it is not evidence of anything. Bounded: a server that
-  # never sends `init` leaves the final empty capture in place, and that absence is itself the finding.
+  # So the poll that finds the frame has to be the poll that is recorded. Bounded: a server that never
+  # sends `init` leaves an empty capture, and that absence is itself the finding.
   #
-  # Residual, and honest about it: `user_online` and `init` are emitted together and are therefore almost
-  # always in one poll, but nothing guarantees it. If they ever split, this records the one with `init`.
+  # **And the frames are accumulated rather than overwritten, which is the third mistake.** The residual
+  # this comment used to describe — "`user_online` and `init` are emitted together and are therefore almost
+  # always in one poll, but nothing guarantees it" — stopped being hypothetical on 2026-08-23, when a
+  # GitHub runner split them and the drift check went red on a pull request that had not touched a socket.
+  #
+  # The two frames have different triggers: `user_online` is broadcast when the `40` CONNECT lands, `init`
+  # answers the `auth` event posted after it. They are queued in that order, always — but on a slow runner
+  # the first poll drains `user_online` alone, and an implementation that *overwrote* on each attempt then
+  # threw it away when the second poll brought `init`. The fixture lost a frame the server had genuinely
+  # sent, which is the worst kind of contract evidence: quietly incomplete.
+  #
+  # Accumulating is safe precisely because long-polling is destructive. Each frame is delivered to exactly
+  # one poll, so appending cannot double-count, and the causal ordering above means the assembled sequence
+  # is the same whether it arrived in one poll or five.
+  #
+  # Keepalives are dropped. A bare `2` is engine.io asking whether anybody is still there; keeping them
+  # would make the fixture depend on how many polls the race happened to take, which is the very
+  # non-determinism this loop exists to remove.
+  SOCKET_AUTH_RAW="$RAW_DIR/socket-auth.raw"
+  SOCKET_AUTH_ATTEMPT="$RAW_DIR/socket-auth-attempt.raw"
+  SOCKET_AUTH_META="200 text/plain"
+  : >"$SOCKET_AUTH_RAW"
   for _ in $(seq 1 "$SOCKET_INIT_POLLS"); do
-    capture socket-auth GET "/socket.io/?EIO=4&transport=polling&sid=$SOCKET_SID"
-    if grep -q '"init"' "$OUT_DIR/socket-auth.json" 2>/dev/null; then
+    SOCKET_AUTH_META="$(curl -sS "$SOCKET_URL&sid=$SOCKET_SID" \
+      -o "$SOCKET_AUTH_ATTEMPT" -w '%{http_code} %{content_type}')"
+    python3 - "$SOCKET_AUTH_ATTEMPT" "$SOCKET_AUTH_RAW" <<'APPEND'
+import sys
+
+attempt, accumulated = sys.argv[1], sys.argv[2]
+try:
+    arrived = open(attempt).read()
+except OSError:
+    raise SystemExit
+# `2` and `3` are engine.io PING and PONG. Everything else is a frame the contract cares about.
+frames = [f for f in arrived.strip().split("\x1e") if f and f not in ("2", "3")]
+if not frames:
+    raise SystemExit
+held = open(accumulated).read()
+with open(accumulated, "w") as handle:
+    handle.write("\x1e".join(([held] if held else []) + frames))
+APPEND
+    if grep -q '"init"' "$SOCKET_AUTH_RAW" 2>/dev/null; then
       log "the socket's init frame arrived in the auth poll"
       break
     fi
     sleep "$SOCKET_INIT_INTERVAL"
   done
+  record "$SOCKET_AUTH_RAW" "$OUT_DIR/socket-auth.json" "${SOCKET_AUTH_META%% *}" "${SOCKET_AUTH_META#* }"
 
   # A progress change made over REST, then a poll: if the server broadcasts progress at all, this is
   # the frame that carries it, and it is exactly what TC-10 needs.
