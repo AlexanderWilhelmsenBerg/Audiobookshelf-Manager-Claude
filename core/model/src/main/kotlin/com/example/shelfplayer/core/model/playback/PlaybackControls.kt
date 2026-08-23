@@ -246,7 +246,6 @@ data class PlaybackSettings(
      * play, which is ROUTE-002's `Arm only` and the sane default for a feature that can talk to a whole
      * vehicle.
      */
-    val autoPlayOnCarConnect: Boolean = false,
     /** PRODUCT_SPEC PLAY-002 — what a transient interruption does. Pause unless the listener says otherwise. */
     val focusBehaviour: FocusBehaviour = FocusBehaviour.Default,
     /** PRODUCT_SPEC ROUTE-003 — what opening the app does to the player. */

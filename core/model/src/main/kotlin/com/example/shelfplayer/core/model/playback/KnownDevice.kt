@@ -120,5 +120,15 @@ data class KnownDevice(
 
         /** The car's identity, for the same reason: it arrives as a controller, not as a named device. */
         const val CAR_ID: String = "car"
+
+        /**
+         * What the car row is called before anything supplies a better name — which nothing does.
+         *
+         * Beside [CAR_ID] because the two are one fact. A car offers no stable name, so both the row the
+         * media session creates and the row a retired global setting seeds have to call it the same thing or
+         * Settings would show two cars. Never a hardware address (ROUTE-002, 14.5); Settings renders the
+         * localised *kind* label over this, and this is the stored fallback.
+         */
+        const val CAR_DISPLAY_NAME: String = "Car audio"
     }
 }

@@ -162,7 +162,7 @@ restart itself when Wi-Fi comes back.
 | ROUTE-002 | **Auto-play never starts when the profile is locked.** | **Closed 2026-08-21** |
 | DL-004 / DL-005 | **Automatic downloads obey their own cellular setting.** The scheduler asked `allowsCellular(ManualDownload)` whoever had called it, so `smartDownloadsOnCellular` was stored, shown in Settings and read by nothing. The category now travels with the enqueue, and a manual tap can relax a constraint a sweep set. | **Closed 2026-08-23 — R-54** |
 | ROUTE-002 | **`Ask` is `Ready` plus the media notification**, not a separate dismissible prompt. | Open |
-| ROUTE-002 | **The global "auto-play when a car connects" switch still exists** and overlaps the Car device's own policy. | Open |
+| ROUTE-002 | **One control decides what a car does.** The global "auto-play when a car connects" switch is gone; `PlaybackService.onPostConnect` resolves the car's own policy through `CarConnection` and the same `AutoStartDecision` the headset path uses, so the per-device warning and the `Arm only` default now apply to a car too. A stored `true` on the old switch seeds the car's policy as `AutoPlay`, so nobody's choice changes meaning. | **Closed 2026-08-23 — R-55** |
 | PLAY-006 | **Advanced buffer values** — explicit minimum, maximum, playback-start, rebuffer-start, target bytes. Only the five presets are offered. | Open |
 
 **The lock clause is enforced**, and by a pure function rather than by a branch buried in the watcher.
