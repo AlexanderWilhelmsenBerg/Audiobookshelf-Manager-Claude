@@ -12,6 +12,7 @@ import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.download.TrafficCategory
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
@@ -241,8 +242,17 @@ internal class FakeDownloadScheduler : DownloadScheduler {
     val enqueued = mutableListOf<LibraryItemId>()
     val cancelled = mutableListOf<LibraryItemId>()
 
-    override suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId) {
+    /**
+     * PRODUCT_SPEC DL-004 — what each enqueue said it was for.
+     *
+     * Recorded separately from [enqueued] so the existing tests, which only ask *whether* a book was
+     * queued, keep reading as they did.
+     */
+    val categories = mutableListOf<TrafficCategory>()
+
+    override suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId, category: TrafficCategory) {
         enqueued += itemId
+        categories += category
     }
 
     override suspend fun cancel(serverId: ServerId, itemId: LibraryItemId) {

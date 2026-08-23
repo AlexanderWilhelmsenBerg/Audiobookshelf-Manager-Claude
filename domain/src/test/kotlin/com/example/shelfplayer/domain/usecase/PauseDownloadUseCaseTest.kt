@@ -3,6 +3,7 @@ package com.example.shelfplayer.domain.usecase
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.TrafficCategory
 import com.example.shelfplayer.domain.FakeBookAssetSource
 import com.example.shelfplayer.domain.FakeDownloadRepository
 import com.example.shelfplayer.domain.FakeDownloadScheduler
@@ -74,6 +75,30 @@ class PauseDownloadUseCaseTest {
 
         assertEquals(DownloadState.Paused, stateOf("tidewatch"))
         assertTrue(scheduler.enqueued.isEmpty(), "an automatic pass must not enqueue a paused book")
+    }
+
+    /**
+     * PRODUCT_SPEC DL-004 — a tap is a manual download and a sweep is a smart one, and the scheduler is
+     * told which.
+     *
+     * Both halves in the one test, because the pair is the point: `NetworkPolicy` keeps a separate cellular
+     * setting for each, and the category travelling with the enqueue is the only thing that lets the
+     * scheduler apply the right one — it sees a book id and cannot tell a listener's tap from a sweep.
+     * Hard-coded to `ManualDownload` until this assertion existed, which made `smartDownloadsOnCellular` a
+     * setting the user could change and nothing could read.
+     *
+     * `saltmarsh` rather than `tidewatch`, so neither call meets the paused guard above and both actually
+     * reach the scheduler.
+     */
+    @Test
+    fun `the category says who asked for the download`() = runTest {
+        download()(LibraryItemId("saltmarsh"), isAutomatic = false)
+        download()(LibraryItemId("saltmarsh"), isAutomatic = true)
+
+        assertEquals(
+            listOf(TrafficCategory.ManualDownload, TrafficCategory.SmartDownload),
+            scheduler.categories,
+        )
     }
 
     /** A book nobody paused is unaffected by the guard: the automatic path still downloads normally. */

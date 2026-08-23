@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
+import com.example.shelfplayer.core.model.download.TrafficCategory
 import com.example.shelfplayer.core.model.download.VerificationReport
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
@@ -212,7 +213,7 @@ class DownloadsViewModelTest {
 
     /** Neither half of the pause pair is under test here, so neither is allowed to reach anything real. */
     private object InertScheduler : DownloadScheduler {
-        override suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId) = Unit
+        override suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId, category: TrafficCategory) = Unit
 
         override suspend fun cancel(serverId: ServerId, itemId: LibraryItemId) = Unit
     }
