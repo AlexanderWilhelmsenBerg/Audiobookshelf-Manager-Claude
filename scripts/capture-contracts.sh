@@ -1093,7 +1093,42 @@ APPEND
       fi
       sleep 0.5
     done
-    record "$TASK_RAW" "$OUT_DIR/socket-embed-task.json" "${TASK_META%% *}" "${TASK_META#* }"
+
+    # **Recorded as the task's own four frames, because the rest of the poll window is not reproducible.**
+    #
+    # The 2026-08-23 CI run went red on this file and no other, and the diff was purely additive: the
+    # runner's window also held the socket's `init` frame — the handshake's own, which the two drain polls
+    # above had not yet been given — and a `task_progress` and a `track_progress`. Whether any of those
+    # land inside the window depends on how quickly the container answers, so keeping them makes the file
+    # report drift against a server that has not changed. That is R-53's false positive from the other
+    # side: there a frame was lost, here frames are gained.
+    #
+    # The four kept are the ones an embed produces exactly once each, and the ones `TaskFrames` reads.
+    # The progress frames are real and are written down in `docs/api-compatibility.md` from the run that
+    # showed them — observed, but not committed as a contract this check can hold a server to.
+    TASK_LIFECYCLE_RAW="$RAW_DIR/socket-task-lifecycle.raw"
+    python3 - "$TASK_RAW" "$TASK_LIFECYCLE_RAW" <<'LIFECYCLE'
+import json, re, sys
+
+# The order the server emits them in, fixed here so the file cannot depend on where a poll happened to end.
+LIFECYCLE = ("task_started", "track_started", "track_finished", "task_finished")
+
+kept = {}
+for chunk in open(sys.argv[1]).read().split("\x1e"):
+    frame = chunk.strip()
+    match = re.match(r"^\d+(\[.*)$", frame, re.S)
+    if not match:
+        continue
+    try:
+        event = json.loads(match.group(1))
+    except ValueError:
+        continue
+    if isinstance(event, list) and event and event[0] in LIFECYCLE:
+        kept.setdefault(event[0], frame)
+with open(sys.argv[2], "w") as handle:
+    handle.write("\x1e".join(kept[name] for name in LIFECYCLE if name in kept))
+LIFECYCLE
+    record "$TASK_LIFECYCLE_RAW" "$OUT_DIR/socket-embed-task.json" "${TASK_META%% *}" "${TASK_META#* }"
     log "GET /socket.io (embed task frames) -> socket-embed-task.json"
   fi
 

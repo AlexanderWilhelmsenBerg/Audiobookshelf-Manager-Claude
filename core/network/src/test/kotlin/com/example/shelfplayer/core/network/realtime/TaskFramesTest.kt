@@ -106,7 +106,7 @@ class TaskFramesTest {
     }
 
     /**
-     * The captured poll also carries `track_started` and `track_finished`, which are not tasks.
+     * The capture also carries `track_started` and `track_finished`, which are not tasks.
      *
      * Newly observed, and the parser must decline them rather than invent a task with no action — 22.4's
      * rule for a shape this build does not model.
@@ -118,7 +118,33 @@ class TaskFramesTest {
         }
     }
 
-    /** The `42["event", { … }]` payload for [event], out of the captured poll. */
+    /**
+     * **The fixture is these four frames and nothing else, and that is a decision** — R-57.
+     *
+     * Socket frames arrive when the task runs, not when the client polls, so the contents of a poll window
+     * are not reproducible: the runner's held the socket's own `init` frame and two progress events that a
+     * local capture of the same server version did not. Committing whichever landed made the drift check go
+     * red on a server that had not changed. `capture-contracts.sh` now reduces the window to the first of
+     * each lifecycle event, and this asserts it did — so a capture that lets noise back in fails here,
+     * where the reason is written down, rather than as an unexplained red check on somebody else's pull
+     * request.
+     */
+    @Test
+    fun `the captured fixture holds the four lifecycle frames and nothing else`() {
+        val frames = ContractFixtures.frames("socket-embed-task")
+        val events = frames.mapNotNull { frame ->
+            frame["payload"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.content
+        }
+
+        assertEquals(frames.size, events.size, "every frame in the fixture is a named event")
+        assertEquals(
+            listOf("task_started", "track_started", "track_finished", "task_finished"),
+            events,
+            "the fixture is the embed's lifecycle, in the order the server emits it",
+        )
+    }
+
+    /** The `42["event", { … }]` payload for [event], out of the capture. */
     private fun capturedTaskBody(event: String): JsonObject = ContractFixtures.frames("socket-embed-task")
         .mapNotNull { frame -> frame["payload"]?.jsonArray?.takeIf { it.size >= 2 } }
         .first { payload -> payload[0].jsonPrimitive.content == event }[1]

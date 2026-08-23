@@ -839,7 +839,7 @@ audio files arrives later on the websocket, and until now nothing had watched it
 written from Audiobookshelf's source, and `TaskFramesTest` said so in its own header — *"source-derived
 rather than captured"*.
 
-One poll after an embed carries four events, in this order:
+An embed produces four events, in this order, and `socket-embed-task.json` is those four:
 
 | Event | What it says |
 | --- | --- |
@@ -847,6 +847,28 @@ One poll after an embed carries four events, in this order:
 | `track_started` | `ino` and `libraryItemId` only — **newly observed**, and not a task |
 | `track_finished` | the same two fields |
 | `task_finished` | `isFinished: true`, `isFailed: false`, `error: null` |
+
+### The poll window also carries frames the fixture does not
+
+The fixture is the four above and nothing else, and that is a decision the 2026-08-23 CI run forced. The
+frames arrive when the task runs rather than when the client asks, so a poll boundary can fall anywhere:
+the runner's window also held the socket's own `init` frame and two progress events that a local capture
+of the same server version had not seen. Committing whichever ones happened to land would make the file
+report drift against a server that had not changed — R-53's false positive from the other side, where
+there a frame was lost and here frames were gained. `capture-contracts.sh` therefore records the first of
+each of the four lifecycle events and drops the rest.
+
+Dropped is not unobserved, so the two progress events are written down here instead:
+
+| Event | Fields |
+| --- | --- |
+| `task_progress` | `libraryItemId`, `progress` (`0.5` with one of two files tagged) |
+| `track_progress` | `ino`, `libraryItemId`, `progress` |
+
+Nothing in the app reads either. They would be the obvious source for a determinate progress bar in place
+of the indeterminate one `EmbedTaskWatcher` drives today, and anybody building that should capture them
+deliberately rather than trust this table — it is one observation from a CI log, not a fixture a check
+holds the server to.
 
 ### Every field the parser names is real
 
