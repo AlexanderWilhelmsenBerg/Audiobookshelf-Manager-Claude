@@ -19,7 +19,11 @@ import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -122,6 +126,44 @@ class AutoLibrary @Inject constructor(
      * cached the tree, the profile changed underneath — should show nothing, not an error dialog the driver
      * has to dismiss.
      */
+    /**
+     * Emits whenever a connected browser's copy of this tree has gone stale.
+     *
+     * ### Why this exists
+     *
+     * `onGetChildren` builds the tree on demand, which made it look self-updating. It is not: a browser
+     * fetches once and caches, and Media3 only re-asks after `notifyChildrenChanged`. Nothing called that,
+     * so a head unit kept whatever it had first loaded — **including the previous profile's book titles
+     * after a switch**, in a car with other people in it. That is product priority 4 rather than a stale-UI
+     * annoyance, which is why the signal is the *profile* rather than every library write.
+     *
+     * `drop(1)` because the first emission is the current profile, not a change to it: the browser has not
+     * fetched anything yet when the service starts, and notifying it then would be a needless round trip
+     * over the car's binder.
+     */
+    fun invalidations(): Flow<Unit> = profiles.observeActiveProfile()
+        .map { profile -> profile?.id }
+        .distinctUntilChanged()
+        .drop(1)
+        .map { }
+
+    /**
+     * The parents a browser can be subscribed to, which is what `notifyChildrenChanged` has to name.
+     *
+     * Listed here rather than in the service so the ids stay with the tree that defines them: a tab added
+     * to [rootTabs] without being added here would silently keep serving the old profile's contents.
+     */
+    fun browsableParents(): List<String> = listOf(
+        ROOT,
+        RECENT_ROOT,
+        TAB_CONTINUE,
+        TAB_RECENT,
+        TAB_DISCOVER,
+        TAB_AGAIN,
+        TAB_CHAPTERS,
+        TAB_HISTORY,
+    )
+
     suspend fun children(parentId: String, now: NowPlaying?): List<MediaItem> = when (parentId) {
         ROOT -> rootTabs()
         RECENT_ROOT -> resumeRow()

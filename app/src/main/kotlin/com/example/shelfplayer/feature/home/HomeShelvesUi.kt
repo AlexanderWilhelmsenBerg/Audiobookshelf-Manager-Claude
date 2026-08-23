@@ -212,6 +212,7 @@ private fun ShelfCard(
                         Icon(
                             imageVector = Icons.Filled.PlayArrow,
                             contentDescription = playLabel,
+                            modifier = Modifier.size(PLAY_ICON_SIZE),
                         )
                     }
                 }
@@ -263,7 +264,27 @@ private fun ShelfHeading(text: String, modifier: Modifier = Modifier) {
 private val SHELF_CARD_WIDTH = 160.dp
 
 /** PLAY-001 / PRODUCT_SPEC 21 — a full touch target even when the visible circle reads as an overlay. */
-private val PLAY_BUTTON_SIZE = 48.dp
+/**
+ * The play control on a shelf card.
+ *
+ * Halved from 48.dp on request — at 48 it covered close to a third of a 160.dp card and read as the card's
+ * subject rather than as an action on it.
+ *
+ * **40.dp is a floor, not a preference.** `AccessibilityAssertions.MINIMUM_VISUAL_TARGET` fails any
+ * interactive node below it, and that assertion measures the node's own layout size rather than the
+ * platform's expanded touch bounds. Going to a literal 24.dp would fail the accessibility net and, more to
+ * the point, would be a genuinely small target on a card people tap one-handed while walking.
+ *
+ * So the *visible* shrink comes from the icon rather than the button: the filled circle stays at the
+ * minimum a finger needs, and the glyph inside it halves, which is the change actually being asked for.
+ * Giving the button a 24.dp body and a hidden 48.dp target was the other option and was rejected — the
+ * invisible overhang would sit over the cover, and the device run has already found one defect where a
+ * card's own click area swallowed a nested action.
+ */
+private val PLAY_BUTTON_SIZE = 40.dp
+
+/** Half of the original 48.dp control, which is the size the button now reads as. */
+private val PLAY_ICON_SIZE = 24.dp
 
 /** Two lines, always. See `ShelfCard` for why the second one is reserved rather than earned. */
 private const val TITLE_LINES = 2

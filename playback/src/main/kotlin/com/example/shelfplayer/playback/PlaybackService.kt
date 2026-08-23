@@ -195,6 +195,7 @@ class PlaybackService : MediaLibraryService() {
         observeSleepTimer()
         observeSkipIntervals()
         outputDevices.start(scope, DeviceActions())
+        observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
     }
 
@@ -255,6 +256,30 @@ class PlaybackService : MediaLibraryService() {
             current.setMediaItem(queue.item, queue.startPositionMs)
             current.prepare()
             if (startPlaying) current.play()
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 / ROUTE-001 — tells a connected car to forget the previous profile's tree.
+     *
+     * A browser fetches the browse tree once and caches it; Media3 re-asks only after
+     * `notifyChildrenChanged`. Nothing called it, so after a profile switch a head unit went on showing
+     * the account it had loaded first — **someone else's book titles, in a car with other people in it.**
+     * That is a profile boundary rather than a stale-UI annoyance, which is why it is worth a collector.
+     *
+     * The child count is read rather than guessed: Media3 passes it to the browser, and a wrong number is
+     * how a row renders with the previous account's length. `AutoLibrary.browsableParents` owns the id
+     * list so a new tab cannot be added without being invalidated too.
+     */
+    private fun observeBrowseTreeInvalidation() {
+        scope.launch {
+            auto.invalidations().collect {
+                val current = session ?: return@collect
+                auto.browsableParents().forEach { parentId ->
+                    current.notifyChildrenChanged(parentId, auto.children(parentId, nowPlaying()).size, null)
+                }
+                logger.info(LogCategory.Playback, "The active account changed; the car browse tree was invalidated")
+            }
         }
     }
 
