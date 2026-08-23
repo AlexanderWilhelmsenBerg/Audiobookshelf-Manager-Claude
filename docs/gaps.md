@@ -158,6 +158,7 @@ restart itself when Wi-Fi comes back.
 | Requirement | Gap | State |
 | --- | --- | --- |
 | ROUTE-002 | **Auto-play never starts when the profile is locked.** | **Closed 2026-08-21** |
+| DL-004 / DL-005 | **Automatic downloads obey their own cellular setting.** The scheduler asked `allowsCellular(ManualDownload)` whoever had called it, so `smartDownloadsOnCellular` was stored, shown in Settings and read by nothing. The category now travels with the enqueue, and a manual tap can relax a constraint a sweep set. | **Closed 2026-08-23 — R-54** |
 | ROUTE-002 | **`Ask` is `Ready` plus the media notification**, not a separate dismissible prompt. | Open |
 | ROUTE-002 | **The global "auto-play when a car connects" switch still exists** and overlaps the Car device's own policy. | Open |
 | PLAY-006 | **Advanced buffer values** — explicit minimum, maximum, playback-start, rebuffer-start, target bytes. Only the five presets are offered. | Open |

@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.TrafficCategory
 import com.example.shelfplayer.core.model.isFailure
 import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.download.DownloadScheduler
@@ -91,9 +92,23 @@ class DownloadBookUseCase @Inject constructor(
         // `request` deliberately leaves an existing manifest untouched — it is the shared-copy path — so
         // resuming has to lift the pause itself. A no-op for anything that is not paused.
         downloads.markQueued(profile.serverId, bookId)
-        scheduler.enqueue(profile.serverId, bookId)
+        // PRODUCT_SPEC DL-004 — the same flag that decided whether to step over a paused book decides which
+        // cellular setting applies. It is passed rather than inferred because this is the only layer that
+        // knows who asked: the scheduler sees a book id and cannot tell a listener's tap from a sweep.
+        scheduler.enqueue(profile.serverId, bookId, categoryFor(isAutomatic))
         return AppResult.Success(Unit)
     }
+
+    /**
+     * PRODUCT_SPEC DL-004 — one flag, two names for it, mapped in one place.
+     *
+     * `isAutomatic` is this use case's vocabulary and [TrafficCategory] is the network policy's. Translating
+     * here rather than pushing the boolean down means the scheduler receives the value
+     * `NetworkPolicy.allowsCellular` actually takes, so there is no second mapping to get out of step — and
+     * a fourth traffic category would make the compiler ask about this line.
+     */
+    private fun categoryFor(isAutomatic: Boolean): TrafficCategory =
+        if (isAutomatic) TrafficCategory.SmartDownload else TrafficCategory.ManualDownload
 
     private companion object {
         /**

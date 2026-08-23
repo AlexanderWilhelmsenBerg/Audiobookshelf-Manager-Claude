@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.usecase
 
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.download.DownloadHousekeeping
+import com.example.shelfplayer.core.model.download.TrafficCategory
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.FakeBookAssetSource
 import com.example.shelfplayer.domain.FakeDownloadRepository
@@ -45,6 +46,28 @@ class SmartDownloadUseCaseTest {
         useCase(LibraryItemId("book-2"), previousPosition = 40, position = 60, duration = 100)
 
         assertEquals(listOf(LibraryItemId("book-3")), scheduler.enqueued)
+    }
+
+    /**
+     * PRODUCT_SPEC DL-004 — **and it is queued as a smart download, not as a manual one.**
+     *
+     * `NetworkPolicy` keeps `smartDownloadsOnCellular` separate from `downloadsOnCellular` on the stated
+     * reasoning that "a manual download is a decision the user just made and a smart one is the app
+     * deciding for them". The scheduler is where that becomes a WorkManager constraint, and it can only
+     * apply the right one if it is told which this is — so the category travelling with the enqueue is the
+     * whole of the enforcement.
+     *
+     * Before this assertion existed the scheduler was hard-coded to `ManualDownload`, so a listener who
+     * allowed cellular for downloads but not for smart downloads got smart downloads on cellular anyway:
+     * a setting that could be seen, changed and stored, and that nothing read.
+     */
+    @Test
+    fun `the book it fetches is queued as a smart download`() = runTest {
+        val useCase = useCase(series(), DownloadHousekeeping(smartDownload = true))
+
+        useCase(LibraryItemId("book-2"), previousPosition = 40, position = 60, duration = 100)
+
+        assertEquals(listOf(TrafficCategory.SmartDownload), scheduler.categories)
     }
 
     /**

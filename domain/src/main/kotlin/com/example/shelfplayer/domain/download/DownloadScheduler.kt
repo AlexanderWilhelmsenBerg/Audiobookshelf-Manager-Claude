@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.download
 
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.TrafficCategory
 
 /**
  * PRODUCT_SPEC DL-001 / §12 — persistent work that outlives the screen that started it.
@@ -25,8 +26,14 @@ interface DownloadScheduler {
      *
      * Idempotent: enqueueing a book that is already downloading keeps the running job rather than restarting
      * it. Retrying a failed one is the same call — the job resumes from the parts on disk.
+     *
+     * @param category PRODUCT_SPEC DL-004 — **why** these bytes are moving, which decides whether the job
+     *   may run on a metered network. [TrafficCategory.SmartDownload] and [TrafficCategory.ManualDownload]
+     *   are separate settings with different defaults, and the whole point of the separation is that the
+     *   app deciding to spend somebody's data is not the same event as the user deciding to. An
+     *   implementation that assumed one category would honour a setting the user had not given it.
      */
-    suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId)
+    suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId, category: TrafficCategory)
 
     /**
      * Stops the work for one book, leaving the parts on disk.
