@@ -171,7 +171,7 @@ class DefaultAuthRepository @Inject constructor(
             )
         }
 
-        sessionTokens.adopt(profileId, session)
+        sessionTokens.adopt(profileId, session, normalized.value)
         settings.setActiveProfile(profileId)
 
         logger.info(
@@ -190,7 +190,11 @@ class DefaultAuthRepository @Inject constructor(
                 summary = "That profile is no longer saved on this device.",
             ).asFailure()
 
-        if (sessionTokens.activate(profileId)) {
+        // The interceptor attaches the ambient bearer only to this address, so a profile whose server
+        // row has gone cannot activate a credential: there would be no origin to bind it to, and an
+        // unbound token is the defect this argument exists to prevent.
+        val serverBaseUrl = profileDao.findServer(profile.serverId)?.baseUrl
+        if (serverBaseUrl != null && sessionTokens.activate(profileId, serverBaseUrl)) {
             // A profile previously marked for reauthentication can become usable again: the user may
             // have signed in on another screen, or a renewal may have succeeded. Clearing the mark here
             // means the flag reflects the credential rather than the last thing that went wrong.
@@ -244,7 +248,14 @@ class DefaultAuthRepository @Inject constructor(
             }
 
             is AppResult.Success -> {
-                sessionTokens.adopt(profileId, renewed.value)
+                // Re-resolved rather than reusing the cached origin: a renewal can follow a profile
+                // switch, and binding the new token to whatever was cached last is the bug in miniature.
+                val renewedBaseUrl = serverBaseUrlFor(profileId)
+                if (renewedBaseUrl == null) {
+                    markReauthenticationRequired(profileId, reason = "server row missing at renewal")
+                    return@withContext AppResult.Success(SessionStatus.ReauthenticationRequired)
+                }
+                sessionTokens.adopt(profileId, renewed.value, renewedBaseUrl)
                 profileDao.setRequiresReauthentication(profileId.value, required = false)
                 // A renewal is also a fresh statement of the account's permissions, so the stored grant is
                 // updated from it. PRODUCT_SPEC 5.2 wants the grant refreshed rather than assumed

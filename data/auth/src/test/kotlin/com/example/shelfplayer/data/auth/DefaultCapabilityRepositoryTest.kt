@@ -123,7 +123,7 @@ class DefaultCapabilityRepositoryTest {
     @Test
     fun `the handshake carries the profile's own access token`() = runTest {
         seedServerAndProfile()
-        tokens.adopt(PROFILE, FakeAuthGateway.session(accessToken = "profile-a-token"))
+        tokens.adopt(PROFILE, FakeAuthGateway.session(accessToken = "profile-a-token"), SERVER_URL)
 
         repository.handshake(PROFILE)
 
@@ -253,5 +253,8 @@ class DefaultCapabilityRepositoryTest {
     private companion object {
         val SERVER = ServerId("srv_books")
         val PROFILE = ProfileId("prf_ada")
+
+        /** The origin the cached bearer is bound to; see `AuthorizationInterceptor`. */
+        const val SERVER_URL = "https://books.example.test"
     }
 }
