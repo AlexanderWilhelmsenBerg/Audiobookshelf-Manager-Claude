@@ -1009,6 +1009,34 @@ if [ -n "$ITEM_ID" ]; then
     log "the cover could not be read back, so the upload shape was not captured"
   fi
 
+  # MGR-007 — **the socket, opened before the embed so the outcome cannot arrive unheard.**
+  #
+  # `task_finished` is the only signal the server produces for an embed and it produces it once — nothing
+  # replays it. An eight-second file finishes almost immediately, so a socket connected *after* the request
+  # would miss the frame and record silence as a contract.
+  #
+  # A second session rather than the one the Phase 1 captures used: dozens of requests happen between there
+  # and here, and engine.io times a session out long before that. Reusing the id would have made this
+  # capture depend on how long the rest of the script took.
+  TASK_URL="$BASE_URL/socket.io/?EIO=4&transport=polling"
+  TASK_SID="$(curl -sS "$TASK_URL" | python3 -c '
+import json, re, sys
+match = re.search(r"\{.*?\}", sys.stdin.read())
+print(json.loads(match.group(0)).get("sid", "") if match else "")
+')"
+  if [ -n "$TASK_SID" ]; then
+    curl -sS -X POST "$TASK_URL&sid=$TASK_SID" \
+      -H 'Content-Type: text/plain;charset=UTF-8' --data-binary '40' >/dev/null || true
+    curl -sS "$TASK_URL&sid=$TASK_SID" >/dev/null || true
+    curl -sS -X POST "$TASK_URL&sid=$TASK_SID" \
+      -H 'Content-Type: text/plain;charset=UTF-8' \
+      --data-binary "42[\"auth\",\"$ACCESS_TOKEN\"]" >/dev/null || true
+    curl -sS "$TASK_URL&sid=$TASK_SID" >/dev/null || true
+    log "a second socket is listening for the embed's task frames"
+  else
+    log "no second socket; the embed's task frames will not be captured"
+  fi
+
   # MGR-007 — embedding metadata into the audio files. The third of the review's uncaptured writes, and
   # the only one that rewrites bytes on the server's disk rather than a database row.
   #
@@ -1026,6 +1054,83 @@ if [ -n "$ITEM_ID" ]; then
   # `AbsManagementApi` claims this response exists and distinguishes it from a generic failure; nothing
   # had ever observed it. Sent with no delay on purpose — the first task is still running.
   capture item-embed-metadata-repeated POST "/api/tools/item/$ITEM_ID/embed-metadata?backup=1" -H "$AUTH_HEADER"
+
+  # MGR-007 — **what actually happened to the files**, which the `200` above does not say.
+  #
+  # `AbsManagementApi` reads a `200` as `EmbedRequest.Accepted` — queued, not finished — and the app's whole
+  # embed progress surface is built on a `task_finished` frame that had **never been observed**.
+  # `TaskFrames.parse` names six fields (`id`, `action`, `data.libraryItemId`, `isFinished`, `isFailed`,
+  # `error`) and `TaskFramesTest` feeds it a hand-written frame, which tests the test's idea of the server.
+  # PRODUCT_SPEC 22.5 exists for exactly this gap.
+  #
+  # Accumulating across polls, for the reason R-53 records: the frames arrive when the task finishes, not
+  # when we ask, and a poll that overwrote would keep whichever one happened to be last.
+  if [ -n "$TASK_SID" ]; then
+    TASK_RAW="$RAW_DIR/socket-task-frames.raw"
+    TASK_META="200 text/plain"
+    : >"$TASK_RAW"
+    for _ in $(seq 1 20); do
+      TASK_META="$(curl -sS "$TASK_URL&sid=$TASK_SID" \
+        -o "$RAW_DIR/socket-task-attempt.raw" -w '%{http_code} %{content_type}')"
+      python3 - "$RAW_DIR/socket-task-attempt.raw" "$TASK_RAW" <<'APPEND'
+import sys
+
+attempt, accumulated = sys.argv[1], sys.argv[2]
+try:
+    arrived = open(attempt).read()
+except OSError:
+    raise SystemExit
+frames = [f for f in arrived.strip().split("\x1e") if f and f not in ("2", "3")]
+if not frames:
+    raise SystemExit
+held = open(accumulated).read()
+with open(accumulated, "w") as handle:
+    handle.write("\x1e".join(([held] if held else []) + frames))
+APPEND
+      if grep -q 'task_finished' "$TASK_RAW" 2>/dev/null; then
+        log "the embed's task_finished frame arrived"
+        break
+      fi
+      sleep 0.5
+    done
+
+    # **Recorded as the task's own four frames, because the rest of the poll window is not reproducible.**
+    #
+    # The 2026-08-23 CI run went red on this file and no other, and the diff was purely additive: the
+    # runner's window also held the socket's `init` frame — the handshake's own, which the two drain polls
+    # above had not yet been given — and a `task_progress` and a `track_progress`. Whether any of those
+    # land inside the window depends on how quickly the container answers, so keeping them makes the file
+    # report drift against a server that has not changed. That is R-53's false positive from the other
+    # side: there a frame was lost, here frames are gained.
+    #
+    # The four kept are the ones an embed produces exactly once each, and the ones `TaskFrames` reads.
+    # The progress frames are real and are written down in `docs/api-compatibility.md` from the run that
+    # showed them — observed, but not committed as a contract this check can hold a server to.
+    TASK_LIFECYCLE_RAW="$RAW_DIR/socket-task-lifecycle.raw"
+    python3 - "$TASK_RAW" "$TASK_LIFECYCLE_RAW" <<'LIFECYCLE'
+import json, re, sys
+
+# The order the server emits them in, fixed here so the file cannot depend on where a poll happened to end.
+LIFECYCLE = ("task_started", "track_started", "track_finished", "task_finished")
+
+kept = {}
+for chunk in open(sys.argv[1]).read().split("\x1e"):
+    frame = chunk.strip()
+    match = re.match(r"^\d+(\[.*)$", frame, re.S)
+    if not match:
+        continue
+    try:
+        event = json.loads(match.group(1))
+    except ValueError:
+        continue
+    if isinstance(event, list) and event and event[0] in LIFECYCLE:
+        kept.setdefault(event[0], frame)
+with open(sys.argv[2], "w") as handle:
+    handle.write("\x1e".join(kept[name] for name in LIFECYCLE if name in kept))
+LIFECYCLE
+    record "$TASK_LIFECYCLE_RAW" "$OUT_DIR/socket-embed-task.json" "${TASK_META%% *}" "${TASK_META#* }"
+    log "GET /socket.io (embed task frames) -> socket-embed-task.json"
+  fi
 
   # MGR-002 — removing a cover. Captured after the upload so both halves of the requirement are recorded
   # in the order a user performs them.

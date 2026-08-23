@@ -259,6 +259,7 @@ Two findings are not gaps but standing rules:
 
 ---
 
+| MGR-007 | **The embed's outcome is observed, not assumed.** `socket-embed-task.json` captures `task_started`, `track_started`, `track_finished` and `task_finished` from a real embed, and `TaskFramesTest` runs the parser over it. All six fields the app reads are confirmed, `libraryItemId` is confirmed nested inside `data`, and the private half the KDoc predicted — the title in two fields, filesystem paths in three more — is confirmed present and confirmed unread. | **Closed 2026-08-23.** The failure path (`isFailed`, `error`) is still source-derived |
 | MGR-002 / MGR-007 / USER-003 | **The three privileged writes are contract-proven.** Cover upload, metadata embed and user activation now have captured fixtures for the permitted *and* refused shapes, plus the duplicate-embed `400`, all against a real 2.36.0. `AbsManagementContractTest` replays them through the real Retrofit adapter and asserts path, method, bearer, multipart field name, query string, exact PATCH body and error mapping. | **Closed 2026-08-23 — R-51.** The review's third P0 |
 
 ## Phase 6 — Android Auto, polish, release

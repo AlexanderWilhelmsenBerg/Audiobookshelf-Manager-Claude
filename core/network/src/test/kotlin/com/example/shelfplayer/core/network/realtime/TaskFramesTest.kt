@@ -1,8 +1,12 @@
 package com.example.shelfplayer.core.network.realtime
 
 import com.example.shelfplayer.core.model.realtime.ServerTask
+import com.example.shelfplayer.core.network.api.ContractFixtures
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -21,8 +25,14 @@ import kotlin.test.assertTrue
  * fields.** Trimming the fixtures to the fields the parser reads would delete the entire risk this file
  * exists to guard.
  *
- * These are source-derived rather than captured, and `docs/gaps.md` says so: starting an embed needs an
- * administrator on a server this project can reach, and the public demo account is refused.
+ * ### The hand-written frames are no longer the only evidence
+ *
+ * This file used to say its payloads were "source-derived rather than captured", because starting an embed
+ * needs an administrator on a server this project can reach. `socket-embed-task.json` is now that capture —
+ * a real `task_started`, `track_started`, `track_finished` and `task_finished` from Audiobookshelf 2.36.0 —
+ * and [parses the captured task_finished frame] runs the parser over it. The hand-written frames stay: they
+ * plant the title in every field the server puts it in and can vary one at a time, which a single capture
+ * cannot. Evidence and coverage are different jobs.
  */
 class TaskFramesTest {
 
@@ -30,6 +40,115 @@ class TaskFramesTest {
 
     /** The private value planted in every field the server puts it in. */
     private val bookTitle = "The Salt Harbour"
+
+    // --------------------------------------- the captured frame, PRODUCT_SPEC 22.5
+
+    /**
+     * **The six fields the parser names, against a frame the server actually sent.**
+     *
+     * `TaskFrames.parse` was written from Audiobookshelf's source. The whole embed progress surface —
+     * `EmbedTaskWatcher`, `BookViewModel`'s pending state, the confirmation the user reads — hangs off these
+     * six names, and a single one being wrong would mean the UI silently never completes. A hand-written
+     * fixture cannot catch that, because it agrees with the parser by construction.
+     *
+     * Every one of them is right, which is worth recording as much as a defect would have been: it is the
+     * difference between "we think this works" and "we watched it work".
+     */
+    @Test
+    fun `parses the captured task_finished frame`() {
+        val task = TaskFrames.parse(capturedTaskBody("task_finished"))
+
+        assertNotNull(task)
+        assertEquals("embed-metadata", task.action)
+        assertTrue(task.isFinished, "the captured frame is the finished one")
+        assertFalse(task.isFailed)
+        assertFalse(task.hasError, "the captured embed succeeded, so it carries no reason")
+        assertNotNull(task.libraryItemId, "read from data.libraryItemId, which the capture confirms is there")
+    }
+
+    /** And the start of the same task reads as unfinished, so the two are told apart on real frames. */
+    @Test
+    fun `parses the captured task_started frame as unfinished`() {
+        val task = TaskFrames.parse(capturedTaskBody("task_started"))
+
+        assertNotNull(task)
+        assertFalse(task.isFinished)
+    }
+
+    /**
+     * **The private half, confirmed present and confirmed unread.**
+     *
+     * `TaskFrames`' own comment predicted what a `@Serializable` DTO would have to skip: *"the next person
+     * to need something adds `description`, which is `Embedding metadata in audiobook "<the book's
+     * title>"`"*. The capture proves that prediction verbatim, and adds three more — `descriptionSubs`
+     * carries the title again, and `data` carries `libraryItemDir`, `itemCachePath` and `audioFiles[].path`,
+     * which are filesystem paths inside somebody's library (PRODUCT_SPEC 14.5).
+     *
+     * Asserted against the parsed task's own `toString`, because that is what a log line or a crash report
+     * would render. The frame is allowed to contain all of it; [ServerTask] is not.
+     */
+    @Test
+    fun `nothing private in the captured frame survives parsing`() {
+        val body = capturedTaskBody("task_finished")
+        // Asserted non-null first, and not for tidiness: a `null` task renders as the string "null", and
+        // every assertion below would pass without reading anything.
+        val task = assertNotNull(TaskFrames.parse(body))
+        val rendered = task.toString()
+
+        // The frame really does carry these, or this test would be proving nothing.
+        val raw = body.toString()
+        assertTrue(raw.contains("libraryItemDir"), "the capture must still show the private half exists")
+        assertTrue(raw.contains("description"), "including the title-bearing description")
+
+        for (private in listOf("Salt Harbour", "libraryItemDir", "audiobooks", "itemCachePath", "cachePath")) {
+            assertFalse(rendered.contains(private), "$private reached the parsed task")
+        }
+    }
+
+    /**
+     * The capture also carries `track_started` and `track_finished`, which are not tasks.
+     *
+     * Newly observed, and the parser must decline them rather than invent a task with no action — 22.4's
+     * rule for a shape this build does not model.
+     */
+    @Test
+    fun `the captured track frames are not read as tasks`() {
+        for (event in listOf("track_started", "track_finished")) {
+            assertNull(TaskFrames.parse(capturedTaskBody(event)), "$event is not a task")
+        }
+    }
+
+    /**
+     * **The fixture is these four frames and nothing else, and that is a decision** — R-57.
+     *
+     * Socket frames arrive when the task runs, not when the client polls, so the contents of a poll window
+     * are not reproducible: the runner's held the socket's own `init` frame and two progress events that a
+     * local capture of the same server version did not. Committing whichever landed made the drift check go
+     * red on a server that had not changed. `capture-contracts.sh` now reduces the window to the first of
+     * each lifecycle event, and this asserts it did — so a capture that lets noise back in fails here,
+     * where the reason is written down, rather than as an unexplained red check on somebody else's pull
+     * request.
+     */
+    @Test
+    fun `the captured fixture holds the four lifecycle frames and nothing else`() {
+        val frames = ContractFixtures.frames("socket-embed-task")
+        val events = frames.mapNotNull { frame ->
+            frame["payload"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.content
+        }
+
+        assertEquals(frames.size, events.size, "every frame in the fixture is a named event")
+        assertEquals(
+            listOf("task_started", "track_started", "track_finished", "task_finished"),
+            events,
+            "the fixture is the embed's lifecycle, in the order the server emits it",
+        )
+    }
+
+    /** The `42["event", { … }]` payload for [event], out of the capture. */
+    private fun capturedTaskBody(event: String): JsonObject = ContractFixtures.frames("socket-embed-task")
+        .mapNotNull { frame -> frame["payload"]?.jsonArray?.takeIf { it.size >= 2 } }
+        .first { payload -> payload[0].jsonPrimitive.content == event }[1]
+        .jsonObject
 
     private fun frame(
         action: String = "embed-metadata",

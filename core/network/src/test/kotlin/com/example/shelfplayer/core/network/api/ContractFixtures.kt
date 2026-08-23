@@ -47,6 +47,16 @@ internal object ContractFixtures {
         return responseOf(envelope, distinctBody)
     }
 
+    /**
+     * The socket frames a captured envelope holds, in arrival order.
+     *
+     * For a fixture whose `bodyKind` is `socket-frames` — the capture parses engine.io frames so the JSON
+     * inside them can be scrubbed, which also makes them readable as a contract rather than a wall of text.
+     * A test that wants one event out of a poll asks for these and picks it, rather than re-implementing the
+     * frame split.
+     */
+    fun frames(name: String): List<JsonObject> = envelope(name)["frames"]?.jsonArray?.map { it.jsonObject }.orEmpty()
+
     /** The recorded body as a raw string, for a test that wants to alter one field before serving it. */
     fun body(name: String): String = bodyOf(envelope(name))
 

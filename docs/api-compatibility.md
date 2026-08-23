@@ -832,6 +832,76 @@ contradict what a client written from the requirements alone would have assumed.
 | `DELETE /api/items/{id}` | 200 | `OK` | **text/plain** |
 | `GET /api/items/{id}` after deletion | 404 | `Not Found` | text/plain |
 
+## The embed task's own frames, captured 2026-08-23 against 2.36.0
+
+`POST /api/tools/item/{id}/embed-metadata` answers `200` when the task is **queued**. What happened to the
+audio files arrives later on the websocket, and until now nothing had watched it: `TaskFrames.parse` was
+written from Audiobookshelf's source, and `TaskFramesTest` said so in its own header — *"source-derived
+rather than captured"*.
+
+An embed produces four events, in this order, and `socket-embed-task.json` is those four:
+
+| Event | What it says |
+| --- | --- |
+| `task_started` | `isFinished: false`, `action: "embed-metadata"` |
+| `track_started` | `ino` and `libraryItemId` only — **newly observed**, and not a task |
+| `track_finished` | the same two fields |
+| `task_finished` | `isFinished: true`, `isFailed: false`, `error: null` |
+
+### The poll window also carries frames the fixture does not
+
+The fixture is the four above and nothing else, and that is a decision the 2026-08-23 CI run forced. The
+frames arrive when the task runs rather than when the client asks, so a poll boundary can fall anywhere:
+the runner's window also held the socket's own `init` frame and two progress events that a local capture
+of the same server version had not seen. Committing whichever ones happened to land would make the file
+report drift against a server that had not changed — R-53's false positive from the other side, where
+there a frame was lost and here frames were gained. `capture-contracts.sh` therefore records the first of
+each of the four lifecycle events and drops the rest.
+
+Dropped is not unobserved, so the two progress events are written down here instead:
+
+| Event | Fields |
+| --- | --- |
+| `task_progress` | `libraryItemId`, `progress` (`0.5` with one of two files tagged) |
+| `track_progress` | `ino`, `libraryItemId`, `progress` |
+
+Nothing in the app reads either. They would be the obvious source for a determinate progress bar in place
+of the indeterminate one `EmbedTaskWatcher` drives today, and anybody building that should capture them
+deliberately rather than trust this table — it is one observation from a CI log, not a fixture a check
+holds the server to.
+
+### Every field the parser names is real
+
+`id`, `action`, `data.libraryItemId`, `isFinished`, `isFailed` and `error` are all present and mean what the
+app assumed. That is worth recording as plainly as a defect would have been: the whole embed progress
+surface — `EmbedTaskWatcher`, the pending state, the confirmation the user reads — hangs off those six
+names, and one of them being wrong would have meant a UI that silently never completes.
+
+`libraryItemId` is nested inside `data`, not at the top level. Moving it up is the single most plausible
+wrong guess, and `TaskFramesTest` now fails if anybody makes it.
+
+### And the private half is exactly what was predicted
+
+`TaskFrames`' comment argued against a `@Serializable` DTO on the grounds that *"the next person to need
+something adds `description`, which is `Embedding metadata in audiobook "<the book's title>"`"*. The capture
+proves that verbatim, and adds three more:
+
+- `description` and `descriptionSubs` both carry the book's title;
+- `data.libraryItemDir` is `/audiobooks/<author>/<title>` — a path inside somebody's library;
+- `data.itemCachePath`, `data.coverPath` and `data.audioFiles[].path` are more of the same.
+
+None of it is deserialized. `ServerTask` holds five values and the test asserts that none of those strings
+survives a parse, checked against the parsed task's `toString` because that is what a log line would render
+(PRODUCT_SPEC 14.5).
+
+### What is still not proven
+
+That a **failed** embed reports itself. `isFailed` and `error` are read, and no capture exercises them —
+provoking a real failure needs a file the server cannot write, which the throwaway container makes awkward
+to arrange. The success path is evidence; the failure path is still source-derived.
+
+---
+
 ## The three privileged writes, captured 2026-08-23 against 2.36.0
 
 The 2026-08-22 review's third P0: cover upload, metadata embedding and user activation were live
