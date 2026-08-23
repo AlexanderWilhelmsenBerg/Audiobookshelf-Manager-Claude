@@ -832,6 +832,54 @@ contradict what a client written from the requirements alone would have assumed.
 | `DELETE /api/items/{id}` | 200 | `OK` | **text/plain** |
 | `GET /api/items/{id}` after deletion | 404 | `Not Found` | text/plain |
 
+## The embed task's own frames, captured 2026-08-23 against 2.36.0
+
+`POST /api/tools/item/{id}/embed-metadata` answers `200` when the task is **queued**. What happened to the
+audio files arrives later on the websocket, and until now nothing had watched it: `TaskFrames.parse` was
+written from Audiobookshelf's source, and `TaskFramesTest` said so in its own header — *"source-derived
+rather than captured"*.
+
+One poll after an embed carries four events, in this order:
+
+| Event | What it says |
+| --- | --- |
+| `task_started` | `isFinished: false`, `action: "embed-metadata"` |
+| `track_started` | `ino` and `libraryItemId` only — **newly observed**, and not a task |
+| `track_finished` | the same two fields |
+| `task_finished` | `isFinished: true`, `isFailed: false`, `error: null` |
+
+### Every field the parser names is real
+
+`id`, `action`, `data.libraryItemId`, `isFinished`, `isFailed` and `error` are all present and mean what the
+app assumed. That is worth recording as plainly as a defect would have been: the whole embed progress
+surface — `EmbedTaskWatcher`, the pending state, the confirmation the user reads — hangs off those six
+names, and one of them being wrong would have meant a UI that silently never completes.
+
+`libraryItemId` is nested inside `data`, not at the top level. Moving it up is the single most plausible
+wrong guess, and `TaskFramesTest` now fails if anybody makes it.
+
+### And the private half is exactly what was predicted
+
+`TaskFrames`' comment argued against a `@Serializable` DTO on the grounds that *"the next person to need
+something adds `description`, which is `Embedding metadata in audiobook "<the book's title>"`"*. The capture
+proves that verbatim, and adds three more:
+
+- `description` and `descriptionSubs` both carry the book's title;
+- `data.libraryItemDir` is `/audiobooks/<author>/<title>` — a path inside somebody's library;
+- `data.itemCachePath`, `data.coverPath` and `data.audioFiles[].path` are more of the same.
+
+None of it is deserialized. `ServerTask` holds five values and the test asserts that none of those strings
+survives a parse, checked against the parsed task's `toString` because that is what a log line would render
+(PRODUCT_SPEC 14.5).
+
+### What is still not proven
+
+That a **failed** embed reports itself. `isFailed` and `error` are read, and no capture exercises them —
+provoking a real failure needs a file the server cannot write, which the throwaway container makes awkward
+to arrange. The success path is evidence; the failure path is still source-derived.
+
+---
+
 ## The three privileged writes, captured 2026-08-23 against 2.36.0
 
 The 2026-08-22 review's third P0: cover upload, metadata embedding and user activation were live
