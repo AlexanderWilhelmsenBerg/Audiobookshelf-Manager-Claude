@@ -6,10 +6,12 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,7 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.List
@@ -33,6 +37,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -43,12 +49,16 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,12 +67,17 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,23 +89,29 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.ServerStatus
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookFilter
 import com.example.shelfplayer.feature.browse.BookCard
 import com.example.shelfplayer.feature.browse.BookSortRow
 import com.example.shelfplayer.feature.browse.GroupCard
+import com.example.shelfplayer.feature.browse.GroupCardEditAction
 import com.example.shelfplayer.feature.browse.SeriesCard
 
 /**
  * PRODUCT_SPEC 16.4 — `*Route` wires navigation and state; `*Screen` is a pure function of its
  * arguments, which is what makes it previewable and screenshot-testable without Hilt.
  */
+@Suppress("LongParameterList") // Route boundary keeps navigation callbacks explicit and type-safe.
 @Composable
 fun HomeRoute(
     onBookSelected: (LibraryItemId) -> Unit,
+    onBookPlaySelected: (LibraryItemId) -> Unit,
     onSeriesSelected: (SeriesId) -> Unit,
     onProfilesSelected: () -> Unit,
     onSettingsSelected: () -> Unit,
     onSignInSelected: () -> Unit,
+    playbackMessage: String?,
+    onPlaybackMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -104,8 +125,13 @@ fun HomeRoute(
         uiState = uiState,
         actions = HomeActions(
             onBookSelected = onBookSelected,
+            onBookPlaySelected = onBookPlaySelected,
             onSeriesSelected = onSeriesSelected,
             onGroupSelected = viewModel::onGroupSelected,
+            onGenreEditRequested = viewModel::onGenreEditRequested,
+            onGenreEditReplacementChanged = viewModel::onGenreEditReplacementChanged,
+            onGenreEditConfirmed = viewModel::onGenreEditConfirmed,
+            onGenreEditDismissed = viewModel::onGenreEditDismissed,
             onQueryChanged = viewModel::onQueryChanged,
             onSearchToggled = viewModel::onSearchToggled,
             onAxisChanged = viewModel::onAxisChanged,
@@ -118,28 +144,70 @@ fun HomeRoute(
             onSettingsSelected = onSettingsSelected,
             onSignInSelected = onSignInSelected,
         ),
+        playbackMessage = playbackMessage,
+        onPlaybackMessageShown = onPlaybackMessageShown,
         modifier = modifier,
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
+fun HomeScreen(
+    uiState: HomeUiState,
+    actions: HomeActions,
+    modifier: Modifier = Modifier,
+    playbackMessage: String? = null,
+    onPlaybackMessageShown: () -> Unit = {},
+) {
+    val snackbars = remember { SnackbarHostState() }
+    LaunchedEffect(playbackMessage) {
+        val message = playbackMessage ?: return@LaunchedEffect
+        snackbars.showSnackbar(message)
+        onPlaybackMessageShown()
+    }
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // PRODUCT_SPEC 6.1 step 9 — a shelf narrowed to one library is titled with it.
-                        // Showing "Library" over a subset of the profile's books reads as books having
-                        // gone missing, and the setting that caused it is two screens away.
-                        Text(text = uiState.scopedTo?.name ?: stringResource(R.string.home_title))
-                        ServerStatusDot(
-                            status = uiState.serverStatus,
-                            isOffline = uiState.isOffline,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
+                    BoxWithConstraints {
+                        // Five 48 dp actions can leave less than a logo's width on a compact phone. The
+                        // title and status are information; the adjacent, duplicate brand mark is not.
+                        val showBrandMark = maxWidth >= HOME_MARK_MIN_TITLE_WIDTH &&
+                            LocalDensity.current.fontScale <= HOME_MARK_MAX_FONT_SCALE
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (showBrandMark) {
+                                // Decorative: the adjacent title already names the app once for TalkBack.
+                                // A dedicated small WebP avoids decoding the launcher master.
+                                Image(
+                                    painter = painterResource(R.drawable.bookwave_logo_header),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier
+                                        .testTag(HOME_MARK_TEST_TAG)
+                                        .size(HOME_MARK_SIZE)
+                                        .padding(end = 8.dp),
+                                )
+                            }
+                            // PRODUCT_SPEC 6.1 step 9 — a shelf narrowed to one library is titled with it.
+                            // Showing "Library" over a subset of the profile's books reads as books having
+                            // gone missing, and the setting that caused it is two screens away.
+                            Text(
+                                text = uiState.scopedTo?.name ?: stringResource(R.string.home_title),
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            ServerStatusDot(
+                                status = uiState.serverStatus,
+                                isOffline = uiState.isOffline,
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -206,6 +274,207 @@ fun HomeScreen(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = 
         ) {
             HomeContent(uiState = uiState, actions = actions)
         }
+    }
+    GenreEditDialog(state = uiState.genreEdit, actions = actions)
+}
+
+/**
+ * PRODUCT_SPEC MGR-008 — a deliberately explicit, non-transactional genre consolidation flow.
+ *
+ * The dialog cannot be dismissed while writes are running. Earlier books may already be committed, so
+ * making the progress UI disappear would also discard the only honest place to report partial success.
+ */
+@Composable
+private fun GenreEditDialog(state: GenreEditUiState, actions: HomeActions) {
+    when (state) {
+        GenreEditUiState.Hidden -> Unit
+        is GenreEditUiState.Confirming -> GenreEditConfirmationDialog(state.request, actions)
+        is GenreEditUiState.Running -> GenreEditProgressDialog(state.request)
+        is GenreEditUiState.Complete -> GenreEditSummaryDialog(state, actions.onGenreEditDismissed)
+        is GenreEditUiState.Failed -> GenreEditFailureDialog(state, actions.onGenreEditDismissed)
+    }
+}
+
+@Composable
+private fun GenreEditConfirmationDialog(request: GenreEditRequest, actions: HomeActions) {
+    AlertDialog(
+        onDismissRequest = actions.onGenreEditDismissed,
+        title = { Text(text = stringResource(R.string.genre_edit_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                GenreEditRequestSummary(request)
+                Text(text = stringResource(R.string.genre_edit_explanation))
+                OutlinedTextField(
+                    value = request.replacementGenres,
+                    onValueChange = actions.onGenreEditReplacementChanged,
+                    label = { Text(text = stringResource(R.string.genre_edit_replacements_label)) },
+                    supportingText = { Text(text = stringResource(R.string.genre_edit_replacements_supporting)) },
+                    minLines = 1,
+                    maxLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = actions.onGenreEditConfirmed,
+                enabled = request.hasReplacementGenres,
+            ) {
+                Text(text = stringResource(R.string.genre_edit_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = actions.onGenreEditDismissed) {
+                Text(text = stringResource(R.string.genre_edit_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun GenreEditProgressDialog(request: GenreEditRequest) {
+    val progressDescription = stringResource(R.string.genre_edit_progress)
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(text = stringResource(R.string.genre_edit_progress_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                GenreEditRequestSummary(request)
+                GenreEditChangeSummary(request)
+                Row(
+                    modifier = Modifier.semantics {
+                        contentDescription = progressDescription
+                        liveRegion = LiveRegionMode.Polite
+                    },
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    Text(text = progressDescription)
+                }
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+@Composable
+private fun GenreEditSummaryDialog(state: GenreEditUiState.Complete, onDismiss: () -> Unit) {
+    val summary = state.summary
+    val partial = summary.draftConflictCount > 0 ||
+        summary.failedCount > summary.draftConflictCount ||
+        summary.locallyStaleCount > 0 ||
+        summary.unprocessedCount > 0 ||
+        summary.stopReason != null
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(
+                    if (partial) R.string.genre_edit_result_partial else R.string.genre_edit_result_complete,
+                ),
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.genre_edit_result_change,
+                        state.request.sourceGenre,
+                        state.request.replacementSummary,
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(text = stringResource(R.string.genre_edit_summary_matched, summary.matchedCount))
+                Text(text = stringResource(R.string.genre_edit_summary_updated, summary.updatedCount))
+                Text(text = stringResource(R.string.genre_edit_summary_unchanged, summary.unchangedCount))
+                Text(
+                    text = stringResource(
+                        R.string.genre_edit_summary_draft_conflicts,
+                        summary.draftConflictCount,
+                    ),
+                )
+                Text(
+                    text = stringResource(
+                        R.string.genre_edit_summary_failed,
+                        (summary.failedCount - summary.draftConflictCount).coerceAtLeast(0),
+                    ),
+                )
+                Text(text = stringResource(R.string.genre_edit_summary_stale, summary.locallyStaleCount))
+                Text(text = stringResource(R.string.genre_edit_summary_unprocessed, summary.unprocessedCount))
+                Text(
+                    text = stringResource(
+                        R.string.genre_edit_summary_stop_reason,
+                        summary.stopReason?.summary ?: stringResource(R.string.genre_edit_summary_no_stop),
+                    ),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.genre_edit_close))
+            }
+        },
+    )
+}
+
+@Composable
+private fun GenreEditFailureDialog(state: GenreEditUiState.Failed, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.genre_edit_result_not_started)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GenreEditRequestSummary(state.request)
+                GenreEditChangeSummary(state.request)
+                Text(text = state.error.summary)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.genre_edit_close))
+            }
+        },
+    )
+}
+
+@Composable
+private fun GenreEditRequestSummary(request: GenreEditRequest) {
+    Text(text = stringResource(R.string.genre_edit_source, request.sourceGenre))
+    Text(
+        text = pluralStringResource(
+            R.plurals.genre_edit_cached_count,
+            request.cachedMatchCount,
+            request.cachedMatchCount,
+        ),
+    )
+}
+
+@Composable
+private fun GenreEditChangeSummary(request: GenreEditRequest) {
+    if (request.replacementSummary.isNotEmpty()) {
+        Text(
+            text = stringResource(
+                R.string.genre_edit_result_change,
+                request.sourceGenre,
+                request.replacementSummary,
+            ),
+            style = MaterialTheme.typography.titleSmall,
+        )
     }
 }
 
@@ -424,45 +693,81 @@ private fun AxisContent(uiState: HomeUiState, actions: HomeActions, modifier: Mo
         AxisEmptyState(uiState = uiState, actions = actions, modifier = modifier)
         return
     }
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item { ShelfHeader(uiState, modifier = Modifier.padding(horizontal = 16.dp)) }
-        when (uiState.axis) {
-            HomeAxis.Books -> if (uiState.booksView == BooksView.Shelves) {
-                homeShelves(
-                    shelves = uiState.shelves,
-                    onBookSelected = actions.onBookSelected,
-                    onSeriesSelected = actions.onSeriesSelected,
-                )
-            } else {
-                items(items = uiState.books, key = { it.id.value }) { book ->
-                    BookCard(
-                        book = book,
-                        onClick = { actions.onBookSelected(book.id) },
+    // Each axis is a different list. Reusing one remembered LazyColumn position made a newly selected
+    // axis open halfway down when the previous one had been scrolled.
+    key(uiState.axis, uiState.booksView, uiState.focus) {
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize()
+                .testTag(HOME_AXIS_LIST_TEST_TAG),
+            contentPadding = PaddingValues(vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { ShelfHeader(uiState, modifier = Modifier.padding(horizontal = 16.dp)) }
+            when (uiState.axis) {
+                HomeAxis.Books -> if (uiState.booksView == BooksView.Shelves) {
+                    homeShelves(
+                        shelves = uiState.shelves,
+                        onBookSelected = actions.onBookSelected,
+                        onBookPlaySelected = actions.onBookPlaySelected,
+                        onSeriesSelected = actions.onSeriesSelected,
+                    )
+                } else {
+                    items(items = uiState.books, key = { it.id.value }) { book ->
+                        BookCard(
+                            book = book,
+                            onClick = { actions.onBookSelected(book.id) },
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
+                }
+
+                HomeAxis.Series -> items(items = uiState.series, key = { it.series.id.value }) { shelf ->
+                    SeriesCard(
+                        shelf = shelf,
+                        onClick = { actions.onSeriesSelected(shelf.series.id) },
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
-            }
 
-            HomeAxis.Series -> items(items = uiState.series, key = { it.series.id.value }) { shelf ->
-                SeriesCard(
-                    shelf = shelf,
-                    onClick = { actions.onSeriesSelected(shelf.series.id) },
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-            }
+                HomeAxis.Authors ->
+                    items(items = uiState.groups, key = { it.key }) { group ->
+                        GroupCard(
+                            group = group,
+                            onClick = { actions.onGroupSelected(group) },
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
 
-            HomeAxis.Authors, HomeAxis.Genres ->
-                items(items = uiState.groups, key = { it.key }) { group ->
+                HomeAxis.Genres -> items(items = uiState.groups, key = { it.key }) { group ->
+                    val profile = uiState.profile
+                    val disabledReason = when {
+                        uiState.isOffline -> stringResource(R.string.genre_edit_offline)
+                        profile?.requiresReauthentication == true ->
+                            stringResource(R.string.genre_edit_reauthentication)
+                        else -> null
+                    }
                     GroupCard(
                         group = group,
                         onClick = { actions.onGroupSelected(group) },
+                        editAction = profile
+                            ?.takeIf { it.canUpdate }
+                            ?.let {
+                                GroupCardEditAction(
+                                    label = stringResource(R.string.genre_edit_action),
+                                    contentDescription = stringResource(
+                                        R.string.genre_edit_action_description,
+                                        group.label,
+                                    ),
+                                    enabled = disabledReason == null,
+                                    disabledReason = disabledReason,
+                                    onClick = { actions.onGenreEditRequested(group) },
+                                )
+                            },
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
+            }
         }
     }
 }
@@ -600,6 +905,7 @@ private fun ShelfHeader(uiState: HomeUiState, modifier: Modifier = Modifier) {
             } else {
                 uiState.syncStatusLabel()
             },
+            modifier = Modifier.testTag(HOME_SYNC_STATUS_TEST_TAG),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -611,12 +917,31 @@ private fun HomeUiState.syncStatusLabel(): String = when (syncStatus) {
     SyncStatus.Syncing -> stringResource(R.string.home_sync_running)
     SyncStatus.Failed -> stringResource(R.string.home_sync_failed)
     SyncStatus.NeverSynced -> stringResource(R.string.home_sync_never)
-    // The count follows what is on screen: the rows the user can actually see, which a search narrows.
-    SyncStatus.Succeeded -> pluralStringResource(R.plurals.home_library_books, books.size, books.size)
+    // The count follows the active browse scope. A search narrows it; a shelf preview retains the
+    // uncapped Room source count rather than claiming its card limit is the whole library.
+    SyncStatus.Succeeded ->
+        pluralStringResource(R.plurals.home_library_books, visibleBookCount, visibleBookCount)
     // PRODUCT_SPEC LIB-001 — a sync that could not reach some items says so rather than claiming a clean
     // run. The count is still what is on screen; the caveat is that it is not all of it.
-    SyncStatus.PartiallySucceeded -> pluralStringResource(R.plurals.home_sync_partial, books.size, books.size)
+    SyncStatus.PartiallySucceeded ->
+        pluralStringResource(R.plurals.home_sync_partial, visibleBookCount, visibleBookCount)
 }
+
+/** Number of distinct books represented by the active browse shape, not the number of cards. */
+private val HomeUiState.visibleBookCount: Int
+    get() = when (axis) {
+        HomeAxis.Books -> if (booksView == BooksView.Shelves) {
+            shelves.totalBookCount
+        } else {
+            books.asSequence().distinctBookCount()
+        }
+
+        HomeAxis.Series -> series.asSequence().flatMap { it.books.asSequence() }.distinctBookCount()
+        HomeAxis.Authors, HomeAxis.Genres ->
+            groups.asSequence().flatMap { it.books.asSequence() }.distinctBookCount()
+    }
+
+private fun Sequence<Book>.distinctBookCount(): Int = map { it.id }.distinct().count()
 
 /**
  * PRODUCT_SPEC 21 — a status light that means the same thing in both themes.
@@ -631,3 +956,11 @@ private val ReachableDark = Color(0xFF6EE7A0)
 private val ReachableLight = Color(0xFF15803D)
 private val UnreachableDark = Color(0xFFFF8A80)
 private val UnreachableLight = Color(0xFFC62828)
+
+/** The visual mark stays compact and gives way before the title or top-bar actions do. */
+private val HOME_MARK_SIZE = 40.dp
+private val HOME_MARK_MIN_TITLE_WIDTH = 132.dp
+private const val HOME_MARK_MAX_FONT_SCALE = 1.3f
+internal const val HOME_MARK_TEST_TAG = "home-brand-mark"
+internal const val HOME_AXIS_LIST_TEST_TAG = "home-axis-list"
+internal const val HOME_SYNC_STATUS_TEST_TAG = "home-sync-status"

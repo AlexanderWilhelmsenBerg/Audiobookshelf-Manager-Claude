@@ -94,7 +94,7 @@ The application must be **offline-first**. Room is the application’s canonical
 - Chromecast or Google Cast.
 - Podcast management and playback.
 - E-book reader.
-- Bulk metadata editing.
+- Bulk metadata editing other than MGR-008's guided genre consolidation.
 - Audio-file reordering and chapter editor.
 - Uploading new media files.
 - Custom external download folders through Android’s Storage Access Framework.
@@ -309,6 +309,10 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Local cached results appear immediately; server search may enrich results.
 - Filters and sort order persist per profile and library.
 - Empty, loading, error, and offline states are distinct.
+- Home shelf cards expose a direct, labelled play/resume action without replacing the card's details action.
+- Series, author, and genre rows use representative cached book covers. An author portrait is requested
+  only after synchronized author metadata confirms one exists, and cached covers remain the loading,
+  missing-image, and offline fallback.
 
 ### LIB-003 Series ordering
 
@@ -756,6 +760,30 @@ Editable fields when supported:
 - The app advises the user to maintain server-side backups.
 - A failed operation never marks local metadata as embedded.
 
+### MGR-008 Consolidate a genre across books
+
+This is the one version-1 exception to section 3.3's general deferral of bulk metadata editing. It is a
+guided repair for libraries where synonymous or combined genre labels fragment the Genres browse axis;
+it is not a general multi-field or unattended batch editor.
+
+**Acceptance criteria**
+- The edit action starts from one genre in the Genres browse axis and names that source genre.
+- User enters one or more comma-separated replacement genres and confirms the cached match count before
+  any server write. One replacement merges labels; multiple replacements split a combined label.
+- Account must be online, active, signed in, and currently granted metadata-update permission.
+- Every matching book is reloaded immediately before its edit; a book that no longer contains the source
+  genre is left unchanged.
+- Only the `genres` field is sent. Unrelated genres retain stable order and duplicates are removed
+  case-insensitively.
+- Books with an existing metadata draft are skipped and their draft is never discarded or overwritten.
+- Writes are sequential. A profile change, authentication/authorization failure, rate limit, network
+  loss, timeout, or server failure stops the remaining items rather than producing a request burst.
+- Partial completion reports matched, updated, unchanged, draft-conflict, failed, stale-local and
+  unprocessed counts. A successful earlier write is never represented as though the whole operation
+  rolled back.
+- Ambiguous failures are not retried blindly. The server remains authoritative and the ordinary
+  metadata-draft recovery path preserves the attempted edit where safe.
+
 ---
 
 ## EPIC USER — Server user management
@@ -876,10 +904,14 @@ The listener chooses which of the supplied launcher icons the home screen shows.
 
 **Acceptance criteria**
 - Every supplied icon is offered, previewed as the launcher would mask it, and selectable.
+- The supplied BookWave wave-and-open-book mark is the fresh-install default and remains an ordinary
+  selectable option after another icon is chosen.
 - Exactly one launcher entry is enabled at any moment; the app is never absent from the app drawer.
 - Changing the icon does not stop playback and does not restart the application.
 - Every icon supplies a themed (monochrome) layer.
 - The choice survives an app restart and an app update.
+- Adding or changing the manifest default preserves an explicit legacy choice and never exposes duplicate
+  launcher entries during upgrade reconciliation.
 - The setting states the visible consequence: a home-screen shortcut placed by hand may need placing again.
 
 ---
@@ -1409,11 +1441,16 @@ Rules:
 
 ## 16.4 Naming and package conventions
 
-Base package placeholder:
+The release install identity is:
 
-`com.example.shelfplayer`
+`org.homebord.bookwave`
 
-Replace before signing/release.
+The debug variant is `org.homebord.bookwave.debug`. ADR-0024 made this change before the first public
+release so it does not create a second install for released users.
+
+The Gradle namespaces and Kotlin source packages deliberately remain `com.example.shelfplayer`. They are
+internal source organization, not the Play/application identity, and renaming them would create a large
+mechanical change with no user-visible result.
 
 Packages use feature/layer grouping, for example:
 
@@ -1838,24 +1875,27 @@ Important:
 
 ---
 
-# 24. Open decisions before public release
+# 24. Release decisions and remaining open decisions
 
-These do not block repository foundation or early vertical slices:
+Resolved decisions remain numbered here so ADRs and earlier reviews keep stable references:
 
-1. Final app name and application ID.
-2. License choice.
-3. Whether to publish on Google Play, F-Droid, GitHub Releases, or privately.
-4. Minimum supported Audiobookshelf server version.
+1. **Resolved by ADR-0019 and ADR-0024:** app name **BookWave**; release application ID
+   `org.homebord.bookwave`. Kotlin packages/namespaces remain `com.example.shelfplayer`.
+2. **Resolved by ADR-0024:** GPL-3.0-or-later.
+3. **Resolved by ADR-0024:** Google Play, App Bundle, and Play App Signing.
+4. **Resolved by ADR-0024:** minimum Audiobookshelf server version 2.26.0, enforced at sign-in and failing
+   open only when a version string cannot be parsed.
 5. Whether custom CA certificate import is required for version 1.
 6. Whether physical offline files are deduplicated across profiles in version 1.
 7. Whether Android Auto ships in version 1 or 1.1.
 8. Whether full metadata candidate search is reliable enough across supported server versions.
-9. Whether true source-file deletion exists in the chosen server version and can be safely exposed.
+9. **Resolved by ADR-0021:** no source-file deletion feature ships without a distinct captured and tested
+   server capability; database-only item removal is not source-file deletion.
 10. Whether crash reporting is included at all.
 11. Final default buffer presets after real-network testing.
 12. Final progress sync cadence after battery/network profiling.
 13. Whether cleartext LAN servers can be enabled in release builds.
-14. Whether profile PIN/biometric protection is version 1 or 1.1.
+14. **Resolved by ADR-0023:** the disclosed per-profile passcode/biometric curtain is version 1.
 
 Defaults chosen by this document remain in force until an ADR changes them.
 

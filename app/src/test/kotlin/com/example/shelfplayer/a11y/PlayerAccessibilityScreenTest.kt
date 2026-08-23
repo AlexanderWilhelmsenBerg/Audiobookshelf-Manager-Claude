@@ -214,8 +214,10 @@ class PlayerAccessibilityScreenTest {
                             recentlyAdded = listOf(book("book-2", "Tide Tables")),
                             discover = listOf(book("book-3", "Soundings")),
                             listenAgain = emptyList(),
+                            totalBookCount = 3,
                         ),
                         onBookSelected = {},
+                        onBookPlaySelected = {},
                         onSeriesSelected = {},
                     )
                 }

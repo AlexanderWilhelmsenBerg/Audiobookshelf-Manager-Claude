@@ -23,6 +23,8 @@ import com.example.shelfplayer.domain.library.SeriesShelf
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.BrowseUseCases
+import com.example.shelfplayer.domain.usecase.BulkEditGenresUseCase
+import com.example.shelfplayer.domain.usecase.BulkGenreEditSummary
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveRealtimeUpdatesUseCase
 import com.example.shelfplayer.domain.usecase.ObserveSyncStateUseCase
@@ -31,6 +33,7 @@ import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -40,6 +43,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -61,20 +65,24 @@ import javax.inject.Inject
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
+@Suppress("LongParameterList") // Hilt dependencies remain grouped by architectural boundary, not hidden in a locator.
 class HomeViewModel @Inject constructor(
     private val browse: BrowseUseCases,
     observeLibraries: ObserveLibrariesUseCase,
     observeSyncState: ObserveSyncStateUseCase,
-    profileRepository: ProfileRepository,
+    private val profileRepository: ProfileRepository,
     private val preferences: PreferencesRepository,
     private val networkMonitor: NetworkMonitor,
     private val syncAccount: SyncAccountUseCase,
     private val observeRealtimeUpdates: ObserveRealtimeUpdatesUseCase,
     private val refreshLibrary: RefreshLibraryUseCase,
+    private val bulkEditGenres: BulkEditGenresUseCase,
 ) : ViewModel() {
 
     private val refreshState = MutableStateFlow(RefreshState())
     private val controls = MutableStateFlow(HomeControls())
+    private val genreEditState = MutableStateFlow<GenreEditUiState>(GenreEditUiState.Hidden)
+    private var genreEditJob: Job? = null
 
     /**
      * The controls the user is holding, the order this profile persisted, and the library it is scoped
@@ -173,14 +181,17 @@ class HomeViewModel @Inject constructor(
         }
 
     /**
-     * PRODUCT_SPEC LIB-002 — the refresh's own state and the device's, read together.
+     * PRODUCT_SPEC LIB-002 / MGR-008 — transient state read alongside the cached shelf.
      *
-     * Paired rather than added as a sixth source because `combine` stops at five typed flows, and
-     * because the two are read together anyway: a failed refresh means something different depending on
-     * whether there was a network to fail on.
+     * Bundled rather than added as sixth and seventh sources because typed `combine` stops at five flows.
+     * The refresh and connection still travel together because a failed refresh means something different
+     * depending on whether there was a network to fail on; the account-scoped genre dialog joins them only
+     * as a transport into [HomeUiState].
      */
     private val attempt: Flow<Attempt> =
-        combine(refreshState, networkMonitor.isOnline) { refresh, online -> Attempt(refresh, online) }
+        combine(refreshState, networkMonitor.isOnline, genreEditState) { refresh, online, genreEdit ->
+            Attempt(refresh, online, genreEdit)
+        }
 
     val uiState: StateFlow<HomeUiState> = combine(
         profileRepository.observeActiveProfile(),
@@ -188,7 +199,7 @@ class HomeViewModel @Inject constructor(
         observeSyncState(),
         attempt,
         view,
-    ) { profile, loaded, syncState, (refresh, isOnline), current ->
+    ) { profile, loaded, syncState, (refresh, isOnline, genreEdit), current ->
         HomeUiState(
             isOffline = !isOnline,
             profile = profile,
@@ -227,6 +238,7 @@ class HomeViewModel @Inject constructor(
             // are waiting for an answer to.
             error = refresh.lastError ?: syncState?.lastError,
             serverStatus = serverStatusOf(isOnline, refresh, syncState),
+            genreEdit = genreEdit,
             // PRODUCT_SPEC LIB-001 — "the home screen can render partial cached content while sync
             // continues", and sync status is "visible but non-blocking".
             //
@@ -289,6 +301,25 @@ class HomeViewModel @Inject constructor(
      * is up to date has no reason to care that the radio changed.
      */
     init {
+        // MGR-008 — never let a confirmation or result from one account follow the user into another.
+        // The use case independently re-checks the profile at every network boundary; this is the UI
+        // half, keeping even a not-yet-confirmed operation explicitly scoped to its originating profile.
+        viewModelScope.launch {
+            profileRepository.observeActiveProfile()
+                .map { it?.id }
+                .distinctUntilChanged()
+                .collect { activeProfileId ->
+                    val requestedProfileId = genreEditState.value.requestOrNull()?.profileId
+                    if (requestedProfileId != null && requestedProfileId != activeProfileId) {
+                        // Cancellation is required in addition to hiding the dialog. Without it, a fast
+                        // A -> B -> A switch can let the old coroutine pass the use case's next profile-id
+                        // check and resume writes beside a newly started operation for A.
+                        genreEditJob?.cancel()
+                        genreEditJob = null
+                        genreEditState.value = GenreEditUiState.Hidden
+                    }
+                }
+        }
         viewModelScope.launch {
             networkMonitor.isOnline
                 .distinctUntilChanged()
@@ -413,6 +444,94 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** PRODUCT_SPEC MGR-008 — begin from exactly one cached Genres-axis group. */
+    fun onGenreEditRequested(group: BookGroup) {
+        val state = uiState.value
+        val profile = state.profile ?: return
+        if (group.kind != BookGroupKind.Genre || !profile.canUpdate) {
+            return
+        }
+        if (profile.requiresReauthentication || state.isOffline) {
+            return
+        }
+        viewModelScope.launch {
+            // The visible Genres axis may be narrowed to a default library. The write intentionally
+            // repairs every accessible cached match, so confirmation must count the same profile-wide
+            // set rather than repeat a smaller card count from the current view.
+            val sourceGenre = group.label.trim()
+            val cachedMatchCount = browse.books(
+                query = "",
+                libraryId = null,
+                filter = BookFilter.All,
+                focus = null,
+            ).first().count { book ->
+                book.genres.any { genre -> genre.trim().equals(sourceGenre, ignoreCase = true) }
+            }
+            val latest = uiState.value
+            val latestProfile = latest.profile
+            if (latestProfile == null || latestProfile.id != profile.id) {
+                return@launch
+            }
+            if (!latestProfile.canUpdate || latestProfile.requiresReauthentication) {
+                return@launch
+            }
+            if (latest.isOffline || latest.axis != HomeAxis.Genres) {
+                return@launch
+            }
+            genreEditState.value = GenreEditUiState.Confirming(
+                GenreEditRequest(
+                    profileId = profile.id,
+                    sourceGenre = sourceGenre,
+                    cachedMatchCount = cachedMatchCount,
+                ),
+            )
+        }
+    }
+
+    fun onGenreEditReplacementChanged(value: String) {
+        genreEditState.update { state ->
+            if (state is GenreEditUiState.Confirming) {
+                state.copy(request = state.request.copy(replacementGenres = value))
+            } else {
+                state
+            }
+        }
+    }
+
+    /** The only path from the confirmation dialog to the privileged domain operation. */
+    fun onGenreEditConfirmed() {
+        val confirming = genreEditState.value as? GenreEditUiState.Confirming ?: return
+        if (!confirming.request.hasReplacementGenres) return
+
+        val running = GenreEditUiState.Running(confirming.request)
+        genreEditState.value = running
+        val job = viewModelScope.launch {
+            val result = bulkEditGenres(
+                profileId = running.request.profileId,
+                sourceGenre = running.request.sourceGenre,
+                targetGenres = running.request.replacementGenres,
+            )
+            // A profile switch deliberately hides this account-scoped operation. Do not let a late
+            // network response bring its result back on the new account.
+            if (genreEditState.value !== running) return@launch
+            genreEditState.value = when (result) {
+                is AppResult.Success -> GenreEditUiState.Complete(running.request, result.value)
+                is AppResult.Failure -> GenreEditUiState.Failed(running.request, result.error)
+            }
+        }
+        genreEditJob = job
+        job.invokeOnCompletion {
+            if (genreEditJob === job) genreEditJob = null
+        }
+    }
+
+    /** Running writes cannot be dismissed: losing their partial summary would misrepresent the result. */
+    fun onGenreEditDismissed() {
+        genreEditState.update { state ->
+            if (state is GenreEditUiState.Running) state else GenreEditUiState.Hidden
+        }
+    }
+
     fun onFocusCleared() {
         controls.update { it.copy(focus = null) }
     }
@@ -482,8 +601,8 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** A refresh's own state alongside the device's, so the UI can tell "no network" from "server said no". */
-    private data class Attempt(val refresh: RefreshState, val isOnline: Boolean)
+    /** The non-catalogue inputs transported together into the five-source home-state combine. */
+    private data class Attempt(val refresh: RefreshState, val isOnline: Boolean, val genreEdit: GenreEditUiState)
 
     /**
      * PRODUCT_SPEC LIB-002 / SYNC-001 — the reachability indicator, inferred from calls already made.
@@ -524,6 +643,41 @@ class HomeViewModel @Inject constructor(
     }
 }
 
+/** The immutable operation snapshot confirmed by the user before any server write. */
+data class GenreEditRequest(
+    val profileId: ProfileId,
+    val sourceGenre: String,
+    val cachedMatchCount: Int,
+    val replacementGenres: String = "",
+) {
+    val hasReplacementGenres: Boolean
+        get() = replacementGenres.split(',').any { it.isNotBlank() }
+
+    val replacementSummary: String
+        get() = replacementGenres.split(',').map(String::trim).filter(String::isNotEmpty).joinToString(", ")
+}
+
+/** PRODUCT_SPEC MGR-008 — confirmation, progress and the non-transactional final result. */
+sealed interface GenreEditUiState {
+    data object Hidden : GenreEditUiState
+
+    data class Confirming(val request: GenreEditRequest) : GenreEditUiState
+
+    data class Running(val request: GenreEditRequest) : GenreEditUiState
+
+    data class Complete(val request: GenreEditRequest, val summary: BulkGenreEditSummary) : GenreEditUiState
+
+    data class Failed(val request: GenreEditRequest, val error: AppError) : GenreEditUiState
+}
+
+private fun GenreEditUiState.requestOrNull(): GenreEditRequest? = when (this) {
+    GenreEditUiState.Hidden -> null
+    is GenreEditUiState.Confirming -> request
+    is GenreEditUiState.Running -> request
+    is GenreEditUiState.Complete -> request
+    is GenreEditUiState.Failed -> request
+}
+
 /** PRODUCT_SPEC 21 — loading, empty, error and content are separate, observable states. */
 data class HomeUiState(
     val profile: Profile? = null,
@@ -550,6 +704,8 @@ data class HomeUiState(
     val isRefreshing: Boolean = false,
     val syncStatus: SyncStatus = SyncStatus.NeverSynced,
     val error: AppError? = null,
+    /** PRODUCT_SPEC MGR-008 — the account-scoped genre operation, if one is being confirmed or reported. */
+    val genreEdit: GenreEditUiState = GenreEditUiState.Hidden,
     /**
      * PRODUCT_SPEC LIB-002 / SYNC-001 — whether the *server* is answering, as opposed to whether the
      * device has a network.

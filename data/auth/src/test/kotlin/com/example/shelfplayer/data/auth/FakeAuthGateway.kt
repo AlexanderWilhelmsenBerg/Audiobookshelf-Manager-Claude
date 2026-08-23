@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.AuthSession
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
+import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
@@ -131,6 +132,9 @@ internal class FakeAuthGateway :
 
     override val library: LibraryApi = object : LibraryApi {
         override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> = unsupported()
+
+        override suspend fun listAuthors(profileId: ProfileId, libraryId: LibraryId): AppResult<List<Author>> =
+            unsupported()
 
         override suspend fun listBooks(
             profileId: ProfileId,

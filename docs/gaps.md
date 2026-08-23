@@ -1,6 +1,12 @@
 # Open gaps
 
-**As of:** 2026-08-21, entering Phase 6.
+**As of:** 2026-08-23, during Phase 6.
+
+The focused server-contact and Android Auto audit performed after this phase-entry inventory is recorded in
+[`reviews/2026-08-22-server-android-auto.md`](reviews/2026-08-22-server-android-auto.md). That review is the
+current authority for those two surfaces while its new findings are triaged into this longer inventory.
+The implementation/specification and signed-in phone review is
+[`reviews/2026-08-23-product-ui-ux-gap-analysis.md`](reviews/2026-08-23-product-ui-ux-gap-analysis.md).
 
 Every requirement this app has *not* fully met, and why. Kept as one document rather than a note per phase,
 because the question anybody actually asks is "what is missing" and not "what was missing in April".
@@ -42,32 +48,16 @@ from — somebody holding this phone, already unlocked, who is not the account's
 that says the verifier does not resist an attacker holding the file. Everything below is what that leaves
 open.
 
-**The recovery is the serious one, and it is the reason this feature is not finished.** The curtain tells a
-locked-out user that signing in to the account again clears its passcode. `DefaultProfileLockRepository`
-implements `forget` and does exactly that, and **no production code calls it** — the sign-in path does not
-reference the lock repository at all. The two fallbacks are in no better state: `LockViewModel` computes
-`others`, every other account on the device, and the curtain uses that list only to decide whether to print
-one sentence saying such accounts exist. There is no control to switch to one, no route to sign in, and no
-way to remove the account from behind the curtain. So the honest reading is that a forgotten passcode is
-not recoverable inside this app at all — online or off — and ten wrong attempts or a record the Keystore
-can no longer unwrap land in the same place. What remains is Android's own "clear storage", which takes every
-download and every sign-in with it. ADR-0023 calls the sign-in route *"a promise the copy makes and the code
-does not yet keep"*, which is accurate and understates what the user meets: three sentences of advice and
-one field that cannot help them. The offline caveat the curtain states is real and would still be real once
-this is wired, because the account password needs the server; it is the smaller half of the problem.
+**Recovery is wired and remains intentionally online.** The curtain's account-password path reaches
+`SignInUseCase.clearIfLocked`, including exhausted and unreadable records, and the switcher can reach another
+profile. Signing in again needs the server and clears the curtain rather than pretending a forgotten
+passcode can be recovered offline. The remaining hazard is R-44: the ordinary reauthentication route can
+also clear a lock without explaining that side effect before it navigates away.
 
-**The relock delay is the same failure a second time, and it is the one a user would notice first.**
-`ProfileLockGate` is built to stamp every live ticket when the app leaves the foreground and to compare that
-stamp against the clock on each read, which is the right design and is what makes the media service and the
-UI agree. The two functions that supply the stamp — `onBackgrounded` and `onForegrounded` — have no
-production caller. `MainActivity`'s one lifecycle observer drives the player's sync-on-background and
-touches nothing here. So `backgroundedAt` stays null for the whole life of the process, `isUnlocked` takes
-its `?: return true` branch every time, and a profile unlocked once is unlocked until Android kills the
-app. The three values the settings row offers are therefore indistinguishable in practice, `Immediately`
-included, and the only thing that re-arms the curtain is process death — which is real protection, since
-tickets are deliberately never persisted, but it is not what the row says. `ProfileLockGateTest`'s ten tests
-pass over all of this, because they call the two functions directly; the arithmetic is correct and nothing
-in the app reaches it.
+**The relock delay has a production caller.** `ProcessLockWatcher` forwards activity lifecycle transitions to
+`ProfileLockGate`, ignores configuration changes, and the tests cover its wiring as well as the gate's clock
+arithmetic. Choosing whether `Immediately` is the right default still needs human device UX evidence; the
+feature is no longer dead code.
 
 **API 26 and 27** have no `android.hardware.biometrics.BiometricPrompt` — it starts at 28 — and the older
 `FingerprintManager` would need this app to draw its own dialogue, could not report whether the sensor is
@@ -97,17 +87,12 @@ administrator can decline it and nothing asks twice. Closing it needs a decision
 whether this app may nag, or refuse to proceed for, an admin account with no passcode — and nobody has made
 that decision.
 
-**The automated evidence covers one half of the feature, and the half CI can prove is the smaller one.**
-`PasscodeKdfTest` (ten tests) covers the derivation and the digit policy, `AutoStartDecisionTest` (five)
-covers ROUTE-002's truth table, and `ProfileLockGateTest` (ten) covers the gate's clock arithmetic — which,
-as above, is arithmetic the app itself never reaches. All three are pure JVM. Nothing touches the Keystore
-wrap, because Robolectric has no `AndroidKeyStore` provider; nothing
-touches the biometric prompt, because it is a window the system draws and there is no instrumented tier;
-and nothing touches the curtain, which has no screen test at all. That last one is worse than absent:
-`LockCurtain`'s KDoc says `LockCurtainScreenTest` asserts the disclosure block *"because a disclosure that
-can be silently deleted is not a disclosure"*, and the test it names is not in this repository, so the
-disclosure is precisely as deletable as the comment says it must not be. The curtain also sits outside the
-accessibility net described in R-29. Two of these need R-07; the screen test needs nobody's hardware.
+**The automated evidence now spans JVM policy/UI tests and one connected store tier.** `PasscodeKdfTest`,
+`AutoStartDecisionTest`, `ProfileLockGateTest`, process-watcher tests, and Robolectric curtain/switcher tests
+cover policy and disclosed copy. On 2026-08-23 the 27-case `:core:datastore` connected tier passed against a
+real AndroidKeyStore on API 36. The biometric system prompt, key invalidation/enrollment behavior, TalkBack
+reading order, and API-26/27 disabled row still require device evidence; no other module has an instrumented
+tier.
 
 **The four bypasses the curtain names on itself are not in this table**, because a disclosed limit of a
 feature is not an unmet requirement. They are in this document's final section with the reason each one
@@ -280,24 +265,46 @@ audit on 2026-08-20 found for the rest, rather than what the phase heading impli
 
 | Deliverable | State on entering the phase |
 | --- | --- |
-| **Browsable media library** | **Built.** `AutoLibrary` publishes the tree; `PlaybackService.LibraryCallback` implements `onGetLibraryRoot` (including the *recent* root behind the car's resume tile), `onGetChildren`, `onGetItem`, `onSearch`, `onGetSearchResult` and the spoken-query path through `onSetMediaItems`. The Chapters tab carries per-chapter completion against a book-progress header. Never run in a car — see R-10. |
+| **Browsable media library** | **Built.** `AutoLibrary` publishes the tree; `PlaybackService.LibraryCallback` implements `onGetLibraryRoot` (including the *recent* root behind the car's resume tile), `onGetChildren`, `onGetItem`, `onSearch`, `onGetSearchResult` and the spoken-query path through `onSetMediaItems`. The Chapters tab carries per-chapter completion against a book-progress header. An older build passed discovery/media-button resume in a car on 2026-08-14; the current tree, newer browse additions, and rendered DHU surface remain unverified — see R-10. |
 | **Diagnostics** | **Built.** The event log, the capability rows, the sync checklist and the copyable debug console (PRODUCT_SPEC 14.4) all shipped in earlier phases. |
-| **Adaptive UI** | **Built 2026-08-20.** Two panes on the book screen and the player, capped sign-in, centred lists. Unverified on hardware (R-07). |
-| **Accessibility** | **Enforced by test, unverified on a device.** The net covers every screen including the player, the mini player and the shelf, several at a doubled font scale. It has found two real defects. R-29. |
+| **Adaptive UI** | **Built 2026-08-20.** Two panes on the book screen and the player, capped sign-in, centred lists. A signed-in phone-width pass exists; wide/tablet/foldable and landscape behavior remain unverified on hardware (R-07). |
+| **Accessibility** | **Enforced by test; ordinary phone rendering reviewed, TalkBack unverified.** The net covers every screen including the player, the mini player and the shelf, several at a doubled font scale. It has found two real defects. R-29. |
 | **Privacy/security docs** | **Rewritten 2026-08-20.** |
 | **Performance profiling** | **Not started.** No baseline profile, no benchmark module, none of PRODUCT_SPEC 17.3's four numbers measured. R-25 to R-27. |
 | **Release pipeline** | **Partly.** PR and main workflows run wrapper validation, a secret scan, `verifyDebug` with warnings-as-errors, a Room schema diff, release lint and an unsigned release assembly. Dependency verification is `strict` over 890 pinned components. **The SBOM, the vulnerability scan and the mapping archive have landed**, the first two unblocked by ADR-0024's licence decision and the third never actually blocked. Missing: a changelog generated from labelled changes (needs a label convention) and managed-device tests (needs a runner). R-05, R-07. |
 
+### Signed-in phone findings — 2026-08-23
+
+Thirty-six private captures cover every naturally reachable route/page and non-destructive sheet in one
+signed-in Android 16 session. They remain ignored because real server/account identity and library state are
+private. The pass verified the cover/play direction, one real authenticated author portrait, the BookWave
+label, and one Samsung adaptive-icon mask. It also made these gaps observable:
+
 | Requirement | Gap | State |
 | --- | --- | --- |
-| §3.3 / packaging | **`applicationId` is `com.example.shelfplayer`.** Google Play rejects `com.example.`. ADR-0019 records why it did not change with the rename: Android identifies an install by its `applicationId`, so changing it produces a *second, empty* app rather than a renamed one — costing a fresh sign-in and every downloaded book. The right moment is the first release, before anybody has an install to lose, and it needs its own decision about migrating the database. | Open, with a deadline |
+| LIB-002 | The first APK reported **0 books** above populated grouped cards. Counts now derive unique books from the active shape (and the uncapped shelf source total); mutation-proved tests and corrected-device captures show 468 Series, 496 Author, and 372 Genre books. | Closed 2026-08-23 |
+| MGR-008 / accessibility | The first APK's parent card consumed Genre **Edit**. Browse and Edit are now sibling targets; a physical-pointer regression was mutation-proved and the corrected APK opened the confirmation without navigating or writing. | Closed 2026-08-23; TalkBack pass remains |
+| LIB-002 | Switching axes reused the previous list offset. List composition is now keyed by axis, Books view, and focus. | Closed in source/test; dedicated device automation remains desirable |
+| SET-001 / SET-002 | Server, Playback, and About are long fixed-tab pages whose navigation disappears deep in the content. Missing Downloads/Devices/Appearance/Privacy categories will make this worse. | Open information-architecture work |
+| PLAY-001 / notifications | Debug Console reported notifications **Blocked** on the fresh install/session, with no proactive onboarding path. | Open; permission discovery |
+| LIB-004 / MGR-001 / MGR-005 | Book detail duplicates its title; a destructive database-removal action has the same hierarchy as benign overflow actions; Metadata is a long flat form without current-cover preview and makes its blank add-series row look duplicated. | Open UI/UX work |
+| LIB-003 | Series detail is a sparse list without a cover/summary/progress header or direct per-book play/resume actions. | Open UI/UX work |
+
+Player screenshots were not manufactured because starting an arbitrary real title writes server progress.
+Android Auto needs a DHU/head-unit host; phone screenshots cannot close it. Offline/error/locked/destructive,
+active-download, large-text, TalkBack, landscape, and wide-window states remain unexercised rather than failed.
+
+| Requirement | Gap | State |
+| --- | --- | --- |
+| §3.3 / packaging | **The release `applicationId` is now `org.homebord.bookwave`.** Kotlin packages and namespaces intentionally remain `com.example.shelfplayer`; Play sees only the application id. | **Closed — ADR-0024** |
 | §4 / §129 / §51 | **Adaptive UI is not built.** **Closed 2026-08-20.** `WindowWidth` reads the window size class; the book screen and the player go to two panes when there is room, sign-in is capped, and lists centre rather than stretch. What is unverified is how it looks on real hardware — R-07. Every screen is a single phone-width column, so a tablet, a foldable and a split-screen window all get the phone layout stretched across the available space. §51 makes adaptive layout a release requirement, not a nicety. | **Closed** |
 | §51 / 2.10 | **Accessibility semantics are now enforced by a test; the device half is not.** `AccessibilityAssertions` walks everything the semantics tree reports as clickable and fails on an unlabelled control or one under Material's 40dp minimum. It covers Settings, the book screen, the downloads queue and the profile switcher — every screen with a destructive action — and one of them renders at a doubled font scale. It found a defect immediately: every genre and tag was a disabled `SuggestionChip`, which still publishes an `OnClick`, so a screen reader announced each as a dead button. The player, the mini player and the shelf are covered as of 2026-08-20, and the extension found a second defect: at a doubled font scale the player's secondary control row laid out **4dp tall** — present, announced and impossible to hit — because the square artwork claimed the column's whole width as its height regardless of what was left. The artwork is weighted now, so large text shrinks the cover instead of crushing the transport. What no JVM test can reach at all is whether a label is *useful*, whether contrast is sufficient, and what TalkBack does with the reading order. R-29, R-35. | Partly closed |
 | §14.5 / packaging | **`PRIVACY.md` and `SECURITY.md` describe Phase 0.** **Closed 2026-08-20.** Both rewritten for a build that talks to a server. That was true for one phase and has been wrong for five; `PRIVACY.md` is the document a user reads to decide whether to trust a client with their server's credentials. | **Closed** |
 | 18 | **`docs/release.md` lists resolved blockers.** **Closed 2026-08-20.** Rewritten; it had named MGR-006 as open after ADR-0021 settled it, and and lists integration tests as blocked on "endpoints to test", which Phase 1 delivered. | **Closed** |
 | 18 / 24 | **Closed 2026-08-20.** `versionName` had stuck at `0.9.6-auto-shelves` for nine builds; it moves with each one now (`0.9.11-car-and-pause`, code 37). The debug console prints it, so a field report identifies the wrong build. | **Closed** |
 | PLAY-001 / 11.1 | **The car's now-playing screen names the book, not the chapter.** The browse tree answers "how far through each chapter am I" (a completion bar per row, and a header row giving progress through the whole book), but the *playback* screen still shows title and author only. An app cannot draw in a car, so the only way to change that line is to change what the session reports as the current item's `MediaMetadata` — and the book is one `MediaItem` over a custom concatenating source (ADR-0016), so `replaceMediaItem` re-prepares it and stops the audio. The supported alternative is a `ForwardingSimpleBasePlayer` wrapping the ExoPlayer and rewriting the metadata in `getState()`, plus a ticker calling `invalidateState()` at each chapter boundary because position alone raises no event. **Deliberately not built here:** that wrapper sits between the media session and the player, so a mistake in it breaks the notification, the lock screen, the headset and the car at once — product priority 1 — and there is no instrumented test or head unit to catch one (R-07, R-10). | Open, needs a device first |
-| 17.2 / 17.3 | **Almost nothing has been verified on hardware by a test.** The instrumented tier exists in one module — `:core:datastore`, over the profile lock's Keystore storage — and runs only against an attached device, never in CI. The whole UI tier is still Robolectric at `sdk = 34`. The API matrix, the two-hour soak, the process-death budget, Android Auto and the release APK are all unexercised. Three device runs have each found defects the suite passed through. | Open, and the largest |
+| PLAY-001 / LIB-002 | **The car browse root has no Downloads, Series, Authors, or Genres destinations.** Continue/Chapters/History are useful playback views but do not provide the phone library's principal browse axes. | Open; verify desired depth/distraction cost in DHU before adding |
+| 17.2 / 17.3 | **Only one narrow tier has been verified on hardware by a test.** On 2026-08-23 `:core:datastore:connectedDebugAndroidTest` passed 27/27 against AndroidKeyStore on an API-36 Samsung. No other module has an instrumented tier and this task never runs in CI. The whole automated UI tier is still Robolectric at `sdk = 34`; route screenshots are observational, not UI automation. The API matrix, two-hour soak, process-death budget, Android Auto, and release APK remain unexercised. | Open, and the largest |
 
 The full accounting of the last row, with blast radius and the cheapest mitigation for each, is
 `docs/risks.md`. It is a separate document because a gap and a risk are different questions: a gap asks

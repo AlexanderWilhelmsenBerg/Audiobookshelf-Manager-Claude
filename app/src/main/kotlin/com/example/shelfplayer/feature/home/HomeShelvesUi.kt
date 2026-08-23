@@ -1,20 +1,27 @@
 package com.example.shelfplayer.feature.home
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
@@ -42,6 +49,7 @@ import com.example.shelfplayer.feature.browse.BookCover
 internal fun LazyListScope.homeShelves(
     shelves: HomeShelves,
     onBookSelected: (LibraryItemId) -> Unit,
+    onBookPlaySelected: (LibraryItemId) -> Unit,
     onSeriesSelected: (SeriesId) -> Unit,
 ) {
     if (shelves.continueListening.isNotEmpty()) {
@@ -50,6 +58,7 @@ internal fun LazyListScope.homeShelves(
                 titleRes = R.string.shelf_continue_listening,
                 books = shelves.continueListening,
                 onBookSelected = onBookSelected,
+                onBookPlaySelected = onBookPlaySelected,
             )
         }
     }
@@ -64,6 +73,7 @@ internal fun LazyListScope.homeShelves(
                 titleRes = R.string.shelf_recently_added,
                 books = shelves.recentlyAdded,
                 onBookSelected = onBookSelected,
+                onBookPlaySelected = onBookPlaySelected,
             )
         }
     }
@@ -76,6 +86,7 @@ internal fun LazyListScope.homeShelves(
                 titleRes = R.string.shelf_listen_again,
                 books = shelves.listenAgain,
                 onBookSelected = onBookSelected,
+                onBookPlaySelected = onBookPlaySelected,
             )
         }
     }
@@ -85,6 +96,7 @@ internal fun LazyListScope.homeShelves(
                 titleRes = R.string.shelf_discover,
                 books = shelves.discover,
                 onBookSelected = onBookSelected,
+                onBookPlaySelected = onBookPlaySelected,
             )
         }
     }
@@ -95,6 +107,7 @@ private fun BookShelfRow(
     titleRes: Int,
     books: List<Book>,
     onBookSelected: (LibraryItemId) -> Unit,
+    onBookPlaySelected: (LibraryItemId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -109,6 +122,15 @@ private fun BookShelfRow(
                     subtitle = book.authors.firstOrNull()?.name,
                     progress = book.progress?.fractionComplete?.takeIf { book.progress?.isFinished == false },
                     onClick = { onBookSelected(book.id) },
+                    playLabel = stringResource(
+                        if (book.progress != null && book.progress?.isFinished == false) {
+                            R.string.shelf_resume_book
+                        } else {
+                            R.string.shelf_play_book
+                        },
+                        book.title,
+                    ),
+                    onPlay = { onBookPlaySelected(book.id) },
                     cover = { BookCover(book = book) },
                 )
             }
@@ -168,6 +190,8 @@ private fun ShelfCard(
     progress: Float?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    playLabel: String? = null,
+    onPlay: (() -> Unit)? = null,
     cover: @Composable () -> Unit = {},
 ) {
     Card(onClick = onClick, modifier = modifier.width(SHELF_CARD_WIDTH)) {
@@ -175,7 +199,23 @@ private fun ShelfCard(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            cover()
+            Box {
+                cover()
+                if (onPlay != null && playLabel != null) {
+                    FilledIconButton(
+                        onClick = onPlay,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(8.dp)
+                            .size(PLAY_BUTTON_SIZE),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = playLabel,
+                        )
+                    }
+                }
+            }
             // PRODUCT_SPEC 4 — every card in a row is the same height.
             //
             // `minLines` as well as `maxLines`: a one-line title reserves the second line rather than
@@ -221,6 +261,9 @@ private fun ShelfHeading(text: String, modifier: Modifier = Modifier) {
 
 /** PRODUCT_SPEC 21 — sized in `dp` so it grows with the display density but not with the font scale. */
 private val SHELF_CARD_WIDTH = 160.dp
+
+/** PLAY-001 / PRODUCT_SPEC 21 — a full touch target even when the visible circle reads as an overlay. */
+private val PLAY_BUTTON_SIZE = 48.dp
 
 /** Two lines, always. See `ShelfCard` for why the second one is reserved rather than earned. */
 private const val TITLE_LINES = 2

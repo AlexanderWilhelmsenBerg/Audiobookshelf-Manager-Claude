@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.auth.AuthToken
 import com.example.shelfplayer.core.model.auth.LibraryAccess
+import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
@@ -29,6 +30,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import java.time.Instant
 import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -433,6 +435,72 @@ class AbsLibraryContractTest {
         assertEquals(listOf("lib-granted"), libraries.map { it.id.value })
     }
 
+    // --- GET /api/libraries/{id}/authors ----------------------------------------------------------
+
+    /**
+     * PRODUCT_SPEC LIB-001 — the captured author listing decides whether portrait bytes exist.
+     *
+     * The server path itself is not persisted: it is a private filesystem detail. The boolean is enough
+     * to avoid a guaranteed 404, and the server's own revision is the cache-busting value for a real image.
+     */
+    @Test
+    fun `captured authors expose portrait presence without exposing the server path`() = runTest {
+        server.enqueue(ContractFixtures.response("library-authors"))
+
+        val authors = assertIs<AppResult.Success<List<Author>>>(
+            api().listAuthors(PROFILE, LIBRARY),
+        ).value
+
+        val author = authors.single()
+        assertEquals("Marisol Holt", author.name)
+        assertFalse(author.hasPortrait)
+        assertEquals(Instant.EPOCH, author.remoteUpdatedAt, "the captured server revision, not the client clock")
+
+        val request = server.takeRequest()
+        assertEquals("/api/libraries/${LIBRARY.value}/authors", request.path)
+        assertEquals("Bearer $TOKEN", request.getHeader("Authorization"))
+        assertFalse(request.path.orEmpty().contains(TOKEN), "credentials stay out of image/list URLs")
+    }
+
+    /** Missing and empty are different: an absent required envelope is a compatibility error. */
+    @Test
+    fun `an author response without its required envelope is rejected`() = runTest {
+        server.enqueue(MockResponse().setBody("{}"))
+
+        val error = assertIs<AppResult.Failure>(api().listAuthors(PROFILE, LIBRARY)).error
+
+        assertEquals("authors", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    /** An author id is not user-facing metadata and must never be invented as a missing name. */
+    @Test
+    fun `an author response without a required name is rejected`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"authors":[{"id":"author-1","updatedAt":1700}]}"""))
+
+        val error = assertIs<AppResult.Failure>(api().listAuthors(PROFILE, LIBRARY)).error
+
+        assertEquals("authors[].name", assertIs<AppError.ApiCompatibility>(error).missingField)
+    }
+
+    /**
+     * PRODUCT_SPEC 5.2 — the captured author directory is not proven to obey item-tag restrictions.
+     * A filtered profile therefore receives no author enrichment and sends no request that could expose
+     * names outside its catalogue.
+     */
+    @Test
+    fun `a tag-filtered profile never requests the unverified author directory`() = runTest {
+        connections.access = LibraryAccess(
+            hasAllLibraryAccess = true,
+            accessibleLibraryIds = emptyList(),
+            hasAllTagAccess = false,
+        )
+
+        val result = api().listAuthors(PROFILE, LIBRARY)
+
+        assertEquals(AppResult.Success(emptyList()), result)
+        assertEquals(0, server.requestCount)
+    }
+
     /** PRODUCT_SPEC 5.2 — the empty-list trap: `accessAllLibraries` with no list means everything. */
     @Test
     fun `an account granted all libraries sees one the list does not name`() = runTest {
@@ -751,7 +819,11 @@ class AbsLibraryContractTest {
 
     private class FakeConnectionResolver : ProfileConnectionResolver {
         var serverUrl: String = ""
-        var access: LibraryAccess = LibraryAccess(hasAllLibraryAccess = true, accessibleLibraryIds = emptyList())
+        var access: LibraryAccess = LibraryAccess(
+            hasAllLibraryAccess = true,
+            accessibleLibraryIds = emptyList(),
+            hasAllTagAccess = true,
+        )
 
         /** `false` is the state of a profile whose session has expired or whose token cannot be decrypted. */
         var hasConnection: Boolean = true

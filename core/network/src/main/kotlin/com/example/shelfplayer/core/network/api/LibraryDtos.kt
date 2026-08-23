@@ -27,6 +27,29 @@ import kotlinx.serialization.Serializable
 @Serializable
 internal data class LibrariesResponseDto(val libraries: List<LibraryDto> = emptyList())
 
+/**
+ * `GET /api/libraries/{id}/authors`, captured as `library-authors.json`.
+ *
+ * Nullable rather than default-empty because the envelope is required: `{}` is an incompatible response,
+ * not evidence that the library has no authors.
+ */
+@Serializable
+internal data class LibraryAuthorsResponseDto(val authors: List<LibraryAuthorDto>? = null)
+
+/**
+ * The richer author shape used only to decide portrait availability and cache identity.
+ *
+ * [imagePath] is intentionally confined to this DTO. It is an absolute path on the server filesystem,
+ * private deployment data the domain and Room layers neither need nor may persist.
+ */
+@Serializable
+internal data class LibraryAuthorDto(
+    val id: String? = null,
+    val name: String? = null,
+    val imagePath: String? = null,
+    val updatedAt: Long? = null,
+)
+
 @Serializable
 internal data class LibraryDto(
     val id: String? = null,

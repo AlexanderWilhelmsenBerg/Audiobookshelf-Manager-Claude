@@ -1,0 +1,3 @@
+# Only for generate-bookwave-launcher-assets.py; keep asset generation independent of Gradle.
+numpy==2.3.5
+Pillow==12.3.0

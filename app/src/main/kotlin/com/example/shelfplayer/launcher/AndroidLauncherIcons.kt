@@ -36,8 +36,45 @@ class AndroidLauncherIcons @Inject constructor(
 
     private val packages: PackageManager get() = context.packageManager
 
-    override fun current(): LauncherIcon =
-        LauncherIcon.entries.firstOrNull { icon -> isEnabled(icon) } ?: LauncherIcon.Default
+    override fun current(): LauncherIcon {
+        // The BookWave mark replaced the original manifest default without introducing a second enabled
+        // component. If the old component was explicitly enabled, however, that means the listener had
+        // deliberately selected Indigo. Migrate that one-time state to Indigo's new alias. A new install
+        // has DEFAULT here; after any new picker choice IndigoClassicAlias is explicitly DISABLED/ENABLED,
+        // so this condition cannot fire again on later app updates.
+        if (
+            stateOf(LauncherIcon.BookWave) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED &&
+            stateOf(LauncherIcon.Indigo) == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+        ) {
+            setEnabled(LauncherIcon.Indigo, isEnabled = true)
+            LauncherIcon.entries
+                .filter { icon -> icon != LauncherIcon.Indigo }
+                .forEach { icon -> setEnabled(icon, isEnabled = false) }
+            return LauncherIcon.Indigo
+        }
+
+        // An explicitly enabled alias records an existing user's choice. It must win over a newly added
+        // manifest default during an upgrade; otherwise Android would expose both aliases in the drawer.
+        val explicit = LauncherIcon.entries.firstOrNull { icon ->
+            stateOf(icon) ==
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        }
+        if (explicit != null) {
+            LauncherIcon.entries
+                .filter { icon -> icon != explicit && isEnabled(icon) }
+                .forEach { icon -> setEnabled(icon, isEnabled = false) }
+            return explicit
+        }
+
+        // `DEFAULT` means the manifest default only while PackageManager has no explicit override. A
+        // crashed or externally corrupted state can explicitly disable every alias; returning BookWave
+        // without repairing that state would make `apply(BookWave)` no-op and leave the app absent from
+        // the drawer. Reading the source of truth also restores its minimum valid state.
+        if (!isEnabled(LauncherIcon.Default)) {
+            setEnabled(LauncherIcon.Default, isEnabled = true)
+        }
+        return LauncherIcon.Default
+    }
 
     /**
      * Whether this alias is the one a launcher would draw.
@@ -45,7 +82,9 @@ class AndroidLauncherIcons @Inject constructor(
      * `DEFAULT` means "whatever the manifest said", which is `enabled="true"` for exactly one alias — so
      * a device where nothing has been chosen yet answers with the default icon rather than with nothing.
      */
-    private fun isEnabled(icon: LauncherIcon): Boolean = when (packages.getComponentEnabledSetting(componentOf(icon))) {
+    private fun stateOf(icon: LauncherIcon): Int = packages.getComponentEnabledSetting(componentOf(icon))
+
+    private fun isEnabled(icon: LauncherIcon): Boolean = when (stateOf(icon)) {
         PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
         PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> icon == LauncherIcon.Default
         else -> false

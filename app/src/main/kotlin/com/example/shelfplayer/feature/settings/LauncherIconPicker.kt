@@ -2,14 +2,18 @@ package com.example.shelfplayer.feature.settings
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -22,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -31,7 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.launcher.LauncherIcon
 
 /**
- * PRODUCT_SPEC SET-003 — the six launcher icons, as a row of things to tap.
+ * PRODUCT_SPEC SET-003 — the launcher icons, as a horizontally scrollable row of things to tap.
  *
  * ### Swatches rather than a list of names
  *
@@ -47,10 +52,18 @@ import com.example.shelfplayer.launcher.LauncherIcon
  */
 @Composable
 fun LauncherIconPicker(selected: LauncherIcon, onSelected: (LauncherIcon) -> Unit, modifier: Modifier = Modifier) {
+    // Start at the selected swatch so a saved choice near the end of the row is visible on a narrow
+    // phone. There are only seven fixed choices, so composing all of them in a scrollable Row is both
+    // cheap and more reliable than a virtualized list whose initial index can be clamped before its item
+    // provider is populated. `rememberScrollState` uses this value only when the picker is first created;
+    // tapping another swatch therefore does not make the whole row jump.
+    val stride = with(LocalDensity.current) { SWATCH_STRIDE.roundToPx() }
+    val scrollState = rememberScrollState(initial = selected.ordinal * stride)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .horizontalScroll(scrollState)
+            .padding(PaddingValues(horizontal = 16.dp, vertical = 8.dp))
             .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -59,7 +72,7 @@ fun LauncherIconPicker(selected: LauncherIcon, onSelected: (LauncherIcon) -> Uni
                 icon = icon,
                 isSelected = icon == selected,
                 onSelected = { onSelected(icon) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.width(72.dp),
             )
         }
     }
@@ -126,3 +139,4 @@ private fun LauncherIconSwatch(
 
 private val SWATCH = 56.dp
 private val TICK = 20.dp
+private val SWATCH_STRIDE = 84.dp

@@ -60,9 +60,13 @@ section explains each requirement and which task it gates.
 
 | Step | Requirement | Blocked on |
 | --- | --- | --- |
-| Managed-device tests | 18, 17.2 | CI has no emulator. Still the largest single hole, though no longer a total one: `:core:datastore` has an instrumented suite over the profile lock's storage, runnable with `connectedDebugAndroidTest` against an attached device. No other module has one, and none of it runs in CI. |
+| Bind the exported Media3 controller and bearer to trusted capabilities/origins | AUTH-003, PLAY-001, 15 | A second-UID controller test plus two `MockWebServer` origins. The reviewed service can accept a caller URI while the authenticated media client can attach the active bearer; this is a credential-release blocker, not UI polish. |
+| Make profile switching an ordered playback transaction | 6.5, AUTH-002, PLAY-005 | Pause/flush/clear/activate/restore wiring, ordering/rollback tests, and a two-origin buffered-playback device run. The old queue must never inherit the new profile's identity. |
+| Capture or gate privileged management writes | 17.1, MGR-001/002/007, USER-002 | Approved contracts for cover upload, metadata embedding, user activation, and one exact genre mutation. A reachable screen is not an adapter contract. |
+| Correct automatic-download traffic policy | DL-004, SET-002 | Carry the automatic traffic category to the scheduler and reconcile/remove the currently dead smart-cellular setting. Automatic work must not inherit manual cellular permission. |
+| Managed-device tests | 18, 17.2 | CI has no emulator. Still the largest single hole, though no longer a total one: `:core:datastore` has an instrumented suite over the profile lock's storage; its first physical run passed 27/27 on an API-36 Samsung on 2026-08-23. No other module has one, and none of it runs in CI. |
 | Two-hour playback soak; process-death progress budget | 25, 17.3 | A device and patience. No new infrastructure. |
-| Android Auto verification in the Desktop Head Unit | 17.2 | Nothing. The browse tree is built and has never been run in a car. |
+| Android Auto verification in the Desktop Head Unit | 17.2 | Nothing. An older build passed discovery/media-button resume in a car on 2026-08-14, but the current browse tree and rendered host surface have not run in DHU/a head unit. Phone screenshots cannot substitute for a car host. |
 | Launch the release APK once | 15 | Nothing. R8 runs in CI and its output is never executed. |
 | Baseline profile and a benchmark module | 17.3 | A device; lands with managed-device tests. |
 
@@ -152,6 +156,7 @@ Use `PRODUCT_SPEC 25` verbatim. Do not mark an item complete on the strength of 
 `PRODUCT_SPEC 21` requires error, loading, empty, offline and permission states, accessibility semantics,
 and evidence that nothing private is logged.
 
-Three separate device runs have each found defects that the entire unit suite passed through — eight in
-the audit of 2026-08-16, four more on 2026-08-20, and three of those four were the same shape: a feature
-that worked perfectly and could not be reached from any screen. **A green build is not a tested build.**
+Repeated device runs have found defects that the entire unit suite passed through — eight in the audit of
+2026-08-16, four more on 2026-08-20, and on 2026-08-23 false grouped counts plus a Genre Edit action that
+the clickable browse card intercepted. Several were the same shape: correct code that could not be reached
+from the UI. **A green build is not a tested build.**

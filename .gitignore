@@ -26,6 +26,9 @@ release/
 .DS_Store
 Thumbs.db
 
+# Codex desktop attachments are task inputs, not repository assets. Some may contain private content.
+.codex-remote-attachments/
+
 # Reports produced by the quality gate
 **/reports/
 **/lint-results*.xml

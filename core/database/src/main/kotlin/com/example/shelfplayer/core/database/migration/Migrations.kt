@@ -565,6 +565,21 @@ object Migrations {
         }
     }
 
+    /**
+     * PRODUCT_SPEC LIB-001 — whether an author has portrait bytes, without storing their filesystem path.
+     *
+     * Both columns are additive. Existing rows have never been checked through the library-author
+     * contract, so `hasPortrait = 0` is the safe value: the UI falls back to book covers instead of issuing
+     * a request likely to be a 404. The nullable revision remains unknown until the next successful refresh;
+     * using the migration time would be a device timestamp masquerading as server cache identity.
+     */
+    private val MIGRATION_19_20 = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `authors` ADD COLUMN `hasPortrait` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `authors` ADD COLUMN `remoteUpdatedAt` INTEGER")
+        }
+    }
+
     private fun createDownloadedBooks(db: SupportSQLiteDatabase) {
         db.execSQL(
             """
@@ -651,5 +666,6 @@ object Migrations {
         MIGRATION_16_17,
         MIGRATION_17_18,
         MIGRATION_18_19,
+        MIGRATION_19_20,
     )
 }

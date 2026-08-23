@@ -4,6 +4,7 @@
 
     <!-- SET-003 — one background per launcher icon. Deep and tone-matched, so the
          artwork's own light edges keep their contrast against it. -->
+    <color name="ic_launcher_background_bookwave">#0B1B25</color>
     <color name="ic_launcher_background_indigo">#1E1246</color>
     <color name="ic_launcher_background_spectrum">#14121F</color>
     <color name="ic_launcher_background_crimson">#4E0D18</color>

@@ -44,6 +44,8 @@
     <string name="shelf_recently_added">Nylig lagt til</string>
     <string name="shelf_listen_again">Hør på nytt</string>
     <string name="shelf_discover">Oppdag</string>
+    <string name="shelf_play_book">Spill av %1$s</string>
+    <string name="shelf_resume_book">Fortsett %1$s</string>
     <string name="shelf_series_next">Neste: %1$s · %2$s</string>
     <string name="home_no_matches_title">Ingen treff</string>
     <string name="home_no_matches_body">Ingen bok i bibliotekene dine passer med det søket.</string>
@@ -53,6 +55,39 @@
     <string name="home_profiles">Profiler</string>
     <string name="home_sign_in">Logg på</string>
     <string name="home_needs_sign_in">Denne profilen må logge på igjen. Biblioteket vises fra den siste synkroniseringen.</string>
+
+    <!-- PRODUCT_SPEC MGR-008 — veiledet sammenslåing fra ett kort på Sjanger-aksen. -->
+    <string name="genre_edit_action">Rediger</string>
+    <string name="genre_edit_action_description">Rediger sjangeren %1$s</string>
+    <string name="genre_edit_offline">Koble til for å redigere sjangre.</string>
+    <string name="genre_edit_reauthentication">Logg på igjen for å redigere sjangre.</string>
+    <string name="genre_edit_title">Rediger sjanger</string>
+    <string name="genre_edit_source">Kildesjanger: %1$s</string>
+    <plurals name="genre_edit_cached_count">
+        <item quantity="one">%1$d bufret bok samsvarer</item>
+        <item quantity="other">%1$d bufrede bøker samsvarer</item>
+    </plurals>
+    <string name="genre_edit_explanation">Erstatt denne sjangeren på alle bufrede bøker som samsvarer, i alle tilgjengelige biblioteker for denne profilen. Bøkene oppdateres én om gangen, så operasjonen kan bli delvis fullført. Skriv inn én sjanger for å slå sammen, eller skill flere sjangre med komma for å dele en kombinert etikett.</string>
+    <string name="genre_edit_replacements_label">Erstatningssjangre</string>
+    <string name="genre_edit_replacements_supporting">Skill flere sjangre med komma.</string>
+    <string name="genre_edit_cancel">Avbryt</string>
+    <string name="genre_edit_confirm">Oppdater bøker</string>
+    <string name="genre_edit_progress_title">Oppdaterer sjanger</string>
+    <string name="genre_edit_progress">Oppdaterer sjanger…</string>
+    <string name="genre_edit_result_complete">Sjangeroppdateringen er fullført</string>
+    <string name="genre_edit_result_partial">Sjangeroppdateringen er delvis fullført</string>
+    <string name="genre_edit_result_not_started">Sjangeroppdateringen ble ikke startet</string>
+    <string name="genre_edit_result_change">%1$s → %2$s</string>
+    <string name="genre_edit_summary_matched">Samsvar: %1$d</string>
+    <string name="genre_edit_summary_updated">Oppdatert: %1$d</string>
+    <string name="genre_edit_summary_unchanged">Uendret: %1$d</string>
+    <string name="genre_edit_summary_draft_conflicts">Utkastkonflikter: %1$d</string>
+    <string name="genre_edit_summary_failed">Mislyktes: %1$d</string>
+    <string name="genre_edit_summary_stale">Utdaterte lokale kopier: %1$d</string>
+    <string name="genre_edit_summary_unprocessed">Ikke behandlet: %1$d</string>
+    <string name="genre_edit_summary_stop_reason">Stoppårsak: %1$s</string>
+    <string name="genre_edit_summary_no_stop">Ingen</string>
+    <string name="genre_edit_close">Lukk</string>
 
     <string name="sign_in_title">Koble til en server</string>
     <string name="sign_in_address_prompt">Skriv inn adressen til Audiobookshelf-serveren din.</string>
@@ -367,12 +402,13 @@
     </plurals>
     <string name="event_log_problems_only">Bare problemer (%1$d)</string>
     <string name="event_log_copy">Kopier</string>
+    <string name="event_log_clipboard_label">Hendelseslogg for BookWave</string>
     <string name="event_log_clear">Tøm</string>
     <string name="event_log_empty">Ingenting er registrert ennå.</string>
-    <string name="about_phase">Under arbeid. Direkteavspilling og frakoblet avspilling, kapitler, bokmerker, sovetid, nedlastinger og smarte nedlastinger, fremdrifts- og \u00f8ktsynkronisering, Android Auto, avspillingsregler per enhet og forvaltningsverkt\u00f8yene \u2014 redigering av metadata, omslag, samsvarss\u00f8k, skanning og serverkontoer \u2014 er bygget. Sletting av kildefiler tilbys bevisst ikke, og noen mangler st\u00e5r igjen: ingen profill\u00e5s, ingen pause i nedlastinger og ingen innbygging av metadata per bok.</string>
+    <string name="about_phase">Under arbeid. Direkteavspilling og frakoblet avspilling, kapitler, bokmerker, sovetid, nedlastinger og smarte nedlastinger, profill\u00e5ser, fremdrifts- og \u00f8ktsynkronisering, Android Auto, avspillingsregler per enhet og forvaltningsverkt\u00f8yene \u2014 redigering av metadata, omslag, samsvarss\u00f8k, innbygging, skanning og serverkontoer \u2014 er bygget. Sletting av kildefiler tilbys bevisst ikke. Maskinvareverifisering og enkelte kompatibilitets- og automatiseringsmangler st\u00e5r igjen.</string>
 
     <!--
-      PRODUCT_SPEC SET-003 — navnene på de seks ikonene.
+      PRODUCT_SPEC SET-003 — navnene på appikonene.
 
       «Gilded» er «Forgylt» og ikke «Illuminert»: det siste er det kunsthistorisk riktige ordet for et
       opplyst manuskript, men det leses som «belyst» av alle andre.
@@ -417,6 +453,7 @@
     <string name="settings_device_kind_other">Lydenhet</string>
     <string name="settings_device_speaker_warning">Dette er en høyttaler, så boka starter høyt i rommet den står i.</string>
     <string name="settings_section_icon">Appikon</string>
+    <string name="settings_icon_bookwave">BookWave</string>
     <string name="settings_icon_indigo">Indigo</string>
     <string name="settings_icon_spectrum">Spekter</string>
     <string name="settings_icon_crimson">Karmin</string>

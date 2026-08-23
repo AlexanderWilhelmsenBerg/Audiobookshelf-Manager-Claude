@@ -6,6 +6,44 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Library presentation and guided genre repair (LIB-002, MGR-008, SET-003)
+
+- **Cover-led Home, Series, Authors and Genres surfaces.** Home shelf cards now expose a labelled
+  play/resume control that starts playback in place and leaves the mini player visible, while series,
+  author and genre rows use cached book covers instead of text-only cards. Author synchronization reads
+  the captured library-author directory, stores only a portrait-present flag and server revision (never
+  the private server filesystem path), and falls back to that author's covers when no confirmed portrait
+  is available. Database version 20 adds those two author-decoration fields.
+- **Guided genre consolidation.** A metadata-update-capable account can replace one Genres-axis label
+  across every matching book, or split a combined label into comma-separated replacements. Each item is
+  reloaded and patched sequentially through the existing metadata repository; existing drafts are skipped,
+  systemic failures stop the remaining writes, and the final dialog reports partial completion explicitly.
+- **The supplied BookWave mark is the fresh-install default and remains selectable in Settings.** Adaptive,
+  round and themed assets are generated from one checked-in master. The original default alias name is
+  intentionally reused so an upgrade never creates a second launcher entry; an explicitly chosen old
+  Indigo icon migrates to its replacement alias.
+- **A server and Android Auto review is recorded** in
+  `docs/reviews/2026-08-22-server-android-auto.md`. Its security and profile-boundary findings are reported
+  risks, not silently bundled into this presentation change.
+- **The signed-in phone UI was reviewed route by route on an Android 16 physical device.** Thirty-six local
+  captures cover every naturally reachable route/page and non-destructive sheet; they remain ignored and
+  private because they contain real account and library data. The cover-led Home/Series/Authors/Genres
+  treatment, play buttons, one authenticated author portrait, the BookWave app label, and the masked
+  adaptive icon all rendered successfully. The review exposed and the branch then fixed false `0 books`
+  summaries on grouped axes, an intercepted Genre Edit action, and shared cross-axis scroll position.
+  Regression tests were mutation-proved; the reinstalled APK showed correct grouped counts and opened the
+  genre confirmation without writing. The pass also recorded settings/detail information-
+  architecture debt, and a missing notification-permission onboarding path. Player, Android Auto,
+  destructive, large-text, TalkBack, and unavailable-role states were not manufactured for screenshots.
+  The full evidence/status split is in `docs/reviews/2026-08-23-product-ui-ux-gap-analysis.md`.
+- **The first hardware execution of the datastore instrumented tier passed:** 27 tests, 0 failures, 0
+  errors, and 0 skipped on a Samsung SM-S928B running Android 16. This verifies the AndroidKeyStore lock
+  cipher/store tier only; it does not imply UI, playback, Android Auto, migration, or device-matrix coverage.
+- **Credential and profile-lock record replacement is portable across the Windows verification JVM and
+  Android.** Staged writes now request an atomic replace-existing move, with a documented fallback only for
+  filesystems that explicitly do not support atomic moves. JVM regressions cover overwriting both an access
+  token and an existing passcode record; reverting the helper to `File.renameTo` made both tests fail.
+
 ### Supply chain (PRODUCT_SPEC 18)
 
 - **A Software Bill of Materials**, in CycloneDX 1.5, written by `./gradlew :app:sbom`: 175 components,
@@ -50,8 +88,9 @@ giving it a section of its own.
   against the clock when the ticket is read rather than expired by an event, so the media service and the UI
   cannot give different answers. A configuration change is not treated as leaving the app, which a naive
   activity counter would have done — demanding a passcode every time the phone turned sideways.
-- **No database migration.** The record's existence is the fact, so there is no flag that could disagree
-  with it. Schema stays at version 19.
+- **The lock itself needed no database migration.** The record's existence is the fact, so there is no flag
+  that could disagree with it. A later, unrelated author-artwork change advances the current schema from 19
+  to 20.
 
 ### Release decisions (ADR-0024)
 
@@ -396,5 +435,6 @@ came to be missed. `docs/handover.md` has the deliverable-by-deliverable history
   `org.gradle.dependency.verification` to `strict` (ADR-0006).
 - Add `distributionSha256Sum` to `gradle-wrapper.properties`.
 - Enable the Gradle configuration cache once the protobuf/KSP/AGP combination is validated against it.
-- Replace the placeholder application ID `com.example.shelfplayer` before any release.
-- Choose a licence (PRODUCT_SPEC 24.2).
+- The release application ID is `org.homebord.bookwave`; internal Kotlin packages and Gradle namespaces
+  deliberately remain `com.example.shelfplayer` (ADR-0024).
+- The project is GPL-3.0-or-later (ADR-0024).

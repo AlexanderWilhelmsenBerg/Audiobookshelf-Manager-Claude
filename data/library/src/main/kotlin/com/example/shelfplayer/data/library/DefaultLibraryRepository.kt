@@ -205,6 +205,7 @@ class DefaultLibraryRepository @Inject constructor(
      * fully materialised result is written. That is what makes "a failed sync leaves cached content
      * on screen" true rather than aspirational.
      */
+    @Suppress("LongMethod") // One orchestration boundary keeps the all-or-nothing refresh order visible.
     override suspend fun refresh(profileId: ProfileId): AppResult<Int> = withContext(ioDispatcher) {
         markSyncing(profileId)
 
@@ -222,6 +223,8 @@ class DefaultLibraryRepository @Inject constructor(
 
             is AppResult.Success -> {
                 val snapshots = mutableMapOf<LibraryId, LibrarySnapshot>()
+                var authorDecorationsWritten = 0
+                var authorDecorationFailures = 0
                 for (library in libraries.value) {
                     val onExpandedBatch: suspend (List<BookSnapshot>) -> Unit = { batch ->
                         // PRODUCT_SPEC LIB-001 — partial content on screen while the sync continues.
@@ -254,7 +257,29 @@ class DefaultLibraryRepository @Inject constructor(
                             return@withContext books
                         }
 
-                        is AppResult.Success -> snapshots[library.id] = books.value
+                        is AppResult.Success -> {
+                            snapshots[library.id] = books.value
+                            // PRODUCT_SPEC LIB-001 — portraits are an optional section and run after the
+                            // catalogue/expansion path, so decoration never delays the first browsable
+                            // shelf. A failure carries only a typed code/count: author and library names
+                            // are private metadata.
+                            when (val authors = gateway.library.listAuthors(profileId, library.id)) {
+                                is AppResult.Success -> {
+                                    writer.writeAuthors(authors.value)
+                                    authorDecorationsWritten += authors.value.size
+                                }
+
+                                is AppResult.Failure -> {
+                                    authorDecorationFailures++
+                                    logger.warn(
+                                        LogCategory.Sync,
+                                        "Author decoration refresh failed",
+                                        LogField.Public("errorCode", authors.error.code),
+                                        LogField.Public("retryable", authors.error.isRetryable),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -277,6 +302,8 @@ class DefaultLibraryRepository @Inject constructor(
                     LogField.Count("libraries", libraries.value.size),
                     LogField.Count("books", written),
                     LogField.Count("incompleteLibraries", incomplete),
+                    LogField.Count("authorDecorations", authorDecorationsWritten),
+                    LogField.Count("authorDecorationFailures", authorDecorationFailures),
                 )
                 AppResult.Success(written)
             }

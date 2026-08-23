@@ -32,7 +32,8 @@ three are the ones that decide whether Phase 1 closes.
 adb install -r app-debug.apk
 ```
 
-The debug build's application id is **`com.example.shelfplayer.debug`**.
+The current debug build's application id is **`org.homebord.bookwave.debug`** (ADR-0024). Kotlin source
+packages still use `com.example.shelfplayer`; the commands in this device plan need the install identity.
 
 **You should not need `adb` for anything but the install.** The checks that used to require
 `adb shell run-as … sqlite3` are now in the app, under **Settings → Storage on this device**. The `adb`
@@ -239,24 +240,24 @@ wrong.
 adb install -r app-debug.apk
 
 # Watch the app's own logs (no tokens are ever logged; PRODUCT_SPEC 14.5)
-adb logcat --pid=$(adb shell pidof -s com.example.shelfplayer.debug)
+adb logcat --pid=$(adb shell pidof -s org.homebord.bookwave.debug)
 
 # Inspect the database in place
-adb shell run-as com.example.shelfplayer.debug sqlite3 databases/shelfplayer.db ".tables"
-adb shell run-as com.example.shelfplayer.debug sqlite3 databases/shelfplayer.db \
+adb shell run-as org.homebord.bookwave.debug sqlite3 databases/shelfplayer.db ".tables"
+adb shell run-as org.homebord.bookwave.debug sqlite3 databases/shelfplayer.db \
   "select remoteId, name from libraries; select count(*) from books;"
 
 # What credentials exist on disk (file names are hashed on purpose)
-adb shell run-as com.example.shelfplayer.debug ls -l files/sessions/
+adb shell run-as org.homebord.bookwave.debug ls -l files/sessions/
 
 # Start completely clean between runs
-adb shell pm clear com.example.shelfplayer.debug
+adb shell pm clear org.homebord.bookwave.debug
 ```
 
 If `sqlite3` is missing on the device, pull the database instead:
 
 ```bash
-adb exec-out run-as com.example.shelfplayer.debug cat databases/shelfplayer.db > shelfplayer.db
+adb exec-out run-as org.homebord.bookwave.debug cat databases/shelfplayer.db > shelfplayer.db
 ```
 
 **One caution before pulling anything off the device:** the database holds your server's library — real

@@ -23,6 +23,16 @@ internal interface LibraryService {
     suspend fun libraries(@Header(AUTHORIZATION) bearer: String): Response<LibrariesResponseDto>
 
     /**
+     * The author listing, including whether each author has an image and its server revision.
+     * Captured as `library-authors.json`; the credential remains an explicit profile bearer.
+     */
+    @GET("api/libraries/{libraryId}/authors")
+    suspend fun authors(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("libraryId") libraryId: String,
+    ): Response<LibraryAuthorsResponseDto>
+
+    /**
      * The catalogue of one library, one page at a time.
      *
      * The response is **minified**: counts instead of tracks and chapters, author and series as strings.

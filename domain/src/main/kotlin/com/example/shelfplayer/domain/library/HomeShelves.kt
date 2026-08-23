@@ -21,6 +21,8 @@ data class HomeShelves(
     val recentlyAdded: List<Book>,
     val discover: List<Book>,
     val listenAgain: List<Book>,
+    /** Number of distinct books used to derive the shelves, before any preview limit is applied. */
+    val totalBookCount: Int,
 ) {
     val isEmpty: Boolean
         get() = continueListening.isEmpty() &&
@@ -30,7 +32,7 @@ data class HomeShelves(
             listenAgain.isEmpty()
 
     companion object {
-        val Empty = HomeShelves(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        val Empty = HomeShelves(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), totalBookCount = 0)
     }
 }
 
@@ -61,6 +63,7 @@ fun homeShelvesOf(books: List<Book>, limit: Int = SHELF_LIMIT): HomeShelves = Ho
     recentlyAdded = recentlyAdded(books, limit),
     discover = discover(books, limit),
     listenAgain = listenAgain(books, limit),
+    totalBookCount = books.distinctBy { it.id }.size,
 )
 
 /**

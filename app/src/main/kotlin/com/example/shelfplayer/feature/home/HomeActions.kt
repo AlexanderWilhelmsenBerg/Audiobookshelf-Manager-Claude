@@ -13,13 +13,20 @@ import com.example.shelfplayer.domain.library.BookSortOrder
  * Home is now the only browse surface — four axes, three shelves, a search, a sort row, a filter row,
  * a dismissible focus and four destinations — which is far past what a readable parameter list holds.
  * Grouping them keeps `HomeScreen` a function of `(state, actions)`, which is also what makes it
- * previewable: a preview supplies one no-op instance instead of thirteen lambdas.
+ * previewable: a preview supplies one no-op instance instead of a long row of lambdas.
  */
 @Immutable
 data class HomeActions(
     val onBookSelected: (LibraryItemId) -> Unit,
+    /** PLAY-001 — starts the book without opening details or forcing the full player over the shelf. */
+    val onBookPlaySelected: (LibraryItemId) -> Unit,
     val onSeriesSelected: (SeriesId) -> Unit,
     val onGroupSelected: (BookGroup) -> Unit,
+    /** PRODUCT_SPEC MGR-008 — opens the confirmation flow for one genre group. */
+    val onGenreEditRequested: (BookGroup) -> Unit,
+    val onGenreEditReplacementChanged: (String) -> Unit,
+    val onGenreEditConfirmed: () -> Unit,
+    val onGenreEditDismissed: () -> Unit,
     val onQueryChanged: (String) -> Unit,
     val onSearchToggled: () -> Unit,
     val onAxisChanged: (HomeAxis) -> Unit,

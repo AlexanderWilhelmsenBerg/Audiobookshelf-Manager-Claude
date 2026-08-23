@@ -46,6 +46,9 @@
     <string name="shelf_recently_added">Recently added</string>
     <string name="shelf_listen_again">Listen again</string>
     <string name="shelf_discover">Discover</string>
+    <!-- %1$s is the book title; this labels the distinct overlay action for TalkBack. -->
+    <string name="shelf_play_book">Play %1$s</string>
+    <string name="shelf_resume_book">Resume %1$s</string>
     <!-- %1$s is the next book\'s title, %2$s an already-formatted progress phrase such as "2 of 7 done". -->
     <string name="shelf_series_next">Next: %1$s · %2$s</string>
     <string name="home_no_matches_title">No matches</string>
@@ -56,6 +59,39 @@
     <string name="home_profiles">Profiles</string>
     <string name="home_sign_in">Sign in</string>
     <string name="home_needs_sign_in">This profile needs to sign in again. Your library is shown from the last sync.</string>
+
+    <!-- PRODUCT_SPEC MGR-008 — guided consolidation from one Genres-axis card. -->
+    <string name="genre_edit_action">Edit</string>
+    <string name="genre_edit_action_description">Edit genre %1$s</string>
+    <string name="genre_edit_offline">Connect to edit genres.</string>
+    <string name="genre_edit_reauthentication">Sign in again to edit genres.</string>
+    <string name="genre_edit_title">Edit genre</string>
+    <string name="genre_edit_source">Source genre: %1$s</string>
+    <plurals name="genre_edit_cached_count">
+        <item quantity="one">%1$d cached book matches</item>
+        <item quantity="other">%1$d cached books match</item>
+    </plurals>
+    <string name="genre_edit_explanation">Replace this genre on every matching cached book across all accessible libraries in this profile. Books are updated one at a time, so the operation can finish partially. Enter one genre to merge labels, or separate multiple genres with commas to split a combined label.</string>
+    <string name="genre_edit_replacements_label">Replacement genres</string>
+    <string name="genre_edit_replacements_supporting">Separate multiple genres with commas.</string>
+    <string name="genre_edit_cancel">Cancel</string>
+    <string name="genre_edit_confirm">Update books</string>
+    <string name="genre_edit_progress_title">Updating genre</string>
+    <string name="genre_edit_progress">Updating genre…</string>
+    <string name="genre_edit_result_complete">Genre update complete</string>
+    <string name="genre_edit_result_partial">Genre update partially complete</string>
+    <string name="genre_edit_result_not_started">Genre update not started</string>
+    <string name="genre_edit_result_change">%1$s → %2$s</string>
+    <string name="genre_edit_summary_matched">Matched: %1$d</string>
+    <string name="genre_edit_summary_updated">Updated: %1$d</string>
+    <string name="genre_edit_summary_unchanged">Unchanged: %1$d</string>
+    <string name="genre_edit_summary_draft_conflicts">Draft conflicts: %1$d</string>
+    <string name="genre_edit_summary_failed">Failed: %1$d</string>
+    <string name="genre_edit_summary_stale">Stale local copies: %1$d</string>
+    <string name="genre_edit_summary_unprocessed">Unprocessed: %1$d</string>
+    <string name="genre_edit_summary_stop_reason">Stop reason: %1$s</string>
+    <string name="genre_edit_summary_no_stop">None</string>
+    <string name="genre_edit_close">Close</string>
 
     <!-- PRODUCT_SPEC AUTH-001 / 6.1 — adding a server, in the order the journey prescribes. -->
     <string name="sign_in_title">Connect a server</string>
@@ -470,12 +506,12 @@
       PRODUCT_SPEC SET-002 — what this build actually is. Kept current with the phase, because a build
       that describes itself wrongly makes every other reading on this tab suspect.
     -->
-    <string name="about_phase">A work in progress. Streaming and offline playback, chapters, bookmarks, the sleep timer, downloads and smart downloads, progress and session sync, Android Auto, per-device playback policy and the management tools \u2014 metadata editing, covers, matching, scans and server accounts \u2014 are built. Source-file deletion is deliberately not offered, and a few gaps remain: no profile lock, no download pause, and no per-item metadata embedding.</string>
+    <string name="about_phase">A work in progress. Streaming and offline playback, chapters, bookmarks, the sleep timer, downloads and smart downloads, profile locks, progress and session sync, Android Auto, per-device playback policy and the management tools \u2014 metadata editing, covers, matching, embedding, scans and server accounts \u2014 are built. Source-file deletion is deliberately not offered. Hardware verification and some compatibility and automation gaps remain.</string>
 
     <!--
-      PRODUCT_SPEC SET-003 — the six launcher icons.
+      PRODUCT_SPEC SET-003 — the launcher icons.
 
-      One word each, because they sit under 56dp pictures in a row of six and a second word wraps on a
+      One word each, because they sit under 56dp pictures and a second word wraps on a
       narrow phone. They name what the picture looks like rather than what it means: nobody chooses
       between these by reading.
     -->
@@ -529,6 +565,7 @@
     <string name="settings_device_kind_other">Audio device</string>
     <string name="settings_device_speaker_warning">This is a speaker, so a book will start out loud in whatever room it is in.</string>
     <string name="settings_section_icon">App icon</string>
+    <string name="settings_icon_bookwave">BookWave</string>
     <string name="settings_icon_indigo">Indigo</string>
     <string name="settings_icon_spectrum">Spectrum</string>
     <string name="settings_icon_crimson">Crimson</string>
@@ -549,6 +586,7 @@
     <!-- %1$d is how many of them are warnings or errors. -->
     <string name="event_log_problems_only">Problems only (%1$d)</string>
     <string name="event_log_copy">Copy</string>
+    <string name="event_log_clipboard_label">BookWave event log</string>
     <string name="event_log_clear">Clear</string>
     <string name="event_log_empty">Nothing has been recorded yet.</string>
     <string name="about_section_testing">Testing</string>
