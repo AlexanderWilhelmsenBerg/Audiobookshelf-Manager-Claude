@@ -1,6 +1,11 @@
 package com.example.shelfplayer.playback
 
+import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.model.playback.DevicePolicy
+import com.example.shelfplayer.core.model.playback.KnownDevice
+import com.example.shelfplayer.domain.lock.ProfileLockGuard
+import com.example.shelfplayer.domain.repository.DeviceRepository
+import java.time.Instant
 
 /**
  * PRODUCT_SPEC ROUTE-002 — what a device connecting should do, given its policy and the lock.
@@ -44,3 +49,41 @@ internal object AutoStartDecision {
  * to somebody reading diagnostics after a headset failed to start their book.
  */
 internal enum class AutoStartAction { ArmAndPlay, Arm, Suppressed, None }
+
+/**
+ * PRODUCT_SPEC ROUTE-002 — what a **car** connecting should do, resolved against its stored policy.
+ *
+ * ### Why this is separate from [AutoStartDecision]
+ *
+ * `AutoStartDecision` is arithmetic: given a policy and a lock, what happens. This is the *wiring*: which
+ * policy, from where, and recorded how. R-43's lesson in this codebase is that the arithmetic is never what
+ * ships broken — the wiring is, and a pure decision function with ten passing tests can sit behind a caller
+ * that never reaches it.
+ *
+ * That is exactly what happened here. `AutoStartDecision` shipped in Phase 4 with a full truth table while
+ * `PlaybackService.onPostConnect` went on reading a global boolean, so a car obeyed a switch on another
+ * screen instead of the policy the listener had set. Extracting these three lines is what lets a test say
+ * "a car connecting consults the car's policy" rather than only "the policy table is correct".
+ *
+ * ### `remember` before `policyFor`
+ *
+ * The same order [OutputDeviceWatcher] uses, for the same reason: a first-ever connection has to be stored
+ * before it can be asked about, or it falls through the gap between the two and is treated as having no
+ * policy rather than the default one.
+ */
+internal object CarConnection {
+
+    suspend fun decide(devices: DeviceRepository, lock: ProfileLockGuard, now: Instant): AutoStartAction {
+        devices.remember(
+            KnownDevice(
+                id = KnownDevice.CAR_ID,
+                kind = DeviceKind.Car,
+                displayName = KnownDevice.CAR_DISPLAY_NAME,
+                policy = DevicePolicy.Default,
+                lastSeenAt = now,
+            ),
+        )
+        val policy = devices.policyFor(KnownDevice.CAR_ID)
+        return AutoStartDecision.decide(policy, isProfileLocked = lock.isActiveProfileLocked())
+    }
+}

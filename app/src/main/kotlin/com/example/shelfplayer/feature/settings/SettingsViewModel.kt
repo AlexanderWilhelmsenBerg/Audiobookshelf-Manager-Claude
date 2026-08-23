@@ -304,9 +304,6 @@ class SettingsViewModel @Inject constructor(
     }
 
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless chosen. */
-    fun onAutoPlayOnCarConnectChanged(enabled: Boolean) {
-        viewModelScope.launch { playbackSettings.setAutoPlayOnCarConnect(enabled) }
-    }
 
     /**
      * PRODUCT_SPEC SET-003 — swaps the enabled launcher alias.
