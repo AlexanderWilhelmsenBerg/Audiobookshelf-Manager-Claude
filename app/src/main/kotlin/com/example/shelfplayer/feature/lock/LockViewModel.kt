@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.model.lock.ProfileLockState
 import com.example.shelfplayer.core.model.lock.UnlockFailure
 import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.SignInIntent
 import com.example.shelfplayer.domain.usecase.SignInUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -147,7 +148,13 @@ class LockViewModel @Inject constructor(
         viewModelScope.launch {
             _recovery.value = RecoveryState.Working
             try {
-                val result = signIn(address, account.username, String(password))
+                val result = signIn(
+                    serverUrl = address,
+                    username = account.username,
+                    password = String(password),
+                    // The one call site that clears a passcode, and the one screen that warns first.
+                    intent = SignInIntent.RecoverLockedProfile,
+                )
                 _recovery.value = when (result) {
                     is AppResult.Success -> RecoveryState.Idle
                     is AppResult.Failure -> RecoveryState.Failed

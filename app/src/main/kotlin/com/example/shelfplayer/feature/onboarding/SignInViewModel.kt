@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.ServerVersion
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.SignInIntent
 import com.example.shelfplayer.domain.usecase.SignInUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -166,7 +167,14 @@ class SignInViewModel @Inject constructor(
         if (current.isBusy || current.candidate == null) return
         state.update { it.copy(isBusy = true, error = null) }
         viewModelScope.launch {
-            val result = signIn(current.candidate.serverUrl, current.username, current.password)
+            val result = signIn(
+                serverUrl = current.candidate.serverUrl,
+                username = current.username,
+                password = current.password,
+                // ADR-0026 decision 2 — this screen must never switch off a lock the user set. It
+                // does not mention the passcode, so it has no business clearing one.
+                intent = SignInIntent.Reauthenticate,
+            )
             state.update {
                 when (result) {
                     // The password is dropped on both paths. A failed sign-in keeps the username, because

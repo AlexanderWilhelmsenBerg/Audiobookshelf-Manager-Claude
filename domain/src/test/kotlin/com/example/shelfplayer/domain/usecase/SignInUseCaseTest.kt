@@ -46,7 +46,8 @@ class SignInUseCaseTest {
 
     private fun useCase() = SignInUseCase(auth, capabilities, recovery)
 
-    private suspend fun signIn() = useCase()("https://books.example", "ada", "pw")
+    private suspend fun signIn(intent: SignInIntent = SignInIntent.Reauthenticate) =
+        useCase()("https://books.example", "ada", "pw", intent)
 
     @Test
     fun `a successful sign-in probes capabilities`() = runTest {
@@ -74,7 +75,7 @@ class SignInUseCaseTest {
     fun `refused credentials store nothing and skip both later steps`() = runTest {
         auth.willFailToSignIn(AppError.Authentication())
 
-        val result = useCase()("https://books.example", "ada", "wrong")
+        val result = useCase()("https://books.example", "ada", "wrong", SignInIntent.Reauthenticate)
 
         assertIs<AppError.Authentication>(assertIs<AppResult.Failure>(result).error)
         assertTrue(capabilities.handshakes.isEmpty())
@@ -106,10 +107,28 @@ class SignInUseCaseTest {
      * exactly the kind that has to be pinned.
      */
     @Test
-    fun `a successful sign-in offers the profile for passcode recovery`() = runTest {
-        signIn()
+    fun `recovering a locked profile offers it for passcode recovery`() = runTest {
+        signIn(SignInIntent.RecoverLockedProfile)
 
         assertEquals(listOf(TEST_PROFILE), cleared)
+    }
+
+    /**
+     * **ADR-0026 decision 2 — and the defect this pair exists for.**
+     *
+     * The clearing used to fire on every successful sign-in. `clearIfLocked` guards on `mayActivate`, so it
+     * was not always destructive — but `mayActivate` fails *closed*, so it cleared in exactly the two cases
+     * that matter: a routine re-authentication while the profile was in its locked state, and a transient
+     * failure reading the lock record. A security setting the user chose must not disappear as a side
+     * effect of an unrelated, routine action, and a disk error must not make the app more permissive.
+     *
+     * Revert the `intent` check in `SignInUseCase` and this is the test that fails.
+     */
+    @Test
+    fun `ordinary reauthentication preserves the passcode`() = runTest {
+        signIn(SignInIntent.Reauthenticate)
+
+        assertTrue(cleared.isEmpty(), "a routine sign-in must not clear a lock the user set")
     }
 
     /** A refused credential must not reach the recovery path: nothing has been proved. */
@@ -117,7 +136,7 @@ class SignInUseCaseTest {
     fun `refused credentials clear no passcode`() = runTest {
         auth.willFailToSignIn(AppError.Authentication())
 
-        useCase()("https://books.example", "ada", "wrong")
+        useCase()("https://books.example", "ada", "wrong", SignInIntent.RecoverLockedProfile)
 
         assertTrue(cleared.isEmpty())
     }

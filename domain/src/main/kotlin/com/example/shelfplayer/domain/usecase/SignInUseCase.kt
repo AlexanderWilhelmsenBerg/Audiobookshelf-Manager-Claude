@@ -56,16 +56,39 @@ class SignInUseCase @Inject constructor(
      * say "signed in, but this server's capabilities could not be probed" instead of choosing between a lie
      * and an error (PRODUCT_SPEC 14.4: a user-facing error needs an impact and an action).
      */
-    suspend operator fun invoke(serverUrl: String, username: String, password: String): AppResult<SignInOutcome> =
-        authRepository.signIn(serverUrl, username, password).flatMap { profile ->
-            // PRODUCT_SPEC SYNC-001 puts the handshake "on login". It is one request, so awaiting it does
-            // not make the user wait in any meaningful sense — unlike the sync, which is one request per
-            // item and now runs on the screen that shows its result.
+    suspend operator fun invoke(
+        serverUrl: String,
+        username: String,
+        password: String,
+        intent: SignInIntent,
+    ): AppResult<SignInOutcome> = authRepository.signIn(serverUrl, username, password).flatMap { profile ->
+            /*
+             * AUTH-005 / ADR-0026 decision 2 — the passcode is cleared only when the caller asked for it.
+             *
+             * This used to fire on every successful sign-in, which meant the ordinary sign-in screen could
+             * silently switch off a lock the user had deliberately set. `clearIfLocked` guards on
+             * `mayActivate`, so it was not *always* destructive — but `mayActivate` fails **closed**, so the
+             * two cases where it did clear were the two worst ones: a routine re-authentication while the
+             * profile happened to be in its locked state, and a transient failure reading the lock record.
+             * The second is the sharper edge: a disk error made the app *more* permissive, in the one place
+             * whose whole job is to be less so.
+             *
+             * Making it a parameter with **no default** is the point. R-38 records how a defaulted
+             * parameter preserves the bug it was added to fix; here the compiler asks each of the two call
+             * sites which it is, and the curtain — the only one that answers
+             * [SignInIntent.RecoverLockedProfile] — is also the only screen that tells the user what will
+             * happen (`lock_forgot_signin`, and `lock_exhausted` after ten wrong attempts).
+             */
+        if (intent == SignInIntent.RecoverLockedProfile) {
             lockRecovery.clearIfLocked(profile.id)
-            AppResult.Success(
-                SignInOutcome(profile = profile, warning = capabilityRepository.handshake(profile.id).failureOrNull()),
-            )
         }
+        // PRODUCT_SPEC SYNC-001 puts the handshake "on login". It is one request, so awaiting it does
+        // not make the user wait in any meaningful sense — unlike the sync, which is one request per
+        // item and now runs on the screen that shows its result.
+        AppResult.Success(
+            SignInOutcome(profile = profile, warning = capabilityRepository.handshake(profile.id).failureOrNull()),
+        )
+    }
 
     private fun AppResult<*>.failureOrNull(): AppError? = (this as? AppResult.Failure)?.error
 }
@@ -75,3 +98,27 @@ class SignInUseCase @Inject constructor(
  *   everything succeeded. The profile is signed in either way.
  */
 data class SignInOutcome(val profile: Profile, val warning: AppError?)
+
+/**
+ * AUTH-005 / ADR-0026 decision 2 — why the user is typing their password.
+ *
+ * The credentials are identical on both paths; the *consequence* is not, and only the caller knows which
+ * one this is. Deliberately not a boolean: `signIn(url, user, pass, true)` at a call site says nothing,
+ * and this decision is one a reader has to be able to check.
+ */
+enum class SignInIntent {
+    /**
+     * The ordinary path — first sign-in, adding an account, or AUTH-004 re-authentication after a session
+     * expired. **Leaves any profile passcode exactly as the user set it.**
+     */
+    Reauthenticate,
+
+    /**
+     * The curtain's way back in after a forgotten passcode, which clears it.
+     *
+     * A bypass only in appearance: AUTH-003 says this lock is not about server authentication, and somebody
+     * holding the account password has cleared a strictly higher bar than a six-digit local code. The
+     * screen that passes this is the screen that says so before the user types.
+     */
+    RecoverLockedProfile,
+}
