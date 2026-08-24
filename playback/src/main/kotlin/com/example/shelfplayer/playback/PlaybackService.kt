@@ -856,6 +856,9 @@ class PlaybackService : MediaLibraryService() {
             // Android Auto sends this hint when it starts, before the driver has touched anything, and what
             // comes back is the tile on the media home screen. It is a different question from "what can I
             // browse", so it gets a different root: see `AutoLibrary.RECENT_ROOT`.
+            if (!session.mayBrowse(browser)) {
+                return Futures.immediateFuture(deniedItem(browser, "onGetLibraryRoot"))
+            }
             val root = if (params?.isRecent == true) auto.recentRoot() else auto.root()
             return Futures.immediateFuture(LibraryResult.ofItem(root, params))
         }
@@ -868,6 +871,7 @@ class PlaybackService : MediaLibraryService() {
             pageSize: Int,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
+            if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetChildren")
             // Paged by the caller, so a long continue-listening list arrives a screen at a time rather
             // than as one binder transaction a head unit may refuse.
             val all = auto.children(parentId, nowPlaying())
@@ -881,6 +885,7 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> = future {
+            if (!session.mayBrowse(browser)) return@future deniedItem(browser, "onGetItem")
             auto.item(mediaId, nowPlaying())
                 ?.let { item -> LibraryResult.ofItem(item, null) }
                 ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
@@ -903,6 +908,10 @@ class PlaybackService : MediaLibraryService() {
             query: String,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<Void>> = future {
+            // Refused before `auto.search` runs, not after: a caller that could learn the *count* of
+            // matches for a guessed title would have a working oracle over the library, which is the
+            // thing 14.5 is about even though no title crosses the boundary.
+            if (!session.mayBrowse(browser)) return@future deniedVoid(browser, "onSearch")
             val results = auto.search(query)
             session.notifySearchResultChanged(browser, query, results.size, params)
             LibraryResult.ofVoid(params)
@@ -916,6 +925,7 @@ class PlaybackService : MediaLibraryService() {
             pageSize: Int,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
+            if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetSearchResult")
             val all = auto.search(query)
             val from = (page * pageSize).coerceAtMost(all.size)
             val to = (from + pageSize).coerceAtMost(all.size)
@@ -955,8 +965,17 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
             // "Play <something>" arrives as an item with no media id and a search query on it, which is a
             // different question from "play this id" and has to be answered before either of the others.
-            val spoken = mediaItems.firstNotNullOfOrNull { item ->
-                item.requestMetadata.searchQuery?.let { query -> auto.search(query).firstOrNull() }
+            //
+            // It is a *search*, so it is gated with the rest of them. A caller that could not list the
+            // library but could ask it to play "the salt harbour" and watch whether anything started would
+            // have the same oracle by a slower route. Assistant and the system voice host reach this
+            // because the platform reports them trusted, which is the whole reason the gate asks Media3
+            // rather than carrying a list of voice apps.
+            val spoken = when {
+                !session.mayBrowse(controller) -> null
+                else -> mediaItems.firstNotNullOfOrNull { item ->
+                    item.requestMetadata.searchQuery?.let { query -> auto.search(query).firstOrNull() }
+                }
             }
             when {
                 spoken != null -> resolveQueue(spoken).asItems(startIndex, startPositionMs)
@@ -1038,13 +1057,46 @@ class PlaybackService : MediaLibraryService() {
                     LogField.Public("controller", controller.packageName),
                 )
             }
-            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
-                .buildUpon()
-                .add(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
-                .add(SessionCommand(NotificationButtons.ACTION_SKIP_BACK, Bundle.EMPTY))
-                .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
-                .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
-                .build()
+            /*
+             * PRODUCT_SPEC AUTH-003 / 14.5 — the command set is where the browse decision is enforced.
+             *
+             * Media3 checks the granted commands before it dispatches to a callback, so withholding the
+             * library half here is the real gate; the per-callback checks further up are the second lock
+             * on the same door, for the legacy `MediaBrowserServiceCompat` path this service also
+             * advertises. Two mechanisms rather than one because a browse tree is private data and the
+             * cost of the redundancy is four lines.
+             *
+             * `DEFAULT_SESSION_COMMANDS` is Media3's own transport-only set. An untrusted caller keeps
+             * play, pause, seek and skip — a headset button, a watch and a Bluetooth remote all still
+             * work — and loses only the ability to enumerate the library or write a bookmark into it.
+             *
+             * The custom commands go with the library half deliberately: `ADD_BOOKMARK` *writes*, and the
+             * other three are this app's own notification buttons. Nothing outside needs them.
+             */
+            val access = session.accessFor(controller)
+            val commands = when (access) {
+                ControllerAccess.LibraryAndPlayback ->
+                    MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                        .buildUpon()
+                        .add(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+                        .add(SessionCommand(NotificationButtons.ACTION_SKIP_BACK, Bundle.EMPTY))
+                        .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
+                        .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
+                        .build()
+
+                ControllerAccess.PlaybackOnly -> {
+                    // Logged, because the failure this produces on a device is a car or a watch that
+                    // connects and shows an empty list, and the only way to tell that from a broken browse
+                    // tree is a line saying the session refused it. The package name is the caller's own
+                    // claim and identifies an app, not a book (14.5).
+                    logger.info(
+                        LogCategory.Playback,
+                        "A controller connected without library access",
+                        LogField.Public("controller", controller.packageName),
+                    )
+                    MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
+                }
+            }
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
                 .setMediaButtonPreferences(mediaButtons())
@@ -1143,12 +1195,86 @@ class PlaybackService : MediaLibraryService() {
          */
         private fun MediaSession.ControllerInfo.isThisApplication(): Boolean = uid == Process.myUid()
 
+        /**
+         * PRODUCT_SPEC AUTH-003 / 14.5 — the boundary between Media3's types and [ControllerTrust].
+         *
+         * Six facts, read once, none of them derived here. `isTrusted`, `isMediaNotificationController`,
+         * `isAutomotiveController` and `isAutoCompanionController` are all Media3's own computations —
+         * `isTrusted` is `MediaSessionManager.isTrustedForMediaControl`, which is the platform's answer and
+         * not this project's guess. Keeping the reads in one adapter is what lets the policy itself be a
+         * pure function with tests, since `ControllerInfo` is final with a package-private constructor and
+         * nothing outside Media3 can build one.
+         */
+        private fun MediaSession.identityOf(controller: MediaSession.ControllerInfo) = ControllerIdentity(
+            packageName = controller.packageName,
+            uid = controller.uid,
+            isTrustedForMediaControl = controller.isTrusted,
+            isMediaNotificationController = isMediaNotificationController(controller),
+            isAutomotive = isAutomotiveController(controller),
+            isAutoCompanion = isAutoCompanionController(controller),
+        )
+
+        /** The access [controller] is granted on this session. */
+        private fun MediaSession.accessFor(controller: MediaSession.ControllerInfo): ControllerAccess =
+            ControllerTrust.accessFor(identityOf(controller), selfUid = Process.myUid())
+
+        /** Whether [controller] may read, search or write library content. */
+        private fun MediaSession.mayBrowse(controller: MediaSession.ControllerInfo): Boolean =
+            ControllerTrust.mayBrowse(accessFor(controller))
+
+        /*
+         * The three refusals, one per `LibraryResult` shape Media3 declares.
+         *
+         * `ERROR_PERMISSION_DENIED` rather than `ERROR_BAD_VALUE` or an empty list, because the three say
+         * different things to whoever is holding the phone. An empty list reads as "this library has
+         * nothing in it" and would send a driver to check their server; a bad value reads as a bug in the
+         * caller. Permission denied is what actually happened, and it is the answer a head unit surfaces
+         * as a refusal rather than as an empty shelf.
+         *
+         * Each logs once, with the caller's package and the callback that refused it, for the same reason
+         * `onConnect` does: without it, an unsupported controller is indistinguishable from a broken tree.
+         */
+        private fun denied(browser: MediaSession.ControllerInfo, callback: String) {
+            logger.info(
+                LogCategory.Playback,
+                "A controller without library access was refused",
+                LogField.Public("controller", browser.packageName),
+                LogField.Public("request", callback),
+            )
+        }
+
+        private fun deniedItem(browser: MediaSession.ControllerInfo, callback: String): LibraryResult<MediaItem> {
+            denied(browser, callback)
+            return LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
+        }
+
+        private fun deniedList(
+            browser: MediaSession.ControllerInfo,
+            callback: String,
+        ): LibraryResult<ImmutableList<MediaItem>> {
+            denied(browser, callback)
+            return LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
+        }
+
+        @Suppress("ForbiddenVoid")
+        private fun deniedVoid(browser: MediaSession.ControllerInfo, callback: String): LibraryResult<Void> {
+            denied(browser, callback)
+            return LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
+        }
+
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
             customCommand: SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
+            // Second lock on the same door as `onConnect`: an untrusted controller was never granted these
+            // commands, so Media3 should refuse the call before it arrives. `ADD_BOOKMARK` writes to the
+            // user's library, which is reason enough not to let one mechanism be the only thing stopping it.
+            if (!session.mayBrowse(controller)) {
+                denied(controller, "onCustomCommand")
+                return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+            }
             when (customCommand.customAction) {
                 // PLAY-008 says the notification action *extends*; the shake *restarts*. See ADR-0014.
                 NotificationButtons.ACTION_EXTEND_SLEEP_TIMER -> sleepTimer.extend()
