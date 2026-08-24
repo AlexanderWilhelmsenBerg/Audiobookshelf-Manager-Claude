@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC 17.3 — additions that exist in the `benchmark` build type and nowhere else.
+
+  This manifest is merged into the application only for that variant. The debug build the owner installs
+  and every release build are unaffected, which is what makes the exported receiver below a benchmark
+  fixture rather than an attack surface. See `BenchmarkFixtureReceiver`'s KDoc for the second guard.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <receiver
+            android:name="com.example.shelfplayer.benchmarkfixture.BenchmarkFixtureReceiver"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS">
+            <intent-filter>
+                <action android:name="com.example.shelfplayer.benchmark.SEED_LIBRARY" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

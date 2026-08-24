@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.home
 
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -159,6 +160,22 @@ fun HomeScreen(
     playbackMessage: String? = null,
     onPlaybackMessageShown: () -> Unit = {},
 ) {
+    /*
+     * PRODUCT_SPEC 17.3 — *"cached library screen interactive under 1 second"*, made measurable.
+     *
+     * A cold start reports two times: time to *initial* display, which is the first frame of anything,
+     * and time to *full* display, which the application has to declare because only it knows when the
+     * screen is worth looking at. Without this call the second is never reported, and 17.3's threshold
+     * could only be measured against the first — a frame showing a top bar over an empty list, which is
+     * not what "interactive" means to the person holding the phone.
+     *
+     * `profile` is the condition because it is null until the first real emission: `HomeViewModel`
+     * assembles the profile and the content in one `combine`, so a non-null profile means the shelves or
+     * the list already have their books. An empty library still reports — the state arrives, it just
+     * carries nothing — which matters because a benchmark that waits forever on a device with no books
+     * would be worse than no benchmark.
+     */
+    ReportDrawnWhen { uiState.profile != null }
     val snackbars = remember { SnackbarHostState() }
     LaunchedEffect(playbackMessage) {
         val message = playbackMessage ?: return@LaunchedEffect

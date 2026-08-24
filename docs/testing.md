@@ -75,8 +75,10 @@ without explicit approval and redaction.
 
 - `app`/`playback`/download connected UI, service, Binder, process-recreation, permission, and migration
   smoke tiers; CI managed-device execution.
-- API 26/31/34/36 physical coverage, release/R8 launch, low-storage/process-death checks, baseline profile,
-  2,000-item measurement, and the two-hour playback soak.
+- API 26/31/34/36 physical coverage, release/R8 launch, low-storage/process-death checks, and the two-hour
+  playback soak.
+- The baseline profile and the 2,000-item measurement have a harness — `:benchmark`, run with
+  `./gradlew :benchmark:connectedBenchmarkAndroidTest` — and no results yet. See `docs/benchmark.md`.
 - TalkBack, 2.0x font, RTL, contrast, landscape, tablet/foldable/split-screen, and Mini Player inset passes.
 - Android Auto DHU/current-head-unit discovery, browse, voice search, artwork, progress invalidation, buttons,
   and now-playing behavior.
