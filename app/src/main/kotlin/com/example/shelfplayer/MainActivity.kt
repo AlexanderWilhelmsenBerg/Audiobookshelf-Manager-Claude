@@ -32,6 +32,7 @@ import com.example.shelfplayer.feature.browse.authorUrlsFor
 import com.example.shelfplayer.feature.browse.coverUrlsFor
 import com.example.shelfplayer.feature.lock.LockCurtain
 import com.example.shelfplayer.feature.lock.LockViewModel
+import com.example.shelfplayer.feature.lock.RecentsPrivacy
 import com.example.shelfplayer.feature.player.BookmarkAddedNotice
 import com.example.shelfplayer.feature.player.BookmarkSheet
 import com.example.shelfplayer.feature.player.ChapterSheet
@@ -59,6 +60,18 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
+        /*
+         * PRODUCT_SPEC AUTH-005 / §15 / 14.5, ADR-0026 decision 3 — keep the library out of Recents.
+         *
+         * The app-switcher thumbnail is a screenshot of whatever was last on screen, which for this app is
+         * a list of book titles. Suppressing just that image is the narrow control; `FLAG_SECURE` is the
+         * blunt one and ADR-0026 declined it, because it would also block every deliberate screenshot and
+         * screen recording for every user. See [RecentsPrivacy] for the whole reasoning, including what
+         * deliberately does not happen below API 33.
+         */
+        if (RecentsPrivacy.isSupported()) {
+            setRecentsScreenshotEnabled(false)
+        }
         super.onCreate(savedInstanceState)
         setContent {
             val viewModel: AppViewModel = hiltViewModel()
