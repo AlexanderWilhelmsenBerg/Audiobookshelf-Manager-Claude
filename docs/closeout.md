@@ -20,7 +20,7 @@ Five items, in the order they should be done.
 
 | # | Item | Why it blocks | Effort |
 | --- | --- | --- | --- |
-| 1.1 | **Decide whether the browse tree should be restricted to known media hosts** | The dangerous half is already closed, and deliberately: `onAddMediaItems` gates submitting a *pre-resolved* item — a bare URI or a track list the player fetches as given — on the caller's **UID**, so no outside app can put a URI of its choosing into the authenticated streaming client. What is not restricted is the browse surface: the service is `exported="true"` with no permission, `onConnect` grants `DEFAULT_SESSION_AND_LIBRARY_COMMANDS` plus the custom commands to whatever binds, and `onGetChildren` answers with the active profile's library. So any installed app can enumerate the user's book titles — private self-hosted data under 14.5 — and drive transport. `isThisApplication`'s KDoc records the open browse surface as intentional (*"Android Auto, Assistant and a headset lose nothing they legitimately do"*), so this is a **decision to revisit, not a defect to fix**. Exporting is not the question: Android Auto and Assistant require it. | A decision, then a small change and a second-UID test. Restricting to an allowlist risks breaking a watch or Bluetooth app the owner actually uses, which is why it needs the owner. |
+| ~~1.1~~ | **Done 2026-08-24 — ADR-0026.** Library browsing now goes to trusted/system controllers, Android Auto/Automotive and BookWave itself; everything else keeps `DEFAULT_SESSION_COMMANDS` — transport only. Decided on Media3's own predicates rather than a package allowlist, and never on the caller's claimed package name. R-59 closed; R-60 opened for the residual (the adapter that reads Media3's six facts cannot be reached from a JVM test). | Remaining: confirm on a device that Android Auto still browses. |
 | 1.2 | **Launch the release APK once** | R8 runs on every build and its output has never been executed. Minification failures are exactly the class that only appear at runtime. | Minutes, on a device. |
 | 1.3 | **The four 17.3 numbers, and the baseline profile** | The thresholds are contractual and unmeasured. The harness exists (`:benchmark`); nothing has run it. | One command plus two manual passes — `docs/benchmark.md`. |
 | 1.4 | **Android Auto in the Desktop Head Unit** | An older build passed discovery and media-button resume in a real car on 2026-08-14. The current browse tree, the resume tile and the rendered host surface have never run in one. Phone screenshots cannot substitute. | An evening with DHU. |
@@ -131,9 +131,8 @@ Worth keeping in view; not things to close.
 
 ## Suggested order
 
-1. **1.1**, the browse-tree decision — the only remaining item that is a known exposure rather than an
-   unknown. It needs the owner's answer before any code, because the safe-looking fix (an allowlist)
-   can break a legitimate controller they use.
+1. ~~**1.1**, the browse-tree decision.~~ **Done — ADR-0026.** The owner's answers to all five closeout
+   questions are recorded there; the order below is theirs.
 2. **3.1**, the excluded-track offsets — open since Phase 2, silent when it bites, and it costs a user
    their place in a book.
 3. **One device session** covering 1.2, 1.3 and 1.4 together: install the release APK, run the
