@@ -87,7 +87,7 @@ section explains each requirement and which task it gates.
 | Two-hour playback soak; process-death progress budget | 25, 17.3 | A device and patience. No new infrastructure. |
 | Android Auto verification in the Desktop Head Unit | 17.2 | Nothing. An older build passed discovery/media-button resume in a car on 2026-08-14, but the current browse tree and rendered host surface have not run in DHU/a head unit. Phone screenshots cannot substitute for a car host. |
 | Launch the release APK once | 15 | Nothing. R8 runs in CI and its output is never executed. |
-| Baseline profile and a benchmark module | 17.3 | A device; lands with managed-device tests. |
+| The four 17.3 numbers, and the baseline profile | 17.3 | The `:benchmark` module exists and is compiled on every pull request. What is missing is a run: `./gradlew :benchmark:connectedBenchmarkAndroidTest` with a phone attached, then `docs/benchmark.md`'s results table filled in and the recorded `baseline-prof.txt` committed. |
 
 ## The Software Bill of Materials
 

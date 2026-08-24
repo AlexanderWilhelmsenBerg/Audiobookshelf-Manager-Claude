@@ -54,3 +54,7 @@ include(":domain")
 // PRODUCT_SPEC 9.2 / PLAY-001 — the media service, added in Phase 2 wave 1. It is the only module that
 // may name ExoPlayer or a `MediaSession`, which is what makes "one player, one session" structural.
 include(":playback")
+// PRODUCT_SPEC 17.3 / ADR-0025 — the macrobenchmark tier. A `com.android.test` module, so it ships in
+// nothing: it builds its own APK, drives `:app`'s, and every task it owns needs a device attached. CI has
+// no emulator, so nothing here runs on a pull request — `docs/benchmark.md` is the runbook.
+include(":benchmark")

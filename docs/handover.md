@@ -735,8 +735,10 @@ which is why `seed-contract-media.sh` uses `docker run --rm`, fine when CI invok
 interactively.
 
 **And no device is attached**, which is the constraint that shaped six phases of this project: the
-instrumented tier, the baseline profile, the Android Auto head unit and the two-hour soak are all blocked
-there and none of them are blocked locally.
+instrumented tier, the macrobenchmarks, the baseline profile, the Android Auto head unit and the two-hour
+soak are all blocked there and none of them are blocked locally. The owner's own machine has since run
+`:core:datastore:connectedDebugAndroidTest` green on an SM-S928B, which is what unblocked the benchmark
+harness being worth building.
 
 ## Phase 2 — complete
 
@@ -951,12 +953,24 @@ the browsable media library and the diagnostics screens. What has landed since t
   seven Log4Shell entries. The workflow also archives the R8 mapping, which `docs/release.md` had wrongly
   listed as blocked on a signing key; R8 writes one whenever minification runs.
 
-**Performance profiling: one blocker removed, the rest still needing a device.** No baseline profile, no
-benchmark module, none of `PRODUCT_SPEC 17.3`'s numbers measured (R-25, R-27). A baseline profile is
-*generated* by running a macrobenchmark on a device, and hand-writing one would be guesswork of the kind
-this project refuses elsewhere — so that half waits for hardware. Worth knowing: the *consuming* half is
-already free, because `androidx.profileinstaller:1.4.0` is on the release classpath transitively, so
-shipping a `baseline-prof.txt` needs no new dependency.
+**Performance profiling: the harness is built, the numbers are not taken (R-25, R-27, R-58).** `:benchmark`
+is a `com.android.test` module that drives a release-like `benchmark` variant of the app over a seeded
+2,000-book library: cold start with time to initial *and* full display, frame timing while scrolling
+`BooksView.List`, Home's peak heap and RSS, and `BaselineProfileGenerator` to record the profile. Every
+task it owns needs a device, so CI never runs one — but CI does *compile* the module on every pull request,
+because its `debug` variant is left enabled and `verifyDebug` therefore lints, detekts and assembles these
+sources. A benchmark that stops compiling is the normal fate of code no gate touches.
+
+A baseline profile is *generated* by running a macrobenchmark on a device; hand-writing one would be
+guesswork of the kind this project refuses elsewhere. The *consuming* half is already free, because
+`androidx.profileinstaller` is on the release classpath transitively, so shipping a `baseline-prof.txt`
+needs no new dependency — only the recorded file.
+
+Two of 17.3's four numbers stay manual and that is a property of the requirement rather than a shortfall:
+player start from a cached local book and no-ANR-under-download/playback-stress both need a real server and
+a real download. A committed benchmark pointed at somebody's private instance would be unreproducible by
+anyone else and would put a host name in the repository (14.5). `docs/benchmark.md` is the runbook for all
+six measurements and holds the results table waiting to be filled in.
 
 **What did get resolved is what to measure, and the answer changed the target (ADR-0025).** 17.3 asks for
 a *"scrolling grid … on 2,000-item fixture library"*, and R-26 had flagged that this might be describing a
