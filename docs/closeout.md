@@ -63,6 +63,7 @@ this project's CI has no emulator, which is the constraint that shaped six phase
 | 3.6 | **The app-switcher thumbnail is not suppressed on any API level** (AUTH-005 / §15). Checked, not assumed: nothing in the tree sets `FLAG_SECURE` or an equivalent. | One flag, one decision about whether it is wanted. |
 | 3.7 | **The embed's failure path is still source-derived.** `isFailed` and `error` are read by `TaskFrames` and no capture provokes them; provoking one needs a file the server cannot write. | Everything else about the embed is now captured. |
 | 3.8 | **The zero-duration fallback overwrites stored progress** (R-61). If any track reports a duration of zero, `BookMediaSourceFactory` falls back to a single-file source while the start position and every subsequent progress write stay in whole-book coordinates. Found while investigating 3.1. Latent: no capture has produced a zero duration. | The obvious fix — always concatenate with `C.TIME_UNSET` — was tried and **fails at runtime**; the builder requires a placeholder for progressive sources. R-61 records the two routes that remain. |
+
 ---
 
 ## 4. Product and UX work the device pass surfaced
