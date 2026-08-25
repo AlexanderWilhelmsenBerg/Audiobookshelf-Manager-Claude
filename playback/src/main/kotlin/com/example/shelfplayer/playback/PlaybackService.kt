@@ -875,6 +875,24 @@ class PlaybackService : MediaLibraryService() {
             // Paged by the caller, so a long continue-listening list arrives a screen at a time rather
             // than as one binder transaction a head unit may refuse.
             val all = auto.children(parentId, nowPlaying())
+            /*
+             * PRODUCT_SPEC 14.4 — what the car asked for and how much it got.
+             *
+             * The 2026-08-24 head-unit run found the browse root rendering zero items while search returned
+             * books, and there was no way to tell from outside which of three things had happened: the node
+             * was refused, the tree answered empty, or the car cached an earlier empty answer and never
+             * re-asked. This line separates them, and it is the same reasoning as `CarReadiness` — two
+             * device runs were spent on an Android Auto problem that a log line would have named.
+             *
+             * A parent id is a node in this app's own tree (`root`, `tab/continue`) and a count is a count;
+             * neither is a book title, so both are safe where a media id would not be (14.5).
+             */
+            logger.info(
+                LogCategory.Playback,
+                "A browser asked for a node's children",
+                LogField.Public("parent", parentId),
+                LogField.Count("children", all.size),
+            )
             val from = (page * pageSize).coerceAtMost(all.size)
             val to = (from + pageSize).coerceAtMost(all.size)
             LibraryResult.ofItemList(ImmutableList.copyOf(all.subList(from, to)), params)
@@ -1006,8 +1024,39 @@ class PlaybackService : MediaLibraryService() {
          * it is what Media3 handed in and echoing it back is the least surprising thing to do.
          */
         private fun MediaItems.Queue?.asItems(startIndex: Int, startPositionMs: Long) = when (this) {
-            null -> MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
+            /*
+             * Nothing resolved — so leave the player alone rather than emptying it.
+             *
+             * This used to return `emptyList()`, which Media3 applies: a request this service could not
+             * resolve **cleared whatever was playing**. The same device run that found the player-command
+             * gap found this, and the two compounded — an untrusted controller could send an id that
+             * resolves to nothing and wipe the queue without ever being allowed to set one.
+             *
+             * Narrowing `Player.Commands` closes the untrusted route on its own. This closes the rest of
+             * it: a car or the app asking for an id that no longer exists gets silence, not a stopped book.
+             * Product priority 1.
+             */
+            null -> unresolved(startIndex, startPositionMs)
             else -> MediaSession.MediaItemsWithStartPosition(listOf(item), 0, this.startPositionMs)
+        }
+
+        /**
+         * What to hand back when nothing resolved: whatever is already loaded, or an empty queue if the
+         * player has nothing.
+         *
+         * Read once into a local, because `currentMediaItem` and `currentPosition` are two reads of a
+         * mutable player and a book that changed between them would produce a position from one item
+         * against the identity of another — the class of bug ADR-0016 exists to prevent.
+         */
+        private fun unresolved(startIndex: Int, startPositionMs: Long): MediaSession.MediaItemsWithStartPosition {
+            val current = player
+            val loaded = current?.currentMediaItem
+                ?: return MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
+            return MediaSession.MediaItemsWithStartPosition(
+                listOf(loaded),
+                0,
+                current.currentPosition.coerceAtLeast(0),
+            )
         }
 
         /**
@@ -1097,8 +1146,24 @@ class PlaybackService : MediaLibraryService() {
                     MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
                 }
             }
+            /*
+             * Player commands, narrowed separately — and this is the line whose absence a device run found.
+             *
+             * `setAvailableSessionCommands` narrows the *session* surface only. `Player.Commands` is a
+             * different set with its own default, and Media3's default grants `COMMAND_SET_MEDIA_ITEM`,
+             * `COMMAND_CHANGE_MEDIA_ITEMS`, `COMMAND_STOP` and `COMMAND_RELEASE` to everything that
+             * connects. So the first version of this policy refused an untrusted controller the library and
+             * then let it clear the queue and stop the book — product priority 1, reachable by any
+             * installed app, which is worse than the leak the policy was written for.
+             */
+            val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+                .buildUpon()
+                .apply { ControllerTrust.withheldPlayerCommands(access).forEach(::remove) }
+                .build()
+
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
+                .setAvailablePlayerCommands(playerCommands)
                 .setMediaButtonPreferences(mediaButtons())
                 .build()
         }
