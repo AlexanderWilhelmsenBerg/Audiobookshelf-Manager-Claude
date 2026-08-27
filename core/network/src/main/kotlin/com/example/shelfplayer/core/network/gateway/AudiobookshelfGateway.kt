@@ -23,6 +23,7 @@ import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.SessionProgress
@@ -179,6 +180,39 @@ interface PlaybackApi {
         isFinished: Boolean,
         position: Duration,
     ): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — the account's own listening sessions, as the server recorded them.
+     *
+     * This is what makes the history pane show what happened *elsewhere* rather than a reconstruction of
+     * it. The derived alternative — diffing stored progress against a sync, in
+     * `LibrarySnapshotWriter.recordRemoteChange` — cannot see a book this device has never played, and
+     * collapses two sessions between one sync and the next into a single row.
+     *
+     * **Account-wide and paged, because the server offers no per-book route.** A caller wanting one book's
+     * sessions asks for a page and filters, which is why this is called when the pane opens rather than on
+     * every sync. [itemsPerPage] therefore bounds the reach into the past, not the size of the answer for
+     * one book.
+     *
+     * A malformed session is dropped rather than failing the read: one bad row out of ten should show the
+     * other nine.
+     */
+    suspend fun listeningSessions(
+        profileId: ProfileId,
+        page: Int = 0,
+        itemsPerPage: Int = DEFAULT_SESSION_PAGE_SIZE,
+    ): AppResult<List<ListeningSession>>
+
+    companion object {
+        /**
+         * How far back one fetch reaches, in sessions, across the whole account.
+         *
+         * Fifty rather than ten: these are filtered to one book afterwards, so a listener who has several
+         * books on the go would otherwise see nothing for the one they opened. Fifty is one request the
+         * server answers cheaply and covers a fortnight of ordinary use.
+         */
+        const val DEFAULT_SESSION_PAGE_SIZE = 50
+    }
 }
 
 /**

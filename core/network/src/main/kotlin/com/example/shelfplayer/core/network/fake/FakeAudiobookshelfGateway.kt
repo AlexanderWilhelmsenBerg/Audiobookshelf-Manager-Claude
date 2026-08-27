@@ -36,6 +36,7 @@ import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.map
+import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.SessionProgress
@@ -282,6 +283,21 @@ class FakeAudiobookshelfGateway @Inject constructor(
         isFinished: Boolean,
         position: Duration,
     ): AppResult<Unit> = noServer()
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — the demo document has no server, so it has no listening sessions either.
+     *
+     * **An empty list rather than [noServer], and that is the one departure in this file.** A session
+     * history is a *read*, and the honest answer for a fixture nobody has listened to on another device is
+     * "there are none" — which is also what a real account with no other device answers. Failing instead
+     * would put an error in a history pane whose local half is perfectly good, and the caller treats a
+     * failed refresh as a reason to show nothing new rather than as nothing to show.
+     */
+    override suspend fun listeningSessions(
+        profileId: ProfileId,
+        page: Int,
+        itemsPerPage: Int,
+    ): AppResult<List<ListeningSession>> = AppResult.Success(emptyList())
 
     /**
      * PRODUCT_SPEC 11.1 — the demo document has no server, so a bookmark cannot be written to one.

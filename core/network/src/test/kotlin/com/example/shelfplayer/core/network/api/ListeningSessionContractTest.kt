@@ -5,12 +5,18 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.junit.Test
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-003 / 22.5 / 14.5 — `GET /api/me/listening-sessions`, against the captured shape.
@@ -126,6 +132,71 @@ class ListeningSessionContractTest {
     /** The property names a `@Serializable` type declares, which is its schema. */
     private fun fieldsOf(descriptor: SerialDescriptor): List<String> =
         (0 until descriptor.elementsCount).map(descriptor::getElementName)
+
+    // ------------------------------------------------------------------ through the mapper
+
+    /**
+     * **The units, all the way to the domain type** — which is the assertion that actually protects the
+     * history pane.
+     *
+     * The tests above pin what the wire says; this pins that `ListeningSessionMapper` reads it the same way.
+     * A mapper that divided by a thousand somewhere, or that treated `startedAt` as seconds, would leave
+     * every test above green and put a history row in 1970.
+     */
+    @Test
+    fun `the mapper reads the captured units`() {
+        val session = ListeningSessionMapper.toSessions(sessions()).first()
+        val wire = body().getValue("sessions").jsonArray.first().jsonObject
+
+        assertEquals(wire.getValue("id").jsonPrimitive.content, session.id)
+        assertEquals(wire.getValue("libraryItemId").jsonPrimitive.content, session.bookId.value)
+        // Seconds on the wire, a Duration here.
+        assertEquals(4.seconds, session.listened)
+        assertEquals(Duration.ZERO, session.startedFrom)
+        assertEquals(5500.milliseconds, session.reachedAt, "5.5 s, so the rounding is to the millisecond")
+        // Epoch milliseconds on the wire — not seconds, which is the mistake this exists to catch.
+        assertEquals(
+            Instant.ofEpochMilli(wire.getValue("startedAt").jsonPrimitive.long),
+            session.startedAt,
+        )
+    }
+
+    /** The device half survives the mapping, since it is what tells this phone's sessions from another's. */
+    @Test
+    fun `the mapper keeps the device id and drops nothing else it needs`() {
+        val session = ListeningSessionMapper.toSessions(sessions()).first()
+
+        assertNotNull(session.deviceId)
+        assertEquals("capture capture", session.deviceName)
+        assertEquals("ShelfPlayer", session.clientName)
+    }
+
+    /**
+     * A session with no id or no item id is **dropped, not failed** — one malformed row must still show the
+     * others.
+     *
+     * Different from `PlaybackMapper.toSession`, which returns `AppError.ApiCompatibility` for the same
+     * omission, and deliberately: a session that cannot be synced must not be played, but a history read
+     * with one bad row should render the nine good ones.
+     */
+    @Test
+    fun `a session missing its identity is dropped rather than failing the read`() {
+        val partial = listOf(
+            ListeningSessionDto(id = "s1"),
+            ListeningSessionDto(libraryItemId = "b1"),
+            ListeningSessionDto(id = "s2", libraryItemId = "b2"),
+        )
+
+        val mapped = ListeningSessionMapper.toSessions(ListeningSessionsResponseDto(sessions = partial))
+
+        assertEquals(listOf("s2"), mapped.map { it.id })
+    }
+
+    /** An envelope with no `sessions` array at all is an empty list, not a crash — SYNC-001. */
+    @Test
+    fun `an envelope with no sessions maps to nothing`() {
+        assertEquals(emptyList(), ListeningSessionMapper.toSessions(ListeningSessionsResponseDto(total = 0)))
+    }
 
     /** A field the server omits reads back as null rather than throwing — SYNC-001. */
     @Test

@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.SessionProgress
@@ -159,6 +160,64 @@ internal class AbsPlaybackApi @Inject constructor(
                 isFinished = isFinished,
             ),
         )
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-003 / 14.5 — the account's listening sessions.
+     *
+     * **Retried, unlike everything else in this class.** The rest of this file is writes — opening a
+     * session, syncing one, closing one — where a retry produces a second session for one tap. This is a
+     * read, and the caller is a history pane the user just opened; the ordinary transport retry is right
+     * here and is what the rest of the module does for reads. It reaches the retry through
+     * `AudiobookshelfServiceFactory`, the same as `AbsLibraryApi`'s reads.
+     *
+     * Logged with a count and nothing else: a session carries a book title and a device name, both private
+     * self-hosted data (14.5).
+     */
+    override suspend fun listeningSessions(
+        profileId: ProfileId,
+        page: Int,
+        itemsPerPage: Int,
+    ): AppResult<List<ListeningSession>> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+        val transported = resultOf(onError = errors::fromThrowable) {
+            services.playbackService(connection.serverUrl).listeningSessions(
+                bearer = bearerOf(connection.accessToken.value),
+                page = page.coerceAtLeast(0),
+                itemsPerPage = itemsPerPage.coerceAtLeast(1),
+            )
+        }
+        return when (transported) {
+            is AppResult.Failure -> AppResult.Failure(transported.error)
+            is AppResult.Success -> sessionsFrom(transported.value)
+        }
+    }
+
+    /**
+     * The response half of [listeningSessions], split out for the same reason [resultsFrom] is: the
+     * transport and the reading of what came back are two different failures, and keeping them in one
+     * function makes a ladder of guarded returns out of what is really two steps.
+     *
+     * Logged with a count and nothing else. A session carries a book title and a device name, both private
+     * self-hosted data (14.5).
+     */
+    private fun sessionsFrom(response: Response<ListeningSessionsResponseDto>): AppResult<List<ListeningSession>> {
+        if (!response.isSuccessful) return AppResult.Failure(errors.fromStatus(response.code()))
+        val body = response.body()
+            ?: return AppResult.Failure(
+                AppError.ApiCompatibility(
+                    summary = "The server answered the listening-sessions read with no body",
+                    missingField = "sessions",
+                ),
+            )
+        val sessions = ListeningSessionMapper.toSessions(body)
+        logger.debug(
+            LogCategory.Playback,
+            "Read the account's listening sessions",
+            LogField.Count("sessions", sessions.size),
+        )
+        return AppResult.Success(sessions)
     }
 
     private fun resultsFrom(

@@ -47,4 +47,5 @@
     <string name="car_event_timer_rewind">Spolt tilbake etter sovetid</string>
     <string name="car_event_remote_progress">Flyttet på en annen enhet</string>
     <string name="car_event_remote_finished">Fullført på en annen enhet</string>
+    <string name="car_event_server_session">Lyttet på en annen enhet</string>
 </resources>

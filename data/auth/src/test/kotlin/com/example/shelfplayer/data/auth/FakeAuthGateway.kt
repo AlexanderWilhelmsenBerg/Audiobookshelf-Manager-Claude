@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.SessionProgress
@@ -181,6 +182,13 @@ internal class FakeAuthGateway :
             isFinished: Boolean,
             position: kotlin.time.Duration,
         ): AppResult<Unit> = unsupported()
+
+        /** PRODUCT_SPEC PLAY-003 — the session history read is not part of the auth tests. */
+        override suspend fun listeningSessions(
+            profileId: ProfileId,
+            page: Int,
+            itemsPerPage: Int,
+        ): AppResult<List<ListeningSession>> = unsupported()
     }
 
     /** PRODUCT_SPEC 11.1 — not part of the auth tests; every method says so rather than pretending. */

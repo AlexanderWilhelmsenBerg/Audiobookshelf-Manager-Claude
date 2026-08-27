@@ -2,10 +2,12 @@ package com.example.shelfplayer.core.network.api
 
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * The playback session endpoints, verified against Audiobookshelf 2.36.0 on 2026-08-07.
@@ -82,4 +84,24 @@ internal interface PlaybackService {
         @Path("itemId") itemId: String,
         @Body request: MediaProgressUpdateDto,
     ): Response<Unit>
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — the account's own listening sessions, newest first.
+     *
+     * `me-listening-sessions.json` is the capture, recorded on a real 2.36.0 immediately after a
+     * play/sync/close sequence so it carries real sessions rather than an empty envelope.
+     * `docs/api-compatibility.md` records the envelope and — the part a reader guesses wrong — the units:
+     * the durations are **seconds** and `startedAt` is **epoch milliseconds**.
+     *
+     * **Paged, and there is no per-book route.** The server has no
+     * `/api/items/{id}/listening-sessions`, so a caller that wants one book's sessions asks for a page of
+     * the account's and filters. That is a real cost and it is why this is fetched when the history pane
+     * opens rather than on every sync.
+     */
+    @GET("api/me/listening-sessions")
+    suspend fun listeningSessions(
+        @Header(AUTHORIZATION) bearer: String,
+        @Query("page") page: Int,
+        @Query("itemsPerPage") itemsPerPage: Int,
+    ): Response<ListeningSessionsResponseDto>
 }

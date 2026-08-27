@@ -8,6 +8,8 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.ListeningSession
+import java.time.Instant
 import kotlin.math.roundToLong
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -96,8 +98,14 @@ internal object PlaybackMapper {
     /** Both fixtures send a leading slash; a server that stopped would otherwise produce `hostapi/…`. */
     private fun String.prefixedWithSlash(): String = if (startsWith("/")) this else "/$this"
 
-    /** Seconds to a [Duration], rounded to the nearest millisecond — see `LibraryMapper.seconds`. */
-    private fun seconds(value: Double): Duration =
+    /**
+     * Seconds to a [Duration], rounded to the nearest millisecond — see `LibraryMapper.seconds`.
+     *
+     * `internal` rather than private because [ListeningSessionMapper] converts the same units from the same
+     * server and must round them the same way. One function, so a session's position and a history row's
+     * position cannot disagree by a millisecond for no reason.
+     */
+    internal fun seconds(value: Double): Duration =
         if (value.isFinite() && value > 0) (value * MILLIS_PER_SECOND).roundToLong().milliseconds else Duration.ZERO
 
     private fun missingField(field: String): AppError = AppError.ApiCompatibility(
@@ -106,4 +114,47 @@ internal object PlaybackMapper {
     )
 
     private const val MILLIS_PER_SECOND = 1_000
+}
+
+/**
+ * PRODUCT_SPEC PLAY-003 / 14.5 — `GET /api/me/listening-sessions` into the domain.
+ *
+ * ### What is dropped, and why each one is a decision
+ *
+ * **`deviceInfo.ipAddress`** is never modelled at all, so it cannot reach here — see
+ * [ListeningSessionDeviceDto]. **`chapters`, `mediaMetadata`, `coverPath`** are in the response and dropped:
+ * the app already holds them for a book it knows, and a history row is the wrong source for a book it does
+ * not.
+ *
+ * **A session with no id or no `libraryItemId` is dropped rather than failed.** Unlike a playback session —
+ * where `PlaybackMapper.toSession` returns `AppError.ApiCompatibility`, because a session that cannot be
+ * synced must not be played — this is a *history read*. One malformed row out of ten should show the other
+ * nine, not turn the pane into an error. The id is required because it is what makes importing idempotent,
+ * and the item id because there is nothing to attach the row to without it.
+ */
+internal object ListeningSessionMapper {
+
+    fun toSessions(dto: ListeningSessionsResponseDto): List<ListeningSession> =
+        dto.sessions.orEmpty().mapNotNull(::toSession)
+
+    private fun toSession(dto: ListeningSessionDto): ListeningSession? {
+        val id = dto.id?.takeIf(String::isNotBlank) ?: return null
+        val bookId = dto.libraryItemId?.takeIf(String::isNotBlank) ?: return null
+        return ListeningSession(
+            id = id,
+            bookId = LibraryItemId(bookId),
+            deviceId = dto.deviceInfo?.deviceId?.takeIf(String::isNotBlank),
+            deviceName = dto.deviceInfo?.deviceName?.takeIf(String::isNotBlank),
+            clientName = dto.deviceInfo?.clientName?.takeIf(String::isNotBlank),
+            // Seconds on the wire, all three of them. Absent reads as zero rather than failing: a session
+            // the server sent without a `timeListening` is filtered out downstream for having listened to
+            // nothing, which is the same outcome and one fewer error path (SYNC-001).
+            listened = PlaybackMapper.seconds(dto.timeListening ?: 0.0),
+            startedFrom = PlaybackMapper.seconds(dto.startTime ?: 0.0),
+            reachedAt = PlaybackMapper.seconds(dto.currentTime ?: 0.0),
+            // Epoch **milliseconds**, unlike the three above. Getting this pair backwards puts a history row
+            // in 1970 or claims a four-second session lasted an hour; the capture is what settled it.
+            startedAt = Instant.ofEpochMilli(dto.startedAt ?: dto.updatedAt ?: 0L),
+        )
+    }
 }

@@ -313,6 +313,8 @@
     -->
     <string name="player_history_remote">Moved on another device</string>
     <string name="player_history_remote_finished">Finished on another device</string>
+    <!-- A listening session the server recorded on another device. -->
+    <string name="player_history_server_session">Listened on another device</string>
     <!-- The day a group of rows happened on, above them. -->
     <string name="player_history_today">Today</string>
     <string name="player_history_yesterday">Yesterday</string>

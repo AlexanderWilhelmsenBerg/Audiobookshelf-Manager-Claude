@@ -2,15 +2,22 @@ package com.example.shelfplayer.data.library
 
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
+import com.example.shelfplayer.core.common.log.LogCategory
+import com.example.shelfplayer.core.common.log.LogField
+import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.database.dao.PlaybackHistoryDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
+import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
+import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
+import com.example.shelfplayer.core.network.gateway.PlaybackDeviceIdentity
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -40,6 +47,16 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
     private val profileDao: ProfileDao,
     private val history: PlaybackHistoryDao,
     private val clock: AppClock,
+    /** PRODUCT_SPEC PLAY-003 — the server's own session records. See [refreshServerSessions]. */
+    private val gateway: AudiobookshelfGateway,
+    /**
+     * PRODUCT_SPEC PLAY-003 — how this install names itself to the server when it opens a session.
+     *
+     * Read here so a session the server attributes to *this* phone can be told from one another device
+     * recorded, which is the difference between adding history and duplicating it.
+     */
+    private val device: PlaybackDeviceIdentity,
+    private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : PlaybackHistoryRepository {
 
@@ -87,12 +104,98 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
         )
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-003 — imports the server's own session records for one book.
+     *
+     * ### Idempotent without a migration, and that is the point of the id
+     *
+     * The row's `entryId` is derived from the **session's** id rather than a fresh `UUID`, so a session
+     * fetched on two consecutive refreshes is one row twice, not two rows — `OnConflictStrategy.REPLACE`
+     * does the rest. The existing schema already had a `String` primary key, so persisting these needed no
+     * Room migration at all.
+     *
+     * [SERVER_SESSION_PREFIX] keeps the derived ids in their own namespace: a locally recorded event uses a
+     * random UUID, and a server session id colliding with one is not a risk worth leaving to chance.
+     *
+     * ### The three filters
+     *
+     * **This book only**, because the endpoint is account-wide. **Other devices only** — this phone's own
+     * sessions come back too and would duplicate the player's `Play` and `Pause` rows. **Something actually
+     * listened**, because opening a book and closing it leaves a zero-second session on the server, and a
+     * history row saying somebody listened for no time is noise.
+     *
+     * A session with no device id counts as *another* device: the alternative is dropping a real session
+     * from another client that did not identify itself, and a duplicate row is a smaller loss than a
+     * missing one.
+     *
+     * ### Failure is silent, by design
+     *
+     * A pane whose local half is good must not become an error because the network was not there. The
+     * failure is logged and the rows persisted by earlier refreshes stay on screen.
+     */
+    override suspend fun refreshServerSessions(bookId: LibraryItemId) = withContext(ioDispatcher) {
+        val profileId = profileRepository.activeProfileId() ?: return@withContext
+        val profile = profileDao.findProfile(profileId.value) ?: return@withContext
+        val fetched = gateway.playback.listeningSessions(profileId)
+        val sessions = when (fetched) {
+            is AppResult.Failure -> {
+                logger.debug(
+                    LogCategory.Sync,
+                    "Could not read the server's listening sessions; the stored history stands",
+                    LogField.Public("error", fetched.error::class.simpleName ?: "unknown"),
+                )
+                return@withContext
+            }
+            is AppResult.Success -> fetched.value
+        }
+        val thisDevice = device.describe().deviceId
+        val relevant = sessions.filter { session ->
+            session.bookId == bookId &&
+                session.deviceId != thisDevice &&
+                session.listened > Duration.ZERO
+        }
+        logger.debug(
+            LogCategory.Sync,
+            "Imported the server's sessions for a book",
+            LogField.Count("fetched", sessions.size),
+            LogField.Count("imported", relevant.size),
+        )
+        val bookKey = EntityKey.of(profile.serverId, bookId.value)
+        relevant.forEach { session ->
+            history.record(
+                entry = PlaybackHistoryEntity(
+                    entryId = SERVER_SESSION_PREFIX + session.id,
+                    profileId = profileId.value,
+                    bookKey = bookKey,
+                    // Where the session opened, so tapping the row goes back to it.
+                    fromMillis = session.startedFrom.inWholeMilliseconds.coerceAtLeast(0),
+                    toMillis = session.reachedAt.inWholeMilliseconds.coerceAtLeast(0),
+                    reason = PlaybackEvent.ServerSession.name,
+                    // How much was actually listened, which is not the span: a paused session accrues none.
+                    detailMillis = session.listened.inWholeMilliseconds.coerceAtLeast(0),
+                    // The server's own start time, so the row sits where it happened rather than where the
+                    // fetch noticed it.
+                    at = session.startedAt.toEpochMilli(),
+                ),
+                keep = PlaybackHistoryRepository.DEFAULT_LIMIT,
+            )
+        }
+    }
+
     override suspend fun clear(bookId: LibraryItemId) = withContext(ioDispatcher) {
         val profileId = profileRepository.activeProfileId() ?: return@withContext
         val profile = profileDao.findProfile(profileId.value) ?: return@withContext
         history.clear(profileId.value, EntityKey.of(profile.serverId, bookId.value))
     }
 }
+
+/**
+ * The namespace for a history row derived from a server session id.
+ *
+ * Locally recorded events use a random `UUID`, so a collision is already unlikely; the prefix makes it
+ * impossible, and makes a row's origin readable in a database dump.
+ */
+private const val SERVER_SESSION_PREFIX = "abs-session:"
 
 private fun PlaybackHistoryEntity.toDomain() = PlaybackHistoryEntry(
     id = entryId,

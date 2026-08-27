@@ -49,7 +49,7 @@ class BookViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     observeBookDetails: ObserveBookDetailsUseCase,
     observeChapters: ObserveBookChaptersUseCase,
-    history: PlaybackHistoryRepository,
+    private val history: PlaybackHistoryRepository,
     private val profiles: ProfileRepository,
     private val downloads: DownloadRepository,
     private val downloadBook: DownloadBookUseCase,
@@ -62,6 +62,19 @@ class BookViewModel @Inject constructor(
             "Book route is missing its ${ShelfDestinations.ARG_BOOK_ID} argument"
         },
     )
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — pulls the **server's** own session records in, when the pane is opened.
+     *
+     * This screen is where it matters most. The derived remote history could only ever describe a book this
+     * device had already played — `LibrarySnapshotWriter.recordRemoteChange` has nothing to diff against
+     * otherwise — and this screen is regularly showing a book the listener started somewhere else. The rows
+     * are persisted, so the pane fills from Room and survives losing the network; failure is silent inside
+     * the repository, because a pane whose local half is good must not become an error.
+     */
+    fun onOpenHistory() {
+        viewModelScope.launch { history.refreshServerSessions(bookId) }
+    }
 
     val uiState: StateFlow<BookUiState> = observeBookDetails(bookId)
         .map { book ->

@@ -872,6 +872,32 @@ never logged is for no type to hold it (14.5).
 `chapters`, `mediaMetadata`, `coverPath` and `bookId` are present and deliberately dropped: the app already
 holds them for a book it knows, and a history row is the wrong source for one it does not.
 
+### How the app reads it, and the three filters
+
+`PlaybackHistoryRepository.refreshServerSessions` is called when the history pane opens — on the player and
+on the book screen — not on every sync. **The server has no per-book route**, so this reads a page of the
+*account's* sessions and keeps the ones for the book being looked at; putting that on `SyncAccountUseCase`
+would add a request to the app's cheapest and most frequent call, for data one screen reads.
+
+The rows are **persisted** into the same table the local events use, so the pane fills from Room and the
+imported rows are still there with no network. Merging at read time was the alternative and it makes the
+remote half vanish exactly when somebody is most likely to be wondering where their position went.
+
+Three filters, each removing a specific false row:
+
+- **this book only**, because the endpoint is account-wide;
+- **other devices only** — this phone's own sessions come back too and would duplicate the `Play` and
+  `Pause` rows the player already writes. Told apart by the per-install `deviceId` the app sends when it
+  opens a session (`PlaybackDeviceIdentity`). A session with **no** device id counts as another device's:
+  dropping a real session from a client that did not identify itself is a bigger loss than a duplicate row;
+- **something actually listened**, because opening a book and closing it leaves a zero-second session.
+
+Importing is **idempotent without a Room migration**: the history row's `entryId` is `abs-session:` plus the
+session's own id rather than a fresh UUID, and the table's primary key was already a `String`.
+
+A failed fetch is logged and otherwise silent. A pane whose local half is good must not become an error
+because the network was not there, and the rows from earlier refreshes stand.
+
 ---
 
 ## The embed task's own frames, captured 2026-08-23 against 2.36.0
