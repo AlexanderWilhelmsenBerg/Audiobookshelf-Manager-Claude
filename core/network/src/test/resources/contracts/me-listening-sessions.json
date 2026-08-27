@@ -1,0 +1,139 @@
+{
+  "body": {
+    "itemsPerPage": 10,
+    "numPages": 1,
+    "page": 0,
+    "sessions": [
+      {
+        "bookId": "<volatile>",
+        "chapters": [],
+        "coverPath": null,
+        "currentTime": 5.5,
+        "date": "<volatile>",
+        "dayOfWeek": "<volatile>",
+        "deviceInfo": {
+          "browserVersion": "36",
+          "clientName": "ShelfPlayer",
+          "clientVersion": "0.0.0",
+          "deviceId": "capture",
+          "deviceName": "capture capture",
+          "id": "<volatile>",
+          "ipAddress": "<volatile>",
+          "manufacturer": "capture",
+          "model": "capture",
+          "sdkVersion": "",
+          "userId": "<volatile>"
+        },
+        "displayAuthor": "Marisol Holt",
+        "displayTitle": "The Salt Harbour",
+        "duration": 8,
+        "episodeId": null,
+        "id": "<volatile>",
+        "libraryId": "<volatile>",
+        "libraryItemId": "<volatile>",
+        "mediaMetadata": {
+          "abridged": false,
+          "asin": null,
+          "authors": [
+            {
+              "id": "<volatile>",
+              "name": "Marisol Holt"
+            }
+          ],
+          "description": null,
+          "explicit": false,
+          "genres": [
+            "Fiction"
+          ],
+          "isbn": null,
+          "language": null,
+          "narrators": [
+            "Ada Fenwick"
+          ],
+          "publishedDate": null,
+          "publishedYear": "2024",
+          "publisher": null,
+          "series": [],
+          "subtitle": null,
+          "title": "The Salt Harbour"
+        },
+        "mediaPlayer": "exo-player",
+        "mediaType": "book",
+        "playMethod": null,
+        "serverVersion": "2.36.0",
+        "startTime": 0,
+        "startedAt": 0,
+        "timeListening": 4,
+        "updatedAt": 0,
+        "userId": "<volatile>"
+      },
+      {
+        "bookId": "<volatile>",
+        "chapters": [],
+        "coverPath": "/audiobooks/Marisol Holt/The Salt Harbour/cover.jpg",
+        "currentTime": 4.5,
+        "date": "<volatile>",
+        "dayOfWeek": "<volatile>",
+        "deviceInfo": {
+          "browserVersion": "36",
+          "clientName": "ShelfPlayer",
+          "clientVersion": "0.0.0",
+          "deviceId": "capture",
+          "deviceName": "capture capture",
+          "id": "<volatile>",
+          "ipAddress": "<volatile>",
+          "manufacturer": "capture",
+          "model": "capture",
+          "sdkVersion": "",
+          "userId": "<volatile>"
+        },
+        "displayAuthor": "Marisol Holt",
+        "displayTitle": "The Salt Harbour",
+        "duration": 8,
+        "episodeId": null,
+        "id": "<volatile>",
+        "libraryId": "<volatile>",
+        "libraryItemId": "<volatile>",
+        "mediaMetadata": {
+          "abridged": false,
+          "asin": null,
+          "authors": [
+            {
+              "id": "<volatile>",
+              "name": "Marisol Holt"
+            }
+          ],
+          "description": null,
+          "explicit": false,
+          "genres": [
+            "Fiction"
+          ],
+          "isbn": null,
+          "language": null,
+          "narrators": [
+            "Ada Fenwick"
+          ],
+          "publishedDate": null,
+          "publishedYear": "2024",
+          "publisher": null,
+          "series": [],
+          "subtitle": null,
+          "title": "The Salt Harbour"
+        },
+        "mediaPlayer": "exo-player",
+        "mediaType": "book",
+        "playMethod": 0,
+        "serverVersion": "2.36.0",
+        "startTime": 128.25,
+        "startedAt": 0,
+        "timeListening": 9,
+        "updatedAt": 0,
+        "userId": "<volatile>"
+      }
+    ],
+    "total": 2
+  },
+  "bodyKind": "json",
+  "contentType": "application/json",
+  "status": 200
+}
