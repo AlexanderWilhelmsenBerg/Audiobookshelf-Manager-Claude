@@ -90,4 +90,5 @@
     <string name="car_event_timer_rewind">Rewound after the sleep timer</string>
     <string name="car_event_remote_progress">Moved on another device</string>
     <string name="car_event_remote_finished">Finished on another device</string>
+    <string name="car_event_server_session">Listened on another device</string>
 </resources>

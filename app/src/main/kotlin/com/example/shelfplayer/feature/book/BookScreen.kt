@@ -116,6 +116,7 @@ fun BookRoute(
             onEditMetadata = onEditMetadata,
             onRemoveFromServer = viewModel::onRemoveFromServer,
             onEmbedMetadata = viewModel::onEmbedMetadata,
+            onOpenHistory = viewModel::onOpenHistory,
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -205,7 +206,13 @@ fun BookScreen(
                     // Which surface opens is this screen's own business, so those three callbacks are assembled
                     // here rather than being three more parameters the caller has to know about.
                     menuActions = BookMenuActions(
-                        onOpenHistory = { openSurface = BookSurface.History },
+                        onOpenHistory = {
+                            openSurface = BookSurface.History
+                            // PRODUCT_SPEC PLAY-003 — the same import the player's pane does. This screen
+                            // can be showing a book that is not playing, which is exactly the case the
+                            // derived remote history could never cover.
+                            actions.onOpenHistory()
+                        },
                         onFinishedChanged = actions.onFinishedChanged,
                         onDiscardRequested = { openSurface = BookSurface.DiscardConfirmation },
                         onOpenWebClient = actions.onOpenWebClient,
@@ -441,6 +448,14 @@ data class BookActions(
     val onRemoveFromServer: (Boolean) -> Unit = {},
     /** PRODUCT_SPEC MGR-007 — after the confirmation. Takes no arguments: there is nothing to choose. */
     val onEmbedMetadata: () -> Unit = {},
+    /**
+     * PRODUCT_SPEC PLAY-003 — the history pane was opened, so pull the server's own session records in.
+     *
+     * An action rather than a call on the ViewModel from inside this composable: `BookScreen` is stateless
+     * and its previews construct it with no graph behind them. Defaulted to a no-op for the same reason —
+     * a preview of the history sheet should render, not reach for a network.
+     */
+    val onOpenHistory: () -> Unit = {},
 )
 
 /**

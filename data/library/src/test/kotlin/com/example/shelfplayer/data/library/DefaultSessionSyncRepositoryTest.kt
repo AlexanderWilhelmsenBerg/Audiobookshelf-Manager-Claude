@@ -31,6 +31,7 @@ import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.SessionProgress
@@ -486,6 +487,18 @@ class DefaultSessionSyncRepositoryTest {
     private class RecordingPlaybackGateway :
         AudiobookshelfGateway,
         PlaybackApi {
+        /**
+         * PRODUCT_SPEC PLAY-003 — not part of this test, and refusing rather than pretending.
+         *
+         * The session *history* read is `ServerSessionHistoryTest`'s subject. A fake that answered with an
+         * empty list here would let a future change to this file's subject silently depend on it.
+         */
+        override suspend fun listeningSessions(
+            profileId: ProfileId,
+            page: Int,
+            itemsPerPage: Int,
+        ): AppResult<List<ListeningSession>> = error("the session history read is not exercised here")
+
         var syncResult: AppResult<Unit> = AppResult.Success(Unit)
         var offlineUpload: AppResult<List<OfflineSessionResult>>? = null
         var offlineResults: (List<OfflineSession>) -> List<OfflineSessionResult> = { emptyList() }

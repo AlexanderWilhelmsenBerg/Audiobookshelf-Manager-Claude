@@ -562,7 +562,12 @@ class AutoLibrary @Inject constructor(
      *
      * An exhaustive `when` over the enum rather than a map, so adding a `PlaybackEvent` fails to compile
      * here instead of silently reaching a car as a blank subtitle.
+     *
+     * Which is also why `CyclomaticComplexMethod` is suppressed: the metric counts branches, and one branch
+     * per enum value is the whole point. A `Map` would score 1 and lose the compile-time check. Same
+     * reasoning as `OutputDevices.kindOf`.
      */
+    @Suppress("CyclomaticComplexMethod")
     private fun PlaybackEvent.carLabel(): String = string(
         when (this) {
             PlaybackEvent.Seek -> R.string.car_event_seek
@@ -578,6 +583,7 @@ class AutoLibrary @Inject constructor(
             PlaybackEvent.SleepTimerRewind -> R.string.car_event_timer_rewind
             PlaybackEvent.RemoteProgress -> R.string.car_event_remote_progress
             PlaybackEvent.RemoteFinished -> R.string.car_event_remote_finished
+            PlaybackEvent.ServerSession -> R.string.car_event_server_session
         },
     )
 

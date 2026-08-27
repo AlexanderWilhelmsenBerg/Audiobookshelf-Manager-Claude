@@ -121,6 +121,25 @@ class PlayerViewModel @Inject constructor(
         )
 
     /**
+     * PRODUCT_SPEC PLAY-003 — pulls the **server's** own session records in, when the pane is opened.
+     *
+     * ### Why here and not on every sync
+     *
+     * The endpoint is account-wide and paged — the server has no per-book session route — so this reads a
+     * page of the account's sessions and keeps the ones for this book. Putting that on `SyncAccountUseCase`
+     * would add a request to the app's cheapest and most frequent call, for data exactly one screen reads.
+     * Opening the pane is when somebody is asking the question.
+     *
+     * The rows are **persisted**, not merged for display, so [history] emits them from Room like any other
+     * event and they are still there with no network. Failure is silent inside the repository: a pane whose
+     * local half is good must not become an error because the server was unreachable.
+     */
+    fun onOpenHistory() {
+        val bookId = controller.state.value.bookId ?: return
+        viewModelScope.launch { playbackHistory.refreshServerSessions(bookId) }
+    }
+
+    /**
      * PRODUCT_SPEC 11.1 — the playing book's bookmarks.
      *
      * Keyed off whatever is playing, like [history] and for the same reason: the sheet is part of the

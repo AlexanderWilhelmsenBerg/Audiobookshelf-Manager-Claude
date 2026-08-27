@@ -202,7 +202,12 @@ private fun ShelfPlayerContent(
                 onOpenSpeed = { isSpeedSheetOpen = true },
                 onCollapse = playerViewModel::onCollapse,
                 onRetry = playerViewModel::onRetry,
-                onOpenHistory = { isHistorySheetOpen = true },
+                onOpenHistory = {
+                    isHistorySheetOpen = true
+                    // PRODUCT_SPEC PLAY-003 — pull the server's own session records in as the pane opens.
+                    // Persisted, so the pane fills from Room and the rows stay when the network does not.
+                    playerViewModel.onOpenHistory()
+                },
                 onOpenBookmarks = { isBookmarkSheetOpen = true },
                 onAddBookmark = playerViewModel::onAddBookmark,
             ),

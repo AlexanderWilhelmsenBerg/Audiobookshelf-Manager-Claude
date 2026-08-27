@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Pause
@@ -66,7 +67,8 @@ import kotlin.time.Duration
  * list rather than two tabs, because the question a listener has — "why is my place not where I left it" —
  * is answered by the order things happened in, and a split list destroys exactly that.
  *
- * The server's side arrives as [PlaybackEvent.RemoteProgress] and [PlaybackEvent.RemoteFinished], written
+ * The server's side arrives as [PlaybackEvent.RemoteProgress], [PlaybackEvent.RemoteFinished] and
+ * [PlaybackEvent.ServerSession] — the last being the server's own session record rather than a diff, written
  * when a refresh finds a position this device did not produce, and stamped with the server's own time so it
  * sorts where it belongs.
  *
@@ -271,6 +273,15 @@ private fun HistoryRow(
     }
 }
 
+/*
+ * `CyclomaticComplexMethod` is suppressed on the three exhaustive `when`s below, and the reason is the
+ * same each time: the metric counts branches, and one branch per enum value is precisely what makes these
+ * correct. There is no logic in them to simplify — a `Map` would drop to complexity 1 and lose the
+ * property they exist for, which is that adding a `PlaybackEvent` **fails to compile here** instead of
+ * reaching a listener as a blank row. `OutputDevices.kindOf` carries the same suppression for the same
+ * reason.
+ */
+@Suppress("CyclomaticComplexMethod")
 private fun PlaybackEvent.labelRes(): Int = when (this) {
     PlaybackEvent.Seek -> R.string.player_history_seek
     PlaybackEvent.Skip -> R.string.player_history_skip
@@ -285,8 +296,10 @@ private fun PlaybackEvent.labelRes(): Int = when (this) {
     PlaybackEvent.SleepTimerRewind -> R.string.player_history_timer_rewind
     PlaybackEvent.RemoteProgress -> R.string.player_history_remote
     PlaybackEvent.RemoteFinished -> R.string.player_history_remote_finished
+    PlaybackEvent.ServerSession -> R.string.player_history_server_session
 }
 
+@Suppress("CyclomaticComplexMethod")
 private fun PlaybackEvent.icon(): ImageVector = when (this) {
     PlaybackEvent.Seek -> Icons.Filled.FastForward
     PlaybackEvent.Skip -> Icons.Filled.FastForward
@@ -301,6 +314,9 @@ private fun PlaybackEvent.icon(): ImageVector = when (this) {
     PlaybackEvent.SleepTimerExpired -> Icons.Filled.Bedtime
     PlaybackEvent.RemoteProgress -> Icons.Filled.CloudSync
     PlaybackEvent.RemoteFinished -> Icons.Filled.CloudDone
+    // A different cloud from RemoteProgress's: that row says a position arrived, this one says somebody
+    // sat and listened on another device, which is a different thing to read at a glance.
+    PlaybackEvent.ServerSession -> Icons.Filled.CloudDownload
 }
 
 /**

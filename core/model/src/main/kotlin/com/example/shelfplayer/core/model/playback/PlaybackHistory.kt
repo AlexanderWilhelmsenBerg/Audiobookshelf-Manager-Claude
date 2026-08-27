@@ -79,10 +79,30 @@ enum class PlaybackEvent {
      * history exists to explain.
      */
     RemoteFinished,
+
+    /**
+     * PRODUCT_SPEC PLAY-003 / PLAY-004 — a listening session **another device** recorded, as the server
+     * reported it.
+     *
+     * The owner asked for this: *"I want to have it populated from events from audiobookshelf itself."*
+     * [RemoteProgress] is the closest thing that existed and it is a reconstruction — a diff of stored
+     * progress against a sync — which cannot see a book this device has never played, and collapses two
+     * sessions between syncs into one row. This is the server's own entry instead: one per session.
+     *
+     * [PlaybackHistoryEntry.from] is where the session opened, [PlaybackHistoryEntry.to] where it got to,
+     * [PlaybackHistoryEntry.detail] how much was actually listened — which is not the span, because a paused
+     * session accrues none — and [PlaybackHistoryEntry.at] the server's own start time, so the row sits in
+     * the timeline where it happened rather than where the fetch noticed it.
+     *
+     * **Only other devices' sessions become rows.** This phone's own sessions come back from the server too,
+     * and they would duplicate the `Play` and `Pause` entries the player already writes.
+     */
+    ServerSession,
     ;
 
     /** `true` for the events that come from somewhere other than this device. */
-    val isRemote: Boolean get() = this == RemoteProgress || this == RemoteFinished
+    val isRemote: Boolean
+        get() = this == RemoteProgress || this == RemoteFinished || this == ServerSession
 
     companion object {
         /** PRODUCT_SPEC SYNC-001 — an unrecognized stored value reads back as the commonest kind. */

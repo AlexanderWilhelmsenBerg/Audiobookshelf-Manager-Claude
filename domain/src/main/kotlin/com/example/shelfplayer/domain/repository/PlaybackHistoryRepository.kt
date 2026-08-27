@@ -48,6 +48,34 @@ interface PlaybackHistoryRepository {
         owner: ProfileId? = null,
     )
 
+    /**
+     * PRODUCT_SPEC PLAY-003 — imports the **server's own** session records for [bookId], and persists them.
+     *
+     * ### Why this is a refresh and not a second `observe`
+     *
+     * The rows go into the same table the local events use, so [observe] emits them without knowing where
+     * they came from, and they survive going offline. Merging at read time was the alternative and it makes
+     * the pane's remote half disappear the moment the network does — which is precisely when somebody is
+     * most likely to be wondering where their position went.
+     *
+     * ### Why it is per-book and called when the pane opens
+     *
+     * The server has no per-book session route: this reads a page of the *account's* sessions and keeps the
+     * ones for this book. Doing that on every sync would add a request to the app's cheapest and most
+     * frequent call for data only one screen reads.
+     *
+     * ### What it deliberately does not import
+     *
+     * **This device's own sessions.** They come back from the server like any other, and they would
+     * duplicate the `Play` and `Pause` rows the player already writes. Told apart by the per-install device
+     * id the app sends when it opens a session.
+     *
+     * Nothing here fails in a way the user should see, for the same reason as [record]: a history pane whose
+     * local half is good must not become an error because a refresh could not reach the server. A failure
+     * means "nothing new to add", and the persisted rows from previous refreshes stay on screen.
+     */
+    suspend fun refreshServerSessions(bookId: LibraryItemId)
+
     suspend fun clear(bookId: LibraryItemId)
 
     companion object {

@@ -300,6 +300,13 @@ class AutoBrowseTreeTest {
             owner: ProfileId?,
         ) = Unit
 
+        /**
+         * PRODUCT_SPEC PLAY-003 — a no-op, because the car browse tree reads history and never
+         * refreshes it. The pane that does is on the phone; a head unit showing a stale row is a
+         * smaller problem than a car making a network call while somebody is driving.
+         */
+        override suspend fun refreshServerSessions(bookId: LibraryItemId) = Unit
+
         override suspend fun clear(bookId: LibraryItemId) = Unit
     }
 
