@@ -1,5 +1,7 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.Player
+
 /**
  * PRODUCT_SPEC AUTH-003 / PLAY-001 / 14.5 — what a controller that binds to this session is allowed to see.
  *
@@ -115,4 +117,37 @@ internal object ControllerTrust {
 
     /** Whether [access] may read, search or write library content. */
     fun mayBrowse(access: ControllerAccess): Boolean = access == ControllerAccess.LibraryAndPlayback
+
+    /**
+     * The `Player.Commands` that must be withheld from [access].
+     *
+     * **This is the half the first version of this policy missed**, and a device run found it. Narrowing
+     * `SessionCommands` in `onConnect` narrows the *session* surface — the custom actions and the library
+     * calls — and leaves `Player.Commands` at Media3's defaults. Those defaults include
+     * `COMMAND_SET_MEDIA_ITEM`, `COMMAND_CHANGE_MEDIA_ITEMS`, `COMMAND_STOP` and `COMMAND_RELEASE`, so a
+     * controller that had been refused the library could still clear the queue and stop the book. Confirmed
+     * from a second UID on an SM-S928B: the attacker's URI never loaded and no bearer was sent, and
+     * playback stopped anyway.
+     *
+     * That is product priority 1 — *do not interrupt playback* — reachable by any installed app, which
+     * makes it worse than the browse leak this policy was written for.
+     *
+     * ### What is withheld, and what deliberately is not
+     *
+     * Withheld: the four that mutate what is loaded or end the session. Kept: play, pause, every seek, and
+     * the getters. A headset button, a watch and a Bluetooth remote still do everything they legitimately
+     * do — the point of `PlaybackOnly` is that transport works.
+     *
+     * `COMMAND_RELEASE` is in the list because releasing the session from outside ends playback as surely
+     * as stopping it, and no third party has a reason to.
+     */
+    fun withheldPlayerCommands(access: ControllerAccess): List<Int> = when (access) {
+        ControllerAccess.LibraryAndPlayback -> emptyList()
+        ControllerAccess.PlaybackOnly -> listOf(
+            Player.COMMAND_SET_MEDIA_ITEM,
+            Player.COMMAND_CHANGE_MEDIA_ITEMS,
+            Player.COMMAND_STOP,
+            Player.COMMAND_RELEASE,
+        )
+    }
 }

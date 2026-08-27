@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.Player
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -166,5 +167,56 @@ class ControllerTrustTest {
     @Test
     fun `with no admitting fact the default is closed`() {
         assertFalse(ControllerTrust.mayBrowse(ControllerTrust.accessFor(stranger(), selfUid)))
+    }
+
+    // ------------------------------------------------- the player commands, found missing on hardware
+
+    /**
+     * **The defect a device run found, stated as a test.**
+     *
+     * The first version of this policy narrowed `SessionCommands` and left `Player.Commands` at Media3's
+     * defaults — which grant `COMMAND_SET_MEDIA_ITEM`, `COMMAND_CHANGE_MEDIA_ITEMS`, `COMMAND_STOP` and
+     * `COMMAND_RELEASE` to everything that connects. Verified from a second UID on an SM-S928B: the
+     * attacker's URI never loaded and no bearer was sent, and it could still clear the queue and stop the
+     * book. That is product priority 1, reachable by any installed app.
+     */
+    @Test
+    fun `an untrusted controller may not change the queue or stop playback`() {
+        val withheld = ControllerTrust.withheldPlayerCommands(ControllerAccess.PlaybackOnly)
+
+        assertTrue(Player.COMMAND_SET_MEDIA_ITEM in withheld, "it could replace what is loaded")
+        assertTrue(Player.COMMAND_CHANGE_MEDIA_ITEMS in withheld, "it could clear the queue")
+        assertTrue(Player.COMMAND_STOP in withheld, "it could stop the book")
+        assertTrue(Player.COMMAND_RELEASE in withheld, "it could end the session")
+    }
+
+    /**
+     * And transport still works, which is the whole reason `PlaybackOnly` is not `reject()`.
+     *
+     * A headset button, a watch and a Bluetooth remote are the callers this branch exists to keep working.
+     * Withholding one of these would turn a privacy fix into a broken remote.
+     */
+    @Test
+    fun `an untrusted controller keeps play pause and seek`() {
+        val withheld = ControllerTrust.withheldPlayerCommands(ControllerAccess.PlaybackOnly)
+
+        val transport = listOf(
+            Player.COMMAND_PLAY_PAUSE,
+            Player.COMMAND_SEEK_BACK,
+            Player.COMMAND_SEEK_FORWARD,
+            Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
+            Player.COMMAND_SEEK_TO_DEFAULT_POSITION,
+            Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
+            Player.COMMAND_GET_TIMELINE,
+        )
+        for (command in transport) {
+            assertFalse(command in withheld, "$command is transport and must survive")
+        }
+    }
+
+    /** A trusted controller loses nothing — the car and the app keep the full player surface. */
+    @Test
+    fun `a trusted controller keeps every player command`() {
+        assertTrue(ControllerTrust.withheldPlayerCommands(ControllerAccess.LibraryAndPlayback).isEmpty())
     }
 }
