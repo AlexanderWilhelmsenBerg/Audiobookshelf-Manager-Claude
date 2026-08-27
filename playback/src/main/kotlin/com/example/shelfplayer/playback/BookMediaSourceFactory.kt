@@ -14,7 +14,6 @@ import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
-import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC PLAY-001 / PLAY-003, ADR-0016 — turns a book item into one timeline window.
@@ -33,11 +32,28 @@ import kotlin.time.Duration
  * cannot be built this way. Rather than fail to play it, such a book falls back to the plain factory — which
  * plays the first file only, and says so in the log.
  *
- * That is a real degradation and it is the honest one: a book that plays its first file is better than a book
- * that does not play, and product priority 1 puts "do not interrupt playback" above "be internally
- * consistent". `BookMediaSourceFactoryTest` covers the branch. **What is not settled** is whether
- * Audiobookshelf can even report a zero duration — no capture has produced one — so the fallback is written
- * defensively rather than to a known case (PRODUCT_SPEC 22.5).
+ * A book that plays its first file is better than a book that does not play, and product priority 1 puts "do
+ * not interrupt playback" above "be internally consistent". `BookMediaSourceFactoryTest` covers the branch.
+ * **What is not settled** is whether Audiobookshelf can even report a zero duration — no capture has produced
+ * one — so the fallback is written defensively rather than to a known case (PRODUCT_SPEC 22.5).
+ *
+ * ### This KDoc used to call the fallback "honest". It was not (`docs/risks.md` R-61)
+ *
+ * Falling back changes the player's timeline from the book to one file, and nothing downstream was told.
+ * `MediaItems.queueFor` still handed it a whole-book start position, and every position reader still treated
+ * `currentPosition` as a book offset — so a 34-hour book resumed at 4 hours seeked past the end of a
+ * 20-minute file, and each journal tick wrote that file offset into the book's stored progress. Playback was
+ * preserved and progress was silently destroyed, which inverts priorities 1 and 2 rather than choosing
+ * between them.
+ *
+ * It is honest now, in two steps that live elsewhere because that is where the information is:
+ *
+ *  - `TrackDurations.recovered` computes the missing length from the server's own total, so this branch is
+ *    reached only when recovery is *also* impossible — more than one unknown track, or an excluded track
+ *    whose contribution to the total no capture has settled (22.4);
+ *  - `MediaItems.isSingleFileFallback` is this branch's own condition, exposed so the start position becomes
+ *    zero and the two progress writers decline. The session plays and records nothing, which is a
+ *    degradation the log names rather than a corruption nobody sees.
  */
 @OptIn(UnstableApi::class)
 internal class BookMediaSourceFactory(private val dataSourceFactory: DataSource.Factory, private val logger: Logger) :
@@ -58,12 +74,21 @@ internal class BookMediaSourceFactory(private val dataSourceFactory: DataSource.
     override fun createMediaSource(mediaItem: MediaItem): MediaSource {
         val tracks = MediaItems.tracksOf(mediaItem)
         if (tracks.isEmpty()) return delegate.createMediaSource(mediaItem)
-        if (tracks.any { it.duration <= Duration.ZERO }) {
-            // Named as a warning rather than swallowed: a book playing only its first file is a defect worth
-            // seeing in a support report, and the count is safe to log where the URLs are not (14.5).
+        if (MediaItems.isSingleFileFallback(tracks.map { it.duration })) {
+            /*
+             * Named as a warning rather than swallowed: a book playing only its first file is a defect worth
+             * seeing in a support report, and the count is safe to log where the URLs are not (14.5).
+             *
+             * The message says what is *lost*, not just what happened, because this is now the only visible
+             * signal for it. `MediaItems.queueFor` has already tried to recover the length from the server's
+             * own total (`TrackDurations`), so reaching this line means recovery was refused too; and
+             * `MediaItems.isSingleFileFallback` stops the journal and the remote sync writing, so the
+             * session plays and records nothing. Somebody reading the log has to be able to tell that from a
+             * sync outage.
+             */
             logger.warn(
                 LogCategory.Playback,
-                "A track reported no duration, so the book cannot be one timeline window",
+                "A track's length is unknown, so this book plays its first file only and will not save progress",
                 LogField.Count("tracks", tracks.size),
             )
             return delegate.createMediaSource(mediaItem)

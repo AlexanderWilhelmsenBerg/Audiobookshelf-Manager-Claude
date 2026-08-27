@@ -80,9 +80,22 @@ object MediaItems {
      */
     fun queueFor(session: PlaybackSession): Queue {
         val tracks = session.playableTracks
+        /*
+         * PRODUCT_SPEC 22.4, `docs/risks.md` R-61 — repair a single missing track length before anything
+         * downstream has to cope with it.
+         *
+         * A track reporting zero is what makes `BookMediaSourceFactory` fall back to playing one file, and
+         * the fallback is where the coordinate spaces diverged. The server's own total closes the common
+         * case exactly; [TrackDurations.recovered] states which cases it refuses and why.
+         */
+        val durations = TrackDurations.recovered(
+            durations = tracks.map { it.duration },
+            bookTotal = session.duration,
+            anyExcluded = session.tracks.size != tracks.size,
+        ) ?: tracks.map { it.duration }
         val extras = Bundle().apply {
             putStringArray(KEY_TRACK_URLS, tracks.map { it.url }.toTypedArray())
-            putLongArray(KEY_TRACK_DURATIONS_MS, tracks.map { it.duration.inWholeMilliseconds }.toLongArray())
+            putLongArray(KEY_TRACK_DURATIONS_MS, durations.map { it.inWholeMilliseconds }.toLongArray())
             putStringArray(KEY_TRACK_MIME_TYPES, tracks.map { it.mimeType.orEmpty() }.toTypedArray())
             putString(KEY_OWNER_PROFILE_ID, session.profileId.value)
         }
@@ -103,7 +116,21 @@ object MediaItems {
                     .build(),
             )
             .build()
-        return Queue(item, session.startAt.inWholeMilliseconds.coerceAtLeast(0))
+        /*
+         * **The start position is zero when the timeline will not be the book** — R-61's other half.
+         *
+         * If a length could not be recovered, `BookMediaSourceFactory` plays the first file only, so the
+         * player's timeline is that file. Handing it `session.startAt` then seeks to a book position inside
+         * a single file: resuming a 34-hour book at 4 hours lands past the end of a 20-minute file. Zero is
+         * the only position that means the same thing in both coordinate spaces.
+         *
+         * The listener loses their place in the *session* — which the log names — and does not have it
+         * overwritten, because [isSingleFileFallback] also stops the writers. Losing a resume point is a
+         * degradation; writing a file offset into a book's stored progress is data loss (product
+         * priority 2).
+         */
+        val startAt = if (isSingleFileFallback(durations)) 0L else session.startAt.inWholeMilliseconds
+        return Queue(item, startAt.coerceAtLeast(0))
     }
 
     /** The book this item belongs to. */
@@ -176,6 +203,34 @@ object MediaItems {
      */
     fun bookDurationOf(item: MediaItem): Duration =
         tracksOf(item).fold(Duration.ZERO) { total, track -> total + track.duration }
+
+    /**
+     * Whether [item]'s player timeline will be **one file rather than the book** — `docs/risks.md` R-61.
+     *
+     * ### What this is for
+     *
+     * `BookMediaSourceFactory` cannot build a single window when a track's length is unknown, so it plays
+     * the first file. Every position reader in the app — `PlayerPositions.bookPosition`, the local journal,
+     * the remote sync — then reads a *file* offset while believing it is a book offset. Nothing downstream
+     * was told, which is exactly why the register calls the fallback dishonest.
+     *
+     * This is that telling. It is the fallback's own trigger rather than a second opinion about it: the
+     * factory falls back precisely when a duration in the extras is non-positive, so the two cannot drift.
+     * A flag in the extras was the alternative and would have been a second source of truth to keep in
+     * step.
+     *
+     * ### Why an item with no track list is *not* reported as a fallback
+     *
+     * `tracks.isNotEmpty()` is deliberate. An item carrying no extras is not one this app built — or is one
+     * whose extras did not survive — and the answer there is "unknown", not "degraded". Reporting it as
+     * degraded would silently stop journalling for any such item, which would be a new way to lose progress
+     * while fixing one.
+     */
+    fun isSingleFileFallback(item: MediaItem): Boolean = isSingleFileFallback(tracksOf(item).map { it.duration })
+
+    /** The same rule over the durations themselves, for callers that already have them. */
+    internal fun isSingleFileFallback(durations: List<Duration>): Boolean =
+        durations.isNotEmpty() && durations.any { it <= Duration.ZERO }
 
     /** One audio file, as an item's extras describe it. */
     data class Track(val url: String, val duration: Duration, val mimeType: String?)
