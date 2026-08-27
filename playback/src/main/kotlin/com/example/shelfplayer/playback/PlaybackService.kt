@@ -27,6 +27,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.common.time.AppClock
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
@@ -703,9 +704,16 @@ class PlaybackService : MediaLibraryService() {
     /**
      * PRODUCT_SPEC PLAY-003 — where the player is, for the browse tree to draw chapter progress against.
      *
-     * Read on the main thread, which is where a `MediaLibrarySession` callback already runs, because
-     * `currentPosition` is a `Player` call and Media3 asserts the application thread. The browse tree then
-     * uses it off-thread as a plain number, which is safe precisely because it was copied out here.
+     * **Must be called on the main thread**, which is where a `MediaLibrarySession` callback already runs,
+     * because `currentMediaItem` and `currentPosition` are `Player` calls and Media3 asserts the application
+     * thread. The browse tree then uses the result off-thread as a plain number, which is safe precisely
+     * because it was copied out here.
+     *
+     * That paragraph has said this since the function was written, and for three phases two of its three
+     * callers ignored it: `onGetChildren` and `onGetItem` called it *inside* `future`, whose block runs on
+     * `Dispatchers.Default`. Every car browse therefore threw `IllegalStateException` and reached a head
+     * unit as an empty tree. `docs/risks.md` R-66 and R-32 — the documentation was right and the code was
+     * wrong, which is the harder direction to notice, because reading either one alone looks correct.
      *
      * `null` when nothing is loaded, and the tree falls back to stored progress. It deliberately does *not*
      * fall back to zero: zero is a position, and it would draw every chapter bar empty for a book the
@@ -790,10 +798,25 @@ class PlaybackService : MediaLibraryService() {
             when (val outcome = resultOf { block() }) {
                 is AppResult.Success -> settable.set(outcome.value)
                 is AppResult.Failure -> {
+                    /*
+                     * PRODUCT_SPEC 14.4 / 14.5 — the code *and* what threw.
+                     *
+                     * This used to log the code alone, and a head-unit run spent its whole budget on two
+                     * lines reading `error=unknown` — which is what `AppError.Unknown` is called, and says
+                     * nothing about the `IllegalStateException` underneath it. The cause was carried and
+                     * discarded at the one place it would have been read.
+                     *
+                     * The **class name** is what identifies a defect; the message is what may carry a book
+                     * title or a URL. So the class is logged and the message is not, which keeps 14.5 while
+                     * making the line worth reading. `AppError.Unknown` is the only variant with a cause,
+                     * and for every other variant the code already is the answer.
+                     */
+                    val cause = (outcome.error as? AppError.Unknown)?.cause
                     logger.warn(
                         LogCategory.Playback,
                         "A browse request failed",
                         LogField.Public("error", outcome.error.code),
+                        LogField.Public("thrown", cause?.let { it::class.java.simpleName } ?: "none"),
                     )
                     settable.setException(IllegalStateException(outcome.error.code))
                 }
@@ -885,43 +908,72 @@ class PlaybackService : MediaLibraryService() {
             page: Int,
             pageSize: Int,
             params: LibraryParams?,
-        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
-            if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetChildren")
-            // Paged by the caller, so a long continue-listening list arrives a screen at a time rather
-            // than as one binder transaction a head unit may refuse.
-            val all = auto.children(parentId, nowPlaying())
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             /*
-             * PRODUCT_SPEC 14.4 — what the car asked for and how much it got.
+             * **Read the player here, not inside `future`** — `docs/risks.md` R-66.
              *
-             * The 2026-08-24 head-unit run found the browse root rendering zero items while search returned
-             * books, and there was no way to tell from outside which of three things had happened: the node
-             * was refused, the tree answered empty, or the car cached an earlier empty answer and never
-             * re-asked. This line separates them, and it is the same reasoning as `CarReadiness` — two
-             * device runs were spent on an Android Auto problem that a log line would have named.
+             * Media3 invokes this callback on the application thread; `future` runs its block on
+             * `applicationScope`, which is `Dispatchers.Default`. `nowPlaying()` reads
+             * `player.currentMediaItem`, and ExoPlayer throws `IllegalStateException` for any property read
+             * off its application thread. So the call used to be inside the block and every browse of a
+             * node threw before it could answer.
              *
-             * A parent id is a node in this app's own tree (`root`, `tab/continue`) and a count is a count;
-             * neither is a book title, so both are safe where a media id would not be (14.5).
+             * That is what a head-unit run saw: two `A browse request failed error=unknown` lines — the two
+             * roots Android Auto asks for on connect — an empty browse tree, and **search working**, because
+             * `onGetSearchResult` is the one browse callback that does not need the player.
+             *
+             * Same discipline as `recordTransport` and `positionSnapshot` a few hundred lines up, which say
+             * the same thing about the same object. This is the third place it has mattered.
              */
-            logger.info(
-                LogCategory.Playback,
-                "A browser asked for a node's children",
-                LogField.Public("parent", parentId),
-                LogField.Count("children", all.size),
-            )
-            val from = (page * pageSize).coerceAtMost(all.size)
-            val to = (from + pageSize).coerceAtMost(all.size)
-            LibraryResult.ofItemList(ImmutableList.copyOf(all.subList(from, to)), params)
+            val now = nowPlaying()
+            return future {
+                if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetChildren")
+                // Paged by the caller, so a long continue-listening list arrives a screen at a time rather
+                // than as one binder transaction a head unit may refuse.
+                val all = auto.children(parentId, now)
+                /*
+                 * PRODUCT_SPEC 14.4 — what the car asked for and how much it got.
+                 *
+                 * The 2026-08-24 head-unit run found the browse root rendering zero items while search
+                 * returned books, and there was no way to tell from outside which of three things had
+                 * happened: the node was refused, the tree answered empty, or the car cached an earlier
+                 * empty answer and never re-asked. This line separates them, and it is the same reasoning
+                 * as `CarReadiness` — two device runs were spent on an Android Auto problem that a log line
+                 * would have named.
+                 *
+                 * It earned its keep on the 2026-08-27 run by being **absent**: no line at all, for either
+                 * root, which is what said the failure was upstream of the answer rather than in it.
+                 *
+                 * A parent id is a node in this app's own tree (`root`, `tab/continue`) and a count is a
+                 * count; neither is a book title, so both are safe where a media id would not be (14.5).
+                 */
+                logger.info(
+                    LogCategory.Playback,
+                    "A browser asked for a node's children",
+                    LogField.Public("parent", parentId),
+                    LogField.Count("children", all.size),
+                )
+                val from = (page * pageSize).coerceAtMost(all.size)
+                val to = (from + pageSize).coerceAtMost(all.size)
+                LibraryResult.ofItemList(ImmutableList.copyOf(all.subList(from, to)), params)
+            }
         }
 
         override fun onGetItem(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
             mediaId: String,
-        ): ListenableFuture<LibraryResult<MediaItem>> = future {
-            if (!session.mayBrowse(browser)) return@future deniedItem(browser, "onGetItem")
-            auto.item(mediaId, nowPlaying())
-                ?.let { item -> LibraryResult.ofItem(item, null) }
-                ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            // The player on the callback thread, for the reason `onGetChildren` states at length (R-66).
+            // This site had the same defect and would have produced the same `error=unknown` the moment a
+            // head unit asked about a single item rather than a node.
+            val now = nowPlaying()
+            return future {
+                if (!session.mayBrowse(browser)) return@future deniedItem(browser, "onGetItem")
+                auto.item(mediaId, now)
+                    ?.let { item -> LibraryResult.ofItem(item, null) }
+                    ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+            }
         }
 
         /**
