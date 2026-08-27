@@ -832,6 +832,48 @@ contradict what a client written from the requirements alone would have assumed.
 | `DELETE /api/items/{id}` | 200 | `OK` | **text/plain** |
 | `GET /api/items/{id}` after deletion | 404 | `Not Found` | text/plain |
 
+## The server's own listening history, captured 2026-08-27 against 2.36.0
+
+`GET /api/me/listening-sessions?itemsPerPage=10&page=0`, fixture `me-listening-sessions.json`.
+
+### Why it matters, and what the app was doing instead
+
+The history pane's remote rows are *derived*: `LibrarySnapshotWriter.recordRemoteChange` diffs a book's
+stored progress against what a sync just fetched. That works, and it has two holes it cannot close.
+
+- **It needs a previous row.** It returns early when `before == null`, so a book listened to elsewhere that
+  this device has never played produces no history at all.
+- **It only sees the endpoints.** Two sessions between one sync and the next collapse into one row, and a
+  session that started and finished inside that window is invisible.
+
+This endpoint is the server's own record rather than a reconstruction.
+
+### The envelope and the units
+
+| Field | |
+| --- | --- |
+| `sessions[]`, `total`, `page`, `itemsPerPage`, `numPages` | paged; `total` is the account's whole history, not the page |
+| `timeListening`, `startTime`, `currentTime`, `duration` | **seconds** (fractional — the capture shows `5.5`) |
+| `startedAt`, `updatedAt` | **epoch milliseconds** |
+| `deviceInfo.deviceId` / `deviceName` / `clientName` | which device and which client played it |
+
+**The units are the part a reader guesses wrong**, which is why they are pinned by test: seconds and
+milliseconds sit side by side in the same object, and reading `startedAt` as seconds puts a row in 1970.
+
+`timeListening` is not elapsed wall time — a paused session accrues none.
+
+### One field this app must never keep
+
+`deviceInfo.ipAddress` is in the response. `ListeningSessionDeviceDto` models three fields and not that
+one, and `ListeningSessionContractTest` asserts **both** halves: that the wire still carries it, and that
+it does not reach the model. Same rule as `GET /api/users`' live token — the way to be certain a field is
+never logged is for no type to hold it (14.5).
+
+`chapters`, `mediaMetadata`, `coverPath` and `bookId` are present and deliberately dropped: the app already
+holds them for a book it knows, and a history row is the wrong source for one it does not.
+
+---
+
 ## The embed task's own frames, captured 2026-08-23 against 2.36.0
 
 `POST /api/tools/item/{id}/embed-metadata` answers `200` when the task is **queued**. What happened to the

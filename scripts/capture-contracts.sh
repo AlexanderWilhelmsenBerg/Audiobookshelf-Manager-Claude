@@ -810,6 +810,19 @@ if [ -n "$SESSION_ID" ]; then
   # What the account looks like after a session, which is where PLAY-004's conflict resolution reads
   # from. Captured separately from the pre-session `me.json` so the two can be diffed.
   capture me-after-session GET /api/me -H "$AUTH_HEADER"
+
+  # PRODUCT_SPEC PLAY-003 — **the server's own listening history**, which is a different thing from the
+  # progress row `/api/me` carries.
+  #
+  # `/api/me` answers "where is this book now"; this answers "when was it listened to, for how long, and on
+  # what". The app's history pane currently derives its remote rows by *diffing* progress between syncs,
+  # which cannot see a session that started and finished between two refreshes, and cannot see anything at
+  # all for a book this device has never played. Those are the two holes this endpoint closes.
+  #
+  # Captured immediately after the play/sync/close sequence above, so the account has exactly one session
+  # and the shape is the shape a real one has rather than an empty envelope. Paged explicitly: the default
+  # page size is a server setting, and a fixture that depended on it would drift when somebody changed it.
+  capture me-listening-sessions GET "/api/me/listening-sessions?itemsPerPage=10&page=0" -H "$AUTH_HEADER"
 else
   # Loud, not silent. No session id means the play route did not answer as expected, and the right
   # outcome is a visible gap in the fixtures rather than three files full of error bodies.
