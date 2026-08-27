@@ -1064,9 +1064,48 @@ print(json.loads(match.group(0)).get("sid", "") if match else "")
   capture item-embed-metadata POST "/api/tools/item/$ITEM_ID/embed-metadata?backup=1" -H "$AUTH_HEADER"
 
   # And immediately again, which is the documented second `400`: "already in queue or processing".
-  # `AbsManagementApi` claims this response exists and distinguishes it from a generic failure; nothing
-  # had ever observed it. Sent with no delay on purpose — the first task is still running.
-  capture item-embed-metadata-repeated POST "/api/tools/item/$ITEM_ID/embed-metadata?backup=1" -H "$AUTH_HEADER"
+  # `AbsManagementApi` claims this response exists and distinguishes it from a generic failure, and this
+  # is the only thing that has ever observed it.
+  #
+  # ### Why this is a loop and not one request (`docs/risks.md` R-57)
+  #
+  # It was one request, "sent with no delay on purpose — the first task is still running". That reasoning
+  # was right and the timing is not reliable: the embed of an eight-second file takes about 50 ms and the
+  # second request needs about 45 ms to reach the server, so which side of the finish it lands on is a
+  # coin flip. The 2026-08-27 run lost it — the task finished 4 ms before the request was processed — and
+  # the job reported the 200 as **drift**, which it is not. The server had not changed its mind about
+  # anything; the capture had raced itself.
+  #
+  # A `200` here is not a failure to capture, it is the *first* task having drained — and it queues a task
+  # of its own, so the next attempt has a fresh one to collide with. Retrying is therefore not hopeful
+  # repetition: each attempt creates the condition the next one tests for.
+  #
+  # ### And if every attempt drains, nothing is written
+  #
+  # The same rule the candidate search follows a few hundred lines above, for the same reason: a run that
+  # learned nothing must not overwrite what a run that learned something recorded. The compare step treats
+  # a fixture this run did not capture as skipped rather than as drift, so the committed `400` survives and
+  # a genuine change in the refusal would still be caught. See R-15.
+  EMBED_REPEAT_RAW="$RAW_DIR/item-embed-metadata-repeated.raw"
+  EMBED_REPEAT_STATUS=""
+  EMBED_REPEAT_TYPE=""
+  EMBED_REPEAT_ATTEMPTS=0
+  for _ in 1 2 3 4 5 6; do
+    EMBED_REPEAT_ATTEMPTS=$((EMBED_REPEAT_ATTEMPTS + 1))
+    EMBED_REPEAT_META="$(curl -sS -X POST "$BASE_URL/api/tools/item/$ITEM_ID/embed-metadata?backup=1" \
+      -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+      -o "$EMBED_REPEAT_RAW" -w '%{http_code} %{content_type}')"
+    EMBED_REPEAT_STATUS="${EMBED_REPEAT_META%% *}"
+    EMBED_REPEAT_TYPE="${EMBED_REPEAT_META#* }"
+    [ "$EMBED_REPEAT_STATUS" = "200" ] || break
+  done
+  if [ "$EMBED_REPEAT_STATUS" = "200" ]; then
+    log "the embed queue drained before all $EMBED_REPEAT_ATTEMPTS attempts — not overwriting the committed refusal"
+  else
+    log "POST /api/tools/item/$ITEM_ID/embed-metadata?backup=1 (attempt $EMBED_REPEAT_ATTEMPTS, status $EMBED_REPEAT_STATUS) -> item-embed-metadata-repeated.json"
+    record "$EMBED_REPEAT_RAW" "$OUT_DIR/item-embed-metadata-repeated.json" \
+      "$EMBED_REPEAT_STATUS" "$EMBED_REPEAT_TYPE"
+  fi
 
   # MGR-007 — **what actually happened to the files**, which the `200` above does not say.
   #
