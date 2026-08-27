@@ -404,7 +404,22 @@ class PlaybackService : MediaLibraryService() {
         val current = player ?: return null
         val item = current.currentMediaItem ?: return null
         val positionMs = current.currentPosition
-        if (positionMs <= 0L) return null
+        /*
+         * Two reasons there is nothing worth writing, in one condition because they are one idea.
+         *
+         * A position of zero means the book has not started, and writing it would move a listener back to
+         * the beginning of one they were part-way through.
+         *
+         * `docs/risks.md` R-61 is the second. `BookMediaSourceFactory` falls back to playing the first file
+         * when a track's length is unknown and `TrackDurations` could not recover it; `currentPosition` is
+         * then an offset into *that file*, and writing it here would replace the book's stored progress with
+         * it — a 34-hour book reduced to minutes on the next read. Product priority 2 is *do not lose
+         * progress*, and declining is how this obeys it.
+         *
+         * Silent rather than logged: this runs every few seconds, and the factory already warns once per
+         * session with the reason. A warning per tick would bury it.
+         */
+        if (positionMs <= 0L || MediaItems.isSingleFileFallback(item)) return null
         // ADR-0016 — the player's timeline is the book, so the position and the duration are read straight
         // off it. There is no per-file arithmetic left to get wrong.
         return PositionSnapshot(

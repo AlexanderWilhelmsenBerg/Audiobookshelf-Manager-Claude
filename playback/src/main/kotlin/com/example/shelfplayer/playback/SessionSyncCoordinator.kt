@@ -234,9 +234,18 @@ class SessionSyncCoordinator @Inject constructor(
      */
     private fun snapshot(): Snapshot? {
         val media = player ?: return null
-        media.currentMediaItem ?: return null
+        val item = media.currentMediaItem ?: return null
         val positionMs = media.currentPosition
-        if (positionMs <= 0L) return null
+        /*
+         * The same two reasons as the local journal's `positionSnapshot`, and the same single condition.
+         *
+         * Zero means the book has not started. `docs/risks.md` R-61 is the second: when a track's length was
+         * unknown and unrecoverable, the player's timeline is one file and `currentPosition` is an offset
+         * into it. Sending that to `PATCH /api/me/progress/…` would overwrite the account's progress *on the
+         * server*, where every other device then reads it — the widest form of the same data loss.
+         * `BookMediaSourceFactory` logs the reason once when the session opens.
+         */
+        if (positionMs <= 0L || MediaItems.isSingleFileFallback(item)) return null
         // ADR-0016 — one window per book, so both numbers are the book's and neither is converted.
         return Snapshot(position = media.bookPosition(), duration = media.bookDuration())
     }

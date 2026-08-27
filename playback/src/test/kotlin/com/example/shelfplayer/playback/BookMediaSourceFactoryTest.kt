@@ -95,9 +95,38 @@ class BookMediaSourceFactoryTest {
      *
      * Whether Audiobookshelf can even report a zero duration is unverified — no capture has produced one
      * (PRODUCT_SPEC 22.5) — so this is written defensively rather than to a known case.
+     *
+     * ### Why this needs *two* unknown tracks now (`docs/risks.md` R-61)
+     *
+     * `MediaItems.queueFor` repairs a single missing length from the server's own total before the item ever
+     * reaches this factory, so one zero-duration track no longer falls back — it concatenates, which
+     * `a single missing length is repaired before the factory sees it` below asserts. Two cannot be split
+     * between each other, so that is what reaches this branch. When this test was written with one track the
+     * repair did not exist; it went red the moment it did, which is the intended way to be told.
      */
     @Test
-    fun `a book with a zero-duration track falls back to the plain factory`() {
+    fun `a book with two zero-duration tracks falls back to the plain factory`() {
+        val ragged = session(
+            tracks = listOf(
+                track(1, 0.seconds, 6.seconds),
+                track(2, 6.seconds, Duration.ZERO),
+                track(3, 6.seconds, Duration.ZERO),
+            ),
+        )
+
+        val source = factory.createMediaSource(MediaItems.queueFor(ragged).item)
+
+        assertFalse(source is ConcatenatingMediaSource2)
+    }
+
+    /**
+     * The repair, seen from the factory: one unknown length no longer costs the book its timeline.
+     *
+     * This is the case that used to reach the fallback and now does not — a book is still one window, which
+     * is what keeps `currentPosition` a book position for every reader in the app.
+     */
+    @Test
+    fun `a single missing length is repaired before the factory sees it`() {
         val ragged = session(
             tracks = listOf(
                 track(1, 0.seconds, 6.seconds),
@@ -107,13 +136,18 @@ class BookMediaSourceFactoryTest {
 
         val source = factory.createMediaSource(MediaItems.queueFor(ragged).item)
 
-        assertFalse(source is ConcatenatingMediaSource2)
+        assertTrue(source is ConcatenatingMediaSource2)
     }
 
     /** And it says so, because a book playing only its first file is worth seeing in a support report. */
     @Test
     fun `the fallback is warned about, with a count and no urls`() {
-        val ragged = session(tracks = listOf(track(1, 0.seconds, Duration.ZERO)))
+        val ragged = session(
+            tracks = listOf(
+                track(1, 0.seconds, Duration.ZERO),
+                track(2, 0.seconds, Duration.ZERO),
+            ),
+        )
 
         factory.createMediaSource(MediaItems.queueFor(ragged).item)
 
