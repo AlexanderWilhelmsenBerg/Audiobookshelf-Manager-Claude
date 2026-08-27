@@ -106,7 +106,7 @@ first.
 | **SAF folder choice is a volume, not an arbitrary directory** (DL-003) | Volume selection covers the real need — internal or SD card. |
 | **Four job states, not twelve** (§12) | By design. |
 | **`allowBackup="false"`** (R-20) | The right default for a store of server credentials. Needs a line in the release notes so a user replacing a phone does not read it as data loss. |
-| **No signing configuration in the repository** (R-05) | Play App Signing; no key material here, ever. |
+| **No key material in the repository** (R-05) | Play App Signing; no key material here, ever. Since 2026-08-27 the build *accepts* a key supplied from outside the checkout, so a release APK can be signed and installed — and refuses a keystore inside it. `docs/release.md` § Signing. |
 | **Auto-play from a cold start is unreliable** (R-24) | Android's background-start rules, not this app's. Correctly disclosed rather than "fixed". |
 
 ---

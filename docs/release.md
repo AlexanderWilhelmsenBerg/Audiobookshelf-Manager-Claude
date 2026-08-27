@@ -28,16 +28,78 @@ code is permanent. See ADR-0024.
 
 ## Signing
 
-There is no signing configuration in this repository and there must not be one. Release builds produced
-by CI are unsigned. Signing happens only in a protected environment holding the key material, never in a
-workflow triggered by a push (`PRODUCT_SPEC 18`).
+**No key material lives in this repository and none ever may.** What changed on 2026-08-27 is that the
+build now *accepts* a key from outside it, because the previous state — no signing configuration at all —
+meant the release variant could not be installed on any device and there was no supported way to produce
+an upload artefact either. That was the whole of "the release build is not installable".
+
+The default is unchanged: supply nothing and the release APK is unsigned, exactly as before. `main.yml`,
+which is push-triggered, supplies nothing and stays unsigned — `PRODUCT_SPEC 18` forbids signing in a
+workflow a push can start.
+
+### Locally
+
+Put the four values in `~/.gradle/gradle.properties`, which is outside the checkout:
+
+```properties
+bookwave.signing.storeFile=/home/you/.bookwave/upload.jks
+bookwave.signing.storePassword=…
+bookwave.signing.keyAlias=upload
+bookwave.signing.keyPassword=…
+```
+
+Then `./gradlew :app:assembleRelease` produces a signed, installable APK. Verify it with
+`apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk`.
+
+Generate an upload key with, and keep the answers somewhere a lost laptop does not take with it:
+
+```bash
+keytool -genkeypair -v -keystore ~/.bookwave/upload.jks -alias upload   -keyalg RSA -keysize 4096 -validity 10000
+```
+
+### In the Build APK workflow
+
+Set four repository secrets and choose the `release` variant:
+
+| Secret | Value |
+| --- | --- |
+| `BOOKWAVE_SIGNING_KEYSTORE_BASE64` | `base64 -w0 ~/.bookwave/upload.jks` |
+| `BOOKWAVE_SIGNING_STORE_PASSWORD` | the keystore password |
+| `BOOKWAVE_SIGNING_KEY_ALIAS` | `upload` |
+| `BOOKWAVE_SIGNING_KEY_PASSWORD` | the key password |
+
+The run summary reports signed or unsigned by asking `apksigner` about the artefact, not by checking
+whether a secret was set.
+
+### The three things the build refuses
+
+`build-logic`'s `ReleaseSigning.kt` fails the build rather than warning, in each case:
+
+- **a partly supplied set** — a keystore without an alias would otherwise produce a silently *unsigned*
+  APK that fails at install with a message about the package rather than about the alias;
+- **a keystore inside the checkout** — `.gitignore` lists `*.jks` and `*.keystore` and is advisory: one
+  `git add -f`, one rename to `upload.key`, or one archive of the working tree defeats it. R-05 predicted
+  exactly this, and the refusal is the part that cannot be bypassed by accident;
+- **a keystore that is not there** — named at configuration time rather than as a signing-task stack
+  trace four minutes in.
+
+A relative path is resolved against the home directory, never against the project.
+
+### What this is not
+
+It is not the key end users verify against. ADR-0024 chose Play App Signing, so Play holds that key and
+re-signs every upload; this is an *upload* key, and losing it is recoverable by asking Play to reset it.
+Signature schemes are left to AGP, which selects them from `minSdk`: at 26 every supported device
+verifies v2, and an explicit `enableV1Signing = true` was tried, observed to be ignored, and removed.
 
 ## The pipeline today
 
 `.github/workflows/pull-request.yml` — Gradle wrapper validation, secret scan, `verifyDebug` with
 warnings-as-errors, Room schema diff, debug APK, dependency report.
 
-`.github/workflows/main.yml` — the above plus release lint and an unsigned release assembly.
+`.github/workflows/main.yml` — the above plus release lint and an unsigned release assembly. It stays
+unsigned deliberately: it is push-triggered, and `PRODUCT_SPEC 18` allows signing only in a workflow
+somebody starts on purpose.
 
 `.github/workflows/contract-capture.yml` — captures response shapes from a real server on demand
 (`PRODUCT_SPEC 22.5`).
@@ -60,10 +122,10 @@ adds `verifyDebug` first, off by default so a quick device build stays quick.
 gate, so an APK built for a commit nobody asked about is storage and runner time for an artefact that
 expires unread.
 
-**The release variant is unsigned and cannot be installed.** Play App Signing holds the key and it is not
-in this repository (ADR-0024), so that variant is for inspecting what R8 produced — which nothing has ever
-done. Use `debug` for a phone. The release run also uploads the R8 mapping, because an APK kept without
-its mapping is one whose crashes cannot be read.
+**The release variant installs only if the four signing secrets are set** — see *Signing* above. Without
+them it is unsigned and is for inspecting what R8 produced; with them it is an ordinary installable APK.
+The run summary says which, having asked `apksigner` rather than assumed. The release run also uploads the
+R8 mapping, because an APK kept without its mapping is one whose crashes cannot be read.
 
 The artefact is named from the version read back **out of the built APK**, not out of the build script.
 R-04 is why: a `versionName` that had not moved in nine builds made every field report name the wrong
@@ -86,7 +148,7 @@ section explains each requirement and which task it gates.
 | Managed-device tests | 18, 17.2 | CI has no emulator. Still the largest single hole, though no longer a total one: `:core:datastore` has an instrumented suite over the profile lock's storage; its first physical run passed 27/27 on an API-36 Samsung on 2026-08-23. No other module has one, and none of it runs in CI. |
 | Two-hour playback soak; process-death progress budget | 25, 17.3 | A device and patience. No new infrastructure. |
 | Android Auto verification in the Desktop Head Unit | 17.2 | Nothing. An older build passed discovery/media-button resume in a car on 2026-08-14, but the current browse tree and rendered host surface have not run in DHU/a head unit. Phone screenshots cannot substitute for a car host. |
-| Launch the release APK once | 15 | Nothing. R8 runs in CI and its output is never executed. |
+| Launch the release APK once | 15 | Nothing, and it is now possible: the release variant can be signed from a key held outside the repository, so the R8 build can be installed. A signed APK was produced and `apksigner`-verified on 2026-08-27 with a throwaway key; launching one on hardware is the remaining step. |
 | The four 17.3 numbers, and the baseline profile | 17.3 | The `:benchmark` module exists and is compiled on every pull request. What is missing is a run: `./gradlew :benchmark:connectedBenchmarkAndroidTest` with a phone attached, then `docs/benchmark.md`'s results table filled in and the recorded `baseline-prof.txt` committed. |
 
 ## The Software Bill of Materials
