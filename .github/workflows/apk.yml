@@ -14,12 +14,26 @@ name: Build APK
 # gate on `main`, and an APK built for a commit nobody asked about is 27 MB of storage and three minutes of
 # runner for an artefact that expires unread. Asking for one is a deliberate act, so the trigger is too.
 #
-# ## The release build is unsigned, and that is the point
+# ## Whether the release build is installable depends on four repository secrets
 #
-# `PRODUCT_SPEC 15` and ADR-0024 keep key material out of the repository — Play App Signing holds it.
-# A release APK from here therefore **cannot be installed** without being signed first; it is for
-# inspecting what R8 produced, which nothing has ever done (`docs/release.md` lists launching it once as
-# still outstanding). Choose `debug` for anything you intend to put on a phone.
+# `PRODUCT_SPEC 15` and ADR-0024 keep key material out of the *repository* — Play App Signing holds the
+# key that matters, and what a maintainer needs here is an **upload** key. With the four secrets below
+# set, this workflow signs the release APK and it installs on a phone. Without them it produces exactly
+# what it always did: an unsigned APK, useful for inspecting what R8 emitted and impossible to install.
+# The run summary says which of the two happened, read back out of the artefact rather than assumed.
+#
+#   BOOKWAVE_SIGNING_KEYSTORE_BASE64   base64 of the upload keystore (`base64 -w0 upload.jks`)
+#   BOOKWAVE_SIGNING_STORE_PASSWORD
+#   BOOKWAVE_SIGNING_KEY_ALIAS
+#   BOOKWAVE_SIGNING_KEY_PASSWORD
+#
+# The keystore is written to the runner's temp directory, never into the checkout — the build refuses a
+# keystore inside the repository outright, which is `ReleaseSigning.kt`'s second refusal.
+#
+# **This workflow is `workflow_dispatch` only, which is what makes signing here legitimate.**
+# `PRODUCT_SPEC 18` forbids signing in a workflow triggered by a push; asking for a signed build is a
+# deliberate act by somebody with write access, and `main.yml` — which *is* push-triggered — is left
+# unsigned.
 on:
   workflow_dispatch:
     inputs:
@@ -70,7 +84,32 @@ jobs:
         if: ${{ inputs.run_checks }}
         run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true
 
+      # Decoded outside the checkout, and removed by the runner with the rest of RUNNER_TEMP. Skipped
+      # entirely when the secret is absent, which leaves the build with no signing inputs at all.
+      - name: Stage the upload keystore
+        id: keystore
+        if: ${{ inputs.variant == 'release' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          # The emptiness test is inside the script rather than in the step's `if`: a step's own `env`
+          # block is not in scope for its own `if` expression, so `env.KEYSTORE_BASE64 != ''` there is
+          # always true and would decode an empty secret into an empty keystore — which reaches Gradle
+          # as a *partly* configured signing setup and fails the build for the wrong reason.
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "No signing keystore secret set; the release APK will be unsigned."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "path=$RUNNER_TEMP/upload.jks" >> "$GITHUB_OUTPUT"
+
       - name: Assemble
+        env:
+          BOOKWAVE_SIGNING_STORE_FILE: ${{ steps.keystore.outputs.path }}
+          BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          BOOKWAVE_SIGNING_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          BOOKWAVE_SIGNING_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
         run: ./gradlew :app:assemble${{ inputs.variant == 'release' && 'Release' || 'Debug' }}
 
       # The version is read back out of the built APK rather than out of the build script, because the
@@ -99,8 +138,17 @@ jobs:
             echo "| Checks | ${{ inputs.run_checks && 'verifyDebug passed' || 'not run — assembled only' }} |"
             echo
             if [ "${{ inputs.variant }}" = "release" ]; then
-              echo "> **Unsigned.** Play App Signing holds the key and it is not in this repository"
-              echo "> (ADR-0024), so this cannot be installed as-is. Use the debug variant for a phone."
+              # Asked of the artefact rather than inferred from whether a secret was set: the point of
+              # the line is to tell somebody whether the file they are about to download will install.
+              APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+              if "$APKSIGNER" verify "$APK" >/dev/null 2>&1; then
+                echo "> **Signed** with the upload key, and installable. Play App Signing re-signs it"
+                echo "> on upload (ADR-0024), so this is not the key end users will verify against."
+              else
+                echo "> **Unsigned**, because the signing secrets are not set on this repository."
+                echo "> It cannot be installed as-is — it is for inspecting what R8 produced."
+                echo "> \`docs/release.md\` lists the four secrets. Use the debug variant for a phone."
+              fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
