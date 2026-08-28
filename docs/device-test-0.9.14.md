@@ -29,32 +29,43 @@ forwards port 5277 and launches the executable.
 
 ### Where this run picks up
 
-The 2026-08-27 run got as far as §5.1 and found two defects. Both are fixed and merged, and **the section
-that found the worse one is the first thing to re-run** — a fix nobody re-tested is a fix nobody has.
+The 2026-08-27 run got to §5.1; the **2026-08-28/29 run finished the document**. It closed the two oldest
+items in this project and left one defect open. That defect is what the next run is for.
 
-| § | 2026-08-27 | Now |
+| § | 2026-08-29 | Now |
 | --- | --- | --- |
-| 1 Controller security | Passed, 1.1–1.4 | Re-run only if §2 misbehaves |
-| 2 Android Auto | **Failed** — browse root empty, cold *and* warm | **Re-run first. R-66 is fixed and unverified on hardware.** |
-| 3 Server history | Passed, 3.1–3.5 | Done, unless you want 3.6 |
-| 4 Sleep timer | Passed | One open question left: the notification action (§4 step 8) |
+| 1 Controller security | Passed, 1.1–1.4 | Done |
+| 2 Android Auto browse | **Passed** — `children=6` at the root, no browse failure | **R-66 confirmed on hardware.** Done. |
+| 2.8 Tapping a book | **FAILED** — stayed on "Henter valget ditt" | **The one open defect. §2.8 is new and captures it (R-71).** |
+| 3 Server history | Passed, 3.1–3.6 | Done |
+| 4 Sleep timer | Passed, including the notification action | Done — `[3] "Sovetid 3 min"` settled the open question |
 | 5.1 Multi-file resume | Passed | Done |
-| 5.2 Degraded path | Not attempted | Optional, and probably not provokable |
-| 6 Release APK | Not reached | **Never once executed, on any build** |
-| 7 Benchmarks | Not reached | Only your hardware can produce these |
-| 8–11 | Not reached | Still open |
-| 12 About tab and event log | New | **New in PR #55. Never seen on a device.** |
+| 5.2 Degraded path | Not captured | Optional, and probably not provokable |
+| 6 Release APK | **Passed** — built, signed, installed, launched, played offline | **First execution in the project's life.** Done. |
+| 7 Benchmarks | Ran; numbers not retained | **Still open.** Re-run and record the four numbers. |
+| 8 Process death and soak | Passed at all four checkpoints | Rebuffer count still not captured |
+| 9–11 | Passed | Done |
+| 12 About tab and event log | Passed, both locales | Done |
+| 0.2 Install over the top | Recorded PASS — **but see below** | **Re-run. It did not test what R-68 broke (R-74).** |
 
-Three things changed since your last run, and one of them changes how you install:
+**What that run established, and what it did not.**
 
-- **R-66 — the car's browse tree threw on every request.** Fixed. §2 is the verification, and it is the only
-  verification there is: no JVM test can construct a `MediaSession.ControllerInfo`, so the session callbacks
-  are unreachable from the test tier and nothing but a head unit can confirm this.
-- **R-67 — choosing a language crashed the app, and kept crashing it on every launch.** Fixed. §12.3 re-tests
-  it. It is the one test here that used to need an uninstall to recover from; it no longer should.
-- **R-68 — every build was signed with a different key**, which is why installing over the top failed and you
-  had to uninstall and sign in again each time. Fixed — but **the switch costs one last uninstall**, and §0.2
-  is where you pay it.
+- **R-66 is confirmed fixed.** Four `children=` lines and no `A browse request failed`. This was the fix with
+  no test behind it, and a head unit was the only thing that could confirm it. Closed.
+- **§6 ran.** R8's output had never been executed on any build. It now has: HTTPS sign-in, a 195-book
+  library, a 15-file download played in aeroplane mode. The oldest open item in the project.
+- **§0.2's PASS does not mean R-68 is fixed.** It tested a local rebuild installing over a local install,
+  which passed before the fix too. §0.2 now tests the case that was actually broken. See R-74.
+- **The `children=` lines came from the in-app log, not logcat** — logcat carried nothing at all on that
+  device. The scripts now say so instead of presenting an empty result as an absence (R-70).
+
+**Two things changed in the build since:**
+
+- **The car selection path now logs what it was asked and what the player did with it.** It logged nothing
+  before, which is why §2.8's defect has no diagnosis yet.
+- **R-72 — a third off-thread player read**, in `onSetMediaItems`, the site R-66 did not touch. Fixed. It is
+  *not* the cause of §2.8 — the missing `A browse request failed` rules that out — but it would have turned
+  an unresolvable id into a permanent spinner.
 
 **Record the outcome inline, next to each step.** A step that fails is worth more than a step skipped. Where
 a step says *capture the log*, do it even if the step passed — several of these tests are measurements
@@ -133,21 +144,34 @@ Debug now uses the same supplied key as release. That fixes it going forward and
    enforces it. Doing this now also sets up §6.
 2. Uninstall whatever BookWave debug build is on the phone. This is the last time.
 3. Run §0.1, sign in, and note the certificate digest `00-setup.sh` printed.
-4. **Then prove it**, which is the actual test:
+4. **Then prove it — and prove the right thing.** A second local `installDebug` is *not* the test:
 
    ```bash
-   ./gradlew :app:installDebug   # expect: success, and your sign-in still there
+   ./gradlew :app:installDebug   # necessary, but it passed before the fix too
    ```
 
-   PowerShell 7:
+   One machine that builds keeps its own generated keystore, so a local rebuild has always installed over
+   a local install. R-68's own row says exactly that: *"Local rebuilds were fine, which is why this
+   survived: the machine that built kept the file, and the machine that tested did not build."* The case
+   that cost you a sign-in on every build was a **CI-built** APK meeting a locally-built one, and it is
+   the case that has still never been run.
 
-   ```powershell
-   .\gradlew.bat :app:installDebug   # expect: success, and your sign-in still there
+   So: open the **Build APK** workflow's latest run, download the `app-debug` artefact, and install it
+   over your local build **without uninstalling**:
+
+   ```bash
+   adb install -r ~/Downloads/app-debug/app-debug.apk    # CI's APK over your local one
+   ./gradlew :app:installDebug                           # and your local one back over CI's
    ```
 
-**Expect:** it installs over the top and the app is still signed in, still has the passcode, still has the
-downloads. If it fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the key is not being picked up and every
-later section in this document will keep costing you a sign-in — stop and say so.
+**Expect: both directions succeed, and the sign-in, passcode and downloads survive both.** That is R-68
+closed. If either fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the two machines are not producing the
+same signature — the key is not reaching CI, or not reaching your build — and every later section in this
+document will keep costing you a sign-in. Stop and say so.
+
+**This only works if debug is signed with the shared key.** If you told the key helper *not* to sign debug
+builds, the two machines cannot produce the same signature and this test cannot pass; that is the whole
+subject of the step. `docs/risks.md` R-74 records why this replaced the old wording.
 
 Without those properties the build still works and still installs; it just falls back to the generated key
 and nothing is fixed. `bookwave.signing.debug=false` opts out on purpose. The `benchmark` module is untouched
@@ -174,6 +198,7 @@ You need **two accounts** on the local instance and **at least one multi-file bo
 | 0 | `00-setup.sh` / `00-setup.ps1` | The phone, and the signing properties from §0.2 |
 | 1 | `01-controller-security.sh` / `01-controller-security.ps1` | The phone. §1.3 needs a third-party media controller app. |
 | 2 | `02-android-auto.sh` / `02-android-auto.ps1` | Desktop Head Unit, or a real head unit. PowerShell opens `02-android-auto-dhu.ps1` in its own window. |
+| 2.8 | `02-car-selection.sh` / `02-car-selection.ps1` | The same head unit. Run it **while connected** — it clears the log, waits for your tap, then dumps. |
 | 3 | `03-server-history.sh` / `03-server-history.ps1` | The web client on a computer, signed in as the **same** account as the phone |
 | 4 | `04-sleep-timer.sh` / `04-sleep-timer.ps1` | The phone, and about twelve minutes of it playing |
 | 5 | `05-multifile-resume.sh` / `05-multifile-resume.ps1` | A multi-file book. §5.2 needs a crafted file — read it first, it may not be runnable |
@@ -320,9 +345,9 @@ Windows PowerShell 7 (opens the dedicated DHU window for you):
    ```powershell
    & .\scripts\device-test\02-android-auto-dhu.ps1
    ```
-3. Open BookWave in the car. Browse into a library and select a book as well as checking that the rows are
-   present. The book must replace the loading message with its playable detail/queue; a populated browse
-   tree that cannot open a book is still a failure.
+3. Open BookWave in the car and check the rows are present. **Selecting a book is §2.8**, which is its own
+   section with its own script, because a populated browse tree that cannot open a book is still a failure
+   and the 2026-08-28 run found exactly that.
 
 **Expect: the browse root shows items** — the shelves, not zero. Then try search, which worked before and
 must still.
@@ -369,8 +394,7 @@ must still.
    artwork, reconnection after unplugging, and the resume tile.
 
 **Result (2026-08-28, root cold — item count):** PASS for population: root returned 6 items; the visible
-library rows were present. **FAIL for selection:** tapping a book stayed on “Henter valget ditt” and no book
-was loaded.
+library rows were present. **Selection failed** — carried over to §2.8, which is where it is now tested.
 
 **Result (root warm — item count):** PASS for population, although the exact count was not retained. After
 playback was started on the phone, reconnecting DHU opened the active book and exposed working transport
@@ -398,6 +422,60 @@ remaining artwork, reconnect and resume-tile checks worked.
 **Additional observation:** after transport testing, the event log recorded the same interval position
 (2,413,542 ms) about every 30 seconds from 21:42:11 through 22:01:54. Confirm whether playback was paused
 during that period before classifying this as redundant syncing or stalled progress.
+
+### 2.8 Tapping a book — the half that population does not cover (R-71)
+
+**This is the open defect, and this run is what settles it.** Your 2026-08-28 report is the first time
+anyone saw the browse tree populate: six items at the root, thirteen and twenty behind the tabs. And a book
+that would not open — the head unit stayed on *"Henter valget ditt"* and nothing loaded.
+
+**Two explanations were checked against your own log and both are wrong.** A throw in `onSetMediaItems`
+would have logged `A browse request failed`, which `future` writes for *every* session callback, and your
+log carried none. A withheld `COMMAND_SET_MEDIA_ITEM` from PR #48 is impossible for a controller that
+browsed, because `mayBrowse` and the player-command list read the same `accessFor`. So the car was trusted,
+the book resolved, and it still did not play.
+
+**Why there is no third hypothesis: a car tap that worked logged nothing at all.** `onSetMediaItems` had no
+log line, `openQueue` logged only failures, and the player never said what state it was in. A queue that was
+set and never prepared and a queue that was never set produced identical logs. That is R-64 repeating — the
+evidence existed and was discarded where it would have been read — so this build adds the two lines that
+separate them, and this section captures them.
+
+```bash
+./scripts/device-test/02-car-selection.sh
+```
+
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\02-car-selection.ps1
+```
+
+Run it **with the head unit already connected**. It clears the log buffer, waits for you, and dumps only
+what your tap produced.
+
+1. Start the script. When it pauses, **tap a book in the car and wait up to 30 seconds** — whether it ever
+   loads is the measurement, so leaving early records the wrong answer.
+2. Press Enter. Read the two lines it prints.
+
+**What the answer means:**
+
+| Line | Reading |
+| --- | --- |
+| `handedBack=0` | This service could not resolve your tap. The defect is in resolution, and `kind=` says which id form the car sent. |
+| `handedBack=1` then `state=buffering` → `state=ready` | The service and the player both did their jobs. The defect is in the car's own presentation. |
+| `handedBack=1` and **no** `The player changed state` line | The queue was answered and never reached the player, or was never prepared. This is the most likely shape. |
+| `handedBack=1` then `state=idle` only | The player took it and refused to prepare — look for `A playback error` next. |
+| No `A controller asked to set what plays` line at all | The tap never reached this service. The defect is upstream, in discovery or the browse item's own flags. |
+
+3. **If logcat came back empty, the script will say so and it is not a failure of the app** — that happened
+   on your last run (R-70). Use Settings → About → Diagnostics → **Open the event log**, search
+   `asked to set`, then `player changed state`, and copy both.
+
+**Result (did the book open?):**
+**The `asked to set what plays` line, in full:**
+**The `player changed state` lines:**
+**Anything else in the log within a few seconds of the tap:**
 
 ---
 
@@ -646,9 +724,14 @@ passwords without displaying them, and writes the four properties for you:
 ```
 
 It never overwrites an existing key; if the chosen file exists, it can verify and configure that key after
-you explicitly choose to use it. For this device-test run, answer **No** when it asks whether to sign debug
-builds too; changing the debug signature would make the next debug install require one uninstall and would
-erase the current debug profile and downloads. Back up the generated key and passwords somewhere a lost
+you explicitly choose to use it.
+
+**Answer yes when it asks whether to sign debug builds too.** It costs one uninstall, once — the debug
+signature genuinely changes on the first build that uses a key, and that erases the current debug profile
+and downloads. Declining is what an earlier version of this document advised, and it was wrong: without the
+shared key your machine and CI cannot produce the same signature, so §0.2 cannot pass and R-68 stays open
+regardless of what the run records. Pay the uninstall at the start of a session, deliberately, rather than
+at the start of every session by accident. Back up the generated key and passwords somewhere a lost
 computer does not take with it. The helper stops any running Gradle daemon after writing the properties;
 otherwise a daemon started during a partial setup can keep reporting the other three values as missing.
 The release script also checks both the terminal's `GRADLE_USER_HOME` and the normal Windows user Gradle

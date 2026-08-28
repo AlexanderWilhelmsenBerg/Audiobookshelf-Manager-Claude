@@ -51,13 +51,42 @@ run() {
 # caller runs it on the next line.
 show() { printf '  %s$ %s%s\n' "$BOLD" "$*" "$OFF"; }
 
-# The shape most of these scripts need: one grep over BookWave's own log lines. Never `|| true` on the
-# pipeline as a whole — a grep that matches nothing is the expected result in half these sections, and in
-# the other half its absence is the finding, so each caller says which.
+# The app's own logcat tag. `AndroidLogSink` writes every line as `ShelfPlayer/<Category>`, so this is what
+# separates "the app logged nothing" from "logcat is not carrying the app at all" — which are opposite
+# findings and, on the 2026-08-28 run, looked identical.
+APP_TAG="ShelfPlayer"
+
+# Clear the log buffer so what follows is a small, fresh window.
+#
+# This is the fix for the defect the 2026-08-28 run exposed. These scripts used to dump `logcat -d` long
+# after the thing being measured, and on that Samsung the buffer had rolled: every grep came back empty
+# while the in-app event log held all four `children=` lines. A tester following the script would have read
+# an empty result as a failed browse when the browse had worked — a signal that means nothing, which is
+# exactly what `docs/risks.md` R-15 is about. Clear first, act, then dump.
+logcat_clear() {
+  require_adb
+  "$ADB" logcat -c 2>/dev/null || true
+  ok "log buffer cleared — do the step now, then let this script dump it"
+}
+
+# One grep over BookWave's own log lines, with the preflight that makes an empty result mean something.
+#
+# Never `|| true` on the pipeline as a whole: a grep that matches nothing is the expected result in half
+# these sections and the finding in the other half, so each caller says which. But neither reading is safe
+# until we know logcat carries the app at all, which is what the preflight settles.
 logcat_grep() {
-  local pattern="$1" n="${2:-20}"
+  local pattern="$1" n="${2:-20}" carried
   show "adb logcat -d | grep -iE \"$pattern\" | tail -$n"
+  carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
   "$ADB" logcat -d 2>/dev/null | grep -iE -- "$pattern" | tail -"$n" || true
+  if (( carried == 0 )); then
+    bad "logcat holds NO $APP_TAG lines at all, so nothing above is evidence either way."
+    note "This device is not giving adb the app's log — a rolled buffer, or a vendor filter. Read"
+    note "Settings → About → Diagnostics → Open the event log instead, and search for the phrase."
+    note "Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70)."
+  else
+    note "logcat is carrying the app ($carried lines), so an empty result above is a real absence."
+  fi
 }
 
 # The SDK, resolved the way the build resolves it, so these scripts work whether or not the tools are on

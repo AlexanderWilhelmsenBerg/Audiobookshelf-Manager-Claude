@@ -65,12 +65,20 @@ function Resolve-BookWaveSdk {
         }
     }
 
-    foreach ($candidate in @(
-        $env:ANDROID_HOME,
-        $env:ANDROID_SDK_ROOT,
-        (Join-Path $env:LOCALAPPDATA 'Android\Sdk')
-    )) {
-        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+    # Built only from variables that are actually set. Join-Path throws on a null Path rather than
+    # returning null, so composing this list unconditionally made every script in this directory die on
+    # its first line whenever LOCALAPPDATA was unset - which is every non-Windows host, and any Windows
+    # session with a trimmed environment. The identical mistake was found by *running*
+    # Set-BookWavePath.ps1 in a container on 2026-08-28 and fixed there; this copy kept it (R-73).
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    foreach ($fromEnv in @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT)) {
+        if ($fromEnv) { $candidates.Add($fromEnv) }
+    }
+    if ($env:LOCALAPPDATA) { $candidates.Add((Join-Path $env:LOCALAPPDATA 'Android\Sdk')) }
+    if ($env:USERPROFILE) { $candidates.Add((Join-Path $env:USERPROFILE 'AppData\Local\Android\Sdk')) }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
             return (Resolve-Path -LiteralPath $candidate).Path
         }
     }
@@ -229,6 +237,23 @@ function Get-AdbOutput {
     return $output
 }
 
+# The app's own logcat tag. AndroidLogSink writes every line as 'ShelfPlayer/<Category>', so this is what
+# separates 'the app logged nothing' from 'logcat is not carrying the app at all' - opposite findings that
+# looked identical on the 2026-08-28 run.
+$AppTag = 'ShelfPlayer'
+
+function Clear-Logcat {
+    # Clear the buffer so the window that follows is small and fresh.
+    #
+    # This is the fix for what the 2026-08-28 run exposed. These scripts dumped the log long after the thing
+    # being measured, and on that Samsung the buffer had rolled: every match came back empty while the
+    # in-app event log held all four 'children=' lines. An empty result read as a failed browse when the
+    # browse had worked - a signal that means nothing (docs/risks.md R-15, R-70). Clear, act, then dump.
+    Require-Adb
+    & $Adb logcat -c 2>$null | Out-Null
+    Write-Ok 'log buffer cleared - do the step now, then let this script dump it'
+}
+
 function Show-LogcatMatches {
     param(
         [Parameter(Mandatory)][string[]]$Pattern,
@@ -240,6 +265,18 @@ function Show-LogcatMatches {
     $lines = Get-AdbOutput logcat -d -t 5000
     @($lines | Select-String -SimpleMatch -Pattern $Pattern | Select-Object -Last $Last) |
         ForEach-Object { $_.Line }
+
+    # The preflight that makes an empty result mean something.
+    $carried = @($lines | Select-String -SimpleMatch -Pattern $AppTag).Count
+    if ($carried -eq 0) {
+        Write-Bad "logcat holds NO $AppTag lines at all, so nothing above is evidence either way."
+        Write-Note 'This device is not giving adb the app log - a rolled buffer, or a vendor filter. Read'
+        Write-Note 'Settings > About > Diagnostics > Open the event log instead, and search for the phrase.'
+        Write-Note 'Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70).'
+    }
+    else {
+        Write-Note "logcat is carrying the app ($carried lines), so an empty result above is a real absence."
+    }
 }
 
 function Show-AppLog {

@@ -5,6 +5,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.minutes
 
@@ -63,6 +66,36 @@ class AutoLibraryTest {
     }
 
     /** A malformed id is nothing, not a book at position zero. */
+    @Test
+    fun `an id's kind names its shape and never its value`() {
+        // The whole reason `kindOf` exists is that the id itself may not be logged: an Audiobookshelf item
+        // id names a book as surely as its title does (14.5). A kind that leaked any part of the id would
+        // defeat the diagnostic it was written for, so this asserts the absence rather than the presence.
+        assertEquals("book", AutoLibrary.kindOf("book/tidewatch"))
+        assertEquals("at", AutoLibrary.kindOf("at/tidewatch/600000"))
+        assertEquals("tab", AutoLibrary.kindOf(AutoLibrary.TAB_CONTINUE))
+        assertEquals("root", AutoLibrary.kindOf(AutoLibrary.ROOT))
+        assertEquals("notice", AutoLibrary.kindOf(AutoLibrary.NOTICE_EMPTY))
+        assertEquals("empty", AutoLibrary.kindOf(""))
+        assertEquals("other", AutoLibrary.kindOf("something-else"))
+
+        for (id in listOf("book/tidewatch", "at/tidewatch/600000", AutoLibrary.TAB_CONTINUE)) {
+            assertFalse(AutoLibrary.kindOf(id).contains("tidewatch"), "kindOf leaked the id for $id")
+        }
+    }
+
+    @Test
+    fun `every id the car can play has a kind that is not other`() {
+        // The property that keeps the log honest. `resolve` decides what plays and `kindOf` describes it;
+        // if a later change teaches one about a new id form and not the other, a car tap would be logged as
+        // `kind=other` and the next person reading it would chase the wrong thing. This turns that red.
+        val playable = listOf("book/tidewatch", "at/tidewatch/600000", "at/li/brary/tidewatch/90000")
+        for (id in playable) {
+            assertNotNull(AutoLibrary.resolve(id), "$id should resolve")
+            assertNotEquals("other", AutoLibrary.kindOf(id), "$id resolves but has no kind")
+        }
+    }
+
     @Test
     fun `an id that does not parse resolves to nothing`() {
         assertNull(AutoLibrary.resolve("at/tidewatch/not-a-number"))
