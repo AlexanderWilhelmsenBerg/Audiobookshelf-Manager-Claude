@@ -71,6 +71,45 @@ Set four repository secrets and choose the `release` variant:
 The run summary reports signed or unsigned by asking `apksigner` about the artefact, not by checking
 whether a secret was set.
 
+### The debug build needs the key too, and that is not a nicety
+
+Set the four values and **`adb install -r` becomes an upgrade**: the sign-in, the passcode, the progress
+journal and every downloaded book survive. Leave them unset and it is not an upgrade at all.
+
+`debug` declared no signing config, so AGP falls back to `~/.android/debug.keystore` — and *generates* one
+when it is absent. A local machine keeps that file, so local rebuilds were fine. **A GitHub runner is
+ephemeral**, so every APK the Build APK workflow produced was signed with a brand-new key, and installing
+one over the previous one fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. The only way through is to
+uninstall, which wipes the profile and the downloads and makes the tester sign in again — on every single
+device build. A device session on 2026-08-27 reported exactly that.
+
+Measured rather than assumed, on 2026-08-27:
+
+| | Certificate SHA-256 |
+| --- | --- |
+| No key, build 1 (generated keystore deleted between builds, as a fresh runner has none) | `e005ff57…` |
+| No key, build 2 | `aa5fd8f7…` — **different**, hence the uninstall |
+| Supplied key, build 1 | `da510f61…` |
+| Supplied key, build 2, after `clean` | `da510f61…` — **stable** |
+
+**The switch itself costs one uninstall**, because the signature genuinely changes on the build where you
+start supplying a key. After that it stops.
+
+`bookwave.signing.debug=false` keeps AGP's own debug key if you would rather not sign debug with the upload
+key. The `benchmark` variant is untouched either way: it pins `signingConfigs.debug` explicitly, because it
+has to be installable on a machine that has no upload key.
+
+### An unsigned release now says so, while it is building
+
+```
+BookWave: this release APK will be UNSIGNED and cannot be installed.
+```
+
+Printed by `assembleRelease` itself, not at configuration time, so it appears when it applies and not on
+the hundreds of Gradle invocations that never build a release. It exists because "the release APK is not
+installable" was reported from a device session as a mystery, and the build had known the answer all along
+and said nothing.
+
 ### The three things the build refuses
 
 `build-logic`'s `ReleaseSigning.kt` fails the build rather than warning, in each case:

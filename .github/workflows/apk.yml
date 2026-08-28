@@ -14,13 +14,23 @@ name: Build APK
 # gate on `main`, and an APK built for a commit nobody asked about is 27 MB of storage and three minutes of
 # runner for an artefact that expires unread. Asking for one is a deliberate act, so the trigger is too.
 #
-# ## Whether the release build is installable depends on four repository secrets
+# ## Both variants depend on four repository secrets, and debug depends on them more than you think
 #
 # `PRODUCT_SPEC 15` and ADR-0024 keep key material out of the *repository* — Play App Signing holds the
-# key that matters, and what a maintainer needs here is an **upload** key. With the four secrets below
-# set, this workflow signs the release APK and it installs on a phone. Without them it produces exactly
-# what it always did: an unsigned APK, useful for inspecting what R8 emitted and impossible to install.
-# The run summary says which of the two happened, read back out of the artefact rather than assumed.
+# key that matters, and what a maintainer needs here is an **upload** key.
+#
+# **Release**: with the secrets set, the APK is signed and installs. Without them it is unsigned, useful
+# for inspecting what R8 emitted and impossible to install.
+#
+# **Debug**: with the secrets set, every APK this workflow produces carries the *same* signature, so
+# `adb install -r` upgrades in place and the sign-in, passcode, progress and downloaded books survive.
+# Without them AGP falls back to `~/.android/debug.keystore` — which it **generates**, because a fresh
+# runner has none — so every build is signed with a different key and installing one over another fails
+# with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. The only way through is to uninstall, which wipes everything
+# and makes the tester sign in again. That happened on every device build until 2026-08-27.
+#
+# The run summary prints the signer's fingerprint and says which of the two happened, read back out of
+# the artefact rather than assumed.
 #
 #   BOOKWAVE_SIGNING_KEYSTORE_BASE64   base64 of the upload keystore (`base64 -w0 upload.jks`)
 #   BOOKWAVE_SIGNING_STORE_PASSWORD
@@ -86,9 +96,15 @@ jobs:
 
       # Decoded outside the checkout, and removed by the runner with the rest of RUNNER_TEMP. Skipped
       # entirely when the secret is absent, which leaves the build with no signing inputs at all.
-      - name: Stage the upload keystore
+      # Both variants, not just release — this is what stops a device test losing its data.
+      #
+      # `debug` used to declare no signing config, so AGP fell back to `~/.android/debug.keystore` and
+      # *generated* one, because a fresh runner has none. Every APK this workflow produced was therefore
+      # signed with a different key, and installing one over the previous one gave
+      # INSTALL_FAILED_UPDATE_INCOMPATIBLE — so the tester had to uninstall, losing the sign-in, the
+      # passcode, the progress and every downloaded book, on every single build.
+      - name: Stage the signing keystore
         id: keystore
-        if: ${{ inputs.variant == 'release' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
         run: |
@@ -137,18 +153,34 @@ jobs:
             echo "| Commit | \`${GITHUB_SHA:0:8}\` on \`${GITHUB_REF_NAME}\` |"
             echo "| Checks | ${{ inputs.run_checks && 'verifyDebug passed' || 'not run — assembled only' }} |"
             echo
-            if [ "${{ inputs.variant }}" = "release" ]; then
-              # Asked of the artefact rather than inferred from whether a secret was set: the point of
-              # the line is to tell somebody whether the file they are about to download will install.
-              APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
-              if "$APKSIGNER" verify "$APK" >/dev/null 2>&1; then
-                echo "> **Signed** with the upload key, and installable. Play App Signing re-signs it"
-                echo "> on upload (ADR-0024), so this is not the key end users will verify against."
-              else
-                echo "> **Unsigned**, because the signing secrets are not set on this repository."
+            # Asked of the artefact rather than inferred from whether a secret was set: the point is to
+            # tell somebody whether the file they are about to download will install, and — for debug —
+            # whether it will install *over the one already on the phone*.
+            APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+            SIGNER=$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null \
+              | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+            if [ -n "$SIGNER" ]; then
+              echo "| Signer | \`${SIGNER:0:16}…\` |"
+            fi
+            echo
+            if [ -z "$SIGNER" ]; then
+              echo "> **Unsigned**, because the signing secrets are not set on this repository."
+              if [ "${{ inputs.variant }}" = "release" ]; then
                 echo "> It cannot be installed as-is — it is for inspecting what R8 produced."
-                echo "> \`docs/release.md\` lists the four secrets. Use the debug variant for a phone."
+              else
+                echo "> Signed with a key this runner generated and then threw away, so it will **not**"
+                echo "> install over an existing BookWave: \`adb install -r\` fails and you must"
+                echo "> uninstall first, losing the sign-in and the downloads."
               fi
+              echo "> \`docs/release.md\` § Signing lists the four secrets that fix this."
+            elif [ "${{ inputs.variant }}" = "release" ]; then
+              echo "> **Signed** with the upload key, and installable. Play App Signing re-signs it"
+              echo "> on upload (ADR-0024), so this is not the key end users will verify against."
+            else
+              echo "> **Signed** with the stable key, so \`adb install -r\` upgrades in place and the"
+              echo "> sign-in, passcode, progress and downloaded books all survive. The signer above"
+              echo "> should match the previous build's; if it changed, the first install needs an"
+              echo "> uninstall."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
