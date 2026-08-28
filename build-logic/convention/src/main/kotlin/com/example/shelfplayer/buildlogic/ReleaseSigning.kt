@@ -55,16 +55,82 @@ import java.io.File
  * build to accept key material, and says nothing about where a workflow would be allowed to get it.
  */
 internal fun ApplicationExtension.configureReleaseSigning(project: Project) {
-    val inputs = project.signingInputs() ?: return
+    val inputs = project.signingInputs()
+    if (inputs == null) {
+        project.warnWhenAssemblingAnUnsignedRelease()
+        return
+    }
 
     val store = project.resolveKeystore(inputs.storeFile)
+    val supplied = signingConfigs.create("bookwave") { applyInputs(inputs, store) }
+    buildTypes.named("release") { signingConfig = supplied }
 
-    val release = signingConfigs.create("release") { applyInputs(inputs, store) }
-    buildTypes.named("release") { signingConfig = release }
+    /*
+     * **The debug build gets the same key, and this is the half that fixes a real workflow.**
+     *
+     * `debug` declared no signing config, so AGP fell back to `~/.android/debug.keystore` — which it
+     * *generates* when it is absent. A GitHub runner is ephemeral, so every APK the Build APK workflow
+     * produced was signed with a brand-new key, and installing one over another gave
+     * `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. The only way through is to uninstall, which wipes the profile
+     * and the downloads and makes the tester sign in again. That happened on every single device build.
+     *
+     * A stable key makes `adb install -r` an upgrade instead: the sign-in, the passcode, the progress
+     * journal and the downloaded files all survive. For a project whose testing is a person with a phone,
+     * that is worth more than the release half of this file.
+     *
+     * **Opt out with `bookwave.signing.debug=false`** if you would rather keep AGP's own debug key — for
+     * instance to avoid the one-time uninstall the switch costs. It is one-time: the *first* install after
+     * the key changes still needs it, because the signature genuinely changed.
+     */
+    val alsoDebug = project.findProperty(DEBUG_SIGNING_PROPERTY)?.toString()?.toBoolean() ?: true
+    if (alsoDebug) buildTypes.named("debug") { signingConfig = supplied }
 
     project.logger.lifecycle(
-        "BookWave: the release variant will be signed with the key supplied outside this repository.",
+        if (alsoDebug) {
+            "BookWave: release and debug will be signed with the key supplied outside this repository."
+        } else {
+            "BookWave: release will be signed with the key supplied outside this repository; debug will not."
+        },
     )
+}
+
+/** `bookwave.signing.debug=false` keeps AGP's generated debug key. See [configureReleaseSigning]. */
+private const val DEBUG_SIGNING_PROPERTY = "bookwave.signing.debug"
+
+/**
+ * Says so — **when a release is actually being assembled**, and not before.
+ *
+ * An unsigned release APK cannot be installed, and until now nothing said that at build time. The build
+ * succeeded, wrote an `.apk`, and the failure surfaced minutes later as `adb: failed to install` with a
+ * message about the package rather than about the signature. A device session reported it as
+ * *"the release apk is not installable"*, which is exactly what it looks like from outside.
+ *
+ * Attached to the task rather than logged at configuration time, because configuration runs on every
+ * Gradle invocation — including the hundreds that never build a release — and a warning that prints when
+ * it does not apply is a warning people learn to scroll past.
+ */
+private fun Project.warnWhenAssemblingAnUnsignedRelease() {
+    tasks.matching { it.name == "assembleRelease" }.configureEach {
+        doFirst {
+            // Built line by line rather than as one `trimIndent`ed literal: `trimIndent` runs on the
+            // *interpolated* string, so a multi-line value spliced into it drags the common indent to
+            // zero and the whole message loses its shape. Observed, then fixed.
+            logger.warn(
+                buildString {
+                    appendLine()
+                    appendLine("BookWave: this release APK will be UNSIGNED and cannot be installed.")
+                    appendLine()
+                    appendLine("  No signing key was supplied, so the build produced an artefact for")
+                    appendLine("  inspecting what R8 emitted. For an installable one, put four values in")
+                    appendLine("  ~/.gradle/gradle.properties:")
+                    appendLine()
+                    SIGNING_INPUTS.forEach { appendLine("    ${it.property}=…") }
+                    appendLine()
+                    appendLine("  docs/release.md § Signing has the keytool command that generates the key.")
+                },
+            )
+        }
+    }
 }
 
 /** The four values a signing configuration needs, all of them present. */
