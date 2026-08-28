@@ -57,6 +57,14 @@ Generate an upload key with, and keep the answers somewhere a lost laptop does n
 keytool -genkeypair -v -keystore ~/.bookwave/upload.jks -alias upload   -keyalg RSA -keysize 4096 -validity 10000
 ```
 
+On Windows PowerShell 7, use the interactive helper instead. It locates this repository's JDK, keeps the
+key outside the checkout, hides passwords while they are entered, and safely updates the user Gradle
+properties. It never overwrites an existing key; it can explicitly adopt and verify one instead:
+
+```powershell
+& .\scripts\device-test\06-create-signing-key.ps1
+```
+
 ### In the Build APK workflow
 
 Set four repository secrets and choose the `release` variant:
