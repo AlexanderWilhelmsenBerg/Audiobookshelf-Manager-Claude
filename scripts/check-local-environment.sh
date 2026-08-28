@@ -79,11 +79,23 @@ if [[ -z "$SDK" || ! -d "$SDK" ]]; then
 else
   ok "SDK at $SDK"
 
-  # The build reads local.properties and nothing else. An SDK that exists but is not written down is
-  # the single most common way a first local build fails, so this is fixed rather than reported.
+  # The build reads local.properties and nothing else. An SDK that exists but is not written down is the
+  # single most common way a first local build fails.
+  #
+  # **Writing it needs `--install`.** This used to write it on a bare run, on the reasoning that fixing is
+  # kinder than reporting. That reasoning is fine and the rule it broke matters more: a script advertised
+  # as "report only" that edits a file in the working tree is a script whose promise cannot be trusted,
+  # and the next person to add a convenience here would have had a precedent for it. Report, then act
+  # when asked.
   if [[ ! -f local.properties ]] || ! grep -q '^sdk\.dir=' local.properties; then
-    echo "sdk.dir=$SDK" >> local.properties
-    ok "wrote sdk.dir to local.properties (it is gitignored, as it should be)"
+    if (( INSTALL )); then
+      echo "sdk.dir=$SDK" >> local.properties
+      ok "wrote sdk.dir to local.properties (it is gitignored, as it should be)"
+    else
+      bad "local.properties has no sdk.dir, so the build cannot find the SDK"
+      note "Re-run with --install to write it, or add this line to local.properties yourself:"
+      note "  sdk.dir=$SDK"
+    fi
   else
     ok "local.properties points at it"
   fi
