@@ -8,25 +8,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.outlined.PhoneAndroid
-import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
-import com.example.shelfplayer.core.model.playback.CarReadiness
 import com.example.shelfplayer.core.model.playback.ClockSkew
 import com.example.shelfplayer.core.model.playback.NotificationAccess
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
@@ -146,100 +138,6 @@ internal fun LazyListScope.notificationRows(access: NotificationAccess) {
 }
 
 /**
- * PRODUCT_SPEC PLAY-004 / PLAY-005 — the checks wave 3 has to pass, with what to do for each.
- *
- * Three states rather than two. A check the app can see the evidence for is marked [SyncCheckState.Seen]; one
- * whose evidence has not appeared yet is [SyncCheckState.Waiting]; and one that no reading on this device can
- * ever settle — a second phone, a killed process, a server's own record — is [SyncCheckState.NeedsDevice] and
- * says so rather than sitting unticked forever. A checklist that cannot distinguish "not done" from "not
- * checkable here" is a checklist that reads as failing.
- */
-internal fun LazyListScope.syncCheckRows(sync: SessionSyncDiagnostics, access: NotificationAccess, car: CarReadiness) {
-    item { SubHeader(text = stringResource(R.string.settings_section_checks)) }
-    item { Hint(text = stringResource(R.string.settings_checks_body)) }
-    items(checksFor(sync) + checkFor(access) + checkFor(car), key = { it.labelRes }) { check ->
-        SyncCheckRow(check)
-    }
-}
-
-/**
- * @property state whether this device has already seen the evidence.
- */
-internal data class SyncCheck(val labelRes: Int, val state: SyncCheckState)
-
-internal enum class SyncCheckState { Seen, Waiting, NeedsDevice }
-
-/**
- * The checklist, derived from the readings rather than stored.
- *
- * Each verdict names the *evidence*, and only evidence this process actually holds counts. "The queue drained"
- * is `Seen` when something has been accepted and nothing is waiting — which is exactly what a drained queue
- * looks like, and is false the moment either half stops being true.
- */
-internal fun checksFor(sync: SessionSyncDiagnostics): List<SyncCheck> = listOf(
-    SyncCheck(
-        labelRes = R.string.settings_check_queue_drains,
-        state = when {
-            sync.sessionsSynced > 0 && sync.sessionsPending == 0 -> SyncCheckState.Seen
-            else -> SyncCheckState.Waiting
-        },
-    ),
-    SyncCheck(
-        labelRes = R.string.settings_check_server_accepts,
-        state = if (sync.lastSyncedAt != null) SyncCheckState.Seen else SyncCheckState.Waiting,
-    ),
-    SyncCheck(
-        labelRes = R.string.settings_check_offline_queue,
-        // A row waiting to upload while none has ever been accepted is what an offline session looks like. It
-        // is also what a first play looks like before the first sync lands, so this is honest rather than
-        // conclusive — hence the wording, which asks for the *rise* to be watched.
-        state = if (sync.sessionsPending > 0) SyncCheckState.Seen else SyncCheckState.Waiting,
-    ),
-    SyncCheck(
-        labelRes = R.string.settings_check_offline_drains,
-        state = when {
-            sync.sessionsSynced > 0 && sync.lastFailureCode == null -> SyncCheckState.Seen
-            else -> SyncCheckState.Waiting
-        },
-    ),
-    // The three below cannot be settled from inside this process, and saying so is the point.
-    SyncCheck(labelRes = R.string.settings_check_kill, state = SyncCheckState.NeedsDevice),
-    SyncCheck(labelRes = R.string.settings_check_rewind, state = SyncCheckState.NeedsDevice),
-    SyncCheck(
-        labelRes = R.string.settings_check_clock,
-        state = if (sync.clockSkew?.isSignificant == true) SyncCheckState.Seen else SyncCheckState.NeedsDevice,
-    ),
-    SyncCheck(labelRes = R.string.settings_check_second_device, state = SyncCheckState.NeedsDevice),
-)
-
-/**
- * PRODUCT_SPEC PLAY-001 — the notification check, judged by whether one is posted.
- *
- * Separate from [checksFor] because its evidence is the device's notification state rather than the outbox,
- * and folding it in would make the wave-3 list depend on something wave 3 did not build. `Seen` means the app
- * observed its own notification, which is as close to the requirement as a reading can get; anything else
- * needs somebody to pull the shade down, because a notification that is posted and invisible is still a
- * failure.
- */
-internal fun checkFor(access: NotificationAccess): SyncCheck = SyncCheck(
-    labelRes = R.string.settings_check_notification,
-    state = if (access.isShowing) SyncCheckState.Seen else SyncCheckState.NeedsDevice,
-)
-
-/**
- * PRODUCT_SPEC PLAY-001 / ROUTE-002 — the Android Auto check, judged by whether a car ever bound.
- *
- * `Seen` needs a real connection, not a correct manifest. Two device runs found that an app can declare
- * everything the platform asks for and still be missing from the dashboard, so a check that ticked on the
- * declaration would have reported success through both of them. A car reaching the session is the only
- * evidence that means anything here.
- */
-internal fun checkFor(car: CarReadiness): SyncCheck = SyncCheck(
-    labelRes = R.string.settings_check_car,
-    state = if (car.lastConnectedAt != null) SyncCheckState.Seen else SyncCheckState.NeedsDevice,
-)
-
-/**
  * PRODUCT_SPEC PLAY-005 — the skew, and whether it is large enough to matter.
  *
  * The warning wording says what the consequence is rather than that a number is large: a listener does not
@@ -277,36 +175,6 @@ private fun ClockSkewRow(skew: ClockSkew?, modifier: Modifier = Modifier) {
  * The icon and the colour both carry the state, and neither is the only carrier: the content description says
  * it in words, because a colour-only distinction fails the accessibility rule PRODUCT_SPEC 3.2 sets.
  */
-@Composable
-private fun SyncCheckRow(check: SyncCheck, modifier: Modifier = Modifier) {
-    val stateRes = check.state.labelRes()
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Icon(
-            imageVector = check.state.icon(),
-            contentDescription = stringResource(stateRes),
-            tint = when (check.state) {
-                SyncCheckState.Seen -> MaterialTheme.colorScheme.primary
-                SyncCheckState.Waiting -> MaterialTheme.colorScheme.onSurfaceVariant
-                SyncCheckState.NeedsDevice -> MaterialTheme.colorScheme.tertiary
-            },
-        )
-        Column(modifier = Modifier.weight(WEIGHT_FILL), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(text = stringResource(check.labelRes), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                text = stringResource(stateRes),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
 /**
  * PRODUCT_SPEC 3.2 — yes/no as words, not as a colour or a tick alone.
  *
@@ -387,18 +255,6 @@ private fun CountRow(labelRes: Int, value: Int, modifier: Modifier = Modifier, h
             color = MaterialTheme.colorScheme.primary,
         )
     }
-}
-
-private fun SyncCheckState.labelRes(): Int = when (this) {
-    SyncCheckState.Seen -> R.string.settings_check_state_pass
-    SyncCheckState.Waiting -> R.string.settings_check_state_waiting
-    SyncCheckState.NeedsDevice -> R.string.settings_check_state_manual
-}
-
-private fun SyncCheckState.icon(): ImageVector = when (this) {
-    SyncCheckState.Seen -> Icons.Filled.CheckCircle
-    SyncCheckState.Waiting -> Icons.Outlined.RadioButtonUnchecked
-    SyncCheckState.NeedsDevice -> Icons.Outlined.PhoneAndroid
 }
 
 private fun SyncTrigger.labelRes(): Int = when (this) {

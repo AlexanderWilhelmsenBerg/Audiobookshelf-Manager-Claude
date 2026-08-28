@@ -504,10 +504,14 @@
     <string name="about_section_app">BookWave</string>
     <string name="about_version">Version</string>
     <!--
-      PRODUCT_SPEC SET-002 — what this build actually is. Kept current with the phase, because a build
-      that describes itself wrongly makes every other reading on this tab suspect.
+      PRODUCT_SPEC SET-002 — one line saying what the app is, not a changelog.
+
+      This used to enumerate every built feature and end with "Hardware verification and some
+      compatibility and automation gaps remain", which is a developer's status note wearing a user's
+      clothes. It went stale between every phase and told a listener nothing they could act on. What a
+      user needs from this screen is the version — which is the row above it.
     -->
-    <string name="about_phase">A work in progress. Streaming and offline playback, chapters, bookmarks, the sleep timer, downloads and smart downloads, profile locks, progress and session sync, Android Auto, per-device playback policy and the management tools \u2014 metadata editing, covers, matching, embedding, scans and server accounts \u2014 are built. Source-file deletion is deliberately not offered. Hardware verification and some compatibility and automation gaps remain.</string>
+    <string name="about_phase">An Audiobookshelf client for Android. Streaming and offline listening, chapters, bookmarks, a sleep timer, Android Auto, and the server management tools.</string>
 
     <!--
       PRODUCT_SPEC SET-003 — the launcher icons.
@@ -585,13 +589,19 @@
         <item quantity="other">%1$d events since the app started</item>
     </plurals>
     <!-- %1$d is how many of them are warnings or errors. -->
-    <string name="event_log_problems_only">Problems only (%1$d)</string>
     <string name="event_log_copy">Copy</string>
     <string name="event_log_clipboard_label">BookWave event log</string>
     <string name="event_log_clear">Clear</string>
     <string name="event_log_empty">Nothing has been recorded yet.</string>
-    <string name="about_section_testing">Testing</string>
-    <string name="about_testing_body">Readings used to check a build against its acceptance cases. Nothing here changes how the app behaves.</string>
+    <string name="event_log_search">Search</string>
+    <string name="event_log_search_clear">Clear the search</string>
+    <string name="event_log_filter_level">Level</string>
+    <string name="event_log_filter_category">Area</string>
+    <string name="event_log_filter_reset">Reset</string>
+    <string name="event_log_count_filtered">Showing %1$d of %2$d</string>
+    <string name="event_log_no_matches">No events match this search or filter. Reset to see everything.</string>
+    <string name="about_section_testing">This device</string>
+    <string name="about_testing_body">What the app can see about this phone and this server: what the server supports, what is stored here, and whether the notification and car surfaces are reachable. Nothing here changes how the app behaves.</string>
 
     <string name="settings_section_libraries">Libraries</string>
     <!-- PRODUCT_SPEC 6.1 step 9 — the library the app opens on. %1$s is the library's name. -->
@@ -684,19 +694,6 @@
       Written as things to do rather than as facts, because that is what they are: three of them need a
       device, a server and a second phone, and no reading on this screen can stand in for them.
     -->
-    <string name="settings_section_checks">Checks after wave 3</string>
-    <string name="settings_checks_body">Each line says what to do and what this screen should then show. Marked automatically where the app can tell.</string>
-    <string name="settings_check_queue_drains">Play a minute, then watch “Waiting to upload” reach 0.</string>
-    <string name="settings_check_server_accepts">Confirm “Last accepted” moves while a book plays.</string>
-    <string name="settings_check_offline_queue">Turn off the network, play a minute, pause: “Waiting to upload” rises.</string>
-    <string name="settings_check_offline_drains">Turn the network back on: it falls again without replaying anything.</string>
-    <string name="settings_check_kill">Kill the app mid-book, reopen it, and check the book resumes within 10 seconds of where it was.</string>
-    <string name="settings_check_rewind">Rewind five minutes deliberately, wait for a sync, and confirm the server keeps the earlier position.</string>
-    <string name="settings_check_clock">Set the device clock five minutes ahead and confirm the warning below appears.</string>
-    <string name="settings_check_second_device">With a second device, listen further there and confirm this one does not overwrite it.</string>
-    <string name="settings_check_state_pass">Seen</string>
-    <string name="settings_check_state_waiting">Not yet</string>
-    <string name="settings_check_state_manual">Needs a device</string>
 
     <!--
       PRODUCT_SPEC PLAY-001 — the media notification, and why it might not be there.
@@ -718,7 +715,6 @@
     <string name="settings_notification_yes">Yes</string>
     <string name="settings_notification_no">No</string>
     <string name="settings_notification_open">Open notification settings</string>
-    <string name="settings_check_notification">Play a book, pull down the shade: the media notification is there with working controls.</string>
 
     <!--
       PRODUCT_SPEC PLAY-001 / ROUTE-002 — why the app is, or is not, in the car's list of media apps.
@@ -740,7 +736,6 @@
     <string name="settings_car_unknown_sources">Android Auto hides apps it did not get from Play. In the Android Auto app: tap the version ten times to unlock Developer settings, then turn on Unknown sources — unlocking developer settings does not turn it on by itself. Force-stop Android Auto afterwards so it rebuilds its list.</string>
     <string name="settings_car_last_connection">Last car connection</string>
     <string name="settings_car_last_connection_never">Never, since the app started</string>
-    <string name="settings_check_car">Connect a head unit: BookWave is in the media app list and browses. If Last car connection still says never, no car ever reached the app.</string>
 
     <!-- PRODUCT_SPEC PLAY-001 — shown over the player when the notification cannot appear. -->
     <string name="player_notifications_blocked">Notifications are off, so this book has no notification or lock-screen controls.</string>
