@@ -347,7 +347,6 @@ private fun LazyListScope.aboutTab(
         // shape of question: a control surface the app cannot see, and the reasons it might not be there.
         carRows(uiState.car)
         sessionSyncRows(uiState.sessionSync)
-        syncCheckRows(uiState.sessionSync, uiState.notifications, uiState.car)
     }
 }
 

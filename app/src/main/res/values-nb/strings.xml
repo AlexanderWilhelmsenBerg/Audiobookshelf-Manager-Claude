@@ -400,12 +400,18 @@
         <item quantity="one">%1$d hendelse siden appen startet</item>
         <item quantity="other">%1$d hendelser siden appen startet</item>
     </plurals>
-    <string name="event_log_problems_only">Bare problemer (%1$d)</string>
     <string name="event_log_copy">Kopier</string>
     <string name="event_log_clipboard_label">Hendelseslogg for BookWave</string>
     <string name="event_log_clear">Tøm</string>
     <string name="event_log_empty">Ingenting er registrert ennå.</string>
-    <string name="about_phase">Under arbeid. Direkteavspilling og frakoblet avspilling, kapitler, bokmerker, sovetid, nedlastinger og smarte nedlastinger, profill\u00e5ser, fremdrifts- og \u00f8ktsynkronisering, Android Auto, avspillingsregler per enhet og forvaltningsverkt\u00f8yene \u2014 redigering av metadata, omslag, samsvarss\u00f8k, innbygging, skanning og serverkontoer \u2014 er bygget. Sletting av kildefiler tilbys bevisst ikke. Maskinvareverifisering og enkelte kompatibilitets- og automatiseringsmangler st\u00e5r igjen.</string>
+    <string name="event_log_search">Søk</string>
+    <string name="event_log_search_clear">Tøm søket</string>
+    <string name="event_log_filter_level">Nivå</string>
+    <string name="event_log_filter_category">Område</string>
+    <string name="event_log_filter_reset">Nullstill</string>
+    <string name="event_log_count_filtered">Viser %1$d av %2$d</string>
+    <string name="event_log_no_matches">Ingen hendelser samsvarer med søket eller filteret. Nullstill for å se alt.</string>
+    <string name="about_phase">En Audiobookshelf-klient for Android. Direkteavspilling og frakoblet lytting, kapitler, bokmerker, sovetimer, Android Auto og verktøyene for å administrere serveren.</string>
 
     <!--
       PRODUCT_SPEC SET-003 — navnene på appikonene.
@@ -461,8 +467,8 @@
     <string name="settings_icon_vintage">Antikk</string>
     <string name="settings_icon_monochrome">Mono</string>
     <string name="settings_icon_hint">Å bytte ikon avbryter ikke noe som spilles av. Hjemskjermen kan bruke et øyeblikk på å henge med, og et ikon du selv har lagt der kan måtte legges dit på nytt.</string>
-    <string name="about_section_testing">Testing</string>
-    <string name="about_testing_body">Avlesninger som brukes til å kontrollere en bygging mot akseptansetestene. Ingenting her endrer hvordan appen oppfører seg.</string>
+    <string name="about_section_testing">Denne enheten</string>
+    <string name="about_testing_body">Hva appen kan se om denne telefonen og denne serveren: hva serveren støtter, hva som er lagret her, og om varsel- og bilflatene er tilgjengelige. Ingenting her endrer hvordan appen oppfører seg.</string>
 
     <string name="settings_section_libraries">Bibliotek</string>
     <string name="settings_default_library_hint">Trykk på et bibliotek for å åpne på det. Uten et valg viser hyllen alle bibliotekene du kan se.</string>
@@ -534,19 +540,6 @@
     <string name="settings_sync_trigger_shutdown">At spilleren ble avsluttet</string>
     <string name="settings_sync_trigger_background">At appen ble forlatt</string>
 
-    <string name="settings_section_checks">Kontroller etter bølge 3</string>
-    <string name="settings_checks_body">Hver linje sier hva du skal gjøre og hva skjermen da skal vise. Merkes automatisk der appen kan avgjøre det.</string>
-    <string name="settings_check_queue_drains">Spill i ett minutt, og se «Venter på opplasting» nå 0.</string>
-    <string name="settings_check_server_accepts">Bekreft at «Sist godtatt» flytter seg mens en bok spilles.</string>
-    <string name="settings_check_offline_queue">Slå av nettet, spill i ett minutt, pause: «Venter på opplasting» stiger.</string>
-    <string name="settings_check_offline_drains">Slå nettet på igjen: den faller uten at noe må spilles om.</string>
-    <string name="settings_check_kill">Drep appen midt i en bok, åpne den igjen, og kontroller at boken fortsetter innen 10 sekunder fra der den var.</string>
-    <string name="settings_check_rewind">Spol bevisst fem minutter tilbake, vent på en synkronisering, og bekreft at serveren beholder den tidligere posisjonen.</string>
-    <string name="settings_check_clock">Sett enhetsklokken fem minutter fram og bekreft at advarselen nedenfor kommer.</string>
-    <string name="settings_check_second_device">Lytt videre på en annen enhet og bekreft at denne ikke overskriver den.</string>
-    <string name="settings_check_state_pass">Sett</string>
-    <string name="settings_check_state_waiting">Ikke ennå</string>
-    <string name="settings_check_state_manual">Krever en enhet</string>
 
     <string name="settings_section_notification">Medievarsel</string>
     <string name="settings_notification_body">PLAY-001 krever et varsel med avspillingskontroller mens en bok spilles. Disse sier om et kan vises.</string>
@@ -561,7 +554,6 @@
     <string name="settings_notification_yes">Ja</string>
     <string name="settings_notification_no">Nei</string>
     <string name="settings_notification_open">Åpne varselinnstillinger</string>
-    <string name="settings_check_notification">Spill en bok og dra ned varselpanelet: medievarselet er der med kontroller som virker.</string>
 
     <string name="settings_section_car_check">Android Auto</string>
     <string name="settings_car_body">Auto lister medieapper etter hva de erklærer, ikke etter hva de kan spille. De to første radene gjelder denne bygget; resten gjelder telefonen.</string>
@@ -576,7 +568,6 @@
     <string name="settings_car_unknown_sources">Android Auto skjuler apper den ikke har fått fra Play. I Android Auto-appen: trykk på versjonen ti ganger for å låse opp Utviklerinnstillinger, og slå så på Ukjente kilder — å låse opp utviklerinnstillingene slår det ikke på av seg selv. Tvangsavslutt Android Auto etterpå så listen bygges på nytt.</string>
     <string name="settings_car_last_connection">Siste bilkobling</string>
     <string name="settings_car_last_connection_never">Aldri, siden appen startet</string>
-    <string name="settings_check_car">Koble til en bilskjerm: BookWave er i listen over medieapper og lar seg bla i. Står Siste bilkobling fortsatt til aldri, nådde ingen bil frem til appen.</string>
 
     <string name="player_notifications_blocked">Varsler er av, så denne boken har ingen varsel- eller låseskjermkontroller.</string>
     <string name="player_notifications_fix">Slå på</string>
