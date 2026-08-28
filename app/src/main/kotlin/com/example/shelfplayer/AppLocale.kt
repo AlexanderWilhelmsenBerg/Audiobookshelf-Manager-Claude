@@ -2,7 +2,9 @@ package com.example.shelfplayer
 
 import android.app.LocaleManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.res.Configuration
+import android.content.res.Resources
 import android.os.Build
 import android.os.LocaleList
 import androidx.compose.runtime.Composable
@@ -62,7 +64,7 @@ fun AppLocale(language: AppLanguage, content: @Composable () -> Unit) {
     val localized = remember(configuration, language) {
         val locale = Locale.forLanguageTag(language.tag)
         val copy = Configuration(configuration).apply { setLocale(locale) }
-        copy to context.createConfigurationContext(copy)
+        copy to LocalizedContext(context, copy)
     }
 
     CompositionLocalProvider(
@@ -70,6 +72,61 @@ fun AppLocale(language: AppLanguage, content: @Composable () -> Unit) {
         LocalContext provides localized.second,
         content = content,
     )
+}
+
+/**
+ * The [Context] this provides as [LocalContext] — a wrapper, and **the wrapper is the whole point**.
+ *
+ * ### The crash it fixes
+ *
+ * This used to provide `context.createConfigurationContext(copy)` directly, and on a device that produced:
+ *
+ * ```
+ * java.lang.IllegalStateException: Expected an activity context for creating a HiltViewModelFactory
+ * but instead found: android.app.ContextImpl
+ * ```
+ *
+ * on the first screen inside [AppLocale] that called `hiltViewModel()` — and then on **every launch
+ * afterwards**, because the chosen language is persisted, so the next start rebuilt the same broken context
+ * before anything could be tapped. Recovering needed a reinstall. Changing the language in Android's own
+ * settings did not help, because the app reads its own stored choice rather than the platform's.
+ *
+ * ### Why it happened, exactly
+ *
+ * `androidx.hilt.navigation.HiltViewModelFactory.create` finds the Activity by walking the context chain:
+ *
+ * ```
+ * while (context is ContextWrapper) {
+ *     if (context is ComponentActivity) return createInternal(context, delegate)
+ *     context = context.baseContext
+ * }
+ * throw IllegalStateException("Expected an activity context …")
+ * ```
+ *
+ * `createConfigurationContext` returns a **`ContextImpl`**, which is not a `ContextWrapper` — so the loop
+ * cannot take a single step and the throw is immediate. The error message names the type for that reason.
+ *
+ * A `ContextWrapper` whose base *is* the Activity gives the loop something to walk, and one override is
+ * enough to keep the localisation: Compose's `stringResource` resolves through `LocalContext.current
+ * .resources` (there is no `LocalResources` in Compose 1.8.3), so returning localized [Resources] from
+ * [getResources] is exactly the seam that matters.
+ *
+ * Everything else — the theme, `getSystemService`, the package name — delegates to the Activity, which is
+ * what should happen. The one consequence worth naming: a string resolved from the *theme* rather than from
+ * `stringResource` stays in the device's locale. Nothing in this app resolves a string that way.
+ */
+private class LocalizedContext(base: Context, configuration: Configuration) : ContextWrapper(base) {
+
+    /**
+     * Resolved once per [LocalizedContext] rather than on every [getResources] call.
+     *
+     * `createConfigurationContext` allocates a whole context to get at one `Resources`, and `getResources`
+     * is called for every single `stringResource` in the tree. The instance itself is `remember`ed by
+     * [AppLocale], so this runs once per configuration change.
+     */
+    private val localizedResources: Resources = base.createConfigurationContext(configuration).resources
+
+    override fun getResources(): Resources = localizedResources
 }
 
 /**

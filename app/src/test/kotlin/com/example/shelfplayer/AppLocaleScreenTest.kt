@@ -1,6 +1,10 @@
 package com.example.shelfplayer
 
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.activity.ComponentActivity
 import androidx.compose.material3.Text
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -11,6 +15,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 /**
  * PRODUCT_SPEC SET-002 (Appearance/accessibility) — the language setting actually changes the words.
@@ -111,5 +117,104 @@ class AppLocaleScreenTest {
         }
 
         composeRule.onNodeWithText("Språk").assertIsDisplayed()
+    }
+
+    // ------------------------------------------------------------ the crash these render tests were blind to
+
+    /**
+     * **The provided context must still unwrap to the Activity**, which is what a device found the hard way.
+     *
+     * `AppLocale` provided `createConfigurationContext(...)` directly. That returns a `ContextImpl`, which is
+     * not a `ContextWrapper`, and `androidx.hilt.navigation.HiltViewModelFactory` finds the Activity by
+     * walking `ContextWrapper.baseContext`. So the first `hiltViewModel()` inside `AppLocale` threw
+     * `IllegalStateException: Expected an activity context … but instead found: android.app.ContextImpl` —
+     * and because the language is persisted, every launch afterwards did the same. Recovery needed a
+     * reinstall.
+     *
+     * ### Why this asserts a loop rather than calling Hilt
+     *
+     * Standing up a Hilt graph in a Robolectric test to reach one factory would test the graph. What broke is
+     * a **property of the context**, and [activityInChainOf] is Hilt's own loop copied verbatim from its
+     * bytecode, so the thing asserted here is the thing Hilt does. Revert `LocalizedContext` to a raw
+     * `createConfigurationContext` and this test fails for the same reason the app did.
+     *
+     * The four render tests above pass either way, which is why this defect reached hardware:
+     * they prove the words change and say nothing about what carries them (`docs/risks.md` R-43).
+     */
+    @Test
+    fun `the localized context unwraps to the activity`() {
+        var chain: ComponentActivity? = null
+
+        composeRule.setContent {
+            AppLocale(language = AppLanguage.NorwegianBokmal) {
+                chain = activityInChainOf(LocalContext.current)
+            }
+        }
+
+        assertNotNull(chain, "Hilt walks ContextWrapper.baseContext for an Activity and must find one")
+    }
+
+    /**
+     * And the same context still resolves the chosen language — the two halves in one assertion.
+     *
+     * Stated together on purpose. The cheap way to stop the crash is to provide no context at all, which
+     * fixes the exception and silently removes the feature. This is the test that refuses both mistakes at
+     * once: the context has to be Activity-backed **and** localized.
+     */
+    @Test
+    fun `the localized context is both activity-backed and localized`() {
+        var chain: ComponentActivity? = null
+        var word: String? = null
+
+        composeRule.setContent {
+            AppLocale(language = AppLanguage.NorwegianBokmal) {
+                val context = LocalContext.current
+                chain = activityInChainOf(context)
+                word = context.resources.getString(R.string.settings_language)
+            }
+        }
+
+        assertNotNull(chain, "still Activity-backed")
+        assertEquals("Språk", word, "and still Norwegian")
+    }
+
+    /**
+     * The system path provides nothing, so the Activity is reached trivially — asserted so that the early
+     * return cannot start providing a raw context later without this file noticing.
+     */
+    @Test
+    fun `following the system leaves an activity-backed context`() {
+        var chain: ComponentActivity? = null
+
+        composeRule.setContent {
+            AppLocale(language = AppLanguage.System) {
+                chain = activityInChainOf(LocalContext.current)
+            }
+        }
+
+        assertNotNull(chain)
+    }
+
+    /**
+     * `androidx.hilt.navigation.HiltViewModelFactory.create`'s search, copied from its bytecode:
+     *
+     * ```
+     * while (context is ContextWrapper) {
+     *     if (context is ComponentActivity) return createInternal(context, delegate)
+     *     context = context.baseContext
+     * }
+     * throw IllegalStateException("Expected an activity context …")
+     * ```
+     *
+     * Returns `null` where Hilt throws, so a failure here reads as a missing Activity rather than as an
+     * exception from the helper.
+     */
+    private fun activityInChainOf(context: Context): ComponentActivity? {
+        var candidate: Context = context
+        while (candidate is ContextWrapper) {
+            if (candidate is ComponentActivity) return candidate
+            candidate = candidate.baseContext
+        }
+        return null
     }
 }
