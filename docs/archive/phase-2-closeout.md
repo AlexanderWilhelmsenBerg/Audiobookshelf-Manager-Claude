@@ -128,7 +128,7 @@ Where each one lands:
 | Feature | Phase | What was decided |
 | --- | --- | --- |
 | **Car mode = Android Auto** | **2** | Not oversized on-screen controls — the head unit. Already gap 3 above, and already a PRODUCT_SPEC 11.1 responsibility, so nothing moves. |
-| **Queue = smart download** | **3** | Not a reorderable list: prefetch the next book in the series. Conditions recorded in [ADR-0017](adr/0017-smart-download-drives-the-series-queue.md) — over halfway, book over an hour, setting on, Wi-Fi only. |
+| **Queue = smart download** | **3** | Not a reorderable list: prefetch the next book in the series. Conditions recorded in [ADR-0017](../adr/0017-smart-download-drives-the-series-queue.md) — over halfway, book over an hour, setting on, Wi-Fi only. |
 | **Widgets** | later | Always showing the **latest played book**, which makes it a home-screen resume button rather than a second player. |
 | **Listening statistics** | later | See the note below — it is the only one with a "start now" argument, and the argument does not survive. |
 | **Equaliser** | later | Media3 has `AudioProcessor`; nothing about it constrains the player built here. |

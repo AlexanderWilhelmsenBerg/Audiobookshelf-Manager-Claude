@@ -27,6 +27,13 @@ AndroidKeyStore wrap, staged lock-record write, tamper/deleted-key handling, and
 test APK has a different package/UID from the installed app, so it cannot erase the user's BookWave records.
 This tier never runs in CI and no other module currently has an `androidTest` source set.
 
+### The manual tier
+
+`docs/device-test-0.9.14.md` is the current hardware test, and `scripts/device-test/` holds its commands,
+one script per section. Nothing there installs a tool or touches a server —
+`scripts/check-local-environment.sh --install` remains the only script in the repository that installs
+anything. The number on a script is run order, not section number.
+
 ## What is covered today
 
 The suite is distributed by responsibility rather than collected into one end-to-end test:

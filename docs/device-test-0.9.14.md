@@ -1,24 +1,55 @@
 # Device test — build 0.9.14, against a local Audiobookshelf instance
 
-**What this covers.** Everything merged since the 2026-08-24 session (PRs #42, #44, #46, #47, #48, #49, #50,
-#51) plus PR #52, and the six outstanding items that have always needed hardware. It is written to be run in
-order against a **local Audiobookshelf instance you control**, because five of the tests need you to change
-something on the server and watch the phone notice.
+**What this covers.** Everything merged since the 2026-08-24 session — PRs #42 through #55 — and the six
+outstanding items that have always needed hardware. It is written to be run in order against a **local
+Audiobookshelf instance you control**, because five of the tests need you to change something on the server
+and watch the phone notice.
 
-**The build under test is `main` with PR #52 merged.** §3 is #52's own feature and §5 is #51's, which is
-already on `main`; if you test a checkout without #52, skip §3 and say so.
+**The commands are in `scripts/device-test/`, one script per section.** Each one prints what it is doing,
+checks for an attached device before it starts, and uses the right package name — `org.homebord.bookwave` and
+`org.homebord.bookwave.debug` are one suffix apart, and typing the wrong one silently targets an app that may
+not even be installed. Nothing in that directory touches your server or installs a tool;
+`scripts/check-local-environment.sh --install` is still the only script in this repository that installs
+anything. On Windows, run `. .\scripts\Set-BookWavePath.ps1` first to put the SDK, the JDK and `adb` on the
+PATH for that session.
+
+### Where this run picks up
+
+The 2026-08-27 run got as far as §5.1 and found two defects. Both are fixed and merged, and **the section
+that found the worse one is the first thing to re-run** — a fix nobody re-tested is a fix nobody has.
+
+| § | 2026-08-27 | Now |
+| --- | --- | --- |
+| 1 Controller security | Passed, 1.1–1.4 | Re-run only if §2 misbehaves |
+| 2 Android Auto | **Failed** — browse root empty, cold *and* warm | **Re-run first. R-66 is fixed and unverified on hardware.** |
+| 3 Server history | Passed, 3.1–3.5 | Done, unless you want 3.6 |
+| 4 Sleep timer | Passed | One open question left: the notification action (§4 step 8) |
+| 5.1 Multi-file resume | Passed | Done |
+| 5.2 Degraded path | Not attempted | Optional, and probably not provokable |
+| 6 Release APK | Not reached | **Never once executed, on any build** |
+| 7 Benchmarks | Not reached | Only your hardware can produce these |
+| 8–11 | Not reached | Still open |
+| 12 About tab and event log | New | **New in PR #55. Never seen on a device.** |
+
+Three things changed since your last run, and one of them changes how you install:
+
+- **R-66 — the car's browse tree threw on every request.** Fixed. §2 is the verification, and it is the only
+  verification there is: no JVM test can construct a `MediaSession.ControllerInfo`, so the session callbacks
+  are unreachable from the test tier and nothing but a head unit can confirm this.
+- **R-67 — choosing a language crashed the app, and kept crashing it on every launch.** Fixed. §12.3 re-tests
+  it. It is the one test here that used to need an uninstall to recover from; it no longer should.
+- **R-68 — every build was signed with a different key**, which is why installing over the top failed and you
+  had to uninstall and sign in again each time. Fixed — but **the switch costs one last uninstall**, and §0.2
+  is where you pay it.
 
 **Record the outcome inline, next to each step.** A step that fails is worth more than a step skipped. Where
-a step says *capture the log*, do it even if the step passed — three of these tests are diagnostics, not
-assertions, and the log is the whole result.
+a step says *capture the log*, do it even if the step passed — several of these tests are measurements
+rather than assertions, and the log is the whole result.
 
 **How to get the log, every time it is asked for:** Settings → About → Diagnostics → **Open the event log** →
-**Copy**. Paste it into your report. It is cleared when the app closes, so copy it before killing the app.
-
-> **One thing to read before starting.** §1 tests a fix for a defect *you* found — an untrusted controller
-> could clear the queue and stop playback. The fix withholds four Media3 *player* commands, not just session
-> commands. The risk of that fix is over-restriction: a headset, a watch, the notification or Android Auto
-> losing transport control. §1.4 and §2 are where that would show up, and they matter more than §1.3.
+**Copy**. It now has search and filters (§12.2), so where a section quotes a log line you can paste part of
+it into the search box instead of scrolling. The buffer is cleared when the app closes, so copy before you
+kill the app.
 
 ---
 
@@ -26,8 +57,19 @@ assertions, and the log is the whole result.
 
 ### 0.1 Build and install
 
+**Read §0.2 first if you have not set up a signing key.** It decides whether this install goes over the top
+or costs you a sign-in, and it is a one-time setup.
+
 ```bash
-./scripts/check-local-environment.sh          # says what is missing; --install fixes SDK packages
+./scripts/device-test/00-setup.sh
+```
+
+That runs the gate, installs the debug build, and prints the two things that decide whether the rest of this
+document is measuring what you think it is: the version now on the phone, and the APK's signing certificate.
+Longhand, if you would rather type it:
+
+```bash
+./scripts/check-local-environment.sh          # says what is missing; --install fixes it
 ./gradlew --stop                              # long sessions leak daemons (R-56)
 ./gradlew ktlintFormat && ./gradlew ktlintCheck
 ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true --no-build-cache --rerun-tasks
@@ -45,7 +87,38 @@ exactly that failure, nine builds long.
 The debug build installs as `org.homebord.bookwave.debug`, so it sits alongside a release install without
 clashing.
 
-### 0.2 The server
+### 0.2 The one last uninstall (R-68)
+
+Until 2026-08-27 the debug build declared no signing config, so AGP signed it with whatever key the building
+machine happened to have generated. A CI runner is ephemeral and generates a fresh one every build, so no
+device build ever installed over the last one: `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, then an uninstall, then
+signing in again — losing the passcode, the progress journal and every downloaded book, on **every build**.
+
+Debug now uses the same supplied key as release. That fixes it going forward and changes the signature
+**once**, so there is one uninstall left to pay:
+
+1. Set the four `bookwave.signing.*` properties in `~/.gradle/gradle.properties`, generated once by the
+   keytool command in `docs/release.md` § Signing. They must live **outside the checkout** and the build
+   enforces it. Doing this now also sets up §6.
+2. Uninstall whatever BookWave debug build is on the phone. This is the last time.
+3. Run §0.1, sign in, and note the certificate digest `00-setup.sh` printed.
+4. **Then prove it**, which is the actual test:
+
+   ```bash
+   ./gradlew :app:installDebug   # expect: success, and your sign-in still there
+   ```
+
+**Expect:** it installs over the top and the app is still signed in, still has the passcode, still has the
+downloads. If it fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the key is not being picked up and every
+later section in this document will keep costing you a sign-in — stop and say so.
+
+Without those properties the build still works and still installs; it just falls back to the generated key
+and nothing is fixed. `bookwave.signing.debug=false` opts out on purpose. The `benchmark` module is untouched
+and stays installable without a key, which is what §7 needs.
+
+**Result (second install kept the sign-in?):**
+
+### 0.3 The server
 
 You need **two accounts** on the local instance and **at least one multi-file book**.
 
@@ -56,19 +129,25 @@ You need **two accounts** on the local instance and **at least one multi-file bo
 3. Note the server's address as the phone will reach it. If it is `http://` rather than `https://`, cleartext
    is permitted **in the debug build only** (ADR-0009) — a release build will refuse it, which matters for §6.
 
-### 0.3 What each section needs
+### 0.4 What each section needs
 
-| § | Needs |
-| --- | --- |
-| 1 | The phone. §1.3 needs a third-party media controller app or `adb`. |
-| 2 | Desktop Head Unit, or a real head unit |
-| 3 | The web client open on a computer, signed in as the **same** account as the phone |
-| 4 | The phone, and about twelve minutes of it playing |
-| 5 | A crafted audio file — read §5 first, it may not be runnable |
-| 6 | An upload keystore, generated in §6.1 |
-| 7 | A USB cable and a charged phone; ~20 minutes |
-| 8 | Two hours, mostly unattended |
-| 9–11 | The phone |
+| § | Script | Needs |
+| --- | --- | --- |
+| 0 | `00-setup.sh` | The phone, and the signing properties from §0.2 |
+| 1 | `01-controller-security.sh` | The phone. §1.3 needs a third-party media controller app. |
+| 2 | `02-android-auto.sh` | Desktop Head Unit, or a real head unit |
+| 3 | `03-server-history.sh` | The web client on a computer, signed in as the **same** account as the phone |
+| 4 | `04-sleep-timer.sh` | The phone, and about twelve minutes of it playing |
+| 5 | `05-multifile-resume.sh` | A multi-file book. §5.2 needs a crafted file — read it first, it may not be runnable |
+| 6 | `06-release-apk.sh` | The keystore from §0.2, and an `https://` server |
+| 7 | `07-benchmarks.sh` | A USB cable and a charged phone; ~20 minutes |
+| 8 | `08-process-death-soak.sh` | Two hours, mostly unattended |
+| 9–10 | `09-privacy-and-lock.sh` | The phone, and the second account |
+| 11 | `10-instrumented.sh` | The phone |
+| 12 | `11-about-and-event-log.sh` | The phone. Mostly on-screen; the script does the force-stop cycles. |
+
+The number on a script is its **run order, not its section number** — `09-privacy-and-lock.sh` covers §9
+and §10 together, which puts everything after it one behind.
 
 ---
 
@@ -79,6 +158,14 @@ default *player* commands alone. Media3's default grants `COMMAND_SET_MEDIA_ITEM
 `COMMAND_STOP` and `COMMAND_RELEASE` to everything that binds — so an outside app could not read the library
 and could still stop your book and empty the queue. You found this at `PlaybackService.kt:959` and `:1041`;
 both line references were right.
+
+```bash
+./scripts/device-test/01-controller-security.sh
+```
+
+It lists what is bound to the media session and drives transport from a trusted caller. It cannot do
+§1.3 for you: `adb shell` holds `MEDIA_CONTENT_CONTROL`, so anything driven from it is the *trusted*
+branch by definition.
 
 ### 1.1 The queue survives an unresolvable request
 
@@ -148,52 +235,72 @@ fixed, so say so plainly if it happens.
 
 ---
 
-## 2. Android Auto in the DHU — the empty browse root (R-64)
+## 2. Android Auto — the browse tree, now that it is fixed (R-66)
 
-**This is a diagnostic, not a pass/fail.** Your 2026-08-24 session found the browse root rendering **zero
-items** while search returned books. That ruled out the trust gate — `onGetSearchResult` is gated identically
-and worked. **Nothing merged since fixes it**, because it has never been diagnosed beyond a hypothesis. This
-run is to collect the evidence that settles it.
+**Run this first, and it is now pass/fail rather than a diagnostic.**
 
-The hypothesis, so you know what you are looking for: `AutoLibrary.rootTabs()` builds the root only from the
-four shelves, `shelves()` takes the first emission of `homeShelves()`, and `ObserveHomeShelvesUseCase` emits
-`HomeShelves.Empty` while the active profile is still null. A browse arriving before the profile resolves
-would therefore cache an empty root, and Media3 only re-asks on `notifyChildrenChanged`.
+**What was wrong.** `onGetChildren` and `onGetItem` called `nowPlaying()` *inside* `future { }`, whose block
+runs on `applicationScope` — `Dispatchers.Default`. `nowPlaying()` reads `player.currentMediaItem` and
+`player.currentPosition`, and ExoPlayer throws `IllegalStateException` for any property read off its
+application thread. So every browse threw before it answered anything. Search kept working because
+`onGetSearchResult` is the one browse callback that does not need the player — which is exactly the shape
+your report described.
 
-1. **Before connecting**, force-stop BookWave so the next launch is cold: Settings → Apps → BookWave → Force
-   stop. This is the condition the hypothesis needs.
-2. Connect the DHU. Open BookWave.
-3. **Record what the root shows** — count the items. Then try search, and record what that shows.
-4. **Now the measurement.** Capture the log and find every line reading:
+**Your report is what found it**, and specifically the one observation that killed the standing hypothesis:
+warm start was *identically* empty. A cold-start profile race cannot produce that. R-64 was a wrong guess and
+is closed as one; R-66 is the defect, and the `children=` diagnostic earned its keep by being **absent**.
 
+**Why this section carries the whole verification.** No JVM test can construct a
+`MediaSession.ControllerInfo`, so the session callbacks cannot be reached from the test tier at all. There is
+no test behind this fix. §2 is it.
+
+```bash
+./scripts/device-test/02-android-auto.sh
 ```
-A browser asked for a node's children   parent=<id>   children=<count>
-```
 
-Write down **each** `parent` and its `children` count, in order.
+1. **Force-stop BookWave** so the next launch is cold — the script does it; by hand it is Settings → Apps →
+   BookWave → Force stop.
+2. Start the DHU: `$ANDROID_HOME/extras/google/auto/desktop-head-unit`, with Android Auto in developer mode
+   and "Start head unit server" enabled. `adb forward tcp:5277 tcp:5277` if it does not connect on its own.
+3. Open BookWave in the car.
 
-**What the answer means:**
+**Expect: the browse root shows items** — the shelves, not zero. Then try search, which worked before and
+must still.
 
-- `parent=/` (or the root id) with **`children=0`** → the root was built empty and cached. The hypothesis is
-  confirmed and the fix is to make the root wait for a resolved profile, or to invalidate it when one arrives.
-- **No such line at all** for the root → the car never asked, and the problem is discovery or the root's
-  declaration, not its contents.
-- `children=4` (the four shelves) while the car shows nothing → the app answered and the host discarded it,
-  which is a different defect entirely.
+4. **The measurement.** The script greps for it; by hand:
 
-5. **Then repeat the whole thing warm:** with the app already open and the shelf populated on the phone,
-   connect the DHU. Record the root's item count again.
+   ```bash
+   adb logcat -d | grep "asked for a node's children"
+   ```
 
-**Expect if the hypothesis is right:** cold shows zero, warm shows four. That difference *is* the evidence.
+   **Expect: one `children=` line for each node the car asked for**, with a non-zero count for any node that
+   has contents. That these lines exist at all is the pass condition — their complete absence is what the
+   failure looked like, because the throw happened upstream of the answer.
 
-6. While you are there, re-check the things that passed last time, because §1 changed the connection path:
-   transport (+30 s / −30 s should still read as exactly +30,005 ms / −30,000 ms in the log), artwork,
-   reconnection after unplugging, and the resume tile.
+5. **And the line that must now be gone:**
 
-**Result (root cold):**
-**Result (root warm):**
-**Result (transport, artwork, reconnect):**
+   ```bash
+   adb logcat -d | grep "A browse request failed"
+   ```
+
+   **Expect: nothing.** If one does appear it now carries `thrown=<ExceptionClass>` alongside
+   `error=<code>` — before 2026-08-27 it said only `error=unknown`, and that missing word cost three device
+   sessions. Paste the whole line if you see one; the class name is the answer.
+
+6. **Then warm.** With the app already open and the shelf populated on the phone, connect the DHU again and
+   count the root's items. Both cold and warm must work — one working and not the other is a different defect
+   from the one that was fixed, and worth reporting as such.
+
+7. **Then the things that passed last time**, because §1 changed the connection path and this fix changed two
+   callbacks: transport (+30 s / −30 s should still read as exactly +30,005 ms / −30,000 ms in the log),
+   artwork, reconnection after unplugging, and the resume tile.
+
+**Result (root cold — item count):**
+**Result (root warm — item count):**
+**Result (search):**
 **The `children=` lines:**
+**Any `A browse request failed` line, in full:**
+**Result (transport, artwork, reconnect, resume tile):**
 
 ---
 
@@ -204,6 +311,10 @@ which could not see a book this phone had never played, and collapsed two sessio
 The app now reads `GET /api/me/listening-sessions`, the server's own record, when the pane opens.
 
 This is the test the local instance is for.
+
+```bash
+./scripts/device-test/03-server-history.sh
+```
 
 ### 3.1 A book this phone has never played gets history
 
@@ -288,6 +399,10 @@ You asked for local events to show the sleep timer starting and the sleep timer 
 already worked** before PR #52 and nothing in it changed that half. This section confirms it reads the way
 you expected, because it is the part I did not touch.
 
+```bash
+./scripts/device-test/04-sleep-timer.sh
+```
+
 1. Play a book. Open the sleep-timer sheet → set a **5 min** timer.
 2. Open the history pane.
 
@@ -318,6 +433,19 @@ useful thing this list does.
 
 **Result:**
 
+8. **The notification's sleep-timer action.** Your last report noted it was not visible, unconfirmed. Settle
+   it: with a timer **running**, pull the shade down and expand BookWave's notification fully.
+
+**Expect:** the extend action is there *while a timer is active*, and not otherwise — it is added and removed
+with the timer, so a shade opened before you set one will not show it. Android also drops actions it has no
+room for in the collapsed form, which is why expanding matters before concluding anything.
+
+If it is genuinely absent with a timer running and the notification expanded, that is a defect worth its own
+report. The script dumps the live notification's actions, which answers it from the system's own record
+rather than from what the shade chose to draw.
+
+**Result (notification action, timer running and expanded):**
+
 ---
 
 ## 5. The zero-duration fallback (R-61, PR #51) — read before attempting
@@ -325,6 +453,10 @@ useful thing this list does.
 **Be aware this may not be runnable, and that is an honest result.** The fix guards a path nobody has ever
 observed: a server reporting a track duration of zero. No capture against 2.36.0 has produced one. If you
 cannot provoke it, record "not provokable" and move on — do not manufacture a pass.
+
+```bash
+./scripts/device-test/05-multifile-resume.sh
+```
 
 ### 5.1 The regression check, which you *can* do
 
@@ -372,30 +504,23 @@ tracks, or one unknown track plus an excluded one.
 has **never been executed**. It could not be: the release variant declared no signing config, so the APK was
 unsigned and uninstallable. That is now fixable from your side without any key material entering the repo.
 
-### 6.1 Generate an upload key, once
+### 6.1 The key — already done, if you did §0.2
+
+The same four `bookwave.signing.*` properties sign both variants, so if you set them up for §0.2 there is
+nothing to do here. If you skipped that, `docs/release.md` § Signing has the keytool command and where the
+properties go: `~/.gradle/gradle.properties`, **outside the checkout**, which the build enforces.
+
+It is an **upload** key, not the key end users verify against — ADR-0024 chose Play App Signing, so Google
+holds that one and losing this is recoverable by asking Play to reset it. Keep the passwords somewhere a lost
+laptop does not take with them.
+
+### 6.2 Build, verify, install, launch
 
 ```bash
-mkdir -p ~/.bookwave
-keytool -genkeypair -v -keystore ~/.bookwave/upload.jks -alias upload \
-  -keyalg RSA -keysize 4096 -validity 10000
+./scripts/device-test/06-release-apk.sh
 ```
 
-Keep the passwords somewhere a lost laptop does not take with them. This is an **upload** key, not the key
-end users verify against — ADR-0024 chose Play App Signing, so Google holds that one and losing this is
-recoverable by asking Play to reset it.
-
-### 6.2 Tell the build where it is
-
-In `~/.gradle/gradle.properties` — **outside the checkout**, which the build enforces:
-
-```properties
-bookwave.signing.storeFile=/home/you/.bookwave/upload.jks
-bookwave.signing.storePassword=…
-bookwave.signing.keyAlias=upload
-bookwave.signing.keyPassword=…
-```
-
-### 6.3 Build, verify, install, launch
+It builds, refuses to go on if the APK came out unsigned, then installs and launches it. Longhand:
 
 ```bash
 ./gradlew :app:assembleRelease
@@ -406,29 +531,35 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 **Expect:** `apksigner` prints `Verifies` and `Verified using v2 scheme (APK Signature Scheme v2): true`.
 v1 will read `false` and that is correct — v2 is verified from API 24 and this app's `minSdk` is 26.
 
-### 6.4 The bit that has never happened: run it
+**And if the key is missing, the build now says so while it runs** (R-69). `assembleRelease` used to produce
+an unsigned APK in silence and let the failure surface minutes later on a phone as an install error naming
+the package rather than the signature. It now warns, naming the four properties.
+
+### 6.3 The bit that has never happened: run it
 
 The release build is a **different application id** (`org.homebord.bookwave`, no `.debug` suffix), so it is a
 fresh install with no data. Sign in and then exercise the paths R8 is most likely to have broken:
 
-4. **Sign in** to the local server. If your server is `http://`, expect this to **fail** — cleartext is
+1. **Sign in** to the local server. If your server is `http://`, expect this to **fail** — cleartext is
    debug-only by design (ADR-0009). Use `https://`, or note it and test the rest against a TLS endpoint.
-5. Open a book and **play it**. Then seek, change chapter, and pause.
-6. **Download** a book and play it with aeroplane mode on.
-7. Open **Settings → About** and confirm the version and the diagnostics screen render.
-8. Set a **sleep timer** and a **bookmark**.
-9. Open the **history pane**.
+2. Open a book and **play it**. Then seek, change chapter, and pause.
+3. **Download** a book and play it with aeroplane mode on.
+4. Open **Settings → About** and confirm the version, the diagnostics screen, and the event log's filters
+   render — §12 is new code and R8 has never seen it.
+5. Set a **sleep timer** and a **bookmark**.
+6. Open the **history pane**.
+7. Change the **language** and come back. §12.3's fix is in the release build too.
 
 **What you are looking for:** anything that works in the debug build and not here. R8 removing a class that
 only reflection or serialization reaches is the classic failure, and `kotlinx.serialization` and Room are
 both in that category. A crash here is a release blocker; note the exact screen.
 
-10. If it does crash, keep the mapping — `app/build/outputs/mapping/release/mapping.txt` — because a release
-    stack trace is unreadable without it.
+8. If it does crash, keep the mapping — `app/build/outputs/mapping/release/mapping.txt` — because a release
+   stack trace is unreadable without it.
 
 **Result:**
 
-### 6.5 Three build refusals, if you want to confirm the guard rails
+### 6.4 Three build refusals, if you want to confirm the guard rails
 
 Cheap, and they prove key material cannot slip into the repository:
 
@@ -448,7 +579,7 @@ Cheap, and they prove key material cannot slip into the repository:
 one**, for the details. What belongs here is the running order:
 
 ```bash
-./gradlew :benchmark:connectedBenchmarkAndroidTest
+./scripts/device-test/07-benchmarks.sh     # or: ./gradlew :benchmark:connectedBenchmarkAndroidTest
 ```
 
 The phone must be **unlocked, plugged in, and left alone** — an animation or a notification shade during a
@@ -474,6 +605,10 @@ not adopt paging on a feeling; adopt it if the numbers say so.
 ---
 
 ## 8. Process death and the two-hour soak (PRODUCT_SPEC 25)
+
+```bash
+./scripts/device-test/08-process-death-soak.sh
+```
 
 ### 8.1 Progress survives the process being killed
 
@@ -526,6 +661,9 @@ information; the same warning 400 times is a defect.
 **Only meaningful on Android 13 or newer.** Below API 33 the thumbnail is deliberately still there —
 `setRecentsScreenshotEnabled` did not exist before then, and ADR-0026 declined `FLAG_SECURE`, which would
 have blocked every screenshot for every user to solve a narrow problem for some.
+
+`./scripts/device-test/09-privacy-and-lock.sh` reads the API level off the phone and walks §9 and §10
+together, since both are one device and neither has much to type.
 
 1. Note your phone's Android version.
 2. Open BookWave on a screen showing **book titles** — the shelf or a library list.
@@ -612,7 +750,7 @@ CI has no emulator, so this suite never runs there. It passed 27/27 on 2026-08-2
 because PR #46 changed the profile-lock code around it.
 
 ```bash
-./gradlew :core:datastore:connectedDebugAndroidTest
+./scripts/device-test/10-instrumented.sh   # or: ./gradlew :core:datastore:connectedDebugAndroidTest
 ```
 
 **Expect:** all tests pass. This is the only tier that exercises the profile lock's real AndroidKeyStore
@@ -622,17 +760,126 @@ storage; a JVM test cannot.
 
 ---
 
-## 12. What to send back
+## 12. The About tab and the event log (PR #55)
+
+New since your last run, and never seen on a device.
+
+```bash
+./scripts/device-test/11-about-and-event-log.sh
+```
+
+### 12.1 The About tab has no leftovers
+
+1. Settings → **About**.
+
+**Expect: no "Checks after wave 3" section.** It was Phase 2 scaffolding — eight sync checks, a notification
+check and a car check, with pass/fail verdicts — a manual QA checklist living inside a shipped app, naming
+its phase in a string a user could read. It is gone, and this document is where that checklist lives now.
+
+**Expect:** the section that used to be **"Testing"** is now **"This device"**, and describes readings about
+this phone and this server rather than "acceptance cases". And the blurb no longer claims to be "a work in
+progress" with "hardware verification and some compatibility and automation gaps" — a developer's status note
+on a user's screen, stale between every phase. What a user needs there is the version, which is the row above.
+
+2. Switch to **Norsk bokmål** (Settings → Appearance → Language) and look again.
+
+**Expect:** both changes are in that locale too, and nothing reads as a raw string id.
+
+**Result:**
+
+### 12.2 The event log's search and filters
+
+3. Play something first so there are a few hundred lines to work with. Then Settings → About → Diagnostics →
+   **Open the event log**.
+
+4. **Search.** Type part of a message — `position`, or `download`. Search covers the message *and* the area.
+
+**Expect:** the list narrows as you type, and the header changes from *"N events since the app started"* to
+**"Showing 12 of 400"**. That second count is the point: a bare number over a narrowed list sends somebody
+hunting for a line that is right there.
+
+5. **Level.** Tap the **Level** chips — Verbose, Debug, Info, Warn, Error.
+
+**Expect:** only the levels actually present are offered, in severity order. A chip that could only ever
+yield an empty list is not drawn.
+
+6. **Area.** Tap the **Area** chips — Playback, Sync, Auth, Download, Network, Database, Management,
+   Settings, App.
+
+**Expect:** again only the areas present, in the order they first appeared — and they must **not** re-sort as
+new lines arrive. A chip moving out from under your finger while you reach for it is the specific thing that
+ordering avoids, so watch for it while playback is still logging.
+
+7. **All three at once.** Search text, one level, one area.
+
+**Expect:** an **AND** — everything shown matches all three — and the order is untouched: newest first,
+always.
+
+8. **The two empty states.** Search for something that cannot match, `zzzz`.
+
+**Expect:** **"No events match this search or filter. Reset to see everything."** — *not* "Nothing has been
+recorded yet." The two look alike and call for opposite reactions.
+
+9. **Reset** is disabled when nothing is narrowed, and enabled the moment anything is.
+
+10. **Copy** with a filter on, and paste it somewhere.
+
+**Expect:** whatever it copies is consistent with what the screen showed. Say which it did when you report,
+because a log pasted from a filtered view without saying so is a log that misleads.
+
+11. **Nothing private.** With playback and sync lines on screen, read them: no book title, no author, no
+device name, no server hostname (PRODUCT_SPEC 14.5).
+
+**Result:**
+
+### 12.3 Changing the language no longer bricks the app (R-67)
+
+Be deliberate here, because until 2026-08-27 failing this meant reinstalling.
+
+**What was wrong.** `AppLocale` handed Compose the `ContextImpl` that `createConfigurationContext` returns,
+and `HiltViewModelFactory` finds the Activity by walking `ContextWrapper.baseContext` — so the walk could not
+take one step and threw at the first `hiltViewModel()` inside the wrapper. The choice is persisted, so every
+launch afterwards rebuilt the same broken context before anything could be tapped, and changing the language
+in Android's own settings did not help because the app reads its own stored value.
+
+12. Settings → Appearance → **Language** → **Norsk bokmål**.
+
+**Expect:** the UI changes language, and nothing crashes.
+
+13. Navigate: shelf, a library, a book, the player, back to Settings. Open the history pane, and the event
+    log.
+
+**Expect:** all of it works. Every one of those screens takes its view model from `hiltViewModel()`, which is
+the call that used to throw.
+
+14. **Force-stop and reopen. Twice.**
+
+**Expect:** it opens, in Norwegian. The persistent half of this defect was worse than the first crash, and it
+is the half a single successful language change would not catch.
+
+15. Switch back to **English**, then to **Follow the system**, force-stopping between each.
+
+**Expect:** both work, and the system option follows whatever Android is set to.
+
+**Result:**
+
+---
+
+## 13. What to send back
 
 For each section: the result, and for anything that failed, the **event log** around it.
 
-Three things are worth reporting even if everything passes:
+Four things are worth reporting even if everything passes:
 
-1. **§2's `children=` lines.** That is the only evidence that will settle R-64, and this run is the only
-   place it can be collected.
-2. **§7's numbers.** They decide the paging question, and nothing else can.
-3. **§6.4 — whether the release build ran.** It has never been executed. If it works, that is the last thing
-   between this build and a Play upload.
+1. **§2's `children=` lines, and the absence of any `A browse request failed`.** The car fix has no test
+   behind it and nothing else can confirm it. Three device sessions went into finding that defect; one
+   confirms it is gone.
+2. **§6.3 — whether the release build ran.** R8's output has never been executed, on any build, ever.
+3. **§7's numbers.** They decide the paging question ADR-0025 deliberately left open, and only your hardware
+   can produce them.
+4. **§0.2 step 4 — whether the second install kept your sign-in.** If it did, the tax R-68 charged on every
+   build is paid off. If it did not, the fix is not reaching your machine and every later section still costs
+   a sign-in.
 
 And say plainly which sections you **skipped**, and why. An honest gap is planning information; a section
 quietly marked green is a defect that ships.

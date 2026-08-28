@@ -798,7 +798,7 @@ So PLAY-004's "marking finished is explicit, in both directions" is **not** at r
 2. **The fixture cannot demonstrate un-finishing.** Doing so needs a seeded book longer than the threshold,
    which changes the duration in a dozen committed fixtures. That belongs with the
    `markAsFinishedTimeRemaining` work rather than bolted onto this capture, and is recorded in
-   `docs/phase-2-gaps.md` as such.
+   `docs/archive/phase-2-gaps.md` as such.
 
 ### Two fixtures that were only ever capture noise
 

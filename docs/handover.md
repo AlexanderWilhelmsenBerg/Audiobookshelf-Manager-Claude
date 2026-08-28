@@ -121,7 +121,7 @@ Lint, unit tests (including Robolectric), Room schema export and equality check,
 > **`docs/gaps.md` is the live list.** The table below tracks `PRODUCT_SPEC 20`'s *deliverables*, and
 > marking one done here says a screen or a repository exists, nothing more — `PRODUCT_SPEC 21` makes a
 > requirement complete only when its **acceptance criteria** are met. The audit that found 30 open tasks
-> against those criteria, `docs/phase-1-remaining.md` (P1-01 to P1-30), has since been worked through:
+> against those criteria, `docs/archive/phase-1-remaining.md` (P1-01 to P1-30), has since been worked through:
 > per-profile item visibility is a table of its own (`profile_visible_books`, joined on every read), the
 > permission refresh `PRODUCT_SPEC 5.2` requires runs over the already-captured `POST /api/authorize`, and
 > LIB-001's websocket criterion — the one the original plan lost entirely — is `AbsRealtimeConnection` over
@@ -314,7 +314,7 @@ Three requests came out of running the plan, and all three were about the plan b
    field and **re-probes**: what the user reads before typing a password describes the server now. A
    remembered "encrypted" would be a claim the app had stopped checking, and certificates expire.
 
-**The results table did not survive the round trip.** The uploaded copy of `phase-1-acceptance.md` had
+**The results table did not survive the round trip.** The uploaded copy of `archive/phase-1-acceptance.md` had
 sections 1–8 replaced by a single `## c`, so no result was recorded here. The plan below is the current one;
 the run needs repeating against this build, which is no loss, since three of its cases changed.
 
@@ -395,7 +395,7 @@ These were real, and each was more than a fix. All five are settled now, four of
 ### Exit criteria: all 3 demonstrated on hardware
 
 The fourth device run put two real accounts on one server with one of them library-restricted, and the
-sixth ran `docs/phase-1-acceptance.md` end to end. That is what closed these, and it is worth naming the
+sixth ran `docs/archive/phase-1-acceptance.md` end to end. That is what closed these, and it is worth naming the
 evidence rather than the conclusion.
 
 - Two accounts on one server can switch — **demonstrated**. Both profiles share one server row, the
@@ -413,7 +413,7 @@ evidence rather than the conclusion.
 ### What closing them took
 
 An APK, a real Audiobookshelf server, and a human — six times over, and each run found defects the whole
-test suite had passed through. **`docs/phase-1-acceptance.md` is the executable form of the criteria**: 53
+test suite had passed through. **`docs/archive/phase-1-acceptance.md` is the executable form of the criteria**: 53
 numbered cases with the exact `adb` commands, the accounts to prepare, and the gaps that are expected to
 fail so nobody raises them as defects. It is still the template for a device run, and Phase 2's waves each
 left a script of their own beside it.
@@ -550,7 +550,7 @@ Two capture artefacts, so they are not mistaken for server behaviour: `size` and
 ## The Phase 1 deliverable plan, as it was built
 
 Steps 1–9 below are the *deliverable* plan and are all complete. **They were never the whole of Phase 1**,
-and the acceptance-criteria audit in `docs/phase-1-remaining.md` is what caught the difference: its P1-01
+and the acceptance-criteria audit in `docs/archive/phase-1-remaining.md` is what caught the difference: its P1-01
 to P1-30 are the criteria this list omitted, and they were built out over the phases that followed rather
 than in a step 10. The list is kept because the order is the useful part — each step needed the one above
 it, and a later phase that skipped that discipline is a later phase that had to capture a contract twice.
@@ -743,7 +743,7 @@ harness being worth building.
 ## Phase 2 — complete
 
 The streaming player, built in six waves and closed over four further pull requests, with device runs
-shaping it throughout — six of them on wave 5's branch alone, which is why `docs/phase-2-gaps.md` rather
+shaping it throughout — six of them on wave 5's branch alone, which is why `docs/archive/phase-2-gaps.md` rather
 than the plan is that phase's authoritative checklist.
 `:playback` is the only module in the build that may name ExoPlayer, a `MediaSession` or a `Service`, which
 is what makes PLAY-001's "a single media session" structural rather than a convention somebody has to
@@ -875,7 +875,7 @@ Management tools: nine slices, one of which ships no feature at all, and the fir
 Every phase before this one could be wrong and cost the user a re-sync; this one can be wrong and cost them
 their metadata, their covers or an item. So slice 1 was not a metadata editor but a capture run, and the
 four questions the captures could not answer were settled from the Audiobookshelf project's own source
-rather than guessed at. `docs/phase-5-plan.md` numbers eight slices and MGR-007's embed metadata arrived on
+rather than guessed at. `docs/archive/phase-5-plan.md` numbers eight slices and MGR-007's embed metadata arrived on
 2026-08-20 as a ninth; PR #27 counts all nine, and the headline counts in the plan and in `docs/gaps.md`
 have not caught up with the ninth.
 
