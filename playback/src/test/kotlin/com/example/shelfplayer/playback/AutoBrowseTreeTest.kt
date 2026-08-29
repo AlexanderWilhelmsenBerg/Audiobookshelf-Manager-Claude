@@ -187,26 +187,32 @@ class AutoBrowseTreeTest {
         mapNotNull { it.mediaMetadata.title?.toString() }
 
     /**
-     * PRODUCT_SPEC PLAY-002 — the output tab appears only when there is a choice.
+     * PRODUCT_SPEC PLAY-002 — the output tab is there whatever is connected.
      *
-     * A phone always reports its own speaker, so "one output" is the ordinary state and a tab for it costs a
-     * driver a glance to learn nothing. The same rule the phone's chooser uses.
+     * It used to appear only above two outputs. A car run retired that rule: the head unit is a connected
+     * output and frequently the only one the platform reports, so the tab vanished in exactly the place a
+     * driver would reach for it. One output is still a choice — the choice to move the book somewhere else.
      */
     @Test
-    fun `the output tab appears only when more than one output is connected`() = runTest {
+    fun `the output tab is there whatever is connected`() = runTest {
         // A library with something in it. An empty one answers with the "no books" notice and nothing else,
         // which is deliberate: with no book to play there is no route to choose.
         books.value = listOf(book("book-1", "The Salt Harbour"))
-        val one = auto(FakeAutoOutputs.of(FakeAutoOutputs.output("bluetooth:buds", "Buds")))
-        val two = auto(
-            FakeAutoOutputs.of(
-                FakeAutoOutputs.output("bluetooth:buds", "Buds"),
-                FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
-            ),
-        )
+        val none = auto(FakeAutoOutputs.of())
+        val one = auto(FakeAutoOutputs.of(FakeAutoOutputs.output("car:car", "Car", DeviceKind.Car)))
 
-        assertTrue(one.children(AutoLibrary.ROOT, now = null).none { it.mediaId == AutoLibrary.TAB_OUTPUT })
-        assertTrue(two.children(AutoLibrary.ROOT, now = null).any { it.mediaId == AutoLibrary.TAB_OUTPUT })
+        assertTrue(none.children(AutoLibrary.ROOT, now = null).any { it.mediaId == AutoLibrary.TAB_OUTPUT })
+        assertTrue(one.children(AutoLibrary.ROOT, now = null).any { it.mediaId == AutoLibrary.TAB_OUTPUT })
+    }
+
+    /** With nothing connected the node says so, rather than being an empty screen a driver has to back out of. */
+    @Test
+    fun `an empty output tab explains itself`() = runTest {
+        books.value = listOf(book("book-1", "The Salt Harbour"))
+
+        val rows = auto(FakeAutoOutputs.of()).children(AutoLibrary.TAB_OUTPUT, now = null)
+
+        assertEquals(listOf(AutoLibrary.NOTICE_OUTPUT), rows.map { it.mediaId })
     }
 
     /** Every row is browsable, because opening one must not go near the player. */
@@ -272,6 +278,64 @@ class AutoBrowseTreeTest {
 
         assertEquals(listOf<String?>("bluetooth:gone"), outputs.chosen)
         assertNull(outputs.selected())
+    }
+
+    /**
+     * ADR-0027's amendment — a declined request is visible in the car, not papered over.
+     *
+     * `setPreferredDevice` is a preference. A device run found the platform refusing the built-in speaker
+     * while a headset was connected, and the app of the day reported success. The rows now carry two
+     * different marks, so the driver can see that the sound is not where they sent it.
+     */
+    @Test
+    fun `a declined choice is marked apart from where the sound actually is`() = runTest {
+        val outputs = FakeAutoOutputs.of(
+            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
+            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
+            selected = "speaker:phone",
+        )
+        // The platform kept the sound in the headset despite the speaker being asked for.
+        outputs.routedId = "bluetooth:buds"
+
+        val titles = auto(outputs).children(AutoLibrary.TAB_OUTPUT, now = null).titles()
+
+        assertEquals(
+            listOf("Automatic", "Buds — playing here", "Phone speaker — chosen, but not in use"),
+            titles,
+        )
+    }
+
+    /** When the platform does what it was asked, one row carries one mark and the rest are plain. */
+    @Test
+    fun `an honoured choice is marked once`() = runTest {
+        val outputs = FakeAutoOutputs.of(
+            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
+            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
+            selected = "bluetooth:buds",
+        )
+
+        val titles = auto(outputs).children(AutoLibrary.TAB_OUTPUT, now = null).titles()
+
+        assertEquals(listOf("Automatic", "Buds — playing here", "Phone speaker"), titles)
+    }
+
+    /**
+     * The confirmation after a tap names the *choice*, and does not claim the sound moved.
+     *
+     * It cannot know: the preference is applied on the player's thread after this returns, and the platform
+     * may decline it. Saying "playing here" — which is what it used to say — would be a guess dressed as a
+     * fact, on the one screen a driver reads without looking twice.
+     */
+    @Test
+    fun `the confirmation names what was chosen rather than claiming a route`() = runTest {
+        val outputs = FakeAutoOutputs.of(
+            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
+            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
+        )
+
+        val rows = auto(outputs).children("${AutoLibrary.OUT_PREFIX}speaker:phone", now = null)
+
+        assertEquals(listOf("Chose Phone speaker"), rows.titles())
     }
 
     /** The id form is named in the diagnostic, so a log line can say what a driver tapped. */

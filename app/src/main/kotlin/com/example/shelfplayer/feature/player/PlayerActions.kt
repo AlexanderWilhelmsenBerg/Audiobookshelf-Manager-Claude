@@ -27,10 +27,23 @@ data class SkipControls(val intervals: SkipIntervals, val onBack: () -> Unit, va
  * not be able to disagree, and a screen or a preview names one object rather than two.
  */
 @Immutable
-data class OutputControls(val outputs: List<AudioOutput>, val onSelect: (String?) -> Unit) {
+data class OutputControls(
+    val outputs: List<AudioOutput>,
+    /**
+     * PRODUCT_SPEC PLAY-002 — the id the listener *chose*, or `null` for *Automatic*.
+     *
+     * Separate from [AudioOutput.isActive], which is where the platform says the audio actually went. They
+     * are two facts and a device run proved they can disagree: choosing the phone speaker while a headset
+     * is connected leaves the sound in the headset on some devices, and the app has no way to force it. The
+     * menu ticks the choice and labels the route, so the disagreement is visible rather than a tick that
+     * quietly lies.
+     */
+    val selectedId: String?,
+    val onSelect: (String?) -> Unit,
+) {
     companion object {
         /** For a preview, or a test not exercising the chooser. */
-        val Inert = OutputControls(outputs = emptyList(), onSelect = {})
+        val Inert = OutputControls(outputs = emptyList(), selectedId = null, onSelect = {})
     }
 }
 

@@ -22,7 +22,16 @@ internal class FakeAutoOutputs(
     /** Every id passed to [select], in order. `null` is *Automatic* and is recorded like any other. */
     val chosen: MutableList<String?> = mutableListOf()
 
-    override fun available(): List<AudioOutput> = outputs.map { it.copy(isActive = it.id == selectedId) }
+    /**
+     * Where the platform says media actually is, when a test needs that to differ from the choice.
+     *
+     * `null` means "wherever was chosen", which is the ordinary case and what the real router reports when a
+     * request is honoured. Setting it models the case a device run found: `setPreferredDevice` is a
+     * *preference* and the platform may decline it, leaving the sound where it was (ADR-0027's amendment).
+     */
+    var routedId: String? = null
+
+    override fun available(): List<AudioOutput> = outputs.map { it.copy(isActive = it.id == (routedId ?: selectedId)) }
 
     override fun selected(): String? = selectedId
 

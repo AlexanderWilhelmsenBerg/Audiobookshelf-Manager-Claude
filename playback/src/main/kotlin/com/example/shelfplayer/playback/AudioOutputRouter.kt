@@ -1,9 +1,11 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.Build
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -36,9 +38,21 @@ import javax.inject.Singleton
  * routing and does nothing for media, and the system output switcher cannot be driven programmatically.
  *
  * The word is **preferred** and it is not a promise. The platform honours it while the device is connected
- * and available; it silently ignores it otherwise. So this class never reports a route as achieved — it
- * reports what was asked for, which is the honest limit of what the app can know. There is no API that
- * answers "where is media actually coming out right now".
+ * and available and its own routing policy allows it; it silently ignores it otherwise, and
+ * `AudioTrack.setPreferredDevice`'s boolean result is swallowed by Media3's wrapper.
+ *
+ * ### Asking where the audio actually went
+ *
+ * From **API 33** `AudioManager.getAudioDevicesForAttributes` answers it, for the same
+ * `USAGE_MEDIA` attributes the player is built with. ADR-0027 originally recorded that no such API existed;
+ * that was wrong from Android 13 onward, and a device run found the cost of believing it — choosing the
+ * phone speaker while a headset was connected left the tick on the speaker and the sound in the headset,
+ * with nothing in the app admitting the difference.
+ *
+ * So [AudioOutput.isActive] now means **where media is going**, read from the platform, and the *choice*
+ * is [selectedId]. The two are shown separately on purpose: when they disagree, that disagreement is the
+ * finding. Below API 33 there is nothing to read and the request stands in for the route, which is the old
+ * behaviour and is marked as such.
  *
  * ### Why the selection is not remembered across restarts
  *
@@ -141,13 +155,26 @@ class AudioOutputRouter @Inject constructor(
         val target = player ?: return@withContext
         val device = id?.let(live::get)
         target.setPreferredAudioDevice(device)
+        publish()
+        val routed = routedIds()
         logger.info(
             LogCategory.Playback,
             "The audio output was set",
             // The *kind*, never the device's name: a Bluetooth product name is one a person chose and can
             // identify them (PRODUCT_SPEC 14.5). "automatic" is the no-preference case.
-            LogField.Public("output", if (id == null) "automatic" else kindOf(id)),
+            LogField.Public("asked", if (id == null) "automatic" else kindOf(id)),
             LogField.Public("connected", (device != null).toString()),
+            // What the platform did with it, which is the field that matters: a request it declines is
+            // silent, and a device run found exactly that for the built-in speaker.
+            LogField.Public("routedTo", routed?.joinToString("+") { kindOf(it) } ?: "unknown"),
+            LogField.Public(
+                "honoured",
+                when {
+                    routed == null -> "unknown"
+                    id == null -> "automatic"
+                    else -> routed.contains(id).toString()
+                },
+            ),
         )
     }
 
@@ -184,10 +211,40 @@ class AudioOutputRouter @Inject constructor(
     }
 
     private fun publish() {
+        val routed = routedIds()
         val chosen = _selectedId.value
         _outputs.value = live.mapNotNull { (id, info) ->
-            OutputDevices.outputOf(info.type, info.productName, isActive = id == chosen)
+            OutputDevices.outputOf(
+                type = info.type,
+                productName = info.productName,
+                // Where the audio is, not what was asked for. Below API 33 nothing can say, so the request
+                // stands in — and `routedIds` returns null rather than an empty set to keep "the platform
+                // did not answer" separate from "the platform says nowhere".
+                isActive = routed?.contains(id) ?: (id == chosen),
+            )
         }
+    }
+
+    /**
+     * The ids media is actually routed to, or `null` on a platform that cannot say.
+     *
+     * The same `USAGE_MEDIA` attributes `PlayerFactory` builds the player with, because routing is decided
+     * per attributes and asking about anything else would answer a question nobody asked. The content type
+     * is not part of the routing decision, so the focus-behaviour variant does not matter here.
+     *
+     * A `List` comes back rather than one device: the platform can route one stream to several outputs, and
+     * the app is a reader of that fact rather than something that can ask for it (ADR-0027).
+     */
+    private fun routedIds(): Set<String>? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
+        val manager = context.getSystemService(AudioManager::class.java) ?: return null
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+        return manager.getAudioDevicesForAttributes(attributes)
+            .mapNotNull { info -> OutputDevices.outputOf(info.type, info.productName)?.id }
+            .toSet()
     }
 
     override fun available(): List<AudioOutput> = _outputs.value

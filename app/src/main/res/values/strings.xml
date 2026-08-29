@@ -284,6 +284,9 @@
     <string name="player_output_current">Audio output: %1$s</string>
     <string name="player_output_automatic">Automatic</string>
     <string name="player_output_selected">Selected</string>
+    <!-- PLAY-002 — where the platform says the audio actually went, which is not always what was
+         asked for. %1$s is the device name. -->
+    <string name="player_output_playing_here">%1$s — playing here</string>
     <!-- %1$s is a remaining time such as "1:04:12". -->
     <string name="player_remaining">−%1$s</string>
     <!-- %1$d minutes, %2$02d seconds. -->

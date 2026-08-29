@@ -17,16 +17,23 @@ package com.example.shelfplayer.core.model.playback
  *
  * @property id the stable key, shared with [KnownDevice.id]. Never a hardware address (ROUTE-002, 14.5).
  * @property displayName what the device calls itself. Shown as-is; also not an address.
- * @property isActive whether audio is going here now — either because the listener chose it, or because the
- *   system routed here on its own. See `AudioOutputRouter`, which is the only thing that can know.
+ * @property isActive whether media is **actually** coming out here right now, as the platform reports it —
+ *   not what the app asked for. `AudioOutputRouter` reads it from `AudioManager.getAudioDevicesForAttributes`
+ *   on API 33+, and below that has nothing to read and falls back to the request. The two can disagree: a
+ *   preferred device is a request the platform may decline silently, so a chooser that showed only the
+ *   request would tick a device the sound is not coming from. Which output was *chosen* is a separate value
+ *   the router publishes beside the list.
  */
 data class AudioOutput(val id: String, val displayName: String, val kind: DeviceKind, val isActive: Boolean = false) {
 
     /**
      * Whether choosing this output would move audio into a room rather than into someone's ears.
      *
-     * The same question [KnownDevice.isSpeaker] asks, for the same reason, and the chooser uses it to decide
-     * whether a selection is worth remembering — see `AudioOutputRouter`.
+     * The same question [KnownDevice.isSpeaker] asks, kept here so the pair of types agree about a kind
+     * rather than each deciding for itself; `AudioOutputIdentityTest` compares them. It has **no production
+     * reader on this type** — the chooser deliberately remembers nothing (ADR-0027 decision 2), and the
+     * asking-before-a-room rule lives on [KnownDevice] where the persisted policy is. Said plainly because
+     * this KDoc used to claim the chooser used it to decide what to remember, which was never true.
      */
     val isSpeaker: Boolean get() = kind == DeviceKind.Speaker
 }

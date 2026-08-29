@@ -38,7 +38,7 @@ items in this project and left one defect open. That defect is what the next run
 | 2 Android Auto browse | **Passed** — `children=6` at the root, no browse failure | **R-66 confirmed on hardware.** Done, on the DHU. |
 | 2.8 Tapping a book | **FAILED** — stayed on "Henter valget ditt" | **The one open defect. §2.8 is new and captures it (R-71).** |
 | 2.9 A real car | **Passed, 2026-08-29** — reported as a whole rather than step by step | **R-75 closed: the first car result this project holds.** Per-step results were not itemised, so the wheel, the ignition cycle and the unplug are recorded as passing on the tester's word rather than from eight written answers. |
-| 2.11 Audio output chooser | **Never run — the feature is new** | **New section.** Judged by ear; no log can confirm a route (R-77). |
+| 2.11 Audio output chooser | **Re-run — the first run found two defects, both fixed** | **Rewritten.** The control no longer hides below two outputs, and the menu now shows the *route* beside the *choice*. A declined request is expected and named (R-77). |
 | 3 Server history | Passed, 3.1–3.6 | Done |
 | 4 Sleep timer | Passed, including the notification action | Done — `[3] "Sovetid 3 min"` settled the open question |
 | 5.1 Multi-file resume | Passed | Done |
@@ -604,69 +604,114 @@ reach. Do it parked.
 
 ---
 
-### 2.11 The audio output chooser (PLAY-002, ADR-0027)
+### 2.11 The audio output chooser (PLAY-002, ADR-0027 and its amendment)
 
-**You need two outputs connected at once** — the phone's own speaker plus a Bluetooth headset is the easy
-pair. With one output the control is deliberately hidden, on the phone and in the car alike: a menu offering
-the thing already happening answers nothing.
+**Re-run after the 2026-08-29 amendment.** The first run found two defects and both are fixed here: the
+control used to hide below two connected outputs, so it was absent in the car; and choosing the phone
+speaker did nothing while the app showed it as chosen.
 
-**Nothing here can be checked from a log.** `setPreferredAudioDevice` is a *preference*, and no Android API
-reports which output media is actually using (R-77). Every step below is judged **by ear**. That is not a
-gap in the script; it is the honest limit of what any app can know about its own routing.
+**One output is enough to start.** The control now appears whenever there is any output at all.
+
+**Two marks, and they mean different things.** The **tick** is what you chose. The **"— playing here"**
+label is where Android says the media actually is, read from `AudioManager.getAudioDevicesForAttributes`
+(API 33+; this phone qualifies). They are allowed to disagree, and a disagreement is a finding to record
+rather than a bug in the display — see step 4.
+
+**What can be checked from a log, and what cannot.** The route can now be read back. `adb logcat` while
+choosing shows one line per selection carrying `asked`, `connected`, `routedTo` and `honoured` — kinds only,
+never device names (14.5). Whether the *sound* moved is still judged by ear, and that is the point of doing
+this on hardware.
+
+```bash
+adb logcat -s ShelfPlayer:I | grep -i "audio output was set"
+```
 
 #### On the phone
 
-1. Start a book, then connect a Bluetooth headset so two outputs are live.
+1. Start a book, then connect a Bluetooth headset.
 2. Open the full player. A **Bluetooth icon appears in the top-right**, beside the sleep-timer readout.
 
-   **Expect:** it is not there with only one output connected. Disconnect the headset and confirm it
-   disappears; reconnect and confirm it returns.
+   **Expect:** it is there with the headset connected *and* with it disconnected. It disappears only if the
+   phone reports no outputs at all, which in practice does not happen.
 
-3. Tap it. The menu lists **Automatic** first, then every connected output, with a tick on the current one.
+3. Tap it. The menu lists **Automatic** first, then every connected output.
 
-   **Expect:** *Automatic* is ticked initially — **even if sound is already coming from the headset**. The
-   tick means "what the app asked for", and it has asked for nothing yet. This is deliberate (ADR-0027).
+   **Expect:** *Automatic* carries the tick — nothing has been chosen yet. Whichever row the sound is
+   actually coming from reads **"… — playing here"**, which will normally be the headset. Two different
+   marks on two different rows is correct.
 
-4. Choose the output sound is *not* currently coming from. Listen.
+4. Choose **the phone speaker** while the headset is still connected. Listen.
 
-   **Expect:** audio moves, within a second or two. The tick moves to the row you picked.
+   **Expect one of two outcomes, and record which:**
+   - the sound moves to the speaker, the tick moves to *Phone speaker*, and *"playing here"* follows it; or
+   - the sound stays in the headset, the tick sits on *Phone speaker*, and *"playing here"* stays on the
+     headset. **This is the platform declining the request, not a defect in the app** — `setPreferredDevice`
+     is a preference and nothing can force it (R-77). The log line says so: `honoured=false`.
 
-5. Choose **Automatic** again.
+   The first run of this test hit the second outcome and the app claimed success. Showing both marks is the
+   fix; if the tick and the label ever agree while your ears disagree, that *is* a defect — report it.
 
-   **Expect:** routing returns to whatever the system would do on its own.
+5. Choose the headset explicitly.
 
-6. With a non-Automatic output selected, **disconnect that device**.
+   **Expect:** sound in the headset, tick and *"playing here"* on the same row, `honoured=true`.
+
+6. Choose **Automatic** again.
+
+   **Expect:** routing returns to whatever the system would do on its own, and the tick returns to
+   *Automatic*. The label stays on whichever row the system picked.
+
+7. With a non-Automatic output selected, **disconnect that device**.
 
    **Expect:** the selection falls back to *Automatic* by itself, and the app does not keep asking for a
    device that is gone. Playback pausing here is correct — that is PLAY-002's becoming-noisy handling, not a
    defect (see §2.9 step 7).
 
-**Result (icon appears only with two outputs):**
-**Result (audio actually moves — by ear):**
+8. **Start navigation, or any other app that speaks, while the book plays to the headset.**
+
+   **Expect:** the other app routes itself and is unaffected by your choice — in a car that means the car's
+   speakers. The preference is set on this app's own audio track and cannot reach another app's. Confirming
+   this is the point: the opposite would be a serious defect.
+
+**Result (the icon is present with one output connected):**
+**Result (tick and "playing here" start on different rows):**
+**Result (phone speaker — moved, or declined with honoured=false):**
+**Result (headset chosen explicitly — audio actually moves, by ear):**
 **Result (Automatic restores system routing):**
 **Result (selection clears when the device disconnects):**
+**Result (another app's audio is unaffected):**
 
 #### In the car
 
 **There is no output button on the Android Auto player screen, and there cannot be one** (R-78). No API lets
 an app open a browse node from a custom action. The list is a **browse tab**.
 
-7. With the car connected *and* a Bluetooth headset paired to the phone, swipe from the player to the browse
-   screen. An **Audio output** tab sits after Chapters and History.
+9. With the car connected, swipe from the player to the browse screen. An **Audio output** tab sits after
+   Chapters and History.
 
-   **Expect:** the tab is present only when more than one output is connected.
+   **Expect:** the tab is there. It used to require two connected outputs, which meant it was missing in the
+   car — the head unit is often the only output the platform reports. If it is absent now, that is a defect.
 
-8. Open it. The rows are Automatic plus each connected output; the one in use reads *"… — playing here"*.
+10. Open it. The rows are Automatic plus each connected output; the one media is actually using reads
+    *"… — playing here"*.
 
-9. Tap a row.
+    **Expect:** with only the car connected, that is the car.
 
-   **Expect:** the screen shows a single line confirming the choice, **and the book keeps playing without a
-   gap**. A rebuffer here would mean the rows have become playable rather than browsable, which is the whole
-   point of ADR-0027 decision 3.
+11. Tap a row.
 
-**Result (tab present with two outputs):**
+    **Expect:** the screen shows a single line confirming the choice, **and the book keeps playing without a
+    gap**. A rebuffer here would mean the rows have become playable rather than browsable, which is the whole
+    point of ADR-0027 decision 3.
+
+12. With a headset also paired to the phone, open the tab in the car and choose the headset.
+
+    **Expect:** the book moves to the headset and the car's own navigation prompts keep coming out of the
+    car. This is the same per-app property step 8 checks, in the place it matters most.
+
+**Result (the tab is present in the car):**
+**Result (the car is marked "playing here"):**
 **Result (choosing a row does not interrupt playback):**
 **Result (the confirmation names the output chosen):**
+**Result (book to headset, navigation still in the car — or not attempted):**
 
 ---
 
