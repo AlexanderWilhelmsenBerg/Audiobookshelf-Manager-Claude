@@ -20,11 +20,23 @@ note "Watch the car: does the loading message clear, and does audio start?"
 read -r -p "  Press Enter once the book has either started or clearly hung… " _
 
 step "§2.8  What the service was asked, and what it answered"
-ASKED=$("$ADB" logcat -d 2>/dev/null | grep -icE "A controller asked to set what plays" || true)
+SEL=$("$ADB" logcat -d 2>/dev/null | grep -iE "A controller asked to set what plays" || true)
+ASKED=0; RESOLVED=0
+if [[ -n "$SEL" ]]; then
+  ASKED=$(printf '%s\n' "$SEL" | grep -c . || true)
+  RESOLVED=$(printf '%s\n' "$SEL" | grep -c "resolved=true" || true)
+fi
 logcat_grep "A controller asked to set what plays" 10
 if (( ASKED == 0 )); then
-  bad "No selection reached this service. The defect is upstream of it — discovery, or the item's flags."
-  note "Confirm against the in-app event log before concluding: search for 'asked to set'."
+  # Only a diagnosis when the log can support one. If logcat is not carrying the app, absence says
+  # nothing about where the defect is, and `logcat_grep` has already said so — a layer attribution on
+  # top of that would contradict it in the same breath.
+  if [[ "${LOGCAT_CARRIES_APP:-unknown}" == "yes" ]]; then
+    bad "No selection reached this service. The defect is upstream of it — discovery, or the item's flags."
+  else
+    bad "No selection line found, and logcat is not carrying this app — so this locates nothing."
+    note "Read Settings → About → Diagnostics → the event log and search 'asked to set' before concluding."
+  fi
 fi
 note "branch=   which route answered: browse (a car tap), spoken (a voice query), passthrough (the app)."
 note "kind=     the SHAPE of the id (book / at / tab / root), never the id — an id names a book (14.5)."
@@ -35,14 +47,21 @@ warn "NOT mean the tap worked. resolved=true with no player state change is the 
 
 step "§2.8  What the player then did with it"
 logcat_grep "The player changed state" 15
-# buffering or ready is the pass. `state=idle` alone is the player taking the queue and refusing to
-# prepare, which is a failure the count alone would have recorded as a success.
-step_verdict "The player changed state" "state=(buffering|ready)" \
-  "the player took the queue and started loading it" \
-  "The player did not reach buffering or ready. idle alone means it refused to prepare; no line at all
+# This step can only speak for the tap if the tap resolved. A book already streaming produces
+# buffering/ready from an ordinary rebuffer inside the same 30-second window, so a pass here without a
+# `resolved=true` selection would claim the queue reached the player while the step above says the
+# opposite. Correlating by timestamp in shell is the kind of cleverness that has generated defects on
+# this branch already; requiring the earlier fact is both simpler and true.
+if (( RESOLVED > 0 )); then
+  step_verdict "The player changed state" "state=(buffering|ready)" \
+    "the player took the resolved queue and started loading it" \
+    "The player did not reach buffering or ready. idle alone means it refused to prepare; no line at all
       means the queue never reached it."
-note "Expect buffering then ready. Only 'idle', or no line at all, means the queue never reached the"
-note "player or was never prepared — which is a different defect from a queue that failed to load."
+else
+  warn "No resolved=true selection above, so nothing here can be attributed to your tap: any"
+  warn "buffering/ready you see may be an ordinary rebuffer of a book that was already playing."
+  note "Read the lines above for context only. The verdict that matters is resolved= in the step before."
+fi
 
 step "§2.8  Anything that threw"
 logcat_grep "A browse request failed" 10

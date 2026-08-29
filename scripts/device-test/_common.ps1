@@ -248,6 +248,7 @@ $AppTag = 'ShelfPlayer'
 
 $script:LogcatCarriesApp = 'unknown'
 $script:LogcatIsolated = 'unknown'
+$script:SelectionResolved = 0
 
 function Clear-Logcat {
     # Clear the buffer so the window that follows is small and fresh.

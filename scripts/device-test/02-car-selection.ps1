@@ -26,9 +26,18 @@ Wait-ForTester 'In the car, open a shelf, tap a book, and wait up to 30 seconds.
 
 Write-Step 'Section 2.8 step 3 - What the service was asked, and what it answered'
 $asked = @(Show-LogcatMatches -Pattern 'A controller asked to set what plays' -Last 10)
+$script:SelectionResolved = @($asked | Where-Object { $_ -match 'resolved=true' }).Count
 if ($asked.Count -eq 0) {
-    Write-Bad 'No selection reached this service. The defect is upstream of it - discovery, or the item flags.'
-    Write-Note 'Confirm against the in-app event log before concluding: search for "asked to set".'
+    # Only a diagnosis when the log can support one. If logcat is not carrying the app, absence says
+    # nothing about where the defect is, and Show-LogcatMatches has already said so - a layer
+    # attribution on top of that would contradict it in the same breath.
+    if ($script:LogcatCarriesApp -eq 'yes') {
+        Write-Bad 'No selection reached this service. The defect is upstream of it - discovery, or the item flags.'
+    }
+    else {
+        Write-Bad 'No selection line found, and logcat is not carrying this app - so this locates nothing.'
+        Write-Note 'Read Settings > About > Diagnostics > the event log and search "asked to set" first.'
+    }
 } else {
     $asked | ForEach-Object { Write-Output $_ }
     Write-Note 'branch=   which route answered: browse (a car tap), spoken (voice), passthrough (the app).'
@@ -42,11 +51,20 @@ if ($asked.Count -eq 0) {
 Write-Step 'Section 2.8 step 4 - What the player then did with it'
 $states = @(Show-LogcatMatches -Pattern 'The player changed state' -Last 15)
 $states | ForEach-Object { Write-Output $_ }
-# buffering or ready is the pass. state=idle alone is the player taking the queue and refusing to
-# prepare, which the count alone would have recorded as a success.
-Test-StepVerdict -Lines $states -Expected 'state=(buffering|ready)' `
-    -PassMessage 'The player took the queue and started loading it.' `
-    -FailMessage 'The player did not reach buffering or ready. idle alone means it refused to prepare; no line at all means the queue never reached it.'
+# This step can only speak for the tap if the tap resolved. A book already streaming produces
+# buffering/ready from an ordinary rebuffer inside the same 30-second window, so a pass here without a
+# resolved=true selection would claim the queue reached the player while the step above says the
+# opposite. Requiring the earlier fact is simpler than correlating timestamps, and true.
+if ($script:SelectionResolved -gt 0) {
+    Test-StepVerdict -Lines $states -Expected 'state=(buffering|ready)' `
+        -PassMessage 'The player took the resolved queue and started loading it.' `
+        -FailMessage 'The player did not reach buffering or ready. idle alone means it refused to prepare; no line at all means the queue never reached it.'
+}
+else {
+    Write-Warn 'No resolved=true selection above, so nothing here can be attributed to your tap: any'
+    Write-Warn 'buffering/ready you see may be an ordinary rebuffer of a book that was already playing.'
+    Write-Note 'Read the lines above for context only. The verdict that matters is resolved= before this.'
+}
 
 Write-Step 'Section 2.8 step 5 - Anything that threw'
 $failures = @(Show-LogcatMatches -Pattern 'A browse request failed' -Last 10)
