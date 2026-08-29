@@ -1230,8 +1230,15 @@ class PlaybackService : MediaLibraryService() {
             // `null` here and fell through to the browse branch, so the log read `branch=browse` — which
             // the device scripts define as "the voice host resolved a title and sent an id". The failure
             // case that most needs the diagnostic was the one it described wrongly.
-            val query = mediaItems.firstNotNullOfOrNull { item -> item.requestMetadata.searchQuery }
+            //
+            // The item is kept beside its query for the same reason the browse branch keeps its own: this
+            // searches the list, so the item carrying the query need not be the first one. Reading the
+            // first would log `branch=spoken kind=book` for a request whose spoken half was a later,
+            // empty-id item — naming an id the spoken branch never touched.
+            val spokenRequest = mediaItems
+                .firstNotNullOfOrNull { item -> item.requestMetadata.searchQuery?.let { q -> item to q } }
                 ?.takeIf { session.mayBrowse(controller) }
+            val query = spokenRequest?.second
             val spoken = query?.let { asked -> auto.search(asked).firstOrNull() }
             val selection = when {
                 query != null -> spoken?.let { match -> resolveQueue(match) }.let { queue ->
@@ -1240,10 +1247,12 @@ class PlaybackService : MediaLibraryService() {
                     Selection(
                         branch = "spoken",
                         resolved = queue != null,
-                        // The asked item, not the book that matched: a voice request carries an empty id,
-                        // and `kind=empty` is what tells a reader it came in as words. `branch=spoken`
-                        // already names the route, so naming the matched book here would say less.
-                        kind = actedKind(mediaItems),
+                        // The item that carried the query, not the book that matched: a voice request
+                        // carries an empty id, and `kind=empty` is what tells a reader it came in as
+                        // words. `branch=spoken` already names the route, so naming the matched book
+                        // here would say less.
+                        // Smart-cast: `query != null` above implies this pair is not null.
+                        kind = actedKind(mediaItems, spokenRequest.first),
                         answer = queue.asItems(startIndex, startPositionMs),
                     )
                 }

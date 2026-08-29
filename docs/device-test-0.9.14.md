@@ -572,10 +572,20 @@ reach. Do it parked.
    asks for it before it lets you touch the cable, because a position recorded after the fact proves
    nothing. Then pull the cable mid-book.
 
-   **Expect:** playback continues on the phone, and progress is not lost. Product priority 1 and 2 in one
-   step. Then plug back in and confirm the car picks the same book up where it now is. Compare against the
-   position you wrote down, on the phone **and** in the web client; the `The server accepted a position`
-   line cannot stand in for that, because the sync ticker writes one about every 30 seconds regardless.
+   **Expect:** **progress is not lost.** Two outcomes are both correct for the audio itself, and which one
+   you get depends on the car:
+
+   - Playback **continues on the phone** — the disconnect was not reported as a route change.
+   - Playback **pauses** — the disconnect came through as *audio becoming noisy*, and the player is
+     deliberately configured to pause on that (`PlayerFactory`, PRODUCT_SPEC PLAY-002: audio never moves to
+     the phone's own speaker when the thing you were listening on goes away). **A pause here is the
+     requirement working, not a defect**, and it must not be "fixed" by turning that handling off.
+
+   What is **not** acceptable in either case is audio coming out of the phone's speaker, or the position
+   being lost. Then plug back in and confirm the car picks the same book up where it now is: compare
+   against the position you wrote down, on the phone **and** in the web client. The `The server accepted a
+   position` line cannot stand in for that, because the sync ticker writes one about every 30 seconds
+   regardless.
 
 8. **Voice, if the car has it.** "Hey Google, play <a book you own>".
 

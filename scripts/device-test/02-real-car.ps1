@@ -90,8 +90,13 @@ Test-StepVerdict -Lines $back -Expected 'controller=' `
     -FailMessage 'No fresh connection line: the car did not reconnect after the power cycle. That is a different finding from a resume tile that is missing or wrong.'
 
 Write-Step 'Section 2.9 step 7 - Unplug while playing'
-Write-Note 'Pull the cable mid-book. Playback must continue on the phone and progress must not be lost -'
-Write-Note 'product priorities 1 and 2 in one step. Then plug back in and confirm the car picks it up.'
+Write-Note 'Pull the cable mid-book, then plug back in and confirm the car picks the same book up.'
+Write-Note 'PROGRESS must not be lost. The audio has TWO correct outcomes and the car decides which:'
+Write-Note '  it keeps playing on the phone, or it PAUSES - the disconnect arrived as audio-becoming-noisy'
+Write-Note "  and the player is configured to pause on that (PLAY-002: audio never moves to the phone's own"
+Write-Note '  speaker when what you were listening on goes away). A pause here is the requirement working.'
+Write-Warn 'So do not record a pause as a defect, and do not "fix" it by turning that handling off. What is'
+Write-Warn 'not acceptable either way: sound out of the phone speaker, or a position that moved.'
 # The baseline has to be taken BEFORE the action. This step used to explain the comparison only after
 # the unplug had already happened, so a tester running the script top to bottom had nothing to compare
 # against and the one check that can actually prove priority 2 could not be made at all.

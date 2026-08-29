@@ -89,8 +89,13 @@ step_verdict "A car connected to the media session" "controller=" \
       finding from a resume tile that is missing or wrong."
 
 step "§2.9 step 7  Unplug while playing"
-note "Pull the cable mid-book. Playback must continue on the phone and progress must not be lost —"
-note "product priorities 1 and 2 in one step. Then plug back in and confirm the car picks it up."
+note "Pull the cable mid-book, then plug back in and confirm the car picks the same book up."
+note "PROGRESS must not be lost. The audio has TWO correct outcomes and the car decides which:"
+note "  it keeps playing on the phone, or it PAUSES — the disconnect arrived as audio-becoming-noisy"
+note "  and the player is configured to pause on that (PLAY-002: audio never moves to the phone's own"
+note "  speaker when what you were listening on goes away). A pause here is the requirement working."
+warn "So do not record a pause as a defect, and do not 'fix' it by turning that handling off. What is"
+warn "not acceptable either way: sound out of the phone speaker, or a position that moved."
 # The baseline has to be taken BEFORE the action. This step used to explain the comparison only after
 # the unplug had already happened, so a tester running the script top to bottom had nothing to compare
 # against and the one check that can actually prove priority 2 could not be made at all.
