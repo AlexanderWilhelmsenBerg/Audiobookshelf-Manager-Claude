@@ -10,6 +10,17 @@
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 require_device
 
+step "§2.8  Which host is this?"
+note "Record whether you are on the Desktop Head Unit or a real car, and over USB or wireless."
+note "They are different hosts and a defect can live in one and not the other (§2.9)."
+# No verdict, deliberately. Nothing has been cleared yet — this script is run with the car already
+# connected — so the newest connection line may be from a DHU session hours ago. And the log cannot
+# settle it even when fresh: the DHU and a real car both report
+# controller=com.google.android.projection.gearhead (R-75). Only the tester can say which this is.
+logcat_grep "A car connected to the media session" 5
+note "Context only: the buffer was not cleared, so the newest line above may predate today. gearhead"
+note "is projected Android Auto, DHU and real car alike — you are the one who records which."
+
 step "§2.8  Clear the log, so what follows is only the tap"
 logcat_clear
 

@@ -13,11 +13,20 @@ Require-Device
 Write-Step 'Section 2.8 step 1 - Which host is this?'
 Write-Note 'Record whether you are on the Desktop Head Unit or a real car, and over USB or wireless.'
 Write-Note 'They are different hosts and a defect can be in one and not the other (section 2.9).'
+# No verdict here, and deliberately. Nothing has been cleared yet - this script is run with the car
+# already connected - so the newest connection line may be from a DHU session hours ago, and a pass
+# would report a host that is not the one in front of you. The log cannot settle it even when fresh:
+# the DHU and a real car both report controller=com.google.android.projection.gearhead (R-75). Only
+# the tester can say which host this is, which is what the step asks them to record.
 $connections = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
 $connections | ForEach-Object { Write-Output $_ }
-Test-StepVerdict -Lines $connections -Expected 'controller=' `
-    -PassMessage 'A host is connected. controller= names it; gearhead is projected Android Auto, DHU or real car alike.' `
-    -FailMessage 'No car connection recorded yet. Connect first, or read the in-app event log.'
+if ($connections.Count -eq 0) {
+    Write-Note 'No connection line in the buffer. It may simply have rolled - connect, then carry on.'
+}
+else {
+    Write-Note 'Context only: the buffer was not cleared, so the newest line above may predate today.'
+    Write-Note 'gearhead is projected Android Auto, DHU and real car alike - you record which (2.9).'
+}
 
 Write-Step 'Section 2.8 step 2 - Clear the log, so what follows is only the tap'
 Clear-Logcat
@@ -73,9 +82,19 @@ else {
 }
 
 Write-Step 'Section 2.8 step 5 - Anything that threw'
+# Absence is not a green, and the shell script has said so since it was written - this one had not
+# caught up. `Show-LogcatMatches` may have just reported that the dump is not evidence (logcat not
+# carrying the app, or a clear the device refused), and an empty collection then rules out nothing at
+# all. Report what is there; the in-app log settles it when the dump cannot.
 $failures = @(Show-LogcatMatches -Pattern 'A browse request failed' -Last 10)
 if ($failures.Count -eq 0) {
-    Write-Ok 'Nothing threw. This line covers every session callback, so that rules out an exception.'
+    if ($script:LogcatCarriesApp -eq 'yes' -and $script:LogcatIsolated -eq 'yes') {
+        Write-Ok 'Nothing threw. This line covers every session callback, so that rules out an exception.'
+    }
+    else {
+        Write-Note 'No throw was logged - but this dump is not usable evidence (see the warning above),'
+        Write-Note 'so it does not rule one out. Search the in-app event log for "browse request failed".'
+    }
 } else {
     $failures | ForEach-Object { Write-Output $_ }
     Write-Bad 'A callback threw. Preserve the complete line, including thrown=.'

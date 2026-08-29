@@ -41,19 +41,26 @@ note "Next, previous, play/pause from the wheel, and the volume knob. These arri
 note "events and never touch the DHU, so nothing recorded so far says whether they work."
 warn "The log can witness PLAY/PAUSE only. Volume changes no playback state, and next/previous are"
 warn "no-ops on the one-item queue a car selection builds — judge those two by ear, not from here."
+warn "Do not touch the phone during this step. The reason cannot tell you who pressed, and the cleared"
+warn "window is the only thing that can — so anything you do on the phone here invalidates the answer."
 # Clear first, or step 3's own lines are still in the buffer and a wheel that does nothing reads as a
 # wheel that worked. And look for the play/pause line rather than a state change: play/pause leaves the
 # player in STATE_READY, so a working wheel produces no state change at all.
+#
+# The pass is a play/pause line in the isolated window, NOT `reason=remote`. Media3 collapses the
+# origin before this service ever sees it: a controller's play arrives at MediaSession, which forwards
+# it to the local player as `play()` → `setPlayWhenReady(true)`, and ExoPlayerImpl hard-codes that call
+# to PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST. `remote` is what a *remote* player reports — CastPlayer,
+# or a controller observing a session — and this listener is attached to the local ExoPlayer, so it can
+# never appear here. Requiring it rejected every working wheel.
 logcat_clear
 read -r -p "  Press Enter once you have used the wheel's PLAY/PAUSE button… " _
 logcat_grep "Playback was asked to change" 10
-# reason=remote is the pass, not the mere presence of a line: userRequest is the phone's own UI and
-# audioFocusLoss is nobody at all, and either would otherwise be counted as the wheel working.
-step_verdict "Playback was asked to change" "reason=remote" \
-  "play/pause reached the session from a remote controller — the wheel" \
-  "The wheel's play/pause did not reach the session as a remote request. Unsupported here, or refused
+step_verdict "Playback was asked to change" "reason=(userRequest|remote)" \
+  "play/pause reached the session, and the wheel is the only thing you pressed" \
+  "The wheel's play/pause never reached the session at all. Unsupported here, or refused
       — and PR #48 narrowed exactly that command surface, so say which if you can tell."
-note "reason=userRequest would mean the phone's own UI did it; reason=audioFocusLoss, nobody did."
+note "reason=audioFocusLoss or becomingNoisy would mean nobody pressed anything: the system did it."
 
 step "§2.9 step 5  Driving restrictions"
 warn "Only with somebody else driving, or on a rolling road. Skip it otherwise and say so."

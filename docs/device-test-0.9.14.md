@@ -544,6 +544,13 @@ things the DHU cannot reach. Do it parked.
    recorded so far says whether they work. `docs/risks.md` R-71's fix and PR #48's command narrowing both
    touched this path.
 
+   **Do not touch the phone during this step.** The log records that play/pause reached the session, and it
+   cannot record who asked: Media3 hands a controller's `play()` to the local player as `setPlayWhenReady`,
+   which reports `reason=userRequest` — the same reason the phone's own UI produces. A cleared window and
+   your hands off the phone are the whole of the attribution (R-76). Volume and next/previous cannot be
+   witnessed from the log at all — volume changes no playback state, and next/previous are no-ops on the
+   one-item queue a car selection builds — so judge those two by ear.
+
 5. **Driving restrictions.** With the car in motion — **a passenger drives, or use a rolling road; do not do
    this yourself** — open the browse tree.
 

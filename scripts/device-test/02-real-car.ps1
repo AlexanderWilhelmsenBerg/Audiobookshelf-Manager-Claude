@@ -42,19 +42,26 @@ Write-Note 'Next, previous, play/pause from the wheel, and the volume knob. Thes
 Write-Note 'events and never touch the DHU, so nothing recorded so far says whether they work.'
 Write-Warn 'The log can witness PLAY/PAUSE only. Volume changes no playback state, and next/previous are'
 Write-Warn 'no-ops on the one-item queue a car selection builds - judge those two by ear, not from here.'
+Write-Warn 'Do not touch the phone during this step. The reason cannot tell you who pressed, and the'
+Write-Warn 'cleared window is the only thing that can - so using the phone here invalidates the answer.'
 # Clear first, or step 3's own lines are still in the buffer and a wheel that does nothing reads as a
 # wheel that worked. And look for the play/pause line rather than a state change: play/pause leaves the
 # player in STATE_READY, so a working wheel produces no state change at all.
+#
+# The pass is a play/pause line in the isolated window, NOT reason=remote. Media3 collapses the origin
+# before this service ever sees it: a controller's play arrives at MediaSession, which forwards it to
+# the local player as play() -> setPlayWhenReady(true), and ExoPlayerImpl hard-codes that call to
+# PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST. remote is what a *remote* player reports - CastPlayer, or
+# a controller observing a session - and this listener is on the local ExoPlayer, so it can never
+# appear here. Requiring it rejected every working wheel.
 Clear-Logcat
-Wait-ForTester "Use the wheel's PLAY/PAUSE button now."
+Wait-ForTester "Use the wheel's PLAY/PAUSE button now, and touch nothing else."
 $asked = @(Show-LogcatMatches -Pattern 'Playback was asked to change' -Last 10)
 $asked | ForEach-Object { Write-Output $_ }
-# reason=remote is the pass, not the mere presence of a line: userRequest is the phone's own UI and
-# audioFocusLoss is nobody at all, and either would otherwise be counted as the wheel working.
-Test-StepVerdict -Lines $asked -Expected 'reason=remote' `
-    -PassMessage 'Play/pause reached the session from a remote controller - the wheel.' `
-    -FailMessage "The wheel's play/pause did not reach the session as a remote request. Unsupported here, or refused - PR #48 narrowed that command surface, so say which if you can tell."
-Write-Note 'reason=userRequest would mean the phone UI did it; reason=audioFocusLoss, nobody did.'
+Test-StepVerdict -Lines $asked -Expected 'reason=(userRequest|remote)' `
+    -PassMessage 'Play/pause reached the session, and the wheel is the only thing you pressed.' `
+    -FailMessage "The wheel's play/pause never reached the session at all. Unsupported here, or refused - PR #48 narrowed that command surface, so say which if you can tell."
+Write-Note 'reason=audioFocusLoss or becomingNoisy would mean nobody pressed anything: the system did.'
 
 Write-Step 'Section 2.9 step 5 - Driving restrictions'
 Write-Warn 'Only with somebody else driving, or on a rolling road. Skip it otherwise and say so.'
