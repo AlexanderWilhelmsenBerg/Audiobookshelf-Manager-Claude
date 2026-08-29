@@ -1,6 +1,7 @@
 package com.example.shelfplayer.feature.player
 
 import androidx.compose.runtime.Immutable
+import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import kotlin.time.Duration
 
@@ -16,6 +17,20 @@ data class SkipControls(val intervals: SkipIntervals, val onBack: () -> Unit, va
     companion object {
         /** For a preview or a test that is not exercising the skips. */
         val Inert = SkipControls(SkipIntervals.Default, onBack = {}, onForward = {})
+    }
+}
+
+/**
+ * PRODUCT_SPEC PLAY-002 — the outputs this book can be sent to, and the callback that sends it.
+ *
+ * The same bundling as [SkipControls] and for the same reason: the list and the action that acts on it must
+ * not be able to disagree, and a screen or a preview names one object rather than two.
+ */
+@Immutable
+data class OutputControls(val outputs: List<AudioOutput>, val onSelect: (String?) -> Unit) {
+    companion object {
+        /** For a preview, or a test not exercising the chooser. */
+        val Inert = OutputControls(outputs = emptyList(), onSelect = {})
     }
 }
 

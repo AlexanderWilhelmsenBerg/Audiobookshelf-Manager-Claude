@@ -37,7 +37,8 @@ items in this project and left one defect open. That defect is what the next run
 | 1 Controller security | Passed, 1.1–1.4 | Done |
 | 2 Android Auto browse | **Passed** — `children=6` at the root, no browse failure | **R-66 confirmed on hardware.** Done, on the DHU. |
 | 2.8 Tapping a book | **FAILED** — stayed on "Henter valget ditt" | **The one open defect. §2.8 is new and captures it (R-71).** |
-| 2.9 A real car | **Never run — every car result so far is the DHU's** | **New section. The DHU cannot see the launcher, the wheel, an ignition cycle or an unplugged cable (R-75).** |
+| 2.9 A real car | **Passed, 2026-08-29** — reported as a whole rather than step by step | **R-75 closed: the first car result this project holds.** Per-step results were not itemised, so the wheel, the ignition cycle and the unplug are recorded as passing on the tester's word rather than from eight written answers. |
+| 2.11 Audio output chooser | **Never run — the feature is new** | **New section.** Judged by ear; no log can confirm a route (R-77). |
 | 3 Server history | Passed, 3.1–3.6 | Done |
 | 4 Sleep timer | Passed, including the notification action | Done — `[3] "Sovetid 3 min"` settled the open question |
 | 5.1 Multi-file resume | Passed | Done |
@@ -600,6 +601,72 @@ reach. Do it parked.
 **Result (ignition cycle and the resume tile):**
 **Result (unplug while playing):**
 **Result (voice):**
+
+---
+
+### 2.11 The audio output chooser (PLAY-002, ADR-0027)
+
+**You need two outputs connected at once** — the phone's own speaker plus a Bluetooth headset is the easy
+pair. With one output the control is deliberately hidden, on the phone and in the car alike: a menu offering
+the thing already happening answers nothing.
+
+**Nothing here can be checked from a log.** `setPreferredAudioDevice` is a *preference*, and no Android API
+reports which output media is actually using (R-77). Every step below is judged **by ear**. That is not a
+gap in the script; it is the honest limit of what any app can know about its own routing.
+
+#### On the phone
+
+1. Start a book, then connect a Bluetooth headset so two outputs are live.
+2. Open the full player. A **Bluetooth icon appears in the top-right**, beside the sleep-timer readout.
+
+   **Expect:** it is not there with only one output connected. Disconnect the headset and confirm it
+   disappears; reconnect and confirm it returns.
+
+3. Tap it. The menu lists **Automatic** first, then every connected output, with a tick on the current one.
+
+   **Expect:** *Automatic* is ticked initially — **even if sound is already coming from the headset**. The
+   tick means "what the app asked for", and it has asked for nothing yet. This is deliberate (ADR-0027).
+
+4. Choose the output sound is *not* currently coming from. Listen.
+
+   **Expect:** audio moves, within a second or two. The tick moves to the row you picked.
+
+5. Choose **Automatic** again.
+
+   **Expect:** routing returns to whatever the system would do on its own.
+
+6. With a non-Automatic output selected, **disconnect that device**.
+
+   **Expect:** the selection falls back to *Automatic* by itself, and the app does not keep asking for a
+   device that is gone. Playback pausing here is correct — that is PLAY-002's becoming-noisy handling, not a
+   defect (see §2.9 step 7).
+
+**Result (icon appears only with two outputs):**
+**Result (audio actually moves — by ear):**
+**Result (Automatic restores system routing):**
+**Result (selection clears when the device disconnects):**
+
+#### In the car
+
+**There is no output button on the Android Auto player screen, and there cannot be one** (R-78). No API lets
+an app open a browse node from a custom action. The list is a **browse tab**.
+
+7. With the car connected *and* a Bluetooth headset paired to the phone, swipe from the player to the browse
+   screen. An **Audio output** tab sits after Chapters and History.
+
+   **Expect:** the tab is present only when more than one output is connected.
+
+8. Open it. The rows are Automatic plus each connected output; the one in use reads *"… — playing here"*.
+
+9. Tap a row.
+
+   **Expect:** the screen shows a single line confirming the choice, **and the book keeps playing without a
+   gap**. A rebuffer here would mean the rows have become playable rather than browsable, which is the whole
+   point of ADR-0027 decision 3.
+
+**Result (tab present with two outputs):**
+**Result (choosing a row does not interrupt playback):**
+**Result (the confirmation names the output chosen):**
 
 ---
 

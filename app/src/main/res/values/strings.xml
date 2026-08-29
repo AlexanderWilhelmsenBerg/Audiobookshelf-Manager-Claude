@@ -251,6 +251,16 @@
     <string name="player_stop">Stop playback</string>
     <!-- Shown on the book screen while the server is being asked to open a session. -->
     <string name="player_collapse">Close the player</string>
+
+    <!--
+      PRODUCT_SPEC PLAY-002 — the output chooser on the player card.
+
+      The button's description names the destination rather than the control, so a screen reader announces
+      where the book is going. %1$s is the output's own name, or the word for "automatic".
+    -->
+    <string name="player_output_current">Audio output: %1$s</string>
+    <string name="player_output_automatic">Automatic</string>
+    <string name="player_output_selected">Selected</string>
     <!-- %1$s is a remaining time such as "1:04:12". -->
     <string name="player_remaining">−%1$s</string>
     <!-- %1$d minutes, %2$02d seconds. -->

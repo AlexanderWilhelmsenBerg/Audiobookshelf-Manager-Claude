@@ -92,6 +92,10 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var players: PlayerFactory
 
+    /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
+    @Inject
+    internal lateinit var audioOutputs: AudioOutputRouter
+
     @Inject
     internal lateinit var playbackRepository: PlaybackRepository
 
@@ -213,6 +217,9 @@ class PlaybackService : MediaLibraryService() {
         // player rather than owning one, for the same reason the timer is: there is exactly one.
         sessionSync.attach(exoPlayer)
         autoRewind.attach(exoPlayer)
+        // PRODUCT_SPEC PLAY-002 — after the player exists and before anything can be chosen. A preference
+        // set on a released player routes nothing, so this is re-run on every player this service builds.
+        audioOutputs.attach(exoPlayer)
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()
@@ -332,6 +339,7 @@ class PlaybackService : MediaLibraryService() {
         sessionSync.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
+        audioOutputs.detach()
         journal?.cancel()
         sleepTimerWatch?.cancel()
         skipWatch?.cancel()

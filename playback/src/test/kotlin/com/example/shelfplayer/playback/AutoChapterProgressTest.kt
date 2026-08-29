@@ -320,6 +320,7 @@ class AutoChapterProgressTest {
             library = library,
             history = StubHistory(),
             homeShelves = ObserveHomeShelvesUseCase(profiles, library, UnconfinedTestDispatcher()),
+            audioOutputs = FakeAutoOutputs(),
         )
     }
 

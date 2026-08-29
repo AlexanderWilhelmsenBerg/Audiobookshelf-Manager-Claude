@@ -20,6 +20,11 @@
     <string name="car_tab_discover">Oppdag</string>
     <string name="car_tab_chapters">Kapitler</string>
     <string name="car_tab_history">Historikk</string>
+    <string name="car_tab_output">Lydutgang</string>
+    <string name="car_output_automatic">Automatisk</string>
+    <string name="car_output_automatic_now">Spilles der systemet velger</string>
+    <string name="car_output_playing_here">%1$s \u2014 spilles her</string>
+    <string name="car_output_none">Fant ingen lydutganger</string>
 
     <string name="car_empty_title">Ingen bøker ennå</string>
     <!-- %1$s er appnavnet. -->

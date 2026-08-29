@@ -12,6 +12,7 @@ import androidx.media3.session.MediaConstants
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Chapter
+import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.library.lastPlayedBook
@@ -84,7 +85,34 @@ class AutoLibrary @Inject constructor(
     private val library: LibraryRepository,
     private val history: PlaybackHistoryRepository,
     private val homeShelves: ObserveHomeShelvesUseCase,
+    /**
+     * PRODUCT_SPEC PLAY-002 — the output rows, and the only thing that can act on one being tapped.
+     *
+     * A car hands back a media id and nothing else, so a browse node is the only list an app can put in
+     * front of a driver. See [outputRows] for why the rows are browsable rather than playable.
+     */
+    private val audioOutputs: Outputs,
 ) {
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — what this tree needs from the router, and nothing more.
+     *
+     * An interface for the same reason [OutputDeviceWatcher.Actions] is one: every decision here is about
+     * *rows* — which to show, what to call them, which is ticked — and all of it is testable, while the
+     * `AudioManager` and `ExoPlayer` calls behind it are not. A fake supplies three values and the whole
+     * node can be exercised on the JVM.
+     */
+    interface Outputs {
+
+        /** Everything connected right now. Empty is a legitimate answer and the tree says so. */
+        fun available(): List<AudioOutput>
+
+        /** The chosen output's id, or `null` for *Automatic*. */
+        fun selected(): String?
+
+        /** Chooses one, or `null` for *Automatic*. Ignores an id that is no longer connected. */
+        fun select(id: String?)
+    }
 
     /**
      * The root. Browsable, and a **grid** of category tiles.
@@ -173,8 +201,79 @@ class AutoLibrary @Inject constructor(
         TAB_AGAIN -> shelves().listenAgain.map(::bookItem)
         TAB_CHAPTERS -> chaptersOf(now)
         TAB_HISTORY -> historyOf(now?.bookId)
-        else -> emptyList()
+        TAB_OUTPUT -> outputRows()
+        // Opening an output row *is* choosing it. See [outputRows].
+        else -> if (parentId.startsWith(OUT_PREFIX)) chooseOutput(parentId) else emptyList()
     }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — the outputs a driver can send the book to, as a browse node.
+     *
+     * ### Why these rows are browsable and not playable
+     *
+     * A playable row goes through `onSetMediaItems`, and answering that means handing Media3 a queue: the
+     * player is re-set, re-prepared and rebuffers. For a control whose entire purpose is *not* to disturb
+     * what is playing, that is the wrong callback — product priority 1. A **browsable** row goes through
+     * `onGetChildren` instead, which never touches the player at all, so choosing an output is silent.
+     *
+     * The cost is that opening the row is the act of choosing it; there is no second confirmation tap. That
+     * is why the child it returns is a plain statement of what happened rather than another control, and why
+     * the row already playing is marked — a driver who opens the wrong one sees immediately, and the way
+     * back is the row above.
+     */
+    private fun outputRows(): List<MediaItem> {
+        val outputs = audioOutputs.available()
+        if (outputs.isEmpty()) return listOf(noticeRow(string(R.string.car_output_none)))
+        return listOf(
+            browsableNode(
+                id = "$OUT_PREFIX$AUTOMATIC_OUTPUT",
+                title = string(R.string.car_output_automatic),
+            ),
+        ) + outputs.map { output ->
+            browsableNode(
+                id = "$OUT_PREFIX${output.id}",
+                title = if (output.isActive) {
+                    string(R.string.car_output_playing_here, output.displayName)
+                } else {
+                    output.displayName
+                },
+            )
+        }
+    }
+
+    /**
+     * Applies the tapped output and says so.
+     *
+     * The router refuses an id it cannot see, so a car serving a cached list from before a device
+     * disconnected changes nothing rather than routing somewhere arbitrary.
+     */
+    private fun chooseOutput(mediaId: String): List<MediaItem> {
+        val id = mediaId.removePrefix(OUT_PREFIX)
+        audioOutputs.select(id.takeIf { it != AUTOMATIC_OUTPUT })
+        val chosen = audioOutputs.selected()
+        val name = audioOutputs.available().firstOrNull { it.id == chosen }?.displayName
+        return listOf(
+            noticeRow(
+                if (name == null) {
+                    string(R.string.car_output_automatic_now)
+                } else {
+                    string(R.string.car_output_playing_here, name)
+                },
+            ),
+        )
+    }
+
+    /** A row that states something and does nothing. Neither browsable nor playable, so a tap is inert. */
+    private fun noticeRow(title: String): MediaItem = MediaItem.Builder()
+        .setMediaId(NOTICE_OUTPUT)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setIsBrowsable(false)
+                .setIsPlayable(false)
+                .build(),
+        )
+        .build()
 
     /**
      * PRODUCT_SPEC ROUTE-001 / PLAY-001 — the one row behind the car's *resume* tile.
@@ -248,7 +347,16 @@ class AutoLibrary @Inject constructor(
             if (shelves.discover.isNotEmpty()) add(tab(TAB_DISCOVER, R.string.car_tab_discover))
         }
         if (tabs.isEmpty()) return listOf(emptyNotice())
-        return tabs + tab(TAB_CHAPTERS, R.string.car_tab_chapters) + tab(TAB_HISTORY, R.string.car_tab_history)
+        // PRODUCT_SPEC PLAY-002 — the output tab is last and only when there is a choice to make. With one
+        // output connected the list would offer the driver the thing already happening, which is a tab that
+        // costs a glance and answers nothing.
+        val outputTab = if (audioOutputs.available().size > 1) {
+            listOf(tab(TAB_OUTPUT, R.string.car_tab_output))
+        } else {
+            emptyList()
+        }
+        return tabs + tab(TAB_CHAPTERS, R.string.car_tab_chapters) +
+            tab(TAB_HISTORY, R.string.car_tab_history) + outputTab
     }
 
     /**
@@ -642,6 +750,7 @@ class AutoLibrary @Inject constructor(
             mediaId.startsWith(AT_PREFIX) -> "at"
             mediaId.startsWith(TAB_PREFIX) -> "tab"
             mediaId == ROOT -> "root"
+            mediaId.startsWith(OUT_PREFIX) -> "out"
             mediaId.startsWith(NOTICE_PREFIX) -> "notice"
             mediaId.isEmpty() -> "empty"
             else -> "other"
@@ -665,9 +774,26 @@ class AutoLibrary @Inject constructor(
         const val TAB_CHAPTERS = "${TAB_PREFIX}chapters"
         const val TAB_HISTORY = "${TAB_PREFIX}history"
 
+        /** PRODUCT_SPEC PLAY-002 — the tab holding the output rows. */
+        const val TAB_OUTPUT = "${TAB_PREFIX}output"
+
+        /**
+         * An output row. Browsable, so opening it chooses it without going near the player.
+         *
+         * The suffix is an [com.example.shelfplayer.core.model.playback.AudioOutput.id] — a kind and a
+         * name, never a hardware address (ROUTE-002, 14.5) — or [AUTOMATIC_OUTPUT].
+         */
+        const val OUT_PREFIX = "out/"
+
+        /** The *let the system decide* row, which is what no selection means. */
+        const val AUTOMATIC_OUTPUT = "automatic"
+
         /** The one row shown when no shelf has anything. Unplayable, so it is never resolved to a book. */
         private const val NOTICE_PREFIX = "notice/"
         const val NOTICE_EMPTY = "${NOTICE_PREFIX}empty"
+
+        /** The row that reports which output was chosen. Inert: it states, it does not act. */
+        const val NOTICE_OUTPUT = "${NOTICE_PREFIX}output"
 
         private const val BOOK_PREFIX = "book/"
         private const val AT_PREFIX = "at/"
