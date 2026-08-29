@@ -320,12 +320,30 @@ function Test-StepVerdict {
     )
 
     $good = @($Lines | Where-Object { $_ -match $Expected }).Count
-    if ($script:LogcatIsolated -eq 'no') {
-        Write-Bad $FailMessage
-        Write-Bad "The window was not isolated, so even the $($Lines.Count) line(s) found may predate this step."
+
+    # Whether the dump can carry a verdict at all comes first. On the SM-S928B of R-70 logcat held no
+    # ShelfPlayer lines while the in-app log was complete, and a zero count there says nothing about the
+    # app - so announcing the caller's failure would report a broken measurement as a result: "the host
+    # never connected", "the wheel never reached the session". Every call site was taught this one at a
+    # time; it belongs here, where no caller can forget it.
+    #
+    # Fresh tagged lines settle it, as Show-LogcatMatches does: evidence upgrades the verdict and never
+    # downgrades it. This can only suppress a *failure* - every pattern here matches text the app itself
+    # logs, so a non-zero match implies the tag is being carried.
+    $carried = @(& $Adb logcat -d 2>$null | Select-String -SimpleMatch -Pattern $AppTag).Count
+    if ($carried -gt 0) { $script:LogcatCarriesApp = 'yes' }
+
+    if ($script:LogcatCarriesApp -ne 'yes') {
+        Write-Bad "No verdict: logcat holds no $AppTag lines at all, so an empty result is not a result."
+        Write-Note 'This is a broken measurement, not a finding. Read Settings > About > Diagnostics >'
+        Write-Note 'the event log for this step - it was complete when logcat was empty before (R-70).'
     }
     elseif ($Lines.Count -eq 0) {
         Write-Bad $FailMessage
+    }
+    elseif ($script:LogcatIsolated -eq 'no') {
+        Write-Bad $FailMessage
+        Write-Bad "The window was not isolated, so even the $($Lines.Count) line(s) found may predate this step."
     }
     elseif ($good -eq 0) {
         Write-Bad $FailMessage

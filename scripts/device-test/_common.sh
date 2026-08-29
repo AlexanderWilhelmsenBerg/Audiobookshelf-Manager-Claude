@@ -115,7 +115,7 @@ logcat_clear() {
 # R-43's shape avoided rather than quoted: the rule lives where every caller must go through it.
 step_verdict() {
   local pattern="$1" expected="$2" pass_msg="$3" fail_msg="$4"
-  local lines n=0 good=0
+  local lines n=0 good=0 carried
   lines=$("$ADB" logcat -d 2>/dev/null | grep -iE -- "$pattern" || true)
   # `grep -c` prints its count AND exits 1 when that count is zero, so `|| true` is right here and
   # `|| echo 0` is a trap: it appends a *second* zero, `good` becomes "0\n0", `(( good == 0 ))` is an
@@ -127,11 +127,27 @@ step_verdict() {
     n=$(printf '%s\n' "$lines" | grep -c . || true)
     good=$(printf '%s\n' "$lines" | grep -icE -- "$expected" || true)
   fi
-  if [[ "${LOGCAT_ISOLATED:-unknown}" == "no" ]]; then
-    bad "$fail_msg"
-    bad "The window was not isolated, so even the $n line(s) found may predate this step."
+  # Whether the dump can carry a verdict at all comes first. On the SM-S928B of R-70 logcat held no
+  # ShelfPlayer lines while the in-app log was complete, and a zero count there says nothing about the
+  # app — so announcing the caller's failure would report a broken measurement as a result: "the host
+  # never connected", "the wheel never reached the session". Every call site was taught this one at a
+  # time; it belongs here, where no caller can forget it.
+  #
+  # Fresh tagged lines settle it, exactly as `logcat_grep` does: evidence upgrades the verdict and never
+  # downgrades it. Note this can only suppress a *failure* — every pattern here matches text the app
+  # itself logs, so a non-zero match implies the tag is being carried.
+  carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
+  (( carried > 0 )) && LOGCAT_CARRIES_APP=yes
+
+  if [[ "${LOGCAT_CARRIES_APP:-unknown}" != "yes" ]]; then
+    bad "No verdict: logcat holds no $APP_TAG lines at all, so an empty result is not a result."
+    note "This is a broken measurement, not a finding. Read Settings → About → Diagnostics → the"
+    note "event log for this step instead — it was complete when logcat was empty before (R-70)."
   elif (( n == 0 )); then
     bad "$fail_msg"
+  elif [[ "${LOGCAT_ISOLATED:-unknown}" == "no" ]]; then
+    bad "$fail_msg"
+    bad "The window was not isolated, so even the $n line(s) found may predate this step."
   elif (( good == 0 )); then
     bad "$fail_msg"
     bad "$n line(s) found, none of them '$expected' — which is the failure, not the absence of one."
