@@ -307,7 +307,12 @@ function Clear-Logcat {
 # A pass therefore needs an isolated window AND at least one line matching -Expected.
 function Test-StepVerdict {
     param(
-        [Parameter(Mandatory)][string[]]$Lines,
+        # AllowEmptyCollection, because an empty array is the PRIMARY failure case here - the action
+        # produced no matching lines at all - and a Mandatory collection parameter rejects it during
+        # binding. Without this the script terminates under $ErrorActionPreference = 'Stop' before the
+        # Count -eq 0 branch can run, so the one outcome these diagnostics exist to report is the one
+        # that crashes instead of reporting.
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,
         [Parameter(Mandatory)][string]$Expected,
         [Parameter(Mandatory)][string]$PassMessage,
         [Parameter(Mandatory)][string]$FailMessage

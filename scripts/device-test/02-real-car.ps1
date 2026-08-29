@@ -12,6 +12,11 @@ Require-Device
 
 Write-Step 'Section 2.9 step 1 - Which host actually answered'
 Write-Note 'Plug the phone into the car, or start wireless Android Auto.'
+# Clear BEFORE the connection, or an older DHU session left in the buffer answers for the car in front
+# of you: the verdict passes on any 'gearhead' line, so a newly connected Automotive OS or vendor host
+# would be reported as projected Android Auto on the strength of a stale one. This step exists to name
+# the CURRENT host, so the window has to start empty.
+Clear-Logcat
 Wait-ForTester 'Once the car has connected and BookWave is on its screen.'
 $connections = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
 $connections | ForEach-Object { Write-Output $_ }

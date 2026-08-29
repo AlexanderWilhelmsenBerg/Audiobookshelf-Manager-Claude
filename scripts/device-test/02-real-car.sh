@@ -12,6 +12,11 @@ require_device
 
 step "§2.9 step 1  Which host actually answered"
 note "Plug the phone into the car, or start wireless Android Auto."
+# Clear BEFORE the connection, or an older DHU session left in the buffer answers for the car in front
+# of you: the verdict passes on any `gearhead` line, so a newly connected Automotive OS or vendor host
+# would be reported as projected Android Auto on the strength of a stale one. This step exists to name
+# the CURRENT host, so the window has to start empty.
+logcat_clear
 read -r -p "  Press Enter once the car has connected and BookWave is on its screen… " _
 logcat_grep "A car connected to the media session" 5
 step_verdict "A car connected to the media session" "gearhead" \
