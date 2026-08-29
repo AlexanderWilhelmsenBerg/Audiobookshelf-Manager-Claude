@@ -38,16 +38,14 @@ warn "no-ops on the one-item queue a car selection builds — judge those two by
 # player in STATE_READY, so a working wheel produces no state change at all.
 logcat_clear
 read -r -p "  Press Enter once you have used the wheel's PLAY/PAUSE button… " _
-WHEEL=$("$ADB" logcat -d 2>/dev/null | grep -icE "Playback was asked to change" || true)
 logcat_grep "Playback was asked to change" 10
-if (( WHEEL == 0 )); then
-  bad "The wheel's play/pause did not reach the session. Unsupported here, or refused — and PR #48"
-  bad "narrowed exactly that command surface, so say which if you can tell."
-else
-  ok "play/pause reached the session ($WHEEL changes)"
-  note "reason=remote is the proof: it means a controller that is NOT this app asked, i.e. the wheel."
-  note "reason=userRequest would mean the phone's own UI did it; reason=audioFocusLoss, nobody did."
-fi
+# reason=remote is the pass, not the mere presence of a line: userRequest is the phone's own UI and
+# audioFocusLoss is nobody at all, and either would otherwise be counted as the wheel working.
+step_verdict "Playback was asked to change" "reason=remote" \
+  "play/pause reached the session from a remote controller — the wheel" \
+  "The wheel's play/pause did not reach the session as a remote request. Unsupported here, or refused
+      — and PR #48 narrowed exactly that command surface, so say which if you can tell."
+note "reason=userRequest would mean the phone's own UI did it; reason=audioFocusLoss, nobody did."
 
 step "§2.9 step 5  Driving restrictions"
 warn "Only with somebody else driving, or on a rolling road. Skip it otherwise and say so."

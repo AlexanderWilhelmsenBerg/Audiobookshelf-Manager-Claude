@@ -43,12 +43,12 @@ if ($asked.Count -eq 0) {
 
 Write-Step 'Section 2.8 step 4 - What the player then did with it'
 $states = @(Show-LogcatMatches -Pattern 'The player changed state' -Last 15)
-if ($states.Count -eq 0) {
-    Write-Bad 'The player never changed state. A queue was answered and never reached it, or never prepared.'
-} else {
-    $states | ForEach-Object { Write-Output $_ }
-    Write-Ok 'Expect buffering then ready. Only idle means the player took it and refused to prepare.'
-}
+$states | ForEach-Object { Write-Output $_ }
+# buffering or ready is the pass. state=idle alone is the player taking the queue and refusing to
+# prepare, which the count alone would have recorded as a success.
+Test-StepVerdict -Lines $states -Expected 'state=(buffering|ready)' `
+    -PassMessage 'The player took the queue and started loading it.' `
+    -FailMessage 'The player did not reach buffering or ready. idle alone means it refused to prepare; no line at all means the queue never reached it.'
 
 Write-Step 'Section 2.8 step 5 - Anything that threw'
 $failures = @(Show-LogcatMatches -Pattern 'A browse request failed' -Last 10)

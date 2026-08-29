@@ -1177,10 +1177,14 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * The body of [onSetMediaItems], off the callback thread, with [loaded] already copied out of the
-         * player.
+         * The body of [onSetMediaItems], off the callback thread.
          *
-         * Separated so the one line that must run on the callback thread is visibly the only line there.
+         * It carries **no** player value: an early snapshot is what would rewind a playing book after a
+         * slow `openSession` failure, so `unresolved` hops back onto the main thread and reads the player
+         * itself, late, at the one point that needs it. See that function for the two hazards and why only
+         * a late read on the right thread satisfies both.
+         *
+         * Separated from the callback so this body is visibly free of `Player` access.
          */
         private suspend fun setMediaItems(
             session: MediaSession,
@@ -1197,14 +1201,18 @@ class PlaybackService : MediaLibraryService() {
             // have the same oracle by a slower route. Assistant and the system voice host reach this
             // because the platform reports them trusted, which is the whole reason the gate asks Media3
             // rather than carrying a list of voice apps.
-            val spoken = when {
-                !session.mayBrowse(controller) -> null
-                else -> mediaItems.firstNotNullOfOrNull { item ->
-                    item.requestMetadata.searchQuery?.let { query -> auto.search(query).firstOrNull() }
-                }
-            }
+            // Whether a query was *asked* and whether it *found* something are two facts, and collapsing
+            // them lost the more useful one. A permitted voice request whose words match no book produced
+            // `null` here and fell through to the browse branch, so the log read `branch=browse` — which
+            // the device scripts define as "the voice host resolved a title and sent an id". The failure
+            // case that most needs the diagnostic was the one it described wrongly.
+            val query = mediaItems.firstNotNullOfOrNull { item -> item.requestMetadata.searchQuery }
+                ?.takeIf { session.mayBrowse(controller) }
+            val spoken = query?.let { asked -> auto.search(asked).firstOrNull() }
             val selection = when {
-                spoken != null -> resolveQueue(spoken).let { queue ->
+                query != null -> spoken?.let { match -> resolveQueue(match) }.let { queue ->
+                    // `resolved=false` here means the words matched no book, or the match would not open.
+                    // Either way it stays on the spoken branch, because that is what was asked.
                     Selection("spoken", queue != null, queue.asItems(startIndex, startPositionMs))
                 }
 

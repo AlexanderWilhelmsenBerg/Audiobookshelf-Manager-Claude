@@ -104,6 +104,34 @@ logcat_clear() {
   fi
 }
 
+# The one place a step is allowed to declare a pass, because three separate findings were all a call site
+# deciding for itself and forgetting one of the two things that make a count meaningless:
+#
+#   1. a window that was never isolated — the lines may predate the step, so a count proves nothing;
+#   2. a match whose *content* is the failure — `state=idle` alone is the player refusing to prepare, and
+#      counting it as "the player responded" turned the defect being isolated into a recorded pass.
+#
+# So a pass needs an isolated window AND at least one line matching `expected`. This is `docs/risks.md`
+# R-43's shape avoided rather than quoted: the rule lives where every caller must go through it.
+step_verdict() {
+  local pattern="$1" expected="$2" pass_msg="$3" fail_msg="$4"
+  local lines n good
+  lines=$("$ADB" logcat -d 2>/dev/null | grep -iE -- "$pattern" || true)
+  n=$([[ -n "$lines" ]] && printf '%s\n' "$lines" | grep -c . || echo 0)
+  good=$([[ -n "$lines" ]] && printf '%s\n' "$lines" | grep -icE -- "$expected" || echo 0)
+  if [[ "${LOGCAT_ISOLATED:-unknown}" == "no" ]]; then
+    bad "$fail_msg"
+    bad "The window was not isolated, so even the $n line(s) found may predate this step."
+  elif (( n == 0 )); then
+    bad "$fail_msg"
+  elif (( good == 0 )); then
+    bad "$fail_msg"
+    bad "$n line(s) found, none of them '$expected' — which is the failure, not the absence of one."
+  else
+    ok "$pass_msg ($good of $n)"
+  fi
+}
+
 # One grep over BookWave's own log lines, with the preflight that makes an empty result mean something.
 #
 # Never `|| true` on the pipeline as a whole: a grep that matches nothing is the expected result in half

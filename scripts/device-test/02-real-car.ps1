@@ -44,15 +44,13 @@ Write-Warn 'no-ops on the one-item queue a car selection builds - judge those tw
 Clear-Logcat
 Wait-ForTester "Use the wheel's PLAY/PAUSE button now."
 $asked = @(Show-LogcatMatches -Pattern 'Playback was asked to change' -Last 10)
-if ($asked.Count -eq 0) {
-    Write-Bad "The wheel's play/pause did not reach the session. Unsupported here, or refused - PR #48"
-    Write-Bad 'narrowed exactly that command surface, so say which if you can tell.'
-} else {
-    $asked | ForEach-Object { Write-Output $_ }
-    Write-Ok "Play/pause reached the session ($($asked.Count) changes)."
-    Write-Note 'reason=remote is the proof: a controller that is NOT this app asked, i.e. the wheel.'
-    Write-Note 'reason=userRequest would mean the phone UI did it; reason=audioFocusLoss, nobody did.'
-}
+$asked | ForEach-Object { Write-Output $_ }
+# reason=remote is the pass, not the mere presence of a line: userRequest is the phone's own UI and
+# audioFocusLoss is nobody at all, and either would otherwise be counted as the wheel working.
+Test-StepVerdict -Lines $asked -Expected 'reason=remote' `
+    -PassMessage 'Play/pause reached the session from a remote controller - the wheel.' `
+    -FailMessage "The wheel's play/pause did not reach the session as a remote request. Unsupported here, or refused - PR #48 narrowed that command surface, so say which if you can tell."
+Write-Note 'reason=userRequest would mean the phone UI did it; reason=audioFocusLoss, nobody did.'
 
 Write-Step 'Section 2.9 step 5 - Driving restrictions'
 Write-Warn 'Only with somebody else driving, or on a rolling road. Skip it otherwise and say so.'

@@ -35,6 +35,12 @@ warn "NOT mean the tap worked. resolved=true with no player state change is the 
 
 step "§2.8  What the player then did with it"
 logcat_grep "The player changed state" 15
+# buffering or ready is the pass. `state=idle` alone is the player taking the queue and refusing to
+# prepare, which is a failure the count alone would have recorded as a success.
+step_verdict "The player changed state" "state=(buffering|ready)" \
+  "the player took the queue and started loading it" \
+  "The player did not reach buffering or ready. idle alone means it refused to prepare; no line at all
+      means the queue never reached it."
 note "Expect buffering then ready. Only 'idle', or no line at all, means the queue never reached the"
 note "player or was never prepared — which is a different defect from a queue that failed to load."
 

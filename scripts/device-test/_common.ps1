@@ -297,6 +297,39 @@ function Clear-Logcat {
     }
 }
 
+# The one place a step is allowed to declare a pass. Three separate findings were all a call site
+# deciding for itself and forgetting one of the two things that make a count meaningless:
+#
+#   1. a window that was never isolated - the lines may predate the step, so a count proves nothing;
+#   2. a match whose CONTENT is the failure - state=idle alone is the player refusing to prepare, and
+#      counting it as "the player responded" turns the defect being isolated into a recorded pass.
+#
+# A pass therefore needs an isolated window AND at least one line matching -Expected.
+function Test-StepVerdict {
+    param(
+        [Parameter(Mandatory)][string[]]$Lines,
+        [Parameter(Mandatory)][string]$Expected,
+        [Parameter(Mandatory)][string]$PassMessage,
+        [Parameter(Mandatory)][string]$FailMessage
+    )
+
+    $good = @($Lines | Where-Object { $_ -match $Expected }).Count
+    if ($script:LogcatIsolated -eq 'no') {
+        Write-Bad $FailMessage
+        Write-Bad "The window was not isolated, so even the $($Lines.Count) line(s) found may predate this step."
+    }
+    elseif ($Lines.Count -eq 0) {
+        Write-Bad $FailMessage
+    }
+    elseif ($good -eq 0) {
+        Write-Bad $FailMessage
+        Write-Bad "$($Lines.Count) line(s) found, none matching '$Expected' - that is the failure, not its absence."
+    }
+    else {
+        Write-Ok "$PassMessage ($good of $($Lines.Count))"
+    }
+}
+
 function Show-LogcatMatches {
     param(
         [Parameter(Mandatory)][string[]]$Pattern,
