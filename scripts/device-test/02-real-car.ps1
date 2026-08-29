@@ -92,6 +92,16 @@ Test-StepVerdict -Lines $back -Expected 'controller=' `
 Write-Step 'Section 2.9 step 7 - Unplug while playing'
 Write-Note 'Pull the cable mid-book. Playback must continue on the phone and progress must not be lost -'
 Write-Note 'product priorities 1 and 2 in one step. Then plug back in and confirm the car picks it up.'
+# The baseline has to be taken BEFORE the action. This step used to explain the comparison only after
+# the unplug had already happened, so a tester running the script top to bottom had nothing to compare
+# against and the one check that can actually prove priority 2 could not be made at all.
+Write-Warn 'FIRST, before you touch the cable: read the position off the phone and write it down here.'
+$beforePosition = Read-Host '  Position before unplugging (mm:ss)'
+if ([string]::IsNullOrWhiteSpace($beforePosition)) {
+    # Defaulted once, here, so the line above and the comparison below quote the same thing.
+    $beforePosition = '(nothing recorded - the comparison below cannot be made)'
+}
+Write-Note "Recorded: $beforePosition"
 Clear-Logcat
 Wait-ForTester 'Unplug, then replug.'
 $asked = @(Show-LogcatMatches -Pattern 'A controller asked to set what plays' -Last 10)
@@ -103,8 +113,9 @@ $positions | ForEach-Object { Write-Output $_ }
 # disconnect. The sound version is a position compared either side of the unplug, by hand.
 Write-Note 'This line proves a sync happened, NOT that progress survived the unplug: the ticker writes'
 Write-Note 'one about every 30 s while a book plays, so one may have landed before you pulled the cable.'
-Write-Note 'The real check is the position itself - note it before unplugging and compare after, on the'
-Write-Note 'phone and in the web client. Product priority 2 is the reason this one is done by hand.'
+Write-Note 'The real check is the position itself. Before the unplug you recorded:'
+Write-Note "  $beforePosition"
+Write-Note 'Compare it now against the phone AND the web client. Priority 2 is why this is by hand.'
 
 Write-Step 'Section 2.9 step 8 - Voice, if the car has it'
 Write-Note 'Say: Hey Google, play <a book you own>. That is onSetMediaItems with a search query rather than'

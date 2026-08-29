@@ -91,6 +91,15 @@ step_verdict "A car connected to the media session" "controller=" \
 step "§2.9 step 7  Unplug while playing"
 note "Pull the cable mid-book. Playback must continue on the phone and progress must not be lost —"
 note "product priorities 1 and 2 in one step. Then plug back in and confirm the car picks it up."
+# The baseline has to be taken BEFORE the action. This step used to explain the comparison only after
+# the unplug had already happened, so a tester running the script top to bottom had nothing to compare
+# against and the one check that can actually prove priority 2 could not be made at all.
+warn "FIRST, before you touch the cable: read the position off the phone and write it down here."
+read -r -p "  Position before unplugging (mm:ss), then Enter… " BEFORE_POSITION
+# Defaulted once, here, so the prompt above and the comparison below quote the same thing. Two separate
+# `${x:-...}` defaults printed two different words for the same empty answer.
+BEFORE_POSITION="${BEFORE_POSITION:-(nothing recorded — the comparison below cannot be made)}"
+note "Recorded: $BEFORE_POSITION"
 logcat_clear
 read -r -p "  Press Enter once you have unplugged and replugged… " _
 logcat_grep "A controller asked to set what plays" 10
@@ -101,8 +110,9 @@ logcat_grep "The server accepted a position" 6
 # which is what the document asks for and which no grep can do for you.
 note "This line proves a sync happened, NOT that progress survived the unplug: the ticker writes one"
 note "about every 30 s while a book plays, so one may have landed before you pulled the cable."
-note "The real check is the position itself — note it before unplugging, and compare after replugging,"
-note "on the phone and in the web client. Product priority 2 is the reason this is done by hand."
+note "The real check is the position itself. Before the unplug you recorded:"
+note "  $BEFORE_POSITION"
+note "Compare it now against the phone AND the web client. Priority 2 is why this is done by hand."
 
 step "§2.9 step 8  Voice, if the car has it"
 note "'Hey Google, play <a book you own>'. That is onSetMediaItems with a search query rather than a"

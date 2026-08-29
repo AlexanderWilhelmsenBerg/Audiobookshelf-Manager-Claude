@@ -1167,16 +1167,23 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: MutableList<MediaItem>,
         ): ListenableFuture<MutableList<MediaItem>> = future {
             val trusted = controller.isThisApplication()
-            val resolved = mediaItems.mapNotNull { item -> resolvePlayable(item, trusted) }.toMutableList()
-            // No fallback on this path — `mapNotNull` drops what did not resolve — so a short list is
-            // itself the failure, and `resolved` says whether anything survived at all.
+            // Each survivor is kept beside the item it came from. There is no fallback on this path —
+            // `mapNotNull` drops what did not resolve — so a partly-resolved add hands back a short list,
+            // and both fields of the diagnostic have to describe an item that actually survived.
+            val matches = mediaItems.mapNotNull { item -> resolvePlayable(item, trusted)?.let { item to it } }
+            val resolved = matches.map { (_, playable) -> playable }.toMutableList()
             logSelection(
                 callback = "onAddMediaItems",
                 asked = mediaItems,
                 selection = Selection(
                     branch = if (trusted) "passthrough" else "browse",
-                    resolved = resolved.size == mediaItems.size,
-                    kind = actedKind(mediaItems),
+                    // The same meaning as on `onSetMediaItems`: the request produced something playable.
+                    // Whether *everything* did is `asked` against `handedBack`, which is on the same line —
+                    // and a field that means one thing here and another there is a trap for the reader this
+                    // line exists to serve. It formerly compared the two sizes while the comment beside it
+                    // said "whether anything survived at all", so the code and its own note disagreed.
+                    resolved = matches.isNotEmpty(),
+                    kind = actedKind(mediaItems, matches.firstOrNull()?.first),
                     answer = MediaSession.MediaItemsWithStartPosition(resolved.toList(), 0, 0L),
                 ),
             )
@@ -1302,6 +1309,12 @@ class PlaybackService : MediaLibraryService() {
          * was given — and `handedBack` cannot say so on its own, because the fallback that keeps a playing
          * book alive returns one item for a request that resolved nothing. `branch` says which of the three
          * routes answered: a spoken query, the app's own pre-resolved items, or a browse id.
+         *
+         * `resolved` means the same thing on both callbacks — *something* playable came back — because a
+         * field that means one thing on one line and another on the next is a trap for the reader this line
+         * exists to serve. Whether **everything** asked for resolved is `asked` against `handedBack`, which
+         * is on the same line: `onAddMediaItems` drops what it cannot resolve, so `asked=2 handedBack=1` is
+         * a partly-resolved add and `kind` names one of the items that survived it.
          */
         /**
          * The shape of the id a selection acted on: the item that resolved where one did, and the first id

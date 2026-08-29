@@ -488,7 +488,7 @@ which is the confusion this logging exists to end.
 | `resolved=true` then `state=buffering` → `state=ready` | The service and the player both did their jobs. The defect is in the car's own presentation. |
 | `resolved=true` and **no** `The player changed state` line | The queue was answered and never reached the player, or was never prepared. This is the most likely shape. |
 | `resolved=true` then `state=idle` only | The player took it and refused to prepare — look for `A playback error` next. |
-| No `A controller asked to set what plays` line at all | The tap never reached this service. The defect is upstream, in discovery or the browse item's own flags. **This is a result, not a failed measurement** — the script probes logcat *before* it clears, so it can tell the two apart. |
+| No `A controller asked to set what plays` line at all | **Read the script's own verdict before concluding anything.** If it said logcat is carrying the app, this is a result and not a failed measurement — the tap never reached the service, and the defect is upstream, in discovery or the browse item's own flags. If it said logcat holds no `ShelfPlayer` lines at all, the absence locates nothing, and the scripts deliberately decline to name a layer: go to the in-app event log (R-70, R-71). |
 
 `branch=` names which of the three routes answered: `browse` for a tap, `spoken` for a voice query,
 `passthrough` for the app's own pre-resolved items.
@@ -568,10 +568,14 @@ reach. Do it parked.
    The DHU cannot produce this: closing its window is not a power cycle, and the phone never sees the USB
    drop.
 
-7. **Unplug while playing.** Pull the cable mid-book.
+7. **Unplug while playing.** **Read the position off the phone and write it down first** — the script
+   asks for it before it lets you touch the cable, because a position recorded after the fact proves
+   nothing. Then pull the cable mid-book.
 
    **Expect:** playback continues on the phone, and progress is not lost. Product priority 1 and 2 in one
-   step. Then plug back in and confirm the car picks the same book up where it now is.
+   step. Then plug back in and confirm the car picks the same book up where it now is. Compare against the
+   position you wrote down, on the phone **and** in the web client; the `The server accepted a position`
+   line cannot stand in for that, because the sync ticker writes one about every 30 seconds regardless.
 
 8. **Voice, if the car has it.** "Hey Google, play <a book you own>".
 
