@@ -745,6 +745,26 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
+     * Which branch `setMediaItems` took, whether the request actually resolved, and the answer.
+     *
+     * **`handedBack` alone cannot say whether a request resolved, and a review caught that it could not.**
+     * When nothing resolves and a book is already playing, `unresolved` deliberately hands that book back
+     * rather than emptying the queue — so the response carries one item for a request that failed. A
+     * diagnostic reporting `handedBack=1` there would send the next reader to the player for a defect that
+     * is in resolution, which is the exact confusion this logging exists to end. The branch and the
+     * resolution are therefore carried out of the `when` that decides them, rather than inferred
+     * afterwards from a shape that two different outcomes share.
+     *
+     * On the service rather than inside the session callback because that callback is an anonymous object,
+     * and Kotlin does not allow a class declaration inside one.
+     */
+    private data class Selection(
+        val branch: String,
+        val resolved: Boolean,
+        val answer: MediaSession.MediaItemsWithStartPosition,
+    )
+
+    /**
      * A `Player.STATE_*` constant as the word Media3 calls it.
      *
      * `Player.STATE_IDLE` is the one worth reading: a player that was handed a queue and stayed idle was
@@ -1088,7 +1108,17 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<MutableList<MediaItem>> = future {
             val trusted = controller.isThisApplication()
             val resolved = mediaItems.mapNotNull { item -> resolvePlayable(item, trusted) }.toMutableList()
-            logSelection("onAddMediaItems", mediaItems, resolved.size)
+            // No fallback on this path — `mapNotNull` drops what did not resolve — so a short list is
+            // itself the failure, and `resolved` says whether anything survived at all.
+            logSelection(
+                callback = "onAddMediaItems",
+                asked = mediaItems,
+                selection = Selection(
+                    branch = if (trusted) "passthrough" else "browse",
+                    resolved = resolved.size == mediaItems.size,
+                    answer = MediaSession.MediaItemsWithStartPosition(resolved.toList(), 0, 0L),
+                ),
+            )
             resolved
         }
 
@@ -1139,8 +1169,10 @@ class PlaybackService : MediaLibraryService() {
                     item.requestMetadata.searchQuery?.let { query -> auto.search(query).firstOrNull() }
                 }
             }
-            val answer = when {
-                spoken != null -> resolveQueue(spoken).asItems(startIndex, startPositionMs, loaded)
+            val selection = when {
+                spoken != null -> resolveQueue(spoken).let { queue ->
+                    Selection("spoken", queue != null, queue.asItems(startIndex, startPositionMs, loaded))
+                }
 
                 // The app's own call. The index and the position are the caller's — it opened the session and
                 // knows where the book resumes — and the list is handed back whole rather than collapsed to
@@ -1153,13 +1185,22 @@ class PlaybackService : MediaLibraryService() {
                 controller.isThisApplication() &&
                     mediaItems.isNotEmpty() &&
                     mediaItems.all(MediaItems::isReadyToPlay) ->
-                    MediaSession.MediaItemsWithStartPosition(mediaItems.toList(), startIndex, startPositionMs)
+                    Selection(
+                        branch = "passthrough",
+                        resolved = true,
+                        answer = MediaSession.MediaItemsWithStartPosition(
+                            mediaItems.toList(),
+                            startIndex,
+                            startPositionMs,
+                        ),
+                    )
 
-                else -> mediaItems.firstNotNullOfOrNull { item -> resolveQueue(item) }
-                    .asItems(startIndex, startPositionMs, loaded)
+                else -> mediaItems.firstNotNullOfOrNull { item -> resolveQueue(item) }.let { queue ->
+                    Selection("browse", queue != null, queue.asItems(startIndex, startPositionMs, loaded))
+                }
             }
-            logSelection("onSetMediaItems", mediaItems, answer.mediaItems.size, answer.startPositionMs)
-            return answer
+            logSelection("onSetMediaItems", mediaItems, selection)
+            return selection.answer
         }
 
         /**
@@ -1178,10 +1219,13 @@ class PlaybackService : MediaLibraryService() {
          * nothing. The start position, because a position is a number and this app already logs the ones
          * the server accepts. Never the media id, the title, or the URI (14.5).
          *
-         * `handedBack=0` is the line that matters: it means this service answered "I could not resolve
-         * that", which is a different defect from the player refusing what it was given.
+         * **`resolved` is the field to read, not `handedBack`.** `resolved=false` means this service could
+         * not turn the request into a book, which is a different defect from the player refusing what it
+         * was given — and `handedBack` cannot say so on its own, because the fallback that keeps a playing
+         * book alive returns one item for a request that resolved nothing. `branch` says which of the three
+         * routes answered: a spoken query, the app's own pre-resolved items, or a browse id.
          */
-        private fun logSelection(callback: String, asked: List<MediaItem>, handedBack: Int, startAtMs: Long? = null) {
+        private fun logSelection(callback: String, asked: List<MediaItem>, selection: Selection) {
             // `LogEvent` directly rather than the `Logger.info` helper: the helper takes `vararg`, and the
             // field list is built conditionally, so calling it would need a spread — which copies the array
             // on every log call and which detekt rightly refuses. The helper builds this same value.
@@ -1192,10 +1236,12 @@ class PlaybackService : MediaLibraryService() {
                     message = "A controller asked to set what plays",
                     fields = buildList {
                         add(LogField.Public("callback", callback))
+                        add(LogField.Public("branch", selection.branch))
                         add(LogField.Public("kind", asked.firstOrNull()?.mediaId?.let(AutoLibrary::kindOf) ?: "none"))
+                        add(LogField.Public("resolved", selection.resolved.toString()))
                         add(LogField.Count("asked", asked.size))
-                        add(LogField.Count("handedBack", handedBack))
-                        startAtMs?.let { add(LogField.Millis("startAt", it)) }
+                        add(LogField.Count("handedBack", selection.answer.mediaItems.size))
+                        add(LogField.Millis("startAt", selection.answer.startPositionMs))
                     },
                 ),
             )

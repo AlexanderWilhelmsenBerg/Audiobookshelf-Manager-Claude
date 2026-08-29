@@ -477,13 +477,21 @@ what your tap produced.
 
 **What the answer means:**
 
+**Read `resolved=`, not `handedBack=`.** When nothing resolves and a book is already playing, this service
+deliberately hands that book back rather than emptying the queue — so `handedBack=1` appears for a request
+that resolved *nothing*. Reading the count alone would send you to the player for a defect in resolution,
+which is the confusion this logging exists to end.
+
 | Line | Reading |
 | --- | --- |
-| `handedBack=0` | This service could not resolve your tap. The defect is in resolution, and `kind=` says which id form the car sent. |
-| `handedBack=1` then `state=buffering` → `state=ready` | The service and the player both did their jobs. The defect is in the car's own presentation. |
-| `handedBack=1` and **no** `The player changed state` line | The queue was answered and never reached the player, or was never prepared. This is the most likely shape. |
-| `handedBack=1` then `state=idle` only | The player took it and refused to prepare — look for `A playback error` next. |
-| No `A controller asked to set what plays` line at all | The tap never reached this service. The defect is upstream, in discovery or the browse item's own flags. |
+| `resolved=false` | This service could not turn your tap into a book. The defect is in resolution, and `kind=` says which id form the car sent — whatever `handedBack` says. |
+| `resolved=true` then `state=buffering` → `state=ready` | The service and the player both did their jobs. The defect is in the car's own presentation. |
+| `resolved=true` and **no** `The player changed state` line | The queue was answered and never reached the player, or was never prepared. This is the most likely shape. |
+| `resolved=true` then `state=idle` only | The player took it and refused to prepare — look for `A playback error` next. |
+| No `A controller asked to set what plays` line at all | The tap never reached this service. The defect is upstream, in discovery or the browse item's own flags. **This is a result, not a failed measurement** — the script probes logcat *before* it clears, so it can tell the two apart. |
+
+`branch=` names which of the three routes answered: `browse` for a tap, `spoken` for a voice query,
+`passthrough` for the app's own pre-resolved items.
 
 3. **If logcat came back empty, the script will say so and it is not a failure of the app** — that happened
    on your last run (R-70). Use Settings → About → Diagnostics → **Open the event log**, search

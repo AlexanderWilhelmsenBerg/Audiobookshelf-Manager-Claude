@@ -65,6 +65,23 @@ APP_TAG="ShelfPlayer"
 # exactly what `docs/risks.md` R-15 is about. Clear first, act, then dump.
 logcat_clear() {
   require_adb
+  # Probe BEFORE clearing, and only here. After a clear the buffer is deliberately empty, so "no app
+  # lines" stops meaning "logcat is not carrying the app" and starts meaning "the app logged nothing in
+  # this window" — which is a legitimate *result* for a tap that never reached the service, and is the
+  # exact case §2.8 exists to identify. Deriving the verdict from a cleared buffer would label that
+  # result a broken measurement and destroy the finding. A review caught this; the pre-clear buffer is
+  # the only place the question can honestly be asked.
+  local carried
+  carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
+  if (( carried == 0 )); then
+    LOGCAT_CARRIES_APP=no
+    bad "logcat holds NO $APP_TAG lines before clearing, so it is not carrying this app at all."
+    note "A rolled buffer, or a vendor filter. Nothing this script dumps afterwards will be evidence."
+    note "Read Settings → About → Diagnostics → Open the event log instead (R-70)."
+  else
+    LOGCAT_CARRIES_APP=yes
+    ok "logcat is carrying the app ($carried lines), so an empty result after the step is a real absence"
+  fi
   show "adb logcat -c"
   "$ADB" logcat -c 2>/dev/null || true
   ok "log buffer cleared — do the step now, then let this script dump it"
@@ -78,16 +95,22 @@ logcat_clear() {
 logcat_grep() {
   local pattern="$1" n="${2:-20}" carried
   show "adb logcat -d | grep -iE \"$pattern\" | tail -$n"
-  carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
   "$ADB" logcat -d 2>/dev/null | grep -iE -- "$pattern" | tail -"$n" || true
-  if (( carried == 0 )); then
-    bad "logcat holds NO $APP_TAG lines at all, so nothing above is evidence either way."
-    note "This device is not giving adb the app's log — a rolled buffer, or a vendor filter. Read"
-    note "Settings → About → Diagnostics → Open the event log instead, and search for the phrase."
-    note "Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70)."
-  else
-    note "logcat is carrying the app ($carried lines), so an empty result above is a real absence."
-  fi
+  case "${LOGCAT_CARRIES_APP:-unknown}" in
+    # `logcat_clear` already asked, against the pre-clear buffer where the question is answerable.
+    yes) : ;;
+    no)  bad "logcat is not carrying this app (established before the clear), so nothing above is evidence." ;;
+    *)
+      # No clear ran, so the buffer is whatever history the device kept and the question is still fair.
+      carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
+      if (( carried == 0 )); then
+        bad "logcat holds NO $APP_TAG lines at all, so nothing above is evidence either way."
+        note "A rolled buffer, or a vendor filter. Read Settings → About → Diagnostics → the event log."
+        note "Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70)."
+      else
+        note "logcat is carrying the app ($carried lines), so an empty result above is a real absence."
+      fi ;;
+  esac
 }
 
 # The SDK, resolved the way the build resolves it, so these scripts work whether or not the tools are on

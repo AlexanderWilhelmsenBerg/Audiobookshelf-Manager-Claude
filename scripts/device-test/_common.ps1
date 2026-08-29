@@ -246,6 +246,8 @@ function Get-AdbOutput {
 # looked identical on the 2026-08-28 run.
 $AppTag = 'ShelfPlayer'
 
+$script:LogcatCarriesApp = 'unknown'
+
 function Clear-Logcat {
     # Clear the buffer so the window that follows is small and fresh.
     #
@@ -253,7 +255,24 @@ function Clear-Logcat {
     # being measured, and on that Samsung the buffer had rolled: every match came back empty while the
     # in-app event log held all four 'children=' lines. An empty result read as a failed browse when the
     # browse had worked - a signal that means nothing (docs/risks.md R-15, R-70). Clear, act, then dump.
+    #
+    # The probe happens BEFORE the clear, and only here. After a clear the buffer is deliberately empty, so
+    # 'no app lines' stops meaning 'logcat is not carrying the app' and starts meaning 'the app logged
+    # nothing in this window' - which is a legitimate RESULT for a tap that never reached the service, and
+    # is the exact case section 2.8 exists to identify. Deriving the verdict from a cleared buffer would
+    # label that result a broken measurement and destroy the finding. A review caught this.
     Require-Adb
+    $before = @(& $Adb logcat -d 2>$null | Select-String -SimpleMatch -Pattern $AppTag)
+    if ($before.Count -eq 0) {
+        $script:LogcatCarriesApp = 'no'
+        Write-Bad "logcat holds NO $AppTag lines before clearing, so it is not carrying this app at all."
+        Write-Note 'A rolled buffer, or a vendor filter. Nothing dumped afterwards will be evidence.'
+        Write-Note 'Read Settings > About > Diagnostics > Open the event log instead (R-70).'
+    }
+    else {
+        $script:LogcatCarriesApp = 'yes'
+        Write-Ok "logcat is carrying the app ($($before.Count) lines); an empty result after the step is real."
+    }
     Show-Command 'adb logcat -c'
     # Not Invoke-Adb: that throws on a non-zero exit, and a buffer this device declines to clear is a
     # reason to read the in-app log rather than a reason to abandon the section.
@@ -273,16 +292,24 @@ function Show-LogcatMatches {
     @($lines | Select-String -SimpleMatch -Pattern $Pattern | Select-Object -Last $Last) |
         ForEach-Object { $_.Line }
 
-    # The preflight that makes an empty result mean something.
-    $carried = @($lines | Select-String -SimpleMatch -Pattern $AppTag).Count
-    if ($carried -eq 0) {
-        Write-Bad "logcat holds NO $AppTag lines at all, so nothing above is evidence either way."
-        Write-Note 'This device is not giving adb the app log - a rolled buffer, or a vendor filter. Read'
-        Write-Note 'Settings > About > Diagnostics > Open the event log instead, and search for the phrase.'
-        Write-Note 'Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70).'
-    }
-    else {
-        Write-Note "logcat is carrying the app ($carried lines), so an empty result above is a real absence."
+    # The preflight that makes an empty result mean something - deferring to Clear-Logcat's answer where
+    # one was taken, because after a clear this buffer cannot answer the question honestly.
+    switch ($script:LogcatCarriesApp) {
+        'yes' { }
+        'no' {
+            Write-Bad 'logcat is not carrying this app (established before the clear); nothing above is evidence.'
+        }
+        default {
+            $carried = @($lines | Select-String -SimpleMatch -Pattern $AppTag).Count
+            if ($carried -eq 0) {
+                Write-Bad "logcat holds NO $AppTag lines at all, so nothing above is evidence either way."
+                Write-Note 'A rolled buffer, or a vendor filter. Read Settings > About > Diagnostics > event log.'
+                Write-Note 'Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70).'
+            }
+            else {
+                Write-Note "logcat is carrying the app ($carried lines); an empty result above is a real absence."
+            }
+        }
     }
 }
 

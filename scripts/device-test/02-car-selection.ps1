@@ -33,8 +33,12 @@ if ($asked.Count -eq 0) {
     Write-Note 'Confirm against the in-app event log before concluding: search for "asked to set".'
 } else {
     $asked | ForEach-Object { Write-Output $_ }
-    Write-Note 'kind= is the SHAPE of the id (book / at / tab / root), never the id: an id names a book.'
-    Write-Note 'handedBack=0 means resolution failed here. handedBack=1 means this service answered.'
+    Write-Note 'branch=   which route answered: browse (a car tap), spoken (voice), passthrough (the app).'
+    Write-Note 'kind=     the SHAPE of the id (book / at / tab / root), never the id: an id names a book.'
+    Write-Note 'resolved= whether the request turned into a book. THIS is the field to read.'
+    Write-Warn 'resolved=false means resolution failed, whatever handedBack says: when nothing resolves and'
+    Write-Warn 'a book is already playing the service hands that book back to keep it alive, so handedBack=1'
+    Write-Warn 'does NOT mean the tap worked. resolved=true with no player state change is the player half.'
 }
 
 Write-Step 'Section 2.8 step 4 - What the player then did with it'

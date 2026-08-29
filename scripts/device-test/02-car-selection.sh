@@ -20,11 +20,18 @@ note "Watch the car: does the loading message clear, and does audio start?"
 read -r -p "  Press Enter once the book has either started or clearly hung… " _
 
 step "§2.8  What the service was asked, and what it answered"
+ASKED=$("$ADB" logcat -d 2>/dev/null | grep -icE "A controller asked to set what plays" || true)
 logcat_grep "A controller asked to set what plays" 10
-note "kind=  the SHAPE of the id (book / at / tab / root), never the id — a book id names a book (14.5)."
-note "asked= how many items the car sent.  handedBack= how many this service resolved."
-warn "handedBack=0 means this service could not resolve the tap: the defect is in resolution."
-warn "handedBack=1 means the service answered correctly and the defect is downstream, in the player."
+if (( ASKED == 0 )); then
+  bad "No selection reached this service. The defect is upstream of it — discovery, or the item's flags."
+  note "Confirm against the in-app event log before concluding: search for 'asked to set'."
+fi
+note "branch=   which route answered: browse (a car tap), spoken (a voice query), passthrough (the app)."
+note "kind=     the SHAPE of the id (book / at / tab / root), never the id — an id names a book (14.5)."
+note "resolved= whether the request turned into a book. THIS is the field to read."
+warn "resolved=false means resolution failed here, whatever handedBack says: when nothing resolves and a"
+warn "book is already playing, the service hands that book back to keep it alive, so handedBack=1 does"
+warn "NOT mean the tap worked. resolved=true with no player state change is the player's half."
 
 step "§2.8  What the player then did with it"
 logcat_grep "The player changed state" 15
