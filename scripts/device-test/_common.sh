@@ -65,6 +65,7 @@ APP_TAG="ShelfPlayer"
 # exactly what `docs/risks.md` R-15 is about. Clear first, act, then dump.
 logcat_clear() {
   require_adb
+  show "adb logcat -c"
   "$ADB" logcat -c 2>/dev/null || true
   ok "log buffer cleared — do the step now, then let this script dump it"
 }

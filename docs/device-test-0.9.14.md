@@ -35,8 +35,9 @@ items in this project and left one defect open. That defect is what the next run
 | § | 2026-08-29 | Now |
 | --- | --- | --- |
 | 1 Controller security | Passed, 1.1–1.4 | Done |
-| 2 Android Auto browse | **Passed** — `children=6` at the root, no browse failure | **R-66 confirmed on hardware.** Done. |
+| 2 Android Auto browse | **Passed** — `children=6` at the root, no browse failure | **R-66 confirmed on hardware.** Done, on the DHU. |
 | 2.8 Tapping a book | **FAILED** — stayed on "Henter valget ditt" | **The one open defect. §2.8 is new and captures it (R-71).** |
+| 2.9 A real car | **Never run — every car result so far is the DHU's** | **New section. The DHU cannot see the launcher, the wheel, an ignition cycle or an unplugged cable (R-75).** |
 | 3 Server history | Passed, 3.1–3.6 | Done |
 | 4 Sleep timer | Passed, including the notification action | Done — `[3] "Sovetid 3 min"` settled the open question |
 | 5.1 Multi-file resume | Passed | Done |
@@ -325,6 +326,22 @@ is closed as one; R-66 is the defect, and the `children=` diagnostic earned its 
 `MediaSession.ControllerInfo`, so the session callbacks cannot be reached from the test tier at all. There is
 no test behind this fix. §2 is it.
 
+### 2.0 Which host you are on, and why it matters
+
+**The Desktop Head Unit is not a car.** It is the same projected Android Auto stack driving a window on your
+computer, which makes it the right tool for the browse tree and the wrong one for everything the car
+contributes. Both report the same controller package — `com.google.android.projection.gearhead` — so the log
+*cannot* tell them apart. **You have to record which one you used.**
+
+| Host | What it is | Exercises | Cannot exercise |
+| --- | --- | --- | --- |
+| **Desktop Head Unit** | The projection stack, on your computer | Browse, search, selection, transport, artwork | The car's launcher, hard buttons, driving restrictions, ignition cycles |
+| **A real car, projected** | The same stack, over USB or wireless | All of the above, in the conditions a listener meets | Nothing this app does |
+| **Automotive OS** | Android *in* the car; a different host | `isAutomotiveController`, its own launcher | Untestable without such a car — say so rather than guessing |
+
+§2.1–2.8 run on either. **§2.9 is the part only a car can do**, and it is the section to run if you only have
+time for one — a defect that the DHU cannot see is a defect that ships.
+
 ```bash
 ./scripts/device-test/02-android-auto.sh
 ```
@@ -476,6 +493,83 @@ what your tap produced.
 **The `asked to set what plays` line, in full:**
 **The `player changed state` lines:**
 **Anything else in the log within a few seconds of the tap:**
+
+### 2.9 A real car, not the Desktop Head Unit
+
+**The section that matters most and has never been run.** Every car result this project holds came from the
+DHU. That covers the browse tree and it covers selection, and it covers none of the things below — each of
+which is a way this app can fail for a listener while every recorded test stays green.
+
+```bash
+./scripts/device-test/02-real-car.sh
+```
+
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\02-real-car.ps1
+```
+
+Run it with the phone plugged into the car and the engine on. It records the host, then walks the seven
+things the DHU cannot reach. Do it parked.
+
+1. **Connect, and confirm which host answered.** Plug the phone in (or start wireless Android Auto). The
+   script prints the `A car connected to the media session` line.
+
+   **Expect:** `controller=com.google.android.projection.gearhead`. Anything else is Automotive OS or a
+   vendor host and is worth reporting on its own — this app has never seen one.
+
+2. **The car's own launcher.** Find BookWave in the car's app list.
+
+   **Expect:** it is there, with the right name and icon. The DHU has its own launcher and proves nothing
+   about this. If the app is missing here but present in the DHU, that is a *discovery* defect and
+   `CarReadiness` in Settings → About → This device is the next thing to read.
+
+3. **Browse and select, in the car.** Repeat §2's counts and §2.8's tap, here.
+
+   **Expect:** the same answers as the DHU gave. **A difference between the two is the finding** — record
+   both numbers, not just this one.
+
+4. **The steering-wheel and hard buttons.** Next, previous, play/pause from the wheel; the volume knob.
+
+   **Expect:** all of it. These reach the session as media-button events and never touch the DHU, so nothing
+   recorded so far says whether they work. `docs/risks.md` R-71's fix and PR #48's command narrowing both
+   touched this path.
+
+5. **Driving restrictions.** With the car in motion — **a passenger drives, or use a rolling road; do not do
+   this yourself** — open the browse tree.
+
+   **Expect:** the car truncates long lists and hides some text. That is the host's doing, not a defect. What
+   *would* be a defect is a list that becomes unusable, or a row whose label is now meaningless once
+   truncated. If you cannot do this safely, skip it and say so — an untested restriction is a better outcome
+   than an accident.
+
+6. **Ignition off, ignition on.** Stop the engine, wait for the head unit to power down, restart it.
+
+   **Expect:** BookWave comes back, and the resume tile offers the book you were on at the position you left.
+   The DHU cannot produce this: closing its window is not a power cycle, and the phone never sees the USB
+   drop.
+
+7. **Unplug while playing.** Pull the cable mid-book.
+
+   **Expect:** playback continues on the phone, and progress is not lost. Product priority 1 and 2 in one
+   step. Then plug back in and confirm the car picks the same book up where it now is.
+
+8. **Voice, if the car has it.** "Hey Google, play <a book you own>".
+
+   **Expect:** it plays. That path is `onSetMediaItems` with a search query rather than a media id — a
+   different branch from a tap, and one only a real microphone reaches.
+
+**Result (host / controller package):**
+**Result (app present in the car's launcher):**
+**Result (browse counts here vs the DHU's):**
+**Result (steering-wheel buttons):**
+**Result (driving restrictions, or skipped and why):**
+**Result (ignition cycle and the resume tile):**
+**Result (unplug while playing):**
+**Result (voice):**
+
+---
 
 ---
 

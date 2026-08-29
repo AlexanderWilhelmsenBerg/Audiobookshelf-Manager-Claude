@@ -70,10 +70,14 @@ function Resolve-BookWaveSdk {
     # its first line whenever LOCALAPPDATA was unset - which is every non-Windows host, and any Windows
     # session with a trimmed environment. The identical mistake was found by *running*
     # Set-BookWavePath.ps1 in a container on 2026-08-28 and fixed there; this copy kept it (R-73).
+    # The order, and the list, are Set-BookWavePath.ps1's. Two resolvers that disagree would put one SDK
+    # on the PATH and drive adb from another, so they are kept identical deliberately: local.properties,
+    # then the two environment variables, then the three well-known locations.
     $candidates = [System.Collections.Generic.List[string]]::new()
     foreach ($fromEnv in @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT)) {
         if ($fromEnv) { $candidates.Add($fromEnv) }
     }
+    $candidates.Add('C:\Android\Sdk')
     if ($env:LOCALAPPDATA) { $candidates.Add((Join-Path $env:LOCALAPPDATA 'Android\Sdk')) }
     if ($env:USERPROFILE) { $candidates.Add((Join-Path $env:USERPROFILE 'AppData\Local\Android\Sdk')) }
 
@@ -250,6 +254,9 @@ function Clear-Logcat {
     # in-app event log held all four 'children=' lines. An empty result read as a failed browse when the
     # browse had worked - a signal that means nothing (docs/risks.md R-15, R-70). Clear, act, then dump.
     Require-Adb
+    Show-Command 'adb logcat -c'
+    # Not Invoke-Adb: that throws on a non-zero exit, and a buffer this device declines to clear is a
+    # reason to read the in-app log rather than a reason to abandon the section.
     & $Adb logcat -c 2>$null | Out-Null
     Write-Ok 'log buffer cleared - do the step now, then let this script dump it'
 }
