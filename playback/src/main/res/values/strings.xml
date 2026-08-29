@@ -70,6 +70,14 @@
     <string name="car_output_chosen">Chose %1$s</string>
     <string name="car_output_none">No audio outputs found</string>
 
+    <!--
+      The audio-output button on the Android Auto player screen (and, unavoidably, in the media
+      notification). It names the current destination rather than the action, because a car shows the
+      icon and keeps the text for a long press and for a screen reader — where "where is this going"
+      is the useful sentence. %1$s is the output's own name, or "Automatic".
+    -->
+    <string name="player_output_action">Audio output: %1$s</string>
+
     <!-- The one row shown when no shelf has anything in it. Names the two causes a driver can act on. -->
     <string name="car_empty_title">No books yet</string>
     <!-- %1$s is the app name. -->

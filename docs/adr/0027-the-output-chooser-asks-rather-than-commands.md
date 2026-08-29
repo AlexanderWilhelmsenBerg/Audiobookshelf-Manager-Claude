@@ -1,7 +1,8 @@
 # ADR-0027 — The output chooser asks rather than commands
 
-**Status:** Accepted 2026-08-29; **amended the same day** after a device run — see *Amendment* at the end,
-which reverses decision 1 and the first consequence. Decisions 2, 3 and 4 stand unchanged.
+**Status:** Accepted 2026-08-29; **amended twice the same day** after two device runs — see the two
+*Amendments* at the end. The first reverses decision 1 and the first consequence; the second reverses the
+claim that the Android Auto player can have no output button. Decisions 2, 3 and 4 stand unchanged.
 **Requirement:** PRODUCT_SPEC PLAY-002, and ROUTE-002 for the identity rule it borrows
 
 ## Context
@@ -23,7 +24,8 @@ actually coming out of right now"*.~~ **That second sentence was false and the a
 
 **Android Auto cannot draw an app's list.** A custom action in the player sends a command; it cannot push
 the car to a browse node, and there is no submenu affordance. The only list an app can put in front of a
-driver is a node in the browse tree.
+driver is a node in the browse tree. *(Still true. What was wrongly inferred from it — that the player can
+therefore have no output **button** — is corrected in the second amendment.)*
 
 ## Decision
 
@@ -74,9 +76,10 @@ identically named headsets share one identity.
 - ~~The chooser appears only when more than one output is connected, on the phone and in the car alike. A
   phone always reports its own speaker, so "one output" is the ordinary state and a menu for it answers
   nothing.~~ **Reversed by the amendment: it appears whenever there is an output at all.**
-- **The Android Auto player has no output button.** The list is a browse tab, one swipe from the player,
+- ~~**The Android Auto player has no output button.** The list is a browse tab, one swipe from the player,
   because no API lets a custom action open a browse node. This is the one part of the original request the
-  platform does not allow as described.
+  platform does not allow as described.~~ **Reversed by the second amendment: the player has a button. What
+  the button cannot do is open the list.**
 - ~~Choosing an output cannot be verified by the app. A device test has to confirm by ear.~~ The app can
   verify it on API 33+ and does. A device test is still what confirms the *sound* moved, and §2.11 asks for it.
 - `AudioOutputRouter` holds an `ExoPlayer` and an `AudioManager`, so it is not reachable from a JVM test.
@@ -137,3 +140,64 @@ takes exactly one `AudioDeviceInfo`, `Player.setPreferredAudioDevice` takes exac
 plural setter anywhere in the public API. The platform *can* route one stream to several outputs — which is
 why the route is read as a set, and why a device genuinely playing to two shows both marked — but only the
 system decides that. An app can read it; it cannot ask for it.
+
+---
+
+## Second amendment, 2026-08-29 — the button exists; only the list was impossible
+
+The owner ran the car again: *"on the android auto, there is still no button. On the play screen there is
+only a queue button which opens the queue. There should be audio device or bluetooth icon button there to
+the left of queue."*
+
+They were right, and this ADR had talked itself out of building it. The original consequence said "the
+Android Auto player has no output button", reasoning from the true fact that **no API opens a browse node
+from a custom action**. That rules out the *list*. It does not rule out the *button* — and a button was
+always buildable, through the same mechanism this app already uses for its skip and sleep-timer actions.
+
+### What was verified before building it
+
+Read out of `media3-session-1.7.1.aar`, not assumed:
+
+- `PlayerWrapper` builds each legacy `PlaybackStateCompat.CustomAction` from a `CommandButton`, taking the
+  action string, the display name and **`CommandButton.iconResId`**. That resource is what a head unit
+  draws, so an app-supplied drawable works and no Media3 icon constant is needed.
+- `CommandButton.getCustomLayoutFromMediaButtonPreferences` keeps the back and forward slot buttons and then
+  **only buttons whose slots contain `SLOT_OVERFLOW`**. So that slot is a requirement here, not a taste.
+- `MediaSessionImpl.setMediaButtonPreferences(ControllerInfo, …)` only writes the legacy playback state when
+  the controller is the *media-notification* controller. **There is no per-controller button set that gives
+  the car a button the notification does not also get** — Android Auto reads the one global legacy state.
+
+### The decision
+
+**A button on the player screen that steps to the next output.**
+
+- The icon is a Bluetooth rune shipped as a vector drawable, the same glyph family the phone's chooser uses.
+- Its display name is the current destination — the route where the app can read one, the choice otherwise —
+  so a long press and a screen reader both answer *"where is this going"*.
+- One press moves to the next output; the order is `[Automatic] + connected outputs`, and *Automatic* is in
+  the cycle because it is the only way back to letting the system route. `AudioOutputCycle` owns it and is a
+  pure function, so the order is tested without a car.
+- **The browse tab stays.** Stepping is for a driver who wants the next thing; the tab is for someone who
+  wants to choose. Neither replaces the other, and the tab is the one that shows all the destinations at
+  once.
+
+Cycling was considered and rejected in the original ADR — *"a driver cannot see what the next press will
+select"* — and that objection is still true. It is accepted now because the alternative turned out to be
+**no button at all**, which is worse, and because the button carries its current state in its name and icon
+rather than being a blind toggle.
+
+### Two consequences, stated rather than discovered later
+
+- **The media notification gets the button too.** Not a choice; see the third bullet above. It does the same
+  thing there, and it sits in the overflow group rather than displacing a transport control.
+- **Where the car puts it is the car's decision.** The button is one custom action among the app's others,
+  and Android Auto lays those out itself. "To the left of queue" is what was asked for and is not something
+  an app can specify; §2.11 records where it actually lands.
+
+### One more platform gap, found while building this
+
+There is no route-change callback. `AudioDeviceCallback` fires when a device connects or disconnects, and
+the API list has no `addOnDevicesForAttributesChangedListener` to pair with the getter the first amendment
+introduced (checked against `android-36/data/api-versions.xml`). So after asking for an output the app
+re-reads the route once, a fraction of a second later, purely so the label stops reporting the old one. It
+is best-effort by construction and affects nothing but text.

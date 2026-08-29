@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.playback.AudioOutput
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * PRODUCT_SPEC PLAY-002 — sending the current book to a chosen output, and saying which one that is.
@@ -132,6 +134,15 @@ class AudioOutputRouter @Inject constructor(
     }
 
     /**
+     * PRODUCT_SPEC PLAY-002 — steps to the next output, for the car's player button.
+     *
+     * The Android Auto player can hold a button but not a list, so the button steps; [AudioOutputCycle] owns
+     * the order and the reasoning. Everything else — refusing a device that has gone, applying the
+     * preference, logging what the platform did with it — is [select]'s, unchanged.
+     */
+    fun selectNext() = select(AudioOutputCycle.next(_outputs.value, _selectedId.value))
+
+    /**
      * Chooses an output, or `null` for *Automatic*.
      *
      * Unknown ids are ignored rather than treated as *Automatic*: a stale row in a car's cached browse tree
@@ -176,6 +187,24 @@ class AudioOutputRouter @Inject constructor(
                 },
             ),
         )
+        settle()
+    }
+
+    /**
+     * Reads the route once more, a moment later.
+     *
+     * Routing does not change the instant `setPreferredAudioDevice` returns, and **there is no callback for
+     * it**: `AudioDeviceCallback` fires when a device connects or disconnects, not when the mix moves, and
+     * the API list has no `addOnDevicesForAttributesChangedListener` to pair with the getter (checked
+     * against `android-36/data/api-versions.xml`). Without this the *"playing here"* label and the car
+     * button's name would keep reporting the pre-selection route until some device happened to connect.
+     *
+     * One re-read rather than a poll. It is best-effort by construction — a platform slower than this leaves
+     * the label stale until the next device change, which is the old behaviour and not a regression.
+     */
+    private suspend fun settle() {
+        delay(ROUTE_SETTLE_DELAY)
+        publish()
     }
 
     /**
@@ -258,4 +287,16 @@ class AudioOutputRouter @Inject constructor(
      * wired and car sentinels carry no colon and are already only a kind.
      */
     private fun kindOf(id: String): String = id.substringBefore(':')
+
+    private companion object {
+        /**
+         * How long to wait before re-reading the route after asking for one.
+         *
+         * Long enough for the mix to move on the devices this was tried on, short enough that a listener
+         * watching the menu does not read a stale label. There is nothing to synchronise against — see
+         * [settle] — so this is a chosen number rather than a derived one, and it is a display concern
+         * only: nothing about the routing itself depends on it.
+         */
+        val ROUTE_SETTLE_DELAY = 400.milliseconds
+    }
 }

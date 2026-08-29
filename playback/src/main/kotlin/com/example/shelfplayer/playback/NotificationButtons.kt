@@ -52,6 +52,22 @@ internal object NotificationButtons {
      */
     const val ACTION_ADD_BOOKMARK = "com.example.shelfplayer.playback.ADD_BOOKMARK"
 
+    /**
+     * PRODUCT_SPEC PLAY-002 — the audio-output button, for the Android Auto player screen.
+     *
+     * It lives here with the notification's own actions because that is what it has to be. Android Auto
+     * reads its player buttons from the legacy `PlaybackStateCompat`, which Media3 builds from the session's
+     * **global** media button preferences: `setMediaButtonPreferences(ControllerInfo, …)` only reaches the
+     * legacy state for the media-notification controller, so there is no per-controller set that gives the
+     * car a button the notification does not also get. That is a consequence rather than a design — see
+     * ADR-0027's second amendment — and the button is harmless in the notification, where it does the same
+     * thing.
+     *
+     * It steps to the next output rather than opening a list, because a custom action cannot open one.
+     * [AudioOutputCycle] holds the order and the reasoning.
+     */
+    const val ACTION_CYCLE_AUDIO_OUTPUT = "com.example.shelfplayer.playback.CYCLE_AUDIO_OUTPUT"
+
     fun backIcon(interval: Duration): Int = when (interval.inWholeSeconds) {
         FIVE -> CommandButton.ICON_SKIP_BACK_5
         TEN -> CommandButton.ICON_SKIP_BACK_10

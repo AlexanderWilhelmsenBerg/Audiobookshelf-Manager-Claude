@@ -35,6 +35,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Bookmark
+import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerState
@@ -58,6 +59,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -174,10 +176,17 @@ class PlaybackService : MediaLibraryService() {
     private var journal: Job? = null
     private var sleepTimerWatch: Job? = null
     private var skipWatch: Job? = null
+    private var outputWatch: Job? = null
 
     /** The two inputs to the notification's own buttons. Main thread only, like everything that reads them. */
     private var skips: SkipIntervals = SkipIntervals.Default
     private var sleepTimerState: SleepTimerState = SleepTimerState.Idle
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — what the audio-output button is currently labelled with, or `null` for
+     * *Automatic*. Read on the main thread like the two above.
+     */
+    private var currentOutput: AudioOutput? = null
 
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
@@ -223,6 +232,7 @@ class PlaybackService : MediaLibraryService() {
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()
+        observeAudioOutputs()
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
@@ -343,6 +353,7 @@ class PlaybackService : MediaLibraryService() {
         journal?.cancel()
         sleepTimerWatch?.cancel()
         skipWatch?.cancel()
+        outputWatch?.cancel()
         session?.release()
         session = null
         player?.release()
@@ -671,6 +682,27 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-002 — keeps the car's output button naming the right destination.
+     *
+     * Both flows, because the button reports the **route** and falls back to the **choice**, and either can
+     * move without the other: a headset disconnecting changes the route with no selection involved, and
+     * choosing an output changes the selection before the platform has acted on it.
+     */
+    private fun observeAudioOutputs() {
+        outputWatch = scope.launch {
+            combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, selected) ->
+                val next = AudioOutputCycle.current(outputs, selected)
+                // Republishing on every emission would rewrite the notification for a device change that
+                // does not touch the button's text, and Media3 pushes each set to every controller.
+                if (next != currentOutput) {
+                    currentOutput = next
+                    publishMediaButtons()
+                }
+            }
+        }
+    }
+
     private fun publishMediaButtons() {
         val current = session ?: return
         current.setMediaButtonPreferences(mediaButtons())
@@ -700,6 +732,29 @@ class PlaybackService : MediaLibraryService() {
                 ),
                 slot = CommandButton.SLOT_FORWARD,
             ),
+        )
+        // PRODUCT_SPEC PLAY-002 — the output button, before the sleep timer's so its place in the car does
+        // not move when a timer starts. `SLOT_OVERFLOW` is not a preference here but the requirement:
+        // `CommandButton.getCustomLayoutFromMediaButtonPreferences` keeps the back and forward buttons and
+        // then only buttons declaring that slot, and the legacy layout is what Android Auto renders.
+        add(
+            // `ICON_UNDEFINED` on purpose: none of Media3's constants is a Bluetooth glyph, and the constant
+            // is passed to legacy controllers as a hint beside the resource. Naming a wrong one would invite
+            // a head unit to draw a signal bar instead of the icon that was asked for.
+            CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+                // `PlayerWrapper` builds the legacy custom action from this resource id, and that is what
+                // Android Auto draws.
+                .setCustomIconResId(R.drawable.ic_audio_output)
+                .setDisplayName(
+                    getString(
+                        R.string.player_output_action,
+                        currentOutput?.displayName ?: getString(R.string.car_output_automatic),
+                    ),
+                )
+                .setSessionCommand(SessionCommand(NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT, Bundle.EMPTY))
+                .setSlots(CommandButton.SLOT_OVERFLOW)
+                .setEnabled(true)
+                .build(),
         )
         val timer = sleepTimerState
         if (timer.isActive) {
@@ -1494,6 +1549,7 @@ class PlaybackService : MediaLibraryService() {
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_BACK, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
+                        .add(SessionCommand(NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT, Bundle.EMPTY))
                         .build()
 
                 ControllerAccess.PlaybackOnly -> {
@@ -1709,6 +1765,9 @@ class PlaybackService : MediaLibraryService() {
                 NotificationButtons.ACTION_SKIP_BACK -> skipBy(-skips.back)
                 NotificationButtons.ACTION_SKIP_FORWARD -> skipBy(skips.forward)
                 NotificationButtons.ACTION_ADD_BOOKMARK -> bookmarkHere()
+                // PLAY-002. Never touches the player's queue, so the book does not stop or rebuffer —
+                // product priority 1, and the same reason the car's output rows are browsable.
+                NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT -> audioOutputs.selectNext()
                 else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))

@@ -38,7 +38,7 @@ items in this project and left one defect open. That defect is what the next run
 | 2 Android Auto browse | **Passed** — `children=6` at the root, no browse failure | **R-66 confirmed on hardware.** Done, on the DHU. |
 | 2.8 Tapping a book | **FAILED** — stayed on "Henter valget ditt" | **The one open defect. §2.8 is new and captures it (R-71).** |
 | 2.9 A real car | **Passed, 2026-08-29** — reported as a whole rather than step by step | **R-75 closed: the first car result this project holds.** Per-step results were not itemised, so the wheel, the ignition cycle and the unplug are recorded as passing on the tester's word rather than from eight written answers. |
-| 2.11 Audio output chooser | **Re-run — the first run found two defects, both fixed** | **Rewritten.** The control no longer hides below two outputs, and the menu now shows the *route* beside the *choice*. A declined request is expected and named (R-77). |
+| 2.11 Audio output chooser | **Re-run — the phone passed; the car's button is new** | **Rewritten twice.** The phone half is a full pass. New: a stepping **button on the Android Auto player screen** (R-78 closed, R-81 opened), which also appears in the phone notification and cannot be kept out of it. A declined route is expected and named (R-77). |
 | 3 Server history | Passed, 3.1–3.6 | Done |
 | 4 Sleep timer | Passed, including the notification action | Done — `[3] "Sovetid 3 min"` settled the open question |
 | 5.1 Multi-file resume | Passed | Done |
@@ -612,6 +612,9 @@ speaker did nothing while the app showed it as chosen.
 
 **One output is enough to start.** The control now appears whenever there is any output at all.
 
+**Second re-run, later the same day.** The phone half passed in full. What is new is the **button on the
+Android Auto player screen** — steps 9 to 12 below — and its unavoidable twin in the phone notification.
+
 **Two marks, and they mean different things.** The **tick** is what you chose. The **"— playing here"**
 label is where Android says the media actually is, read from `AudioManager.getAudioDevicesForAttributes`
 (API 33+; this phone qualifies). They are allowed to disagree, and a disagreement is a finding to record
@@ -682,27 +685,62 @@ adb logcat -s ShelfPlayer:I | grep -i "audio output was set"
 
 #### In the car
 
-**There is no output button on the Android Auto player screen, and there cannot be one** (R-78). No API lets
-an app open a browse node from a custom action. The list is a **browse tab**.
+**There are now two ways in, and they do different things.** A **button on the player screen** steps to the
+next output; the **browse tab** shows them all. The button cannot open the list — no API opens a browse node
+from a custom action (R-81) — which is why both exist.
 
-9. With the car connected, swipe from the player to the browse screen. An **Audio output** tab sits after
+9. Look at the player screen. A **Bluetooth-rune button** sits with the app's other actions.
+
+   **Expect:** it is there. The earlier build had none, on a claim that one was impossible (R-78, now
+   closed). **Where** Android Auto places it relative to its own queue button is the car's decision and not
+   something an app can specify — record where it actually lands.
+
+10. Long-press it, or read it with a screen reader.
+
+    **Expect:** it names the current destination — *"Audio output: Car audio"* — rather than naming the
+    control.
+
+11. Press it. Listen.
+
+    **Expect:** the book moves to the next output in the order `Automatic → each connected device →
+    Automatic`, **without a pause or a rebuffer**. The button's name updates to the new destination within
+    about half a second. Keep pressing to confirm it returns to where it started.
+
+    A press must never stop, restart or re-buffer the book — that would mean the command is touching the
+    player's queue, which is product priority 1.
+
+12. **Check the phone's media notification.** The same button is there, in the expanded notification.
+
+    **Expect:** present, and it does the same thing. This is not optional and not a bug: Android Auto reads
+    its player buttons from the one legacy playback state Media3 publishes, so there is no way to give the
+    car a button the notification does not also get (ADR-0027's second amendment).
+
+**Result (the button is on the AA player screen — and where, relative to queue):**
+**Result (its name says the current output):**
+**Result (a press moves audio with no pause or rebuffer):**
+**Result (the cycle returns to Automatic):**
+**Result (the same button appears in the phone notification):**
+
+#### The browse tab, in the car
+
+13. With the car connected, swipe from the player to the browse screen. An **Audio output** tab sits after
    Chapters and History.
 
    **Expect:** the tab is there. It used to require two connected outputs, which meant it was missing in the
    car — the head unit is often the only output the platform reports. If it is absent now, that is a defect.
 
-10. Open it. The rows are Automatic plus each connected output; the one media is actually using reads
+14. Open it. The rows are Automatic plus each connected output; the one media is actually using reads
     *"… — playing here"*.
 
     **Expect:** with only the car connected, that is the car.
 
-11. Tap a row.
+15. Tap a row.
 
     **Expect:** the screen shows a single line confirming the choice, **and the book keeps playing without a
     gap**. A rebuffer here would mean the rows have become playable rather than browsable, which is the whole
     point of ADR-0027 decision 3.
 
-12. With a headset also paired to the phone, open the tab in the car and choose the headset.
+16. With a headset also paired to the phone, open the tab in the car and choose the headset.
 
     **Expect:** the book moves to the headset and the car's own navigation prompts keep coming out of the
     car. This is the same per-app property step 8 checks, in the place it matters most.
