@@ -55,10 +55,16 @@ $states | ForEach-Object { Write-Output $_ }
 # buffering/ready from an ordinary rebuffer inside the same 30-second window, so a pass here without a
 # resolved=true selection would claim the queue reached the player while the step above says the
 # opposite. Requiring the earlier fact is simpler than correlating timestamps, and true.
+# This step deliberately issues no pass - see the shell script for the reasoning. A buffering/ready
+# line in this window is produced by an ordinary rebuffer as well as by the tap, requiring a
+# resolved=true line somewhere does not separate them because the rebuffer can precede the tap, and
+# correlating timestamps in a shell is what produced the last two defects here. Report, and let the
+# reader compare two timestamps.
 if ($script:SelectionResolved -gt 0) {
-    Test-StepVerdict -Lines $states -Expected 'state=(buffering|ready)' `
-        -PassMessage 'The player took the resolved queue and started loading it.' `
-        -FailMessage 'The player did not reach buffering or ready. idle alone means it refused to prepare; no line at all means the queue never reached it.'
+    Write-Note 'A selection resolved. Now compare TIMESTAMPS by eye: a buffering/ready line AFTER the'
+    Write-Note "'asked to set ... resolved=true' line is your tap reaching the player. One before is not."
+    Write-Note "Only 'idle' after that line means the player took the queue and refused to prepare."
+    Write-Note 'No line after it at all means the queue never reached the player - the likeliest shape.'
 }
 else {
     Write-Warn 'No resolved=true selection above, so nothing here can be attributed to your tap: any'

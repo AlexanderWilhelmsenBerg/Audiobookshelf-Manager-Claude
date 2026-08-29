@@ -79,10 +79,14 @@ logcat_clear
 read -r -p "  Press Enter once you have unplugged and replugged… " _
 logcat_grep "A controller asked to set what plays" 10
 logcat_grep "The server accepted a position" 6
-step_verdict "The server accepted a position" "accepted a position" \
-  "progress reached the server across the disconnect" \
-  "No accepted server position after the reconnect — progress may not have survived the unplug.
-      Check the in-app event log before concluding."
+# **No pass here either.** The remote sync ticker writes this line about every thirty seconds while a
+# book plays, so one landing while you read the prompt would pass a test that proves nothing about the
+# disconnect. The only sound version of this check is a position compared either side of the unplug,
+# which is what the document asks for and which no grep can do for you.
+note "This line proves a sync happened, NOT that progress survived the unplug: the ticker writes one"
+note "about every 30 s while a book plays, so one may have landed before you pulled the cable."
+note "The real check is the position itself — note it before unplugging, and compare after replugging,"
+note "on the phone and in the web client. Product priority 2 is the reason this is done by hand."
 
 step "§2.9 step 8  Voice, if the car has it"
 note "'Hey Google, play <a book you own>'. That is onSetMediaItems with a search query rather than a"
@@ -91,7 +95,17 @@ note "media id — a different branch from a tap, and one only a real microphone
 # nothing of the request, because the tester has not spoken yet.
 logcat_clear
 read -r -p "  Press Enter once you have made the voice request… " _
+SPOKEN=$("$ADB" logcat -d 2>/dev/null | grep -icE "A controller asked to set what plays" || true)
 logcat_grep "A controller asked to set what plays" 5
+if (( SPOKEN == 0 )); then
+  # Gated like the selection branch: absence locates nothing when logcat is not carrying the app.
+  if [[ "${LOGCAT_CARRIES_APP:-unknown}" == "yes" ]]; then
+    bad "The spoken request never reached this service."
+  else
+    bad "No spoken request found, and logcat is not carrying this app — so this locates nothing."
+    note "Read Settings → About → Diagnostics → the event log and search 'asked to set' first."
+  fi
+fi
 note "Expect branch=spoken and kind=empty: a spoken request carries a search query and an EMPTY media"
 note "id, and 'empty' is what kindOf calls that. kind=none means no item arrived at all."
 note "branch=browse here would mean the voice host resolved the title itself and sent an id instead."

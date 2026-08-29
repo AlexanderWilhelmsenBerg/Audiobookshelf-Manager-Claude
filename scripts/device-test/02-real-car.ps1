@@ -82,9 +82,13 @@ $asked = @(Show-LogcatMatches -Pattern 'A controller asked to set what plays' -L
 $asked | ForEach-Object { Write-Output $_ }
 $positions = @(Show-LogcatMatches -Pattern 'The server accepted a position' -Last 6)
 $positions | ForEach-Object { Write-Output $_ }
-Test-StepVerdict -Lines $positions -Expected 'accepted a position' `
-    -PassMessage 'Progress reached the server across the disconnect.' `
-    -FailMessage 'No accepted server position after the reconnect - progress may not have survived the unplug. Check the in-app event log before concluding.'
+# No pass here either: the remote sync ticker writes this line about every thirty seconds while a book
+# plays, so one landing while the tester reads the prompt would pass a test proving nothing about the
+# disconnect. The sound version is a position compared either side of the unplug, by hand.
+Write-Note 'This line proves a sync happened, NOT that progress survived the unplug: the ticker writes'
+Write-Note 'one about every 30 s while a book plays, so one may have landed before you pulled the cable.'
+Write-Note 'The real check is the position itself - note it before unplugging and compare after, on the'
+Write-Note 'phone and in the web client. Product priority 2 is the reason this one is done by hand.'
 
 Write-Step 'Section 2.9 step 8 - Voice, if the car has it'
 Write-Note 'Say: Hey Google, play <a book you own>. That is onSetMediaItems with a search query rather than'
@@ -93,7 +97,14 @@ Clear-Logcat
 Wait-ForTester 'Try the voice request now.'
 $spoken = @(Show-LogcatMatches -Pattern 'A controller asked to set what plays' -Last 5)
 if ($spoken.Count -eq 0) {
-    Write-Bad 'The spoken request never reached this service.'
+    # Gated like the selection branch: absence locates nothing when logcat is not carrying the app.
+    if ($script:LogcatCarriesApp -eq 'yes') {
+        Write-Bad 'The spoken request never reached this service.'
+    }
+    else {
+        Write-Bad 'No spoken request found, and logcat is not carrying this app - so this locates nothing.'
+        Write-Note 'Read Settings > About > Diagnostics > the event log and search "asked to set" first.'
+    }
 } else {
     $spoken | ForEach-Object { Write-Output $_ }
     Write-Note 'Expect branch=spoken and kind=empty: a spoken request carries a search query and an EMPTY'

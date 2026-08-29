@@ -52,11 +52,20 @@ logcat_grep "The player changed state" 15
 # `resolved=true` selection would claim the queue reached the player while the step above says the
 # opposite. Correlating by timestamp in shell is the kind of cleverness that has generated defects on
 # this branch already; requiring the earlier fact is both simpler and true.
+# **This step deliberately issues no pass.** Two attempts at one both failed for the same reason: a
+# `state=buffering`/`ready` in this window is produced by an ordinary rebuffer of a book that was
+# already playing, as well as by your tap. Requiring a `resolved=true` line somewhere in the window does
+# not fix it — the rebuffer can precede the tap, and the tap can then resolve and still never reach the
+# player, which is exactly the defect §2.8 exists to find. Ordering is the only thing that separates
+# them, and correlating timestamps in shell is what produced the last two defects here.
+#
+# So the script reports and the reader judges, which for two timestamps is a second's work and is
+# reliable. R-71 records why this whole family of inference is capped.
 if (( RESOLVED > 0 )); then
-  step_verdict "The player changed state" "state=(buffering|ready)" \
-    "the player took the resolved queue and started loading it" \
-    "The player did not reach buffering or ready. idle alone means it refused to prepare; no line at all
-      means the queue never reached it."
+  note "A selection resolved. Now compare TIMESTAMPS by eye: a buffering/ready line AFTER the"
+  note "'asked to set … resolved=true' line is your tap reaching the player. One before it is not."
+  note "Only 'idle' after that line means the player took the queue and refused to prepare."
+  note "No line after it at all means the queue never reached the player — the likeliest shape here."
 else
   warn "No resolved=true selection above, so nothing here can be attributed to your tap: any"
   warn "buffering/ready you see may be an ordinary rebuffer of a book that was already playing."
