@@ -115,10 +115,18 @@ logcat_clear() {
 # R-43's shape avoided rather than quoted: the rule lives where every caller must go through it.
 step_verdict() {
   local pattern="$1" expected="$2" pass_msg="$3" fail_msg="$4"
-  local lines n good
+  local lines n=0 good=0
   lines=$("$ADB" logcat -d 2>/dev/null | grep -iE -- "$pattern" || true)
-  n=$([[ -n "$lines" ]] && printf '%s\n' "$lines" | grep -c . || echo 0)
-  good=$([[ -n "$lines" ]] && printf '%s\n' "$lines" | grep -icE -- "$expected" || echo 0)
+  # `grep -c` prints its count AND exits 1 when that count is zero, so `|| true` is right here and
+  # `|| echo 0` is a trap: it appends a *second* zero, `good` becomes "0\n0", `(( good == 0 ))` is an
+  # arithmetic syntax error, the failing condition skips the elif, and control lands in the success
+  # branch — turning the one case this helper exists to catch into a pass. It shipped for one commit,
+  # and the test that was supposed to prove it went green for a different reason (the window in that
+  # fixture was never isolated, so the isolation branch fired first and masked this one).
+  if [[ -n "$lines" ]]; then
+    n=$(printf '%s\n' "$lines" | grep -c . || true)
+    good=$(printf '%s\n' "$lines" | grep -icE -- "$expected" || true)
+  fi
   if [[ "${LOGCAT_ISOLATED:-unknown}" == "no" ]]; then
     bad "$fail_msg"
     bad "The window was not isolated, so even the $n line(s) found may predate this step."

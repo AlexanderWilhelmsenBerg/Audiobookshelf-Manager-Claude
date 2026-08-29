@@ -14,14 +14,13 @@ Write-Step 'Section 2.9 step 1 - Which host actually answered'
 Write-Note 'Plug the phone into the car, or start wireless Android Auto.'
 Wait-ForTester 'Once the car has connected and BookWave is on its screen.'
 $connections = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
-if ($connections.Count -eq 0) {
-    Write-Warn 'No car connection recorded. Connect first, or read the in-app event log.'
-} else {
-    $connections | ForEach-Object { Write-Output $_ }
-    Write-Ok 'Expect controller=com.google.android.projection.gearhead - projected Android Auto.'
-    Write-Note 'The DHU reports the SAME package, so this cannot tell them apart: record which you used.'
-    Write-Warn 'Anything else is Automotive OS or a vendor host. This app has never seen one. Report it.'
-}
+$connections | ForEach-Object { Write-Output $_ }
+Test-StepVerdict -Lines $connections -Expected 'gearhead' `
+    -PassMessage 'A projected Android Auto host connected.' `
+    -FailMessage 'No projected Android Auto connection recorded. Connect first, or read the in-app event log.'
+Write-Note 'The DHU reports the SAME package, so this cannot tell them apart: record which you used.'
+Write-Warn 'A connection line naming anything but gearhead is Automotive OS or a vendor host. This app'
+Write-Warn 'has never seen one - report it rather than reading it as a normal pass.'
 
 Write-Step 'Section 2.9 step 2 - The car''s own launcher'
 Write-Note 'Find BookWave in the car''s app list. The DHU has its own launcher and proves nothing here.'
@@ -64,13 +63,10 @@ Write-Note 'tile offering your book at the position you left. Closing a DHU wind
 Clear-Logcat
 Wait-ForTester 'Once the head unit has powered down and come back up.'
 $back = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
-if ($back.Count -eq 0) {
-    Write-Bad 'No fresh connection line: the car did not reconnect at all after the power cycle.'
-    Write-Note 'That is a different finding from a resume tile that is missing or wrong.'
-} else {
-    $back | ForEach-Object { Write-Output $_ }
-    Write-Ok 'The car reconnected. Now judge the resume tile by eye.'
-}
+$back | ForEach-Object { Write-Output $_ }
+Test-StepVerdict -Lines $back -Expected 'controller=' `
+    -PassMessage 'The car reconnected after the power cycle. Now judge the resume tile by eye.' `
+    -FailMessage 'No fresh connection line: the car did not reconnect after the power cycle. That is a different finding from a resume tile that is missing or wrong.'
 
 Write-Step 'Section 2.9 step 7 - Unplug while playing'
 Write-Note 'Pull the cable mid-book. Playback must continue on the phone and progress must not be lost -'
@@ -80,12 +76,10 @@ Wait-ForTester 'Unplug, then replug.'
 $asked = @(Show-LogcatMatches -Pattern 'A controller asked to set what plays' -Last 10)
 $asked | ForEach-Object { Write-Output $_ }
 $positions = @(Show-LogcatMatches -Pattern 'The server accepted a position' -Last 6)
-if ($positions.Count -eq 0) {
-    Write-Warn 'No accepted server position after the reconnect. Check the in-app event log.'
-} else {
-    $positions | ForEach-Object { Write-Output $_ }
-    Write-Ok 'Progress reached the server across the disconnect.'
-}
+$positions | ForEach-Object { Write-Output $_ }
+Test-StepVerdict -Lines $positions -Expected 'accepted a position' `
+    -PassMessage 'Progress reached the server across the disconnect.' `
+    -FailMessage 'No accepted server position after the reconnect - progress may not have survived the unplug. Check the in-app event log before concluding.'
 
 Write-Step 'Section 2.9 step 8 - Voice, if the car has it'
 Write-Note 'Say: Hey Google, play <a book you own>. That is onSetMediaItems with a search query rather than'

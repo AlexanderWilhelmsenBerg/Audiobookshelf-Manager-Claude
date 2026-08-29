@@ -14,6 +14,9 @@ step "§2.9 step 1  Which host actually answered"
 note "Plug the phone into the car, or start wireless Android Auto."
 read -r -p "  Press Enter once the car has connected and BookWave is on its screen… " _
 logcat_grep "A car connected to the media session" 5
+step_verdict "A car connected to the media session" "gearhead" \
+  "a projected Android Auto host connected" \
+  "No projected Android Auto connection recorded. Connect first, or read the in-app event log."
 note "Expect controller=com.google.android.projection.gearhead — projected Android Auto."
 note "The DHU reports the SAME package, so this cannot tell them apart: record which you used."
 warn "Anything else is Automotive OS or a vendor host, and this app has never seen one. Report it."
@@ -59,8 +62,10 @@ note "tile offering your book at the position you left. Closing a DHU window is 
 logcat_clear
 read -r -p "  Press Enter once the head unit has powered down and come back up… " _
 logcat_grep "A car connected to the media session" 5
-note "A fresh connection line proves the car came back. No line means it did not reconnect at all,"
-note "which is a different finding from a resume tile that is missing or wrong."
+step_verdict "A car connected to the media session" "controller=" \
+  "the car reconnected after the power cycle — now judge the resume tile by eye" \
+  "No fresh connection line: the car did not reconnect after the power cycle. That is a different
+      finding from a resume tile that is missing or wrong."
 
 step "§2.9 step 7  Unplug while playing"
 note "Pull the cable mid-book. Playback must continue on the phone and progress must not be lost —"
@@ -69,6 +74,10 @@ logcat_clear
 read -r -p "  Press Enter once you have unplugged and replugged… " _
 logcat_grep "A controller asked to set what plays" 10
 logcat_grep "The server accepted a position" 6
+step_verdict "The server accepted a position" "accepted a position" \
+  "progress reached the server across the disconnect" \
+  "No accepted server position after the reconnect — progress may not have survived the unplug.
+      Check the in-app event log before concluding."
 
 step "§2.9 step 8  Voice, if the car has it"
 note "'Hey Google, play <a book you own>'. That is onSetMediaItems with a search query rather than a"

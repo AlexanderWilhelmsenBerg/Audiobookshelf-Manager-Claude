@@ -14,12 +14,10 @@ Write-Step 'Section 2.8 step 1 - Which host is this?'
 Write-Note 'Record whether you are on the Desktop Head Unit or a real car, and over USB or wireless.'
 Write-Note 'They are different hosts and a defect can be in one and not the other (section 2.9).'
 $connections = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
-if ($connections.Count -eq 0) {
-    Write-Warn 'No car connection recorded yet. Connect first, or read the in-app event log.'
-} else {
-    $connections | ForEach-Object { Write-Output $_ }
-    Write-Ok 'controller= names the host. gearhead is projected Android Auto, DHU or real car alike.'
-}
+$connections | ForEach-Object { Write-Output $_ }
+Test-StepVerdict -Lines $connections -Expected 'controller=' `
+    -PassMessage 'A host is connected. controller= names it; gearhead is projected Android Auto, DHU or real car alike.' `
+    -FailMessage 'No car connection recorded yet. Connect first, or read the in-app event log.'
 
 Write-Step 'Section 2.8 step 2 - Clear the log, so what follows is only the tap'
 Clear-Logcat
