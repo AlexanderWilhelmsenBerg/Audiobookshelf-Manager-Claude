@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.domain.playback.GlobalTimeline
@@ -62,6 +63,8 @@ class PlaybackController @Inject constructor(
     private val bookChanges: BookChanges,
     private val playbackSettings: PlaybackSettingsRepository,
     private val history: PlaybackHistoryRepository,
+    /** PRODUCT_SPEC PLAY-002 — where the book goes, which is part of what the player screen shows. */
+    private val audioOutputs: AudioOutputRouter,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
@@ -70,6 +73,18 @@ class PlaybackController @Inject constructor(
 
     /** What is playing, for a mini player, a lock screen the app draws itself, or a book screen. */
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — the outputs the current book can be sent to.
+     *
+     * Through this façade rather than injected into the player's view model directly. The screen already
+     * takes its playback state from here; routing is part of "what is playing and where it goes", and a
+     * second object in the view model would be a second place for the two to disagree.
+     */
+    val outputs: StateFlow<List<AudioOutput>> = audioOutputs.outputs
+
+    /** PRODUCT_SPEC PLAY-002 — chooses an output, or `null` for *Automatic*. Not remembered (ADR-0027). */
+    fun selectOutput(id: String?) = audioOutputs.select(id)
 
     private var controller: MediaController? = null
     private var ticker: Job? = null

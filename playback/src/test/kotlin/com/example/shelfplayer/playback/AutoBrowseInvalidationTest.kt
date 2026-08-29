@@ -153,6 +153,7 @@ class AutoBrowseInvalidationTest {
         library = EmptyLibrary,
         history = NoHistory,
         homeShelves = ObserveHomeShelvesUseCase(profiles, EmptyLibrary, UnconfinedTestDispatcher()),
+        audioOutputs = FakeAutoOutputs(),
     )
 
     private object NoHistory : PlaybackHistoryRepository {

@@ -106,6 +106,8 @@ fun FullPlayer(
     actions: PlayerActions,
     modifier: Modifier = Modifier,
     skips: SkipControls = SkipControls.Inert,
+    /** PRODUCT_SPEC PLAY-002 — the output chooser. Inert by default so a preview needs no audio devices. */
+    outputs: OutputControls = OutputControls.Inert,
     isNotificationBlocked: Boolean = false,
 ) {
     BackHandler(onBack = actions.onCollapse)
@@ -119,6 +121,7 @@ fun FullPlayer(
         ) {
             TopBar(
                 timer = timer,
+                outputs = outputs,
                 onCollapse = actions.onCollapse,
                 onOpenSleepTimer = actions.onOpenSleepTimer,
             )
@@ -376,6 +379,7 @@ private fun SpeedAction(speed: PlaybackSpeed, onClick: () -> Unit, modifier: Mod
 @Composable
 private fun TopBar(
     timer: SleepTimerState,
+    outputs: OutputControls,
     onCollapse: () -> Unit,
     onOpenSleepTimer: () -> Unit,
     modifier: Modifier = Modifier,
@@ -390,6 +394,11 @@ private fun TopBar(
             )
         }
         Spacer(modifier = Modifier.weight(WEIGHT_FILL))
+        // PRODUCT_SPEC PLAY-002 — here rather than in the secondary row, which is already five controls
+        // wide: a sixth would squeeze them the way the 88 dp play button once did, and an accessibility run
+        // has already caught that row laying out four pixels tall at a doubled font scale. The top-right is
+        // also where a listener looks for an output control, because that is where every other app puts one.
+        AudioOutputAction(controls = outputs)
         SleepTimerReadout(timer = timer, onClick = onOpenSleepTimer)
     }
 }

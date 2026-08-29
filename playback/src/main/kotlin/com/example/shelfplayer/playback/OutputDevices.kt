@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import android.annotation.SuppressLint
 import android.media.AudioDeviceInfo
+import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.model.playback.KnownDevice
 import java.time.Instant
@@ -28,6 +29,28 @@ object OutputDevices {
             displayName = name.ifBlank { defaultNameOf(kind) },
             kind = kind,
             lastSeenAt = at,
+        )
+    }
+
+    /**
+     * The same device as something a listener can send audio to **now**, or `null` for one they cannot.
+     *
+     * Deliberately the same [idOf] and [kindOf] as [of]. The settings list and the player's chooser have to
+     * agree about what a device *is*, or a listener sets a policy on one row and picks a different-looking
+     * row in the player, with nothing to tell them the two are the same earbuds. Sharing the rule makes that
+     * unrepresentable rather than merely unlikely.
+     *
+     * The wired category is the case that shows why: a 3.5mm jack has no name, so both features must call it
+     * the one wired row or the chooser would offer a device the policy list has never heard of.
+     */
+    fun outputOf(type: Int, productName: CharSequence?, isActive: Boolean = false): AudioOutput? {
+        val kind = kindOf(type) ?: return null
+        val name = productName?.toString()?.trim().orEmpty()
+        return AudioOutput(
+            id = idOf(kind, name),
+            displayName = name.ifBlank { defaultNameOf(kind) },
+            kind = kind,
+            isActive = isActive,
         )
     }
 

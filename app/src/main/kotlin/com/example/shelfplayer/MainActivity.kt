@@ -39,6 +39,7 @@ import com.example.shelfplayer.feature.player.ChapterSheet
 import com.example.shelfplayer.feature.player.FullPlayer
 import com.example.shelfplayer.feature.player.HistorySheet
 import com.example.shelfplayer.feature.player.MiniPlayer
+import com.example.shelfplayer.feature.player.OutputControls
 import com.example.shelfplayer.feature.player.PlayerActions
 import com.example.shelfplayer.feature.player.PlayerViewModel
 import com.example.shelfplayer.feature.player.RewindNotice
@@ -147,6 +148,8 @@ private fun ShelfPlayerContent(
     val isNotificationBlocked by playerViewModel.isNotificationBlocked.collectAsStateWithLifecycle()
     val playbackSettings by playerViewModel.settings.collectAsStateWithLifecycle()
     val rewind by playerViewModel.rewind.collectAsStateWithLifecycle()
+    // PRODUCT_SPEC PLAY-002 — the outputs the book can be sent to, for the chooser in the player's top bar.
+    val audioOutputs by playerViewModel.outputs.collectAsStateWithLifecycle()
     val history by playerViewModel.history.collectAsStateWithLifecycle()
     val bookmarks by playerViewModel.bookmarkList.collectAsStateWithLifecycle()
     val bookmarkAdded by playerViewModel.bookmarkAdded.collectAsStateWithLifecycle()
@@ -194,6 +197,9 @@ private fun ShelfPlayerContent(
             timer = timer,
             isNotificationBlocked = isNotificationBlocked,
             skips = skipControls,
+            // PRODUCT_SPEC PLAY-002 — collected here rather than inside the player, so the list and the
+            // callback that acts on it come from the one view model that owns the session.
+            outputs = OutputControls(outputs = audioOutputs, onSelect = playerViewModel::onOutputSelected),
             actions = PlayerActions(
                 onTogglePlayPause = playerViewModel::onTogglePlayPause,
                 onSeekTo = playerViewModel::onSeekTo,

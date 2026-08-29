@@ -47,6 +47,19 @@
     <string name="car_tab_discover">Discover</string>
     <string name="car_tab_chapters">Chapters</string>
     <string name="car_tab_history">History</string>
+    <string name="car_tab_output">Audio output</string>
+
+    <!--
+      PRODUCT_SPEC PLAY-002 — the output rows.
+
+      Opening a row chooses it, so the words have to read as a destination rather than as a folder: a
+      driver glancing at "Pixel Buds Pro" should understand that tapping sends the book there.
+    -->
+    <string name="car_output_automatic">Automatic</string>
+    <string name="car_output_automatic_now">Playing wherever the system chooses</string>
+    <!-- %1$s is the output's own name, as the device advertises it. Never a hardware address. -->
+    <string name="car_output_playing_here">%1$s \u2014 playing here</string>
+    <string name="car_output_none">No audio outputs found</string>
 
     <!-- The one row shown when no shelf has anything in it. Names the two causes a driver can act on. -->
     <string name="car_empty_title">No books yet</string>

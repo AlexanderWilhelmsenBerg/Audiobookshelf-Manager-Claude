@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Chapter
+import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -97,6 +98,14 @@ class PlayerViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
         initialValue = PlaybackSettings.Default,
     )
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — the outputs the book can be sent to, for the chooser on the player card.
+     *
+     * Through [PlaybackController], which is where the rest of this screen's playback state comes from —
+     * so the tick in the menu and the device the player was told to use are one value, not two.
+     */
+    val outputs: StateFlow<List<AudioOutput>> = controller.outputs
 
     /** PRODUCT_SPEC PLAY-009 — "applied rewind is visible briefly and can be undone". */
     val rewind: StateFlow<AutoRewindController.Applied?> = autoRewind.lastApplied
@@ -229,6 +238,13 @@ class PlayerViewModel @Inject constructor(
 
     /** PRODUCT_SPEC PLAY-003 — a dragged seek bar, on the book's timeline. */
     fun onSeekTo(position: Duration) = controller.seekTo(position)
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — sends the book to a chosen output, or `null` to let the system decide.
+     *
+     * Not remembered across restarts, deliberately: see ADR-0027.
+     */
+    fun onOutputSelected(id: String?) = controller.selectOutput(id)
 
     /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from the list. */
     fun onChapterSelected(chapter: Chapter) = controller.seekToChapter(chapter)

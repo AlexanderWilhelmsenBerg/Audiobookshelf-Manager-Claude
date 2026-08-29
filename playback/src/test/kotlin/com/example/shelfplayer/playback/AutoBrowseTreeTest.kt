@@ -18,6 +18,7 @@ import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
+import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -36,6 +37,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -184,7 +186,102 @@ class AutoBrowseTreeTest {
     private fun List<androidx.media3.common.MediaItem>.titles(): List<String> =
         mapNotNull { it.mediaMetadata.title?.toString() }
 
-    private fun auto(): AutoLibrary {
+    /**
+     * PRODUCT_SPEC PLAY-002 — the output tab appears only when there is a choice.
+     *
+     * A phone always reports its own speaker, so "one output" is the ordinary state and a tab for it costs a
+     * driver a glance to learn nothing. The same rule the phone's chooser uses.
+     */
+    @Test
+    fun `the output tab appears only when more than one output is connected`() = runTest {
+        // A library with something in it. An empty one answers with the "no books" notice and nothing else,
+        // which is deliberate: with no book to play there is no route to choose.
+        books.value = listOf(book("book-1", "The Salt Harbour"))
+        val one = auto(FakeAutoOutputs.of(FakeAutoOutputs.output("bluetooth:buds", "Buds")))
+        val two = auto(
+            FakeAutoOutputs.of(
+                FakeAutoOutputs.output("bluetooth:buds", "Buds"),
+                FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
+            ),
+        )
+
+        assertTrue(one.children(AutoLibrary.ROOT, now = null).none { it.mediaId == AutoLibrary.TAB_OUTPUT })
+        assertTrue(two.children(AutoLibrary.ROOT, now = null).any { it.mediaId == AutoLibrary.TAB_OUTPUT })
+    }
+
+    /** Every row is browsable, because opening one must not go near the player. */
+    @Test
+    fun `output rows are browsable so choosing one never touches the player`() = runTest {
+        val outputs = FakeAutoOutputs.of(
+            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
+            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
+        )
+
+        val rows = auto(outputs).children(AutoLibrary.TAB_OUTPUT, now = null)
+
+        assertTrue(rows.isNotEmpty())
+        rows.forEach { row ->
+            assertTrue(row.mediaMetadata.isBrowsable == true, "${row.mediaId} must be browsable")
+            assertTrue(row.mediaMetadata.isPlayable == false, "${row.mediaId} must not be playable")
+        }
+        // `AutoLibrary.resolve` decides what gets *played*; an output row must never be a play target.
+        rows.forEach { row -> assertNull(AutoLibrary.resolve(row.mediaId)) }
+    }
+
+    /** Opening a row is choosing it. There is no second tap, so the tap that exists has to act. */
+    @Test
+    fun `opening an output row selects that output`() = runTest {
+        val outputs = FakeAutoOutputs.of(
+            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
+            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
+        )
+
+        auto(outputs).children("${AutoLibrary.OUT_PREFIX}bluetooth:buds", now = null)
+
+        assertEquals(listOf<String?>("bluetooth:buds"), outputs.chosen)
+        assertEquals<String?>("bluetooth:buds", outputs.selected())
+    }
+
+    /** The *Automatic* row hands the decision back to the system, which is a `null` selection. */
+    @Test
+    fun `opening the automatic row clears the selection`() = runTest {
+        val outputs = FakeAutoOutputs.of(
+            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
+            FakeAutoOutputs.output("speaker:phone", "Phone", DeviceKind.Speaker),
+            selected = "bluetooth:buds",
+        )
+
+        auto(outputs).children("${AutoLibrary.OUT_PREFIX}${AutoLibrary.AUTOMATIC_OUTPUT}", now = null)
+
+        assertEquals(listOf<String?>(null), outputs.chosen)
+        assertNull(outputs.selected())
+    }
+
+    /**
+     * A car serves a cached browse list. A row naming a device that has since disconnected must change
+     * nothing rather than routing somewhere arbitrary — the router refuses, and the tree reports Automatic.
+     */
+    @Test
+    fun `a stale output row changes nothing`() = runTest {
+        val outputs = FakeAutoOutputs.of(
+            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
+            FakeAutoOutputs.output("speaker:phone", "Phone", DeviceKind.Speaker),
+        )
+
+        auto(outputs).children("${AutoLibrary.OUT_PREFIX}bluetooth:gone", now = null)
+
+        assertEquals(listOf<String?>("bluetooth:gone"), outputs.chosen)
+        assertNull(outputs.selected())
+    }
+
+    /** The id form is named in the diagnostic, so a log line can say what a driver tapped. */
+    @Test
+    fun `an output id has a kind of its own`() {
+        assertEquals("out", AutoLibrary.kindOf("${AutoLibrary.OUT_PREFIX}bluetooth:buds"))
+        assertEquals("tab", AutoLibrary.kindOf(AutoLibrary.TAB_OUTPUT))
+    }
+
+    private fun auto(outputs: AutoLibrary.Outputs = FakeAutoOutputs()): AutoLibrary {
         val profiles = StubProfiles()
         val library = StubLibrary(books, chapters)
         return AutoLibrary(
@@ -193,6 +290,7 @@ class AutoBrowseTreeTest {
             library = library,
             history = StubHistory(),
             homeShelves = ObserveHomeShelvesUseCase(profiles, library, UnconfinedTestDispatcher()),
+            audioOutputs = outputs,
         )
     }
 

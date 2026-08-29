@@ -9,6 +9,8 @@ import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.example.shelfplayer.core.network.di.MediaStreamingClient
+import com.example.shelfplayer.playback.AudioOutputRouter
+import com.example.shelfplayer.playback.AutoLibrary
 import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.DefaultCarReadinessReader
 import com.example.shelfplayer.playback.DefaultNotificationAccessReader
@@ -59,6 +61,16 @@ internal interface PlaybackModule {
     @Binds
     @Singleton
     fun bindsCarReadinessReader(impl: DefaultCarReadinessReader): CarReadinessReader
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — the browse tree sees only the three methods it needs.
+     *
+     * `AudioOutputRouter` is a `@Singleton` in its own right — the service injects the class to attach a
+     * player to it — and this binds the narrow view `AutoLibrary` takes. Both resolve to the one instance,
+     * which is what makes the tick in the phone's menu and the row marked in the car the same fact.
+     */
+    @Binds
+    fun bindsAutoLibraryOutputs(impl: AudioOutputRouter): AutoLibrary.Outputs
 
     companion object {
         @Provides
