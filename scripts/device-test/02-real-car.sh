@@ -28,17 +28,22 @@ note "record both numbers. ./scripts/device-test/02-car-selection.sh captures th
 step "§2.9 step 4  Steering-wheel and hard buttons"
 note "Next, previous, play/pause from the wheel, and the volume knob. These arrive as media-button"
 note "events and never touch the DHU, so nothing recorded so far says whether they work."
-# Clear first, or step 3's own buffering/ready lines are still in the buffer and a wheel that does
-# nothing reads as a wheel that worked — a false pass on the exact hardware path this step exists for.
+warn "The log can witness PLAY/PAUSE only. Volume changes no playback state, and next/previous are"
+warn "no-ops on the one-item queue a car selection builds — judge those two by ear, not from here."
+# Clear first, or step 3's own lines are still in the buffer and a wheel that does nothing reads as a
+# wheel that worked. And look for the play/pause line rather than a state change: play/pause leaves the
+# player in STATE_READY, so a working wheel produces no state change at all.
 logcat_clear
-read -r -p "  Press Enter once you have tried the wheel controls… " _
-WHEEL=$("$ADB" logcat -d 2>/dev/null | grep -icE "The player changed state" || true)
-logcat_grep "The player changed state" 10
+read -r -p "  Press Enter once you have used the wheel's PLAY/PAUSE button… " _
+WHEEL=$("$ADB" logcat -d 2>/dev/null | grep -icE "Playback was asked to change" || true)
+logcat_grep "Playback was asked to change" 10
 if (( WHEEL == 0 )); then
-  bad "No player state change after the wheel. Either the buttons are unsupported here, or they are"
-  bad "not reaching the session — and PR #48 narrowed exactly that command surface, so say which."
+  bad "The wheel's play/pause did not reach the session. Unsupported here, or refused — and PR #48"
+  bad "narrowed exactly that command surface, so say which if you can tell."
 else
-  ok "the wheel reached the session ($WHEEL state changes)"
+  ok "play/pause reached the session ($WHEEL changes)"
+  note "reason=remote is the proof: it means a controller that is NOT this app asked, i.e. the wheel."
+  note "reason=userRequest would mean the phone's own UI did it; reason=audioFocusLoss, nobody did."
 fi
 
 step "§2.9 step 5  Driving restrictions"
@@ -66,5 +71,6 @@ note "media id — a different branch from a tap, and one only a real microphone
 logcat_clear
 read -r -p "  Press Enter once you have made the voice request… " _
 logcat_grep "A controller asked to set what plays" 5
-note "Expect branch=spoken and kind=none: a spoken request arrives with a query and no media id."
+note "Expect branch=spoken and kind=empty: a spoken request carries a search query and an EMPTY media"
+note "id, and 'empty' is what kindOf calls that. kind=none means no item arrived at all."
 note "branch=browse here would mean the voice host resolved the title itself and sent an id instead."

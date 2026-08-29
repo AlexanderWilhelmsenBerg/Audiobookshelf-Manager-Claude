@@ -489,6 +489,25 @@ class PlaybackService : MediaLibraryService() {
             // a headset with the app closed is exactly the one worth having. One recorder, so no event can
             // be written twice.
             recordTransport(if (playWhenReady) PlaybackEvent.Play else PlaybackEvent.Pause)
+            /*
+             * PRODUCT_SPEC 14.4 — and the only line that can witness a steering wheel.
+             *
+             * A review caught §2.9 inferring the wheel from `The player changed state`, which a working
+             * wheel need not produce: play/pause keeps the player in `STATE_READY`, volume touches no
+             * playback state at all, and next/previous are no-ops on the one-item queue a car selection
+             * builds. The step would have reported a working wheel as unsupported — the mirror image of
+             * the false pass it had just been fixed for.
+             *
+             * `reason` is what makes this worth logging rather than `playWhenReady` alone: `remote` means
+             * another controller asked, which is precisely a head unit or a headset button, and
+             * `audioFocusLoss` means nobody asked at all. A boolean would have said neither.
+             */
+            logger.debug(
+                LogCategory.Playback,
+                "Playback was asked to change",
+                LogField.Public("playWhenReady", playWhenReady.toString()),
+                LogField.Public("reason", playWhenReadyReason(reason)),
+            )
             if (playWhenReady) return
             autoRewind.onPaused(
                 wasUserInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
@@ -764,6 +783,23 @@ class PlaybackService : MediaLibraryService() {
         val resolved: Boolean,
         val answer: MediaSession.MediaItemsWithStartPosition,
     )
+
+    /**
+     * A `PLAY_WHEN_READY_CHANGE_REASON_*` constant as the word Media3 calls it.
+     *
+     * `remote` is the one that matters for §2.9: it means a controller that is not this app asked, which
+     * is a head unit, a headset button or a watch. It is the difference between "the wheel works" and
+     * "something paused the book", and no other signal in this service carries it.
+     */
+    private fun playWhenReadyReason(reason: Int): String = when (reason) {
+        Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "userRequest"
+        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "audioFocusLoss"
+        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "becomingNoisy"
+        Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "remote"
+        Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM -> "endOfItem"
+        Player.PLAY_WHEN_READY_CHANGE_REASON_SUPPRESSED_TOO_LONG -> "suppressedTooLong"
+        else -> "unknown"
+    }
 
     /**
      * A `Player.STATE_*` constant as the word Media3 calls it.

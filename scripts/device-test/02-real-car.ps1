@@ -33,17 +33,22 @@ Write-Note 'finding, so record both. & .\scripts\device-test\02-car-selection.ps
 Write-Step 'Section 2.9 step 4 - Steering-wheel and hard buttons'
 Write-Note 'Next, previous, play/pause from the wheel, and the volume knob. These arrive as media-button'
 Write-Note 'events and never touch the DHU, so nothing recorded so far says whether they work.'
-# Clear first, or step 3's own buffering/ready lines are still in the buffer and a wheel that does
-# nothing reads as a wheel that worked - a false pass on the exact hardware path this step exists for.
+Write-Warn 'The log can witness PLAY/PAUSE only. Volume changes no playback state, and next/previous are'
+Write-Warn 'no-ops on the one-item queue a car selection builds - judge those two by ear, not from here.'
+# Clear first, or step 3's own lines are still in the buffer and a wheel that does nothing reads as a
+# wheel that worked. And look for the play/pause line rather than a state change: play/pause leaves the
+# player in STATE_READY, so a working wheel produces no state change at all.
 Clear-Logcat
-Wait-ForTester 'Try the wheel controls now.'
-$states = @(Show-LogcatMatches -Pattern 'The player changed state' -Last 10)
-if ($states.Count -eq 0) {
-    Write-Bad 'No player state change after the wheel. Either the buttons are unsupported here, or they'
-    Write-Bad 'are not reaching the session - PR #48 narrowed that command surface, so say which.'
+Wait-ForTester "Use the wheel's PLAY/PAUSE button now."
+$asked = @(Show-LogcatMatches -Pattern 'Playback was asked to change' -Last 10)
+if ($asked.Count -eq 0) {
+    Write-Bad "The wheel's play/pause did not reach the session. Unsupported here, or refused - PR #48"
+    Write-Bad 'narrowed exactly that command surface, so say which if you can tell.'
 } else {
-    $states | ForEach-Object { Write-Output $_ }
-    Write-Ok "The wheel reached the session ($($states.Count) state changes)."
+    $asked | ForEach-Object { Write-Output $_ }
+    Write-Ok "Play/pause reached the session ($($asked.Count) changes)."
+    Write-Note 'reason=remote is the proof: a controller that is NOT this app asked, i.e. the wheel.'
+    Write-Note 'reason=userRequest would mean the phone UI did it; reason=audioFocusLoss, nobody did.'
 }
 
 Write-Step 'Section 2.9 step 5 - Driving restrictions'
@@ -80,6 +85,7 @@ if ($spoken.Count -eq 0) {
     Write-Bad 'The spoken request never reached this service.'
 } else {
     $spoken | ForEach-Object { Write-Output $_ }
-    Write-Note 'Expect branch=spoken and kind=none: a spoken request arrives with a query and no media id.'
+    Write-Note 'Expect branch=spoken and kind=empty: a spoken request carries a search query and an EMPTY'
+    Write-Note "media id, and 'empty' is what kindOf calls that. kind=none means no item arrived at all."
     Write-Note 'branch=browse would mean the voice host resolved the title itself and sent an id instead.'
 }
