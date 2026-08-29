@@ -159,6 +159,14 @@
     <string name="library_groups_empty_body">Ingenting i dette biblioteket passer med søket ditt.</string>
 
     <string name="series_title">Serier</string>
+    <plurals name="series_progress">
+        <item quantity="one">%1$d av %2$d bok fullført</item>
+        <item quantity="other">%1$d av %2$d bøker fullført</item>
+    </plurals>
+    <string name="series_total_duration">%1$s til sammen</string>
+    <string name="series_all_finished">Du har fullført alle bøkene i denne serien.</string>
+    <string name="series_continue">Fortsett med %1$s</string>
+    <string name="book_play_named">Spill %1$s</string>
     <string name="series_loading">Laster serier</string>
     <string name="series_empty_title">Ingen serier her</string>
     <string name="series_missing_title">Serien er ikke tilgjengelig</string>

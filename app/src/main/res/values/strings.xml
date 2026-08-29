@@ -165,6 +165,29 @@
 
     <!-- PRODUCT_SPEC LIB-003 / TC-16 — browsing by series. -->
     <string name="series_title">Series</string>
+
+    <!--
+      PRODUCT_SPEC LIB-003 — the series header.
+
+      The progress line is a plural on the *series* length, not on the finished count: "1 of 1 finished"
+      and "3 of 7 finished" are the same sentence, and it is the total that decides whether the noun is
+      plural in the languages this app is translated into.
+    -->
+    <plurals name="series_progress">
+        <item quantity="one">%1$d of %2$d book finished</item>
+        <item quantity="other">%1$d of %2$d books finished</item>
+    </plurals>
+    <!-- %1$s is a duration already formatted as `4h 12m`. -->
+    <string name="series_total_duration">%1$s in total</string>
+    <string name="series_all_finished">You have finished every book in this series.</string>
+    <!--
+      What the continue button is *called* to a screen reader. The button shows the title alone because
+      the surrounding lines supply the context on screen; spoken, it has to carry that context itself.
+      %1$s is the book's title.
+    -->
+    <string name="series_continue">Continue with %1$s</string>
+    <!-- %1$s is the book's title. Names the book so a list of play buttons is not a list of "Play". -->
+    <string name="book_play_named">Play %1$s</string>
     <string name="series_loading">Loading series</string>
     <string name="series_empty_title">No series here</string>
     <string name="series_missing_title">Series not available</string>

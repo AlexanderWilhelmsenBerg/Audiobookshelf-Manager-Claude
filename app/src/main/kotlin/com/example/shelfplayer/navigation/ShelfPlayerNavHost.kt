@@ -140,6 +140,9 @@ fun ShelfPlayerNavHost(
                 onBookSelected = { bookId ->
                     navController.navigate(ShelfDestinations.book(bookId))
                 },
+                // PRODUCT_SPEC LIB-003 — the same callback the shelves use, so a book started from a
+                // series goes through one path and cannot behave differently from one started elsewhere.
+                onBookPlaySelected = onBookPlaySelected,
                 onNavigateUp = navController::navigateUp,
             )
         }
