@@ -498,9 +498,18 @@ class PlaybackService : MediaLibraryService() {
              * builds. The step would have reported a working wheel as unsupported — the mirror image of
              * the false pass it had just been fixed for.
              *
-             * `reason` is what makes this worth logging rather than `playWhenReady` alone: `remote` means
-             * another controller asked, which is precisely a head unit or a headset button, and
-             * `audioFocusLoss` means nobody asked at all. A boolean would have said neither.
+             * `reason` is worth logging rather than `playWhenReady` alone because it separates a person
+             * from the system: `audioFocusLoss` and `becomingNoisy` mean nobody pressed anything. A
+             * boolean would have said neither.
+             *
+             * It does **not** say who pressed, and §2.9 briefly claimed it did (R-76). Media3 collapses
+             * that before this listener sees it: a controller's play/pause reaches `MediaSession`, which
+             * forwards it to the local player as `play()` → `setPlayWhenReady(true)`, and `ExoPlayerImpl`
+             * hard-codes that call to `PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST`. A wheel, a headset
+             * button and the app's own UI are therefore indistinguishable here. `REMOTE` belongs to a
+             * *remote* player — CastPlayer, or a controller observing a session — and this listener is on
+             * the local ExoPlayer, so it cannot appear. The device script isolates the log window and
+             * tells the tester to touch nothing else; that, not the reason, is the attribution.
              */
             logger.debug(
                 LogCategory.Playback,
@@ -509,6 +518,9 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("reason", playWhenReadyReason(reason)),
             )
             if (playWhenReady) return
+            // `REMOTE` cannot occur while this listener is on the local ExoPlayer (R-76); it stays in the
+            // condition so the *intent* — a person asked, from wherever — survives if the player is ever
+            // wrapped or replaced by a remote one, which is when the reason would start appearing.
             autoRewind.onPaused(
                 wasUserInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
                     reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE,
@@ -787,9 +799,12 @@ class PlaybackService : MediaLibraryService() {
     /**
      * A `PLAY_WHEN_READY_CHANGE_REASON_*` constant as the word Media3 calls it.
      *
-     * `remote` is the one that matters for §2.9: it means a controller that is not this app asked, which
-     * is a head unit, a headset button or a watch. It is the difference between "the wheel works" and
-     * "something paused the book", and no other signal in this service carries it.
+     * What this can and cannot tell §2.9: it separates a press from the system — `audioFocusLoss` and
+     * `becomingNoisy` mean nobody pressed anything — and it does not say *who* pressed. `remote` is
+     * mapped for completeness and is unreachable from this service: it describes a change reported by a
+     * *remote* player, and the listener is attached to the local ExoPlayer, which emits only
+     * `userRequest` (every `setPlayWhenReady` call), `becomingNoisy`, and the focus and end-of-item
+     * reasons. R-76 is what happened when a device script read `remote` as "the wheel asked".
      */
     private fun playWhenReadyReason(reason: Int): String = when (reason) {
         Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "userRequest"

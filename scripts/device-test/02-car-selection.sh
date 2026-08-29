@@ -85,8 +85,17 @@ fi
 
 step "§2.8  Anything that threw"
 logcat_grep "A browse request failed" 10
-note "Expect nothing. This line covers EVERY session callback, so its absence rules out a throw in the"
-note "selection path — that is how the first hypothesis for this defect was refuted."
+# The claim below only holds when the dump is usable. `logcat_grep` may have just said it is not —
+# logcat not carrying the app, or a clear the device refused — and an empty result then rules out
+# nothing. The PowerShell script was corrected first and this one kept the unconditional wording, which
+# is the same drift in the opposite direction.
+if [[ "${LOGCAT_CARRIES_APP:-unknown}" == "yes" && "${LOGCAT_ISOLATED:-unknown}" == "yes" ]]; then
+  ok "Nothing threw. This line covers EVERY session callback, so its absence rules out a throw in the"
+  note "selection path — that is how the first hypothesis for this defect was refuted."
+else
+  note "No throw was logged — but this dump is not usable evidence (see above), so it does not rule"
+  note "one out. Search the in-app event log for 'browse request failed' before concluding anything."
+fi
 
 step "§2.8  Could the book be opened at all"
 logcat_grep "Could not open a session for a browse or resume request" 5
