@@ -126,6 +126,10 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
         )
     }
 
+    override suspend fun setAutoAdvanceSeries(enabled: Boolean): AppResult<Unit> = write {
+        settings.setAutoAdvanceSeries(enabled)
+    }
+
     override suspend fun setStartupMode(mode: StartupMode): AppResult<Unit> = write {
         settings.setStartupMode(mode)
         logger.info(

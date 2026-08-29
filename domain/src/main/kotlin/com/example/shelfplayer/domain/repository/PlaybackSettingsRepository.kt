@@ -32,6 +32,9 @@ interface PlaybackSettingsRepository {
 
     suspend fun setBufferPreset(preset: BufferPreset): AppResult<Unit>
 
+    /** PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series. */
+    suspend fun setAutoAdvanceSeries(enabled: Boolean): AppResult<Unit>
+
     /**
      * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — which categories may spend cellular data.
      *

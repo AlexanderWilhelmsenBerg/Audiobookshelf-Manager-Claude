@@ -168,6 +168,17 @@
     <string name="series_continue">Fortsett med %1$s</string>
     <string name="book_play_named">Spill %1$s</string>
     <string name="series_loading">Laster serier</string>
+    <string name="author_title">Forfatter</string>
+    <plurals name="author_progress">
+        <item quantity="one">%1$d av %2$d bok fullf\u00f8rt</item>
+        <item quantity="other">%1$d av %2$d b\u00f8ker fullf\u00f8rt</item>
+    </plurals>
+    <string name="author_total_duration">%1$s totalt</string>
+    <string name="author_loading">Laster forfatter</string>
+    <string name="author_missing_title">Forfatteren er ikke tilgjengelig</string>
+    <string name="author_missing_body">B\u00f8kene til denne forfatteren finnes ikke i biblioteket til den aktive profilen.</string>
+    <string name="book_open_author">\u00c5pne %1$s</string>
+    <string name="book_open_series">\u00c5pne serien %1$s</string>
     <string name="series_empty_title">Ingen serier her</string>
     <string name="series_missing_title">Serien er ikke tilgjengelig</string>
     <string name="series_missing_body">Denne serien finnes ikke i biblioteket til den aktive profilen.</string>
@@ -613,6 +624,9 @@
     <string name="settings_rewind_long">10 til 60 minutter</string>
     <string name="settings_rewind_very_long">Over en time</string>
     <string name="settings_section_buffer">Strømmebuffer</string>
+    <string name="settings_section_series">N\u00e5r en bok er ferdig</string>
+    <string name="settings_series_hint">En ferdig bok g\u00e5r rett videre til neste bok i serien. B\u00f8ker du allerede har fullf\u00f8rt, hoppes over. Hvis du sovner til lydb\u00f8ker, sett ogs\u00e5 en sovetimer \u2014 den stopper boken der den er.</string>
+    <string name="settings_series_auto_advance">Start neste bok i serien</string>
     <string name="settings_buffer_hint">Bare strømmede bøker; en nedlastet bok bruker spillerens egne standarder. En større buffer tåler dårligere forbindelse og bruker mer minne og mobildata. Trer i kraft neste gang en bok starter.</string>
     <string name="settings_buffer_automatic">Automatisk</string>
     <string name="settings_buffer_low">Lav</string>

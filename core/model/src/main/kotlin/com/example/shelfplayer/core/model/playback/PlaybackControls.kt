@@ -234,22 +234,24 @@ data class PlaybackSettings(
     val skips: SkipIntervals = SkipIntervals.Default,
     val autoRewind: AutoRewind = AutoRewind.Default,
     val buffer: BufferPreset = BufferPreset.Default,
-    /**
-     * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — whether connecting to a car should start the last book.
-     *
-     * **Off by default, and it is the only setting in this app that can make audio begin with nobody
-     * pressing anything.** ROUTE-002 says auto-play "requires explicit user selection"; until per-device
-     * policy exists this is one global switch rather than a policy per head unit, and the setting's own
-     * wording has to say so.
-     *
-     * With it off, a car still *opens* on the last book — it is simply paused until the driver presses
-     * play, which is ROUTE-002's `Arm only` and the sane default for a feature that can talk to a whole
-     * vehicle.
-     */
     /** PRODUCT_SPEC PLAY-002 — what a transient interruption does. Pause unless the listener says otherwise. */
     val focusBehaviour: FocusBehaviour = FocusBehaviour.Default,
     /** PRODUCT_SPEC ROUTE-003 — what opening the app does to the player. */
     val startupMode: StartupMode = StartupMode.Default,
+    /**
+     * PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series.
+     *
+     * **On by default**, unlike the car auto-play switch this file used to describe, and the difference is
+     * worth being explicit about. That one could make audio begin in a silent room with nobody having
+     * pressed anything. This one continues audio that is *already playing*, for a listener who is already
+     * listening — a series read in order is one long thing, and stopping dead between its parts is the
+     * surprise rather than the safe default.
+     *
+     * The cost is real and is recorded as a risk: somebody who falls asleep at the end of book 3 wakes to
+     * book 4 several hours in, with progress on a book they have not heard. The sleep timer is the answer
+     * to that and exists (PLAY-008); this switch is the other one.
+     */
+    val autoAdvanceSeries: Boolean = true,
 ) {
     companion object {
         val Default = PlaybackSettings()

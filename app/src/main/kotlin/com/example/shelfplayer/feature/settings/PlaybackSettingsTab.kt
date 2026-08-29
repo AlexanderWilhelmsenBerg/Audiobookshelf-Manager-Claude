@@ -117,9 +117,7 @@ internal fun LazyListScope.playbackTab(
     finishedSection(libraries)
     downloadsSection(housekeeping, actions.onHousekeepingChanged, actions.onManageDownloads)
     networkSection(networkPolicy, actions.onNetworkPolicyChanged)
-    carSection()
-    interruptionSection(settings.focusBehaviour, actions.onFocusBehaviourChanged)
-    startupSection(settings.startupMode, actions.onStartupModeChanged)
+    behaviourSections(settings, actions)
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) }
 }
 
@@ -375,6 +373,8 @@ data class PlaybackSettingsActions(
     val onAutoRewindChanged: (AutoRewind) -> Unit,
     val onBufferChanged: (BufferPreset) -> Unit,
     /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. */
+    /** PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series. */
+    val onAutoAdvanceSeriesChanged: (Boolean) -> Unit = {},
     val onFocusBehaviourChanged: (FocusBehaviour) -> Unit = {},
     val onStartupModeChanged: (StartupMode) -> Unit = {},
     /** PRODUCT_SPEC DL-004 — which categories may spend cellular data. */
@@ -509,6 +509,41 @@ private fun <T> ChipRow(
                 )
             }
         }
+    }
+}
+
+/**
+ * The four sections about *how playback behaves* rather than how it sounds.
+ *
+ * Grouped so the tab's own body stays readable — and so the reading order is fixed in one place: a car
+ * connecting, a book ending, something interrupting, the app opening. Four separate calls in the tab put
+ * that order at the mercy of the next person to insert a section in the middle of a sixty-line function.
+ */
+private fun LazyListScope.behaviourSections(settings: PlaybackSettings, actions: PlaybackSettingsActions) {
+    carSection()
+    seriesSection(settings.autoAdvanceSeries, actions.onAutoAdvanceSeriesChanged)
+    interruptionSection(settings.focusBehaviour, actions.onFocusBehaviourChanged)
+    startupSection(settings.startupMode, actions.onStartupModeChanged)
+}
+
+/**
+ * PRODUCT_SPEC 6.4 step 6 — what happens when a book runs out.
+ *
+ * **On by default**, which is why the hint says what it does rather than what it would do. This is the
+ * second switch in the app that can make audio play without a press, and the difference from the first is
+ * the whole reason the defaults differ: a car connecting can start a book in a silent room, while this one
+ * only continues audio for somebody already listening. The hint names the case where that is wrong anyway —
+ * falling asleep — and points at the control that answers it.
+ */
+private fun LazyListScope.seriesSection(enabled: Boolean, onChanged: (Boolean) -> Unit) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_series)) }
+    item { Hint(text = stringResource(R.string.settings_series_hint)) }
+    item {
+        SwitchRow(
+            labelRes = R.string.settings_series_auto_advance,
+            checked = enabled,
+            onCheckedChange = onChanged,
+        )
     }
 }
 

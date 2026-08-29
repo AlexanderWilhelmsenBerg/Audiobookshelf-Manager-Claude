@@ -299,7 +299,16 @@ class AppSettingsDataSource @Inject constructor(
                 StoredStartupMode.UNRECOGNIZED,
                 -> StartupMode.OnMediaCommand
             },
+            // Inverted in the store so proto3's `false` means the default, which is *on*. See the proto's
+            // own comment on `auto_advance_series_disabled` for why the field is named for the other state.
+            autoAdvanceSeries = !stored.autoAdvanceSeriesDisabled,
         )
+    }
+
+    suspend fun setAutoAdvanceSeries(enabled: Boolean) {
+        dataStore.updateData { current ->
+            current.toBuilder().setAutoAdvanceSeriesDisabled(!enabled).build()
+        }
     }
 
     suspend fun setFocusBehaviour(behaviour: FocusBehaviour) {

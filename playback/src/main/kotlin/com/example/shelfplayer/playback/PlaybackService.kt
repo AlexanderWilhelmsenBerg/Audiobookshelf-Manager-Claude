@@ -47,6 +47,7 @@ import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
+import com.example.shelfplayer.domain.usecase.NextInSeriesUseCase
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -97,6 +98,10 @@ class PlaybackService : MediaLibraryService() {
     /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
     @Inject
     internal lateinit var audioOutputs: AudioOutputRouter
+
+    /** PRODUCT_SPEC 6.4 step 6 — what to play when a book ends, or nothing. See [advanceToNextInSeries]. */
+    @Inject
+    internal lateinit var nextInSeries: NextInSeriesUseCase
 
     @Inject
     internal lateinit var playbackRepository: PlaybackRepository
@@ -610,6 +615,10 @@ class PlaybackService : MediaLibraryService() {
             if (playbackState == Player.STATE_ENDED) {
                 scope.launch { recordPosition() }
                 sessionSync.request(SyncTrigger.BookChanged)
+                // PRODUCT_SPEC 6.4 step 6 — after the position is journalled and the sync is asked for,
+                // never before: the book that just ended has to be recorded as finished whether or not
+                // anything follows it, and an advance that failed must not have cost the last write.
+                scope.launch { advanceToNextInSeries() }
             }
         }
 
@@ -936,6 +945,46 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun resolveQueue(item: MediaItem): MediaItems.Queue? {
         val target = AutoLibrary.resolve(item.mediaId) ?: return null
         return openQueue(target.bookId, target.startAt)
+    }
+
+    /**
+     * PRODUCT_SPEC 6.4 step 6 — plays the next book in the series, if there is one and the listener wants it.
+     *
+     * ### Why this reads the player rather than being told what ended
+     *
+     * `STATE_ENDED` says the timeline ran out, not which book it was. The current item *is* the one that
+     * just finished — ADR-0016 makes a book a single window, so there is no next item Media3 could have
+     * moved to — and reading it here is the only place that fact is still available.
+     *
+     * ### The three ways this does nothing, and why each is silent
+     *
+     * The listener turned it off; the book is in no series; nothing unfinished follows it.
+     * `NextInSeriesUseCase` collapses all three into `null` because they are one answer to this caller.
+     * None is an error and none is worth a message: a book ending and the app stopping is what every
+     * version before this did.
+     *
+     * ### Why it plays rather than arming
+     *
+     * Because audio was playing a moment ago. ROUTE-002's *arm only* exists for a car connecting in a
+     * silent room, where starting audio is the surprise; here the surprise is the silence. What that costs
+     * somebody who fell asleep is recorded in `docs/risks.md`, and PLAY-008's sleep timer is the answer to
+     * it — this is not the control that should be trying to guess whether anybody is awake.
+     */
+    private suspend fun advanceToNextInSeries() {
+        val finished = withContext(mainDispatcher) {
+            player?.currentMediaItem?.let(MediaItems::bookIdOf)
+        } ?: return
+        val next = nextInSeries(finished) ?: return
+        val queue = openQueue(next.id, startAt = null) ?: return
+        withContext(mainDispatcher) {
+            val current = player ?: return@withContext
+            current.setMediaItem(queue.item, queue.startPositionMs)
+            current.prepare()
+            current.play()
+        }
+        // No title and no id (14.5). That a series advanced is the diagnosable fact; which book it was is
+        // the thing a private library must not put in a log.
+        logger.info(LogCategory.Playback, "A book ended, so the next in its series was started")
     }
 
     /**

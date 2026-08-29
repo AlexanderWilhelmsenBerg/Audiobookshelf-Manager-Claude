@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.feature.author.AuthorRoute
 import com.example.shelfplayer.feature.book.BookRoute
 import com.example.shelfplayer.feature.downloads.DownloadsRoute
 import com.example.shelfplayer.feature.home.HomeRoute
@@ -117,6 +118,10 @@ fun ShelfPlayerNavHost(
                 onNavigateUp = navController::navigateUp,
                 onManageDownloads = { navController.navigate(ShelfDestinations.DOWNLOADS) },
                 onEditMetadata = { bookId -> navController.navigate(ShelfDestinations.editMetadata(bookId)) },
+                // PRODUCT_SPEC LIB-003 / §62 — the two lines under the title are the way into the two
+                // collections a book belongs to. Both push a screen, so they behave alike.
+                onSeriesSelected = { seriesId -> navController.navigate(ShelfDestinations.series(seriesId)) },
+                onAuthorSelected = { authorId -> navController.navigate(ShelfDestinations.author(authorId)) },
             )
         }
         composable(ShelfDestinations.SERVER_USERS) {
@@ -129,6 +134,17 @@ fun ShelfPlayerNavHost(
             ),
         ) {
             EditMetadataScreen(onBack = navController::navigateUp)
+        }
+        composable(
+            route = ShelfDestinations.AUTHOR,
+            arguments = listOf(
+                navArgument(ShelfDestinations.ARG_AUTHOR_ID) { type = NavType.StringType },
+            ),
+        ) {
+            AuthorRoute(
+                onBookSelected = { bookId -> navController.navigate(ShelfDestinations.book(bookId)) },
+                onNavigateUp = navController::navigateUp,
+            )
         }
         composable(
             route = ShelfDestinations.SERIES,

@@ -223,6 +223,16 @@ message AppSettings {
   // step or the new translation would be unreachable. A tag no build recognises reads back as "follow the
   // system", which is visible and harmless — see `AppLanguage.ofTag`.
   string app_language_tag = 38;
+
+  // PRODUCT_SPEC 6.4 step 6 "the app queues the next book" — whether finishing a book starts the next one
+  // in its series.
+  //
+  // Stored **inverted** on purpose. The feature is on by default, and proto3's zero value for a bool is
+  // false, so a field named `auto_advance_series` would read back as *off* for every install that predates
+  // it — turning a default into a silent opt-out nobody chose. Naming the field for the non-default state
+  // makes the zero value mean "the default", which is the same trick `startup_mode` gets from having its
+  // safe answer at zero.
+  bool auto_advance_series_disabled = 39;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

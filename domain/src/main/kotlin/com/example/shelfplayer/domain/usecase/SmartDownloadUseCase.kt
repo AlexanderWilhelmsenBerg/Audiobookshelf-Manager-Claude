@@ -5,11 +5,12 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
-import com.example.shelfplayer.core.model.SeriesSequence
 import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.library.Book
-import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.download.OfflineFiles
+import com.example.shelfplayer.domain.library.booksInSeriesOrder
+import com.example.shelfplayer.domain.library.nextInSeries
+import com.example.shelfplayer.domain.library.primarySeriesMembership
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -74,18 +75,18 @@ class SmartDownloadUseCase @Inject constructor(
         val profileId = profiles.activeProfileId() ?: return
         val books = library.observeAccessibleBooks(profileId).first()
         val current = books.firstOrNull { it.id == bookId } ?: return
-        val membership = current.primarySeries() ?: return
+        // Shared with auto-advance (PLAY-005) rather than resolved here. Two copies of "what comes after
+        // this book" would eventually fetch book 7 and play book 8; see `NextInSeries`.
+        val membership = current.primarySeriesMembership() ?: return
+        val ordered = booksInSeriesOrder(books, membership)
 
-        val ordered = books
-            .mapNotNull { book -> book.inSeries(membership)?.let { book to it } }
-            // `SeriesSequence` is `Comparable` and already knows that 10 comes after 2 rather than
-            // before it, which is the classic audiobook-series bug (LIB-003).
-            .sortedBy { (_, sequence) -> sequence }
-
-        val index = ordered.indexOfFirst { (book, _) -> book.id == bookId }
+        val index = ordered.indexOfFirst { book -> book.id == bookId }
         if (index < 0) return
 
-        ordered.getOrNull(index + 1)?.let { (next, _) ->
+        // `skipFinished = false`: fetching the immediate next book is the point even when it happens to be
+        // finished already, because DL-005's retention rules decide what to keep and this only decides what
+        // to bring down. Auto-advance passes true, for a reason its own call site gives.
+        nextInSeries(books, bookId, skipFinished = false)?.let { next ->
             logger.info(LogCategory.Sync, "Halfway through a book, so the next in its series is being fetched")
             // `isAutomatic`: nobody pressed anything, so a paused book stays paused (DL-001).
             downloadBook(next.id, isAutomatic = true)
@@ -103,8 +104,8 @@ class SmartDownloadUseCase @Inject constructor(
      * back a chapter; book 5 is the one they have demonstrably moved on from. Removing the current book
      * would be the app deleting what is playing, which DL-006 forbids outright.
      */
-    private suspend fun removePrevious(ordered: List<Pair<Book, SeriesSequence>>, index: Int, current: LibraryItemId) {
-        val previous = ordered.getOrNull(index - 1)?.first ?: return
+    private suspend fun removePrevious(ordered: List<Book>, index: Int, current: LibraryItemId) {
+        val previous = ordered.getOrNull(index - 1) ?: return
         if (previous.id == current) return
         val profile = profiles.observeActiveProfile().first() ?: return
         val removed = files.remove(profile.id, profile.serverId, previous.id)
@@ -117,17 +118,4 @@ class SmartDownloadUseCase @Inject constructor(
         val mark = (duration * DownloadHousekeeping.SMART_DOWNLOAD_AT).toLong()
         return previous < mark && position >= mark
     }
-
-    /**
-     * The series this book belongs to for ordering purposes.
-     *
-     * The primary one where the server marks one, the first otherwise. A book in three series has three
-     * "next" books and no way to choose between them; the server's own primary flag is the only opinion
-     * available, and taking the first when there is none is at least stable.
-     */
-    private fun Book.primarySeries(): SeriesMembership? =
-        seriesMemberships.firstOrNull(SeriesMembership::isPrimary) ?: seriesMemberships.firstOrNull()
-
-    private fun Book.inSeries(membership: SeriesMembership): SeriesSequence? =
-        seriesMemberships.firstOrNull { it.series.id == membership.series.id }?.sequence
 }
