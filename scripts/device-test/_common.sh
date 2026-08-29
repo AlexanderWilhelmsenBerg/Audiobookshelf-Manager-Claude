@@ -51,13 +51,140 @@ run() {
 # caller runs it on the next line.
 show() { printf '  %s$ %s%s\n' "$BOLD" "$*" "$OFF"; }
 
-# The shape most of these scripts need: one grep over BookWave's own log lines. Never `|| true` on the
-# pipeline as a whole — a grep that matches nothing is the expected result in half these sections, and in
-# the other half its absence is the finding, so each caller says which.
+# The app's own logcat tag. `AndroidLogSink` writes every line as `ShelfPlayer/<Category>`, so this is what
+# separates "the app logged nothing" from "logcat is not carrying the app at all" — which are opposite
+# findings and, on the 2026-08-28 run, looked identical.
+APP_TAG="ShelfPlayer"
+
+# Clear the log buffer so what follows is a small, fresh window.
+#
+# This is the fix for the defect the 2026-08-28 run exposed. These scripts used to dump `logcat -d` long
+# after the thing being measured, and on that Samsung the buffer had rolled: every grep came back empty
+# while the in-app event log held all four `children=` lines. A tester following the script would have read
+# an empty result as a failed browse when the browse had worked — a signal that means nothing, which is
+# exactly what `docs/risks.md` R-15 is about. Clear first, act, then dump.
+logcat_clear() {
+  require_adb
+  # Probe BEFORE clearing, and only here. After a clear the buffer is deliberately empty, so "no app
+  # lines" stops meaning "logcat is not carrying the app" and starts meaning "the app logged nothing in
+  # this window" — which is a legitimate *result* for a tap that never reached the service, and is the
+  # exact case §2.8 exists to identify. Deriving the verdict from a cleared buffer would label that
+  # result a broken measurement and destroy the finding. A review caught this; the pre-clear buffer is
+  # the only place the question can honestly be asked.
+  local carried
+  carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
+  if (( carried == 0 )); then
+    LOGCAT_CARRIES_APP=no
+    bad "logcat holds NO $APP_TAG lines before clearing, so it is not carrying this app at all."
+    note "A rolled buffer, or a vendor filter. Nothing this script dumps afterwards will be evidence."
+    note "Read Settings → About → Diagnostics → Open the event log instead (R-70)."
+  else
+    LOGCAT_CARRIES_APP=yes
+    ok "logcat is carrying the app ($carried lines), so an empty result after the step is a real absence"
+  fi
+  show "adb logcat -c"
+  # Verify the clear rather than assume it. A rejected `logcat -c` used to be swallowed and still
+  # reported as cleared, which leaves the previous step's lines in a window the caller then treats as
+  # isolated — a false pass built on exactly the staleness the clear exists to remove. Some devices also
+  # return success and keep the buffer, so the exit status alone is not enough: count what survived.
+  local after
+  if ! "$ADB" logcat -c 2>/dev/null; then
+    LOGCAT_ISOLATED=no
+    bad "adb logcat -c FAILED. The window below is not isolated — old lines are still in the buffer."
+    return
+  fi
+  after=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
+  if (( after > 0 )); then
+    LOGCAT_ISOLATED=no
+    bad "the clear reported success but $after $APP_TAG lines survived it. The window is NOT isolated."
+    note "Anything found after this may predate the step. Use the in-app event log's timestamps instead."
+  else
+    LOGCAT_ISOLATED=yes
+    ok "log buffer cleared — do the step now, then let this script dump it"
+  fi
+}
+
+# The one place a step is allowed to declare a pass, because three separate findings were all a call site
+# deciding for itself and forgetting one of the two things that make a count meaningless:
+#
+#   1. a window that was never isolated — the lines may predate the step, so a count proves nothing;
+#   2. a match whose *content* is the failure — `state=idle` alone is the player refusing to prepare, and
+#      counting it as "the player responded" turned the defect being isolated into a recorded pass.
+#
+# So a pass needs an isolated window AND at least one line matching `expected`. This is `docs/risks.md`
+# R-43's shape avoided rather than quoted: the rule lives where every caller must go through it.
+step_verdict() {
+  local pattern="$1" expected="$2" pass_msg="$3" fail_msg="$4"
+  local lines n=0 good=0 carried
+  lines=$("$ADB" logcat -d 2>/dev/null | grep -iE -- "$pattern" || true)
+  # `grep -c` prints its count AND exits 1 when that count is zero, so `|| true` is right here and
+  # `|| echo 0` is a trap: it appends a *second* zero, `good` becomes "0\n0", `(( good == 0 ))` is an
+  # arithmetic syntax error, the failing condition skips the elif, and control lands in the success
+  # branch — turning the one case this helper exists to catch into a pass. It shipped for one commit,
+  # and the test that was supposed to prove it went green for a different reason (the window in that
+  # fixture was never isolated, so the isolation branch fired first and masked this one).
+  if [[ -n "$lines" ]]; then
+    n=$(printf '%s\n' "$lines" | grep -c . || true)
+    good=$(printf '%s\n' "$lines" | grep -icE -- "$expected" || true)
+  fi
+  # Whether the dump can carry a verdict at all comes first. On the SM-S928B of R-70 logcat held no
+  # ShelfPlayer lines while the in-app log was complete, and a zero count there says nothing about the
+  # app — so announcing the caller's failure would report a broken measurement as a result: "the host
+  # never connected", "the wheel never reached the session". Every call site was taught this one at a
+  # time; it belongs here, where no caller can forget it.
+  #
+  # Fresh tagged lines settle it, exactly as `logcat_grep` does: evidence upgrades the verdict and never
+  # downgrades it. Note this can only suppress a *failure* — every pattern here matches text the app
+  # itself logs, so a non-zero match implies the tag is being carried.
+  carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
+  (( carried > 0 )) && LOGCAT_CARRIES_APP=yes
+
+  if [[ "${LOGCAT_CARRIES_APP:-unknown}" != "yes" ]]; then
+    bad "No verdict: logcat holds no $APP_TAG lines at all, so an empty result is not a result."
+    note "This is a broken measurement, not a finding. Read Settings → About → Diagnostics → the"
+    note "event log for this step instead — it was complete when logcat was empty before (R-70)."
+  elif (( n == 0 )); then
+    bad "$fail_msg"
+  elif [[ "${LOGCAT_ISOLATED:-unknown}" == "no" ]]; then
+    bad "$fail_msg"
+    bad "The window was not isolated, so even the $n line(s) found may predate this step."
+  elif (( good == 0 )); then
+    bad "$fail_msg"
+    bad "$n line(s) found, none of them '$expected' — which is the failure, not the absence of one."
+  else
+    ok "$pass_msg ($good of $n)"
+  fi
+}
+
+# One grep over BookWave's own log lines, with the preflight that makes an empty result mean something.
+#
+# Never `|| true` on the pipeline as a whole: a grep that matches nothing is the expected result in half
+# these sections and the finding in the other half, so each caller says which. But neither reading is safe
+# until we know logcat carries the app at all, which is what the preflight settles.
 logcat_grep() {
-  local pattern="$1" n="${2:-20}"
+  local pattern="$1" n="${2:-20}" carried
   show "adb logcat -d | grep -iE \"$pattern\" | tail -$n"
   "$ADB" logcat -d 2>/dev/null | grep -iE -- "$pattern" | tail -"$n" || true
+  # A window that was never isolated cannot support a positive verdict: what is found may be older than
+  # the step. Said here, once, so no caller has to remember it.
+  [[ "${LOGCAT_ISOLATED:-unknown}" == "no" ]] &&
+    warn "the buffer was not actually cleared, so anything found below may predate this step."
+  carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
+  if (( carried > 0 )); then
+    # Fresh tagged lines settle it, whatever the pre-clear probe concluded. A `no` from before the clear
+    # can be wrong in one direction — the app may simply have been quiet, or its older lines may have
+    # rolled out — and a review caught that a sticky `no` would print those very lines and then call them
+    # non-evidence, which is incoherent. Evidence upgrades the verdict; it never downgrades it.
+    LOGCAT_CARRIES_APP=yes
+    note "logcat is carrying the app ($carried lines), so an empty result above is a real absence."
+  elif [[ "${LOGCAT_CARRIES_APP:-unknown}" == "yes" ]]; then
+    # The pre-clear probe saw the app, and this window is empty on purpose. Absence is the finding.
+    note "logcat carried the app before the clear, so nothing above is a real absence, not a lost log."
+  else
+    bad "logcat holds NO $APP_TAG lines at all, so nothing above is evidence either way."
+    note "A rolled buffer, or a vendor filter. Read Settings → About → Diagnostics → the event log."
+    note "Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70)."
+  fi
 }
 
 # The SDK, resolved the way the build resolves it, so these scripts work whether or not the tools are on

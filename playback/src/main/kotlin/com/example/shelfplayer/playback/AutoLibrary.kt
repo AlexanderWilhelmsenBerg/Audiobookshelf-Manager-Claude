@@ -625,6 +625,28 @@ class AutoLibrary @Inject constructor(
             else -> null
         }
 
+        /**
+         * The *shape* of a media id, for a log line — deliberately never the id itself.
+         *
+         * A car hands back nothing but an id, so when a tap does nothing the only question worth asking is
+         * "which kind of id was that, and did it resolve". The **value** cannot be logged: an Audiobookshelf
+         * item id names a book as surely as its title does, and `openQueue`'s own failure log has said so
+         * since it was written — *"No book id: a log a user might share does not need to name what they
+         * listen to"* (PRODUCT_SPEC 14.5). The prefix is a constant from this file and names nothing.
+         *
+         * Pure, on the companion, next to [resolve], because the two are one protocol and a shape that
+         * disagrees with what `resolve` accepts would make the diagnostic lie.
+         */
+        fun kindOf(mediaId: String): String = when {
+            mediaId.startsWith(BOOK_PREFIX) -> "book"
+            mediaId.startsWith(AT_PREFIX) -> "at"
+            mediaId.startsWith(TAB_PREFIX) -> "tab"
+            mediaId == ROOT -> "root"
+            mediaId.startsWith(NOTICE_PREFIX) -> "notice"
+            mediaId.isEmpty() -> "empty"
+            else -> "other"
+        }
+
         const val ROOT = "root"
 
         /**
@@ -644,7 +666,8 @@ class AutoLibrary @Inject constructor(
         const val TAB_HISTORY = "${TAB_PREFIX}history"
 
         /** The one row shown when no shelf has anything. Unplayable, so it is never resolved to a book. */
-        const val NOTICE_EMPTY = "notice/empty"
+        private const val NOTICE_PREFIX = "notice/"
+        const val NOTICE_EMPTY = "${NOTICE_PREFIX}empty"
 
         private const val BOOK_PREFIX = "book/"
         private const val AT_PREFIX = "at/"

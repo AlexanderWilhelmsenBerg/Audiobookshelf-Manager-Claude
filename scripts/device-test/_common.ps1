@@ -65,12 +65,24 @@ function Resolve-BookWaveSdk {
         }
     }
 
-    foreach ($candidate in @(
-        $env:ANDROID_HOME,
-        $env:ANDROID_SDK_ROOT,
-        (Join-Path $env:LOCALAPPDATA 'Android\Sdk')
-    )) {
-        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+    # Built only from variables that are actually set. Join-Path throws on a null Path rather than
+    # returning null, so composing this list unconditionally made every script in this directory die on
+    # its first line whenever LOCALAPPDATA was unset - which is every non-Windows host, and any Windows
+    # session with a trimmed environment. The identical mistake was found by *running*
+    # Set-BookWavePath.ps1 in a container on 2026-08-28 and fixed there; this copy kept it (R-73).
+    # The order, and the list, are Set-BookWavePath.ps1's. Two resolvers that disagree would put one SDK
+    # on the PATH and drive adb from another, so they are kept identical deliberately: local.properties,
+    # then the two environment variables, then the three well-known locations.
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    foreach ($fromEnv in @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT)) {
+        if ($fromEnv) { $candidates.Add($fromEnv) }
+    }
+    $candidates.Add('C:\Android\Sdk')
+    if ($env:LOCALAPPDATA) { $candidates.Add((Join-Path $env:LOCALAPPDATA 'Android\Sdk')) }
+    if ($env:USERPROFILE) { $candidates.Add((Join-Path $env:USERPROFILE 'AppData\Local\Android\Sdk')) }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
             return (Resolve-Path -LiteralPath $candidate).Path
         }
     }
@@ -229,6 +241,119 @@ function Get-AdbOutput {
     return $output
 }
 
+# The app's own logcat tag. AndroidLogSink writes every line as 'ShelfPlayer/<Category>', so this is what
+# separates 'the app logged nothing' from 'logcat is not carrying the app at all' - opposite findings that
+# looked identical on the 2026-08-28 run.
+$AppTag = 'ShelfPlayer'
+
+$script:LogcatCarriesApp = 'unknown'
+$script:LogcatIsolated = 'unknown'
+$script:SelectionResolved = 0
+
+function Clear-Logcat {
+    # Clear the buffer so the window that follows is small and fresh.
+    #
+    # This is the fix for what the 2026-08-28 run exposed. These scripts dumped the log long after the thing
+    # being measured, and on that Samsung the buffer had rolled: every match came back empty while the
+    # in-app event log held all four 'children=' lines. An empty result read as a failed browse when the
+    # browse had worked - a signal that means nothing (docs/risks.md R-15, R-70). Clear, act, then dump.
+    #
+    # The probe happens BEFORE the clear, and only here. After a clear the buffer is deliberately empty, so
+    # 'no app lines' stops meaning 'logcat is not carrying the app' and starts meaning 'the app logged
+    # nothing in this window' - which is a legitimate RESULT for a tap that never reached the service, and
+    # is the exact case section 2.8 exists to identify. Deriving the verdict from a cleared buffer would
+    # label that result a broken measurement and destroy the finding. A review caught this.
+    Require-Adb
+    $before = @(& $Adb logcat -d 2>$null | Select-String -SimpleMatch -Pattern $AppTag)
+    if ($before.Count -eq 0) {
+        $script:LogcatCarriesApp = 'no'
+        Write-Bad "logcat holds NO $AppTag lines before clearing, so it is not carrying this app at all."
+        Write-Note 'A rolled buffer, or a vendor filter. Nothing dumped afterwards will be evidence.'
+        Write-Note 'Read Settings > About > Diagnostics > Open the event log instead (R-70).'
+    }
+    else {
+        $script:LogcatCarriesApp = 'yes'
+        Write-Ok "logcat is carrying the app ($($before.Count) lines); an empty result after the step is real."
+    }
+    Show-Command 'adb logcat -c'
+    # Not Invoke-Adb: that throws on a non-zero exit, and a buffer this device declines to clear is a
+    # reason to read the in-app log rather than a reason to abandon the section. But the outcome must be
+    # checked, not assumed: a swallowed failure leaves the previous step's lines in a window the caller
+    # treats as isolated. Some devices also return success and keep the buffer, so count what survived.
+    & $Adb logcat -c 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $script:LogcatIsolated = 'no'
+        Write-Bad 'adb logcat -c FAILED. The window below is not isolated - old lines are still there.'
+        return
+    }
+    $after = @(& $Adb logcat -d 2>$null | Select-String -SimpleMatch -Pattern $AppTag).Count
+    if ($after -gt 0) {
+        $script:LogcatIsolated = 'no'
+        Write-Bad "The clear reported success but $after $AppTag lines survived it. Window NOT isolated."
+        Write-Note 'Anything found after this may predate the step. Use the in-app event log timestamps.'
+    }
+    else {
+        $script:LogcatIsolated = 'yes'
+        Write-Ok 'log buffer cleared - do the step now, then let this script dump it'
+    }
+}
+
+# The one place a step is allowed to declare a pass. Three separate findings were all a call site
+# deciding for itself and forgetting one of the two things that make a count meaningless:
+#
+#   1. a window that was never isolated - the lines may predate the step, so a count proves nothing;
+#   2. a match whose CONTENT is the failure - state=idle alone is the player refusing to prepare, and
+#      counting it as "the player responded" turns the defect being isolated into a recorded pass.
+#
+# A pass therefore needs an isolated window AND at least one line matching -Expected.
+function Test-StepVerdict {
+    param(
+        # AllowEmptyCollection, because an empty array is the PRIMARY failure case here - the action
+        # produced no matching lines at all - and a Mandatory collection parameter rejects it during
+        # binding. Without this the script terminates under $ErrorActionPreference = 'Stop' before the
+        # Count -eq 0 branch can run, so the one outcome these diagnostics exist to report is the one
+        # that crashes instead of reporting.
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,
+        [Parameter(Mandatory)][string]$Expected,
+        [Parameter(Mandatory)][string]$PassMessage,
+        [Parameter(Mandatory)][string]$FailMessage
+    )
+
+    $good = @($Lines | Where-Object { $_ -match $Expected }).Count
+
+    # Whether the dump can carry a verdict at all comes first. On the SM-S928B of R-70 logcat held no
+    # ShelfPlayer lines while the in-app log was complete, and a zero count there says nothing about the
+    # app - so announcing the caller's failure would report a broken measurement as a result: "the host
+    # never connected", "the wheel never reached the session". Every call site was taught this one at a
+    # time; it belongs here, where no caller can forget it.
+    #
+    # Fresh tagged lines settle it, as Show-LogcatMatches does: evidence upgrades the verdict and never
+    # downgrades it. This can only suppress a *failure* - every pattern here matches text the app itself
+    # logs, so a non-zero match implies the tag is being carried.
+    $carried = @(& $Adb logcat -d 2>$null | Select-String -SimpleMatch -Pattern $AppTag).Count
+    if ($carried -gt 0) { $script:LogcatCarriesApp = 'yes' }
+
+    if ($script:LogcatCarriesApp -ne 'yes') {
+        Write-Bad "No verdict: logcat holds no $AppTag lines at all, so an empty result is not a result."
+        Write-Note 'This is a broken measurement, not a finding. Read Settings > About > Diagnostics >'
+        Write-Note 'the event log for this step - it was complete when logcat was empty before (R-70).'
+    }
+    elseif ($Lines.Count -eq 0) {
+        Write-Bad $FailMessage
+    }
+    elseif ($script:LogcatIsolated -eq 'no') {
+        Write-Bad $FailMessage
+        Write-Bad "The window was not isolated, so even the $($Lines.Count) line(s) found may predate this step."
+    }
+    elseif ($good -eq 0) {
+        Write-Bad $FailMessage
+        Write-Bad "$($Lines.Count) line(s) found, none matching '$Expected' - that is the failure, not its absence."
+    }
+    else {
+        Write-Ok "$PassMessage ($good of $($Lines.Count))"
+    }
+}
+
 function Show-LogcatMatches {
     param(
         [Parameter(Mandatory)][string[]]$Pattern,
@@ -240,6 +365,30 @@ function Show-LogcatMatches {
     $lines = Get-AdbOutput logcat -d -t 5000
     @($lines | Select-String -SimpleMatch -Pattern $Pattern | Select-Object -Last $Last) |
         ForEach-Object { $_.Line }
+
+    # The preflight that makes an empty result mean something - deferring to Clear-Logcat's answer where
+    # one was taken, because after a clear this buffer cannot answer the question honestly.
+    # A window that was never isolated cannot support a positive verdict: what is found may be older
+    # than the step. Said here, once, so no caller has to remember it.
+    if ($script:LogcatIsolated -eq 'no') {
+        Write-Warn 'The buffer was not actually cleared, so anything found above may predate this step.'
+    }
+    $carried = @($lines | Select-String -SimpleMatch -Pattern $AppTag).Count
+    if ($carried -gt 0) {
+        # Fresh tagged lines settle it, whatever the pre-clear probe concluded. A 'no' from before the
+        # clear can be wrong in one direction - the app may simply have been quiet - and a sticky 'no'
+        # would print those very lines and then call them non-evidence. Evidence upgrades the verdict.
+        $script:LogcatCarriesApp = 'yes'
+        Write-Note "logcat is carrying the app ($carried lines); an empty result above is a real absence."
+    }
+    elseif ($script:LogcatCarriesApp -eq 'yes') {
+        Write-Note 'logcat carried the app before the clear, so nothing above is a real absence.'
+    }
+    else {
+        Write-Bad "logcat holds NO $AppTag lines at all, so nothing above is evidence either way."
+        Write-Note 'A rolled buffer, or a vendor filter. Read Settings > About > Diagnostics > event log.'
+        Write-Note 'Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70).'
+    }
 }
 
 function Show-AppLog {

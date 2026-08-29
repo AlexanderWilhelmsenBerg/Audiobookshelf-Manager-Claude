@@ -52,3 +52,8 @@ if ($positions.Count -eq 0) {
     $positions | ForEach-Object { Write-Output $_ }
     Write-Note 'Confirm the forward delta is +30005 ms and the backward delta is -30000 ms.'
 }
+
+Write-Step '2.8  Then the half this script does not cover'
+Write-Note 'Browse population is only half of section 2. Tapping a book is the open defect (R-71), and it'
+Write-Note 'needs the log cleared around the tap, so it has its own script:'
+Write-Note '  & .\scripts\device-test\02-car-selection.ps1'

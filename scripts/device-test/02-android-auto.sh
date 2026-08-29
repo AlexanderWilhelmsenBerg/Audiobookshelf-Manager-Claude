@@ -28,3 +28,8 @@ note "before 2026-08-27 it said only error=unknown, and that missing word cost t
 step "§2 step 7  Transport, which must still work"
 note "In the car: +30s and -30s. Then check the position the server was told:"
 logcat_grep "The server accepted a position" 6
+
+step "§2.8  Then the half this script does not cover"
+note "Browse population is only half of §2. Tapping a book is the open defect (R-71), and it needs the"
+note "log cleared around the tap, so it has its own script:"
+note "  ./scripts/device-test/02-car-selection.sh"

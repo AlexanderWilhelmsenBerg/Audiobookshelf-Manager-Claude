@@ -1,0 +1,145 @@
+# docs/device-test-0.9.14.md section 2.9 - a real car, not the Desktop Head Unit.
+#
+# Every car result this project holds came from the DHU. The DHU is the same projection stack driving a
+# window on a computer, so it covers the browse tree and covers none of the car's own contribution: the
+# launcher, the steering wheel, driving restrictions, ignition cycles, an unplugged cable, the microphone.
+# Each of those is a way this app can fail for a listener while every recorded test stays green.
+#
+# Do all of it parked. Step 5 needs the car moving and needs somebody else driving; skipping it is a result.
+#Requires -Version 7.0
+. (Join-Path $PSScriptRoot '_common.ps1')
+Require-Device
+
+Write-Step 'Section 2.9 step 1 - Which host actually answered'
+# Two prompts, and both are needed. Clearing BEFORE the connection is what stops an older DHU session
+# answering for the car in front of you - the verdict passes on any 'gearhead' line, so a newly
+# connected Automotive OS or vendor host would be reported as projected Android Auto on the strength of
+# a stale one, in the step whose whole job is naming the CURRENT host.
+#
+# But section 2.9 tells the tester to arrive parked in the car, which for most of them means already
+# plugged in. Clearing then would delete the only connection line there will ever be, and a tester who
+# simply pressed Enter would be told no host had connected at all. So the connection has to happen
+# AFTER the clear, which means disconnecting first if it has already happened.
+Write-Note 'If the phone is ALREADY connected to the car, disconnect it now - unplug the cable, or stop'
+Write-Note 'wireless Android Auto from the car screen. The connection has to happen after the log is'
+Write-Note 'cleared, or there is no line to read.'
+Wait-ForTester 'Once the phone is DISCONNECTED from the car.'
+Clear-Logcat
+Write-Note 'Now plug the phone into the car, or start wireless Android Auto.'
+Wait-ForTester 'Once the car has connected and BookWave is on its screen.'
+$connections = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
+$connections | ForEach-Object { Write-Output $_ }
+Test-StepVerdict -Lines $connections -Expected 'gearhead' `
+    -PassMessage 'A projected Android Auto host connected.' `
+    -FailMessage 'No projected Android Auto connection recorded. Connect first, or read the in-app event log.'
+Write-Note 'The DHU reports the SAME package, so this cannot tell them apart: record which you used.'
+Write-Warn 'A connection line naming anything but gearhead is Automotive OS or a vendor host. This app'
+Write-Warn 'has never seen one - report it rather than reading it as a normal pass.'
+
+Write-Step 'Section 2.9 step 2 - The car''s own launcher'
+Write-Note 'Find BookWave in the car''s app list. The DHU has its own launcher and proves nothing here.'
+Write-Note 'Missing here but present in the DHU is a DISCOVERY defect - read Settings > About > This device.'
+Wait-ForTester "Once you have looked for BookWave in the car's app list."
+
+Write-Step 'Section 2.9 step 3 - Browse and select, in the car'
+Write-Note "Repeat section 2's counts and section 2.8's tap here. A difference between car and DHU IS the"
+Write-Note 'finding, so record both. & .\scripts\device-test\02-car-selection.ps1 captures the tap.'
+Wait-ForTester 'Once you have browsed and tried to open a book in the car.'
+
+Write-Step 'Section 2.9 step 4 - Steering-wheel and hard buttons'
+Write-Note 'Next, previous, play/pause from the wheel, and the volume knob. These arrive as media-button'
+Write-Note 'events and never touch the DHU, so nothing recorded so far says whether they work.'
+Write-Warn 'The log can witness PLAY/PAUSE only. Volume changes no playback state, and next/previous are'
+Write-Warn 'no-ops on the one-item queue a car selection builds - judge those two by ear, not from here.'
+Write-Warn 'Do not touch the phone during this step. The reason cannot tell you who pressed, and the'
+Write-Warn 'cleared window is the only thing that can - so using the phone here invalidates the answer.'
+# Clear first, or step 3's own lines are still in the buffer and a wheel that does nothing reads as a
+# wheel that worked. And look for the play/pause line rather than a state change: play/pause leaves the
+# player in STATE_READY, so a working wheel produces no state change at all.
+#
+# The pass is a play/pause line in the isolated window, NOT reason=remote. Media3 collapses the origin
+# before this service ever sees it: a controller's play arrives at MediaSession, which forwards it to
+# the local player as play() -> setPlayWhenReady(true), and ExoPlayerImpl hard-codes that call to
+# PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST. remote is what a *remote* player reports - CastPlayer, or
+# a controller observing a session - and this listener is on the local ExoPlayer, so it can never
+# appear here. Requiring it rejected every working wheel.
+Clear-Logcat
+Wait-ForTester "Use the wheel's PLAY/PAUSE button now, and touch nothing else."
+$asked = @(Show-LogcatMatches -Pattern 'Playback was asked to change' -Last 10)
+$asked | ForEach-Object { Write-Output $_ }
+Test-StepVerdict -Lines $asked -Expected 'reason=(userRequest|remote)' `
+    -PassMessage 'Play/pause reached the session, and the wheel is the only thing you pressed.' `
+    -FailMessage "The wheel's play/pause never reached the session at all. Unsupported here, or refused - PR #48 narrowed that command surface, so say which if you can tell."
+Write-Note 'reason=audioFocusLoss or becomingNoisy would mean nobody pressed anything: the system did.'
+
+Write-Step 'Section 2.9 step 5 - Driving restrictions'
+Write-Warn 'Only with somebody else driving, or on a rolling road. Skip it otherwise and say so.'
+Write-Note 'The car truncates long lists and hides text while moving - that is the host, not a defect. A'
+Write-Note 'list that becomes unusable, or a row whose label is meaningless once truncated, is.'
+Wait-ForTester 'Once you have done this, or decided to skip it.'
+
+Write-Step 'Section 2.9 step 6 - Ignition off, ignition on'
+Write-Note 'Stop the engine, let the head unit power down, restart it. Expect BookWave back, and the resume'
+Write-Note 'tile offering your book at the position you left. Closing a DHU window is not a power cycle.'
+Clear-Logcat
+Wait-ForTester 'Once the head unit has powered down and come back up.'
+$back = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
+$back | ForEach-Object { Write-Output $_ }
+Test-StepVerdict -Lines $back -Expected 'controller=' `
+    -PassMessage 'The car reconnected after the power cycle. Now judge the resume tile by eye.' `
+    -FailMessage 'No fresh connection line: the car did not reconnect after the power cycle. That is a different finding from a resume tile that is missing or wrong.'
+
+Write-Step 'Section 2.9 step 7 - Unplug while playing'
+Write-Note 'Pull the cable mid-book, then plug back in and confirm the car picks the same book up.'
+Write-Note 'PROGRESS must not be lost. The audio has TWO correct outcomes and the car decides which:'
+Write-Note '  it keeps playing on the phone, or it PAUSES - the disconnect arrived as audio-becoming-noisy'
+Write-Note "  and the player is configured to pause on that (PLAY-002: audio never moves to the phone's own"
+Write-Note '  speaker when what you were listening on goes away). A pause here is the requirement working.'
+Write-Warn 'So do not record a pause as a defect, and do not "fix" it by turning that handling off. What is'
+Write-Warn 'not acceptable either way: sound out of the phone speaker, or a position that moved.'
+# The baseline has to be taken BEFORE the action. This step used to explain the comparison only after
+# the unplug had already happened, so a tester running the script top to bottom had nothing to compare
+# against and the one check that can actually prove priority 2 could not be made at all.
+Write-Warn 'FIRST, before you touch the cable: read the position off the phone and write it down here.'
+$beforePosition = Read-Host '  Position before unplugging (mm:ss)'
+if ([string]::IsNullOrWhiteSpace($beforePosition)) {
+    # Defaulted once, here, so the line above and the comparison below quote the same thing.
+    $beforePosition = '(nothing recorded - the comparison below cannot be made)'
+}
+Write-Note "Recorded: $beforePosition"
+Clear-Logcat
+Wait-ForTester 'Unplug, then replug.'
+$asked = @(Show-LogcatMatches -Pattern 'A controller asked to set what plays' -Last 10)
+$asked | ForEach-Object { Write-Output $_ }
+$positions = @(Show-LogcatMatches -Pattern 'The server accepted a position' -Last 6)
+$positions | ForEach-Object { Write-Output $_ }
+# No pass here either: the remote sync ticker writes this line about every thirty seconds while a book
+# plays, so one landing while the tester reads the prompt would pass a test proving nothing about the
+# disconnect. The sound version is a position compared either side of the unplug, by hand.
+Write-Note 'This line proves a sync happened, NOT that progress survived the unplug: the ticker writes'
+Write-Note 'one about every 30 s while a book plays, so one may have landed before you pulled the cable.'
+Write-Note 'The real check is the position itself. Before the unplug you recorded:'
+Write-Note "  $beforePosition"
+Write-Note 'Compare it now against the phone AND the web client. Priority 2 is why this is by hand.'
+
+Write-Step 'Section 2.9 step 8 - Voice, if the car has it'
+Write-Note 'Say: Hey Google, play <a book you own>. That is onSetMediaItems with a search query rather than'
+Write-Note 'a media id - a different branch from a tap, and one only a real microphone reaches.'
+Clear-Logcat
+Wait-ForTester 'Try the voice request now.'
+$spoken = @(Show-LogcatMatches -Pattern 'A controller asked to set what plays' -Last 5)
+if ($spoken.Count -eq 0) {
+    # Gated like the selection branch: absence locates nothing when logcat is not carrying the app.
+    if ($script:LogcatCarriesApp -eq 'yes') {
+        Write-Bad 'The spoken request never reached this service.'
+    }
+    else {
+        Write-Bad 'No spoken request found, and logcat is not carrying this app - so this locates nothing.'
+        Write-Note 'Read Settings > About > Diagnostics > the event log and search "asked to set" first.'
+    }
+} else {
+    $spoken | ForEach-Object { Write-Output $_ }
+    Write-Note 'Expect branch=spoken and kind=empty: a spoken request carries a search query and an EMPTY'
+    Write-Note "media id, and 'empty' is what kindOf calls that. kind=none means no item arrived at all."
+    Write-Note 'branch=browse would mean the voice host resolved the title itself and sent an id instead.'
+}
