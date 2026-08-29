@@ -780,10 +780,17 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * Whatever is loaded, as Media3's own value type, for a callback that may have to hand it straight back.
+     * Whatever is loaded **at the moment this is called**, as Media3's own value type.
      *
      * **Must be called on the main thread**, for the same reason as [nowPlaying] and stated here as well
      * rather than by reference, because the whole of R-66 was a caller that did not follow the reference.
+     *
+     * **And it must be called late.** The one caller hops onto the main thread with `withContext` at the
+     * point of use rather than reading this early and carrying the answer, because a position is only true
+     * for the instant it was read: playback advances, and `unresolved`'s caller can spend seconds in a
+     * network failure before it needs one. A value copied out beforehand would seek a playing book
+     * backwards by exactly that long. Freshness and the thread are two requirements, and a snapshot taken
+     * on the right thread satisfies only one of them (R-72).
      *
      * Both properties are read in one place so a book that changed between them cannot produce a position
      * from one item against the identity of another (ADR-0016), and `null` when the player holds nothing —

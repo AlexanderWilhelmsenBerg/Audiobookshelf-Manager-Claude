@@ -28,8 +28,18 @@ note "record both numbers. ./scripts/device-test/02-car-selection.sh captures th
 step "§2.9 step 4  Steering-wheel and hard buttons"
 note "Next, previous, play/pause from the wheel, and the volume knob. These arrive as media-button"
 note "events and never touch the DHU, so nothing recorded so far says whether they work."
+# Clear first, or step 3's own buffering/ready lines are still in the buffer and a wheel that does
+# nothing reads as a wheel that worked — a false pass on the exact hardware path this step exists for.
+logcat_clear
 read -r -p "  Press Enter once you have tried the wheel controls… " _
+WHEEL=$("$ADB" logcat -d 2>/dev/null | grep -icE "The player changed state" || true)
 logcat_grep "The player changed state" 10
+if (( WHEEL == 0 )); then
+  bad "No player state change after the wheel. Either the buttons are unsupported here, or they are"
+  bad "not reaching the session — and PR #48 narrowed exactly that command surface, so say which."
+else
+  ok "the wheel reached the session ($WHEEL state changes)"
+fi
 
 step "§2.9 step 5  Driving restrictions"
 warn "Only with somebody else driving, or on a rolling road. Skip it otherwise and say so."
@@ -43,6 +53,7 @@ note "tile offering your book at the position you left. Closing a DHU window is 
 step "§2.9 step 7  Unplug while playing"
 note "Pull the cable mid-book. Playback must continue on the phone and progress must not be lost —"
 note "product priorities 1 and 2 in one step. Then plug back in and confirm the car picks it up."
+logcat_clear
 read -r -p "  Press Enter once you have unplugged and replugged… " _
 logcat_grep "A controller asked to set what plays" 10
 logcat_grep "The server accepted a position" 6
@@ -50,5 +61,10 @@ logcat_grep "The server accepted a position" 6
 step "§2.9 step 8  Voice, if the car has it"
 note "'Hey Google, play <a book you own>'. That is onSetMediaItems with a search query rather than a"
 note "media id — a different branch from a tap, and one only a real microphone reaches."
+# Clear and then WAIT. Dumping straight after printing the instruction would record step 7's lines and
+# nothing of the request, because the tester has not spoken yet.
+logcat_clear
+read -r -p "  Press Enter once you have made the voice request… " _
 logcat_grep "A controller asked to set what plays" 5
-note "Expect kind=none for a spoken request: it arrives with a query and no media id."
+note "Expect branch=spoken and kind=none: a spoken request arrives with a query and no media id."
+note "branch=browse here would mean the voice host resolved the title itself and sent an id instead."

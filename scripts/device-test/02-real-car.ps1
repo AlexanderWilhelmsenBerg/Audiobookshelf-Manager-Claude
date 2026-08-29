@@ -33,13 +33,17 @@ Write-Note 'finding, so record both. & .\scripts\device-test\02-car-selection.ps
 Write-Step 'Section 2.9 step 4 - Steering-wheel and hard buttons'
 Write-Note 'Next, previous, play/pause from the wheel, and the volume knob. These arrive as media-button'
 Write-Note 'events and never touch the DHU, so nothing recorded so far says whether they work.'
+# Clear first, or step 3's own buffering/ready lines are still in the buffer and a wheel that does
+# nothing reads as a wheel that worked - a false pass on the exact hardware path this step exists for.
+Clear-Logcat
 Wait-ForTester 'Try the wheel controls now.'
 $states = @(Show-LogcatMatches -Pattern 'The player changed state' -Last 10)
 if ($states.Count -eq 0) {
-    Write-Warn 'The player never changed state. Confirm against the in-app event log before concluding.'
+    Write-Bad 'No player state change after the wheel. Either the buttons are unsupported here, or they'
+    Write-Bad 'are not reaching the session - PR #48 narrowed that command surface, so say which.'
 } else {
     $states | ForEach-Object { Write-Output $_ }
-    Write-Ok 'The wheel reached the session.'
+    Write-Ok "The wheel reached the session ($($states.Count) state changes)."
 }
 
 Write-Step 'Section 2.9 step 5 - Driving restrictions'
@@ -54,6 +58,7 @@ Write-Note 'tile offering your book at the position you left. Closing a DHU wind
 Write-Step 'Section 2.9 step 7 - Unplug while playing'
 Write-Note 'Pull the cable mid-book. Playback must continue on the phone and progress must not be lost -'
 Write-Note 'product priorities 1 and 2 in one step. Then plug back in and confirm the car picks it up.'
+Clear-Logcat
 Wait-ForTester 'Unplug, then replug.'
 $asked = @(Show-LogcatMatches -Pattern 'A controller asked to set what plays' -Last 10)
 $asked | ForEach-Object { Write-Output $_ }
@@ -68,11 +73,13 @@ if ($positions.Count -eq 0) {
 Write-Step 'Section 2.9 step 8 - Voice, if the car has it'
 Write-Note 'Say: Hey Google, play <a book you own>. That is onSetMediaItems with a search query rather than'
 Write-Note 'a media id - a different branch from a tap, and one only a real microphone reaches.'
+Clear-Logcat
 Wait-ForTester 'Try the voice request now.'
 $spoken = @(Show-LogcatMatches -Pattern 'A controller asked to set what plays' -Last 5)
 if ($spoken.Count -eq 0) {
-    Write-Warn 'The spoken request never reached this service.'
+    Write-Bad 'The spoken request never reached this service.'
 } else {
     $spoken | ForEach-Object { Write-Output $_ }
-    Write-Note 'Expect kind=none for a spoken request: it arrives with a query and no media id.'
+    Write-Note 'Expect branch=spoken and kind=none: a spoken request arrives with a query and no media id.'
+    Write-Note 'branch=browse would mean the voice host resolved the title itself and sent an id instead.'
 }
