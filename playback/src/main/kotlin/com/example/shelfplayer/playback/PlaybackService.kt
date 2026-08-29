@@ -62,6 +62,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -1128,17 +1129,8 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: MutableList<MediaItem>,
             startIndex: Int,
             startPositionMs: Long,
-        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            // What is loaded, read here on the callback thread, for the reason [nowPlaying] states at
-            // length: `unresolved` reads `currentMediaItem` and `currentPosition`, and the body below runs
-            // on `applicationScope` — `Dispatchers.Default`. R-66 was this defect in the two browse
-            // callbacks; this is the third site, and it is the one a car reaches when it taps a book whose
-            // id no longer resolves. There it would turn "nothing happened" into a future that never
-            // completes, which is a head unit stuck on a spinner rather than a driver hearing silence.
-            val loaded = loadedNow()
-            return future {
-                setMediaItems(session, controller, mediaItems, startIndex, startPositionMs, loaded)
-            }
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
+            setMediaItems(session, controller, mediaItems, startIndex, startPositionMs)
         }
 
         /**
@@ -1153,7 +1145,6 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: MutableList<MediaItem>,
             startIndex: Int,
             startPositionMs: Long,
-            loaded: MediaSession.MediaItemsWithStartPosition?,
         ): MediaSession.MediaItemsWithStartPosition {
             // "Play <something>" arrives as an item with no media id and a search query on it, which is a
             // different question from "play this id" and has to be answered before either of the others.
@@ -1171,7 +1162,7 @@ class PlaybackService : MediaLibraryService() {
             }
             val selection = when {
                 spoken != null -> resolveQueue(spoken).let { queue ->
-                    Selection("spoken", queue != null, queue.asItems(startIndex, startPositionMs, loaded))
+                    Selection("spoken", queue != null, queue.asItems(startIndex, startPositionMs))
                 }
 
                 // The app's own call. The index and the position are the caller's — it opened the session and
@@ -1196,7 +1187,7 @@ class PlaybackService : MediaLibraryService() {
                     )
 
                 else -> mediaItems.firstNotNullOfOrNull { item -> resolveQueue(item) }.let { queue ->
-                    Selection("browse", queue != null, queue.asItems(startIndex, startPositionMs, loaded))
+                    Selection("browse", queue != null, queue.asItems(startIndex, startPositionMs))
                 }
             }
             logSelection("onSetMediaItems", mediaItems, selection)
@@ -1254,11 +1245,7 @@ class PlaybackService : MediaLibraryService() {
          * of a book resumed from its stored progress — so the caller's is used only for the empty case, where
          * it is what Media3 handed in and echoing it back is the least surprising thing to do.
          */
-        private fun MediaItems.Queue?.asItems(
-            startIndex: Int,
-            startPositionMs: Long,
-            loaded: MediaSession.MediaItemsWithStartPosition?,
-        ) = when (this) {
+        private suspend fun MediaItems.Queue?.asItems(startIndex: Int, startPositionMs: Long) = when (this) {
             /*
              * Nothing resolved — so leave the player alone rather than emptying it.
              *
@@ -1271,26 +1258,38 @@ class PlaybackService : MediaLibraryService() {
              * it: a car or the app asking for an id that no longer exists gets silence, not a stopped book.
              * Product priority 1.
              */
-            null -> unresolved(startIndex, startPositionMs, loaded)
+            null -> unresolved(startIndex, startPositionMs)
             else -> MediaSession.MediaItemsWithStartPosition(listOf(item), 0, this.startPositionMs)
         }
 
         /**
-         * What to hand back when nothing resolved: whatever was already loaded, or an empty queue.
+         * What to hand back when nothing resolved: whatever is loaded **now**, or an empty queue.
          *
-         * [loaded] is a **value**, read from the player on the callback thread by [loadedNow] before this
-         * coroutine started. It used to read the player here, which is `Dispatchers.Default`, and ExoPlayer
-         * throws for any property read off its application thread — R-66's defect, at the third of the
-         * three sites that had it. The KDoc that stood here worried about the right hazard and missed this
-         * one: it said to read once into a local *because two reads of a mutable player can disagree*,
-         * which is true, and said nothing about which thread was doing the reading.
+         * ### Two hazards, and only one fix satisfies both
+         *
+         * `currentMediaItem` and `currentPosition` are `Player` reads, and this function runs inside
+         * `future` — `Dispatchers.Default`. Reading them here directly threw, which was R-66's defect at
+         * the third of the three sites that had it, and a head unit waited on a future nobody completed.
+         *
+         * The obvious fix — snapshot the player on the callback thread before the coroutine starts — trades
+         * that for a worse bug, and a review caught it. Resolution happens in between, and resolution
+         * includes `openSession`, a network call that can fail *slowly*. The book keeps playing while it
+         * does. Handing Media3 a position captured seconds earlier makes it seek there, **rewinding a book
+         * nobody asked to move** — product priority 2, caused by the fallback whose entire purpose is
+         * priority 1.
+         *
+         * So the read happens here, at the moment of use, hopped onto the player's own thread. Fresh and
+         * on the right thread, which snapshotting could only ever be one of.
+         *
+         * The KDoc that stood here worried about the right hazard and missed both: it said to read once
+         * into a local *because two reads of a mutable player can disagree*, which is true, and said
+         * nothing about which thread was reading or how stale the answer could be.
          */
-        private fun unresolved(
+        private suspend fun unresolved(
             startIndex: Int,
             startPositionMs: Long,
-            loaded: MediaSession.MediaItemsWithStartPosition?,
-        ): MediaSession.MediaItemsWithStartPosition =
-            loaded ?: MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
+        ): MediaSession.MediaItemsWithStartPosition = withContext(mainDispatcher) { loadedNow() }
+            ?: MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
 
         /**
          * PRODUCT_SPEC ROUTE-001 — "a headset Play resumes the last item". The exit criterion, finally.

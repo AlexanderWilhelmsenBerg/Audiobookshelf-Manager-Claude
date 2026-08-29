@@ -294,22 +294,21 @@ function Show-LogcatMatches {
 
     # The preflight that makes an empty result mean something - deferring to Clear-Logcat's answer where
     # one was taken, because after a clear this buffer cannot answer the question honestly.
-    switch ($script:LogcatCarriesApp) {
-        'yes' { }
-        'no' {
-            Write-Bad 'logcat is not carrying this app (established before the clear); nothing above is evidence.'
-        }
-        default {
-            $carried = @($lines | Select-String -SimpleMatch -Pattern $AppTag).Count
-            if ($carried -eq 0) {
-                Write-Bad "logcat holds NO $AppTag lines at all, so nothing above is evidence either way."
-                Write-Note 'A rolled buffer, or a vendor filter. Read Settings > About > Diagnostics > event log.'
-                Write-Note 'Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70).'
-            }
-            else {
-                Write-Note "logcat is carrying the app ($carried lines); an empty result above is a real absence."
-            }
-        }
+    $carried = @($lines | Select-String -SimpleMatch -Pattern $AppTag).Count
+    if ($carried -gt 0) {
+        # Fresh tagged lines settle it, whatever the pre-clear probe concluded. A 'no' from before the
+        # clear can be wrong in one direction - the app may simply have been quiet - and a sticky 'no'
+        # would print those very lines and then call them non-evidence. Evidence upgrades the verdict.
+        $script:LogcatCarriesApp = 'yes'
+        Write-Note "logcat is carrying the app ($carried lines); an empty result above is a real absence."
+    }
+    elseif ($script:LogcatCarriesApp -eq 'yes') {
+        Write-Note 'logcat carried the app before the clear, so nothing above is a real absence.'
+    }
+    else {
+        Write-Bad "logcat holds NO $AppTag lines at all, so nothing above is evidence either way."
+        Write-Note 'A rolled buffer, or a vendor filter. Read Settings > About > Diagnostics > event log.'
+        Write-Note 'Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70).'
     }
 }
 

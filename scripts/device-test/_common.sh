@@ -96,21 +96,22 @@ logcat_grep() {
   local pattern="$1" n="${2:-20}" carried
   show "adb logcat -d | grep -iE \"$pattern\" | tail -$n"
   "$ADB" logcat -d 2>/dev/null | grep -iE -- "$pattern" | tail -"$n" || true
-  case "${LOGCAT_CARRIES_APP:-unknown}" in
-    # `logcat_clear` already asked, against the pre-clear buffer where the question is answerable.
-    yes) : ;;
-    no)  bad "logcat is not carrying this app (established before the clear), so nothing above is evidence." ;;
-    *)
-      # No clear ran, so the buffer is whatever history the device kept and the question is still fair.
-      carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
-      if (( carried == 0 )); then
-        bad "logcat holds NO $APP_TAG lines at all, so nothing above is evidence either way."
-        note "A rolled buffer, or a vendor filter. Read Settings → About → Diagnostics → the event log."
-        note "Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70)."
-      else
-        note "logcat is carrying the app ($carried lines), so an empty result above is a real absence."
-      fi ;;
-  esac
+  carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
+  if (( carried > 0 )); then
+    # Fresh tagged lines settle it, whatever the pre-clear probe concluded. A `no` from before the clear
+    # can be wrong in one direction — the app may simply have been quiet, or its older lines may have
+    # rolled out — and a review caught that a sticky `no` would print those very lines and then call them
+    # non-evidence, which is incoherent. Evidence upgrades the verdict; it never downgrades it.
+    LOGCAT_CARRIES_APP=yes
+    note "logcat is carrying the app ($carried lines), so an empty result above is a real absence."
+  elif [[ "${LOGCAT_CARRIES_APP:-unknown}" == "yes" ]]; then
+    # The pre-clear probe saw the app, and this window is empty on purpose. Absence is the finding.
+    note "logcat carried the app before the clear, so nothing above is a real absence, not a lost log."
+  else
+    bad "logcat holds NO $APP_TAG lines at all, so nothing above is evidence either way."
+    note "A rolled buffer, or a vendor filter. Read Settings → About → Diagnostics → the event log."
+    note "Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70)."
+  fi
 }
 
 # The SDK, resolved the way the build resolves it, so these scripts work whether or not the tools are on
