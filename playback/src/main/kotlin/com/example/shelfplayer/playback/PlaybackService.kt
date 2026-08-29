@@ -793,6 +793,7 @@ class PlaybackService : MediaLibraryService() {
     private data class Selection(
         val branch: String,
         val resolved: Boolean,
+        val kind: String,
         val answer: MediaSession.MediaItemsWithStartPosition,
     )
 
@@ -1175,6 +1176,7 @@ class PlaybackService : MediaLibraryService() {
                 selection = Selection(
                     branch = if (trusted) "passthrough" else "browse",
                     resolved = resolved.size == mediaItems.size,
+                    kind = actedKind(mediaItems),
                     answer = MediaSession.MediaItemsWithStartPosition(resolved.toList(), 0, 0L),
                 ),
             )
@@ -1228,7 +1230,15 @@ class PlaybackService : MediaLibraryService() {
                 query != null -> spoken?.let { match -> resolveQueue(match) }.let { queue ->
                     // `resolved=false` here means the words matched no book, or the match would not open.
                     // Either way it stays on the spoken branch, because that is what was asked.
-                    Selection("spoken", queue != null, queue.asItems(startIndex, startPositionMs))
+                    Selection(
+                        branch = "spoken",
+                        resolved = queue != null,
+                        // The asked item, not the book that matched: a voice request carries an empty id,
+                        // and `kind=empty` is what tells a reader it came in as words. `branch=spoken`
+                        // already names the route, so naming the matched book here would say less.
+                        kind = actedKind(mediaItems),
+                        answer = queue.asItems(startIndex, startPositionMs),
+                    )
                 }
 
                 // The app's own call. The index and the position are the caller's — it opened the session and
@@ -1245,6 +1255,7 @@ class PlaybackService : MediaLibraryService() {
                     Selection(
                         branch = "passthrough",
                         resolved = true,
+                        kind = actedKind(mediaItems),
                         answer = MediaSession.MediaItemsWithStartPosition(
                             mediaItems.toList(),
                             startIndex,
@@ -1252,9 +1263,19 @@ class PlaybackService : MediaLibraryService() {
                         ),
                     )
 
-                else -> mediaItems.firstNotNullOfOrNull { item -> resolveQueue(item) }.let { queue ->
-                    Selection("browse", queue != null, queue.asItems(startIndex, startPositionMs))
-                }
+                // The pair, not just the queue: this searches the list, so the item that resolved need
+                // not be the first one asked for, and `kind` must name the id the service acted on.
+                else ->
+                    mediaItems
+                        .firstNotNullOfOrNull { item -> resolveQueue(item)?.let { queue -> item to queue } }
+                        .let { match ->
+                            Selection(
+                                branch = "browse",
+                                resolved = match != null,
+                                kind = actedKind(mediaItems, match?.first),
+                                answer = match?.second.asItems(startIndex, startPositionMs),
+                            )
+                        }
             }
             logSelection("onSetMediaItems", mediaItems, selection)
             return selection.answer
@@ -1282,6 +1303,20 @@ class PlaybackService : MediaLibraryService() {
          * book alive returns one item for a request that resolved nothing. `branch` says which of the three
          * routes answered: a spoken query, the app's own pre-resolved items, or a browse id.
          */
+        /**
+         * The shape of the id a selection acted on: the item that resolved where one did, and the first id
+         * asked for where none did.
+         *
+         * The browse branch searches the list with `firstNotNullOfOrNull`, so when a controller submits
+         * several items the one that resolves need not be the first. Reading the first would print, say,
+         * `kind=tab resolved=true` for a request a `book` id satisfied — naming an id form the service did
+         * not act on, in the one field a reader uses to decide which id form to go and look at.
+         *
+         * Still the shape and never the id (14.5); [AutoLibrary.kindOf] returns constants from that file.
+         */
+        private fun actedKind(asked: List<MediaItem>, acted: MediaItem? = null): String =
+            (acted ?: asked.firstOrNull())?.mediaId?.let(AutoLibrary::kindOf) ?: "none"
+
         private fun logSelection(callback: String, asked: List<MediaItem>, selection: Selection) {
             // `LogEvent` directly rather than the `Logger.info` helper: the helper takes `vararg`, and the
             // field list is built conditionally, so calling it would need a spread — which copies the array
@@ -1294,7 +1329,7 @@ class PlaybackService : MediaLibraryService() {
                     fields = buildList {
                         add(LogField.Public("callback", callback))
                         add(LogField.Public("branch", selection.branch))
-                        add(LogField.Public("kind", asked.firstOrNull()?.mediaId?.let(AutoLibrary::kindOf) ?: "none"))
+                        add(LogField.Public("kind", selection.kind))
                         add(LogField.Public("resolved", selection.resolved.toString()))
                         add(LogField.Count("asked", asked.size))
                         add(LogField.Count("handedBack", selection.answer.mediaItems.size))

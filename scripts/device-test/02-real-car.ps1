@@ -11,12 +11,21 @@
 Require-Device
 
 Write-Step 'Section 2.9 step 1 - Which host actually answered'
-Write-Note 'Plug the phone into the car, or start wireless Android Auto.'
-# Clear BEFORE the connection, or an older DHU session left in the buffer answers for the car in front
-# of you: the verdict passes on any 'gearhead' line, so a newly connected Automotive OS or vendor host
-# would be reported as projected Android Auto on the strength of a stale one. This step exists to name
-# the CURRENT host, so the window has to start empty.
+# Two prompts, and both are needed. Clearing BEFORE the connection is what stops an older DHU session
+# answering for the car in front of you - the verdict passes on any 'gearhead' line, so a newly
+# connected Automotive OS or vendor host would be reported as projected Android Auto on the strength of
+# a stale one, in the step whose whole job is naming the CURRENT host.
+#
+# But section 2.9 tells the tester to arrive parked in the car, which for most of them means already
+# plugged in. Clearing then would delete the only connection line there will ever be, and a tester who
+# simply pressed Enter would be told no host had connected at all. So the connection has to happen
+# AFTER the clear, which means disconnecting first if it has already happened.
+Write-Note 'If the phone is ALREADY connected to the car, disconnect it now - unplug the cable, or stop'
+Write-Note 'wireless Android Auto from the car screen. The connection has to happen after the log is'
+Write-Note 'cleared, or there is no line to read.'
+Wait-ForTester 'Once the phone is DISCONNECTED from the car.'
 Clear-Logcat
+Write-Note 'Now plug the phone into the car, or start wireless Android Auto.'
 Wait-ForTester 'Once the car has connected and BookWave is on its screen.'
 $connections = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
 $connections | ForEach-Object { Write-Output $_ }

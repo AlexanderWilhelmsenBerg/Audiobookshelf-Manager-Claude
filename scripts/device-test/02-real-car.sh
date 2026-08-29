@@ -11,12 +11,21 @@ source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 require_device
 
 step "§2.9 step 1  Which host actually answered"
-note "Plug the phone into the car, or start wireless Android Auto."
-# Clear BEFORE the connection, or an older DHU session left in the buffer answers for the car in front
-# of you: the verdict passes on any `gearhead` line, so a newly connected Automotive OS or vendor host
-# would be reported as projected Android Auto on the strength of a stale one. This step exists to name
-# the CURRENT host, so the window has to start empty.
+# Two prompts, and both are needed. Clearing BEFORE the connection is what stops an older DHU session
+# answering for the car in front of you — the verdict passes on any `gearhead` line, so a newly
+# connected Automotive OS or vendor host would be reported as projected Android Auto on the strength of
+# a stale one, in the step whose whole job is naming the CURRENT host.
+#
+# But §2.9 tells the tester to arrive parked in the car, which for most of them means already plugged
+# in. Clearing then would delete the only connection line there will ever be, and a tester who simply
+# pressed Enter would be told no host had connected at all. So the connection has to happen AFTER the
+# clear, which means disconnecting first if it has already happened.
+note "If the phone is ALREADY connected to the car, disconnect it now — unplug the cable, or stop"
+note "wireless Android Auto from the car's screen. The connection has to happen after the log is"
+note "cleared, or there is no line to read."
+read -r -p "  Press Enter once the phone is DISCONNECTED from the car… " _
 logcat_clear
+note "Now plug the phone into the car, or start wireless Android Auto."
 read -r -p "  Press Enter once the car has connected and BookWave is on its screen… " _
 logcat_grep "A car connected to the media session" 5
 step_verdict "A car connected to the media session" "gearhead" \

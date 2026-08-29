@@ -518,11 +518,14 @@ Windows PowerShell 7:
 & .\scripts\device-test\02-real-car.ps1
 ```
 
-Run it with the phone plugged into the car and the engine on. It records the host, then walks the seven
-things the DHU cannot reach. Do it parked.
+Run it in the car with the engine on. It records the host, then walks the seven things the DHU cannot
+reach. Do it parked.
 
-1. **Connect, and confirm which host answered.** Plug the phone in (or start wireless Android Auto). The
-   script prints the `A car connected to the media session` line.
+1. **Connect, and confirm which host answered.** The script asks you to **disconnect first** if the phone
+   is already paired with the car, then clears the log, then asks you to connect. Both halves matter: the
+   clear is what stops a DHU session from earlier in the day answering for the car in front of you, and it
+   deletes the connection line, so the connection has to happen after it. The script then prints the
+   `A car connected to the media session` line.
 
    **Expect:** `controller=com.google.android.projection.gearhead`. Anything else is Automotive OS or a
    vendor host and is worth reporting on its own — this app has never seen one.
