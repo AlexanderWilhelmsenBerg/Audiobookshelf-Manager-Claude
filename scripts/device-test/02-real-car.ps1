@@ -11,7 +11,8 @@
 Require-Device
 
 Write-Step 'Section 2.9 step 1 - Which host actually answered'
-Write-Note 'Plug the phone into the car, or start wireless Android Auto, then read this line.'
+Write-Note 'Plug the phone into the car, or start wireless Android Auto.'
+Wait-ForTester 'Once the car has connected and BookWave is on its screen.'
 $connections = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
 if ($connections.Count -eq 0) {
     Write-Warn 'No car connection recorded. Connect first, or read the in-app event log.'
@@ -25,10 +26,12 @@ if ($connections.Count -eq 0) {
 Write-Step 'Section 2.9 step 2 - The car''s own launcher'
 Write-Note 'Find BookWave in the car''s app list. The DHU has its own launcher and proves nothing here.'
 Write-Note 'Missing here but present in the DHU is a DISCOVERY defect - read Settings > About > This device.'
+Wait-ForTester "Once you have looked for BookWave in the car's app list."
 
 Write-Step 'Section 2.9 step 3 - Browse and select, in the car'
 Write-Note "Repeat section 2's counts and section 2.8's tap here. A difference between car and DHU IS the"
 Write-Note 'finding, so record both. & .\scripts\device-test\02-car-selection.ps1 captures the tap.'
+Wait-ForTester 'Once you have browsed and tried to open a book in the car.'
 
 Write-Step 'Section 2.9 step 4 - Steering-wheel and hard buttons'
 Write-Note 'Next, previous, play/pause from the wheel, and the volume knob. These arrive as media-button'
@@ -55,10 +58,21 @@ Write-Step 'Section 2.9 step 5 - Driving restrictions'
 Write-Warn 'Only with somebody else driving, or on a rolling road. Skip it otherwise and say so.'
 Write-Note 'The car truncates long lists and hides text while moving - that is the host, not a defect. A'
 Write-Note 'list that becomes unusable, or a row whose label is meaningless once truncated, is.'
+Wait-ForTester 'Once you have done this, or decided to skip it.'
 
 Write-Step 'Section 2.9 step 6 - Ignition off, ignition on'
 Write-Note 'Stop the engine, let the head unit power down, restart it. Expect BookWave back, and the resume'
 Write-Note 'tile offering your book at the position you left. Closing a DHU window is not a power cycle.'
+Clear-Logcat
+Wait-ForTester 'Once the head unit has powered down and come back up.'
+$back = @(Show-LogcatMatches -Pattern 'A car connected to the media session' -Last 5)
+if ($back.Count -eq 0) {
+    Write-Bad 'No fresh connection line: the car did not reconnect at all after the power cycle.'
+    Write-Note 'That is a different finding from a resume tile that is missing or wrong.'
+} else {
+    $back | ForEach-Object { Write-Output $_ }
+    Write-Ok 'The car reconnected. Now judge the resume tile by eye.'
+}
 
 Write-Step 'Section 2.9 step 7 - Unplug while playing'
 Write-Note 'Pull the cable mid-book. Playback must continue on the phone and progress must not be lost -'

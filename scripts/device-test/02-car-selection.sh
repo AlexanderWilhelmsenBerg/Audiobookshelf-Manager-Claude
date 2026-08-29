@@ -46,6 +46,9 @@ note "selection path — that is how the first hypothesis for this defect was re
 step "§2.8  Could the book be opened at all"
 logcat_grep "Could not open a session for a browse or resume request" 5
 note "If this appears, the server refused to open the session and resolution failed for that reason."
+note "If it does NOT appear, that proves only its absence: the line is also missing when nothing"
+note "reached the service, and when a browse id never parsed. resolved= above is what says whether the"
+note "request became a book — do not read silence here as the server having opened one."
 
 step "§2.8  And the same four lines from the in-app log"
 note "If logcat carried nothing above, this is not optional — it is the only record (R-70):"

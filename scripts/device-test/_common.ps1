@@ -247,6 +247,7 @@ function Get-AdbOutput {
 $AppTag = 'ShelfPlayer'
 
 $script:LogcatCarriesApp = 'unknown'
+$script:LogcatIsolated = 'unknown'
 
 function Clear-Logcat {
     # Clear the buffer so the window that follows is small and fresh.
@@ -275,9 +276,25 @@ function Clear-Logcat {
     }
     Show-Command 'adb logcat -c'
     # Not Invoke-Adb: that throws on a non-zero exit, and a buffer this device declines to clear is a
-    # reason to read the in-app log rather than a reason to abandon the section.
+    # reason to read the in-app log rather than a reason to abandon the section. But the outcome must be
+    # checked, not assumed: a swallowed failure leaves the previous step's lines in a window the caller
+    # treats as isolated. Some devices also return success and keep the buffer, so count what survived.
     & $Adb logcat -c 2>$null | Out-Null
-    Write-Ok 'log buffer cleared - do the step now, then let this script dump it'
+    if ($LASTEXITCODE -ne 0) {
+        $script:LogcatIsolated = 'no'
+        Write-Bad 'adb logcat -c FAILED. The window below is not isolated - old lines are still there.'
+        return
+    }
+    $after = @(& $Adb logcat -d 2>$null | Select-String -SimpleMatch -Pattern $AppTag).Count
+    if ($after -gt 0) {
+        $script:LogcatIsolated = 'no'
+        Write-Bad "The clear reported success but $after $AppTag lines survived it. Window NOT isolated."
+        Write-Note 'Anything found after this may predate the step. Use the in-app event log timestamps.'
+    }
+    else {
+        $script:LogcatIsolated = 'yes'
+        Write-Ok 'log buffer cleared - do the step now, then let this script dump it'
+    }
 }
 
 function Show-LogcatMatches {
@@ -294,6 +311,11 @@ function Show-LogcatMatches {
 
     # The preflight that makes an empty result mean something - deferring to Clear-Logcat's answer where
     # one was taken, because after a clear this buffer cannot answer the question honestly.
+    # A window that was never isolated cannot support a positive verdict: what is found may be older
+    # than the step. Said here, once, so no caller has to remember it.
+    if ($script:LogcatIsolated -eq 'no') {
+        Write-Warn 'The buffer was not actually cleared, so anything found above may predate this step.'
+    }
     $carried = @($lines | Select-String -SimpleMatch -Pattern $AppTag).Count
     if ($carried -gt 0) {
         # Fresh tagged lines settle it, whatever the pre-clear probe concluded. A 'no' from before the

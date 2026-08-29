@@ -62,7 +62,13 @@ if ($failures.Count -eq 0) {
 Write-Step 'Section 2.8 step 6 - Could the book be opened at all'
 $openFailures = @(Show-LogcatMatches -Pattern 'Could not open a session for a browse or resume request' -Last 5)
 if ($openFailures.Count -eq 0) {
-    Write-Ok 'No session-open failure. The server did open the book.'
+    # Absence proves only absence. This line is also missing when no selection reached the service at
+    # all, and when a browse id failed to parse before openSession was ever attempted - so reading it as
+    # "the server opened the book" would contradict step 3's own verdict and send the next look to the
+    # player. Only resolved=true in step 3 can say the request became a book.
+    Write-Note 'No session-open failure was logged. That is not proof the server opened anything:'
+    Write-Note 'this line is also absent when nothing reached the service, or when the id never parsed.'
+    Write-Note "Step 3's resolved= is the field that says whether the request became a book."
 } else {
     $openFailures | ForEach-Object { Write-Output $_ }
     Write-Bad 'The server refused to open the session, so resolution failed for that reason.'

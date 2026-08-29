@@ -11,7 +11,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 require_device
 
 step "§2.9 step 1  Which host actually answered"
-note "Plug the phone into the car, or start wireless Android Auto, then read this line."
+note "Plug the phone into the car, or start wireless Android Auto."
+read -r -p "  Press Enter once the car has connected and BookWave is on its screen… " _
 logcat_grep "A car connected to the media session" 5
 note "Expect controller=com.google.android.projection.gearhead — projected Android Auto."
 note "The DHU reports the SAME package, so this cannot tell them apart: record which you used."
@@ -20,10 +21,12 @@ warn "Anything else is Automotive OS or a vendor host, and this app has never se
 step "§2.9 step 2  The car's own launcher"
 note "Find BookWave in the car's app list. The DHU has its own launcher and proves nothing about this."
 note "Missing here but present in the DHU is a DISCOVERY defect — read Settings → About → This device."
+read -r -p "  Press Enter once you have looked for BookWave in the car's app list… " _
 
 step "§2.9 step 3  Browse and select, in the car"
 note "Repeat §2's counts and §2.8's tap here. A difference between car and DHU IS the finding, so"
 note "record both numbers. ./scripts/device-test/02-car-selection.sh captures the tap."
+read -r -p "  Press Enter once you have browsed and tried to open a book in the car… " _
 
 step "§2.9 step 4  Steering-wheel and hard buttons"
 note "Next, previous, play/pause from the wheel, and the volume knob. These arrive as media-button"
@@ -50,10 +53,16 @@ step "§2.9 step 5  Driving restrictions"
 warn "Only with somebody else driving, or on a rolling road. Skip it otherwise and say so."
 note "The car truncates long lists and hides text while moving — that is the host, not a defect. A list"
 note "that becomes unusable, or a row whose label is meaningless once truncated, is."
+read -r -p "  Press Enter once you have done this, or decided to skip it… " _
 
 step "§2.9 step 6  Ignition off, ignition on"
 note "Stop the engine, let the head unit power down, restart it. Expect BookWave back, and the resume"
 note "tile offering your book at the position you left. Closing a DHU window is not a power cycle."
+logcat_clear
+read -r -p "  Press Enter once the head unit has powered down and come back up… " _
+logcat_grep "A car connected to the media session" 5
+note "A fresh connection line proves the car came back. No line means it did not reconnect at all,"
+note "which is a different finding from a resume tile that is missing or wrong."
 
 step "§2.9 step 7  Unplug while playing"
 note "Pull the cable mid-book. Playback must continue on the phone and progress must not be lost —"

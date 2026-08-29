@@ -83,8 +83,25 @@ logcat_clear() {
     ok "logcat is carrying the app ($carried lines), so an empty result after the step is a real absence"
   fi
   show "adb logcat -c"
-  "$ADB" logcat -c 2>/dev/null || true
-  ok "log buffer cleared — do the step now, then let this script dump it"
+  # Verify the clear rather than assume it. A rejected `logcat -c` used to be swallowed and still
+  # reported as cleared, which leaves the previous step's lines in a window the caller then treats as
+  # isolated — a false pass built on exactly the staleness the clear exists to remove. Some devices also
+  # return success and keep the buffer, so the exit status alone is not enough: count what survived.
+  local after
+  if ! "$ADB" logcat -c 2>/dev/null; then
+    LOGCAT_ISOLATED=no
+    bad "adb logcat -c FAILED. The window below is not isolated — old lines are still in the buffer."
+    return
+  fi
+  after=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
+  if (( after > 0 )); then
+    LOGCAT_ISOLATED=no
+    bad "the clear reported success but $after $APP_TAG lines survived it. The window is NOT isolated."
+    note "Anything found after this may predate the step. Use the in-app event log's timestamps instead."
+  else
+    LOGCAT_ISOLATED=yes
+    ok "log buffer cleared — do the step now, then let this script dump it"
+  fi
 }
 
 # One grep over BookWave's own log lines, with the preflight that makes an empty result mean something.
@@ -96,6 +113,10 @@ logcat_grep() {
   local pattern="$1" n="${2:-20}" carried
   show "adb logcat -d | grep -iE \"$pattern\" | tail -$n"
   "$ADB" logcat -d 2>/dev/null | grep -iE -- "$pattern" | tail -"$n" || true
+  # A window that was never isolated cannot support a positive verdict: what is found may be older than
+  # the step. Said here, once, so no caller has to remember it.
+  [[ "${LOGCAT_ISOLATED:-unknown}" == "no" ]] &&
+    warn "the buffer was not actually cleared, so anything found below may predate this step."
   carried=$("$ADB" logcat -d 2>/dev/null | grep -c "$APP_TAG" || true)
   if (( carried > 0 )); then
     # Fresh tagged lines settle it, whatever the pre-clear probe concluded. A `no` from before the clear
