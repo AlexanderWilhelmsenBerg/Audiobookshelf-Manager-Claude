@@ -5,13 +5,27 @@ outstanding items that have always needed hardware. It is written to be run in o
 Audiobookshelf instance you control**, because five of the tests need you to change something on the server
 and watch the phone notice.
 
-**The commands are in `scripts/device-test/`, one script per section.** Each one prints what it is doing,
-checks for an attached device before it starts, and uses the right package name — `org.homebord.bookwave` and
-`org.homebord.bookwave.debug` are one suffix apart, and typing the wrong one silently targets an app that may
-not even be installed. Nothing in that directory touches your server or installs a tool;
-`scripts/check-local-environment.sh --install` is still the only script in this repository that installs
-anything. On Windows, run `. .\scripts\Set-BookWavePath.ps1` first to put the SDK, the JDK and `adb` on the
-PATH for that session.
+**The commands are in `scripts/device-test/`, one script per section and one shell-native version per
+platform.** Use `.sh` from Bash/macOS/Linux and `.ps1` from PowerShell 7 on Windows. Each script prints what
+it is doing, checks for an attached device before it starts, and uses the right package name —
+`org.homebord.bookwave` and `org.homebord.bookwave.debug` are one suffix apart, and typing the wrong one
+silently targets an app that may not even be installed. Nothing in that directory touches your server or
+installs a tool; `scripts/check-local-environment.sh --install` is still the only script in this repository
+that installs anything.
+
+On Windows, open **PowerShell 7** (edition `Core`), then initialize that window once:
+
+```powershell
+Set-Location C:\Development\Bookwave
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+. .\scripts\Set-BookWavePath.ps1
+```
+
+Run a section with `& .\scripts\device-test\NN-name.ps1`. The PowerShell scripts use native
+`Select-String`/`Select-Object`, so they do not require `grep`, `sed`, `tail`, Git Bash or WSL. When a test
+needs a second window, the controlling script opens a fully initialized PowerShell 7 window itself. In
+particular, `02-android-auto.ps1` opens `02-android-auto-dhu.ps1`, which resolves the installed DHU path,
+forwards port 5277 and launches the executable.
 
 ### Where this run picks up
 
@@ -64,6 +78,12 @@ or costs you a sign-in, and it is a one-time setup.
 ./scripts/device-test/00-setup.sh
 ```
 
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\00-setup.ps1
+```
+
 That runs the gate, installs the debug build, and prints the two things that decide whether the rest of this
 document is measuring what you think it is: the version now on the phone, and the APK's signing certificate.
 Longhand, if you would rather type it:
@@ -74,6 +94,17 @@ Longhand, if you would rather type it:
 ./gradlew ktlintFormat && ./gradlew ktlintCheck
 ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true --no-build-cache --rerun-tasks
 ./gradlew :app:installDebug
+```
+
+PowerShell longhand:
+
+```powershell
+. .\scripts\Set-BookWavePath.ps1
+.\gradlew.bat --stop
+.\gradlew.bat ktlintFormat
+.\gradlew.bat ktlintCheck
+.\gradlew.bat verifyDebug '-Pshelfplayer.warningsAsErrors=true' --no-build-cache --rerun-tasks
+.\gradlew.bat :app:installDebug
 ```
 
 `--rerun-tasks` is not optional on a branch that changed a classpath. Gradle has considered test-compile
@@ -108,6 +139,12 @@ Debug now uses the same supplied key as release. That fixes it going forward and
    ./gradlew :app:installDebug   # expect: success, and your sign-in still there
    ```
 
+   PowerShell 7:
+
+   ```powershell
+   .\gradlew.bat :app:installDebug   # expect: success, and your sign-in still there
+   ```
+
 **Expect:** it installs over the top and the app is still signed in, still has the passcode, still has the
 downloads. If it fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the key is not being picked up and every
 later section in this document will keep costing you a sign-in — stop and say so.
@@ -116,7 +153,8 @@ Without those properties the build still works and still installs; it just falls
 and nothing is fixed. `bookwave.signing.debug=false` opts out on purpose. The `benchmark` module is untouched
 and stays installable without a key, which is what §7 needs.
 
-**Result (second install kept the sign-in?):**
+**Result (second install kept the sign-in?, 2026-08-29):** PASS. The tester reported that the replacement
+install completed without losing the existing sign-in or local app state.
 
 ### 0.3 The server
 
@@ -131,20 +169,20 @@ You need **two accounts** on the local instance and **at least one multi-file bo
 
 ### 0.4 What each section needs
 
-| § | Script | Needs |
+| § | Bash / PowerShell script | Needs |
 | --- | --- | --- |
-| 0 | `00-setup.sh` | The phone, and the signing properties from §0.2 |
-| 1 | `01-controller-security.sh` | The phone. §1.3 needs a third-party media controller app. |
-| 2 | `02-android-auto.sh` | Desktop Head Unit, or a real head unit |
-| 3 | `03-server-history.sh` | The web client on a computer, signed in as the **same** account as the phone |
-| 4 | `04-sleep-timer.sh` | The phone, and about twelve minutes of it playing |
-| 5 | `05-multifile-resume.sh` | A multi-file book. §5.2 needs a crafted file — read it first, it may not be runnable |
-| 6 | `06-release-apk.sh` | The keystore from §0.2, and an `https://` server |
-| 7 | `07-benchmarks.sh` | A USB cable and a charged phone; ~20 minutes |
-| 8 | `08-process-death-soak.sh` | Two hours, mostly unattended |
-| 9–10 | `09-privacy-and-lock.sh` | The phone, and the second account |
-| 11 | `10-instrumented.sh` | The phone |
-| 12 | `11-about-and-event-log.sh` | The phone. Mostly on-screen; the script does the force-stop cycles. |
+| 0 | `00-setup.sh` / `00-setup.ps1` | The phone, and the signing properties from §0.2 |
+| 1 | `01-controller-security.sh` / `01-controller-security.ps1` | The phone. §1.3 needs a third-party media controller app. |
+| 2 | `02-android-auto.sh` / `02-android-auto.ps1` | Desktop Head Unit, or a real head unit. PowerShell opens `02-android-auto-dhu.ps1` in its own window. |
+| 3 | `03-server-history.sh` / `03-server-history.ps1` | The web client on a computer, signed in as the **same** account as the phone |
+| 4 | `04-sleep-timer.sh` / `04-sleep-timer.ps1` | The phone, and about twelve minutes of it playing |
+| 5 | `05-multifile-resume.sh` / `05-multifile-resume.ps1` | A multi-file book. §5.2 needs a crafted file — read it first, it may not be runnable |
+| 6 | `06-release-apk.sh` / `06-create-signing-key.ps1` then `06-release-apk.ps1` | An upload key, and an `https://` server |
+| 7 | `07-benchmarks.sh` / `07-benchmarks.ps1` | A USB cable and a charged phone; ~20 minutes |
+| 8 | `08-process-death-soak.sh` / `08-process-death-soak.ps1` | Two hours, mostly unattended |
+| 9–10 | `09-privacy-and-lock.sh` / `09-privacy-and-lock.ps1` | The phone, and the second account |
+| 11 | `10-instrumented.sh` / `10-instrumented.ps1` | The phone |
+| 12 | `11-about-and-event-log.sh` / `11-about-and-event-log.ps1` | The phone. Mostly on-screen; the script does the force-stop cycles. |
 
 The number on a script is its **run order, not its section number** — `09-privacy-and-lock.sh` covers §9
 and §10 together, which puts everything after it one behind.
@@ -163,6 +201,12 @@ both line references were right.
 ./scripts/device-test/01-controller-security.sh
 ```
 
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\01-controller-security.ps1
+```
+
 It lists what is bound to the media session and drives transport from a trusted caller. It cannot do
 §1.3 for you: `adb shell` holds `MEDIA_CONTENT_CONTROL`, so anything driven from it is the *trusted*
 branch by definition.
@@ -178,7 +222,7 @@ This is the half that is testable without another app, because the same code pat
 an unresolvable request with `emptyList()`, which is what emptied the queue; it now returns the currently
 loaded item at its current position instead.
 
-**Result:**
+**Result (2026-08-29):** PASS. Notification transport left the loaded book and its position intact.
 
 ### 1.2 The app's own controls are unaffected
 
@@ -188,7 +232,8 @@ loaded item at its current position instead.
 **Expect:** all of it works. The app connects under its own UID and gets full access; if any of this is
 refused, the UID check is wrong and that is a serious regression.
 
-**Result:**
+**Result (2026-08-29):** PASS. Seeking, chapter selection, bookmarks, the sleep timer and changing books all
+continued to work through the app's own controller.
 
 ### 1.3 An untrusted controller keeps transport and loses the library
 
@@ -219,7 +264,8 @@ A controller without library access was refused   controller=<package>   request
 platform reports it as trusted for media control and it will legitimately get full access. Testing with adb
 tests the *trusted* branch — useful for 1.4, useless for 1.3.
 
-**Result:**
+**Result (2026-08-29):** PASS, per the tester's completed-device-test report. The untrusted controller kept
+transport access without receiving the private browse tree or queue-management commands.
 
 ### 1.4 Trusted surfaces still work — the regression that matters
 
@@ -231,7 +277,7 @@ tests the *trusted* branch — useful for 1.4, useless for 1.3.
 whole design of the fix is that they are unaffected. Any of them failing is worse than the defect that was
 fixed, so say so plainly if it happens.
 
-**Result:**
+**Result (2026-08-29):** PASS. The tested trusted surfaces continued to control playback normally.
 
 ---
 
@@ -258,11 +304,25 @@ no test behind this fix. §2 is it.
 ./scripts/device-test/02-android-auto.sh
 ```
 
+Windows PowerShell 7 (opens the dedicated DHU window for you):
+
+```powershell
+& .\scripts\device-test\02-android-auto.ps1
+```
+
 1. **Force-stop BookWave** so the next launch is cold — the script does it; by hand it is Settings → Apps →
    BookWave → Force stop.
 2. Start the DHU: `$ANDROID_HOME/extras/google/auto/desktop-head-unit`, with Android Auto in developer mode
    and "Start head unit server" enabled. `adb forward tcp:5277 tcp:5277` if it does not connect on its own.
-3. Open BookWave in the car.
+   The PowerShell controller opens a second window and runs the complete Windows sequence automatically.
+   To run only that window yourself:
+
+   ```powershell
+   & .\scripts\device-test\02-android-auto-dhu.ps1
+   ```
+3. Open BookWave in the car. Browse into a library and select a book as well as checking that the rows are
+   present. The book must replace the loading message with its playable detail/queue; a populated browse
+   tree that cannot open a book is still a failure.
 
 **Expect: the browse root shows items** — the shelves, not zero. Then try search, which worked before and
 must still.
@@ -273,14 +333,27 @@ must still.
    adb logcat -d | grep "asked for a node's children"
    ```
 
+   PowerShell equivalent (already performed by `02-android-auto.ps1` after it pauses for browsing):
+
+   ```powershell
+   adb logcat -d -t 5000 | Select-String -SimpleMatch "asked for a node's children" | Select-Object -Last 20
+   ```
+
    **Expect: one `children=` line for each node the car asked for**, with a non-zero count for any node that
-   has contents. That these lines exist at all is the pass condition — their complete absence is what the
-   failure looked like, because the throw happened upstream of the answer.
+   has contents. If logcat is empty, use Settings → About → Diagnostics → **Open the event log** and search
+   for `node's children`; the 2026-08-28 hardware run showed that these diagnostics reached the in-app log
+   but not logcat. Absence from both logs is the failure shape.
 
 5. **And the line that must now be gone:**
 
    ```bash
    adb logcat -d | grep "A browse request failed"
+   ```
+
+   PowerShell equivalent:
+
+   ```powershell
+   adb logcat -d -t 5000 | Select-String -SimpleMatch 'A browse request failed' | Select-Object -Last 10
    ```
 
    **Expect: nothing.** If one does appear it now carries `thrown=<ExceptionClass>` alongside
@@ -295,12 +368,36 @@ must still.
    callbacks: transport (+30 s / −30 s should still read as exactly +30,005 ms / −30,000 ms in the log),
    artwork, reconnection after unplugging, and the resume tile.
 
-**Result (root cold — item count):**
-**Result (root warm — item count):**
-**Result (search):**
-**The `children=` lines:**
-**Any `A browse request failed` line, in full:**
-**Result (transport, artwork, reconnect, resume tile):**
+**Result (2026-08-28, root cold — item count):** PASS for population: root returned 6 items; the visible
+library rows were present. **FAIL for selection:** tapping a book stayed on “Henter valget ditt” and no book
+was loaded.
+
+**Result (root warm — item count):** PASS for population, although the exact count was not retained. After
+playback was started on the phone, reconnecting DHU opened the active book and exposed working transport
+controls.
+
+**Result (search):** PASS in the tester's completed DHU pass; the exact query and result count were not
+retained.
+
+**The `children=` lines (in-app event log; logcat returned no matches):**
+
+```text
+21:41:42 I Playback A browser asked for a node's children parent=root children=6
+21:41:45 I Playback A browser asked for a node's children parent=tab/continue children=13
+21:41:45 I Playback A browser asked for a node's children parent=tab/recent children=20
+21:41:45 I Playback A browser asked for a node's children parent=tab/again children=20
+```
+
+**Any `A browse request failed` line, in full:** None in the supplied event log.
+
+**Result (transport, artwork, reconnect, resume tile):** PASS apart from the separately recorded cold book
+selection failure. +30 s and −30 s controls worked during playback. Accepted `SeekCompleted` positions were
+recorded at 2,431,440 → 2,403,231 ms and 2,439,575 → 2,411,774 ms; the tester subsequently confirmed the
+remaining artwork, reconnect and resume-tile checks worked.
+
+**Additional observation:** after transport testing, the event log recorded the same interval position
+(2,413,542 ms) about every 30 seconds from 21:42:11 through 22:01:54. Confirm whether playback was paused
+during that period before classifying this as redundant syncing or stalled progress.
 
 ---
 
@@ -316,6 +413,12 @@ This is the test the local instance is for.
 ./scripts/device-test/03-server-history.sh
 ```
 
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\03-server-history.ps1
+```
+
 ### 3.1 A book this phone has never played gets history
 
 1. On the phone, make sure the book you are about to use has **never been played on this device**. If it has,
@@ -329,7 +432,8 @@ This is the test the local instance is for.
 web client covered and the time the session started — the *server's* start time, not the moment the phone
 fetched it.
 
-**Result:**
+**Result (2026-08-29):** PASS. A server-only listening session appeared as **"Listened on another device"**
+for a book that had not previously been played on this phone.
 
 ### 3.2 The fetch happened, and what it filtered
 
@@ -346,7 +450,8 @@ many became rows for this book. **`imported` should be 1** after step 2.
    server hostname anywhere in it. Counts and durations are expected. A title here is a defect worth its own
    report (PRODUCT_SPEC 14.5).
 
-**Result:**
+**Result (2026-08-29):** PASS. The import completed and the inspected diagnostic output did not expose a
+title, author, device name or server hostname. Exact `fetched`/`imported` counts were not retained.
 
 ### 3.3 Opening the pane twice does not double the row
 
@@ -355,7 +460,7 @@ many became rows for this book. **`imported` should be 1** after step 2.
 **Expect:** still **one** row for that session, not two or three. The row's key is the server's own session
 id, so re-importing is idempotent. This is the check that would catch the mistake a fresh UUID would make.
 
-**Result:**
+**Result (2026-08-29):** PASS. Reopening the history pane did not duplicate the imported row.
 
 ### 3.4 This phone's own listening is not duplicated
 
@@ -367,7 +472,8 @@ id, so re-importing is idempotent. This is the check that would catch the mistak
 writes. It must **not** also appear as a second "Listened on another device" row. The app tells its own
 sessions apart by the per-install device id it sends when it opens a session.
 
-**Result:**
+**Result (2026-08-29):** PASS. Listening performed on this phone appeared as local playback history and was
+not duplicated as a remote-device row.
 
 ### 3.5 It survives losing the network
 
@@ -382,14 +488,15 @@ Could not read the server's listening sessions; the stored history stands   erro
 
 10. Turn aeroplane mode off.
 
-**Result:**
+**Result (2026-08-29):** PASS. Imported history remained visible while the phone was offline.
 
 ### 3.6 A book played only on a *third* device
 
 If you have a second phone or a tablet, listen there instead of the web client and repeat 3.1. Not required,
 but it is the only way to see two different remote devices in one pane.
 
-**Result:**
+**Result (2026-08-29):** PASS, per the tester's report for the remaining checks. No per-device identifiers
+or raw import counts were retained in this report.
 
 ---
 
@@ -401,6 +508,12 @@ you expected, because it is the part I did not touch.
 
 ```bash
 ./scripts/device-test/04-sleep-timer.sh
+```
+
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\04-sleep-timer.ps1
 ```
 
 1. Play a book. Open the sleep-timer sheet → set a **5 min** timer.
@@ -431,7 +544,9 @@ useful thing this list does.
 > showing a book that is not playing, and a row that started playback from a tap meant for a record would
 > move a listener without being asked.
 
-**Result:**
+**Result (2026-08-29):** PASS. Start, extension, expiry and rewind rows appeared as expected; selecting the
+ended-timer row from the player returned playback to the recorded position, while the book-screen copy
+remained read-only.
 
 8. **The notification's sleep-timer action.** Your last report noted it was not visible, unconfirmed. Settle
    it: with a timer **running**, pull the shade down and expand BookWave's notification fully.
@@ -444,7 +559,11 @@ If it is genuinely absent with a timer running and the notification expanded, th
 report. The script dumps the live notification's actions, which answers it from the system's own record
 rather than from what the shade chose to draw.
 
-**Result (notification action, timer running and expanded):**
+**Result (notification action, timer running and expanded, 2026-08-28):** PASS. Android reported four
+actions, including `[3] "Sovetid 3 min"`. This is the localized sleep-timer action: its label carries the
+remaining time and its command extends the active timer. The original PowerShell script printed only the
+first 12 lines of the notification record, before the `actions={...}` block; it now extracts and prints the
+actual action titles.
 
 ---
 
@@ -456,6 +575,12 @@ cannot provoke it, record "not provokable" and move on — do not manufacture a 
 
 ```bash
 ./scripts/device-test/05-multifile-resume.sh
+```
+
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\05-multifile-resume.ps1
 ```
 
 ### 5.1 The regression check, which you *can* do
@@ -472,7 +597,8 @@ the file.
 
 **Expect:** the same position, within a few seconds.
 
-**Result:**
+**Result (2026-08-29):** PASS. The multi-file book resumed at its whole-book position and the server position
+agreed within the expected tolerance. Exact positions were not retained.
 
 ### 5.2 If you want to provoke the degraded path
 
@@ -494,7 +620,8 @@ the data loss this closed — the old build would have written a file offset ove
 recovers its length from the server's own total for the book. To see the fallback you need **two** unknown
 tracks, or one unknown track plus an excluded one.
 
-**Result:**
+**Result (2026-08-29):** NOT SEPARATELY CAPTURED. The tester reported all remaining runnable checks working,
+but no crafted multi-file book with multiple unknown track lengths or degraded-path log line was supplied.
 
 ---
 
@@ -506,9 +633,27 @@ unsigned and uninstallable. That is now fixable from your side without any key m
 
 ### 6.1 The key — already done, if you did §0.2
 
-The same four `bookwave.signing.*` properties sign both variants, so if you set them up for §0.2 there is
-nothing to do here. If you skipped that, `docs/release.md` § Signing has the keytool command and where the
-properties go: `~/.gradle/gradle.properties`, **outside the checkout**, which the build enforces.
+The same four `bookwave.signing.*` properties supply the upload key, so if you set them up for §0.2 there
+is nothing to do here. Unless `bookwave.signing.debug=false`, the build uses that key for both release and
+debug. If you skipped §0.2, `docs/release.md` § Signing explains where the properties go:
+`~/.gradle/gradle.properties`, **outside the checkout**, which the build enforces.
+
+On Windows, the guided PowerShell helper creates the upload key outside the checkout, asks for its
+passwords without displaying them, and writes the four properties for you:
+
+```powershell
+& .\scripts\device-test\06-create-signing-key.ps1
+```
+
+It never overwrites an existing key; if the chosen file exists, it can verify and configure that key after
+you explicitly choose to use it. For this device-test run, answer **No** when it asks whether to sign debug
+builds too; changing the debug signature would make the next debug install require one uninstall and would
+erase the current debug profile and downloads. Back up the generated key and passwords somewhere a lost
+computer does not take with it. The helper stops any running Gradle daemon after writing the properties;
+otherwise a daemon started during a partial setup can keep reporting the other three values as missing.
+The release script also checks both the terminal's `GRADLE_USER_HOME` and the normal Windows user Gradle
+directory, then uses whichever contains all four values. This matters when the repository-local toolchain
+has given the terminal a separate Gradle home.
 
 It is an **upload** key, not the key end users verify against — ADR-0024 chose Play App Signing, so Google
 holds that one and losing this is recoverable by asking Play to reset it. Keep the passwords somewhere a lost
@@ -520,12 +665,27 @@ laptop does not take with them.
 ./scripts/device-test/06-release-apk.sh
 ```
 
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\06-release-apk.ps1
+```
+
 It builds, refuses to go on if the APK came out unsigned, then installs and launches it. Longhand:
 
 ```bash
 ./gradlew :app:assembleRelease
 apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+PowerShell longhand (the script resolves `apksigner.exe` from your Android SDK automatically):
+
+```powershell
+.\gradlew.bat :app:assembleRelease
+$BuildTools = Get-ChildItem "$env:ANDROID_HOME\build-tools" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+& (Join-Path $BuildTools.FullName 'apksigner.bat') verify --print-certs .\app\build\outputs\apk\release\app-release.apk
+adb install -r .\app\build\outputs\apk\release\app-release.apk
 ```
 
 **Expect:** `apksigner` prints `Verifies` and `Verified using v2 scheme (APK Signature Scheme v2): true`.
@@ -557,7 +717,28 @@ both in that category. A crash here is a release blocker; note the exact screen.
 8. If it does crash, keep the mapping — `app/build/outputs/mapping/release/mapping.txt` — because a release
    stack trace is unreadable without it.
 
-**Result:**
+**Result (release build/install, 2026-08-29):** PASS. `assembleRelease` completed successfully; `apksigner`
+reported certificate SHA-256 `c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c`; and
+`adb install -r` returned `Success`. The first automatic launch attempt did not reach ADB because PowerShell
+bound `monkey -p` to its own `-ProgressAction` common parameter. The shared argument-forwarding wrapper was
+corrected; the retry injected one launcher event and `pidof org.homebord.bookwave` returned a live process,
+so release installation and launch both pass.
+
+**Result (release functional checks 1–7, 2026-08-29):** PASS. HTTPS sign-in completed against server
+2.36.0; the realtime connection authenticated; one permitted library refreshed with 195 books; a 15-file
+book downloaded completely; and that download played in aeroplane mode with a 15-track, 14,134,466 ms
+timeline. About/Diagnostics/Event log opened in the minified build, and its copied lines kept the hostname,
+profile, server and item identifiers redacted.
+
+The initial catalogue expansion issued one `GET /api/items/*` per book and completed in approximately 15
+seconds. That is the measured, documented LIB-001 N+1: the list endpoint does not carry the tracks, chapters
+and structured metadata stored in the local snapshot. It is a performance cost, not an unexpected release
+regression. While aeroplane mode was active, `The realtime connection failed httpStatus=0` repeated with an
+increasing retry interval; PRODUCT_SPEC 14.3 deliberately reconnects indefinitely with capped backoff. The
+important offline lines were `A downloaded book is playing without the server` and
+`hasServerSession=false`, both correct. The tester subsequently confirmed the event-log search/filter/reset
+behaviour, bookmark and sleep-timer actions, History, language switching and language persistence all worked
+in the release build.
 
 ### 6.4 Three build refusals, if you want to confirm the guard rails
 
@@ -569,7 +750,15 @@ Cheap, and they prove key material cannot slip into the repository:
 # and with only one of the four properties set: refused, naming the three missing
 ```
 
-**Result:**
+PowerShell 7:
+
+```powershell
+.\gradlew.bat :app:assembleRelease "-Pbookwave.signing.storeFile=$PWD\inside.jks"   # refused: inside the repository
+.\gradlew.bat :app:assembleRelease '-Pbookwave.signing.storeFile=C:\nope\x.jks'     # refused: not found
+# And with only one of the four properties set: refused, naming the three missing.
+```
+
+**Result (2026-08-29):** PASS, per the tester's report. The individual refusal outputs were not retained.
 
 ---
 
@@ -580,6 +769,13 @@ one**, for the details. What belongs here is the running order:
 
 ```bash
 ./scripts/device-test/07-benchmarks.sh     # or: ./gradlew :benchmark:connectedBenchmarkAndroidTest
+```
+
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\07-benchmarks.ps1
+# Or: .\gradlew.bat :benchmark:connectedBenchmarkAndroidTest
 ```
 
 The phone must be **unlocked, plugged in, and left alone** — an animation or a notification shade during a
@@ -598,9 +794,13 @@ through your own library with covers loaded and note whether it feels different.
 nobody had measured whether 2,000 un-paged books cost anything. The two memory rows are that measurement. Do
 not adopt paging on a feeling; adopt it if the numbers say so.
 
-**Result — the four numbers:**
-**Result — memory:**
-**Result — baseline profile committed:**
+**Result — the four numbers:** RUN COMPLETED according to the tester, but the raw measurements were not
+supplied and the Results table in `docs/benchmark.md` remains blank. No threshold claim is made here.
+
+**Result — memory:** NOT CAPTURED in the report; the required heap and RSS figures were not supplied.
+
+**Result — baseline profile committed:** NOT COMPLETED. `app/src/main/baseline-prof.txt` is absent from the
+working tree, so this pull request does not claim or ship a generated profile.
 
 ---
 
@@ -608,6 +808,12 @@ not adopt paging on a feeling; adopt it if the numbers say so.
 
 ```bash
 ./scripts/device-test/08-process-death-soak.sh
+```
+
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\08-process-death-soak.ps1
 ```
 
 ### 8.1 Progress survives the process being killed
@@ -633,7 +839,8 @@ file, and never at zero.
 
 4. Check the web client agrees.
 
-**Result (position before / after / server):**
+**Result (position before / after / server, 2026-08-29):** PASS. Position survived process death and agreed
+with the server within the expected tolerance; the three exact values were not retained.
 
 ### 8.2 Two hours of continuous playback
 
@@ -650,9 +857,11 @@ Check at roughly 30, 60, 90 and 120 minutes:
 At the end, capture the log and look for anything repeated many times. A warning that fires once is
 information; the same warning 400 times is a defect.
 
-**Result (30 / 60 / 90 / 120 min):**
-**Rebuffer count:**
-**Anything repeated in the log:**
+**Result (30 / 60 / 90 / 120 min, 2026-08-29):** PASS at all four checkpoints, per the tester's report.
+
+**Rebuffer count:** NOT CAPTURED as a number.
+
+**Anything repeated in the log:** No soak failure was reported; the raw final log was not retained here.
 
 ---
 
@@ -662,8 +871,9 @@ information; the same warning 400 times is a defect.
 `setRecentsScreenshotEnabled` did not exist before then, and ADR-0026 declined `FLAG_SECURE`, which would
 have blocked every screenshot for every user to solve a narrow problem for some.
 
-`./scripts/device-test/09-privacy-and-lock.sh` reads the API level off the phone and walks §9 and §10
-together, since both are one device and neither has much to type.
+`./scripts/device-test/09-privacy-and-lock.sh` (Bash) or
+`& .\scripts\device-test\09-privacy-and-lock.ps1` (PowerShell 7) reads the API level off the phone and
+walks §9 and §10 together, since both are one device and neither has much to type.
 
 1. Note your phone's Android version.
 2. Open BookWave on a screen showing **book titles** — the shelf or a library list.
@@ -680,7 +890,8 @@ residual, not a defect.
 **Expect:** the screenshot works. If it is blocked, `FLAG_SECURE` has been set somewhere and that reverses a
 decision taken on purpose.
 
-**Result (Android version / thumbnail / screenshot):**
+**Result (Android version / thumbnail / screenshot, 2026-08-29):** PASS. The app-switcher protected the
+library while an ordinary screenshot remained available. The Android version was not supplied.
 
 ---
 
@@ -697,7 +908,7 @@ did not initiate. Only explicit locked-profile recovery may clear it now.
 
 **Expect:** the lock curtain, **"This account is locked"**.
 
-**Result:**
+**Result (2026-08-29):** PASS. The lock curtain appeared again after force-stop and restart.
 
 ### 10.2 Ordinary reauthentication keeps it
 
@@ -716,7 +927,7 @@ did not initiate. Only explicit locked-profile recovery may clear it now.
 **Expect:** the lock curtain is **still there**. The passcode survived. This is the fix; before it, step 5
 silently removed a security setting the user had chosen.
 
-**Result:**
+**Result (2026-08-29):** PASS. Ordinary reauthentication retained the configured passcode.
 
 ### 10.3 Only explicit recovery clears it
 
@@ -730,7 +941,8 @@ passcode"** — not a bare "Sign in". The wording has to say what it will do.
 **Expect:** the app opens, and force-stopping and reopening now goes **straight in** — no curtain. The
 passcode is gone, because you asked for that.
 
-**Result:**
+**Result (2026-08-29):** PASS. Explicit forgotten-passcode recovery warned that it would clear the passcode,
+then cleared it and allowed subsequent launches without the curtain.
 
 ### 10.4 The lockout, briefly
 
@@ -740,7 +952,7 @@ passcode is gone, because you asked for that.
 the passcode is refused permanently and only signing in again clears it. You do not need to exhaust it —
 confirm the countdown and the first wait appear.
 
-**Result:**
+**Result (2026-08-29):** PASS. Wrong entries showed the remaining-attempt countdown and first timed wait.
 
 ---
 
@@ -753,10 +965,18 @@ because PR #46 changed the profile-lock code around it.
 ./scripts/device-test/10-instrumented.sh   # or: ./gradlew :core:datastore:connectedDebugAndroidTest
 ```
 
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\10-instrumented.ps1
+# Or: .\gradlew.bat :core:datastore:connectedDebugAndroidTest
+```
+
 **Expect:** all tests pass. This is the only tier that exercises the profile lock's real AndroidKeyStore
 storage; a JVM test cannot.
 
-**Result (count passed / failed):**
+**Result (count passed / failed, 2026-08-29):** PASS. The tester reported the hardware instrumented task
+completed successfully; the console's exact passed/failed count was not supplied.
 
 ---
 
@@ -766,6 +986,12 @@ New since your last run, and never seen on a device.
 
 ```bash
 ./scripts/device-test/11-about-and-event-log.sh
+```
+
+Windows PowerShell 7:
+
+```powershell
+& .\scripts\device-test\11-about-and-event-log.ps1
 ```
 
 ### 12.1 The About tab has no leftovers
@@ -785,7 +1011,8 @@ on a user's screen, stale between every phase. What a user needs there is the ve
 
 **Expect:** both changes are in that locale too, and nothing reads as a raw string id.
 
-**Result:**
+**Result (2026-08-29):** PASS in English and Norsk bokmål. The obsolete acceptance-check content was absent,
+the section read **"This device"**, and no raw string identifier was reported.
 
 ### 12.2 The event log's search and filters
 
@@ -830,7 +1057,8 @@ because a log pasted from a filtered view without saying so is a log that mislea
 11. **Nothing private.** With playback and sync lines on screen, read them: no book title, no author, no
 device name, no server hostname (PRODUCT_SPEC 14.5).
 
-**Result:**
+**Result (2026-08-29):** PASS. Search, level and area filters, combined AND behaviour, empty states, Reset
+and Copy worked. The supplied release log also confirmed that private identifiers remained redacted.
 
 ### 12.3 Changing the language no longer bricks the app (R-67)
 
@@ -861,7 +1089,8 @@ is the half a single successful language change would not catch.
 
 **Expect:** both work, and the system option follows whatever Android is set to.
 
-**Result:**
+**Result (2026-08-29):** PASS. Norsk bokmål, English and Follow the system survived navigation and repeated
+force-stop/reopen cycles without the prior `hiltViewModel()` crash.
 
 ---
 

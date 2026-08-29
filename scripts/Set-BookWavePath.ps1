@@ -136,6 +136,14 @@ if (-not $jdk) {
     # %LOCALAPPDATA% is null anywhere that is not Windows — which made this script impossible to run at
     # all off Windows, including for a syntax check. Found by running it, not by reading it.
     $jbrCandidates = @('C:\Program Files\Android\Android Studio\jbr')
+    $repoJdkRoot = Join-Path $repo '.gradle\local-toolchain\jdk'
+    if (Test-Path $repoJdkRoot) {
+        $repoJdk = Get-ChildItem $repoJdkRoot -Directory |
+            Where-Object { Test-Path (Join-Path $_.FullName 'bin\java.exe') } |
+            Sort-Object Name |
+            Select-Object -Last 1
+        if ($repoJdk) { $jbrCandidates = @($repoJdk.FullName) + $jbrCandidates }
+    }
     if ($env:LOCALAPPDATA) { $jbrCandidates += (Join-Path $env:LOCALAPPDATA 'Programs\Android Studio\jbr') }
     $studioJbr = $jbrCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
     if ($studioJbr) { $jdk = $studioJbr }
