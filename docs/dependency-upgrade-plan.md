@@ -167,9 +167,14 @@ browse tree, and a custom `MediaSource` factory.
 - `@UnstableApi` signatures **may change without deprecation**. `AudioOutputRouter`, `NotificationButtons`,
   `PlaybackService` and `BookMediaSourceFactory` are the files to read first.
 - The bytecode facts the output chooser was built on need re-verifying against the new AAR, exactly as they
-  were verified against 1.7.1: that `PlayerWrapper` still builds a legacy custom action from
-  `CommandButton.iconResId`, and that `getCustomLayoutFromMediaButtonPreferences` still requires
-  `SLOT_OVERFLOW`. **Do not assume.** That assumption, made once, is what R-78 records.
+  were verified against 1.7.1: that a legacy custom action is still built from `CommandButton.iconResId`,
+  and that `getCustomLayoutFromMediaButtonPreferences` still requires `SLOT_OVERFLOW`. **Do not assume.**
+  That assumption, made once, is what R-78 records.
+
+  *Done, on 2026-08-30. Both facts hold in 1.11.0 — and doing it was worth it: the custom-action
+  construction **moved from `PlayerWrapper` to `MediaSessionLegacyStub`**, and
+  `getCustomLayoutFromMediaButtonPreferences` gained a fourth parameter. Neither breaks this app, which
+  calls neither, but a reader following the old prose to the old class would have found nothing there.*
 - **`docs/device-test-0.9.14.md` §2 must be re-run in the car**, not just on the phone. No JVM test covers
   the session callbacks — `MediaSession.ControllerInfo` cannot be constructed in one.
 

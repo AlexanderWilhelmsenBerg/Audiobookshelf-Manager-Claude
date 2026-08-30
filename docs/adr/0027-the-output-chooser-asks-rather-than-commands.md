@@ -158,9 +158,13 @@ always buildable, through the same mechanism this app already uses for its skip 
 
 Read out of `media3-session-1.7.1.aar`, not assumed:
 
-- `PlayerWrapper` builds each legacy `PlaybackStateCompat.CustomAction` from a `CommandButton`, taking the
-  action string, the display name and **`CommandButton.iconResId`**. That resource is what a head unit
-  draws, so an app-supplied drawable works and no Media3 icon constant is needed.
+- Media3 builds each legacy `PlaybackStateCompat.CustomAction` from a `CommandButton`, taking the action
+  string, the display name and **`CommandButton.iconResId`**. That resource is what a head unit draws, so an
+  app-supplied drawable works and no Media3 icon constant is needed.
+
+  *Verified in 1.7.1 in `PlayerWrapper`, and re-verified in **1.11.0**, where the same three-argument
+  construction has moved to `MediaSessionLegacyStub`. The fact held; the class did not, which is why this
+  bullet now names the behaviour rather than the file.*
 - `CommandButton.getCustomLayoutFromMediaButtonPreferences` keeps the back and forward slot buttons and then
   **only buttons whose slots contain `SLOT_OVERFLOW`**. So that slot is a requirement here, not a taste.
 - `MediaSessionImpl.setMediaButtonPreferences(ControllerInfo, …)` only writes the legacy playback state when
