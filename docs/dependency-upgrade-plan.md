@@ -100,6 +100,25 @@ locally and fail in CI).
 
 ---
 
+> ### Wave 2 was run on 2026-08-30, and almost none of it was possible
+>
+> **What went in:** `hilt` 2.57 → **2.58**, `ksp` 2.2.0-2.0.2 → **2.3.11**.
+>
+> **What did not, and why — each measured, not inferred:**
+>
+> | Wanted | Blocked by |
+> | --- | --- |
+> | `hilt` 2.59.2 / 2.60.1 | *"only compatible with Android Gradle plugin version 9.0.0 or higher"* |
+> | `kotlin` 2.4.10 | Hilt 2.58's bundled `kotlin-metadata-jvm` maxes at metadata 2.3.0; Kotlin 2.4 emits 2.4.0. Hilt 2.59+ would fix it and needs AGP 9. |
+> | `kotlin` 2.3.21 / 2.2.21 | detekt 1.23.8 loses type resolution — false `RedundantSuspendModifier` on functions calling `Flow.first()`, false `UnreachableCode` on plain `return`s. 14 findings across `core:network` alone. |
+> | `kotlinxSerialization` 1.11.0 | Forces `kotlin-stdlib 2.2.0 → 2.3.20` transitively, which breaks detekt the same way. Confirmed by reverting it and watching the stdlib drop back to 2.2.20 and detekt go green. |
+> | `kotlinxCoroutines` 1.11.0 | Same detekt breakage, on `Flow.first()` specifically. |
+>
+> **One source change was needed and is load-bearing:** `build-logic/convention` had `compileOnly(libs.ksp.gradlePlugin)`, and `kotlin-dsl` compiles that module with the Kotlin *Gradle itself* embeds — 2.0 under Gradle 8.14.3 — which cannot read KSP 2.3's metadata. Nothing in build-logic referenced a KSP type; it applies the plugin by id and adds to the `"ksp"` configuration by name. Removing the dependency unblocked KSP.
+>
+> The constraint chain is recorded as **R-83**. The short version: **AGP 9 unlocks the top half of this
+> table, detekt 2.x unlocks the bottom half, and nothing else moves until one of them lands.**
+
 ## Wave 2 — Kotlin, KSP and Hilt, together
 
 `kotlin` 2.2.0 → **2.4.10**, `ksp` 2.2.0-2.0.2 → **2.3.11**, `hilt` 2.57 → **2.60.1**,

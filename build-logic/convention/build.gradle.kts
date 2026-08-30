@@ -22,7 +22,14 @@ dependencies {
     compileOnly(libs.detekt.gradlePlugin)
     compileOnly(libs.kotlin.composeCompilerGradlePlugin)
     compileOnly(libs.kotlin.gradlePlugin)
-    compileOnly(libs.ksp.gradlePlugin)
+    // KSP is deliberately absent, and its absence is load-bearing.
+    //
+    // `kotlin-dsl` compiles this module with the Kotlin the *Gradle distribution* embeds — 2.0 under Gradle
+    // 8.14.3 — rather than the version the app modules use. KSP 2.3's plugin jar carries Kotlin 2.3
+    // metadata, which that compiler refuses to read, so having it on this classpath pinned the whole
+    // project to an old KSP. Nothing here needed it: `HiltConventionPlugin` and `AndroidRoomConventionPlugin`
+    // apply KSP by plugin id and add to the `"ksp"` configuration **by name**, so no KSP type is ever
+    // referenced. Do not add it back without checking that first.
     compileOnly(libs.ktlint.gradlePlugin)
     compileOnly(libs.room.gradlePlugin)
 }
