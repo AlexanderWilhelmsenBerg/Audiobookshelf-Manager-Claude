@@ -181,6 +181,36 @@ class AutoBrowseTreeTest {
         assertEquals("Tide Tables", auto().lastPlayed()?.title)
     }
 
+    /**
+     * ROUTE-001 — the metadata-only resume answer, which Media3 1.11.0 asks for with `isForPlayback=false`.
+     *
+     * `PlaybackService` answers that half with this item and opens no server session. Two things make the
+     * item usable on its own and both are asserted: it carries the **stored position in its id**, so a
+     * controller handing it back resumes where the listener stopped rather than at the start, and it is
+     * marked playable, because System UI draws a play button on it.
+     */
+    @Test
+    fun `the resumable book is described by one playable item carrying its position`() = runTest {
+        books.value = listOf(
+            book("book-1", "The Salt Harbour", progress(40.minutes, isFinished = false, at = 1_000)),
+            book("book-2", "Tide Tables", progress(10.minutes, isFinished = false, at = 9_000)),
+        )
+
+        val item = auto().resumeItem()
+
+        assertEquals("at/book-2/${10.minutes.inWholeMilliseconds}", item?.mediaId)
+        assertEquals("Tide Tables", item?.mediaMetadata?.title?.toString())
+        assertEquals(true, item?.mediaMetadata?.isPlayable)
+    }
+
+    /** And nothing to resume is described as nothing, not as an arbitrary book. */
+    @Test
+    fun `a never-started library describes no resumable book`() = runTest {
+        books.value = listOf(book("book-1", "The Salt Harbour"))
+
+        assertEquals(null, auto().resumeItem())
+    }
+
     private fun List<androidx.media3.common.MediaItem>.mediaIds(): List<String> = mapNotNull { it.mediaId }
 
     private fun List<androidx.media3.common.MediaItem>.titles(): List<String> =

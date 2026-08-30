@@ -328,6 +328,21 @@ class AutoLibrary @Inject constructor(
     }
 
     /**
+     * PRODUCT_SPEC ROUTE-001 — the resume tile as **one item and no open session**.
+     *
+     * Media3 1.11.0 split `onPlaybackResumption` in two with an `isForPlayback` flag, and this answers the
+     * `false` half: System UI asking, at boot, for enough metadata to draw a resumption notification, with
+     * no intention of starting anything. Its own javadoc asks for exactly what [resumeRow] already builds —
+     * one item, a title, and the completion extras that draw the part-finished bar — so this is that row
+     * rather than a second description of the same tile.
+     *
+     * The id is [AT_PREFIX]'s, so a controller that hands it back resumes at the stored position through
+     * the same [resolve] every car tap uses. Nothing here opens a server session: a listening session
+     * opened to populate a notification is one the server would show as playing when nobody is.
+     */
+    suspend fun resumeItem(): MediaItem? = resumeRow().firstOrNull()
+
+    /**
      * PRODUCT_SPEC LIB-002 / PLAY-001 — the car's tabs are **the phone's shelves**.
      *
      * The owner's report was that the car opened on an empty *Continue* and said "no books", while a search

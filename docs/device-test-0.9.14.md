@@ -327,6 +327,13 @@ is closed as one; R-66 is the defect, and the `children=` diagnostic earned its 
 `MediaSession.ControllerInfo`, so the session callbacks cannot be reached from the test tier at all. There is
 no test behind this fix. §2 is it.
 
+**This section is also the whole verification of the Media3 upgrade.** The build moved from Media3 1.7.1 to
+**1.11.0** on 2026-08-30 — four minors of ExoPlayer and of the `MediaLibraryService` code that answers every
+callback below. Three deprecated APIs were migrated (`docs/dependency-upgrade-plan.md`, wave 3), one of them
+a real behaviour change in `onPlaybackResumption`. Nothing in the gate can see any of it: the same sentence
+above applies. **Re-run every step of §2 on this build even if it passed on the last one**, and record the
+Media3 version beside the result.
+
 ### 2.0 Which host you are on, and why it matters
 
 **The Desktop Head Unit is not a car.** It is the same projected Android Auto stack driving a window on your

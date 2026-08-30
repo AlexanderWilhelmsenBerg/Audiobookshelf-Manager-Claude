@@ -1535,14 +1535,40 @@ class PlaybackService : MediaLibraryService() {
          *
          * `MediaSession` rather than `MediaLibrarySession` in the signature: this is inherited from
          * `MediaSession.Callback`, not declared on the library one.
+         *
+         * ### `isForPlayback` is two different questions, and only one of them may open a session
+         *
+         * Media3 1.11.0 added the flag and deprecated the two-argument form. `true` is the callback this
+         * app has always answered: a button was pressed, playback is about to start, so the book has to be
+         * *opened* — `openQueue` calls `openSession`, which tells the server a listening session has begun.
+         *
+         * `false` is a question 1.7.1 could not ask. `MediaLibrarySessionImpl.getRecentMediaItemAtDeviceBootTime`
+         * passes it when System UI wants metadata for the playback-resumption notification it draws after a
+         * reboot — *"without an immediate intention to start playback"*, in the javadoc's words. Answering
+         * that by opening a session would post a play to the server for a notification nobody has touched,
+         * which is a listening session that never listened (product priority 2's neighbourhood, and
+         * PRODUCT_SPEC 12.2's "the server's history is a record of what was played"). So the `false` branch
+         * describes the book and opens nothing.
+         *
+         * **This app cannot reach the `false` branch today**, and the branch is still right. Media3 gates
+         * that whole path on `MediaSessionLegacyStub.canResumePlaybackOnStart()`, which is
+         * `broadcastReceiverComponentName != null` — a `MediaButtonReceiver` declared in the manifest, which
+         * this app does not declare (its receiver is the service). Adding one later is a manifest edit that
+         * nothing would connect to a network write, and this is the branch that makes the edit safe.
          */
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
+            isForPlayback: Boolean,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
+            if (isForPlayback) resumeForPlayback() else describeResumable()
+        }
+
+        /** The `isForPlayback = true` half: open the book and hand back a real queue. */
+        private suspend fun resumeForPlayback(): MediaSession.MediaItemsWithStartPosition {
             val book = auto.lastPlayed()
             val queue = book?.let { openQueue(it.id, startAt = null) }
-            if (queue == null) {
+            return if (queue == null) {
                 // PRODUCT_SPEC ROUTE-001 — "if no playable item exists, the command does nothing and logs a
                 // non-fatal diagnostic". This is that diagnostic. No book id: a log a user might share does
                 // not need to name what they listen to (14.5).
@@ -1552,6 +1578,24 @@ class PlaybackService : MediaLibraryService() {
                 logger.info(LogCategory.Playback, "Resuming the last book for a media button")
                 MediaSession.MediaItemsWithStartPosition(listOf(queue.item), 0, queue.startPositionMs)
             }
+        }
+
+        /**
+         * The `isForPlayback = false` half: what *would* resume, described, with nothing opened.
+         *
+         * The same tile the car's recent root shows, because it is the same question asked by a different
+         * surface — see [AutoLibrary.resumeItem]. The position travels in the media id rather than in the
+         * start position, which Media3 discards on this path; it keeps the item self-describing for a
+         * controller that hands it straight back.
+         */
+        private suspend fun describeResumable(): MediaSession.MediaItemsWithStartPosition {
+            val item = auto.resumeItem()
+            if (item == null) {
+                logger.info(LogCategory.Playback, "A resumable book was asked for and there is none")
+                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+            }
+            logger.info(LogCategory.Playback, "Described the resumable book without opening a session")
+            return MediaSession.MediaItemsWithStartPosition(listOf(item), 0, 0L)
         }
 
         override fun onConnect(
@@ -1629,7 +1673,10 @@ class PlaybackService : MediaLibraryService() {
                 .apply { ControllerTrust.withheldPlayerCommands(access).forEach(::remove) }
                 .build()
 
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            // The two-argument builder. Media3 1.11.0 deprecated the session-only one; passing the
+            // controller is what lets the session scope its answer to who asked, which is exactly what the
+            // three lines below do.
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(commands)
                 .setAvailablePlayerCommands(playerCommands)
                 .setMediaButtonPreferences(mediaButtons())

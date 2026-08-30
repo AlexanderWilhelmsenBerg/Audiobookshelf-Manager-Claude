@@ -95,10 +95,16 @@ internal interface PlaybackModule {
         @Provides
         @Singleton
         @OptIn(UnstableApi::class)
-        fun providesBitmapLoader(@MediaDataSource dataSourceFactory: DataSource.Factory): BitmapLoader =
-            DataSourceBitmapLoader(
-                MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()),
-                dataSourceFactory,
-            )
+        fun providesBitmapLoader(
+            @ApplicationContext context: Context,
+            @MediaDataSource dataSourceFactory: DataSource.Factory,
+        ): BitmapLoader = // Media3 1.11.0 deprecated every `DataSourceBitmapLoader` constructor in favour of a builder,
+            // which is why this takes a `Context` it does not otherwise need — the builder requires one.
+            // The two things that matter are unchanged and set explicitly: the authenticated data source
+            // factory, and a single-threaded executor.
+            DataSourceBitmapLoader.Builder(context)
+                .setDataSourceFactory(dataSourceFactory)
+                .setExecutorService(MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()))
+                .build()
     }
 }

@@ -180,6 +180,32 @@ browse tree, and a custom `MediaSource` factory.
 
 **Do this alone, in its own PR**, with the device test attached to it.
 
+### What running it found
+
+*Executed 2026-08-30. The bump itself is one line; three deprecations under `-Werror` are the whole cost,
+and the third turned out to be a behaviour change rather than a rename.*
+
+1. **`DataSourceBitmapLoader(context, dataSourceFactory, executor)`** → `DataSourceBitmapLoader.Builder`.
+   A constructor-to-builder move, no behaviour change. `di/PlaybackModule.kt`.
+2. **`CommandButton.Builder.setIconResId`** → `setCustomIconResId`. A rename that says what the field always
+   meant: the resource is this app's own drawable rather than one of Media3's named icons.
+3. **`MediaSession.Callback.onPlaybackResumption(session, controller)`** → a third parameter,
+   `isForPlayback`. **Not a rename.** The `false` case is a question 1.7.1 could not ask — System UI wanting
+   metadata for a resumption notification, with no intention of starting anything — and answering it the way
+   the two-argument form did would open a *server listening session* to populate a notification. Honouring
+   the flag is the migration; overriding the new signature and keeping the old body would have been a
+   regression the upgrade introduced. See `PlaybackService.onPlaybackResumption`.
+
+   The app cannot reach that branch today — Media3 gates it on a `MediaButtonReceiver` in the manifest, which
+   this app does not declare — and the branch is still the right one to write, because the manifest edit that
+   would reach it is not one anybody would connect to a network write.
+
+Also confirmed: **`AcceptedResultBuilder` now takes the controller** as well as the session. A compile error
+rather than a deprecation, so it cannot be missed.
+
+**`--rerun-tasks` was load-bearing again.** The incremental gate passed and the rerun gate failed on exactly
+these deprecations — `docs/risks.md` R-31, for the second time on this branch.
+
 ---
 
 ## Wave 4 — AGP 9 and Gradle 9
