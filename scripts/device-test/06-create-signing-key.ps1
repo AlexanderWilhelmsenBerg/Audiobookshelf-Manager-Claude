@@ -162,11 +162,12 @@ $keyPassword = if ($separateAnswer -match '^y(?:es)?$') {
     $storePassword
 }
 
-Write-Step 'Step 4 of 6 - Protect the existing debug installation'
-Write-Note 'Using this key for debug changes the debug signature once. The next debug install would then require'
-Write-Note 'an uninstall, which deletes the current profile, progress journal, and downloads.'
-$debugAnswer = Read-Host 'Also sign debug builds with this upload key? [y/N]'
-$signDebug = $debugAnswer -match '^y(?:es)?$'
+Write-Step 'Step 4 of 6 - The debug build is not affected by this key'
+Write-Note 'This key signs release builds only. The debug build has its own stable key at'
+Write-Note '~/.bookwave/debug.keystore, created by the build and adopted from ~/.android/debug.keystore when'
+Write-Note 'one exists - so "adb install -r" stays an upgrade whether or not you finish this script.'
+Write-Note 'This prompt used to ask whether to sign debug with the upload key. It no longer exists: making the'
+Write-Note 'debug signature depend on whether these values were set is what caused the uninstall it warned about.'
 
 $keytool = Resolve-Keytool
 if (-not $keytool) {
@@ -178,7 +179,7 @@ Write-Host "  Keystore:          $keystorePath"
 Write-Host "  Alias:             $alias"
 Write-Host "  Certificate:       $distinguishedName"
 Write-Host "  Gradle properties: $gradleProperties"
-Write-Host "  Sign debug too:    $signDebug"
+Write-Host "  Debug builds:      unaffected - they have their own stable key"
 Write-Host "  Operation:         $(if ($useExistingKey) { 'Verify and configure existing key' } else { 'Create and configure new key' })"
 Write-Note 'Passwords are hidden and will not be printed.'
 $confirmationWord = if ($useExistingKey) { 'CONFIGURE' } else { 'CREATE' }
@@ -235,14 +236,15 @@ $existingLines = if (Test-Path -LiteralPath $gradleProperties) {
 } else {
     @()
 }
+# `debug` is still matched so a stale `bookwave.signing.debug=` line written by an earlier version of this
+# script is removed rather than left behind meaning nothing.
 $managedPattern = '^\s*bookwave\.signing\.(storeFile|storePassword|keyAlias|keyPassword|debug)\s*='
 $keptLines = @($existingLines | Where-Object { $_ -notmatch $managedPattern })
 $propertyLines = @(
     'bookwave.signing.storeFile=' + (ConvertTo-PropertiesValue ($keystorePath -replace '\\', '/')),
     'bookwave.signing.storePassword=' + (ConvertTo-PropertiesValue $storePassword),
     'bookwave.signing.keyAlias=' + (ConvertTo-PropertiesValue $alias),
-    'bookwave.signing.keyPassword=' + (ConvertTo-PropertiesValue $keyPassword),
-    'bookwave.signing.debug=' + $signDebug.ToString().ToLowerInvariant()
+    'bookwave.signing.keyPassword=' + (ConvertTo-PropertiesValue $keyPassword)
 )
 $newContents = [System.Collections.Generic.List[string]]::new()
 $keptLines | ForEach-Object { $newContents.Add($_) }
@@ -292,9 +294,7 @@ if ($useExistingKey) {
 }
 Write-Ok "Configured $gradleProperties"
 if ($fingerprint) { Write-Host "  Certificate $($fingerprint.Trim())" }
-if (-not $signDebug) {
-    Write-Ok 'Debug signing remains unchanged, so this setup does not force a debug-app uninstall.'
-}
+Write-Ok 'Debug signing is untouched by this key, so this setup does not force a debug-app uninstall.'
 Write-Warn 'Back up the keystore and both passwords now. Do not copy them into this repository.'
 Write-Host ''
 Write-Host 'Next command:' -ForegroundColor Cyan

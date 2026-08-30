@@ -79,33 +79,47 @@ Set four repository secrets and choose the `release` variant:
 The run summary reports signed or unsigned by asking `apksigner` about the artefact, not by checking
 whether a secret was set.
 
-### The debug build needs the key too, and that is not a nicety
+### The debug build has its own key, and the upload key must not be it
 
-Set the four values and **`adb install -r` becomes an upgrade**: the sign-in, the passcode, the progress
-journal and every downloaded book survive. Leave them unset and it is not an upgrade at all.
+**Set nothing.** The debug build signs itself with a stable key at `~/.bookwave/debug.keystore`, created by
+the build on first use, and the four values above have nothing to do with it.
 
-`debug` declared no signing config, so AGP falls back to `~/.android/debug.keystore` — and *generates* one
-when it is absent. A local machine keeps that file, so local rebuilds were fine. **A GitHub runner is
-ephemeral**, so every APK the Build APK workflow produced was signed with a brand-new key, and installing
-one over the previous one fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. The only way through is to
-uninstall, which wipes the profile and the downloads and makes the tester sign in again — on every single
-device build. A device session on 2026-08-27 reported exactly that.
+That is a change from what this section used to say. The four inputs used to sign the debug build as well,
+on the reasoning that a stable key turns `adb install -r` into an upgrade — the sign-in, the passcode, the
+progress journal and every downloaded book surviving instead of being wiped. The reasoning was right; using
+the *release* inputs to achieve it was not. It made a debug APK's signature depend on **whether four
+environment variables were set in the shell that ran Gradle**, so a release build in one terminal and a
+debug build in another produced two differently-signed debug APKs — and every switch between them cost the
+uninstall the arrangement existed to prevent. A tester reported having to uninstall before every build.
 
-Measured rather than assumed, on 2026-08-27:
+`DebugSigning.kt` now owns the debug key, and nothing else can change it:
+
+- **It adopts `~/.android/debug.keystore` if you have one**, copying it rather than generating something
+  new. That is what makes this free: the signature you have been using is the one you keep, and installs
+  already on your device keep working.
+- **On a machine with none — a fresh checkout, a CI runner — it generates one** with Android's own public
+  debug credentials, so a keystore it created and one the SDK would have created are interchangeable.
+- **It refuses a path inside the repository**, the same refusal the upload key gets.
+
+`bookwave.signing.debug.stable=false` opts out and restores AGP's own behaviour.
+`bookwave.signing.debug.keystore` (or `BOOKWAVE_DEBUG_KEYSTORE`) points it somewhere else — which is how a
+second machine or a runner shares one key. The Build APK workflow reads
+`BOOKWAVE_DEBUG_KEYSTORE_BASE64` for exactly that.
+
+Measured on 2026-08-30: the generated `~/.bookwave/debug.keystore` and the APK built from it both report
+`aa5fd8f7…`, matching the `~/.android/debug.keystore` it was copied from — so adoption does what it claims
+and no uninstall was needed.
+
+The earlier measurement, on 2026-08-27, is what established that an unsigned debug build is not stable
+across machines:
 
 | | Certificate SHA-256 |
 | --- | --- |
 | No key, build 1 (generated keystore deleted between builds, as a fresh runner has none) | `e005ff57…` |
 | No key, build 2 | `aa5fd8f7…` — **different**, hence the uninstall |
-| Supplied key, build 1 | `da510f61…` |
-| Supplied key, build 2, after `clean` | `da510f61…` — **stable** |
 
-**The switch itself costs one uninstall**, because the signature genuinely changes on the build where you
-start supplying a key. After that it stops.
-
-`bookwave.signing.debug=false` keeps AGP's own debug key if you would rather not sign debug with the upload
-key. The `benchmark` variant is untouched either way: it pins `signingConfigs.debug` explicitly, because it
-has to be installable on a machine that has no upload key.
+The `benchmark` variant follows the debug key automatically: it pins `signingConfigs.debug`, and this
+changes that config rather than the build type, so it stays installable on a machine with no upload key.
 
 ### An unsigned release now says so, while it is building
 
