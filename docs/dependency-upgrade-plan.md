@@ -57,6 +57,27 @@ Retrofit kotlinx-serialization converter 1.0.0, and the SDK levels.
 
 ---
 
+> ## Correction, 2026-08-30 — wave 1 was run, and it disproved this plan's premise
+>
+> **AGP 9 is a prerequisite for current AndroidX, not a later wave.** Six artifacts refuse to resolve under
+> AGP 8.12 at all, reporting *"requires Android Gradle plugin 9.1.0 or higher"*: `core` 1.19.0, `lifecycle`
+> 2.11.0, `navigation` 2.10.0, `hilt-navigation-compose` 1.4.0 and its new `hilt-lifecycle-viewmodel-compose`
+> sibling. Wave 1 as shipped therefore takes the highest AGP-8-compatible version of each — core 1.17.0,
+> lifecycle 2.10.0, navigation 2.9.8, hilt 1.3.0, activity 1.12.4 — and the rest of those lines is blocked
+> behind wave 4.
+>
+> **Every wave has a dependency-verification step this plan omitted.** `org.gradle.dependency.verification`
+> is `strict`, so a bumped version fails on a missing checksum before anything compiles. Each wave needs
+> `./gradlew --write-verification-metadata sha256 verifyDebug` and a review of the diff; wave 1 added 1,592
+> lines and took the component count from 952 to 1,177.
+>
+> **"No expected source change" was wrong too.** Hilt 1.3.0 moved `hiltViewModel` to a new package
+> (14 files), and the new Compose lint check `LocalContextResourcesRead` failed the build on a test that
+> reads resources off the context deliberately.
+>
+> Waves 2, 3 and 5 below have not been run and their estimates carry the same caveat: **they are estimates
+> made before contact.**
+
 ## Wave 1 — the cheap ones
 
 **Twelve version bumps, no expected source change.** AndroidX minors within the same major, plus the test
