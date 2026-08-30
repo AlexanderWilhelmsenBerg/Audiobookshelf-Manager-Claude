@@ -40,8 +40,9 @@ name: Build APK
 #
 # The run summary prints the signer's fingerprint, read back out of the artefact rather than assumed.
 #
-#   BOOKWAVE_DEBUG_KEYSTORE_BASE64     base64 of ~/.bookwave/debug.keystore — optional; without it every
-#                                      debug APK from this workflow needs an uninstall before installing
+#   BOOKWAVE_DEBUG_KEYSTORE_BASE64     base64 of ~/.bookwave/debug.keystore — optional. Without it the
+#                                      workflow falls back to the upload keystore below, so one key signs
+#                                      both; with neither, every debug APK needs an uninstall first.
 #   BOOKWAVE_SIGNING_KEYSTORE_BASE64   base64 of the upload keystore (`base64 -w0 upload.jks`)
 #   BOOKWAVE_SIGNING_STORE_PASSWORD
 #   BOOKWAVE_SIGNING_KEY_ALIAS
@@ -111,17 +112,28 @@ jobs:
       # same signature as the last one. Skipped when the secret is absent, which leaves the build to
       # generate a fresh key — installable, but not *upgradable* over the previous run's APK.
       - name: Stage the debug keystore
+        id: debugkey
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_DEBUG_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          if [ -z "${DEBUG_KEYSTORE_BASE64:-}" ]; then
-            echo "No debug keystore secret set; this build's debug key will be newly generated."
-            exit 0
-          fi
           mkdir -p "$HOME/.bookwave"
-          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
-          echo "Restored the shared debug keystore."
+          if [ -n "${DEBUG_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
+            echo "source=debug-secret" >> "$GITHUB_OUTPUT"
+            echo "Restored the shared debug keystore from BOOKWAVE_DEBUG_KEYSTORE_BASE64."
+          elif [ -n "${UPLOAD_KEYSTORE_BASE64:-}" ]; then
+            # No debug keystore of its own, but there is an upload key. Use it for debug too, with its own
+            # credentials — a deliberate fallback rather than the invisible coupling this replaced, and the
+            # only way one key can sign both without a second secret.
+            printf '%s' "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
+            echo "source=upload-key" >> "$GITHUB_OUTPUT"
+            echo "No debug keystore secret; using the upload key for debug as well, so both are stable."
+          else
+            echo "source=generated" >> "$GITHUB_OUTPUT"
+            echo "No keystore secrets at all; this build's debug key will be newly generated and thrown away."
+          fi
 
       - name: Stage the signing keystore
         id: keystore
@@ -146,6 +158,11 @@ jobs:
           BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
           BOOKWAVE_SIGNING_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
           BOOKWAVE_SIGNING_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
+          # Only when the debug keystore *is* the upload keystore — otherwise the build uses Android's own
+          # public debug credentials, which is what the generated and the shared-secret cases both hold.
+          BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_STORE_PASSWORD || '' }}
+          BOOKWAVE_DEBUG_KEY_ALIAS: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_KEY_ALIAS || '' }}
+          BOOKWAVE_DEBUG_KEY_PASSWORD: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_KEY_PASSWORD || '' }}
         run: ./gradlew :app:assemble${{ inputs.variant == 'release' && 'Release' || 'Debug' }}
 
       # The version is read back out of the built APK rather than out of the build script, because the

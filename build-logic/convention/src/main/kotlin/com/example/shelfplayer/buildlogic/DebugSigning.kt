@@ -54,11 +54,28 @@ internal fun ApplicationExtension.configureDebugSigning(project: Project) {
     val store = project.stableDebugKeystore() ?: return
     signingConfigs.named("debug") {
         storeFile = store
-        storePassword = DEBUG_STORE_PASSWORD
-        keyAlias = DEBUG_KEY_ALIAS
-        keyPassword = DEBUG_KEY_PASSWORD
+        storePassword = project.debugValue(DEBUG_STORE_PASSWORD_PROPERTY, DEBUG_STORE_PASSWORD_ENV, DEBUG_STORE_PASSWORD)
+        keyAlias = project.debugValue(DEBUG_KEY_ALIAS_PROPERTY, DEBUG_KEY_ALIAS_ENV, DEBUG_KEY_ALIAS)
+        keyPassword = project.debugValue(DEBUG_KEY_PASSWORD_PROPERTY, DEBUG_KEY_PASSWORD_ENV, DEBUG_KEY_PASSWORD)
     }
 }
+
+/**
+ * One credential, with Android's public debug value as the fallback.
+ *
+ * These exist so **one keystore can sign both variants if that is what the owner wants** — point
+ * `bookwave.signing.debug.keystore` at the upload keystore and supply its three credentials, and the debug
+ * build uses it. That is a deliberate, written-down choice, which is the difference from the arrangement
+ * this file replaced: that one signed debug with the upload key *whenever four unrelated environment
+ * variables happened to be set*, and flipped back the moment they were not.
+ *
+ * Worth knowing before choosing it: a debug APK is the one that gets passed around, and signing it with the
+ * upload key puts that certificate on more artefacts than it needs to be on. Play App Signing means the
+ * upload key is not what end users verify against (ADR-0024), so the cost is small — but it is not zero,
+ * and the separate default exists because separate is the better default.
+ */
+private fun Project.debugValue(property: String, environment: String, fallback: String): String =
+    (findProperty(property) as? String ?: System.getenv(environment))?.takeIf { it.isNotBlank() } ?: fallback
 
 /**
  * The keystore to sign debug builds with, creating it if this machine has none.
@@ -81,6 +98,17 @@ private fun Project.stableDebugKeystore(): File? {
     rejectKeystoreInsideRepository(keystore.canonicalFile, rootDir.canonicalFile)
 
     if (keystore.isFile) return keystore
+
+    // A path somebody named explicitly is a file they expect to exist; creating one there would sign with a
+    // key they did not choose and say nothing about it. Only the default path is ever created.
+    if (configured != null) {
+        throw GradleException(
+            "BookWave debug keystore not found: ${keystore.absolutePath}\n" +
+                "It was named by $DEBUG_KEYSTORE_PROPERTY or $DEBUG_KEYSTORE_ENV, so it is not created for " +
+                "you.\nUnset both to use the default at ~/$DEFAULT_DEBUG_KEYSTORE, which is generated on " +
+                "first use.",
+        )
+    }
 
     keystore.parentFile?.mkdirs()
     val inherited = File(homeDirectory(), ANDROID_DEBUG_KEYSTORE)
@@ -157,5 +185,13 @@ private const val ANDROID_DEBUG_KEYSTORE = ".android/debug.keystore"
 private const val DEBUG_STORE_PASSWORD = "android"
 private const val DEBUG_KEY_ALIAS = "androiddebugkey"
 private const val DEBUG_KEY_PASSWORD = "android"
+
+/* Overrides, for pointing the debug build at a keystore with credentials of its own. See [debugValue]. */
+private const val DEBUG_STORE_PASSWORD_PROPERTY = "bookwave.signing.debug.storePassword"
+private const val DEBUG_STORE_PASSWORD_ENV = "BOOKWAVE_DEBUG_STORE_PASSWORD"
+private const val DEBUG_KEY_ALIAS_PROPERTY = "bookwave.signing.debug.keyAlias"
+private const val DEBUG_KEY_ALIAS_ENV = "BOOKWAVE_DEBUG_KEY_ALIAS"
+private const val DEBUG_KEY_PASSWORD_PROPERTY = "bookwave.signing.debug.keyPassword"
+private const val DEBUG_KEY_PASSWORD_ENV = "BOOKWAVE_DEBUG_KEY_PASSWORD"
 private const val DEBUG_VALIDITY_DAYS = "10000"
 private const val DEBUG_DISTINGUISHED_NAME = "CN=Android Debug,O=Android,C=US"
