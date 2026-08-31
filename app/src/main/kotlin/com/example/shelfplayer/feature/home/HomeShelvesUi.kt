@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
@@ -157,12 +158,11 @@ private fun SeriesShelfRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(items = entries, key = { it.series.id.value }) { entry ->
-                val currentBookNumber = (entry.finishedCount + 1).coerceAtMost(entry.bookCount)
                 ShelfCard(
                     title = entry.series.name,
                     subtitle = stringResource(
                         R.string.shelf_series_position,
-                        currentBookNumber,
+                        entry.currentBookNumber,
                         entry.bookCount,
                     ),
                     detail = entry.nextBook.title,
@@ -204,7 +204,11 @@ private fun ShelfCard(
     onPlay: (() -> Unit)? = null,
     cover: @Composable () -> Unit = {},
 ) {
-    Card(onClick = onClick, modifier = modifier.width(SHELF_CARD_WIDTH)) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.width(SHELF_CARD_WIDTH),
+        shape = RoundedCornerShape(SHELF_CARD_CORNER_RADIUS),
+    ) {
         Column {
             ShelfCover(
                 progress = progress,
@@ -319,6 +323,9 @@ private fun ShelfHeading(text: String, modifier: Modifier = Modifier) {
 
 /** PRODUCT_SPEC 21 — sized in `dp` so it grows with the display density but not with the font scale. */
 private val SHELF_CARD_WIDTH = 160.dp
+
+/** Slightly squarer than the Material card default while keeping the cover's top corners visibly softened. */
+private val SHELF_CARD_CORNER_RADIUS = 8.dp
 
 /** PLAY-001 / PRODUCT_SPEC 21 — a full touch target even when the visible circle reads as an overlay. */
 /**
