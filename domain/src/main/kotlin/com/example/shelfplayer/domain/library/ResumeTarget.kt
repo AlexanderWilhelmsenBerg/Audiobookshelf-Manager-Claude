@@ -6,11 +6,7 @@ import java.time.Instant
 import kotlin.time.Duration
 
 /** A resumable book together with the position and activity time that selected it. */
-data class ResumeTarget(
-    val book: Book,
-    val position: Duration,
-    val updatedAt: Instant,
-)
+data class ResumeTarget(val book: Book, val position: Duration, val updatedAt: Instant)
 
 /** The existing device-local answer, expressed as a target rather than only a book. */
 fun localResumeTarget(books: List<Book>): ResumeTarget? {
