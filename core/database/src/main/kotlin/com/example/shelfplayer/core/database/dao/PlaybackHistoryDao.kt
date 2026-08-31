@@ -26,6 +26,10 @@ interface PlaybackHistoryDao {
     )
     fun observe(profileId: String, bookKey: String, limit: Int): Flow<List<PlaybackHistoryEntity>>
 
+    /** Internal state rows share this table but never enter the user-facing history stream above. */
+    @Query("SELECT * FROM playback_history WHERE profileId = :profileId AND entryId = :entryId LIMIT 1")
+    fun observeInternal(profileId: String, entryId: String): Flow<PlaybackHistoryEntity?>
+
     /** One internal row per profile remembers the last successful cross-device resume answer. */
     @Query("SELECT * FROM playback_history WHERE profileId = :profileId AND entryId = :entryId LIMIT 1")
     suspend fun findInternal(profileId: String, entryId: String): PlaybackHistoryEntity?
