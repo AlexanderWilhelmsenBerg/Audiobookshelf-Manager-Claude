@@ -46,6 +46,21 @@
 
     <application>
         <!--
+          Media3 playback resumption is opt-in. When the playback service has been destroyed, Bluetooth
+          controls and Android System UI reach this receiver, which restarts the MediaLibraryService and
+          routes the request through `MediaSession.Callback.onPlaybackResumption`. Without the receiver the
+          callback can exist in code and still never be used for a dead service, leaving Android attached
+          to its stale last media item instead of asking BookWave what should resume now.
+        -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
+        <!--
           `exported="true"` is required, not incidental: media buttons, Bluetooth headsets, Android Auto
           and Wear all reach a media session through this component, and an unexported service is
           unreachable by every one of them. What is exported is a `MediaSession`, whose commands Media3
