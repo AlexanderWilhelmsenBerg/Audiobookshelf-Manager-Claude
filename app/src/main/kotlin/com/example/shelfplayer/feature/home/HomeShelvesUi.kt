@@ -25,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,7 +59,6 @@ internal fun LazyListScope.homeShelves(
                 books = shelves.continueListening,
                 onBookSelected = onBookSelected,
                 onBookPlaySelected = onBookPlaySelected,
-                inProgressStyle = true,
             )
         }
     }
@@ -111,7 +109,6 @@ private fun BookShelfRow(
     onBookSelected: (LibraryItemId) -> Unit,
     onBookPlaySelected: (LibraryItemId) -> Unit,
     modifier: Modifier = Modifier,
-    inProgressStyle: Boolean = false,
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ShelfHeading(text = stringResource(titleRes))
@@ -134,17 +131,12 @@ private fun BookShelfRow(
                         book.title,
                     ),
                     onPlay = { onBookPlaySelected(book.id) },
-                    edgeToEdgeProgress = inProgressStyle,
                     cover = {
-                        if (inProgressStyle) {
-                            BookCover(
-                                book = book,
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RectangleShape,
-                            )
-                        } else {
-                            BookCover(book = book)
-                        }
+                        BookCover(
+                            book = book,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RectangleShape,
+                        )
                     },
                 )
             }
@@ -165,25 +157,27 @@ private fun SeriesShelfRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(items = entries, key = { it.series.id.value }) { entry ->
+                val currentBookNumber = (entry.finishedCount + 1).coerceAtMost(entry.bookCount)
                 ShelfCard(
                     title = entry.series.name,
-                    // The book, not the count: "Book 3 of 7" says how far through the series you are,
-                    // and the title says what you would actually be starting.
                     subtitle = stringResource(
-                        R.string.shelf_series_next,
-                        entry.nextBook.title,
-                        pluralStringResource(
-                            R.plurals.shelf_series_progress,
-                            entry.finishedCount,
-                            entry.finishedCount,
-                            entry.bookCount,
-                        ),
+                        R.string.shelf_series_position,
+                        currentBookNumber,
+                        entry.bookCount,
                     ),
+                    detail = entry.nextBook.title,
                     progress = entry.finishedCount.toFloat() / entry.bookCount.toFloat(),
+                    titleLines = 1,
                     onClick = { onSeriesSelected(entry.series.id) },
                     // The next book's cover stands for the series. A series has no artwork of its own,
                     // and the book the user would actually start is the most useful thing to show.
-                    cover = { BookCover(book = entry.nextBook) },
+                    cover = {
+                        BookCover(
+                            book = entry.nextBook,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RectangleShape,
+                        )
+                    },
                 )
             }
         }
@@ -204,45 +198,34 @@ private fun ShelfCard(
     progress: Float?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    detail: String? = null,
+    titleLines: Int = TITLE_LINES,
     playLabel: String? = null,
     onPlay: (() -> Unit)? = null,
-    edgeToEdgeProgress: Boolean = false,
     cover: @Composable () -> Unit = {},
 ) {
     Card(onClick = onClick, modifier = modifier.width(SHELF_CARD_WIDTH)) {
-        if (edgeToEdgeProgress) {
-            Column {
-                ShelfCover(
-                    playLabel = playLabel,
-                    onPlay = onPlay,
-                    cover = cover,
-                )
-                ShelfCardLabels(
-                    title = title,
-                    subtitle = subtitle,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                )
-                ShelfProgress(progress = progress)
-            }
-        } else {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                ShelfCover(
-                    playLabel = playLabel,
-                    onPlay = onPlay,
-                    cover = cover,
-                )
-                ShelfCardLabels(title = title, subtitle = subtitle)
-                ShelfProgress(progress = progress)
-            }
+        Column {
+            ShelfCover(
+                progress = progress,
+                playLabel = playLabel,
+                onPlay = onPlay,
+                cover = cover,
+            )
+            ShelfCardLabels(
+                title = title,
+                subtitle = subtitle,
+                detail = detail,
+                titleLines = titleLines,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
         }
     }
 }
 
 @Composable
 private fun ShelfCover(
+    progress: Float?,
     playLabel: String?,
     onPlay: (() -> Unit)?,
     cover: @Composable () -> Unit,
@@ -265,27 +248,35 @@ private fun ShelfCover(
                 )
             }
         }
+        ShelfProgress(
+            progress = progress,
+            modifier = Modifier.align(Alignment.BottomStart),
+        )
     }
 }
 
 @Composable
-private fun ShelfCardLabels(title: String, subtitle: String?, modifier: Modifier = Modifier) {
+private fun ShelfCardLabels(
+    title: String,
+    subtitle: String?,
+    detail: String?,
+    titleLines: Int,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // PRODUCT_SPEC 4 — every card in a row is the same height.
         //
-        // `minLines` as well as `maxLines`: a one-line title reserves the second line rather than
-        // letting the card shrink. A shelf whose cards differ in height by a text line has covers
-        // that do not line up, and the eye reads that as the row being crooked rather than as the
-        // titles being different lengths.
+        // Regular book titles reserve two lines so neighbouring cards stay aligned. Series titles use one
+        // line because their second and third rows are reserved for "Book X of Y" and the next book title.
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
-            minLines = TITLE_LINES,
-            maxLines = TITLE_LINES,
+            minLines = titleLines,
+            maxLines = titleLines,
             overflow = TextOverflow.Ellipsis,
         )
-        // Always drawn, blank when unknown. An absent author must cost the same height as a present
-        // one, or a book with no author sits a line higher than its neighbours.
+        // Always drawn, blank when unknown. An absent author must cost the same height as a present one,
+        // or a book with no author sits a line higher than its neighbours.
         Text(
             text = subtitle.orEmpty(),
             style = MaterialTheme.typography.bodySmall,
@@ -294,6 +285,16 @@ private fun ShelfCardLabels(title: String, subtitle: String?, modifier: Modifier
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        if (detail != null) {
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                minLines = 1,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -342,5 +343,5 @@ private val PLAY_BUTTON_SIZE = 40.dp
 /** Half of the original 48.dp control, which is the size the button now reads as. */
 private val PLAY_ICON_SIZE = 24.dp
 
-/** Two lines, always. See `ShelfCard` for why the second one is reserved rather than earned. */
+/** Two lines, always, for regular book titles. */
 private const val TITLE_LINES = 2
