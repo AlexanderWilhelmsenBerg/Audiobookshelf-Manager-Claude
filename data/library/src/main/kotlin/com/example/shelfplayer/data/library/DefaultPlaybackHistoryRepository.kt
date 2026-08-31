@@ -22,6 +22,7 @@ import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.PlaybackDeviceIdentity
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.ResumePolicyRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -52,6 +53,7 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
     private val gateway: AudiobookshelfGateway,
     private val device: PlaybackDeviceIdentity,
     private val logger: Logger,
+    private val resumePolicy: ResumePolicyRepository = ResumePolicyRepository.AlwaysEnabled,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : PlaybackHistoryRepository {
 
@@ -149,6 +151,7 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
      * server history cannot leave a ghost resume target behind.
      */
     override suspend fun latestServerSession(): ListeningSession? = withContext(ioDispatcher) {
+        if (!resumePolicy.isCrossDeviceResumeEnabled()) return@withContext null
         val profileId = profileRepository.activeProfileId() ?: return@withContext null
         val profile = profileDao.findProfile(profileId.value) ?: return@withContext null
         val cacheId = resumeCacheId(profileId)
@@ -156,7 +159,7 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
             is AppResult.Failure -> {
                 logger.debug(
                     LogCategory.Sync,
-                    "Could not read the server's latest listening activity; cached server resume state will be used if present",
+                    "Could not read the server's latest listening activity; using cached resume state if present",
                     LogField.Public("error", fetched.error::class.simpleName ?: "unknown"),
                 )
                 history.findInternal(profileId.value, cacheId)?.toCachedListeningSession()
