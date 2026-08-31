@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,6 +60,7 @@ internal fun LazyListScope.homeShelves(
                 books = shelves.continueListening,
                 onBookSelected = onBookSelected,
                 onBookPlaySelected = onBookPlaySelected,
+                inProgressStyle = true,
             )
         }
     }
@@ -109,6 +111,7 @@ private fun BookShelfRow(
     onBookSelected: (LibraryItemId) -> Unit,
     onBookPlaySelected: (LibraryItemId) -> Unit,
     modifier: Modifier = Modifier,
+    inProgressStyle: Boolean = false,
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ShelfHeading(text = stringResource(titleRes))
@@ -131,7 +134,18 @@ private fun BookShelfRow(
                         book.title,
                     ),
                     onPlay = { onBookPlaySelected(book.id) },
-                    cover = { BookCover(book = book) },
+                    edgeToEdgeProgress = inProgressStyle,
+                    cover = {
+                        if (inProgressStyle) {
+                            BookCover(
+                                book = book,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RectangleShape,
+                            )
+                        } else {
+                            BookCover(book = book)
+                        }
+                    },
                 )
             }
         }
@@ -192,63 +206,109 @@ private fun ShelfCard(
     modifier: Modifier = Modifier,
     playLabel: String? = null,
     onPlay: (() -> Unit)? = null,
+    edgeToEdgeProgress: Boolean = false,
     cover: @Composable () -> Unit = {},
 ) {
     Card(onClick = onClick, modifier = modifier.width(SHELF_CARD_WIDTH)) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Box {
-                cover()
-                if (onPlay != null && playLabel != null) {
-                    FilledIconButton(
-                        onClick = onPlay,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(8.dp)
-                            .size(PLAY_BUTTON_SIZE),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = playLabel,
-                            modifier = Modifier.size(PLAY_ICON_SIZE),
-                        )
-                    }
-                }
+        if (edgeToEdgeProgress) {
+            Column {
+                ShelfCover(
+                    playLabel = playLabel,
+                    onPlay = onPlay,
+                    cover = cover,
+                )
+                ShelfCardLabels(
+                    title = title,
+                    subtitle = subtitle,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+                ShelfProgress(progress = progress)
             }
-            // PRODUCT_SPEC 4 — every card in a row is the same height.
-            //
-            // `minLines` as well as `maxLines`: a one-line title reserves the second line rather than
-            // letting the card shrink. A shelf whose cards differ in height by a text line has covers
-            // that do not line up, and the eye reads that as the row being crooked rather than as the
-            // titles being different lengths.
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                minLines = TITLE_LINES,
-                maxLines = TITLE_LINES,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // Always drawn, blank when unknown. An absent author must cost the same height as a present
-            // one, or a book with no author sits a line higher than its neighbours.
-            Text(
-                text = subtitle.orEmpty(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                minLines = 1,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // The progress lane is reserved whether or not there is progress, for the same reason.
-            LinearProgressIndicator(
-                progress = { progress ?: 0f },
-                modifier = Modifier.fillMaxWidth(),
-                color = if (progress == null) Color.Transparent else ProgressIndicatorDefaults.linearColor,
-                trackColor = if (progress == null) Color.Transparent else ProgressIndicatorDefaults.linearTrackColor,
-            )
+        } else {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                ShelfCover(
+                    playLabel = playLabel,
+                    onPlay = onPlay,
+                    cover = cover,
+                )
+                ShelfCardLabels(title = title, subtitle = subtitle)
+                ShelfProgress(progress = progress)
+            }
         }
     }
+}
+
+@Composable
+private fun ShelfCover(
+    playLabel: String?,
+    onPlay: (() -> Unit)?,
+    cover: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        cover()
+        if (onPlay != null && playLabel != null) {
+            FilledIconButton(
+                onClick = onPlay,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .size(PLAY_BUTTON_SIZE),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = playLabel,
+                    modifier = Modifier.size(PLAY_ICON_SIZE),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShelfCardLabels(
+    title: String,
+    subtitle: String?,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // PRODUCT_SPEC 4 — every card in a row is the same height.
+        //
+        // `minLines` as well as `maxLines`: a one-line title reserves the second line rather than
+        // letting the card shrink. A shelf whose cards differ in height by a text line has covers
+        // that do not line up, and the eye reads that as the row being crooked rather than as the
+        // titles being different lengths.
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            minLines = TITLE_LINES,
+            maxLines = TITLE_LINES,
+            overflow = TextOverflow.Ellipsis,
+        )
+        // Always drawn, blank when unknown. An absent author must cost the same height as a present
+        // one, or a book with no author sits a line higher than its neighbours.
+        Text(
+            text = subtitle.orEmpty(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            minLines = 1,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ShelfProgress(progress: Float?, modifier: Modifier = Modifier) {
+    LinearProgressIndicator(
+        progress = { progress ?: 0f },
+        modifier = modifier.fillMaxWidth(),
+        color = if (progress == null) Color.Transparent else ProgressIndicatorDefaults.linearColor,
+        trackColor = if (progress == null) Color.Transparent else ProgressIndicatorDefaults.linearTrackColor,
+    )
 }
 
 @Composable
