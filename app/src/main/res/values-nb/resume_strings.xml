@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_section_cross_device_resume">Fortsett på tvers av enheter</string>
+    <string name="settings_cross_device_resume_enabled">Følg avspilling i Audiobookshelf</string>
+    <string name="settings_cross_device_resume_hint">Når dette er på, bruker Spill og oppstartsfortsettelse den sist avspilte uferdige boken på tvers av Audiobookshelf-klientene dine. Slå av for å bruke bare den siste boken som ble spilt på denne enheten.</string>
+</resources>
