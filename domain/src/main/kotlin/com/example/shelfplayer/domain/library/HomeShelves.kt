@@ -39,6 +39,9 @@ data class HomeShelves(
 /**
  * A series the user is partway through, and the book to play next.
  *
+ * @property currentBookNumber the one-based position of [nextBook] in the series' actual reading order.
+ *   It is not inferred from [finishedCount]: a self-hosted library can have gaps or out-of-order progress,
+ *   and the card should still say "Book 8 of 14" when the book being carried on with is actually eighth.
  * @property lastPlayedAt the most recent progress anywhere in the series, which is what orders the
  *   shelf: the series touched most recently is the one most likely to be wanted.
  */
@@ -48,6 +51,7 @@ data class SeriesProgress(
     val finishedCount: Int,
     val bookCount: Int,
     val lastPlayedAt: Instant,
+    val currentBookNumber: Int = (finishedCount + 1).coerceAtMost(bookCount),
 )
 
 /**
@@ -116,12 +120,14 @@ private fun continueSeries(books: List<Book>, limit: Int): List<SeriesProgress> 
         if (shelf.finishedCount == 0) return@mapNotNull null
         val lastPlayed = shelf.books.mapNotNull { it.progress?.updatedAt }.maxOrNull()
             ?: return@mapNotNull null
+        val currentBookNumber = shelf.books.indexOfFirst { it.id == next.id } + 1
         SeriesProgress(
             series = shelf.series,
             nextBook = next,
             finishedCount = shelf.finishedCount,
             bookCount = shelf.bookCount,
             lastPlayedAt = lastPlayed,
+            currentBookNumber = currentBookNumber,
         )
     }
     .sortedWith(compareByDescending<SeriesProgress> { it.lastPlayedAt }.thenBy { it.series.id.value })
