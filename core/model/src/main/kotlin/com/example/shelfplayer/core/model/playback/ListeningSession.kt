@@ -23,9 +23,10 @@ import kotlin.time.Duration
  *
  * ### The units, which the capture settled rather than the reading
  *
- * [listened], [startedFrom] and [reachedAt] are positions and durations; [startedAt] is a moment. The wire
- * response carries the first three in **seconds** and the last in **epoch milliseconds**, which is the pair
- * a reader guesses wrong — `docs/api-compatibility.md` and `ListeningSessionContractTest` pin it.
+ * [listened], [startedFrom] and [reachedAt] are positions and durations; [startedAt] and [updatedAt] are
+ * moments. The wire response carries the first three in **seconds** and the latter two in **epoch
+ * milliseconds**, which is the pair a reader guesses wrong — `docs/api-compatibility.md` and
+ * `ListeningSessionContractTest` pin it.
  *
  * ### What is deliberately absent
  *
@@ -44,6 +45,9 @@ import kotlin.time.Duration
  * @property startedFrom the position the session opened at.
  * @property reachedAt the position it got to. [startedFrom] to [reachedAt] is the span a history row
  *   describes.
+ * @property updatedAt the server's last change to this session. Unlike [startedAt], this says which session
+ *   was active most recently, so it can be compared with local progress when choosing a cross-device resume
+ *   target without guessing that the newest *start* is also the newest *listening*.
  */
 data class ListeningSession(
     val id: String,
@@ -55,4 +59,5 @@ data class ListeningSession(
     val startedFrom: Duration,
     val reachedAt: Duration,
     val startedAt: Instant,
+    val updatedAt: Instant,
 )
