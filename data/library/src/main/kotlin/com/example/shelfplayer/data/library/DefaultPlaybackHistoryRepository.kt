@@ -156,7 +156,7 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
             is AppResult.Failure -> {
                 logger.debug(
                     LogCategory.Sync,
-                    "Could not read the server's latest listening activity; cached server resume state will be used if present",
+                    "Could not read server resume activity; using cached state",
                     LogField.Public("error", fetched.error::class.simpleName ?: "unknown"),
                 )
                 history.findInternal(profileId.value, cacheId)?.toCachedListeningSession()
