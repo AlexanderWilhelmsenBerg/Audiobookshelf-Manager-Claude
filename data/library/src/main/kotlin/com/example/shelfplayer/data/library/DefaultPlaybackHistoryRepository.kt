@@ -155,10 +155,11 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
                 null
             }
 
-            is AppResult.Success -> fetched.value
-                .asSequence()
-                .filter { session -> session.listened > Duration.ZERO }
-                .maxByOrNull(ListeningSession::updatedAt)
+            is AppResult.Success ->
+                fetched.value
+                    .asSequence()
+                    .filter { session -> session.listened > Duration.ZERO }
+                    .maxByOrNull(ListeningSession::updatedAt)
         }
     }
 
