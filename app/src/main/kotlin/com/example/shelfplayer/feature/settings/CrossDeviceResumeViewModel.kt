@@ -12,9 +12,7 @@ import javax.inject.Inject
 
 /** Owns the one profile-scoped choice of whether resume follows Audiobookshelf across clients. */
 @HiltViewModel
-class CrossDeviceResumeViewModel @Inject constructor(
-    private val policy: ResumePolicyRepository,
-) : ViewModel() {
+class CrossDeviceResumeViewModel @Inject constructor(private val policy: ResumePolicyRepository) : ViewModel() {
     val enabled: StateFlow<Boolean> = policy.observeCrossDeviceResumeEnabled().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
