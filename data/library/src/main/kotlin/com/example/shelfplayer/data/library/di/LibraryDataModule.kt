@@ -8,6 +8,7 @@ import com.example.shelfplayer.data.library.DefaultPlaybackHistoryRepository
 import com.example.shelfplayer.data.library.DefaultPlaybackRepository
 import com.example.shelfplayer.data.library.DefaultProfileRepository
 import com.example.shelfplayer.data.library.DefaultRealtimeUpdates
+import com.example.shelfplayer.data.library.DefaultResumePolicyRepository
 import com.example.shelfplayer.data.library.DefaultSessionSyncRepository
 import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
@@ -17,6 +18,7 @@ import com.example.shelfplayer.domain.repository.MetadataRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.ResumePolicyRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import dagger.Binds
 import dagger.Module
@@ -58,6 +60,11 @@ interface LibraryDataModule {
     @Binds
     @Singleton
     fun bindsPlaybackHistoryRepository(impl: DefaultPlaybackHistoryRepository): PlaybackHistoryRepository
+
+    /** Whether resume may follow newer Audiobookshelf listening activity from another client. */
+    @Binds
+    @Singleton
+    fun bindsResumePolicyRepository(impl: DefaultResumePolicyRepository): ResumePolicyRepository
 
     /** PRODUCT_SPEC 11.1 — the positions a listener wanted to keep, and their own words about them. */
     @Binds
