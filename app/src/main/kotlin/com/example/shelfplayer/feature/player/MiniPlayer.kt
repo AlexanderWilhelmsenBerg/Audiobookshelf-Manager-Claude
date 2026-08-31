@@ -1,8 +1,8 @@
 package com.example.shelfplayer.feature.player
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
@@ -28,7 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -74,23 +74,19 @@ fun MiniPlayer(
     val backSeconds = skips.intervals.back.inWholeSeconds.toInt()
     val forwardSeconds = skips.intervals.forward.inWholeSeconds.toInt()
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        tonalElevation = 3.dp,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(BAR_HEIGHT),
+        tonalElevation = 0.dp,
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_ALPHA),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = GLASS_BORDER_ALPHA),
+        ),
     ) {
-        Column {
-            LinearProgressIndicator(
-                progress = { state.fractionComplete },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(BAR_HEIGHT)
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 // The cover and the text are one tap target that opens the player; the controls sit
                 // outside it. That is "anywhere except the buttons", expressed as a region rather than as
                 // a click on the whole bar that the buttons then have to out-compete.
@@ -105,10 +101,13 @@ fun MiniPlayer(
                         .fillMaxHeight()
                         .clickable(onClick = onExpand, onClickLabel = openLabel),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    MiniPlayerArtwork(state = state)
-                    Column(modifier = Modifier.weight(1f)) {
+                    MiniPlayerArtwork(state = state, isLoading = state.isLoading)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp),
+                    ) {
                         Text(
                             text = state.title,
                             style = MaterialTheme.typography.titleSmall,
@@ -127,12 +126,9 @@ fun MiniPlayer(
                         }
                     }
                 }
-                if (state.isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                }
                 // PRODUCT_SPEC PLAY-007 — the two skips a listener reaches for without looking, at the
                 // configured intervals. The glyph drops its number rather than printing a wrong one.
-                IconButton(onClick = skips.onBack) {
+                MiniPlayerButton(onClick = skips.onBack) {
                     Icon(
                         imageVector = SkipIcons.back(skips.intervals.back),
                         contentDescription = pluralStringResource(
@@ -140,15 +136,16 @@ fun MiniPlayer(
                             backSeconds,
                             backSeconds,
                         ),
+                        modifier = Modifier.size(TRANSPORT_ICON_SIZE),
                     )
                 }
                 // PRODUCT_SPEC PLAY-008 — the remaining time doubles as the control's label, so a
                 // listener can see the timer is running without opening anything.
-                IconButton(onClick = onOpenSleepTimer) {
+                MiniPlayerButton(onClick = onOpenSleepTimer) {
                     if (timer.isActive) {
                         Text(
                             text = timer.remaining.asCountdownLabel(),
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.semantics {
                                 contentDescription = activeTimerLabel
                             },
@@ -157,18 +154,20 @@ fun MiniPlayer(
                         Icon(
                             imageVector = Icons.Filled.Bedtime,
                             contentDescription = stringResource(R.string.sleep_timer_open),
+                            modifier = Modifier.size(TRANSPORT_ICON_SIZE),
                         )
                     }
                 }
-                IconButton(onClick = onTogglePlayPause) {
+                MiniPlayerButton(onClick = onTogglePlayPause) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         contentDescription = stringResource(
                             if (state.isPlaying) R.string.player_pause else R.string.player_resume,
                         ),
+                        modifier = Modifier.size(PLAY_ICON_SIZE),
                     )
                 }
-                IconButton(onClick = skips.onForward) {
+                MiniPlayerButton(onClick = skips.onForward) {
                     Icon(
                         imageVector = SkipIcons.forward(skips.intervals.forward),
                         contentDescription = pluralStringResource(
@@ -176,32 +175,52 @@ fun MiniPlayer(
                             forwardSeconds,
                             forwardSeconds,
                         ),
+                        modifier = Modifier.size(TRANSPORT_ICON_SIZE),
                     )
                 }
-                IconButton(onClick = onStop) {
+                MiniPlayerButton(onClick = onStop) {
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = stringResource(R.string.player_stop),
+                        modifier = Modifier.size(TRANSPORT_ICON_SIZE),
                     )
                 }
             }
+            LinearProgressIndicator(
+                progress = { state.fractionComplete },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(PROGRESS_HEIGHT),
+            )
         }
     }
 }
 
-/**
- * The cover, at the height the bar gives it.
- *
- * Present in the enlarged bar and absent from the old one, and it is most of what the extra height buys:
- * a bar with the book's cover on it says which book is playing before any text is read.
- */
 @Composable
-private fun MiniPlayerArtwork(state: PlaybackUiState, modifier: Modifier = Modifier) {
+private fun MiniPlayerButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(CONTROL_WIDTH),
+    ) {
+        content()
+    }
+}
+
+/** The cover touches the left, top and bottom edges of the mini player with no surrounding padding. */
+@Composable
+private fun MiniPlayerArtwork(
+    state: PlaybackUiState,
+    isLoading: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
-            .size(ARTWORK_SIZE)
-            .clip(MaterialTheme.shapes.small)
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .fillMaxHeight()
+            .width(ARTWORK_WIDTH)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = GLASS_ARTWORK_ALPHA)),
         contentAlignment = Alignment.Center,
     ) {
         val uri = state.artworkUri
@@ -210,7 +229,7 @@ private fun MiniPlayerArtwork(state: PlaybackUiState, modifier: Modifier = Modif
                 imageVector = Icons.AutoMirrored.Filled.MenuBook,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(24.dp),
             )
         } else {
             AsyncImage(
@@ -220,16 +239,22 @@ private fun MiniPlayerArtwork(state: PlaybackUiState, modifier: Modifier = Modif
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.dp,
+            )
+        }
     }
 }
 
-/**
- * Double the old bar.
- *
- * The old one was a single row of text and two icons at about 56dp. Doubling it is what makes room for
- * the cover and for four controls at a comfortable touch size, and it makes the bar a target big enough
- * to tap without aiming — which matters now that tapping it opens the player.
- */
-private val BAR_HEIGHT = 112.dp
-
-private val ARTWORK_SIZE = 88.dp
+/** Roughly 60% of the previous 112 dp mini-player height. */
+private val BAR_HEIGHT = 68.dp
+private val ARTWORK_WIDTH = 46.dp
+private val CONTROL_WIDTH = 48.dp
+private val TRANSPORT_ICON_SIZE = 28.dp
+private val PLAY_ICON_SIZE = 34.dp
+private val PROGRESS_HEIGHT = 2.dp
+private const val GLASS_ALPHA = 0.76f
+private const val GLASS_BORDER_ALPHA = 0.35f
+private const val GLASS_ARTWORK_ALPHA = 0.72f
