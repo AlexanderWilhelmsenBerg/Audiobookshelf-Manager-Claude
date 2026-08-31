@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_section_cross_device_resume">Cross-device resume</string>
+    <string name="settings_cross_device_resume_enabled">Follow Audiobookshelf playback</string>
+    <string name="settings_cross_device_resume_hint">When on, Play and startup resume the most recently played unfinished book across your Audiobookshelf clients. Turn it off to use only the last book played on this device.</string>
+</resources>
