@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC PLAY-002 — the audio-output button in the Android Auto player and the media notification.
+
+  The plain Bluetooth rune rather than the rune-with-soundwaves the phone's chooser draws. A car button is
+  read at a glance from a driving position, and the waves add detail that survives neither the size nor the
+  tint a head unit applies. `@android:color/white` and a 24dp box are Media3's own conventions for the icons
+  it ships for this slot, so the button sits with the others rather than beside them.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M17.71,7.71L12,2h-1v7.59L6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 11,14.41V22h1l5.71,-5.71 -4.3,-4.29 4.3,-4.29zM13,5.83l1.88,1.88L13,9.59V5.83zm1.88,10.46L13,18.17v-3.76l1.88,1.88z"/>
+</vector>

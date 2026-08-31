@@ -220,10 +220,19 @@ class AutoLibrary @Inject constructor(
      * is why the child it returns is a plain statement of what happened rather than another control, and why
      * the row already playing is marked — a driver who opens the wrong one sees immediately, and the way
      * back is the row above.
+     *
+     * ### Two marks, because the choice and the route are two facts
+     *
+     * *"Playing here"* is where the platform says media actually is. *"Chosen, but not in use"* is a request
+     * the platform declined — `setPreferredAudioDevice` is a preference and may be ignored, which a device
+     * run found happening for the built-in speaker. The phone's menu draws the same pair as a tick and a
+     * label; here there is only a title, so both go in it. Marking only the route would lose the driver's
+     * own choice, and marking only the choice is the lie ADR-0027's amendment was written to stop.
      */
     private fun outputRows(): List<MediaItem> {
         val outputs = audioOutputs.available()
         if (outputs.isEmpty()) return listOf(noticeRow(string(R.string.car_output_none)))
+        val chosen = audioOutputs.selected()
         return listOf(
             browsableNode(
                 id = "$OUT_PREFIX$AUTOMATIC_OUTPUT",
@@ -232,10 +241,10 @@ class AutoLibrary @Inject constructor(
         ) + outputs.map { output ->
             browsableNode(
                 id = "$OUT_PREFIX${output.id}",
-                title = if (output.isActive) {
-                    string(R.string.car_output_playing_here, output.displayName)
-                } else {
-                    output.displayName
+                title = when {
+                    output.isActive -> string(R.string.car_output_playing_here, output.displayName)
+                    output.id == chosen -> string(R.string.car_output_chosen_unused, output.displayName)
+                    else -> output.displayName
                 },
             )
         }
@@ -246,6 +255,11 @@ class AutoLibrary @Inject constructor(
      *
      * The router refuses an id it cannot see, so a car serving a cached list from before a device
      * disconnected changes nothing rather than routing somewhere arbitrary.
+     *
+     * The confirmation names **what was asked for**, deliberately, and does not claim the sound moved. It
+     * cannot: the preference is applied on the player's own thread after this returns, so nothing readable
+     * here yet reflects it, and the platform may decline it anyway. Going back one row re-reads the list,
+     * which is where the route is reported.
      */
     private fun chooseOutput(mediaId: String): List<MediaItem> {
         val id = mediaId.removePrefix(OUT_PREFIX)
@@ -257,7 +271,7 @@ class AutoLibrary @Inject constructor(
                 if (name == null) {
                     string(R.string.car_output_automatic_now)
                 } else {
-                    string(R.string.car_output_playing_here, name)
+                    string(R.string.car_output_chosen, name)
                 },
             ),
         )
@@ -314,6 +328,21 @@ class AutoLibrary @Inject constructor(
     }
 
     /**
+     * PRODUCT_SPEC ROUTE-001 — the resume tile as **one item and no open session**.
+     *
+     * Media3 1.11.0 split `onPlaybackResumption` in two with an `isForPlayback` flag, and this answers the
+     * `false` half: System UI asking, at boot, for enough metadata to draw a resumption notification, with
+     * no intention of starting anything. Its own javadoc asks for exactly what [resumeRow] already builds —
+     * one item, a title, and the completion extras that draw the part-finished bar — so this is that row
+     * rather than a second description of the same tile.
+     *
+     * The id is [AT_PREFIX]'s, so a controller that hands it back resumes at the stored position through
+     * the same [resolve] every car tap uses. Nothing here opens a server session: a listening session
+     * opened to populate a notification is one the server would show as playing when nobody is.
+     */
+    suspend fun resumeItem(): MediaItem? = resumeRow().firstOrNull()
+
+    /**
      * PRODUCT_SPEC LIB-002 / PLAY-001 — the car's tabs are **the phone's shelves**.
      *
      * The owner's report was that the car opened on an empty *Continue* and said "no books", while a search
@@ -347,16 +376,14 @@ class AutoLibrary @Inject constructor(
             if (shelves.discover.isNotEmpty()) add(tab(TAB_DISCOVER, R.string.car_tab_discover))
         }
         if (tabs.isEmpty()) return listOf(emptyNotice())
-        // PRODUCT_SPEC PLAY-002 — the output tab is last and only when there is a choice to make. With one
-        // output connected the list would offer the driver the thing already happening, which is a tab that
-        // costs a glance and answers nothing.
-        val outputTab = if (audioOutputs.available().size > 1) {
-            listOf(tab(TAB_OUTPUT, R.string.car_tab_output))
-        } else {
-            emptyList()
-        }
+        // PRODUCT_SPEC PLAY-002 — the output tab is last and unconditional. It used to appear only above two
+        // connected outputs, on the reasoning that offering the only thing available answers nothing. A car
+        // is where that reasoning broke: the head unit *is* a connected output, often the only one the
+        // platform reports, and it is precisely the one a driver might want to move a book off — onto a
+        // headset, or back to the phone. Hiding the tab there hid the control exactly where it was wanted.
+        // The node itself still says when there is nothing to list (see [outputRows]).
         return tabs + tab(TAB_CHAPTERS, R.string.car_tab_chapters) +
-            tab(TAB_HISTORY, R.string.car_tab_history) + outputTab
+            tab(TAB_HISTORY, R.string.car_tab_history) + tab(TAB_OUTPUT, R.string.car_tab_output)
     }
 
     /**

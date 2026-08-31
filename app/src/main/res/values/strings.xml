@@ -165,7 +165,50 @@
 
     <!-- PRODUCT_SPEC LIB-003 / TC-16 — browsing by series. -->
     <string name="series_title">Series</string>
+
+    <!--
+      PRODUCT_SPEC LIB-003 — the series header.
+
+      The progress line is a plural on the *series* length, not on the finished count: "1 of 1 finished"
+      and "3 of 7 finished" are the same sentence, and it is the total that decides whether the noun is
+      plural in the languages this app is translated into.
+    -->
+    <plurals name="series_progress">
+        <item quantity="one">%1$d of %2$d book finished</item>
+        <item quantity="other">%1$d of %2$d books finished</item>
+    </plurals>
+    <!-- %1$s is a duration already formatted as `4h 12m`. -->
+    <string name="series_total_duration">%1$s in total</string>
+    <string name="series_all_finished">You have finished every book in this series.</string>
+    <!--
+      What the continue button is *called* to a screen reader. The button shows the title alone because
+      the surrounding lines supply the context on screen; spoken, it has to carry that context itself.
+      %1$s is the book's title.
+    -->
+    <string name="series_continue">Continue with %1$s</string>
+    <!-- %1$s is the book's title. Names the book so a list of play buttons is not a list of "Play". -->
+    <string name="book_play_named">Play %1$s</string>
     <string name="series_loading">Loading series</string>
+
+    <!--
+      PRODUCT_SPEC §62 "author view" — one author opened into their books, reached from a book's own
+      author line. Mirrors the series screen above, because the two lines sit next to each other.
+    -->
+    <string name="author_title">Author</string>
+    <plurals name="author_progress">
+        <item quantity="one">%1$d of %2$d book finished</item>
+        <item quantity="other">%1$d of %2$d books finished</item>
+    </plurals>
+    <string name="author_total_duration">%1$s in total</string>
+    <string name="author_loading">Loading author</string>
+    <string name="author_missing_title">Author not available</string>
+    <string name="author_missing_body">This author\'s books are not in the current profile\'s library.</string>
+    <!--
+      What the two collection lines on a book are *called* to a screen reader. On screen they read as
+      metadata; spoken, a name announced as a button has to say where pressing it goes.
+    -->
+    <string name="book_open_author">Open %1$s</string>
+    <string name="book_open_series">Open the series %1$s</string>
     <string name="series_empty_title">No series here</string>
     <string name="series_missing_title">Series not available</string>
     <string name="series_missing_body">This series is not in the current profile\'s library.</string>
@@ -261,6 +304,9 @@
     <string name="player_output_current">Audio output: %1$s</string>
     <string name="player_output_automatic">Automatic</string>
     <string name="player_output_selected">Selected</string>
+    <!-- PLAY-002 — where the platform says the audio actually went, which is not always what was
+         asked for. %1$s is the device name. -->
+    <string name="player_output_playing_here">%1$s — playing here</string>
     <!-- %1$s is a remaining time such as "1:04:12". -->
     <string name="player_remaining">−%1$s</string>
     <!-- %1$d minutes, %2$02d seconds. -->
@@ -783,6 +829,14 @@
     <string name="settings_rewind_long">10 to 60 minutes</string>
     <string name="settings_rewind_very_long">Over an hour</string>
     <string name="settings_section_buffer">Streaming buffer</string>
+    <!--
+      PRODUCT_SPEC 6.4 step 6 — what happens when a book runs out. On by default, so the hint is written in
+      the present tense, and it names the one case where continuing is wrong along with the control that
+      answers it.
+    -->
+    <string name="settings_section_series">When a book ends</string>
+    <string name="settings_series_hint">A finished book rolls straight into the next one in its series. Books you have already finished are skipped. If you listen yourself to sleep, set a sleep timer as well — it stops the book wherever it is.</string>
+    <string name="settings_series_auto_advance">Start the next book in the series</string>
     <string name="settings_buffer_hint">Streamed books only; a downloaded book uses the player\'s own defaults. A larger buffer survives a worse connection and uses more memory and mobile data. Takes effect the next time a book starts.</string>
     <string name="settings_buffer_automatic">Automatic</string>
     <string name="settings_buffer_low">Low</string>

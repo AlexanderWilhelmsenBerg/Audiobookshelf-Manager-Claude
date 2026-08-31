@@ -107,6 +107,15 @@ class PlayerViewModel @Inject constructor(
      */
     val outputs: StateFlow<List<AudioOutput>> = controller.outputs
 
+    /**
+     * PRODUCT_SPEC PLAY-002 — which output the listener picked, for the tick in the menu.
+     *
+     * Deliberately separate from the routed flag on each [AudioOutput]: the tick is what was asked for and
+     * the "playing here" label is what the platform did with it, and a device run proved the two disagree
+     * when a request is declined.
+     */
+    val selectedOutput: StateFlow<String?> = controller.selectedOutput
+
     /** PRODUCT_SPEC PLAY-009 — "applied rewind is visible briefly and can be undone". */
     val rewind: StateFlow<AutoRewindController.Applied?> = autoRewind.lastApplied
 

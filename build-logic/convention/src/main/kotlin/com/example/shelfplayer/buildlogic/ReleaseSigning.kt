@@ -66,36 +66,23 @@ internal fun ApplicationExtension.configureReleaseSigning(project: Project) {
     buildTypes.named("release") { signingConfig = supplied }
 
     /*
-     * **The debug build gets the same key, and this is the half that fixes a real workflow.**
+     * **This deliberately does not touch the debug build**, and an earlier version of it did.
      *
-     * `debug` declared no signing config, so AGP fell back to `~/.android/debug.keystore` — which it
-     * *generates* when it is absent. A GitHub runner is ephemeral, so every APK the Build APK workflow
-     * produced was signed with a brand-new key, and installing one over another gave
-     * `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. The only way through is to uninstall, which wipes the profile
-     * and the downloads and makes the tester sign in again. That happened on every single device build.
+     * It used to end `buildTypes.named("debug") { signingConfig = supplied }`, on the reasoning that a
+     * stable key makes `adb install -r` an upgrade rather than a reinstall. The reasoning was right and the
+     * placement was wrong: it made the debug signature depend on **whether four environment variables were
+     * set in the shell that ran Gradle**. A release build in one terminal and a debug build in another
+     * produced two differently-signed debug APKs, and every flip between them cost the tester an
+     * uninstall — the profile, the passcode, the progress journal and every downloaded book.
      *
-     * A stable key makes `adb install -r` an upgrade instead: the sign-in, the passcode, the progress
-     * journal and the downloaded files all survive. For a project whose testing is a person with a phone,
-     * that is worth more than the release half of this file.
-     *
-     * **Opt out with `bookwave.signing.debug=false`** if you would rather keep AGP's own debug key — for
-     * instance to avoid the one-time uninstall the switch costs. It is one-time: the *first* install after
-     * the key changes still needs it, because the signature genuinely changed.
+     * `DebugSigning.kt` now gives the debug build one key of its own that nothing else can change. Release
+     * inputs configure the release build and stop there.
      */
-    val alsoDebug = project.findProperty(DEBUG_SIGNING_PROPERTY)?.toString()?.toBoolean() ?: true
-    if (alsoDebug) buildTypes.named("debug") { signingConfig = supplied }
-
     project.logger.lifecycle(
-        if (alsoDebug) {
-            "BookWave: release and debug will be signed with the key supplied outside this repository."
-        } else {
-            "BookWave: release will be signed with the key supplied outside this repository; debug will not."
-        },
+        "BookWave: release will be signed with the key supplied outside this repository.",
     )
 }
 
-/** `bookwave.signing.debug=false` keeps AGP's generated debug key. See [configureReleaseSigning]. */
-private const val DEBUG_SIGNING_PROPERTY = "bookwave.signing.debug"
 
 /**
  * Says so — **when a release is actually being assembled**, and not before.

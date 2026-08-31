@@ -29,23 +29,26 @@ import com.example.shelfplayer.core.model.playback.DeviceKind
 /**
  * PRODUCT_SPEC PLAY-002 — the output chooser on the player card.
  *
- * ### Why it is not shown when there is one output
+ * ### It is shown whenever there is an output at all
  *
- * A phone always reports its own speaker, so "no outputs" is not a state a listener sees; "one output" is,
- * and it is a menu offering the thing already happening. The control appears exactly when there is a choice
- * to make, which is the same rule the car's tab uses — one behaviour to learn rather than two.
+ * It used to hide below two outputs, on the reasoning that a menu offering the only thing available answers
+ * nothing. A device run retired that: in a car the control did not appear at all, and the car *is* the
+ * output somebody might want to move a book off. The count is the wrong question — the control is how a
+ * listener finds out where the book is going, which is worth having even when there is one answer.
  *
- * ### What the tick means, and what it does not
+ * ### Two facts, shown separately
  *
- * It marks what the player was **asked** for, not where sound is provably coming from. Android exposes no
- * way to ask "which output is media using"; `setPreferredAudioDevice` is a preference the platform honours
- * while it can. So *Automatic* is ticked whenever nothing has been chosen — including when the system has
- * sensibly routed to a headset — because claiming to know more than that would be a lie a listener could
- * catch.
+ * The **tick** is the choice: a device, or *Automatic*. The **"playing here"** label is where the platform
+ * says the audio actually went, read from `AudioManager.getAudioDevicesForAttributes` on API 33+.
+ *
+ * They can disagree, and when they do that is the finding rather than a glitch to paper over: choosing the
+ * phone speaker while a headset is connected leaves the sound in the headset on some devices, because
+ * `setPreferredDevice` is a request the platform may decline and there is no public API to force it. Showing
+ * the choice alone would be a tick that lies; showing the route alone would lose what was asked for.
  */
 @Composable
 internal fun AudioOutputAction(controls: OutputControls, modifier: Modifier = Modifier) {
-    if (controls.outputs.size < 2) return
+    if (controls.outputs.isEmpty()) return
     var expanded by rememberSaveable { mutableStateOf(false) }
     val active = controls.outputs.firstOrNull(AudioOutput::isActive)
     Box(modifier = modifier) {
@@ -64,7 +67,8 @@ internal fun AudioOutputAction(controls: OutputControls, modifier: Modifier = Mo
             OutputRow(
                 label = stringResource(R.string.player_output_automatic),
                 icon = Icons.Filled.Audiotrack,
-                isSelected = active == null,
+                isSelected = controls.selectedId == null,
+                isRouted = false,
                 onClick = {
                     controls.onSelect(null)
                     expanded = false
@@ -74,7 +78,8 @@ internal fun AudioOutputAction(controls: OutputControls, modifier: Modifier = Mo
                 OutputRow(
                     label = output.displayName,
                     icon = iconFor(output.kind),
-                    isSelected = output.isActive,
+                    isSelected = output.id == controls.selectedId,
+                    isRouted = output.isActive,
                     onClick = {
                         controls.onSelect(output.id)
                         expanded = false
@@ -86,9 +91,13 @@ internal fun AudioOutputAction(controls: OutputControls, modifier: Modifier = Mo
 }
 
 @Composable
-private fun OutputRow(label: String, icon: ImageVector, isSelected: Boolean, onClick: () -> Unit) {
+private fun OutputRow(label: String, icon: ImageVector, isSelected: Boolean, isRouted: Boolean, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(label) },
+        text = {
+            Text(
+                text = if (isRouted) stringResource(R.string.player_output_playing_here, label) else label,
+            )
+        },
         onClick = onClick,
         leadingIcon = { Icon(imageVector = icon, contentDescription = null) },
         trailingIcon = {

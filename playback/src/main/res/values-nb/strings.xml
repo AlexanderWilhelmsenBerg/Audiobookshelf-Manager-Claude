@@ -24,7 +24,10 @@
     <string name="car_output_automatic">Automatisk</string>
     <string name="car_output_automatic_now">Spilles der systemet velger</string>
     <string name="car_output_playing_here">%1$s \u2014 spilles her</string>
+    <string name="car_output_chosen_unused">%1$s \u2014 valgt, men ikke i bruk</string>
+    <string name="car_output_chosen">Valgte %1$s</string>
     <string name="car_output_none">Fant ingen lydutganger</string>
+    <string name="player_output_action">Lydutgang: %1$s</string>
 
     <string name="car_empty_title">Ingen bøker ennå</string>
     <!-- %1$s er appnavnet. -->

@@ -35,6 +35,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Bookmark
+import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerState
@@ -46,6 +47,7 @@ import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
+import com.example.shelfplayer.domain.usecase.NextInSeriesUseCase
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -58,6 +60,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -95,6 +98,10 @@ class PlaybackService : MediaLibraryService() {
     /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
     @Inject
     internal lateinit var audioOutputs: AudioOutputRouter
+
+    /** PRODUCT_SPEC 6.4 step 6 — what to play when a book ends, or nothing. See [advanceToNextInSeries]. */
+    @Inject
+    internal lateinit var nextInSeries: NextInSeriesUseCase
 
     @Inject
     internal lateinit var playbackRepository: PlaybackRepository
@@ -174,10 +181,17 @@ class PlaybackService : MediaLibraryService() {
     private var journal: Job? = null
     private var sleepTimerWatch: Job? = null
     private var skipWatch: Job? = null
+    private var outputWatch: Job? = null
 
     /** The two inputs to the notification's own buttons. Main thread only, like everything that reads them. */
     private var skips: SkipIntervals = SkipIntervals.Default
     private var sleepTimerState: SleepTimerState = SleepTimerState.Idle
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — what the audio-output button is currently labelled with, or `null` for
+     * *Automatic*. Read on the main thread like the two above.
+     */
+    private var currentOutput: AudioOutput? = null
 
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
@@ -223,6 +237,7 @@ class PlaybackService : MediaLibraryService() {
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()
+        observeAudioOutputs()
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
@@ -343,6 +358,7 @@ class PlaybackService : MediaLibraryService() {
         journal?.cancel()
         sleepTimerWatch?.cancel()
         skipWatch?.cancel()
+        outputWatch?.cancel()
         session?.release()
         session = null
         player?.release()
@@ -599,6 +615,10 @@ class PlaybackService : MediaLibraryService() {
             if (playbackState == Player.STATE_ENDED) {
                 scope.launch { recordPosition() }
                 sessionSync.request(SyncTrigger.BookChanged)
+                // PRODUCT_SPEC 6.4 step 6 — after the position is journalled and the sync is asked for,
+                // never before: the book that just ended has to be recorded as finished whether or not
+                // anything follows it, and an advance that failed must not have cost the last write.
+                scope.launch { advanceToNextInSeries() }
             }
         }
 
@@ -671,6 +691,27 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-002 — keeps the car's output button naming the right destination.
+     *
+     * Both flows, because the button reports the **route** and falls back to the **choice**, and either can
+     * move without the other: a headset disconnecting changes the route with no selection involved, and
+     * choosing an output changes the selection before the platform has acted on it.
+     */
+    private fun observeAudioOutputs() {
+        outputWatch = scope.launch {
+            combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, selected) ->
+                val next = AudioOutputCycle.current(outputs, selected)
+                // Republishing on every emission would rewrite the notification for a device change that
+                // does not touch the button's text, and Media3 pushes each set to every controller.
+                if (next != currentOutput) {
+                    currentOutput = next
+                    publishMediaButtons()
+                }
+            }
+        }
+    }
+
     private fun publishMediaButtons() {
         val current = session ?: return
         current.setMediaButtonPreferences(mediaButtons())
@@ -700,6 +741,29 @@ class PlaybackService : MediaLibraryService() {
                 ),
                 slot = CommandButton.SLOT_FORWARD,
             ),
+        )
+        // PRODUCT_SPEC PLAY-002 — the output button, before the sleep timer's so its place in the car does
+        // not move when a timer starts. `SLOT_OVERFLOW` is not a preference here but the requirement:
+        // `CommandButton.getCustomLayoutFromMediaButtonPreferences` keeps the back and forward buttons and
+        // then only buttons declaring that slot, and the legacy layout is what Android Auto renders.
+        add(
+            // `ICON_UNDEFINED` on purpose: none of Media3's constants is a Bluetooth glyph, and the constant
+            // is passed to legacy controllers as a hint beside the resource. Naming a wrong one would invite
+            // a head unit to draw a signal bar instead of the icon that was asked for.
+            CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+                // `PlayerWrapper` builds the legacy custom action from this resource id, and that is what
+                // Android Auto draws.
+                .setCustomIconResId(R.drawable.ic_audio_output)
+                .setDisplayName(
+                    getString(
+                        R.string.player_output_action,
+                        currentOutput?.displayName ?: getString(R.string.car_output_automatic),
+                    ),
+                )
+                .setSessionCommand(SessionCommand(NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT, Bundle.EMPTY))
+                .setSlots(CommandButton.SLOT_OVERFLOW)
+                .setEnabled(true)
+                .build(),
         )
         val timer = sleepTimerState
         if (timer.isActive) {
@@ -881,6 +945,46 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun resolveQueue(item: MediaItem): MediaItems.Queue? {
         val target = AutoLibrary.resolve(item.mediaId) ?: return null
         return openQueue(target.bookId, target.startAt)
+    }
+
+    /**
+     * PRODUCT_SPEC 6.4 step 6 — plays the next book in the series, if there is one and the listener wants it.
+     *
+     * ### Why this reads the player rather than being told what ended
+     *
+     * `STATE_ENDED` says the timeline ran out, not which book it was. The current item *is* the one that
+     * just finished — ADR-0016 makes a book a single window, so there is no next item Media3 could have
+     * moved to — and reading it here is the only place that fact is still available.
+     *
+     * ### The three ways this does nothing, and why each is silent
+     *
+     * The listener turned it off; the book is in no series; nothing unfinished follows it.
+     * `NextInSeriesUseCase` collapses all three into `null` because they are one answer to this caller.
+     * None is an error and none is worth a message: a book ending and the app stopping is what every
+     * version before this did.
+     *
+     * ### Why it plays rather than arming
+     *
+     * Because audio was playing a moment ago. ROUTE-002's *arm only* exists for a car connecting in a
+     * silent room, where starting audio is the surprise; here the surprise is the silence. What that costs
+     * somebody who fell asleep is recorded in `docs/risks.md`, and PLAY-008's sleep timer is the answer to
+     * it — this is not the control that should be trying to guess whether anybody is awake.
+     */
+    private suspend fun advanceToNextInSeries() {
+        val finished = withContext(mainDispatcher) {
+            player?.currentMediaItem?.let(MediaItems::bookIdOf)
+        } ?: return
+        val next = nextInSeries(finished) ?: return
+        val queue = openQueue(next.id, startAt = null) ?: return
+        withContext(mainDispatcher) {
+            val current = player ?: return@withContext
+            current.setMediaItem(queue.item, queue.startPositionMs)
+            current.prepare()
+            current.play()
+        }
+        // No title and no id (14.5). That a series advanced is the diagnosable fact; which book it was is
+        // the thing a private library must not put in a log.
+        logger.info(LogCategory.Playback, "A book ended, so the next in its series was started")
     }
 
     /**
@@ -1431,14 +1535,40 @@ class PlaybackService : MediaLibraryService() {
          *
          * `MediaSession` rather than `MediaLibrarySession` in the signature: this is inherited from
          * `MediaSession.Callback`, not declared on the library one.
+         *
+         * ### `isForPlayback` is two different questions, and only one of them may open a session
+         *
+         * Media3 1.11.0 added the flag and deprecated the two-argument form. `true` is the callback this
+         * app has always answered: a button was pressed, playback is about to start, so the book has to be
+         * *opened* — `openQueue` calls `openSession`, which tells the server a listening session has begun.
+         *
+         * `false` is a question 1.7.1 could not ask. `MediaLibrarySessionImpl.getRecentMediaItemAtDeviceBootTime`
+         * passes it when System UI wants metadata for the playback-resumption notification it draws after a
+         * reboot — *"without an immediate intention to start playback"*, in the javadoc's words. Answering
+         * that by opening a session would post a play to the server for a notification nobody has touched,
+         * which is a listening session that never listened (product priority 2's neighbourhood, and
+         * PRODUCT_SPEC 12.2's "the server's history is a record of what was played"). So the `false` branch
+         * describes the book and opens nothing.
+         *
+         * **This app cannot reach the `false` branch today**, and the branch is still right. Media3 gates
+         * that whole path on `MediaSessionLegacyStub.canResumePlaybackOnStart()`, which is
+         * `broadcastReceiverComponentName != null` — a `MediaButtonReceiver` declared in the manifest, which
+         * this app does not declare (its receiver is the service). Adding one later is a manifest edit that
+         * nothing would connect to a network write, and this is the branch that makes the edit safe.
          */
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
+            isForPlayback: Boolean,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
+            if (isForPlayback) resumeForPlayback() else describeResumable()
+        }
+
+        /** The `isForPlayback = true` half: open the book and hand back a real queue. */
+        private suspend fun resumeForPlayback(): MediaSession.MediaItemsWithStartPosition {
             val book = auto.lastPlayed()
             val queue = book?.let { openQueue(it.id, startAt = null) }
-            if (queue == null) {
+            return if (queue == null) {
                 // PRODUCT_SPEC ROUTE-001 — "if no playable item exists, the command does nothing and logs a
                 // non-fatal diagnostic". This is that diagnostic. No book id: a log a user might share does
                 // not need to name what they listen to (14.5).
@@ -1448,6 +1578,24 @@ class PlaybackService : MediaLibraryService() {
                 logger.info(LogCategory.Playback, "Resuming the last book for a media button")
                 MediaSession.MediaItemsWithStartPosition(listOf(queue.item), 0, queue.startPositionMs)
             }
+        }
+
+        /**
+         * The `isForPlayback = false` half: what *would* resume, described, with nothing opened.
+         *
+         * The same tile the car's recent root shows, because it is the same question asked by a different
+         * surface — see [AutoLibrary.resumeItem]. The position travels in the media id rather than in the
+         * start position, which Media3 discards on this path; it keeps the item self-describing for a
+         * controller that hands it straight back.
+         */
+        private suspend fun describeResumable(): MediaSession.MediaItemsWithStartPosition {
+            val item = auto.resumeItem()
+            if (item == null) {
+                logger.info(LogCategory.Playback, "A resumable book was asked for and there is none")
+                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+            }
+            logger.info(LogCategory.Playback, "Described the resumable book without opening a session")
+            return MediaSession.MediaItemsWithStartPosition(listOf(item), 0, 0L)
         }
 
         override fun onConnect(
@@ -1494,6 +1642,7 @@ class PlaybackService : MediaLibraryService() {
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_BACK, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
+                        .add(SessionCommand(NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT, Bundle.EMPTY))
                         .build()
 
                 ControllerAccess.PlaybackOnly -> {
@@ -1524,7 +1673,10 @@ class PlaybackService : MediaLibraryService() {
                 .apply { ControllerTrust.withheldPlayerCommands(access).forEach(::remove) }
                 .build()
 
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            // The two-argument builder. Media3 1.11.0 deprecated the session-only one; passing the
+            // controller is what lets the session scope its answer to who asked, which is exactly what the
+            // three lines below do.
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(commands)
                 .setAvailablePlayerCommands(playerCommands)
                 .setMediaButtonPreferences(mediaButtons())
@@ -1709,6 +1861,9 @@ class PlaybackService : MediaLibraryService() {
                 NotificationButtons.ACTION_SKIP_BACK -> skipBy(-skips.back)
                 NotificationButtons.ACTION_SKIP_FORWARD -> skipBy(skips.forward)
                 NotificationButtons.ACTION_ADD_BOOKMARK -> bookmarkHere()
+                // PLAY-002. Never touches the player's queue, so the book does not stop or rebuffer —
+                // product priority 1, and the same reason the car's output rows are browsable.
+                NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT -> audioOutputs.selectNext()
                 else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))

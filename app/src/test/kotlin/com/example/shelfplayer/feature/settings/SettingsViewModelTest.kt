@@ -545,6 +545,11 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
         return AppResult.Success(Unit)
     }
 
+    override suspend fun setAutoAdvanceSeries(enabled: Boolean): AppResult<Unit> {
+        controls.value = controls.value.copy(autoAdvanceSeries = enabled)
+        return AppResult.Success(Unit)
+    }
+
     override fun observeSpeedFor(bookId: com.example.shelfplayer.core.model.LibraryItemId): Flow<PlaybackSpeed?> =
         MutableStateFlow(null)
 

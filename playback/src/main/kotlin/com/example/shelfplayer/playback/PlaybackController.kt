@@ -83,6 +83,14 @@ class PlaybackController @Inject constructor(
      */
     val outputs: StateFlow<List<AudioOutput>> = audioOutputs.outputs
 
+    /**
+     * PRODUCT_SPEC PLAY-002 — the output the listener *chose*, or `null` for *Automatic*.
+     *
+     * Not the same question as [AudioOutput.isActive], which is where the platform says the audio went. The
+     * chooser shows both because they can disagree — see `AudioOutputRouter`.
+     */
+    val selectedOutput: StateFlow<String?> = audioOutputs.selectedId
+
     /** PRODUCT_SPEC PLAY-002 — chooses an output, or `null` for *Automatic*. Not remembered (ADR-0027). */
     fun selectOutput(id: String?) = audioOutputs.select(id)
 

@@ -52,17 +52,20 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.designsystem.layout.hasRoomForTwoPanes
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
+import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.feature.browse.BookCover
@@ -82,6 +85,10 @@ fun BookRoute(
     onNavigateUp: () -> Unit,
     onManageDownloads: () -> Unit,
     onEditMetadata: (LibraryItemId) -> Unit,
+    /** PRODUCT_SPEC LIB-003 — the series line opens the series. */
+    onSeriesSelected: (SeriesId) -> Unit,
+    /** PRODUCT_SPEC §62 — the author line opens that author's books. */
+    onAuthorSelected: (AuthorId) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: BookViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel(),
@@ -117,6 +124,10 @@ fun BookRoute(
             onRemoveFromServer = viewModel::onRemoveFromServer,
             onEmbedMetadata = viewModel::onEmbedMetadata,
             onOpenHistory = viewModel::onOpenHistory,
+            links = CollectionLinks(
+                onSeriesSelected = onSeriesSelected,
+                onAuthorSelected = onAuthorSelected,
+            ),
         ),
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -456,6 +467,23 @@ data class BookActions(
      * a preview of the history sheet should render, not reach for a network.
      */
     val onOpenHistory: () -> Unit = {},
+    /** PRODUCT_SPEC LIB-003 / §62 — the two collection lines under the title. */
+    val links: CollectionLinks = CollectionLinks(),
+)
+
+/**
+ * PRODUCT_SPEC LIB-003 / §62 — where the author and series lines go when tapped.
+ *
+ * One value rather than two parameters, and not only to satisfy detekt's parameter count: they always
+ * travel together, they are the *only* two callbacks the hero needs that are not about playback, and
+ * `BookHeader` already takes a menu's worth of actions it must not confuse them with.
+ *
+ * Defaulted to no-ops because this screen is stateless and its previews are built with no graph behind
+ * them. A preview whose author line does nothing is right; one that cannot be constructed is not.
+ */
+data class CollectionLinks(
+    val onSeriesSelected: (SeriesId) -> Unit = {},
+    val onAuthorSelected: (AuthorId) -> Unit = {},
 )
 
 /**
@@ -541,6 +569,7 @@ private fun ActionPane(
         onTogglePlayPause = actions.onTogglePlayPause,
         actions = menuActions,
         download = download,
+        links = actions.links,
     )
 
     // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
@@ -692,6 +721,8 @@ private fun BookHeader(
     onTogglePlayPause: () -> Unit,
     actions: BookMenuActions,
     download: DownloadControl,
+    // PRODUCT_SPEC LIB-003 / §62 — passed in rather than read off `actions`, which is the *menu*'s set.
+    links: CollectionLinks,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -752,14 +783,20 @@ private fun BookHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // PRODUCT_SPEC §62 — one clickable name per author rather than one joined string, because
+            // each opens a different screen. A co-written book used to render "A. Holt, M. Vance" as a
+            // single run of text; tapping it could only ever have opened one of them.
             if (book.authors.isNotEmpty()) {
-                Text(
-                    text = book.authors.joinToString { it.name },
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    book.authors.forEach { author ->
+                        CollectionLink(
+                            text = author.name,
+                            spoken = stringResource(R.string.book_open_author, author.name),
+                            style = MaterialTheme.typography.bodyLarge,
+                            onClick = { links.onAuthorSelected(author.id) },
+                        )
+                    }
+                }
             }
             if (book.narrators.isNotEmpty()) {
                 Text(
@@ -770,20 +807,65 @@ private fun BookHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // PRODUCT_SPEC LIB-003 — every membership is its own link: a book listed in a trilogy and in
+            // a collected edition is reachable from both, which is the whole point of showing both.
             book.seriesMemberships.forEach { membership ->
-                Text(
+                CollectionLink(
                     text = stringResource(
                         R.string.book_series_position,
                         membership.series.name,
                         membership.sequence.raw.ifEmpty { "—" },
                     ),
+                    spoken = stringResource(R.string.book_open_series, membership.series.name),
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    onClick = { links.onSeriesSelected(membership.series.id) },
                 )
             }
         }
+    }
+}
+
+/**
+ * PRODUCT_SPEC LIB-003 / §62 — a metadata line that is also the way into what it names.
+ *
+ * ### Seen and heard say different things, deliberately
+ *
+ * On screen the line reads as it always did — *"Marisol Holt"*, *"The Salt Cycle, book 3"* — because the
+ * words are the metadata and adding "Open" to each would turn a tidy block into a column of instructions.
+ * Spoken it has to carry what a tap does: "Marisol Holt" announced as a button says nothing about where it
+ * goes, which is the same defect the series screen's continue button had and a test caught.
+ *
+ * ### Why a `TextButton` and not a clickable `Text`
+ *
+ * The first version was a `Text` with `Modifier.clickable` and `minimumInteractiveComponentSize`, and
+ * `BookAccessibilityScreenTest` failed it at **10dp x 36dp**. That modifier expands the *touch* bounds
+ * while leaving the node's visual bounds alone, and `assertEveryControlIsBigEnough` measures the visual
+ * ones deliberately — its own words: hand-rolled clickable rows "are not" correct by construction, and
+ * Material's components are. So this is a Material component. `ButtonDefaults.MinHeight` is 40dp, which is
+ * the bar exactly.
+ *
+ * The horizontal content padding is dropped so the label still lines up with the title above it; the
+ * vertical padding stays, and `defaultMinSize` inside `TextButton` supplies the height regardless.
+ */
+@Composable
+private fun CollectionLink(
+    text: String,
+    spoken: String,
+    style: TextStyle,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(vertical = 4.dp),
+        modifier = modifier.semantics { contentDescription = spoken },
+    ) {
+        Text(
+            text = text,
+            style = style,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

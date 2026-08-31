@@ -303,7 +303,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { playbackSettings.setStartupMode(mode) }
     }
 
-    /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless chosen. */
+    /** PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series. */
+    fun onAutoAdvanceSeriesChanged(enabled: Boolean) {
+        viewModelScope.launch { playbackSettings.setAutoAdvanceSeries(enabled) }
+    }
 
     /**
      * PRODUCT_SPEC SET-003 — swaps the enabled launcher alias.

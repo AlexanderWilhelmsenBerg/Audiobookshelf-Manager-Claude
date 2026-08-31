@@ -161,6 +161,12 @@ class AppLocaleScreenTest {
      * fixes the exception and silently removes the feature. This is the test that refuses both mistakes at
      * once: the context has to be Activity-backed **and** localized.
      */
+    // `LocalContextResourcesRead` arrived with the 2026 Compose libraries and is right in production code:
+    // a `LocalContext.current.resources` read is not invalidated when the Configuration changes, so
+    // `LocalResources.current` is what a *screen* should use. Reading the context's resources is the
+    // assertion here rather than an oversight — this test exists to prove the **context** is localized, and
+    // `LocalResources.current` would prove something else while leaving the context untested.
+    @Suppress("LocalContextResourcesRead")
     @Test
     fun `the localized context is both activity-backed and localized`() {
         var chain: ComponentActivity? = null

@@ -26,6 +26,9 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 configureDefaultConfig(this@with)
                 configureBuildTypes()
                 configureReleaseSigning(this@with)
+                // PRODUCT_SPEC 15 / R-68 — one stable debug key, so `adb install -r` is an upgrade
+                // rather than a reinstall. Deliberately separate from the release inputs above.
+                configureDebugSigning(this@with)
                 configurePackaging()
 
                 compileOptions {

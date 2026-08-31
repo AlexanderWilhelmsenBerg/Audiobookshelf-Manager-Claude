@@ -1,5 +1,6 @@
 package com.example.shelfplayer.navigation
 
+import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
 import java.net.URLEncoder
@@ -37,8 +38,12 @@ object ShelfDestinations {
     const val EDIT_METADATA = "book/{bookId}/metadata"
     const val SERIES = "series/{seriesId}"
 
+    /** PRODUCT_SPEC §62 "author view" — one author's books, reached from a book's own author line. */
+    const val AUTHOR = "author/{authorId}"
+
     const val ARG_BOOK_ID = "bookId"
     const val ARG_SERIES_ID = "seriesId"
+    const val ARG_AUTHOR_ID = "authorId"
 
     /**
      * The arguments are URL-encoded: a server address contains `:` and `/`, which would otherwise end the
@@ -59,4 +64,7 @@ object ShelfDestinations {
      * profile's server, so a route cannot name a series on a server the user is not currently on.
      */
     fun series(seriesId: SeriesId): String = "series/${seriesId.value}"
+
+    /** The bare server-side author id, scoped to the active profile's server exactly as [series] is. */
+    fun author(authorId: AuthorId): String = "author/${authorId.value}"
 }

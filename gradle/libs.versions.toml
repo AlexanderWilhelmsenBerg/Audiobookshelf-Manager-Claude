@@ -4,10 +4,10 @@
 # Build tooling
 androidGradlePlugin = "8.12.0"
 kotlin = "2.2.0"
-ksp = "2.2.0-2.0.2"
+ksp = "2.3.11"
 detekt = "1.23.8"
 # PRODUCT_SPEC 17.3 — coverage thresholds. Kover reads Kotlin's own coverage, so no JaCoCo agent.
-kover = "0.9.1"
+kover = "0.9.9"
 ktlintGradle = "12.3.0"
 ktlint = "1.5.0"
 protobufPlugin = "0.9.5"
@@ -18,27 +18,27 @@ minSdk = "26"
 targetSdk = "36"
 
 # AndroidX / Jetpack
-androidxActivity = "1.10.1"
-androidxAnnotation = "1.9.1"
-androidxCore = "1.16.0"
+androidxActivity = "1.12.4"
+androidxAnnotation = "1.10.0"
+androidxCore = "1.17.0"
 androidxDatastore = "1.1.7"
-androidxHiltNavigationCompose = "1.2.0"
-androidxLifecycle = "2.9.1"
-androidxNavigation = "2.9.0"
+androidxHiltNavigationCompose = "1.3.0"
+androidxLifecycle = "2.10.0"
+androidxNavigation = "2.9.8"
 androidxRoom = "2.7.2"
-androidxTestCore = "1.6.1"
-androidxTestExt = "1.2.1"
-androidxTestRunner = "1.6.2"
+androidxTestCore = "1.7.0"
+androidxTestExt = "1.3.0"
+androidxTestRunner = "1.7.0"
 # PRODUCT_SPEC 17.3 / ADR-0025 — the macrobenchmark tier. Runs only on a device; see docs/benchmark.md.
 androidxBenchmark = "1.3.4"
-androidxUiAutomator = "2.3.0"
-androidxWork = "2.10.1"
+androidxUiAutomator = "2.4.0"
+androidxWork = "2.11.2"
 composeBom = "2025.06.01"
-media3 = "1.7.1"
+media3 = "1.11.0"
 
 # Dependency injection
-hilt = "2.57"
-hiltExt = "1.2.0"
+hilt = "2.58"
+hiltExt = "1.3.0"
 javaxInject = "1"
 
 # Networking / serialization
@@ -145,7 +145,6 @@ detekt-gradlePlugin = { group = "io.gitlab.arturbosch.detekt", name = "detekt-gr
 detekt-formatting = { group = "io.gitlab.arturbosch.detekt", name = "detekt-formatting", version.ref = "detekt" }
 kotlin-gradlePlugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlin-composeCompilerGradlePlugin = { group = "org.jetbrains.kotlin", name = "compose-compiler-gradle-plugin", version.ref = "kotlin" }
-ksp-gradlePlugin = { group = "com.google.devtools.ksp", name = "com.google.devtools.ksp.gradle.plugin", version.ref = "ksp" }
 ktlint-gradlePlugin = { group = "org.jlleitschuh.gradle", name = "ktlint-gradle", version.ref = "ktlintGradle" }
 room-gradlePlugin = { group = "androidx.room", name = "room-gradle-plugin", version.ref = "androidxRoom" }
 
