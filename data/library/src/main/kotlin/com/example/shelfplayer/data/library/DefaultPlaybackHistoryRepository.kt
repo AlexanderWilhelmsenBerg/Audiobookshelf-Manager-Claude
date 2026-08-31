@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.database.dao.PlaybackHistoryDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
+import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
@@ -140,26 +141,39 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
     }
 
     /**
-     * Account-wide server truth for resume selection. Unlike history import this includes this install: the
-     * question is what the account played last anywhere, and the newest answer may legitimately be local.
+     * Account-wide server truth for resume selection, with the last successful answer cached locally.
+     *
+     * A successful call refreshes one hidden row for the active profile. If ABS is unavailable later, that
+     * row is returned as the last known server session instead of throwing away cross-device knowledge and
+     * falling back to an older local book. A successful empty server answer clears the cache, so deleting
+     * server history cannot leave a ghost resume target behind.
      */
     override suspend fun latestServerSession(): ListeningSession? = withContext(ioDispatcher) {
         val profileId = profileRepository.activeProfileId() ?: return@withContext null
+        val profile = profileDao.findProfile(profileId.value) ?: return@withContext null
+        val cacheId = resumeCacheId(profileId)
         when (val fetched = gateway.playback.listeningSessions(profileId)) {
             is AppResult.Failure -> {
                 logger.debug(
                     LogCategory.Sync,
-                    "Could not read the server's latest listening activity; local resume state stands",
+                    "Could not read the server's latest listening activity; cached server resume state will be used if present",
                     LogField.Public("error", fetched.error::class.simpleName ?: "unknown"),
                 )
-                null
+                history.findInternal(profileId.value, cacheId)?.toCachedListeningSession()
             }
 
-            is AppResult.Success ->
-                fetched.value
+            is AppResult.Success -> {
+                val latest = fetched.value
                     .asSequence()
                     .filter { session -> session.listened > Duration.ZERO }
                     .maxByOrNull(ListeningSession::updatedAt)
+                if (latest == null) {
+                    history.deleteInternal(profileId.value, cacheId)
+                } else {
+                    history.insert(latest.toResumeCache(profileId, profile))
+                }
+                latest
+            }
         }
     }
 
@@ -171,6 +185,38 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
 }
 
 private const val SERVER_SESSION_PREFIX = "abs-session:"
+private const val RESUME_CACHE_PREFIX = "resume-cache:"
+
+private fun resumeCacheId(profileId: ProfileId): String = RESUME_CACHE_PREFIX + profileId.value
+
+private fun ListeningSession.toResumeCache(profileId: ProfileId, profile: ProfileEntity) = PlaybackHistoryEntity(
+    entryId = resumeCacheId(profileId),
+    profileId = profileId.value,
+    bookKey = EntityKey.of(profile.serverId, bookId.value),
+    fromMillis = startedFrom.inWholeMilliseconds.coerceAtLeast(0),
+    toMillis = reachedAt.inWholeMilliseconds.coerceAtLeast(0),
+    reason = PlaybackEvent.ServerSession.name,
+    detailMillis = listened.inWholeMilliseconds.coerceAtLeast(0),
+    at = updatedAt.toEpochMilli(),
+)
+
+private fun PlaybackHistoryEntity.toCachedListeningSession(): ListeningSession {
+    val updated = Instant.ofEpochMilli(at)
+    val reached = toMillis.milliseconds.coerceAtLeast(Duration.ZERO)
+    val listened = detailMillis?.milliseconds?.takeIf { it > Duration.ZERO } ?: 1.milliseconds
+    return ListeningSession(
+        id = entryId,
+        bookId = LibraryItemId(EntityKey.remoteIdOf(bookKey)),
+        deviceId = null,
+        deviceName = null,
+        clientName = null,
+        listened = listened,
+        startedFrom = fromMillis?.milliseconds?.coerceAtLeast(Duration.ZERO) ?: reached,
+        reachedAt = reached,
+        startedAt = updated,
+        updatedAt = updated,
+    )
+}
 
 private fun PlaybackHistoryEntity.toDomain() = PlaybackHistoryEntry(
     id = entryId,
