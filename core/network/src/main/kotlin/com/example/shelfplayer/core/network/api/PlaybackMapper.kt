@@ -65,15 +65,10 @@ internal object PlaybackMapper {
         return AppResult.Success(
             PlaybackSession(
                 id = id,
-                // PRODUCT_SPEC 6.5 — the account this session was opened as, carried by the session itself
-                // so nothing downstream has to ask who is signed in *now*.
                 profileId = profileId,
                 bookId = bookId,
                 title = dto.displayTitle?.takeIf(String::isNotBlank) ?: bookId.value,
                 author = dto.displayAuthor?.takeIf(String::isNotBlank),
-                // `coverPath` is a path on the server's filesystem and is only ever a *flag* that a
-                // cover exists — the same rule `CoverUrls` records for the browse screens. The address
-                // is the item's cover endpoint, which is what the notification loads artwork from.
                 coverUrl = dto.coverPath?.takeIf(String::isNotBlank)
                     ?.let { "$base/api/items/${bookId.value}/cover" },
                 startAt = seconds(dto.startTime),
@@ -96,7 +91,7 @@ internal object PlaybackMapper {
     )
 
     /** Both fixtures send a leading slash; a server that stopped would otherwise produce `hostapi/…`. */
-    private fun String.prefixedWithSlash(): String = if (startsWith("/")) this else "/$this"
+    private fun String.prefixedWithSlash(): String = if (startsWith('/')) this else "/$this"
 
     /**
      * Seconds to a [Duration], rounded to the nearest millisecond — see `LibraryMapper.seconds`.
@@ -140,21 +135,20 @@ internal object ListeningSessionMapper {
     private fun toSession(dto: ListeningSessionDto): ListeningSession? {
         val id = dto.id?.takeIf(String::isNotBlank) ?: return null
         val bookId = dto.libraryItemId?.takeIf(String::isNotBlank) ?: return null
+        val startedAt = Instant.ofEpochMilli(dto.startedAt ?: dto.updatedAt ?: 0L)
         return ListeningSession(
             id = id,
             bookId = LibraryItemId(bookId),
             deviceId = dto.deviceInfo?.deviceId?.takeIf(String::isNotBlank),
             deviceName = dto.deviceInfo?.deviceName?.takeIf(String::isNotBlank),
             clientName = dto.deviceInfo?.clientName?.takeIf(String::isNotBlank),
-            // Seconds on the wire, all three of them. Absent reads as zero rather than failing: a session
-            // the server sent without a `timeListening` is filtered out downstream for having listened to
-            // nothing, which is the same outcome and one fewer error path (SYNC-001).
             listened = PlaybackMapper.seconds(dto.timeListening ?: 0.0),
             startedFrom = PlaybackMapper.seconds(dto.startTime ?: 0.0),
             reachedAt = PlaybackMapper.seconds(dto.currentTime ?: 0.0),
-            // Epoch **milliseconds**, unlike the three above. Getting this pair backwards puts a history row
-            // in 1970 or claims a four-second session lasted an hour; the capture is what settled it.
-            startedAt = Instant.ofEpochMilli(dto.startedAt ?: dto.updatedAt ?: 0L),
+            startedAt = startedAt,
+            // The server changes this as the session progresses. Keeping it separately from the start time
+            // lets resume selection ask which session was active most recently rather than which began last.
+            updatedAt = Instant.ofEpochMilli(dto.updatedAt ?: dto.startedAt ?: 0L),
         )
     }
 }
