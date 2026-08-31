@@ -269,11 +269,7 @@ private fun ShelfCover(
 }
 
 @Composable
-private fun ShelfCardLabels(
-    title: String,
-    subtitle: String?,
-    modifier: Modifier = Modifier,
-) {
+private fun ShelfCardLabels(title: String, subtitle: String?, modifier: Modifier = Modifier) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // PRODUCT_SPEC 4 — every card in a row is the same height.
         //
