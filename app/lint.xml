@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!--
+      PR #65 replaced these two legacy home-shelf strings with the compact
+      "Book X of Y" copy. Keep the lint exception narrowly scoped to the two
+      pre-existing resource IDs until the large shared strings files are
+      reorganized and the legacy entries can be removed without touching
+      unrelated translations.
+    -->
+    <issue id="UnusedResources">
+        <ignore regexp="shelf_series_(next|progress)" />
+    </issue>
+</lint>
