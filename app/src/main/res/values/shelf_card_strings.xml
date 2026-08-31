@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- %1$d is the current book number, %2$d is the total number of books in the series. -->
+    <string name="shelf_series_position">Book %1$d of %2$d</string>
+</resources>
