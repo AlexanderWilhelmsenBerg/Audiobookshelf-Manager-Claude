@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -213,11 +214,9 @@ class CrossDeviceResumePolicyTest {
     }
 
     private class StubProfiles(active: ProfileId) : ProfileRepository {
-        private val state = MutableStateFlow(profile(active))
+        private val state = MutableStateFlow<Profile?>(profile(active))
 
-        override fun observeProfiles(): Flow<List<Profile>> = state.let { source ->
-            kotlinx.coroutines.flow.map(source) { current -> listOfNotNull(current) }
-        }
+        override fun observeProfiles(): Flow<List<Profile>> = state.map { current -> listOfNotNull(current) }
 
         override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
 
