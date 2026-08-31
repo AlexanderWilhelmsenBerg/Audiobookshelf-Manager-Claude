@@ -524,6 +524,7 @@ private fun LazyListScope.behaviourSections(settings: PlaybackSettings, actions:
     seriesSection(settings.autoAdvanceSeries, actions.onAutoAdvanceSeriesChanged)
     interruptionSection(settings.focusBehaviour, actions.onFocusBehaviourChanged)
     startupSection(settings.startupMode, actions.onStartupModeChanged)
+    crossDeviceResumeSection()
 }
 
 /**
