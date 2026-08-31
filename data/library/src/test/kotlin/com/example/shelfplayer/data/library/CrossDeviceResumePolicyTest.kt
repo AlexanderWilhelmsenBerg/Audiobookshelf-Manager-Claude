@@ -162,7 +162,9 @@ class CrossDeviceResumePolicyTest {
         )
     }
 
-    private class CountingGateway : AudiobookshelfGateway, PlaybackApi {
+    private class CountingGateway :
+        AudiobookshelfGateway,
+        PlaybackApi {
         var sessionReads = 0
 
         override val playback: PlaybackApi get() = this
