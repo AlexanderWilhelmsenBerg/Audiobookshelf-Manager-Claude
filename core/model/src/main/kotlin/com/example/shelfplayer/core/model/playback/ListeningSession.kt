@@ -59,5 +59,5 @@ data class ListeningSession(
     val startedFrom: Duration,
     val reachedAt: Duration,
     val startedAt: Instant,
-    val updatedAt: Instant,
+    val updatedAt: Instant = startedAt,
 )
