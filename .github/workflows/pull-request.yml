@@ -28,16 +28,16 @@ jobs:
     name: Gradle wrapper validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # PRODUCT_SPEC 18.1 — verifies gradle-wrapper.jar against the known-good checksums, which is
       # the mitigation for a malicious wrapper jar being committed.
-      - uses: gradle/actions/wrapper-validation@v4
+      - uses: gradle/actions/wrapper-validation@v6
 
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -104,17 +104,18 @@ jobs:
     needs: [wrapper-validation]
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
+          cache-provider: basic
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Check formatting
@@ -166,7 +167,7 @@ jobs:
       # when a first run needs to produce it.
       - name: Upload Room schemas
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: room-schemas
           path: core/database/schemas/**
@@ -175,7 +176,7 @@ jobs:
 
       - name: Upload lint and detekt reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: quality-reports
           path: |
@@ -188,7 +189,7 @@ jobs:
           retention-days: 7
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
@@ -201,17 +202,18 @@ jobs:
     needs: [wrapper-validation]
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
+          cache-provider: basic
           cache-read-only: true
 
       # PRODUCT_SPEC 18.9 — the resolved dependency set is reviewable on every pull request, which
@@ -219,7 +221,7 @@ jobs:
       - name: Resolve dependencies for the debug variant
         run: ./gradlew :app:dependencies --configuration debugRuntimeClasspath > dependency-report.txt
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: dependency-report
           path: dependency-report.txt
