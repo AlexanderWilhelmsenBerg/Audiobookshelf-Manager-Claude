@@ -175,7 +175,9 @@ class ResumeSessionCacheTest {
         )
     }
 
-    private class SessionGateway : AudiobookshelfGateway, PlaybackApi {
+    private class SessionGateway :
+        AudiobookshelfGateway,
+        PlaybackApi {
         var sessions: List<ListeningSession> = emptyList()
         var fails = false
 
@@ -191,7 +193,10 @@ class ResumeSessionCacheTest {
             AppResult.Success(sessions)
         }
 
-        override suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> = unused()
+        override suspend fun openSession(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+        ): AppResult<PlaybackSession> = unused()
 
         override suspend fun syncSession(
             profileId: ProfileId,
