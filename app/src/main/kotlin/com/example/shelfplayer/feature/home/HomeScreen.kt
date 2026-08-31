@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -48,10 +49,12 @@ import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -498,14 +501,35 @@ private fun GenreEditChangeSummary(request: GenreEditRequest) {
 /** PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */
 @Composable
 private fun HomeAxisBar(current: HomeAxis, onAxisChanged: (HomeAxis) -> Unit, modifier: Modifier = Modifier) {
-    NavigationBar(modifier = modifier) {
-        HomeAxis.entries.forEach { axis ->
-            NavigationBarItem(
-                selected = axis == current,
-                onClick = { onAxisChanged(axis) },
-                icon = { Icon(imageVector = axis.icon(), contentDescription = null) },
-                label = { Text(text = stringResource(axis.labelRes())) },
-            )
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f),
+        tonalElevation = 0.dp,
+        shadowElevation = 8.dp,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f),
+        ),
+    ) {
+        NavigationBar(
+            modifier = Modifier.fillMaxWidth(),
+            containerColor = Color.Transparent,
+            tonalElevation = 0.dp,
+        ) {
+            HomeAxis.entries.forEach { axis ->
+                NavigationBarItem(
+                    selected = axis == current,
+                    onClick = { onAxisChanged(axis) },
+                    icon = { Icon(imageVector = axis.icon(), contentDescription = null) },
+                    label = { Text(text = stringResource(axis.labelRes())) },
+                    colors = NavigationBarItemDefaults.colors(
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
+                    ),
+                )
+            }
         }
     }
 }
