@@ -39,9 +39,7 @@ class RefreshingPlaybackRepository @Inject constructor(
         owner: ProfileId?,
     ): AppResult<Unit> = delegate.recordPosition(bookId, position, duration, owner)
 
-    override suspend fun setFinished(
-        bookId: LibraryItemId,
-        isFinished: Boolean,
-        position: Duration,
-    ): AppResult<Unit> = delegate.setFinished(bookId, isFinished, position)
+    override suspend fun setFinished(bookId: LibraryItemId, isFinished: Boolean, position: Duration): AppResult<Unit> {
+        return delegate.setFinished(bookId, isFinished, position)
+    }
 }
