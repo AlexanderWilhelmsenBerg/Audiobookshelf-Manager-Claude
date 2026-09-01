@@ -24,10 +24,13 @@ class OpenPlaybackSessionUseCase @Inject constructor(
     suspend operator fun invoke(bookId: LibraryItemId): AppResult<PlaybackSession> {
         val profileId = profiles.activeProfileId()
         val first = playback.openSession(bookId)
-        if (first !is AppResult.Failure || first.error !is AppError.Authentication || profileId == null) return first
-        if (profiles.activeProfileId() != profileId) return first
-        if (!renewSession(profileId)) return first
-        if (profiles.activeProfileId() != profileId) return first
-        return playback.openSession(bookId)
+        val renewed =
+            profileId != null &&
+                first is AppResult.Failure &&
+                first.error is AppError.Authentication &&
+                profiles.activeProfileId() == profileId &&
+                renewSession(profileId)
+        val canRetry = renewed && profiles.activeProfileId() == profileId
+        return if (canRetry) playback.openSession(bookId) else first
     }
 }
