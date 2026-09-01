@@ -3,11 +3,12 @@ package com.example.shelfplayer.feature.home
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -21,8 +22,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -66,6 +69,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -100,6 +104,9 @@ import com.example.shelfplayer.feature.browse.BookSortRow
 import com.example.shelfplayer.feature.browse.GroupCard
 import com.example.shelfplayer.feature.browse.GroupCardEditAction
 import com.example.shelfplayer.feature.browse.SeriesCard
+import com.example.shelfplayer.ui.glass.LocalGlassHazeState
+import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
+import com.example.shelfplayer.ui.glass.frostedGlass
 
 /**
  * PRODUCT_SPEC 16.4 — `*Route` wires navigation and state; `*Screen` is a pure function of its
@@ -513,31 +520,50 @@ private fun HomeAxisBar(
     motion: HomeAxisBarMotionState,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    val hazeState = LocalGlassHazeState.current
+    val playerInset = LocalPlayerChromeBottomInset.current.coerceAtLeast(0.dp)
+    BoxWithConstraints(
         modifier = modifier
             .followHomeAxisBarMotion(motion)
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 4.dp),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = AXIS_BAR_GLASS_ALPHA),
-        tonalElevation = 0.dp,
-        shadowElevation = 4.dp,
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AXIS_BAR_BORDER_ALPHA),
-        ),
+            .padding(horizontal = 14.dp)
+            .padding(top = 4.dp, bottom = 4.dp + playerInset)
+            .height(AXIS_BAR_HEIGHT)
+            .clip(CircleShape)
+            .frostedGlass(
+                state = hazeState,
+                backgroundColor = MaterialTheme.colorScheme.surface,
+                tintAlpha = AXIS_BAR_TINT_ALPHA,
+                fallbackTintAlpha = AXIS_BAR_FALLBACK_TINT_ALPHA,
+                blurRadius = AXIS_BAR_BLUR_RADIUS,
+            ),
     ) {
+        val tabWidth = maxWidth / HomeAxis.entries.size.toFloat()
+        val selectedIndex = HomeAxis.entries.indexOf(current).toFloat()
+        val selectionOffset by animateDpAsState(
+            targetValue = tabWidth * selectedIndex,
+            animationSpec = spring(
+                dampingRatio = AXIS_SELECTION_DAMPING_RATIO,
+                stiffness = AXIS_SELECTION_STIFFNESS,
+            ),
+            label = "home-axis-selection",
+        )
+        Box(
+            modifier = Modifier
+                .offset(x = selectionOffset)
+                .width(tabWidth)
+                .fillMaxHeight()
+                .padding(3.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = AXIS_SELECTION_ALPHA),
+                    shape = CircleShape,
+                ),
+        )
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(AXIS_BAR_HEIGHT)
+                .fillMaxSize()
                 .padding(horizontal = 4.dp, vertical = 3.dp)
-                .background(
-                    color = Color.White.copy(alpha = AXIS_BAR_TINT_ALPHA),
-                    shape = CircleShape,
-                )
                 .selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             HomeAxis.entries.forEach { axis ->
@@ -549,11 +575,7 @@ private fun HomeAxisBar(
                         .weight(1f)
                         .fillMaxHeight(),
                     shape = CircleShape,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = AXIS_SELECTION_ALPHA)
-                    } else {
-                        Color.Transparent
-                    },
+                    color = Color.Transparent,
                     contentColor = if (selected) {
                         MaterialTheme.colorScheme.primary
                     } else {
@@ -589,10 +611,12 @@ private fun HomeAxisBar(
 }
 
 private val AXIS_BAR_HEIGHT = 46.dp
-private const val AXIS_BAR_GLASS_ALPHA = 0.38f
-private const val AXIS_BAR_TINT_ALPHA = 0.22f
-private const val AXIS_BAR_BORDER_ALPHA = 0.42f
-private const val AXIS_SELECTION_ALPHA = 0.46f
+private val AXIS_BAR_BLUR_RADIUS = 24.dp
+private const val AXIS_BAR_TINT_ALPHA = 0.18f
+private const val AXIS_BAR_FALLBACK_TINT_ALPHA = 0.28f
+private const val AXIS_SELECTION_ALPHA = 0.34f
+private const val AXIS_SELECTION_DAMPING_RATIO = 0.44f
+private const val AXIS_SELECTION_STIFFNESS = 300f
 
 private fun HomeAxis.icon(): ImageVector = when (this) {
     HomeAxis.Books -> Icons.AutoMirrored.Filled.MenuBook
