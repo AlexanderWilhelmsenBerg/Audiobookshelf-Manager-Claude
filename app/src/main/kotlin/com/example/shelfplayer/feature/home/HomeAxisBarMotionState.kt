@@ -94,7 +94,7 @@ internal fun Modifier.followHomeAxisBarMotion(state: HomeAxisBarMotionState): Mo
     }
 
 private val MAX_AXIS_BAR_OFFSET = 8.dp
-private const val AXIS_BAR_WHITE_TINT_ALPHA = 0.20f
+private const val AXIS_BAR_WHITE_TINT_ALPHA = 0.28f
 private const val DRAG_RESPONSE = 0.22f
 private const val FLING_VELOCITY_RESPONSE = 0.012f
 private const val MIN_SCROLL_DELTA_PX = 0.25f
