@@ -86,19 +86,17 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
 
     override suspend fun hasNewerExternalSession(
         bookId: LibraryItemId,
-        currentSessionId: String,
+        after: Instant,
     ): Boolean = withContext(ioDispatcher) {
         val profileId = profileRepository.activeProfileId() ?: return@withContext false
         val fetched = gateway.playback.listeningSessions(profileId)
         val sessions = (fetched as? AppResult.Success)?.value ?: return@withContext false
-        val current = sessions.firstOrNull { it.id == currentSessionId } ?: return@withContext false
         val thisDevice = device.describe().deviceId
         sessions.any { candidate ->
             candidate.bookId == bookId &&
-                candidate.id != currentSessionId &&
                 candidate.deviceId != thisDevice &&
                 candidate.listened > Duration.ZERO &&
-                candidate.updatedAt > current.updatedAt
+                candidate.updatedAt > after
         }
     }
 
