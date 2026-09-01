@@ -85,13 +85,12 @@ internal fun rememberHomeAxisBarMotion(): HomeAxisBarMotionState {
 
 internal fun Modifier.captureHomeAxisBarMotion(state: HomeAxisBarMotionState): Modifier = nestedScroll(state.connection)
 
-internal fun Modifier.followHomeAxisBarMotion(state: HomeAxisBarMotionState): Modifier =
-    background(
-        color = Color.White.copy(alpha = AXIS_BAR_WHITE_TINT_ALPHA),
-        shape = CircleShape,
-    ).graphicsLayer {
-        translationY = state.offsetPx
-    }
+internal fun Modifier.followHomeAxisBarMotion(state: HomeAxisBarMotionState): Modifier = background(
+    color = Color.White.copy(alpha = AXIS_BAR_WHITE_TINT_ALPHA),
+    shape = CircleShape,
+).graphicsLayer {
+    translationY = state.offsetPx
+}
 
 private val MAX_AXIS_BAR_OFFSET = 8.dp
 private const val AXIS_BAR_WHITE_TINT_ALPHA = 0.28f
