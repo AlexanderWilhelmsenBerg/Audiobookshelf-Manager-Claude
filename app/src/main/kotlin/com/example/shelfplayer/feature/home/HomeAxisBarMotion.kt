@@ -26,10 +26,7 @@ import kotlin.math.abs
  * Scroll deltas only nudge the pill a fraction of the finger movement and are capped at a small visual
  * displacement. Once scrolling goes quiet, a soft spring carries the pill back to its resting place.
  */
-internal class HomeAxisBarMotionState(
-    private val scope: CoroutineScope,
-    private val maxOffsetPx: Float,
-) {
+internal class HomeAxisBarMotionState(private val scope: CoroutineScope, private val maxOffsetPx: Float) {
     private val offset = Animatable(0f)
     private var motionJob: Job? = null
     private var settleJob: Job? = null
