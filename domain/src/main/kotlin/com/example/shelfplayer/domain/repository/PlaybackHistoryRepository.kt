@@ -34,19 +34,15 @@ interface PlaybackHistoryRepository {
     )
 
     /**
-     * Returns true only when another device has touched this book after the currently loaded server session.
+     * Returns true when another device touched [bookId] after [after].
      *
-     * This is deliberately a freshness question, not a position comparison. A listener may intentionally
-     * rewind on another client; if that session is newer its lower position is still the correct one. If the
-     * server has not yet updated this device's current session, the current session cannot be established as
-     * a baseline and this returns false — preserving the player's local position is safer than rewinding it
-     * from an ambiguous server read.
+     * This is deliberately a freshness question, not a position comparison. An intentional rewind on
+     * another client is valid; if its activity timestamp is newer, its lower position still wins. A failed
+     * server read returns false so a network problem can never rewind a loaded local player.
      */
-    suspend fun hasNewerExternalSession(bookId: LibraryItemId, currentSessionId: String): Boolean
+    suspend fun hasNewerExternalSession(bookId: LibraryItemId, after: Instant): Boolean = false
 
-    /**
-     * PRODUCT_SPEC PLAY-003 — imports the **server's own** session records for [bookId], and persists them.
-     */
+    /** PRODUCT_SPEC PLAY-003 — imports the server's own session records for [bookId], and persists them. */
     suspend fun refreshServerSessions(bookId: LibraryItemId)
 
     suspend fun clear(bookId: LibraryItemId)
