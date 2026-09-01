@@ -211,11 +211,7 @@ private fun MiniPlayerButton(onClick: () -> Unit, content: @Composable () -> Uni
 
 /** The cover touches the left, top and bottom edges of the mini player with no surrounding padding. */
 @Composable
-private fun MiniPlayerArtwork(
-    state: PlaybackUiState,
-    isLoading: Boolean,
-    modifier: Modifier = Modifier,
-) {
+private fun MiniPlayerArtwork(state: PlaybackUiState, isLoading: Boolean, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxHeight()
