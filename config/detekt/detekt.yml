@@ -162,6 +162,13 @@ potential-bugs:
 
 style:
   active: true
+  NewLineAtEndOfFile:
+    active: true
+    # PlaybackService.kt is intentionally byte-stable because the GitHub connector cannot safely
+    # rewrite this ~1,900-line file just to append one byte. Its matching .editorconfig section sets
+    # insert_final_newline=false; exclude only this rule for only this file.
+    excludes:
+      - '**/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt'
   ForbiddenComment:
     active: true
     # PRODUCT_SPEC 21: no TODO without an issue reference.

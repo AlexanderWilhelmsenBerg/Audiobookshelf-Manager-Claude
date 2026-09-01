@@ -334,18 +334,19 @@ class PlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     /**
-     * PRODUCT_SPEC product priority 1 — swiping the app away does not stop the book.
+     * PRODUCT_SPEC product priority 1 — swiping the app away does not stop a book that is actively playing.
      *
-     * Only a service that is *not* playing is stopped here. Paused with the app gone is a session
-     * nobody is coming back to in this process, and holding a foreground notification for it would be a
-     * notification the user cannot dismiss. Playing is the case that must survive, and it does.
+     * BookWave still journals the paused position before the task goes away, but Media3 owns the lifecycle
+     * decision after that. Its default keeps an actively playing session alive and calls
+     * `pauseAllPlayersAndStopSelf()` for paused or empty sessions, which guarantees `onDestroy()` releases
+     * the old player/session instead of leaving a stale media item available to a later Bluetooth Play.
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
         val current = player
         if (current == null || !current.playWhenReady || current.mediaItemCount == 0) {
             flushProgress()
-            stopSelf()
         }
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
@@ -1554,11 +1555,9 @@ class PlaybackService : MediaLibraryService() {
          * PRODUCT_SPEC 12.2's "the server's history is a record of what was played"). So the `false` branch
          * describes the book and opens nothing.
          *
-         * **This app cannot reach the `false` branch today**, and the branch is still right. Media3 gates
-         * that whole path on `MediaSessionLegacyStub.canResumePlaybackOnStart()`, which is
-         * `broadcastReceiverComponentName != null` — a `MediaButtonReceiver` declared in the manifest, which
-         * this app does not declare (its receiver is the service). Adding one later is a manifest edit that
-         * nothing would connect to a network write, and this is the branch that makes the edit safe.
+         * Media3 reaches the `false` branch through the `MediaButtonReceiver` declared in the manifest. The
+         * receiver makes boot/System UI metadata resumption available without connecting that metadata-only
+         * question to a network write.
          */
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
