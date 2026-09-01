@@ -143,11 +143,8 @@ class OpenPlaybackSessionUseCaseTest {
         }
 
         override suspend fun probeServer(serverUrl: String): AppResult<ServerCandidate> = unused()
-        override suspend fun signIn(
-            serverUrl: String,
-            username: String,
-            password: String,
-        ): AppResult<Profile> = unused()
+        override suspend fun signIn(serverUrl: String, username: String, password: String): AppResult<Profile> =
+            unused()
         override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> = unused()
         override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> = unused()
         override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = unused()
