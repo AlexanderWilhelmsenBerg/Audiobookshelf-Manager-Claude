@@ -2,6 +2,7 @@ package com.example.shelfplayer.data.auth.di
 
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
 import com.example.shelfplayer.core.network.http.TokenProvider
+import com.example.shelfplayer.data.auth.CoalescingAuthRepository
 import com.example.shelfplayer.data.auth.DefaultAuthRepository
 import com.example.shelfplayer.data.auth.DefaultCapabilityRepository
 import com.example.shelfplayer.data.auth.DefaultProfileConnectionResolver
@@ -36,10 +37,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 interface AuthDataModule {
-    @Binds
-    @Singleton
-    fun bindsAuthRepository(impl: DefaultAuthRepository): AuthRepository
-
     @Binds
     @Singleton
     fun bindsCapabilityRepository(impl: DefaultCapabilityRepository): CapabilityRepository
@@ -93,6 +90,20 @@ interface AuthDataModule {
      * letting a processor bug pick the architecture.
      */
     companion object {
+        /**
+         * AUTH-004 — every feature sees one renewal boundary.
+         *
+         * The wrapper coalesces refresh-token rotation across playback range requests, playback-session
+         * opens and ordinary sync. Binding the delegate directly would give those callers separate locks
+         * again and re-introduce the rotating-token race.
+         */
+        @Provides
+        @Singleton
+        fun providesAuthRepository(
+            impl: DefaultAuthRepository,
+            tokens: SessionTokenProvider,
+        ): AuthRepository = CoalescingAuthRepository(impl, tokens)
+
         @Provides
         @Singleton
         fun providesProfileActivationGuard(impl: DefaultProfileLockRepository): ProfileActivationGuard = impl
