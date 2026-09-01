@@ -112,21 +112,19 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
      * the newest thing touching the book today. Failure is false: uncertainty must preserve the loaded local
      * position, never make a stale server read authoritative.
      */
-    override suspend fun hasNewerExternalSession(
-        bookId: LibraryItemId,
-        after: Instant,
-    ): Boolean = withContext(ioDispatcher) {
-        val profileId = profileRepository.activeProfileId() ?: return@withContext false
-        val fetched = gateway.playback.listeningSessions(profileId)
-        val sessions = (fetched as? AppResult.Success)?.value ?: return@withContext false
-        val thisDevice = device.describe().deviceId
-        sessions.any { candidate ->
-            candidate.bookId == bookId &&
-                candidate.deviceId != thisDevice &&
-                candidate.listened > Duration.ZERO &&
-                candidate.updatedAt > after
+    override suspend fun hasNewerExternalSession(bookId: LibraryItemId, after: Instant): Boolean =
+        withContext(ioDispatcher) {
+            val profileId = profileRepository.activeProfileId() ?: return@withContext false
+            val fetched = gateway.playback.listeningSessions(profileId)
+            val sessions = (fetched as? AppResult.Success)?.value ?: return@withContext false
+            val thisDevice = device.describe().deviceId
+            sessions.any { candidate ->
+                candidate.bookId == bookId &&
+                    candidate.deviceId != thisDevice &&
+                    candidate.listened > Duration.ZERO &&
+                    candidate.updatedAt > after
+            }
         }
-    }
 
     /**
      * PRODUCT_SPEC PLAY-003 — imports the server's own session records for one book.
