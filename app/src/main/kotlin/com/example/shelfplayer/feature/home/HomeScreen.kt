@@ -180,13 +180,16 @@ fun HomeScreen(
      */
     ReportDrawnWhen { uiState.profile != null }
     val snackbars = remember { SnackbarHostState() }
+    val axisBarMotion = rememberHomeAxisBarMotion()
     LaunchedEffect(playbackMessage) {
         val message = playbackMessage ?: return@LaunchedEffect
         snackbars.showSnackbar(message)
         onPlaybackMessageShown()
     }
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .captureHomeAxisBarMotion(axisBarMotion),
         snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             TopAppBar(
@@ -283,7 +286,11 @@ fun HomeScreen(
         // to reach the same empty screen.
         bottomBar = {
             if (uiState.profile != null) {
-                HomeAxisBar(current = uiState.axis, onAxisChanged = actions.onAxisChanged)
+                HomeAxisBar(
+                    current = uiState.axis,
+                    onAxisChanged = actions.onAxisChanged,
+                    motion = axisBarMotion,
+                )
             }
         },
     ) { innerPadding ->
@@ -500,9 +507,15 @@ private fun GenreEditChangeSummary(request: GenreEditRequest) {
 
 /** PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */
 @Composable
-private fun HomeAxisBar(current: HomeAxis, onAxisChanged: (HomeAxis) -> Unit, modifier: Modifier = Modifier) {
+private fun HomeAxisBar(
+    current: HomeAxis,
+    onAxisChanged: (HomeAxis) -> Unit,
+    motion: HomeAxisBarMotionState,
+    modifier: Modifier = Modifier,
+) {
     Surface(
         modifier = modifier
+            .followHomeAxisBarMotion(motion)
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp),
         shape = CircleShape,
