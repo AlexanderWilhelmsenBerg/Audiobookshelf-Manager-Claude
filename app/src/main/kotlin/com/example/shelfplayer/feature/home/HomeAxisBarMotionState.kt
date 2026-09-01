@@ -2,14 +2,11 @@ package com.example.shelfplayer.feature.home
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -85,15 +82,11 @@ internal fun rememberHomeAxisBarMotion(): HomeAxisBarMotionState {
 
 internal fun Modifier.captureHomeAxisBarMotion(state: HomeAxisBarMotionState): Modifier = nestedScroll(state.connection)
 
-internal fun Modifier.followHomeAxisBarMotion(state: HomeAxisBarMotionState): Modifier = background(
-    color = Color.White.copy(alpha = AXIS_BAR_WHITE_TINT_ALPHA),
-    shape = CircleShape,
-).graphicsLayer {
+internal fun Modifier.followHomeAxisBarMotion(state: HomeAxisBarMotionState): Modifier = graphicsLayer {
     translationY = state.offsetPx
 }
 
 private val MAX_AXIS_BAR_OFFSET = 8.dp
-private const val AXIS_BAR_WHITE_TINT_ALPHA = 0.28f
 private const val DRAG_RESPONSE = 0.22f
 private const val FLING_VELOCITY_RESPONSE = 0.012f
 private const val MIN_SCROLL_DELTA_PX = 0.25f
