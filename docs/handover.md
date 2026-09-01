@@ -592,6 +592,38 @@ In dependency order.
      cleartext a debug-build capability, so a release build keeps the platform's guarantee and there is
      no advanced screen to grant an exception in.
 
+## Moving your settings between installs
+
+Settings live in the app's proto DataStore, which Android deletes with the app. Until 2026-08-30 a debug
+build also had to be uninstalled before every install (`DebugSigning` and `docs/release.md` fix that), so
+this was a recurring loss rather than a rare one.
+
+**Settings → About → Settings file.** *Export settings…* writes a JSON document wherever the system file
+picker points; *Import settings…* reads one back. The sign-in screen has the import half too, under the
+address field, so a fresh install can be set up before it has an account.
+
+What travels:
+
+| | |
+| --- | --- |
+| **Travels** | Server addresses. Playback (speed, skips, auto-rewind, buffer preset), the sleep timer, focus behaviour, startup mode. Network and download rules, the download volume. Known output devices and their ROUTE-002 policies. Theme, dynamic colour, language, the diagnostics toggles. Per-account view preferences, keyed by address and username. |
+| **Never travels** | Any credential — no password, no bearer token, no passcode verifier. Those are in the Keystore-backed store precisely so they cannot be copied off the device, and an export that carried them would be a way around that (`docs/risks.md` R-20). |
+| **Stays behind** | `playback_device_id`, the identifier this install sends the server as `deviceInfo.deviceId`. Copying it would make two installs one device in the server's listening history. Also the active profile, the fixture seed marker and the store's own schema version. `SettingsTransfer.EXCLUDED_FIELDS` carries the reason for each, and `SettingsTransferDriftTest` fails if a new setting is added without deciding which side of this line it is on. |
+
+The file is JSON and pretty-printed on purpose: the promise above is one the person whose file it is can
+check by opening it.
+
+**It cannot be found automatically, and that is structural.** The owner asked for the app to detect the
+file at startup. An app-private directory is deleted with the app, so a file there would not survive the
+reinstall the feature exists for; anywhere else needs either a per-file SAF grant — which is the browse
+button — or `READ_EXTERNAL_STORAGE`, a permission over every document on the device, asked for so the app
+could read one. SAF grants do not survive an uninstall either, so remembering last time's location would
+not help the case that matters. `SettingsFile`'s KDoc says the same thing next to the code.
+
+Per-account view preferences restore only for accounts already signed in on the importing device. On a
+fresh install every one of them is skipped, and the confirmation message says how many rather than
+implying they arrived.
+
 ## Running this locally
 
 Everything below assumes a checkout on your own machine with a device or emulator available. **That is a

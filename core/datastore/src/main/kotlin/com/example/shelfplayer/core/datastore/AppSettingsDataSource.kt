@@ -563,6 +563,20 @@ class AppSettingsDataSource @Inject constructor(
 
     suspend fun current(): AppSettings = dataStore.updateData { it }
 
+    /**
+     * PRODUCT_SPEC SET-001 — the settings import's one write, as a single transaction.
+     *
+     * The only member of this class that takes a whole-message transform rather than one named setting,
+     * and it is named for its single caller so that it stays that way. An import replaces most of the
+     * store at once; doing it as a read from [current] followed by a write would put a concurrent
+     * setting change between the two and lose it.
+     *
+     * What survives the transform is the transform's business — the caller is handed the current message
+     * precisely so that it can keep this install's own identity (`playbackDeviceId` above all) rather
+     * than adopting the exporting device's. See `SettingsTransfer.EXCLUDED_FIELDS`.
+     */
+    suspend fun importSettings(merge: (AppSettings) -> AppSettings): AppSettings = dataStore.updateData(merge)
+
     private companion object {
 
         /** The speed's storage unit. One place, so the write and the read cannot disagree. */

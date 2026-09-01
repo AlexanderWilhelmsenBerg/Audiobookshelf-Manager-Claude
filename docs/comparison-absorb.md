@@ -77,6 +77,17 @@ imports themselves is a different trust model.
 token exclusion is *"a separate and standing decision"*. An export containing the server URL, the profile
 list, the per-device policies and the playback preferences — and no credential — would honour both.
 
+**Built, 2026-08-30.** Settings → About → *Settings file*, and the import half again on the sign-in screen
+so a fresh install can use it before it has an account. It carries exactly what the paragraph above
+proposed and nothing else; `SettingsTransferDriftTest` fails if a setting is added to the store without a
+decision about which side of that line it belongs on. See `docs/handover.md`, "Moving your settings between
+installs", for what travels and what deliberately stays behind.
+
+One thing the owner asked for that this does **not** do: find the file by itself at startup. That needs a
+storage permission over every document on the device, asked for so the app could read one — and an
+app-private copy would be deleted by the very uninstall the feature exists for. The browse button is the
+whole of what is possible without that permission.
+
 ### OIDC / SSO sign-in
 
 Absorb supports it beside standard auth. Audiobookshelf supports it server-side.
@@ -157,7 +168,7 @@ Worth recording, so this document is a comparison rather than a wish list:
 | Auto-play next in series | **Built** (6.4 step 6) |
 | Listening statistics | Yes — cheapest, no risk |
 | Car mode | Yes — after the device-test backlog |
-| Explicit settings export/import | Yes — settings only, never the token |
+| Explicit settings export/import | **Built 2026-08-30** — settings only, never the token |
 | OIDC / SSO | Yes *if the owner's server needs it* |
 | Custom HTTP headers | Yes — small; keep values out of logs |
 | Audible / Audnexus enrichment | **No** — product priority 7 |

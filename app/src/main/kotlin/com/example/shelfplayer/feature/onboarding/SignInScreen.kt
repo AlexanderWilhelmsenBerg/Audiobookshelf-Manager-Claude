@@ -39,6 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.layout.contentWidth
 import com.example.shelfplayer.core.model.ServerCandidate
+import com.example.shelfplayer.feature.settings.transfer.ImportSettingsButton
 
 /**
  * PRODUCT_SPEC AUTH-001 / 6.1 — the first thing a new install shows.
@@ -71,12 +72,21 @@ fun SignInRoute(onSignedIn: () -> Unit, modifier: Modifier = Modifier, viewModel
             onCredentialsSubmitted = viewModel::onCredentialsSubmitted,
         ),
         modifier = modifier,
+        // PRODUCT_SPEC SET-001 — a slot rather than a call, so `SignInScreen` stays a pure function of its
+        // arguments (16.4) and its tests keep rendering without Hilt. The route is where a ViewModel may
+        // be resolved; the screen only decides where the button sits.
+        importSettings = { ImportSettingsButton(onServerPicked = viewModel::onKnownServerSelected) },
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SignInScreen(uiState: SignInUiState, actions: SignInActions, modifier: Modifier = Modifier) {
+fun SignInScreen(
+    uiState: SignInUiState,
+    actions: SignInActions,
+    modifier: Modifier = Modifier,
+    importSettings: @Composable () -> Unit = {},
+) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { TopAppBar(title = { Text(text = stringResource(R.string.sign_in_title)) }) },
@@ -99,7 +109,8 @@ fun SignInScreen(uiState: SignInUiState, actions: SignInActions, modifier: Modif
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 when (uiState.stage) {
-                    SignInStage.Address -> AddressStage(uiState = uiState, actions = actions)
+                    SignInStage.Address ->
+                        AddressStage(uiState = uiState, actions = actions, importSettings = importSettings)
 
                     SignInStage.Credentials -> CredentialsStage(uiState = uiState, actions = actions)
                 }
@@ -129,7 +140,7 @@ fun SignInScreen(uiState: SignInUiState, actions: SignInActions, modifier: Modif
 }
 
 @Composable
-private fun AddressStage(uiState: SignInUiState, actions: SignInActions) {
+private fun AddressStage(uiState: SignInUiState, actions: SignInActions, importSettings: @Composable () -> Unit) {
     Text(text = stringResource(R.string.sign_in_address_prompt), style = MaterialTheme.typography.bodyMedium)
     OutlinedTextField(
         value = uiState.serverUrl,
@@ -150,6 +161,9 @@ private fun AddressStage(uiState: SignInUiState, actions: SignInActions) {
         Text(text = stringResource(R.string.sign_in_continue))
     }
     KnownServers(uiState = uiState, onSelected = actions.onKnownServerSelected)
+    // PRODUCT_SPEC SET-001 — below the servers this device already knows, because that list is the better
+    // answer when it is not empty: a device that has a server does not need a file to find one.
+    importSettings()
 }
 
 /**

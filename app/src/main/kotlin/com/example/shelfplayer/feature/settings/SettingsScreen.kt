@@ -54,6 +54,7 @@ import com.example.shelfplayer.feature.lock.LockSettingsUiState
 import com.example.shelfplayer.feature.lock.ProfileLockActions
 import com.example.shelfplayer.feature.lock.ProfileLockViewModel
 import com.example.shelfplayer.feature.lock.profileLockSection
+import com.example.shelfplayer.feature.settings.transfer.SettingsTransferSection
 import com.example.shelfplayer.launcher.LauncherIcon
 import java.util.Locale
 import kotlin.time.Duration
@@ -302,6 +303,12 @@ private fun LazyListScope.aboutTab(
     item { SectionHeader(text = stringResource(R.string.settings_section_icon)) }
     item { LauncherIconPicker(selected = launcherIcon, onSelected = onLauncherIconChanged) }
     item { Hint(text = stringResource(R.string.settings_icon_hint)) }
+
+    // PRODUCT_SPEC SET-001 — the settings as a file. On the About tab because it is about the app's own
+    // state rather than about a server or a book, beside the launcher icon for the same reason.
+    item { SectionHeader(text = stringResource(R.string.settings_section_transfer)) }
+    item { Hint(text = stringResource(R.string.settings_transfer_body)) }
+    item { SettingsTransferSection() }
 
     // PRODUCT_SPEC 14.4 — before the readings, because this is the one thing on the tab somebody reaches
     // for while something is wrong rather than while checking a build.

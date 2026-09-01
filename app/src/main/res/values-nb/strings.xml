@@ -109,6 +109,9 @@
     <string name="sign_in_known_version_unknown">Versjon ikke registrert</string>
     <string name="sign_in_known_checked_again">Hver adresse sjekkes på nytt når du velger den.</string>
 
+    <string name="sign_in_import_settings">Importer innstillinger fra en fil\u2026</string>
+    <string name="sign_in_import_settings_hint">Fyller inn serveradressen og gjenoppretter appinnstillingene dine fra en fil du har eksportert. Den logger deg ikke inn \u2014 filen inneholder ikke noe passord.</string>
+
     <string name="profiles_title">Profiler</string>
     <string name="profiles_empty_title">Ingen profiler ennå</string>
     <string name="profiles_empty_body">Koble til en Audiobookshelf-server for å legge til en.</string>
@@ -482,6 +485,21 @@
     <string name="settings_device_kind_other">Lydenhet</string>
     <string name="settings_device_speaker_warning">Dette er en høyttaler, så boka starter høyt i rommet den står i.</string>
     <string name="settings_section_icon">Appikon</string>
+
+    <string name="settings_section_transfer">Innstillingsfil</string>
+    <string name="settings_transfer_body">Lagre innstillingene dine i en fil du velger selv, og les dem tilbake etter en ny installasjon. Filen inneholder serveradresser og appinnstillinger \u2014 aldri passord, tilgangstoken eller appkoden din.</string>
+    <string name="settings_transfer_export">Eksporter innstillinger\u2026</string>
+    <string name="settings_transfer_import">Importer innstillinger\u2026</string>
+    <string name="settings_transfer_saved">Innstillingene ble lagret i filen.</string>
+    <string name="settings_transfer_imported">Innstillingene ble importert.</string>
+    <plurals name="settings_transfer_imported_servers">
+        <item quantity="one">Innstillingene ble importert, inkludert %1$d serveradresse.</item>
+        <item quantity="other">Innstillingene ble importert, inkludert %1$d serveradresser.</item>
+    </plurals>
+    <plurals name="settings_transfer_skipped">
+        <item quantity="one">Visningsvalgene til %1$d konto ble hoppet over \u2014 logg inn på den kontoen først.</item>
+        <item quantity="other">Visningsvalgene til %1$d kontoer ble hoppet over \u2014 logg inn på de kontoene først.</item>
+    </plurals>
     <string name="settings_icon_bookwave">BookWave</string>
     <string name="settings_icon_indigo">Indigo</string>
     <string name="settings_icon_spectrum">Spekter</string>

@@ -1,6 +1,8 @@
 plugins {
     id("shelfplayer.android.library")
     id("shelfplayer.hilt")
+    // PRODUCT_SPEC SET-001 — the settings export is JSON, and readable on purpose (`SettingsDocument`).
+    alias(libs.plugins.kotlin.serialization)
     // PRODUCT_SPEC 17.3 — this module contributes coverage data; the thresholds live in the root build.
     alias(libs.plugins.kover)
 }
@@ -28,6 +30,7 @@ dependencies {
     implementation(projects.core.datastore)
     // PRODUCT_SPEC PLAY-001 — for the `PlaybackDeviceIdentity` seam, whose stored half lives here.
     implementation(projects.core.network)
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(projects.core.testing)
     // The sleep-timer repository test builds a real database and a real DataStore file, because the
@@ -37,4 +40,5 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
     testImplementation(libs.turbine)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

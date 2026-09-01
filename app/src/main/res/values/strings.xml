@@ -115,6 +115,15 @@
     <string name="sign_in_known_version_unknown">Version not recorded</string>
     <string name="sign_in_known_checked_again">Each address is checked again when you pick it.</string>
 
+    <!--
+      PRODUCT_SPEC SET-001 / AUTH-001 — "browse for settings" on the address stage.
+
+      The hint says what the file does and, just as importantly, what it does not: it is not a way back
+      into an account, and a user who expects it to be will be confused by a password prompt otherwise.
+    -->
+    <string name="sign_in_import_settings">Import settings from a file\u2026</string>
+    <string name="sign_in_import_settings_hint">Fills in the server address and restores your app settings from a file you exported. It does not sign you in \u2014 the file holds no password.</string>
+
     <!-- PRODUCT_SPEC AUTH-002 / 6.5 — the profile switcher. -->
     <string name="profiles_title">Profiles</string>
     <string name="profiles_empty_title">No profiles yet</string>
@@ -626,6 +635,26 @@
     <string name="settings_device_kind_other">Audio device</string>
     <string name="settings_device_speaker_warning">This is a speaker, so a book will start out loud in whatever room it is in.</string>
     <string name="settings_section_icon">App icon</string>
+
+    <!-- PRODUCT_SPEC SET-001 — the settings as a file the user keeps. -->
+    <string name="settings_section_transfer">Settings file</string>
+    <string name="settings_transfer_body">Save your settings to a file you choose, and read them back after reinstalling. The file holds server addresses and app settings \u2014 never a password, an access token or your app passcode.</string>
+    <string name="settings_transfer_export">Export settings\u2026</string>
+    <string name="settings_transfer_import">Import settings\u2026</string>
+    <string name="settings_transfer_saved">Settings saved to that file.</string>
+    <string name="settings_transfer_imported">Settings imported.</string>
+    <plurals name="settings_transfer_imported_servers">
+        <item quantity="one">Settings imported, including %1$d server address.</item>
+        <item quantity="other">Settings imported, including %1$d server addresses.</item>
+    </plurals>
+    <!--
+      Shown whenever anything was skipped, which on a fresh install is everything per-account: those
+      preferences belong to an account that has to sign in here before they have anywhere to go.
+    -->
+    <plurals name="settings_transfer_skipped">
+        <item quantity="one">%1$d account\u2019s view preferences were skipped \u2014 sign in to that account first.</item>
+        <item quantity="other">%1$d accounts\u2019 view preferences were skipped \u2014 sign in to those accounts first.</item>
+    </plurals>
     <string name="settings_icon_bookwave">BookWave</string>
     <string name="settings_icon_indigo">Indigo</string>
     <string name="settings_icon_spectrum">Spectrum</string>

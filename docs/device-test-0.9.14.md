@@ -1460,7 +1460,75 @@ force-stop/reopen cycles without the prior `hiltViewModel()` crash.
 
 ---
 
-## 13. What to send back
+## 14. The settings file survives an uninstall (task #82)
+
+**New in this build, and the one section where uninstalling is the test rather than a nuisance.**
+
+The whole feature exists because settings are deleted with the app. So the check has to cross that
+boundary; confirming an export and an import in the same install proves almost nothing.
+
+1. Set three things you will recognise: **playback speed** to something other than 1.0×, the **theme** to
+   Dark, and one **known output device** to *Never react* (Settings → Devices).
+2. Settings → About → **Settings file** → *Export settings…*. Save it to **Downloads**, not to app storage.
+3. Open the file in a text viewer before going on. **Read it.** Confirm you can see your server address,
+   confirm the speed you set is in there, and confirm there is no password, no token and no passcode.
+   That is the promise the feature makes and this is the only step that checks it.
+4. Note the `deviceId` the app sends: Settings → About → Testing, or the event log's session lines. It
+   must **not** appear in the file.
+5. `adb uninstall org.homebord.bookwave.debug` — the release build is `org.homebord.bookwave`, without the suffix — or uninstall from the launcher, then install the build again.
+6. On the sign-in screen, under the address field: **Import settings from a file…**. Pick the exported
+   file.
+
+**Expect:**
+
+- The address field fills in with your server, and the ordinary probe runs — you should see the version
+  and the encryption line as usual, not a remembered claim.
+- A message saying the settings were imported, **and** that one account's view preferences were skipped.
+  That second half is correct: no account has signed in yet on this install.
+- After signing in: the speed, the theme and the device policy are the ones you set in step 1.
+- The `deviceId` is a **new** one, different from step 4. If it matches, the export carried an identifier
+  it should not have and that is a defect worth stopping for.
+
+**Then, on an already-signed-in install**, import the same file again from Settings → About. This time the
+message should say **nothing** was skipped, and the per-account preferences (default library, sort order)
+should be the exported ones.
+
+**Also worth one attempt:** pick a file that is *not* a settings export — any JSON, or a photo. Expect
+*"That file is not a BookWave settings export."* and no change to anything.
+
+**Result:** _not yet run._
+
+---
+
+## 15. The boot resumption notification opens no server session (R-84)
+
+**New, and newly reachable.** Media3 1.11.0 split `onPlaybackResumption` in two, and this app answers the
+metadata-only half without opening a listening session. That half was dead code when it was written —
+Media3 only asks it when a `MediaButtonReceiver` is in the manifest, and there was none. **PR #61 added
+one**, for an unrelated reason, so the branch is live and has never run anywhere.
+
+Nothing in the gate can see this: no JVM test can construct a `MediaSession.ControllerInfo`.
+
+1. Play a book for a minute or two, then pause. Leave it as the last thing played.
+2. **Reboot the phone.** Do not open BookWave afterwards.
+3. Pull down the notification shade and look at the media resumption area.
+
+**Expect:** the book you paused is offered there, by title, without the app having been opened.
+
+4. **Before pressing anything**, open the Audiobookshelf web interface and look at that account's listening
+   sessions. **Expect no new session** — the notification asked what would resume, not for it to start.
+5. Now press play on the notification.
+
+**Expect:** playback starts from where you paused, and *now* a listening session appears on the server.
+
+**A new session at step 4 is the defect this branch exists to prevent** — it means the metadata request
+opened one, and the server's history records listening that never happened.
+
+**Result:** _not yet run._
+
+---
+
+## 16. What to send back
 
 For each section: the result, and for anything that failed, the **event log** around it.
 

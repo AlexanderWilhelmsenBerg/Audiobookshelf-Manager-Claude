@@ -7,10 +7,12 @@ import com.example.shelfplayer.data.settings.DefaultPlaybackDeviceIdentity
 import com.example.shelfplayer.data.settings.DefaultPlaybackSettingsRepository
 import com.example.shelfplayer.data.settings.DefaultPreferencesRepository
 import com.example.shelfplayer.data.settings.DefaultSleepTimerRepository
+import com.example.shelfplayer.data.settings.transfer.DefaultSettingsTransferRepository
 import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
+import com.example.shelfplayer.domain.repository.SettingsTransferRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import dagger.Binds
 import dagger.Module
@@ -58,4 +60,14 @@ interface SettingsDataModule {
     @Binds
     @Singleton
     fun bindsSleepTimerRepository(impl: DefaultSleepTimerRepository): SleepTimerRepository
+
+    /**
+     * PRODUCT_SPEC SET-001 — moving the settings to a file and back.
+     *
+     * Here rather than in `:app` because it reads the settings store and the profile table, and both of
+     * those stop at this module by design.
+     */
+    @Binds
+    @Singleton
+    fun bindsSettingsTransferRepository(impl: DefaultSettingsTransferRepository): SettingsTransferRepository
 }

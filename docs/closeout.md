@@ -48,6 +48,7 @@ this project's CI has no emulator, which is the constraint that shaped six phase
 - **Wide hardware (R-28).** Adaptive layouts exist and were reviewed at phone width. Tablet, foldable and
   split-screen are unreviewed on real hardware.
 - **Low storage and process death (R-11).**
+- **The settings file (task #82).** Export and import are covered by JVM tests down to the store, including that the importing install keeps its own `deviceId`. What no test can reach is the part the feature exists for: a real uninstall, and the system document picker on both sides of it. `docs/device-test-0.9.14.md` §14 is that check, and step 3 — *open the file and read it* — is the only place the privacy claim is verified by the person it is made to.
 
 ---
 
