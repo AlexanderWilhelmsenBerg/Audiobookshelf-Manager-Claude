@@ -2,7 +2,6 @@ package com.example.shelfplayer.feature.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Bookmark
@@ -25,6 +24,7 @@ import com.example.shelfplayer.playback.SessionSyncCoordinator
 import com.example.shelfplayer.playback.SleepTimerController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +35,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.Instant
 import javax.inject.Inject
 import kotlin.time.Duration
 
@@ -79,7 +78,6 @@ class PlayerViewModel @Inject constructor(
     private val bookmarks: BookmarkRepository,
     playbackSettings: PlaybackSettingsRepository,
     private val surface: PlayerSurface,
-    private val clock: AppClock,
 ) : ViewModel() {
 
     val playback: StateFlow<PlaybackUiState> = controller.state
@@ -205,8 +203,8 @@ class PlayerViewModel @Inject constructor(
     /** The last failure worth showing, or `null`. Cleared by [onMessageShown]. */
     val message: StateFlow<String?> = _message.asStateFlow()
 
-    /** The moment BookWave itself last paused this loaded book; used only to order competing sessions. */
-    private var locallyPausedAt: Instant? = null
+    /** At most one server-freshness check may own the next in-app Play. */
+    private var resumeJob: Job? = null
 
     /**
      * PRODUCT_SPEC PLAY-001 — starts a book and opens the player over it.
@@ -231,6 +229,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun startPlayback(bookId: LibraryItemId, onSuccess: () -> Unit) {
+        cancelResumeCheck()
         viewModelScope.launch {
             when (val result = controller.play(bookId)) {
                 is AppResult.Failure -> _message.value = result.error.summary
@@ -281,15 +280,17 @@ class PlayerViewModel @Inject constructor(
     fun onRewindNoticeShown() = autoRewind.dismissUndo()
 
     /**
-     * Pauses immediately. Resuming asks whether a different device changed this book after that pause.
+     * Every in-app Play on a loaded paused book checks server-session freshness before it resumes.
      *
-     * Freshness, never the numerical position, decides. That preserves intentional rewinds on another
-     * client while a lagging server cannot rewind a normal pause/play on this device.
+     * The repository compares Audiobookshelf session identity/device/timestamps, never progress magnitude
+     * and never this handset's wall clock. If it cannot prove newer external activity, the existing player
+     * resumes exactly where it is. A newer external rewind is therefore respected, while uncertainty cannot
+     * create a rewind of its own.
      */
     fun onTogglePlayPause() {
         val current = playback.value
         if (current.isPlaying) {
-            locallyPausedAt = clock.now()
+            cancelResumeCheck()
             controller.togglePlayPause()
             return
         }
@@ -298,19 +299,22 @@ class PlayerViewModel @Inject constructor(
             controller.togglePlayPause()
             return
         }
-        val pausedAt = locallyPausedAt
-        if (pausedAt == null) {
-            startPlayback(bookId, onSuccess = {})
-            return
-        }
-        viewModelScope.launch {
-            if (playbackHistory.hasNewerExternalSession(bookId, pausedAt)) {
-                when (val result = controller.play(bookId)) {
-                    is AppResult.Failure -> _message.value = result.error.summary
-                    is AppResult.Success -> locallyPausedAt = null
+        if (resumeJob?.isActive == true) return
+        resumeJob = viewModelScope.launch {
+            try {
+                val newer = playbackHistory.hasNewerExternalSession(bookId)
+                val latest = playback.value
+                // A slower network answer may outlive the Play it belonged to. The book/state that now owns
+                // the player wins; an old request must never replace or toggle it.
+                if (latest.bookId != bookId || latest.isPlaying) return@launch
+                if (newer) {
+                    val result = controller.play(bookId)
+                    if (result is AppResult.Failure) _message.value = result.error.summary
+                } else {
+                    controller.togglePlayPause()
                 }
-            } else {
-                controller.togglePlayPause()
+            } finally {
+                resumeJob = null
             }
         }
     }
@@ -320,8 +324,8 @@ class PlayerViewModel @Inject constructor(
 
     /** Stopping closes the player as well: there is nothing left for it to show. */
     fun onStop() {
+        cancelResumeCheck()
         surface.collapse()
-        locallyPausedAt = null
         controller.stop()
     }
 
@@ -416,6 +420,11 @@ class PlayerViewModel @Inject constructor(
 
     fun onMessageShown() {
         _message.value = null
+    }
+
+    private fun cancelResumeCheck() {
+        resumeJob?.cancel()
+        resumeJob = null
     }
 
     private companion object {
