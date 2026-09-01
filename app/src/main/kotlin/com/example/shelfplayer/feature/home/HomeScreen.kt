@@ -10,6 +10,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,8 +19,10 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,9 +51,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -78,6 +79,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -297,7 +299,7 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(top = innerPadding.calculateTopPadding()),
         ) {
             HomeContent(uiState = uiState, actions = actions)
         }
@@ -517,35 +519,80 @@ private fun HomeAxisBar(
         modifier = modifier
             .followHomeAxisBarMotion(motion)
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 4.dp),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = AXIS_BAR_GLASS_ALPHA),
         tonalElevation = 0.dp,
-        shadowElevation = 8.dp,
+        shadowElevation = 4.dp,
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AXIS_BAR_BORDER_ALPHA),
         ),
     ) {
-        NavigationBar(
-            modifier = Modifier.fillMaxWidth(),
-            containerColor = Color.Transparent,
-            tonalElevation = 0.dp,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(AXIS_BAR_HEIGHT)
+                .padding(horizontal = 4.dp, vertical = 3.dp)
+                .selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             HomeAxis.entries.forEach { axis ->
-                NavigationBarItem(
-                    selected = axis == current,
-                    onClick = { onAxisChanged(axis) },
-                    icon = { Icon(imageVector = axis.icon(), contentDescription = null) },
-                    label = { Text(text = stringResource(axis.labelRes())) },
-                    colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
-                    ),
-                )
+                val selected = axis == current
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .selectable(
+                            selected = selected,
+                            onClick = { onAxisChanged(axis) },
+                            role = Role.Tab,
+                        ),
+                    shape = CircleShape,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = AXIS_SELECTION_ALPHA)
+                    } else {
+                        Color.Transparent
+                    },
+                    contentColor = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 5.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = axis.icon(),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = stringResource(axis.labelRes()),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
+                }
             }
         }
     }
 }
+
+private val AXIS_BAR_HEIGHT = 46.dp
+private const val AXIS_BAR_GLASS_ALPHA = 0.38f
+private const val AXIS_BAR_BORDER_ALPHA = 0.42f
+private const val AXIS_SELECTION_ALPHA = 0.46f
 
 private fun HomeAxis.icon(): ImageVector = when (this) {
     HomeAxis.Books -> Icons.AutoMirrored.Filled.MenuBook
