@@ -42,6 +42,7 @@ import coil.compose.AsyncImage
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
+import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC PLAY-001 — what is playing, on every screen.
@@ -193,7 +194,40 @@ fun MiniPlayer(
                     .fillMaxWidth()
                     .height(PROGRESS_HEIGHT),
             )
+            MiniPlayerTimeLabels(
+                state = state,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(
+                        start = ARTWORK_WIDTH + TIME_LABEL_HORIZONTAL_INSET,
+                        top = TIME_LABEL_TOP_INSET,
+                        end = TIME_LABEL_HORIZONTAL_INSET,
+                    ),
+            )
         }
+    }
+}
+
+@Composable
+private fun MiniPlayerTimeLabels(state: PlaybackUiState, modifier: Modifier = Modifier) {
+    val elapsed = state.position.coerceAtLeast(Duration.ZERO)
+    val remaining = (state.duration - elapsed).coerceAtLeast(Duration.ZERO)
+    Box(modifier = modifier) {
+        Text(
+            text = elapsed.asChapterClock(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.align(Alignment.TopStart),
+        )
+        Text(
+            text = "-${remaining.asChapterClock()}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.align(Alignment.TopEnd),
+        )
     }
 }
 
@@ -251,6 +285,8 @@ private val CONTROL_WIDTH = 48.dp
 private val TRANSPORT_ICON_SIZE = 28.dp
 private val PLAY_ICON_SIZE = 34.dp
 private val PROGRESS_HEIGHT = 2.dp
+private val TIME_LABEL_HORIZONTAL_INSET = 6.dp
+private val TIME_LABEL_TOP_INSET = 3.dp
 private const val GLASS_ALPHA = 0.76f
 private const val GLASS_BORDER_ALPHA = 0.35f
 private const val GLASS_ARTWORK_ALPHA = 0.72f
