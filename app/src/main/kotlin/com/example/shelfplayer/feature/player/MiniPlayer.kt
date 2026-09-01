@@ -1,5 +1,10 @@
 package com.example.shelfplayer.feature.player
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -69,142 +75,161 @@ fun MiniPlayer(
     skips: SkipControls,
     modifier: Modifier = Modifier,
 ) {
-    if (state.bookId == null) return
     val activeTimerLabel = stringResource(R.string.sleep_timer_active, timer.remaining.asShortLabel())
     val openLabel = stringResource(R.string.player_open)
     val backSeconds = skips.intervals.back.inWholeSeconds.toInt()
     val forwardSeconds = skips.intervals.forward.inWholeSeconds.toInt()
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(BAR_HEIGHT),
-        tonalElevation = 0.dp,
-        shadowElevation = 8.dp,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_ALPHA),
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = GLASS_BORDER_ALPHA),
+    AnimatedVisibility(
+        visible = state.bookId != null,
+        modifier = modifier.fillMaxWidth(),
+        enter = expandVertically(
+            expandFrom = Alignment.Bottom,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+            ),
+        ),
+        exit = shrinkVertically(
+            shrinkTowards = Alignment.Bottom,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium,
+            ),
         ),
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                // The cover and the text are one tap target that opens the player; the controls sit
-                // outside it. That is "anywhere except the buttons", expressed as a region rather than as
-                // a click on the whole bar that the buttons then have to out-compete.
-                //
-                // Not `clickable` on the `Surface`: a clickable container **merges** its descendants'
-                // semantics, so the buttons inside would stop being separate nodes — a screen reader
-                // would find one control where there are five, and a tap on the pause icon would fire
-                // the container's click instead of the button's.
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable(onClick = onExpand, onClickLabel = openLabel),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    MiniPlayerArtwork(state = state, isLoading = state.isLoading)
-                    Column(
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(BAR_HEIGHT),
+            tonalElevation = 0.dp,
+            shadowElevation = 8.dp,
+            color = Color.White.copy(alpha = GLASS_ALPHA),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = BorderStroke(
+                width = 1.dp,
+                color = Color.White.copy(alpha = GLASS_BORDER_ALPHA),
+            ),
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    // The cover and the text are one tap target that opens the player; the controls sit
+                    // outside it. That is "anywhere except the buttons", expressed as a region rather than as
+                    // a click on the whole bar that the buttons then have to out-compete.
+                    //
+                    // Not `clickable` on the `Surface`: a clickable container **merges** its descendants'
+                    // semantics, so the buttons inside would stop being separate nodes — a screen reader
+                    // would find one control where there are five, and a tap on the pause icon would fire
+                    // the container's click instead of the button's.
+                    Row(
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 8.dp),
+                            .fillMaxHeight()
+                            .clickable(onClick = onExpand, onClickLabel = openLabel),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = state.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                        )
-                        state.author?.let { author ->
+                        MiniPlayerArtwork(state = state, isLoading = state.isLoading)
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp),
+                        ) {
                             Text(
-                                text = author,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = state.title,
+                                style = MaterialTheme.typography.titleSmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                            )
+                            state.author?.let { author ->
+                                Text(
+                                    text = author,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                    // PRODUCT_SPEC PLAY-007 — the two skips a listener reaches for without looking, at the
+                    // configured intervals. The glyph drops its number rather than printing a wrong one.
+                    MiniPlayerButton(onClick = skips.onBack) {
+                        Icon(
+                            imageVector = SkipIcons.back(skips.intervals.back),
+                            contentDescription = pluralStringResource(
+                                R.plurals.player_skip_back,
+                                backSeconds,
+                                backSeconds,
+                            ),
+                            modifier = Modifier.size(TRANSPORT_ICON_SIZE),
+                        )
+                    }
+                    // PRODUCT_SPEC PLAY-008 — the remaining time doubles as the control's label, so a
+                    // listener can see the timer is running without opening anything.
+                    MiniPlayerButton(onClick = onOpenSleepTimer) {
+                        if (timer.isActive) {
+                            Text(
+                                text = timer.remaining.asCountdownLabel(),
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.semantics {
+                                    contentDescription = activeTimerLabel
+                                },
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.Bedtime,
+                                contentDescription = stringResource(R.string.sleep_timer_open),
+                                modifier = Modifier.size(TRANSPORT_ICON_SIZE),
                             )
                         }
                     }
-                }
-                // PRODUCT_SPEC PLAY-007 — the two skips a listener reaches for without looking, at the
-                // configured intervals. The glyph drops its number rather than printing a wrong one.
-                MiniPlayerButton(onClick = skips.onBack) {
-                    Icon(
-                        imageVector = SkipIcons.back(skips.intervals.back),
-                        contentDescription = pluralStringResource(
-                            R.plurals.player_skip_back,
-                            backSeconds,
-                            backSeconds,
-                        ),
-                        modifier = Modifier.size(TRANSPORT_ICON_SIZE),
-                    )
-                }
-                // PRODUCT_SPEC PLAY-008 — the remaining time doubles as the control's label, so a
-                // listener can see the timer is running without opening anything.
-                MiniPlayerButton(onClick = onOpenSleepTimer) {
-                    if (timer.isActive) {
-                        Text(
-                            text = timer.remaining.asCountdownLabel(),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.semantics {
-                                contentDescription = activeTimerLabel
-                            },
-                        )
-                    } else {
+                    MiniPlayerButton(onClick = onTogglePlayPause) {
                         Icon(
-                            imageVector = Icons.Filled.Bedtime,
-                            contentDescription = stringResource(R.string.sleep_timer_open),
+                            imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = stringResource(
+                                if (state.isPlaying) R.string.player_pause else R.string.player_resume,
+                            ),
+                            modifier = Modifier.size(PLAY_ICON_SIZE),
+                        )
+                    }
+                    MiniPlayerButton(onClick = skips.onForward) {
+                        Icon(
+                            imageVector = SkipIcons.forward(skips.intervals.forward),
+                            contentDescription = pluralStringResource(
+                                R.plurals.player_skip_forward,
+                                forwardSeconds,
+                                forwardSeconds,
+                            ),
+                            modifier = Modifier.size(TRANSPORT_ICON_SIZE),
+                        )
+                    }
+                    MiniPlayerButton(onClick = onStop) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.player_stop),
                             modifier = Modifier.size(TRANSPORT_ICON_SIZE),
                         )
                     }
                 }
-                MiniPlayerButton(onClick = onTogglePlayPause) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = stringResource(
-                            if (state.isPlaying) R.string.player_pause else R.string.player_resume,
+                LinearProgressIndicator(
+                    progress = { state.fractionComplete },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(PROGRESS_HEIGHT),
+                )
+                MiniPlayerTimeLabels(
+                    state = state,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(
+                            start = ARTWORK_WIDTH + TIME_LABEL_HORIZONTAL_INSET,
+                            top = TIME_LABEL_TOP_INSET,
+                            end = TIME_LABEL_HORIZONTAL_INSET,
                         ),
-                        modifier = Modifier.size(PLAY_ICON_SIZE),
-                    )
-                }
-                MiniPlayerButton(onClick = skips.onForward) {
-                    Icon(
-                        imageVector = SkipIcons.forward(skips.intervals.forward),
-                        contentDescription = pluralStringResource(
-                            R.plurals.player_skip_forward,
-                            forwardSeconds,
-                            forwardSeconds,
-                        ),
-                        modifier = Modifier.size(TRANSPORT_ICON_SIZE),
-                    )
-                }
-                MiniPlayerButton(onClick = onStop) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.player_stop),
-                        modifier = Modifier.size(TRANSPORT_ICON_SIZE),
-                    )
-                }
+                )
             }
-            LinearProgressIndicator(
-                progress = { state.fractionComplete },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .height(PROGRESS_HEIGHT),
-            )
-            MiniPlayerTimeLabels(
-                state = state,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = ARTWORK_WIDTH + TIME_LABEL_HORIZONTAL_INSET,
-                        top = TIME_LABEL_TOP_INSET,
-                        end = TIME_LABEL_HORIZONTAL_INSET,
-                    ),
-            )
         }
     }
 }
@@ -287,6 +312,6 @@ private val PLAY_ICON_SIZE = 34.dp
 private val PROGRESS_HEIGHT = 2.dp
 private val TIME_LABEL_HORIZONTAL_INSET = 6.dp
 private val TIME_LABEL_TOP_INSET = 3.dp
-private const val GLASS_ALPHA = 0.76f
-private const val GLASS_BORDER_ALPHA = 0.35f
+private const val GLASS_ALPHA = 0.24f
+private const val GLASS_BORDER_ALPHA = 0.42f
 private const val GLASS_ARTWORK_ALPHA = 0.72f
