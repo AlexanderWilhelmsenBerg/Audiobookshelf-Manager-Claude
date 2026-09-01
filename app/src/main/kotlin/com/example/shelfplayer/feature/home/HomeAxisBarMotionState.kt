@@ -20,15 +20,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-/**
- * Gives the floating library navigation a little physical weight instead of pinning it to the glass.
- *
- * A drag moves the pill only a small fraction of the finger delta. The movement is sampled before the
- * child consumes the scroll so every lazy list and scrollable home state produces the same response.
- * When input ends, the last fling velocity is carried into a damped spring back to rest.
- */
+/** Gives the floating library navigation a small amount of physical weight. */
 internal class HomeAxisBarMotionState(private val scope: CoroutineScope, private val maxOffsetPx: Float) {
     private val offset = Animatable(0f)
+    private var dragTarget = 0f
     private var motionJob: Job? = null
     private var settleJob: Job? = null
 
@@ -39,7 +34,7 @@ internal class HomeAxisBarMotionState(private val scope: CoroutineScope, private
         }
 
         override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-            settle(initialVelocity = (consumed.y + available.y) * FLING_VELOCITY_RESPONSE)
+            scheduleSettle(initialVelocity = (consumed.y + available.y) * FLING_VELOCITY_RESPONSE)
             return Velocity.Zero
         }
     }
@@ -49,29 +44,27 @@ internal class HomeAxisBarMotionState(private val scope: CoroutineScope, private
 
     private fun nudge(scrollDelta: Float) {
         if (abs(scrollDelta) < MIN_SCROLL_DELTA_PX) return
-
-        val target = (offset.value + scrollDelta * DRAG_RESPONSE).coerceIn(-maxOffsetPx, maxOffsetPx)
+        dragTarget = (dragTarget + scrollDelta * DRAG_RESPONSE).coerceIn(-maxOffsetPx, maxOffsetPx)
         motionJob?.cancel()
-        motionJob = scope.launch { offset.snapTo(target) }
-
-        settleJob?.cancel()
-        settleJob = scope.launch {
-            delay(SETTLE_DELAY_MILLIS)
-            settle()
-        }
+        motionJob = scope.launch { offset.snapTo(dragTarget) }
+        scheduleSettle(delayMillis = SETTLE_DELAY_MILLIS)
     }
 
-    private suspend fun settle(initialVelocity: Float = 0f) {
+    private fun scheduleSettle(delayMillis: Long = 0L, initialVelocity: Float = 0f) {
         settleJob?.cancel()
-        motionJob?.cancel()
-        offset.animateTo(
-            targetValue = 0f,
-            animationSpec = spring(
-                dampingRatio = RETURN_DAMPING_RATIO,
-                stiffness = RETURN_STIFFNESS,
-            ),
-            initialVelocity = initialVelocity,
-        )
+        settleJob = scope.launch {
+            if (delayMillis > 0L) delay(delayMillis)
+            motionJob?.cancel()
+            offset.animateTo(
+                targetValue = 0f,
+                animationSpec = spring(
+                    dampingRatio = RETURN_DAMPING_RATIO,
+                    stiffness = RETURN_STIFFNESS,
+                ),
+                initialVelocity = initialVelocity,
+            )
+            dragTarget = 0f
+        }
     }
 }
 
@@ -95,7 +88,7 @@ internal fun Modifier.followHomeAxisBarMotion(state: HomeAxisBarMotionState): Mo
 
 private val MAX_AXIS_BAR_OFFSET = 8.dp
 private const val DRAG_RESPONSE = 0.22f
-private const val FLING_VELOCITY_RESPONSE = 0.025f
+private const val FLING_VELOCITY_RESPONSE = 0.012f
 private const val MIN_SCROLL_DELTA_PX = 0.25f
 private const val SETTLE_DELAY_MILLIS = 120L
 private const val RETURN_DAMPING_RATIO = 0.72f
