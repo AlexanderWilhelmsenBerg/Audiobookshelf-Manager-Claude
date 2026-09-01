@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import android.net.Uri
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
@@ -13,6 +14,7 @@ import java.io.IOException
  * to be reusable. The retry itself is never caught here: if the renewed credential is also refused, Media3
  * receives that honest failure rather than entering a credential loop.
  */
+@OptIn(UnstableApi::class)
 internal class RenewingDataSource(
     private val delegateFactory: DataSource.Factory,
     private val credentials: PlaybackCredentialRenewer,
