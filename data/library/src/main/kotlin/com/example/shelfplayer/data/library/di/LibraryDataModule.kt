@@ -5,10 +5,10 @@ import com.example.shelfplayer.data.library.DefaultBookmarkRepository
 import com.example.shelfplayer.data.library.DefaultLibraryRepository
 import com.example.shelfplayer.data.library.DefaultMetadataRepository
 import com.example.shelfplayer.data.library.DefaultPlaybackHistoryRepository
-import com.example.shelfplayer.data.library.DefaultPlaybackRepository
 import com.example.shelfplayer.data.library.DefaultProfileRepository
 import com.example.shelfplayer.data.library.DefaultRealtimeUpdates
 import com.example.shelfplayer.data.library.DefaultSessionSyncRepository
+import com.example.shelfplayer.data.library.RefreshingPlaybackRepository
 import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.BookmarkRepository
@@ -52,7 +52,7 @@ interface LibraryDataModule {
 
     @Binds
     @Singleton
-    fun bindsPlaybackRepository(impl: DefaultPlaybackRepository): PlaybackRepository
+    fun bindsPlaybackRepository(impl: RefreshingPlaybackRepository): PlaybackRepository
 
     /** PRODUCT_SPEC PLAY-003 — the jumps a listener has made, so a seek has an undo. */
     @Binds
