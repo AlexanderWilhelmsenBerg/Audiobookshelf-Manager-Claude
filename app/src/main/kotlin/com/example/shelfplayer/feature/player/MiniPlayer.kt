@@ -5,7 +5,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -48,6 +47,8 @@ import coil.compose.AsyncImage
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
+import com.example.shelfplayer.ui.glass.LocalGlassHazeState
+import com.example.shelfplayer.ui.glass.frostedGlass
 import kotlin.time.Duration
 
 /**
@@ -79,6 +80,7 @@ fun MiniPlayer(
     val openLabel = stringResource(R.string.player_open)
     val backSeconds = skips.intervals.back.inWholeSeconds.toInt()
     val forwardSeconds = skips.intervals.forward.inWholeSeconds.toInt()
+    val hazeState = LocalGlassHazeState.current
     AnimatedVisibility(
         visible = state.bookId != null,
         modifier = modifier.fillMaxWidth(),
@@ -100,15 +102,18 @@ fun MiniPlayer(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(BAR_HEIGHT),
+                .height(MINI_PLAYER_HEIGHT)
+                .frostedGlass(
+                    state = hazeState,
+                    backgroundColor = MaterialTheme.colorScheme.surface,
+                    tintAlpha = MINI_PLAYER_GLASS_TINT_ALPHA,
+                    fallbackTintAlpha = MINI_PLAYER_FALLBACK_TINT_ALPHA,
+                    blurRadius = MINI_PLAYER_BLUR_RADIUS,
+                ),
             tonalElevation = 0.dp,
-            shadowElevation = 8.dp,
-            color = Color.White.copy(alpha = GLASS_ALPHA),
+            shadowElevation = 0.dp,
+            color = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            border = BorderStroke(
-                width = 1.dp,
-                color = Color.White.copy(alpha = GLASS_BORDER_ALPHA),
-            ),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
@@ -303,8 +308,8 @@ private fun MiniPlayerArtwork(state: PlaybackUiState, isLoading: Boolean, modifi
     }
 }
 
-/** Roughly 60% of the previous 112 dp mini-player height. */
-private val BAR_HEIGHT = 68.dp
+/** Roughly 60% of the previous 112 dp mini-player height. Shared so Home can clear the floating axis bar. */
+internal val MINI_PLAYER_HEIGHT = 68.dp
 private val ARTWORK_WIDTH = 46.dp
 private val CONTROL_WIDTH = 48.dp
 private val TRANSPORT_ICON_SIZE = 28.dp
@@ -312,6 +317,7 @@ private val PLAY_ICON_SIZE = 34.dp
 private val PROGRESS_HEIGHT = 2.dp
 private val TIME_LABEL_HORIZONTAL_INSET = 6.dp
 private val TIME_LABEL_TOP_INSET = 3.dp
-private const val GLASS_ALPHA = 0.36f
-private const val GLASS_BORDER_ALPHA = 0.22f
+private val MINI_PLAYER_BLUR_RADIUS = 28.dp
+private const val MINI_PLAYER_GLASS_TINT_ALPHA = 0.18f
+private const val MINI_PLAYER_FALLBACK_TINT_ALPHA = 0.28f
 private const val GLASS_ARTWORK_ALPHA = 0.72f
