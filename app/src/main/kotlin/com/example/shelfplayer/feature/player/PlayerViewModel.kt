@@ -179,22 +179,53 @@ class PlayerViewModel @Inject constructor(
             initialValue = emptyList(),
         )
 
+    /**
+     * PRODUCT_SPEC PLAY-001 — whether the notification this book should have is being blocked.
+     *
+     * Re-read when the player opens rather than observed: notification state has no change callback, and the
+     * one moment it matters is when a listener is looking at the player wondering where their controls went.
+     * A trip to the system settings and back re-opens the player, which re-reads it.
+     */
     private val _isNotificationBlocked = MutableStateFlow(false)
+
     val isNotificationBlocked: StateFlow<Boolean> = _isNotificationBlocked.asStateFlow()
 
+    /**
+     * Where the last bookmark landed, so the button can confirm without opening anything.
+     *
+     * A position rather than a boolean: "Bookmarked at 2:41:07" tells a listener the thing they would check
+     * for themselves, and a bare "Bookmarked" leaves them opening the sheet to find out.
+     */
     private val _bookmarkAdded = MutableStateFlow<Duration?>(null)
+
     val bookmarkAdded: StateFlow<Duration?> = _bookmarkAdded.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
+
+    /** The last failure worth showing, or `null`. Cleared by [onMessageShown]. */
     val message: StateFlow<String?> = _message.asStateFlow()
 
-    /** The moment BookWave itself most recently paused this loaded book. */
+    /** The moment BookWave itself last paused this loaded book; used only to order competing sessions. */
     private var locallyPausedAt: Instant? = null
 
+    /**
+     * PRODUCT_SPEC PLAY-001 — starts a book and opens the player over it.
+     *
+     * Expanding only on success. A play that failed leaves the user on the book screen with a message,
+     * which is where they can do something about it; a full-screen player showing nothing would hide
+     * both the message and the way back.
+     */
     fun onPlay(bookId: LibraryItemId) {
         startPlayback(bookId, onSuccess = ::onExpand)
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-001 — starts a shelf book while preserving the listener's browse context.
+     *
+     * The media session update makes the mini player appear. Expanding here would turn the shelf's
+     * compact play affordance into an unexpected navigation action and discard the value of keeping
+     * the shelf composed beneath the player.
+     */
     fun onPlayFromShelf(bookId: LibraryItemId) {
         startPlayback(bookId, onSuccess = {})
     }
@@ -213,36 +244,47 @@ class PlayerViewModel @Inject constructor(
         surface.expand()
     }
 
+    /** Called when the player becomes visible, which is the only time the answer is worth showing. */
     fun refreshNotificationAccess() {
         _isNotificationBlocked.value = notifications.read().isBlocked
     }
 
     fun onCollapse() = surface.collapse()
 
+    /** PRODUCT_SPEC PLAY-003 — a dragged seek bar, on the book's timeline. */
     fun onSeekTo(position: Duration) = controller.seekTo(position)
 
+    /**
+     * PRODUCT_SPEC PLAY-002 — sends the book to a chosen output, or `null` to let the system decide.
+     *
+     * Not remembered across restarts, deliberately: see ADR-0027.
+     */
     fun onOutputSelected(id: String?) = controller.selectOutput(id)
 
+    /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from the list. */
     fun onChapterSelected(chapter: Chapter) = controller.seekToChapter(chapter)
 
+    /** PRODUCT_SPEC PLAY-007 — the skip controls, at the configured intervals. */
     fun onSkipBack() = controller.skipBy(-settings.value.skips.back)
 
     fun onSkipForward() = controller.skipBy(settings.value.skips.forward)
 
+    /** PRODUCT_SPEC PLAY-007 — sets the speed for the book playing now, remembering it for that book. */
     fun onSpeedSelected(speed: PlaybackSpeed) = controller.setSpeed(speed)
 
+    /** Returns the book to the profile default, which is not the same as setting it to 1.0×. */
     fun onSpeedCleared() = controller.clearSpeedOverride()
 
+    /** PRODUCT_SPEC PLAY-009 — puts the position back where the pause left it. */
     fun onUndoRewind() = autoRewind.undo()
 
     fun onRewindNoticeShown() = autoRewind.dismissUndo()
 
     /**
-     * Pauses immediately; before resuming, checks whether another client changed this same book afterwards.
+     * Pauses immediately. Resuming asks whether a different device changed this book after that pause.
      *
-     * No "furthest position wins" rule: a newer external rewind is intentional progress too. If the session
-     * read fails, the repository answers false and the loaded player resumes locally, so server lag or an
-     * outage cannot move a book backwards.
+     * Freshness, never the numerical position, decides. That preserves intentional rewinds on another
+     * client while a lagging server cannot rewind a normal pause/play on this device.
      */
     fun onTogglePlayPause() {
         val current = playback.value
@@ -273,14 +315,22 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /** PRODUCT_SPEC PLAY-001 — re-prepares a player the service gave up on. */
     fun onRetry() = controller.retry()
 
+    /** Stopping closes the player as well: there is nothing left for it to show. */
     fun onStop() {
         surface.collapse()
         locallyPausedAt = null
         controller.stop()
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-008 — sets a timer, or turns one off when [mode] is `null`.
+     *
+     * One entry point rather than a set and a cancel, because the sheet presents them as one row of
+     * choices and "off" is one of them.
+     */
     fun onSleepTimerSelected(mode: SleepTimerMode?) {
         viewModelScope.launch {
             if (mode == null) {
@@ -292,11 +342,33 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-004 — "app background transition when possible".
+     *
+     * Called from the composition's lifecycle rather than from an `Activity` override, because this is the
+     * lifecycle the player surface actually shares. It reaches the service's session directly:
+     * `SessionSyncCoordinator` is a `@Singleton` and the service declares no `android:process`, so there is
+     * one of it and both halves of the app hold the same one.
+     *
+     * A rotation also stops the activity, so this can fire without the app having gone anywhere. That costs a
+     * request the server would have had thirty seconds later anyway, and the alternative — inferring a real
+     * background transition from state — is the kind of guess that misses the case it exists for.
+     */
     fun onAppBackgrounded() {
         sessionSync.request(SyncTrigger.AppBackgrounded)
         sessionSync.drain()
     }
 
+    /**
+     * PRODUCT_SPEC 11.1 — keeps wherever the listener is, with no note.
+     *
+     * The note comes later, from the sheet, and that ordering is the point: a listener presses this because
+     * they just heard something, and a dialog between the button and the bookmark is a dialog that loses the
+     * moment. The confirmation says where it landed, because the sheet does not open.
+     *
+     * The position is truncated to the second by [Bookmark.roundedFrom] — the server keys bookmarks by it,
+     * so a finer position is one the app could never ask to delete.
+     */
     fun onAddBookmark() {
         val state = playback.value
         val bookId = state.bookId ?: return
@@ -313,6 +385,14 @@ class PlayerViewModel @Inject constructor(
         _bookmarkAdded.value = null
     }
 
+    /**
+     * PRODUCT_SPEC 11.1 — what a bookmark row can do, in the shape the sheet asks for.
+     *
+     * A property rather than three methods, and not only to keep this class under detekt's function count:
+     * `BookmarkSheet` takes a [BookmarkActions] bundle, so building it anywhere else means a caller
+     * assembling three references that only ever travel together. Going to a bookmark is a seek, so it is
+     * the same [onSeekTo] every other jump uses — a bookmark is a position, not a special kind of playback.
+     */
     val bookmarkActions: BookmarkActions = BookmarkActions(
         onAdd = ::onAddBookmark,
         onGoTo = ::onSeekTo,
@@ -320,6 +400,12 @@ class PlayerViewModel @Inject constructor(
         onRemove = { at -> withBookmark { bookId -> bookmarks.remove(bookId, at) } },
     )
 
+    /**
+     * Runs a bookmark write against the playing book, surfacing a failure as a message.
+     *
+     * Silent with nothing playing: the sheet is part of the player, so there is no route to it without a
+     * book, and a message about a book that is not there would be a message about nothing.
+     */
     private fun withBookmark(write: suspend (LibraryItemId) -> AppResult<Unit>) {
         val bookId = playback.value.bookId ?: return
         viewModelScope.launch {
