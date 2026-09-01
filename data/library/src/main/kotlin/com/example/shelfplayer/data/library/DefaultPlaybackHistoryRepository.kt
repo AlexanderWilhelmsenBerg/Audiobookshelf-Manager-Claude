@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -105,26 +106,59 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
     }
 
     /**
-     * Whether another device has newer activity for this book than BookWave's last local pause.
+     * Whether another device touched this book after the current BookWave server session began.
      *
-     * The endpoint is account-wide, so the same book and another device are explicit filters. `updatedAt`
-     * rather than `startedAt` matters because a long-lived session may have started yesterday and still be
-     * the newest thing touching the book today. Failure is false: uncertainty must preserve the loaded local
-     * position, never make a stale server read authoritative.
+     * The comparison is server-to-server: both `startedAt` and `updatedAt` came from the same Audiobookshelf
+     * endpoint, so clock skew on this handset cannot turn old activity into new activity or hide a real one.
+     *
+     * The current session is the newest session for this book carrying this installation's device id. If it
+     * cannot be found, the safe answer is false. A false negative keeps the loaded position; a guessed true
+     * can rewind it.
+     *
+     * Pages are read until the endpoint is exhausted. The route is account-wide and a busy account can put
+     * this book beyond the first fifty sessions; freshness must not depend on what else the account played.
      */
-    override suspend fun hasNewerExternalSession(bookId: LibraryItemId, after: Instant): Boolean =
-        withContext(ioDispatcher) {
-            val profileId = profileRepository.activeProfileId() ?: return@withContext false
-            val fetched = gateway.playback.listeningSessions(profileId)
-            val sessions = (fetched as? AppResult.Success)?.value ?: return@withContext false
-            val thisDevice = device.describe().deviceId
-            sessions.any { candidate ->
-                candidate.bookId == bookId &&
-                    candidate.deviceId != thisDevice &&
-                    candidate.listened > Duration.ZERO &&
-                    candidate.updatedAt > after
-            }
+    override suspend fun hasNewerExternalSession(bookId: LibraryItemId): Boolean = withContext(ioDispatcher) {
+        val profileId = profileRepository.activeProfileId() ?: return@withContext false
+        val sessions = allListeningSessions(profileId) ?: return@withContext false
+        val thisDevice = device.describe().deviceId
+        val current = sessions.asSequence()
+            .filter { session -> session.bookId == bookId && session.deviceId == thisDevice }
+            .maxByOrNull(ListeningSession::startedAt)
+            ?: return@withContext false
+        sessions.any { candidate ->
+            candidate.bookId == bookId &&
+                candidate.id != current.id &&
+                candidate.deviceId != thisDevice &&
+                candidate.updatedAt > current.startedAt
         }
+    }
+
+    /**
+     * Reads every available listening-session page, or `null` when any page fails.
+     *
+     * Partial evidence is not evidence for moving a loaded player. Returning `null` rather than the pages
+     * already fetched ensures a network failure can only make freshness conservative.
+     */
+    private suspend fun allListeningSessions(profileId: ProfileId): List<ListeningSession>? {
+        val sessions = mutableListOf<ListeningSession>()
+        var page = 0
+        while (true) {
+            val batch = when (
+                val fetched = gateway.playback.listeningSessions(
+                    profileId = profileId,
+                    page = page,
+                    itemsPerPage = ACTIVITY_PAGE_SIZE,
+                )
+            ) {
+                is AppResult.Failure -> return null
+                is AppResult.Success -> fetched.value
+            }
+            sessions += batch
+            if (batch.size < ACTIVITY_PAGE_SIZE) return sessions
+            page += 1
+        }
+    }
 
     /**
      * PRODUCT_SPEC PLAY-003 — imports the server's own session records for one book.
@@ -208,6 +242,10 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
         val profileId = profileRepository.activeProfileId() ?: return@withContext
         val profile = profileDao.findProfile(profileId.value) ?: return@withContext
         history.clear(profileId.value, EntityKey.of(profile.serverId, bookId.value))
+    }
+
+    private companion object {
+        const val ACTIVITY_PAGE_SIZE = 50
     }
 }
 
