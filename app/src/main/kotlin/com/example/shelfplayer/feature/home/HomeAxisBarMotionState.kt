@@ -55,6 +55,8 @@ internal class HomeAxisBarMotionState(private val scope: CoroutineScope, private
         settleJob = scope.launch {
             if (delayMillis > 0L) delay(delayMillis)
             motionJob?.cancel()
+            // Deliberately under-damped. The glass capsule should carry a little momentum, pass its resting
+            // point once, and settle instead of easing back like an ordinary fixed navigation bar.
             offset.animateTo(
                 targetValue = 0f,
                 animationSpec = spring(
@@ -86,10 +88,10 @@ internal fun Modifier.followHomeAxisBarMotion(state: HomeAxisBarMotionState): Mo
     translationY = state.offsetPx
 }
 
-private val MAX_AXIS_BAR_OFFSET = 8.dp
-private const val DRAG_RESPONSE = 0.22f
-private const val FLING_VELOCITY_RESPONSE = 0.012f
+private val MAX_AXIS_BAR_OFFSET = 9.dp
+private const val DRAG_RESPONSE = 0.26f
+private const val FLING_VELOCITY_RESPONSE = 0.014f
 private const val MIN_SCROLL_DELTA_PX = 0.25f
-private const val SETTLE_DELAY_MILLIS = 120L
-private const val RETURN_DAMPING_RATIO = 0.72f
-private const val RETURN_STIFFNESS = 170f
+private const val SETTLE_DELAY_MILLIS = 70L
+private const val RETURN_DAMPING_RATIO = 0.46f
+private const val RETURN_STIFFNESS = 240f
