@@ -155,6 +155,7 @@ internal object ListeningSessionMapper {
             // Epoch **milliseconds**, unlike the three above. Getting this pair backwards puts a history row
             // in 1970 or claims a four-second session lasted an hour; the capture is what settled it.
             startedAt = Instant.ofEpochMilli(dto.startedAt ?: dto.updatedAt ?: 0L),
+            updatedAt = Instant.ofEpochMilli(dto.updatedAt ?: dto.startedAt ?: 0L),
         )
     }
 }
