@@ -34,7 +34,12 @@ import javax.inject.Singleton
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
-/** PRODUCT_SPEC PLAY-003 / 5.2 — a book's events, scoped to the profile they happened to. */
+/**
+ * PRODUCT_SPEC PLAY-003 / 5.2 — a book's events, scoped to the profile they happened to.
+ *
+ * Profile-scoped for the same reason progress is: two people on one server share a library and do not share
+ * where they have been in it. The foreign key cascades, so removing a profile removes its history with it.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class DefaultPlaybackHistoryRepository @Inject constructor(
@@ -42,12 +47,23 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
     private val profileDao: ProfileDao,
     private val history: PlaybackHistoryDao,
     private val clock: AppClock,
+    /** PRODUCT_SPEC PLAY-003 — the server's own session records. See [refreshServerSessions]. */
     private val gateway: AudiobookshelfGateway,
+    /**
+     * PRODUCT_SPEC PLAY-003 — how this install names itself to the server when it opens a session.
+     *
+     * Read here so a session the server attributes to *this* phone can be told from one another device
+     * recorded, which is the difference between adding history and duplicating it.
+     */
     private val device: PlaybackDeviceIdentity,
     private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : PlaybackHistoryRepository {
 
+    /**
+     * Re-subscribed when the active profile changes, so switching profile switches whose history is shown
+     * rather than leaving the previous one's on screen (PRODUCT_SPEC 5.2).
+     */
     override fun observe(bookId: LibraryItemId, limit: Int): Flow<List<PlaybackHistoryEntry>> =
         profileRepository.observeActiveProfile().flatMapLatest { profile ->
             if (profile == null) {
@@ -67,6 +83,8 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
         at: Instant?,
         owner: ProfileId?,
     ) = withContext(ioDispatcher) {
+        // PRODUCT_SPEC 6.5 — the account the event belongs to, named by the player from the loaded book's
+        // own extras. Falling back to the active profile only when the caller has no session to name.
         val profileId = owner ?: profileRepository.activeProfileId() ?: return@withContext
         val profile = profileDao.findProfile(profileId.value) ?: return@withContext
         history.record(
@@ -78,12 +96,22 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
                 toMillis = to.inWholeMilliseconds.coerceAtLeast(0),
                 reason = event.name,
                 detailMillis = detail?.inWholeMilliseconds?.coerceAtLeast(0),
+                // The caller's moment when it has one — a change the server made happened when the server
+                // says it did, not when the refresh that found it ran.
                 at = (at ?: clock.now()).toEpochMilli(),
             ),
             keep = PlaybackHistoryRepository.DEFAULT_LIMIT,
         )
     }
 
+    /**
+     * Whether another device has newer activity for this book than BookWave's last local pause.
+     *
+     * The endpoint is account-wide, so the same book and another device are explicit filters. `updatedAt`
+     * rather than `startedAt` matters because a long-lived session may have started yesterday and still be
+     * the newest thing touching the book today. Failure is false: uncertainty must preserve the loaded local
+     * position, never make a stale server read authoritative.
+     */
     override suspend fun hasNewerExternalSession(
         bookId: LibraryItemId,
         after: Instant,
@@ -100,6 +128,35 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
         }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-003 — imports the server's own session records for one book.
+     *
+     * ### Idempotent without a migration, and that is the point of the id
+     *
+     * The row's `entryId` is derived from the **session's** id rather than a fresh `UUID`, so a session
+     * fetched on two consecutive refreshes is one row twice, not two rows — `OnConflictStrategy.REPLACE`
+     * does the rest. The existing schema already had a `String` primary key, so persisting these needed no
+     * Room migration at all.
+     *
+     * [SERVER_SESSION_PREFIX] keeps the derived ids in their own namespace: a locally recorded event uses a
+     * random UUID, and a server session id colliding with one is not a risk worth leaving to chance.
+     *
+     * ### The three filters
+     *
+     * **This book only**, because the endpoint is account-wide. **Other devices only** — this phone's own
+     * sessions come back too and would duplicate the player's `Play` and `Pause` rows. **Something actually
+     * listened**, because opening a book and closing it leaves a zero-second session on the server, and a
+     * history row saying somebody listened for no time is noise.
+     *
+     * A session with no device id counts as *another* device: the alternative is dropping a real session
+     * from another client that did not identify itself, and a duplicate row is a smaller loss than a
+     * missing one.
+     *
+     * ### Failure is silent, by design
+     *
+     * A pane whose local half is good must not become an error because the network was not there. The
+     * failure is logged and the rows persisted by earlier refreshes stay on screen.
+     */
     override suspend fun refreshServerSessions(bookId: LibraryItemId) = withContext(ioDispatcher) {
         val profileId = profileRepository.activeProfileId() ?: return@withContext
         val profile = profileDao.findProfile(profileId.value) ?: return@withContext
@@ -134,10 +191,14 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
                     entryId = SERVER_SESSION_PREFIX + session.id,
                     profileId = profileId.value,
                     bookKey = bookKey,
+                    // Where the session opened, so tapping the row goes back to it.
                     fromMillis = session.startedFrom.inWholeMilliseconds.coerceAtLeast(0),
                     toMillis = session.reachedAt.inWholeMilliseconds.coerceAtLeast(0),
                     reason = PlaybackEvent.ServerSession.name,
+                    // How much was actually listened, which is not the span: a paused session accrues none.
                     detailMillis = session.listened.inWholeMilliseconds.coerceAtLeast(0),
+                    // The server's own start time, so the row sits where it happened rather than where the
+                    // fetch noticed it.
                     at = session.startedAt.toEpochMilli(),
                 ),
                 keep = PlaybackHistoryRepository.DEFAULT_LIMIT,
@@ -152,6 +213,12 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
     }
 }
 
+/**
+ * The namespace for a history row derived from a server session id.
+ *
+ * Locally recorded events use a random `UUID`, so a collision is already unlikely; the prefix makes it
+ * impossible, and makes a row's origin readable in a database dump.
+ */
 private const val SERVER_SESSION_PREFIX = "abs-session:"
 
 private fun PlaybackHistoryEntity.toDomain() = PlaybackHistoryEntry(
