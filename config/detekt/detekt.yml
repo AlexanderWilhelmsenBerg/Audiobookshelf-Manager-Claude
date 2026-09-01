@@ -41,6 +41,12 @@ complexity:
     ignoreDataClasses: true
     ignoreAnnotatedParameter:
       - 'javax.inject.Inject'
+    # PlayerViewModel is the Hilt composition boundary for one media session. Keep its dependencies
+    # explicit rather than bundling unrelated collaborators solely to get below the numeric threshold.
+    # This mirrors the documented local LongParameterList suppression on HomeViewModel without
+    # weakening the rule for any other production class.
+    excludes:
+      - '**/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt'
   TooManyFunctions:
     active: true
     thresholdInFiles: 20
