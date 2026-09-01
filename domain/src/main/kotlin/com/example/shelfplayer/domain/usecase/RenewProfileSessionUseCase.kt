@@ -13,9 +13,7 @@ import javax.inject.Inject
  * use case deliberately returns only whether the caller earned one retry; it never loops a credential
  * request and never turns a failed renewal into a second renewal.
  */
-class RenewProfileSessionUseCase @Inject constructor(
-    private val authRepository: AuthRepository,
-) {
+class RenewProfileSessionUseCase @Inject constructor(private val authRepository: AuthRepository) {
     suspend operator fun invoke(profileId: ProfileId): Boolean =
         when (val renewed = authRepository.renewSession(profileId)) {
             is AppResult.Success -> renewed.value == SessionStatus.Active
