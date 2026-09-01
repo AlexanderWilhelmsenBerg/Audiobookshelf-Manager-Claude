@@ -86,6 +86,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -550,7 +551,7 @@ private fun HomeAxisBar(
         )
         Box(
             modifier = Modifier
-                .offset(x = selectionOffset)
+                .offset { IntOffset(x = selectionOffset.roundToPx(), y = 0) }
                 .width(tabWidth)
                 .fillMaxHeight()
                 .padding(3.dp)
