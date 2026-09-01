@@ -49,17 +49,20 @@ interface PlaybackHistoryRepository {
     )
 
     /**
-     * Returns true when another device touched [bookId] after [after].
+     * Returns true when another device has touched [bookId] since BookWave's current server session began.
      *
-     * This deliberately compares activity timestamps rather than positions. A listener may intentionally
-     * rewind on another client; if that session is newer its lower position is still the correct one. A
-     * failed server read returns false so a network problem or a lagging server can never rewind the loaded
-     * local player merely because Play was pressed again.
+     * Both sides of the comparison come from Audiobookshelf's listening-session records. That keeps the
+     * decision in one clock domain: a phone clock that is fast or slow must never decide whether a remote
+     * session is newer. Position magnitude is deliberately irrelevant because an intentional rewind on
+     * another client is still newer activity.
+     *
+     * If the current BookWave session cannot be identified, or the server read fails, production returns
+     * false. Preserving the loaded local position is safer than guessing and rewinding it.
      *
      * A default false keeps playback-only test fakes source-compatible; production overrides this with the
      * Audiobookshelf listening-session endpoint.
      */
-    suspend fun hasNewerExternalSession(bookId: LibraryItemId, after: Instant): Boolean = false
+    suspend fun hasNewerExternalSession(bookId: LibraryItemId): Boolean = false
 
     /**
      * PRODUCT_SPEC PLAY-003 — imports the **server's own** session records for [bookId], and persists them.
