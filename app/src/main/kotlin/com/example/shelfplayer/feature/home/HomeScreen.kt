@@ -27,7 +27,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -67,7 +66,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -80,7 +78,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -522,12 +519,12 @@ private fun HomeAxisBar(
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 4.dp),
         shape = CircleShape,
-        color = Color.White.copy(alpha = AXIS_BAR_GLASS_ALPHA),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = AXIS_BAR_GLASS_ALPHA),
         tonalElevation = 0.dp,
         shadowElevation = 4.dp,
         border = BorderStroke(
             width = 1.dp,
-            color = Color.White.copy(alpha = AXIS_BAR_BORDER_ALPHA),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AXIS_BAR_BORDER_ALPHA),
         ),
     ) {
         Row(
@@ -535,6 +532,10 @@ private fun HomeAxisBar(
                 .fillMaxWidth()
                 .height(AXIS_BAR_HEIGHT)
                 .padding(horizontal = 4.dp, vertical = 3.dp)
+                .background(
+                    color = Color.White.copy(alpha = AXIS_BAR_TINT_ALPHA),
+                    shape = CircleShape,
+                )
                 .selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -542,15 +543,11 @@ private fun HomeAxisBar(
             HomeAxis.entries.forEach { axis ->
                 val selected = axis == current
                 Surface(
+                    selected = selected,
+                    onClick = { onAxisChanged(axis) },
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
-                        .clip(CircleShape)
-                        .selectable(
-                            selected = selected,
-                            onClick = { onAxisChanged(axis) },
-                            role = Role.Tab,
-                        ),
+                        .fillMaxHeight(),
                     shape = CircleShape,
                     color = if (selected) {
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = AXIS_SELECTION_ALPHA)
@@ -592,8 +589,9 @@ private fun HomeAxisBar(
 }
 
 private val AXIS_BAR_HEIGHT = 46.dp
-private const val AXIS_BAR_GLASS_ALPHA = 0.28f
-private const val AXIS_BAR_BORDER_ALPHA = 0.18f
+private const val AXIS_BAR_GLASS_ALPHA = 0.38f
+private const val AXIS_BAR_TINT_ALPHA = 0.22f
+private const val AXIS_BAR_BORDER_ALPHA = 0.42f
 private const val AXIS_SELECTION_ALPHA = 0.46f
 
 private fun HomeAxis.icon(): ImageVector = when (this) {
