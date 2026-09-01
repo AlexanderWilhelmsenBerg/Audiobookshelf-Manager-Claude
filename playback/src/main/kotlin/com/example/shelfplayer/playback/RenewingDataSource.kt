@@ -15,7 +15,7 @@ import java.io.IOException
  * to be reusable. The retry itself is never caught here: if the renewed credential is also refused, Media3
  * receives that honest failure rather than entering a credential loop.
  */
-@OptIn(UnstableApi::class)
+@OptIn(markerClass = [UnstableApi::class])
 internal class RenewingDataSource(
     private val delegateFactory: DataSource.Factory,
     private val credentials: PlaybackCredentialRenewer,
