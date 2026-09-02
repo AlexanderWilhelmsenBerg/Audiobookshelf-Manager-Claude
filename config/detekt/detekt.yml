@@ -41,6 +41,11 @@ complexity:
     ignoreDataClasses: true
     ignoreAnnotatedParameter:
       - 'javax.inject.Inject'
+    # PlaybackController is the app-side façade for the one Media3 session. Its constructor is an
+    # orchestration boundary of injected collaborators; PR #67 adds the shared authenticated session opener
+    # rather than duplicating renewal policy in phone/headset/Auto callers. Keep the exception to this class.
+    excludes:
+      - '**/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackController.kt'
   TooManyFunctions:
     active: true
     thresholdInFiles: 20

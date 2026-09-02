@@ -570,6 +570,9 @@
     <string name="about_section_app">BookWave</string>
     <string name="about_version">Version</string>
     <string name="about_build">Build</string>
+    <string name="about_recovery_test">Authentication recovery (debug)</string>
+    <string name="about_recovery_test_body">Expires this profile\u2019s access token while keeping its refresh token, so the next request to the server fails with 401 and BookWave has to renew. Start a book first, then press this and seek.</string>
+    <string name="about_recovery_test_expire">Expire the access token</string>
     <!--
       Which branch and pull request this APK came from — `PR 67 · fix/playback-session-renewal`, or the
       branch alone when there is no open pull request.

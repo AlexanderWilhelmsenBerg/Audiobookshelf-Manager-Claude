@@ -31,9 +31,10 @@ import kotlin.time.Duration.Companion.seconds
  * attempt, and retrying turns one honest failure into four seconds of pretending.
  *
  * `ERROR_CODE_IO_FILE_NOT_FOUND` and `ERROR_CODE_IO_NO_PERMISSION` are IO errors that are deliberately
- * **not** retried. A file the server does not have is not going to appear, and a 401 needs a new token
- * rather than another attempt — PLAY-003 calls for stopping safely and offering repair, which is what
- * surfacing the failure does.
+ * **not** retried. HTTP 401 is also excluded even though Media3 reports it as the otherwise-retryable
+ * `ERROR_CODE_IO_BAD_HTTP_STATUS`: a refused bearer needs credential renewal, not three re-prepares with
+ * the same dead token. [RenewingDataSource] owns that single renewal and one HTTP retry before the failure
+ * reaches this policy.
  */
 internal class PlaybackRecovery(private val maxAttempts: Int = MAX_ATTEMPTS) {
 
@@ -45,10 +46,14 @@ internal class PlaybackRecovery(private val maxAttempts: Int = MAX_ATTEMPTS) {
     /**
      * What to do about [error], and the attempt is counted as taken.
      *
+     * [responseCode] is a test seam as well as a useful explicit input: production lets it default to the
+     * status carried by Media3's cause chain, while a unit test can state the server response without
+     * constructing Media3's version-specific `InvalidResponseCodeException`.
+     *
      * @return the delay to wait before re-preparing, or `null` when this error must be surfaced instead.
      */
-    fun onError(error: PlaybackException): Duration? {
-        if (!isRetryable(error)) return null
+    fun onError(error: PlaybackException, responseCode: Int? = error.httpResponseCode()): Duration? {
+        if (!isRetryable(error, responseCode)) return null
         if (attempts >= maxAttempts) return null
         attempts += 1
         // Backoff, because the usual cause is a server or a network that needs a moment. Linear rather than
@@ -70,11 +75,14 @@ internal class PlaybackRecovery(private val maxAttempts: Int = MAX_ATTEMPTS) {
         attempts = 0
     }
 
-    private fun isRetryable(error: PlaybackException): Boolean = when (error.errorCode) {
-        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
-        PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
-        -> false
-        else -> error.errorCode in IO_ERROR_RANGE
+    private fun isRetryable(error: PlaybackException, responseCode: Int?): Boolean {
+        if (responseCode == HTTP_UNAUTHORIZED) return false
+        return when (error.errorCode) {
+            PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+            PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
+            -> false
+            else -> error.errorCode in IO_ERROR_RANGE
+        }
     }
 
     private companion object {
@@ -85,6 +93,7 @@ internal class PlaybackRecovery(private val maxAttempts: Int = MAX_ATTEMPTS) {
          * against somebody's self-hosted server.
          */
         const val MAX_ATTEMPTS = 3
+        const val HTTP_UNAUTHORIZED = 401
 
         val BASE_DELAY: Duration = 1.seconds
 
