@@ -98,11 +98,56 @@ enum class PlaybackEvent {
      * and they would duplicate the `Play` and `Pause` entries the player already writes.
      */
     ServerSession,
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — an in-app Play asked the server, and another device was ahead.
+     *
+     * The three `ServerCheck*` rows exist because the check itself is invisible otherwise. A Play that
+     * verified the position against Audiobookshelf and a Play that resumed because the server could not be
+     * reached produce the same audio, and when a position later turns out to be wrong the first question is
+     * which of the two happened. These rows answer it, at the position Play was pressed at.
+     *
+     * This one is the outcome that *moved* something: the book was reloaded from the server's position
+     * rather than resumed where it stood.
+     */
+    ServerCheckAhead,
+
+    /** PRODUCT_SPEC SYNC-002 — the server answered and nothing newer existed, so the position stood. */
+    ServerCheckCurrent,
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the server was not reached, the read failed, or the check was cancelled.
+     *
+     * The position stood, unverified. Written even when the listener's own next action cancelled the check,
+     * because "resumed without an answer" is the fact worth keeping and the reason it went unanswered is
+     * not something the history can be sure of.
+     */
+    ServerCheckUnavailable,
     ;
 
     /** `true` for the events that come from somewhere other than this device. */
     val isRemote: Boolean
         get() = this == RemoteProgress || this == RemoteFinished || this == ServerSession
+
+    /**
+     * `true` for the three rows that record what the check before an in-app Play found.
+     *
+     * They are diagnostic rather than navigational — every one of them returns to the position Play was
+     * pressed at, which is where the listener already is — so a surface with room for a handful of rows
+     * leaves them out. `AutoLibrary.historyOf` does, for the reason it leaves `Play` out.
+     */
+    val isServerCheck: Boolean
+        get() = this == ServerCheckAhead || this == ServerCheckCurrent || this == ServerCheckUnavailable
+
+    /**
+     * `true` for the rows carrying something Audiobookshelf said.
+     *
+     * Wider than [isRemote] by the two answered checks, and deliberately narrower than "is about the
+     * server": [ServerCheckUnavailable] is a row about *not* hearing from it, and reads as the absence it
+     * is rather than as a server fact.
+     */
+    val isFromServer: Boolean
+        get() = isRemote || this == ServerCheckAhead || this == ServerCheckCurrent
 
     companion object {
         /** PRODUCT_SPEC SYNC-001 — an unrecognized stored value reads back as the commonest kind. */

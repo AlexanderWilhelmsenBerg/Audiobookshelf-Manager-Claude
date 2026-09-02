@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.database.entity.PlaybackHistoryEntity
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
@@ -112,26 +113,33 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
      * endpoint, so clock skew on this handset cannot turn old activity into new activity or hide a real one.
      *
      * The current session is the newest session for this book carrying this installation's device id. If it
-     * cannot be found, the safe answer is false. A false negative keeps the loaded position; a guessed true
-     * can rewind it.
+     * cannot be found the answer is [ExternalSessionCheck.Current] and not `Unavailable`: the server *did*
+     * answer, and an answer with nothing of ours in it supports exactly one claim — that there is no
+     * evidence against the loaded position.
+     *
+     * A read that fails, or no active profile to read as, is [ExternalSessionCheck.Unavailable]. Both leave
+     * the position alone, and the distinction is what the history row records.
      *
      * Pages are read until the endpoint is exhausted. The route is account-wide and a busy account can put
      * this book beyond the first fifty sessions; freshness must not depend on what else the account played.
      */
-    override suspend fun hasNewerExternalSession(bookId: LibraryItemId): Boolean = withContext(ioDispatcher) {
-        val profileId = profileRepository.activeProfileId() ?: return@withContext false
-        val sessions = allListeningSessions(profileId) ?: return@withContext false
+    override suspend fun checkExternalSession(bookId: LibraryItemId): ExternalSessionCheck = withContext(ioDispatcher) {
+        val profileId = profileRepository.activeProfileId()
+            ?: return@withContext ExternalSessionCheck.Unavailable
+        val sessions = allListeningSessions(profileId)
+            ?: return@withContext ExternalSessionCheck.Unavailable
         val thisDevice = device.describe().deviceId
         val current = sessions.asSequence()
             .filter { session -> session.bookId == bookId && session.deviceId == thisDevice }
             .maxByOrNull(ListeningSession::startedAt)
-            ?: return@withContext false
-        sessions.any { candidate ->
+            ?: return@withContext ExternalSessionCheck.Current
+        val newer = sessions.any { candidate ->
             candidate.bookId == bookId &&
                 candidate.id != current.id &&
                 candidate.deviceId != thisDevice &&
                 candidate.updatedAt > current.startedAt
         }
+        if (newer) ExternalSessionCheck.Ahead else ExternalSessionCheck.Current
     }
 
     /**

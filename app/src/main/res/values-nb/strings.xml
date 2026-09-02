@@ -288,6 +288,9 @@
     <string name="player_history_remote">Flyttet på en annen enhet</string>
     <string name="player_history_remote_finished">Fullført på en annen enhet</string>
     <string name="player_history_server_session">Lyttet på en annen enhet</string>
+    <string name="player_history_check_ahead">Server sjekket · en annen enhet var foran</string>
+    <string name="player_history_check_current">Server sjekket · posisjon bekreftet</string>
+    <string name="player_history_check_unavailable">Server ikke nådd · posisjon beholdt ubekreftet</string>
     <string name="player_history_today">I dag</string>
     <string name="player_history_yesterday">I går</string>
     <string name="player_history_when_chapter">%1$s · %2$s</string>

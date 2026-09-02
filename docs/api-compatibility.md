@@ -898,6 +898,33 @@ session's own id rather than a fresh UUID, and the table's primary key was alrea
 A failed fetch is logged and otherwise silent. A pane whose local half is good must not become an error
 because the network was not there, and the rows from earlier refreshes stand.
 
+### The second reader: whether a Play may trust its own position (SYNC-002)
+
+`PlaybackHistoryRepository.checkExternalSession` reads the same route before an in-app Play resumes a
+loaded, paused book. It answers one of three things — another device is ahead, nothing newer exists, or the
+server could not be asked — and only the first is allowed to move the player.
+
+Two properties of this endpoint are what make the check possible, and both are captured rather than assumed:
+
+- **`updatedAt` moves and `startedAt` does not.** An already-open session that keeps progressing updates
+  the former, so "did somebody use this book after our session opened" is `candidate.updatedAt >
+  ours.startedAt` — a comparison of two fields from **the same server response**. This handset's clock never
+  enters it, which is the whole reason a fast or slow phone cannot invent or hide remote activity.
+- **`deviceInfo.deviceId` identifies the client**, so BookWave's own sessions can be excluded from the
+  comparison the way they are excluded from the import above.
+
+Position magnitude is deliberately never compared: an intentional rewind on another client is *newer*
+activity even though its position is smaller, and a check that compared positions would refuse to honour it.
+
+**The read is exhaustive, not one page.** The route is account-wide, so a busy account can push this book
+past the first fifty sessions, and whether a resume is verified must not depend on what else the account
+played. A page that fails abandons the whole answer rather than deciding on the pages already in hand —
+partial evidence is not evidence for moving a loaded player.
+
+The outcome is written into the book's history as one row per Play, which is the only way to tell afterwards
+that a resume was verified rather than merely assumed. `PlaybackEvent.ServerCheckAhead` and
+`ServerCheckCurrent` draw a plain cloud; `ServerCheckUnavailable` draws a struck-through one.
+
 ---
 
 ## The embed task's own frames, captured 2026-08-23 against 2.36.0

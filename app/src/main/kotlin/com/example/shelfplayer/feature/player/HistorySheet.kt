@@ -14,8 +14,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Pause
@@ -75,6 +77,17 @@ import kotlin.time.Duration
  * The detail is three additions: the **wall-clock time** each row happened at, the **chapter** the position
  * falls in, and a **day heading** above each group. Together they turn "At 4:12:30" — which is a number —
  * into "21:04 · The Flood", which is a memory.
+ *
+ * ### The clouds
+ *
+ * PRODUCT_SPEC SYNC-002 — every in-app Play asks the server whether another device moved on first, and the
+ * three `ServerCheck*` rows are what that produced. A **plain cloud** means the server was reached and
+ * answered, whichever way it answered; a **struck-through cloud** means it was not — the position stood,
+ * unverified, and playback carried on as it would have anyway.
+ *
+ * They are here because a resume on a confirmed position and a resume on an assumed one sound identical.
+ * The question they answer is asked later, after a position turns out not to be where somebody left it, and
+ * by then the only place the answer can live is a row in this list.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -235,7 +248,10 @@ private fun HistoryRow(
         Icon(
             imageVector = entry.event.icon(),
             contentDescription = null,
-            tint = if (entry.event.isRemote) {
+            // The struck-through cloud stays the muted colour on purpose. A check that could not reach the
+            // server is not an error — nothing was lost, the position simply stands unverified — and giving
+            // it the error colour would make an ordinary offline Play look like a failure.
+            tint = if (entry.event.isFromServer) {
                 MaterialTheme.colorScheme.tertiary
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -297,6 +313,9 @@ private fun PlaybackEvent.labelRes(): Int = when (this) {
     PlaybackEvent.RemoteProgress -> R.string.player_history_remote
     PlaybackEvent.RemoteFinished -> R.string.player_history_remote_finished
     PlaybackEvent.ServerSession -> R.string.player_history_server_session
+    PlaybackEvent.ServerCheckAhead -> R.string.player_history_check_ahead
+    PlaybackEvent.ServerCheckCurrent -> R.string.player_history_check_current
+    PlaybackEvent.ServerCheckUnavailable -> R.string.player_history_check_unavailable
 }
 
 @Suppress("CyclomaticComplexMethod")
@@ -317,6 +336,13 @@ private fun PlaybackEvent.icon(): ImageVector = when (this) {
     // A different cloud from RemoteProgress's: that row says a position arrived, this one says somebody
     // sat and listened on another device, which is a different thing to read at a glance.
     PlaybackEvent.ServerSession -> Icons.Filled.CloudDownload
+    // PRODUCT_SPEC SYNC-002 — a plain cloud for "the server was reached and it answered", whichever way it
+    // answered, and a struck-through cloud for "it was not". The pair is readable at a glance down the
+    // list, which is the whole point of putting the check here: a run of clouds says every resume this
+    // evening was verified, and one gap says which one was not.
+    PlaybackEvent.ServerCheckAhead -> Icons.Filled.Cloud
+    PlaybackEvent.ServerCheckCurrent -> Icons.Filled.Cloud
+    PlaybackEvent.ServerCheckUnavailable -> Icons.Filled.CloudOff
 }
 
 /**

@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import kotlinx.coroutines.flow.Flow
@@ -49,20 +50,24 @@ interface PlaybackHistoryRepository {
     )
 
     /**
-     * Returns true when another device has touched [bookId] since BookWave's current server session began.
+     * Asks the server whether another device has touched [bookId] since BookWave's own session began.
      *
      * Both sides of the comparison come from Audiobookshelf's listening-session records. That keeps the
      * decision in one clock domain: a phone clock that is fast or slow must never decide whether a remote
      * session is newer. Position magnitude is deliberately irrelevant because an intentional rewind on
      * another client is still newer activity.
      *
-     * If the current BookWave session cannot be identified, or the server read fails, production returns
-     * false. Preserving the loaded local position is safer than guessing and rewinding it.
+     * Only [ExternalSessionCheck.Ahead] is a reason to move a loaded player. A failed read, or a session of
+     * BookWave's own that cannot be found among the records, resolves to the outcome that changes nothing —
+     * preserving the loaded position is safer than guessing and rewinding it. The three outcomes are
+     * distinguished rather than collapsed so the caller can write down *which* of them a resume happened
+     * under; see [ExternalSessionCheck].
      *
-     * A default false keeps playback-only test fakes source-compatible; production overrides this with the
-     * Audiobookshelf listening-session endpoint.
+     * The default keeps playback-only test fakes source-compatible, and is
+     * [ExternalSessionCheck.Unavailable] because that is the truth about a fake with no server behind it.
+     * Production overrides it with the Audiobookshelf listening-session endpoint.
      */
-    suspend fun hasNewerExternalSession(bookId: LibraryItemId): Boolean = false
+    suspend fun checkExternalSession(bookId: LibraryItemId): ExternalSessionCheck = ExternalSessionCheck.Unavailable
 
     /**
      * PRODUCT_SPEC PLAY-003 — imports the **server's own** session records for [bookId], and persists them.

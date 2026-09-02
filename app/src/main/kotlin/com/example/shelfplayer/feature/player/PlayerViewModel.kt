@@ -7,6 +7,8 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
+import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -25,6 +27,7 @@ import com.example.shelfplayer.playback.SleepTimerController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +38,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlin.time.Duration
 
@@ -286,6 +290,10 @@ class PlayerViewModel @Inject constructor(
      * and never this handset's wall clock. If it cannot prove newer external activity, the existing player
      * resumes exactly where it is. A newer external rewind is therefore respected, while uncertainty cannot
      * create a rewind of its own.
+     *
+     * Whichever of the three outcomes it lands on is written into the book's history by
+     * [recordCheckOutcome], so "resumed on a verified position" and "resumed because the server was
+     * unreachable" are distinguishable afterwards rather than only in the moment.
      */
     fun onTogglePlayPause() {
         val current = playback.value
@@ -300,24 +308,53 @@ class PlayerViewModel @Inject constructor(
             return
         }
         if (resumeJob?.isActive == true) return
+        val pressedAt = current.position
         resumeJob = viewModelScope.launch {
+            var outcome = ExternalSessionCheck.Unavailable
             try {
-                val newer = playbackHistory.hasNewerExternalSession(bookId)
+                outcome = playbackHistory.checkExternalSession(bookId)
                 val latest = playback.value
                 // A slower network answer may outlive the Play it belonged to. The book/state that now owns
                 // the player wins; an old request must never replace or toggle it.
                 if (latest.bookId != bookId || latest.isPlaying) return@launch
-                if (newer) {
+                if (outcome == ExternalSessionCheck.Ahead) {
                     val result = controller.play(bookId)
                     if (result is AppResult.Failure) _message.value = result.error.summary
                 } else {
                     controller.togglePlayPause()
                 }
             } finally {
+                recordCheckOutcome(bookId, pressedAt, outcome)
                 resumeJob = null
             }
         }
     }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — writes down which of the three outcomes this Play resumed under.
+     *
+     * The check is otherwise invisible: verified-and-current and could-not-reach-the-server produce the same
+     * audio from the same position, and the difference only matters later, when somebody asks why a position
+     * is not where they left it. One row per Play, at the position Play was pressed at, is the cheapest
+     * record that can answer it.
+     *
+     * `NonCancellable` because the outcome that most needs writing down is the one that was interrupted, and
+     * a `finally` block in a cancelled coroutine cannot suspend otherwise. It wraps one local database write,
+     * so there is no unbounded work being made uninterruptible.
+     */
+    private suspend fun recordCheckOutcome(bookId: LibraryItemId, position: Duration, outcome: ExternalSessionCheck) =
+        withContext(NonCancellable) {
+            playbackHistory.record(
+                bookId = bookId,
+                event = when (outcome) {
+                    ExternalSessionCheck.Ahead -> PlaybackEvent.ServerCheckAhead
+                    ExternalSessionCheck.Current -> PlaybackEvent.ServerCheckCurrent
+                    ExternalSessionCheck.Unavailable -> PlaybackEvent.ServerCheckUnavailable
+                },
+                from = null,
+                to = position,
+            )
+        }
 
     /** PRODUCT_SPEC PLAY-001 — re-prepares a player the service gave up on. */
     fun onRetry() = controller.retry()

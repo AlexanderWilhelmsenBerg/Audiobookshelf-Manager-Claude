@@ -371,6 +371,16 @@
     <string name="player_history_remote_finished">Finished on another device</string>
     <!-- A listening session the server recorded on another device. -->
     <string name="player_history_server_session">Listened on another device</string>
+    <!--
+      PRODUCT_SPEC SYNC-002 — what the freshness check that ran before this Play found.
+
+      Worded from the listener's side rather than the protocol's: what they want to know is whether the
+      position they are hearing was confirmed against the server or merely assumed. The first two carry a
+      plain cloud and the third a struck-through one, so the answer is legible without reading the line.
+    -->
+    <string name="player_history_check_ahead">Server checked · another device was ahead</string>
+    <string name="player_history_check_current">Server checked · position confirmed</string>
+    <string name="player_history_check_unavailable">Server not reached · position kept unverified</string>
     <!-- The day a group of rows happened on, above them. -->
     <string name="player_history_today">Today</string>
     <string name="player_history_yesterday">Yesterday</string>
