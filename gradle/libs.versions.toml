@@ -49,8 +49,9 @@ protobuf = "4.31.1"
 retrofit = "2.11.0"
 retrofitKotlinxSerialization = "1.0.0"
 
-# Images
+# Images / visual effects
 coil = "2.7.0"
+haze = "1.6.10"
 
 # Test
 junit4 = "4.13.2"
@@ -123,8 +124,9 @@ okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver",
 retrofit-core = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
 retrofit-kotlinx-serialization = { group = "com.jakewharton.retrofit", name = "retrofit2-kotlinx-serialization-converter", version.ref = "retrofitKotlinxSerialization" }
 
-# --- Images --------------------------------------------------------------------------------------
+# --- Images / visual effects ---------------------------------------------------------------------
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
 
 # --- Test ----------------------------------------------------------------------------------------
 androidx-test-core = { group = "androidx.test", name = "core-ktx", version.ref = "androidxTestCore" }

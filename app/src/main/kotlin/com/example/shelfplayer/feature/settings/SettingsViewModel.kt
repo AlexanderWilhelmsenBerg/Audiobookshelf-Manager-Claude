@@ -219,13 +219,14 @@ class SettingsViewModel @Inject constructor(
             // connected yet" has a change callback, and this flow re-runs often enough to be current.
             car = device.car.read(),
             versionName = BuildConfig.VERSION_NAME,
+            buildLabel = BUILD_LABEL,
             isLoaded = true,
         )
     }.stateIn(
         scope = viewModelScope,
         // PRODUCT_SPEC 16.3: no unbounded collection in a lifecycle owner.
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-        initialValue = SettingsUiState(versionName = BuildConfig.VERSION_NAME),
+        initialValue = SettingsUiState(versionName = BuildConfig.VERSION_NAME, buildLabel = BUILD_LABEL),
     )
 
     /**
@@ -372,6 +373,9 @@ class SettingsViewModel @Inject constructor(
     }
 
     private companion object {
+        /** One string, built once: nothing here changes while the process lives. */
+        val BUILD_LABEL = "${BuildConfig.BUILD_TYPE} \u00b7 ${BuildConfig.GIT_COMMIT}"
+
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
 }
@@ -407,5 +411,7 @@ data class SettingsUiState(
     /** PRODUCT_SPEC DL-005 / DL-006 — smart download, and the automatic cleanup. */
     val housekeeping: DownloadHousekeeping = DownloadHousekeeping.Default,
     val versionName: String = "",
+    /** `debug \u00b7 a1b2c3d4e5f6` — the build type and the commit it was built from. */
+    val buildLabel: String = "",
     val isLoaded: Boolean = false,
 )

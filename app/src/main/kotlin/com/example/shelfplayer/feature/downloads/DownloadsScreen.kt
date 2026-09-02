@@ -51,6 +51,7 @@ import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.layout.centredListPadding
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
+import com.example.shelfplayer.ui.glass.playerChromeClearance
 import java.util.Locale
 
 @Composable
@@ -155,7 +156,11 @@ fun DownloadsScreen(
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             // PRODUCT_SPEC 4 / §51 — a queue is a list of rows, and a row stretched across a tablet puts
             // its title and its progress a hand-span apart. The column keeps a readable measure.
-            contentPadding = centredListPadding(width = windowWidth()),
+            contentPadding = centredListPadding(
+                width = windowWidth(),
+                // Plus whatever the floating mini player is covering, so the last row can be read.
+                bottom = playerChromeClearance(),
+            ),
         ) {
             item {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

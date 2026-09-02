@@ -415,6 +415,7 @@
     <string name="settings_tab_about">Om</string>
     <string name="about_section_app">BookWave</string>
     <string name="about_version">Versjon</string>
+    <string name="about_build">Bygg</string>
     <string name="about_recovery_test">Gjenoppretting av innlogging (debug)</string>
     <string name="about_recovery_test_body">Gj\u00f8r tilgangstokenet til denne profilen ugyldig, men beholder oppdateringstokenet, slik at neste foresp\u00f8rsel til serveren feiler med 401 og BookWave m\u00e5 fornye. Start en bok f\u00f8rst, trykk deretter her og spol.</string>
     <string name="about_recovery_test_expire">Gj\u00f8r tilgangstokenet ugyldig</string>

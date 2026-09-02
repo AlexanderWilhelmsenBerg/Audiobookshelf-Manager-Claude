@@ -57,6 +57,7 @@ import com.example.shelfplayer.feature.lock.ProfileLockActions
 import com.example.shelfplayer.feature.lock.ProfileLockViewModel
 import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
+import com.example.shelfplayer.ui.glass.playerChromeClearance
 import java.util.Locale
 import kotlin.time.Duration
 
@@ -218,7 +219,11 @@ fun SettingsScreen(
                 // two end up a hand-span apart with nothing between them. The column keeps a readable
                 // measure and the window keeps the rest; see `centredListPadding` for why this is padding
                 // rather than a width cap on each row.
-                contentPadding = centredListPadding(width = windowWidth(), bottom = 24.dp),
+                contentPadding = centredListPadding(
+                    width = windowWidth(),
+                    // Plus whatever the floating mini player is covering, so the last row can be read.
+                    bottom = 24.dp + playerChromeClearance(),
+                ),
             ) {
                 when (selected) {
                     SettingsTab.Server -> serverTab(uiState, serverTab)
@@ -304,6 +309,10 @@ private fun LazyListScope.aboutTab(
 ) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
     item { TextRow(labelRes = R.string.about_version, value = uiState.versionName) }
+    // Which build this is, for a report filed against it. The version name already carries the pull
+    // request; the commit is what pins it to one revision of that branch, and the type separates a debug
+    // APK from a release one on a device where both can be installed side by side.
+    item { TextRow(labelRes = R.string.about_build, value = uiState.buildLabel) }
     item { Hint(text = stringResource(R.string.about_phase)) }
 
     // PRODUCT_SPEC SET-002 — theme, colours and language, above the icon because they are the same kind of

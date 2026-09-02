@@ -3,9 +3,11 @@ package com.example.shelfplayer.feature.home
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -16,14 +18,22 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -46,12 +56,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -63,6 +72,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -79,6 +89,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -97,6 +109,10 @@ import com.example.shelfplayer.feature.browse.BookSortRow
 import com.example.shelfplayer.feature.browse.GroupCard
 import com.example.shelfplayer.feature.browse.GroupCardEditAction
 import com.example.shelfplayer.feature.browse.SeriesCard
+import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
+import com.example.shelfplayer.ui.glass.frostedGlass
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 /**
  * PRODUCT_SPEC 16.4 — `*Route` wires navigation and state; `*Screen` is a pure function of its
@@ -177,13 +193,31 @@ fun HomeScreen(
      */
     ReportDrawnWhen { uiState.profile != null }
     val snackbars = remember { SnackbarHostState() }
+    val axisBarMotion = rememberHomeAxisBarMotion()
+    /*
+     * The capsule's own blur source, and the reason it is not `LocalGlassHazeState`.
+     *
+     * That state's source is the whole navigation graph — which *contains* this screen, and therefore
+     * contains the capsule. An effect asked to blur a source it is part of is asked to blur itself, and
+     * what it drew was nothing at all: the frosted pill the design called for simply was not there, while
+     * the mini player's glass worked, because the mini player is a sibling of the graph rather than a
+     * descendant of it.
+     *
+     * A nearer state fixes the relationship instead of the symptom. Its source is Home's content, the
+     * capsule floats over that content, and the two are siblings in the `Scaffold`.
+     */
+    val axisBarHaze = remember { HazeState() }
+    val systemBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val playerInset = LocalPlayerChromeBottomInset.current.coerceAtLeast(0.dp)
     LaunchedEffect(playbackMessage) {
         val message = playbackMessage ?: return@LaunchedEffect
         snackbars.showSnackbar(message)
         onPlaybackMessageShown()
     }
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .captureHomeAxisBarMotion(axisBarMotion),
         snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             TopAppBar(
@@ -280,16 +314,36 @@ fun HomeScreen(
         // to reach the same empty screen.
         bottomBar = {
             if (uiState.profile != null) {
-                HomeAxisBar(current = uiState.axis, onAxisChanged = actions.onAxisChanged)
+                HomeAxisBar(
+                    current = uiState.axis,
+                    onAxisChanged = actions.onAxisChanged,
+                    motion = axisBarMotion,
+                    haze = axisBarHaze,
+                    bottomInset = systemBarInset + playerInset,
+                )
             }
         },
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(top = innerPadding.calculateTopPadding())
+                .hazeSource(state = axisBarHaze),
         ) {
-            HomeContent(uiState = uiState, actions = actions)
+            /*
+             * The chrome's height reaches the list as **content** padding, not as layout padding.
+             *
+             * The difference is the whole behaviour the owner asked for. Layout padding shrinks the
+             * viewport, so a mini player appearing would shove the shelf upwards under the reader's
+             * thumb. Content padding leaves every item where it is and lengthens the scroll range
+             * instead: the list simply gains somewhere further to go, and the last card can now come to
+             * rest just above the capsule rather than behind it.
+             */
+            HomeContent(
+                uiState = uiState,
+                actions = actions,
+                bottomInset = AXIS_BAR_OCCUPIED_HEIGHT + systemBarInset + playerInset,
+            )
         }
     }
     GenreEditDialog(state = uiState.genreEdit, actions = actions)
@@ -497,18 +551,123 @@ private fun GenreEditChangeSummary(request: GenreEditRequest) {
 
 /** PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */
 @Composable
-private fun HomeAxisBar(current: HomeAxis, onAxisChanged: (HomeAxis) -> Unit, modifier: Modifier = Modifier) {
-    NavigationBar(modifier = modifier) {
-        HomeAxis.entries.forEach { axis ->
-            NavigationBarItem(
-                selected = axis == current,
-                onClick = { onAxisChanged(axis) },
-                icon = { Icon(imageVector = axis.icon(), contentDescription = null) },
-                label = { Text(text = stringResource(axis.labelRes())) },
-            )
+private fun HomeAxisBar(
+    current: HomeAxis,
+    onAxisChanged: (HomeAxis) -> Unit,
+    motion: HomeAxisBarMotionState,
+    haze: HazeState,
+    bottomInset: Dp,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(
+        modifier = modifier
+            .followHomeAxisBarMotion(motion)
+            .fillMaxWidth()
+            .padding(horizontal = AXIS_BAR_SIDE_MARGIN)
+            // The system navigation bar and the mini player both sit below the capsule, and both have to
+            // be cleared here. `NavigationBar` used to apply the first of those itself; a hand-rolled
+            // capsule inherits nothing, so an unpadded one lands under the gesture handle.
+            .padding(top = AXIS_BAR_VERTICAL_MARGIN, bottom = AXIS_BAR_VERTICAL_MARGIN + bottomInset)
+            .height(AXIS_BAR_HEIGHT)
+            .clip(CircleShape)
+            .frostedGlass(
+                state = haze,
+                backgroundColor = MaterialTheme.colorScheme.surface,
+                shape = CircleShape,
+            ),
+    ) {
+        // One geometry for the pill and the tabs. They were computed separately — the pill from the full
+        // width, the tabs from the width less the row's own padding — so the highlight drifted a little
+        // further right of its label with every tab. Both now measure the same quarter.
+        val tabWidth = maxWidth / HomeAxis.entries.size.toFloat()
+        val selectedIndex = HomeAxis.entries.indexOf(current).toFloat()
+        val selectionOffset by animateDpAsState(
+            targetValue = tabWidth * selectedIndex,
+            animationSpec = spring(
+                dampingRatio = AXIS_SELECTION_DAMPING_RATIO,
+                stiffness = AXIS_SELECTION_STIFFNESS,
+            ),
+            label = "home-axis-selection",
+        )
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(x = selectionOffset.roundToPx(), y = 0) }
+                .width(tabWidth)
+                .fillMaxHeight()
+                .padding(AXIS_SELECTION_INSET)
+                .background(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = AXIS_SELECTION_ALPHA),
+                    shape = CircleShape,
+                ),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = AXIS_SELECTION_INSET)
+                .selectableGroup(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HomeAxis.entries.forEach { axis ->
+                val selected = axis == current
+                Surface(
+                    selected = selected,
+                    onClick = { onAxisChanged(axis) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    shape = CircleShape,
+                    color = Color.Transparent,
+                    contentColor = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 5.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = axis.icon(),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = stringResource(axis.labelRes()),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
+
+private val AXIS_BAR_HEIGHT = 46.dp
+private val AXIS_BAR_SIDE_MARGIN = 14.dp
+private val AXIS_BAR_VERTICAL_MARGIN = 4.dp
+private val AXIS_SELECTION_INSET = 3.dp
+
+/**
+ * What the capsule takes out of the window, margins included.
+ *
+ * Read by the shelf so its last card can come to rest just above the capsule. It is a constant rather than
+ * a measured height because the list needs the number before the capsule has been laid out, and a capsule
+ * whose height depended on its content would be a capsule whose row heights jumped as the list settled.
+ */
+private val AXIS_BAR_OCCUPIED_HEIGHT = AXIS_BAR_HEIGHT + AXIS_BAR_VERTICAL_MARGIN * 2
+
+private const val AXIS_SELECTION_ALPHA = 0.34f
+private const val AXIS_SELECTION_DAMPING_RATIO = 0.44f
+private const val AXIS_SELECTION_STIFFNESS = 300f
 
 private fun HomeAxis.icon(): ImageVector = when (this) {
     HomeAxis.Books -> Icons.AutoMirrored.Filled.MenuBook
@@ -570,7 +729,7 @@ private fun refreshSpin(syncing: Boolean): Float {
 }
 
 @Composable
-private fun HomeContent(uiState: HomeUiState, actions: HomeActions) {
+private fun HomeContent(uiState: HomeUiState, actions: HomeActions, bottomInset: Dp) {
     val content = Modifier.fillMaxSize()
 
     when {
@@ -593,7 +752,7 @@ private fun HomeContent(uiState: HomeUiState, actions: HomeActions) {
                 modifier = content,
             )
 
-        else -> BookShelf(uiState = uiState, actions = actions, modifier = content)
+        else -> BookShelf(uiState = uiState, actions = actions, bottomInset = bottomInset, modifier = content)
     }
 }
 
@@ -605,7 +764,7 @@ private fun HomeContent(uiState: HomeUiState, actions: HomeActions) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BookShelf(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
+private fun BookShelf(uiState: HomeUiState, actions: HomeActions, bottomInset: Dp, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         if (uiState.isSearching) {
             SearchField(query = uiState.query, onQueryChanged = actions.onQueryChanged)
@@ -633,7 +792,7 @@ private fun BookShelf(uiState: HomeUiState, actions: HomeActions, modifier: Modi
             indicator = {},
             modifier = Modifier.fillMaxSize(),
         ) {
-            AxisContent(uiState = uiState, actions = actions)
+            AxisContent(uiState = uiState, actions = actions, bottomInset = bottomInset)
         }
     }
 }
@@ -705,7 +864,7 @@ private fun BookFilter.labelRes(): Int = when (this) {
 }
 
 @Composable
-private fun AxisContent(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
+private fun AxisContent(uiState: HomeUiState, actions: HomeActions, bottomInset: Dp, modifier: Modifier = Modifier) {
     if (uiState.isAxisEmpty) {
         AxisEmptyState(uiState = uiState, actions = actions, modifier = modifier)
         return
@@ -717,7 +876,7 @@ private fun AxisContent(uiState: HomeUiState, actions: HomeActions, modifier: Mo
             modifier = modifier
                 .fillMaxSize()
                 .testTag(HOME_AXIS_LIST_TEST_TAG),
-            contentPadding = PaddingValues(vertical = 16.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp + bottomInset),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { ShelfHeader(uiState, modifier = Modifier.padding(horizontal = 16.dp)) }
