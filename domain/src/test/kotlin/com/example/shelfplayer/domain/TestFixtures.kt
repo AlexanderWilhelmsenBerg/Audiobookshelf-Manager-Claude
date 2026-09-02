@@ -314,6 +314,8 @@ internal class FakeAuthRepository(
         return renewal
     }
 
+    override suspend fun requireReauthentication(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+
     /**
      * PRODUCT_SPEC 5.2 — recorded rather than stubbed, because the requirements under test are about
      * *when* a permission refresh happens: after a `403`, and on a profile switch. Never, and once, are

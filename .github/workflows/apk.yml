@@ -76,6 +76,9 @@ concurrency:
 
 permissions:
   contents: read
+  # Read-only, and only so the build can learn which pull request this ref belongs to. That number
+  # becomes the APK's versionName and versionCode — see `BuildIdentity`.
+  pull-requests: read
 
 env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false
@@ -154,8 +157,29 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           echo "path=$RUNNER_TEMP/upload.jks" >> "$GITHUB_OUTPUT"
 
+      # The pull request this ref belongs to, which the APK then names itself after. A branch with no open
+      # pull request yields nothing and the build falls back to an unnumbered name, which is the honest
+      # answer: there is no number to report.
+      - name: Find the pull request for this ref
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" \
+            --state open --limit 1 --json number --jq '.[0].number // empty')
+          echo "number=${NUMBER:-}" >> "$GITHUB_OUTPUT"
+          echo "Pull request for $GITHUB_REF_NAME: ${NUMBER:-none}"
+
       - name: Assemble
         env:
+          # Empty when the ref has no open pull request; `BuildIdentity` treats that as unnumbered.
+          BOOKWAVE_PR: ${{ steps.pr.outputs.number }}
+          BOOKWAVE_COMMIT: ${{ github.sha }}
+          BOOKWAVE_BRANCH: ${{ github.ref_name }}
+          # The monotonic half of the version code. Per-workflow, so it counts every run of *this* file
+          # and nothing else; renaming this file restarts it, which is why `BASE_VERSION_CODE` exists.
+          BOOKWAVE_RUN_NUMBER: ${{ github.run_number }}
           BOOKWAVE_SIGNING_STORE_FILE: ${{ steps.keystore.outputs.path }}
           BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
           BOOKWAVE_SIGNING_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
@@ -170,8 +194,14 @@ jobs:
       # The version is read back out of the built APK rather than out of the build script, because the
       # artefact's name should describe the bytes attached to it. R-04 is exactly this failure: a
       # versionName that had not moved in nine builds made every field report name the wrong build.
+      #
+      # `versionCode` is 1000 + this run's number, so every APK this workflow produces installs over the
+      # one before it regardless of which branch each came from. The pull request is in the artefact name
+      # and on the About tab instead of in the code — see `BuildIdentity`.
       - name: Read the built version
         id: version
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
           set -euo pipefail
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -1)
@@ -181,7 +211,9 @@ jobs:
           CODE=$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<<"$BADGING" | head -1)
           PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<<"$BADGING" | head -1)
           echo "apk=$APK" >> "$GITHUB_OUTPUT"
-          echo "label=$NAME-$CODE" >> "$GITHUB_OUTPUT"
+          # The pull request goes in the artefact's name because it is no longer in the code. A downloads
+          # folder holding three of these has to be readable without opening any of them.
+          echo "label=$NAME-$CODE${PR_NUMBER:+-pr$PR_NUMBER}" >> "$GITHUB_OUTPUT"
           {
             echo "### ${{ inputs.variant }} APK"
             echo
@@ -190,6 +222,7 @@ jobs:
             echo "| Package | \`$PKG\` |"
             echo "| Version | \`$NAME\` (code \`$CODE\`) |"
             echo "| Commit | \`${GITHUB_SHA:0:8}\` on \`${GITHUB_REF_NAME}\` |"
+            echo "| Source | ${PR_NUMBER:+PR $PR_NUMBER · }\`${GITHUB_REF_NAME}\`, as the About tab reports it |"
             echo "| Checks | ${{ inputs.run_checks && 'verifyDebug passed' || 'not run — assembled only' }} |"
             echo
             # Asked of the artefact rather than inferred from whether a secret was set: the point is to

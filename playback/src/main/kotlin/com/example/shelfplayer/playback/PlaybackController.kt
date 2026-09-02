@@ -24,6 +24,7 @@ import com.example.shelfplayer.domain.playback.GlobalTimeline
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
+import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -60,6 +61,7 @@ import kotlin.time.Duration
 class PlaybackController @Inject constructor(
     private val connector: SessionConnector,
     private val playbackRepository: PlaybackRepository,
+    private val openPlaybackSession: OpenPlaybackSessionUseCase,
     private val bookChanges: BookChanges,
     private val playbackSettings: PlaybackSettingsRepository,
     private val history: PlaybackHistoryRepository,
@@ -136,7 +138,7 @@ class PlaybackController @Inject constructor(
 
     private suspend fun open(bookId: LibraryItemId, startPlaying: Boolean): AppResult<Unit> {
         _state.value = _state.value.copy(isLoading = true)
-        return when (val opened = playbackRepository.openSession(bookId)) {
+        return when (val opened = openPlaybackSession(bookId)) {
             is AppResult.Failure -> {
                 _state.value = _state.value.copy(isLoading = false)
                 opened

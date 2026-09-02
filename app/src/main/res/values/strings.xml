@@ -559,6 +559,19 @@
     <string name="settings_tab_about">About</string>
     <string name="about_section_app">BookWave</string>
     <string name="about_version">Version</string>
+    <string name="about_build">Build</string>
+    <string name="about_recovery_test">Authentication recovery (debug)</string>
+    <string name="about_recovery_test_body">Expires this profile\u2019s access token while keeping its refresh token, so the next request to the server fails with 401 and BookWave has to renew. Start a book first, then press this and seek.</string>
+    <string name="about_recovery_test_expire">Expire the access token</string>
+    <!--
+      Which branch and pull request this APK came from — `PR 67 · fix/playback-session-renewal`, or the
+      branch alone when there is no open pull request.
+
+      Its own row because the version stopped carrying it. The version code is a build counter now, so it
+      says which of two APKs is newer and nothing about where either came from; this is where a tester
+      filing a report reads what they are holding.
+    -->
+    <string name="about_source">Source</string>
     <!--
       PRODUCT_SPEC SET-002 — one line saying what the app is, not a changelog.
 

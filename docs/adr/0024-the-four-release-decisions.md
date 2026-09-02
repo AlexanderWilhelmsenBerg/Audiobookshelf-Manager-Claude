@@ -76,6 +76,19 @@ never permits reuse. It stays a hand-incremented integer in the application conv
 scheme — a timestamp, or a commit count — was rejected because both can go backwards or collide across
 branches, and Play's refusal to accept a reused code is permanent for that package.
 
+**Amended 2026-08-31, corrected 2026-09-02.** The code is now derived after all, and the rejection above
+was right about *which* derivations are unsafe rather than about derivation itself. The first attempt used
+the pull request number, on the argument that GitHub's counter is monotonic per repository; that is true and
+irrelevant, because an installer compares only the code it holds against the code it is offered, and a
+tester takes pull requests in readiness order rather than numeric order. It produced
+`INSTALL_FAILED_VERSION_DOWNGRADE` on a device the same week.
+
+What stands is `BASE_VERSION_CODE` **plus the CI workflow's run number**: a counter that increments per
+build regardless of branch and never decreases, which is exactly the property the timestamp and the commit
+count were rejected for lacking. The Play clause is untouched — the floor must still clear whatever Play has
+accepted, and a reused code is refused permanently. `docs/release.md` § Versioning and `BuildIdentity` carry
+the detail; R-85 carries the defect.
+
 ### 4. Minimum server version: 2.26.0, enforced at sign-in
 
 `ServerVersion.Minimum` is the single place this is written down, and `SignInViewModel` refuses before a
@@ -114,7 +127,9 @@ open exposes an account. A version gate that fails closed locks somebody out of 
   packages, on purpose.
 - The repository must stay public while builds are distributed.
 - A data-safety declaration has to be written at upload time; `PRIVACY.md` is the source for it.
-- `versionCode` must be incremented by hand for every upload, and can never be reused for this package.
+- `versionCode` is a build counter (see the amendment above) and can never be reused for this package; what
+  is incremented by hand is its floor, and only when a run number restarts or Play has accepted a higher
+  code.
 - Servers older than 2.26.0 are refused with a message naming the version they need.
 - Servers between 2.26.0 and 2.36.0 are accepted without verification, which is a stated risk rather than
   an oversight.

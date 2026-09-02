@@ -83,12 +83,25 @@ private fun ApplicationExtension.configureDefaultConfig(project: Project) {
         applicationId = "org.homebord.bookwave"
         minSdk = project.libs.intVersion("minSdk")
         targetSdk = project.libs.intVersion("targetSdk")
-        versionCode = 40
-        // The name states what the build is, so a device-test result recorded against an APK can be
-        // traced to one. It has to move with the code: it sat at `0.9.6-auto-shelves` for nine builds
-        // while the code advanced, and every field report in that window named the wrong build — which
-        // matters more now that the debug console prints this string for the user to paste.
-        versionName = "0.9.14-browse-and-genres"
+        /*
+         * The code is a counter that only ever goes up, and the name is a plain product version — see
+         * [BuildIdentity], which carries why an earlier scheme made the pull request number the code and
+         * why that had to be corrected.
+         *
+         * These were two hand-written constants, and the comment that used to stand here said the name
+         * "has to move with the code" and then described it failing to for nine builds. It had since sat
+         * still for dozens more. Nothing has to be remembered now.
+         */
+        val build = project.buildIdentity()
+        versionCode = build.versionCode
+        versionName = build.versionName
+        // Which commit, which branch and which pull request, for a tester holding two APKs and a report to
+        // file. Read by the About tab's Source row and the debug console; `BUILD_TYPE` already
+        // distinguishes debug from release. This is where a build says what it *is*, now that the version
+        // says only what the product is.
+        buildConfigField("String", "GIT_COMMIT", "\"${build.commit}\"")
+        buildConfigField("String", "GIT_BRANCH", "\"${build.branch}\"")
+        buildConfigField("String", "PULL_REQUEST", "\"${build.pullRequest}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }

@@ -379,6 +379,8 @@ class SignInViewModelTest {
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
             AppResult.Success(SessionStatus.Active)
 
+        override suspend fun requireReauthentication(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+
         override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> = AppResult.Success(
             AccountState(
                 userId = null,

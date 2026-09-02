@@ -56,7 +56,7 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
     private val cached = AtomicReference<CachedToken?>(null)
 
     override fun current(): ActiveCredential? = cached.get()?.let { held ->
-        ActiveCredential(token = held.token, serverBaseUrl = held.serverBaseUrl)
+        ActiveCredential(token = held.token, serverBaseUrl = held.serverBaseUrl, profileId = held.profileId)
     }
 
     /** The profile whose credential is currently attached to outgoing requests, if any. */
@@ -89,6 +89,28 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
      * `AUTH-004` renewal try a credential the current session never issued.
      */
     suspend fun adopt(profileId: ProfileId, session: AuthSession, serverBaseUrl: String) {
+        store(profileId, session)
+        cached.set(CachedToken(profileId, session.accessToken.value, serverBaseUrl))
+    }
+
+    /**
+     * Replaces a renewed profile's stored tokens without stealing another profile's ambient credential.
+     *
+     * A background sync may renew profile A after the user switched to B. Only an already-active A is
+     * updated in memory; B stays active and will never send A's newly rotated bearer by accident.
+     */
+    suspend fun adoptRenewal(profileId: ProfileId, session: AuthSession, serverBaseUrl: String) {
+        store(profileId, session)
+        cached.updateAndGet { current ->
+            if (current?.profileId == profileId) {
+                CachedToken(profileId, session.accessToken.value, serverBaseUrl)
+            } else {
+                current
+            }
+        }
+    }
+
+    private suspend fun store(profileId: ProfileId, session: AuthSession) {
         store.save(profileId.value, SessionTokenKind.Access, session.accessToken.value)
         val refresh = session.refreshToken
         if (refresh == null) {
@@ -96,12 +118,52 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
         } else {
             store.save(profileId.value, SessionTokenKind.Refresh, refresh.value)
         }
-        cached.set(CachedToken(profileId, session.accessToken.value, serverBaseUrl))
     }
 
     /** PRODUCT_SPEC AUTH-004 — the credential a renewal needs, or `null` when the session cannot be renewed. */
     suspend fun refreshTokenFor(profileId: ProfileId): AuthToken? =
         store.load(profileId.value, SessionTokenKind.Refresh)?.let(::AuthToken)
+
+    /**
+     * PRODUCT_SPEC AUTH-004, `docs/testing/pr-playback-auth-recovery.md` step 3 — puts this install into the
+     * one state the renewal path exists for, so that path can be exercised on demand.
+     *
+     * ### Why this is here rather than in a test
+     *
+     * The renewal that matters runs on Media3's loader thread, through a `DataSource` this process created,
+     * against a real Audiobookshelf. No JVM test reaches it: `docs/testing/pr-playback-auth-recovery.md`
+     * has eleven steps and every one of them begins by asking the tester to "reproduce an expired access
+     * token", which previously meant standing up an intercepting proxy or shortening a server-side token
+     * lifetime. Neither is available to somebody holding a phone in a car.
+     *
+     * ### What it does, precisely
+     *
+     * Replaces the stored **and** cached access token with a string no server will accept, and leaves the
+     * refresh token exactly as it was. That is the shape of the defect: the server refuses the bearer, the
+     * refresh token is still good, and one renewal should recover playback without the listener noticing.
+     *
+     * It refuses when there is no refresh token, and the refusal is the useful part — a profile that cannot
+     * renew would surface a sign-in prompt rather than a recovery, proving nothing about the code under
+     * test and costing the tester their session.
+     *
+     * ### It is not a way in
+     *
+     * Only ever *downgrades* a credential. It cannot mint one, cannot read one out, and cannot reach a
+     * profile other than the one named. The caller — `SettingsViewModel` — offers it behind
+     * `BuildConfig.DEBUG`, so no release build has a control for it.
+     *
+     * @return `true` when the credential was downgraded and a renewal is therefore worth watching.
+     */
+    suspend fun invalidateAccessTokenForRecoveryTest(profileId: ProfileId): Boolean {
+        if (store.load(profileId.value, SessionTokenKind.Refresh) == null) return false
+        store.save(profileId.value, SessionTokenKind.Access, REJECTED_ACCESS_TOKEN)
+        // Only an *active* profile's ambient credential is touched, for the reason `adoptRenewal` gives:
+        // downgrading a background profile's cache would attach a dead bearer to whoever is on screen.
+        cached.updateAndGet { current ->
+            if (current?.profileId == profileId) current.copy(token = REJECTED_ACCESS_TOKEN) else current
+        }
+        return true
+    }
 
     /**
      * The stored access token for [profileId], read from disk rather than from the cache.
@@ -127,4 +189,14 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
     }
 
     private data class CachedToken(val profileId: ProfileId, val token: String, val serverBaseUrl: String)
+
+    private companion object {
+        /**
+         * Deliberately not a plausible token.
+         *
+         * A truncated real one could conceivably still validate against a lenient server, and a random
+         * string would leave a tester wondering whether they had hit the intended state. This says so.
+         */
+        const val REJECTED_ACCESS_TOKEN = "bookwave-expired-access-token-for-recovery-test"
+    }
 }
