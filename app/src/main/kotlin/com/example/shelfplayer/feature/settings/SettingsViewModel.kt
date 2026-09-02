@@ -29,6 +29,7 @@ import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.SessionRecoveryTestHook
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
@@ -109,6 +110,8 @@ class SettingsViewModel @Inject constructor(
     sessionSync: SessionSyncRepository,
     private val device: DeviceReaders,
     private val playbackSettings: PlaybackSettingsRepository,
+    // AUTH-004 — see `onExpireAccessToken`. Injected in every build; offered in none but debug.
+    private val recoveryTestHook: SessionRecoveryTestHook,
 ) : ViewModel() {
 
     /**
@@ -337,6 +340,36 @@ class SettingsViewModel @Inject constructor(
 
     /** PRODUCT_SPEC DL-004 / DL-005 / DL-006 — the download preferences, read as one. */
     private data class Downloads(val network: NetworkPolicy, val housekeeping: DownloadHousekeeping)
+
+    private val _debugMessage = MutableStateFlow<String?>(null)
+
+    /** What the last debug action did. Shown once and then forgotten. */
+    val debugMessage: StateFlow<String?> = _debugMessage.asStateFlow()
+
+    /**
+     * AUTH-004 — expires the active profile's access token so the recovery path can be watched.
+     *
+     * `docs/testing/pr-playback-auth-recovery.md` asks the tester to reproduce an expired access token with
+     * a valid refresh token, and until this existed that meant an intercepting proxy. Press this while a
+     * book is playing and the next media range request receives `401` from the real server, which is the
+     * whole scenario the renewal code was written for.
+     *
+     * Reports what happened rather than assuming: a profile with no refresh token cannot demonstrate a
+     * recovery, and saying so is more useful than a silent no-op that looks like a broken button.
+     */
+    fun onExpireAccessToken() {
+        viewModelScope.launch {
+            _debugMessage.value = if (recoveryTestHook.expireAccessToken()) {
+                "Access token expired. Play or seek to make the next request fail."
+            } else {
+                "No profile with a refresh token — nothing to recover from."
+            }
+        }
+    }
+
+    fun onDebugMessageShown() {
+        _debugMessage.value = null
+    }
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L

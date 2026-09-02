@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +40,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.layout.centredListPadding
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
@@ -82,6 +84,7 @@ fun SettingsRoute(
     val lock by lockViewModel.state.collectAsStateWithLifecycle()
     val lockPreferences by lockViewModel.preferences.collectAsStateWithLifecycle()
     val lockMessage by lockViewModel.message.collectAsStateWithLifecycle()
+    val debugMessage by viewModel.debugMessage.collectAsStateWithLifecycle()
     SettingsScreen(
         uiState = uiState,
         launcherIcon = launcherIcon,
@@ -108,6 +111,11 @@ fun SettingsRoute(
             lockMessage = lockMessage,
         ),
         appearance = appearance,
+        recovery = RecoveryTestInputs(
+            onExpireAccessToken = viewModel::onExpireAccessToken,
+            message = debugMessage,
+            onMessageShown = viewModel::onDebugMessageShown,
+        ),
         appearanceActions = AppearanceActions(
             onThemeModeChanged = appearanceViewModel::onThemeModeChanged,
             onDynamicColorChanged = appearanceViewModel::onDynamicColorChanged,
@@ -162,6 +170,9 @@ fun SettingsScreen(
     metrics: PlaybackMetrics = PlaybackMetrics.Empty,
     appearance: AppearanceUiState = AppearanceUiState(),
     appearanceActions: AppearanceActions = AppearanceActions(),
+    // AUTH-004 — debug only, and defaulted so `SettingsScreen` stays a pure function its tests can
+    // render without a ViewModel (PRODUCT_SPEC 16.4).
+    recovery: RecoveryTestInputs = RecoveryTestInputs(),
 ) {
     var selected by rememberSaveable { mutableStateOf(SettingsTab.Server) }
     // PRODUCT_SPEC 14.4 — the event log's open/closed state is this screen's, not the caller's. Lifting it
@@ -236,6 +247,7 @@ fun SettingsScreen(
                         appearance = AppearanceInputs(appearance, appearanceActions),
                         onOpenEventLog = { isEventLogOpen = true },
                         onOpenDebugConsole = { isDebugConsoleOpen = true },
+                        recovery = recovery,
                     )
                 }
             }
@@ -288,6 +300,7 @@ private fun LazyListScope.aboutTab(
     appearance: AppearanceInputs,
     onOpenEventLog: () -> Unit,
     onOpenDebugConsole: () -> Unit,
+    recovery: RecoveryTestInputs,
 ) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
     item { TextRow(labelRes = R.string.about_version, value = uiState.versionName) }
@@ -321,6 +334,10 @@ private fun LazyListScope.aboutTab(
         }
     }
 
+    // AUTH-004 — the control that makes the renewal path reachable on a device. Debug builds only, and
+    // the gate is here rather than in the ViewModel so the row simply does not exist in a release APK.
+    if (BuildConfig.DEBUG) recoveryTestRows(recovery)
+
     // PRODUCT_SPEC PLAY-006 — beside the diagnostics rather than under Testing, because these are
     // readings a listener uses to choose a buffer preset, not numbers to verify a build against.
     item { SectionHeader(text = stringResource(R.string.about_section_playback_metrics)) }
@@ -350,6 +367,46 @@ private fun LazyListScope.aboutTab(
         sessionSyncRows(uiState.sessionSync)
     }
 }
+
+/**
+ * AUTH-004 — one button that puts this install into the state the renewal path exists for.
+ *
+ * `docs/testing/pr-playback-auth-recovery.md` has eleven steps and each begins by asking the tester to
+ * reproduce an expired access token beside a valid refresh token. Doing that from outside the app means an
+ * intercepting proxy or a shortened server-side token lifetime, and neither is available to somebody
+ * holding a phone in a car — which is where the defect was found. Pressing this while a book plays makes
+ * the next media range request receive a real `401` from a real server.
+ *
+ * Debug builds only. The caller gates it, so a release APK has no row here at all.
+ */
+private fun LazyListScope.recoveryTestRows(inputs: RecoveryTestInputs) {
+    item { SubHeader(text = stringResource(R.string.about_recovery_test)) }
+    item { Hint(text = stringResource(R.string.about_recovery_test_body)) }
+    item {
+        TextButton(onClick = inputs.onExpireAccessToken, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(text = stringResource(R.string.about_recovery_test_expire))
+        }
+    }
+    inputs.message?.let { message ->
+        item {
+            // Announced, and read once: what happened is the whole output of the button, and a sentence
+            // that outlived the tap would describe a state the tester has since left.
+            Hint(text = message)
+            DisposableEffect(message) { onDispose(inputs.onMessageShown) }
+        }
+    }
+}
+
+/**
+ * The debug recovery control's three parameters, bundled for the reason the other `*Inputs` types are:
+ * `aboutTab` is at detekt's limit and these always travel together.
+ */
+@Immutable
+data class RecoveryTestInputs(
+    val onExpireAccessToken: () -> Unit = {},
+    val message: String? = null,
+    val onMessageShown: () -> Unit = {},
+)
 
 /**
  * PRODUCT_SPEC 6.1 step 9 — a library row is a toggle, not a destination.

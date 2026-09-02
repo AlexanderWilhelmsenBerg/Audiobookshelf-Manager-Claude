@@ -8,6 +8,7 @@ import com.example.shelfplayer.data.auth.DefaultCapabilityRepository
 import com.example.shelfplayer.data.auth.DefaultProfileConnectionResolver
 import com.example.shelfplayer.data.auth.DefaultProfileLockRepository
 import com.example.shelfplayer.data.auth.DefaultServerUserRepository
+import com.example.shelfplayer.data.auth.DefaultSessionRecoveryTestHook
 import com.example.shelfplayer.data.auth.SessionTokenProvider
 import com.example.shelfplayer.domain.lock.LockedProfileRecovery
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
@@ -16,6 +17,7 @@ import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ServerUserRepository
+import com.example.shelfplayer.domain.repository.SessionRecoveryTestHook
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -40,6 +42,17 @@ interface AuthDataModule {
     @Binds
     @Singleton
     fun bindsCapabilityRepository(impl: DefaultCapabilityRepository): CapabilityRepository
+
+    /**
+     * AUTH-004 — the debug control that expires an access token on purpose.
+     *
+     * Bound unconditionally because a build-type-scoped Hilt module would need one per build type, and this
+     * project has three. The *control* is what is gated: `SettingsViewModel` offers it behind
+     * `BuildConfig.DEBUG`, so no release build has a way to reach this.
+     */
+    @Binds
+    @Singleton
+    fun bindsSessionRecoveryTestHook(impl: DefaultSessionRecoveryTestHook): SessionRecoveryTestHook
 
     @Binds
     @Singleton
