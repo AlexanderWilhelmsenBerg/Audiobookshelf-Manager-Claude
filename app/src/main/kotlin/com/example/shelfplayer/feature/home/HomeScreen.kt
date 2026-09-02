@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -88,6 +88,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -339,10 +340,22 @@ fun HomeScreen(
              * instead: the list simply gains somewhere further to go, and the last card can now come to
              * rest just above the capsule rather than behind it.
              */
+            /*
+             * `innerPadding`'s bottom **is** the capsule, measured.
+             *
+             * This was `AXIS_BAR_OCCUPIED_HEIGHT + systemBarInset + playerInset`, with a comment claiming
+             * the list needs the number before the capsule has been laid out. That was wrong: Material3's
+             * `Scaffold` subcomposes and measures its bottom bar *before* the body — `Scaffold.kt` sets
+             * `bottom = bottomBarHeight.toDp()` — so the real height is available on the first pass, and
+             * it already contains the capsule's own margins, the system bar and the mini player.
+             *
+             * Which is what lets the capsule grow: at a large font scale its tabs stack and it gets
+             * taller, and the shelf's scroll range follows with nothing to keep in step.
+             */
             HomeContent(
                 uiState = uiState,
                 actions = actions,
-                bottomInset = AXIS_BAR_OCCUPIED_HEIGHT + systemBarInset + playerInset,
+                bottomInset = innerPadding.calculateBottomPadding(),
             )
         }
     }
@@ -559,6 +572,18 @@ private fun HomeAxisBar(
     bottomInset: Dp,
     modifier: Modifier = Modifier,
 ) {
+    /*
+     * Above this font scale the label stops fitting beside its icon and starts ellipsising.
+     *
+     * Four tabs across a 360dp phone give each about 73dp; the icon and its gap take 22dp of that, so the
+     * label has roughly 51dp. At 200% it wants nearer 90dp, and what the reader saw was an icon and a
+     * single letter. Stacking is what Material's own `NavigationBarItem` does, and it buys the label the
+     * whole width of its tab.
+     *
+     * A threshold rather than always stacking: at the default scale the side-by-side arrangement is the
+     * one the design asked for, and it should stay.
+     */
+    val isStacked = LocalDensity.current.fontScale >= STACK_LABEL_FONT_SCALE
     BoxWithConstraints(
         modifier = modifier
             .followHomeAxisBarMotion(motion)
@@ -568,7 +593,9 @@ private fun HomeAxisBar(
             // be cleared here. `NavigationBar` used to apply the first of those itself; a hand-rolled
             // capsule inherits nothing, so an unpadded one lands under the gesture handle.
             .padding(top = AXIS_BAR_VERTICAL_MARGIN, bottom = AXIS_BAR_VERTICAL_MARGIN + bottomInset)
-            .height(AXIS_BAR_HEIGHT)
+            // A floor, not a fixed height. A stacked tab at a large font scale is taller than 46dp, and a
+            // capsule that refused to grow would clip the label it just moved to make room for.
+            .heightIn(min = AXIS_BAR_HEIGHT)
             .clip(CircleShape)
             .frostedGlass(
                 state = haze,
@@ -625,45 +652,73 @@ private fun HomeAxisBar(
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 5.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = axis.icon(),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Text(
-                            text = stringResource(axis.labelRes()),
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(start = 4.dp),
-                        )
-                    }
+                    HomeAxisTab(axis = axis, isStacked = isStacked)
                 }
             }
         }
     }
 }
 
+/**
+ * One tab: an icon and its label, side by side or stacked.
+ *
+ * `Center` in both arrangements, so the highlight pill behind it lands on the content either way.
+ */
+@Composable
+private fun HomeAxisTab(axis: HomeAxis, isStacked: Boolean, modifier: Modifier = Modifier) {
+    val icon: @Composable () -> Unit = {
+        Icon(imageVector = axis.icon(), contentDescription = null, modifier = Modifier.size(AXIS_ICON_SIZE))
+    }
+    val label: @Composable () -> Unit = {
+        Text(
+            text = stringResource(axis.labelRes()),
+            style = MaterialTheme.typography.labelMedium,
+            // Two lines when stacked: a long label at a large scale is the case stacking exists for, and
+            // one line would ellipsise it again after all that room was made.
+            maxLines = if (isStacked) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+    }
+    if (isStacked) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            icon()
+            label()
+        }
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 5.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icon()
+            Box(modifier = Modifier.padding(start = 4.dp)) { label() }
+        }
+    }
+}
+
 private val AXIS_BAR_HEIGHT = 46.dp
+private val AXIS_ICON_SIZE = 18.dp
+
+/**
+ * Where side-by-side gives up.
+ *
+ * 1.3 rather than 1.0 because the arrangement survives a modest increase, and rather than 2.0 because by
+ * then the label has been an ellipsis for a while. Chosen from the arithmetic above, not measured on a
+ * device — the APK is what settles it.
+ */
+private const val STACK_LABEL_FONT_SCALE = 1.3f
 private val AXIS_BAR_SIDE_MARGIN = 14.dp
 private val AXIS_BAR_VERTICAL_MARGIN = 4.dp
 private val AXIS_SELECTION_INSET = 3.dp
-
-/**
- * What the capsule takes out of the window, margins included.
- *
- * Read by the shelf so its last card can come to rest just above the capsule. It is a constant rather than
- * a measured height because the list needs the number before the capsule has been laid out, and a capsule
- * whose height depended on its content would be a capsule whose row heights jumped as the list settled.
- */
-private val AXIS_BAR_OCCUPIED_HEIGHT = AXIS_BAR_HEIGHT + AXIS_BAR_VERTICAL_MARGIN * 2
 
 private const val AXIS_SELECTION_ALPHA = 0.34f
 private const val AXIS_SELECTION_DAMPING_RATIO = 0.44f
