@@ -504,13 +504,33 @@ class DefaultSessionSyncRepositoryTest {
         assertEquals(true, storedProgress().hasUnsyncedChanges)
     }
 
-    /**
-     * The row `recordPosition` would have written: a local position nothing has uploaded yet.
-     *
-     * The library and book rows come with it because `media_progress` is keyed through both — a position
-     * for a book this device has never heard of is not a state the app can reach.
-     */
+    /** The row `recordPosition` would have written: a local position nothing has uploaded yet. */
     private suspend fun seedUnsyncedProgress(recordedAt: Long) {
+        seedBook()
+        database.progressDao().upsertProgress(
+            listOf(
+                MediaProgressEntity(
+                    progressKey = EntityKey.scoped(profileId.value, BOOK_KEY),
+                    profileId = profileId.value,
+                    bookKey = BOOK_KEY,
+                    serverId = SERVER,
+                    positionMillis = 40.minutes.inWholeMilliseconds,
+                    durationMillis = 6.hours.inWholeMilliseconds,
+                    isFinished = false,
+                    updatedAt = recordedAt,
+                    hasUnsyncedChanges = true,
+                ),
+            ),
+        )
+    }
+
+    /**
+     * The library and book the progress row hangs off.
+     *
+     * `media_progress` is keyed through both, so a position for a book this device has never heard of is
+     * not a state the app can reach — and not one a test should be able to fabricate either.
+     */
+    private suspend fun seedBook() {
         database.libraryWriteDao().upsertLibraries(
             listOf(
                 LibraryEntity(
@@ -556,21 +576,6 @@ class DefaultSessionSyncRepositoryTest {
                     lastFetchedAt = 0,
                     isDeleted = false,
                     localAvailability = "NotDownloaded",
-                ),
-            ),
-        )
-        database.progressDao().upsertProgress(
-            listOf(
-                MediaProgressEntity(
-                    progressKey = EntityKey.scoped(profileId.value, BOOK_KEY),
-                    profileId = profileId.value,
-                    bookKey = BOOK_KEY,
-                    serverId = SERVER,
-                    positionMillis = 40.minutes.inWholeMilliseconds,
-                    durationMillis = 6.hours.inWholeMilliseconds,
-                    isFinished = false,
-                    updatedAt = recordedAt,
-                    hasUnsyncedChanges = true,
                 ),
             ),
         )
