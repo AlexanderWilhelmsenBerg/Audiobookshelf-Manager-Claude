@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.ListeningSession
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import java.time.Instant
 import kotlin.math.roundToLong
 import kotlin.time.Duration
@@ -108,6 +109,24 @@ internal object PlaybackMapper {
     internal fun seconds(value: Double): Duration =
         if (value.isFinite() && value > 0) (value * MILLIS_PER_SECOND).roundToLong().milliseconds else Duration.ZERO
 
+    /**
+     * PRODUCT_SPEC SYNC-002 — `GET /api/me/progress/{itemId}` into the domain.
+     *
+     * [MediaProgressDto] is reused rather than copied: the account sync already models this exact object
+     * from `/api/me`, and two DTOs for one wire shape is two things to keep correct.
+     *
+     * The two units in one object, converted through the same helpers everything else uses: `currentTime`
+     * is seconds, `lastUpdate` is epoch milliseconds. Nothing here can fail. An absent or zero `lastUpdate`
+     * becomes the epoch, which is a real answer meaning "the server has never recorded a write for this
+     * book" — and the freshness comparison then reads it as nothing newer than ours, which is correct and is
+     * the safe direction besides.
+     */
+    fun toServerProgress(dto: MediaProgressDto) = ServerProgress(
+        position = seconds(dto.currentTime),
+        updatedAt = Instant.ofEpochMilli((dto.lastUpdate ?: 0L).coerceAtLeast(0)),
+        isFinished = dto.isFinished,
+    )
+
     private fun missingField(field: String): AppError = AppError.ApiCompatibility(
         summary = "This server's playback response is missing information this app needs.",
         missingField = field,
@@ -155,7 +174,6 @@ internal object ListeningSessionMapper {
             // Epoch **milliseconds**, unlike the three above. Getting this pair backwards puts a history row
             // in 1970 or claims a four-second session lasted an hour; the capture is what settled it.
             startedAt = Instant.ofEpochMilli(dto.startedAt ?: dto.updatedAt ?: 0L),
-            updatedAt = Instant.ofEpochMilli(dto.updatedAt ?: dto.startedAt ?: 0L),
         )
     }
 }

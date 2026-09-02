@@ -19,7 +19,9 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.FinishedThreshold
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -302,6 +304,73 @@ class DefaultPlaybackRepository @Inject constructor(
         }
 
     /**
+     * PRODUCT_SPEC SYNC-002 — whether the server has been moved on since this device last wrote.
+     *
+     * ### The three answers, and which facts produce each
+     *
+     * `Ahead` needs two things to be true: the server's `lastUpdate` is later than the moment this device
+     * last recorded a position, **and** the stored position differs from where the player actually is by
+     * more than [POSITION_TOLERANCE]. The timestamp alone is not enough — our own upload bumps
+     * `lastUpdate`, so every resume after a sync would otherwise look like somebody else — and the
+     * position alone is not enough either, since it cannot tell a remote change from our own unsynced one.
+     *
+     * The tolerance exists because both sides round: the wire carries fractional seconds and the local row
+     * carries milliseconds, and a resume must not seek by half a second and call it another device.
+     *
+     * ### What returns `Current` without a request
+     *
+     * A book with unsynced local progress. The local row is the truth in that state by definition, so the
+     * request would be latency spent on an answer that could not be acted on. This is also the common case
+     * for somebody listening on one device, which is why it is checked first.
+     *
+     * A book with **no** local progress row also returns `Current` rather than asking. There is nothing to
+     * compare against and nothing to preserve: the player already loaded from wherever the session said,
+     * which for a first play is the server's own position.
+     *
+     * ### And `Unavailable`
+     *
+     * No active profile, or a failed read. Both leave the position alone; the distinction from `Current` is
+     * what the history row records, and it is the difference between a verified resume and a hopeful one.
+     *
+     * ### The cap is the caller's, not this function's
+     *
+     * How long a tap may wait is a decision about the tap, so `PlayerViewModel` wraps this call in its own
+     * timeout and treats a late answer as `Unavailable`. Putting it here would also have put a virtual
+     * clock inside every test of this repository, which is a lot of machinery for a policy that belongs one
+     * layer up.
+     */
+    override suspend fun checkServerPosition(bookId: LibraryItemId, localPosition: Duration): ExternalSessionCheck =
+        withContext(ioDispatcher) {
+            val profileId = profileRepository.activeProfileId() ?: return@withContext ExternalSessionCheck.Unavailable
+            val profile = profileDao.findProfile(profileId.value) ?: return@withContext ExternalSessionCheck.Unavailable
+            val local = progressDao.findProgress(profileId.value, EntityKey.of(profile.serverId, bookId.value))
+                ?: return@withContext ExternalSessionCheck.Current
+            if (local.hasUnsyncedChanges) return@withContext ExternalSessionCheck.Current
+
+            when (val remote = gateway.playback.serverProgress(profileId, bookId)) {
+                is AppResult.Failure -> ExternalSessionCheck.Unavailable
+                is AppResult.Success -> outcomeOf(remote.value, local.updatedAt, localPosition)
+            }
+        }
+
+    /**
+     * The comparison itself, split out so it can be read without the plumbing around it.
+     *
+     * Both timestamps are milliseconds since the epoch, and — this is the point — one is the server's own
+     * `lastUpdate` and the other is the moment *this device* recorded its position. Neither is a clock
+     * reading taken now, so a phone running fast or slow cannot invent remote activity or hide it.
+     */
+    private fun outcomeOf(
+        remote: ServerProgress,
+        localUpdatedAt: Long,
+        localPosition: Duration,
+    ): ExternalSessionCheck {
+        val serverIsNewer = remote.updatedAt.toEpochMilli() > localUpdatedAt
+        val moved = (remote.position - localPosition).absoluteValue > POSITION_TOLERANCE
+        return if (serverIsNewer && moved) ExternalSessionCheck.Ahead(remote.position) else ExternalSessionCheck.Current
+    }
+
+    /**
      * ADR-0013 — the rule in force for one book: its own library's, read fresh on every write.
      *
      * Not cached. The value changes when the server's library settings change, and it is one nullable number
@@ -323,5 +392,14 @@ class DefaultPlaybackRepository @Inject constructor(
          * short enough that nobody re-listening to a chapter trips it.
          */
         val RESTART_WITHIN: Duration = 60.seconds
+
+        /**
+         * How far the two positions may differ before it counts as somebody else having moved the book.
+         *
+         * Five seconds. The wire carries fractional seconds and the local row carries milliseconds, so
+         * they are never exactly equal; and the auto-rewind moves the player without anybody having
+         * listened, which a tighter tolerance would report as remote activity on every resume.
+         */
+        val POSITION_TOLERANCE: Duration = 5.seconds
     }
 }

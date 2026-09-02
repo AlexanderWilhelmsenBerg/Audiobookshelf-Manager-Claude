@@ -21,9 +21,13 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
+import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
+import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.download.SmartDownload
@@ -47,6 +51,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -75,6 +80,9 @@ class DefaultPlaybackRepositoryTest {
     /** PRODUCT_SPEC DL-005 / 6.5 — records the halfway triggers a write produced, so absence is assertable. */
     private val smartDownloads = mutableListOf<LibraryItemId>()
 
+    /** PRODUCT_SPEC SYNC-002 — the scripted half of the gateway, set up in [setUp]. */
+    private lateinit var serverProgress: ScriptedProgressGateway
+
     @Before
     fun setUp() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -83,12 +91,15 @@ class DefaultPlaybackRepositoryTest {
             .build()
         val dispatcher = UnconfinedTestDispatcher()
         val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
-        val gateway = FakeAudiobookshelfGateway(
-            loader = FixtureLibraryLoader(),
-            clock = TestAppClock(),
-            logger = logger,
-            ioDispatcher = dispatcher,
+        val gateway = ScriptedProgressGateway(
+            FakeAudiobookshelfGateway(
+                loader = FixtureLibraryLoader(),
+                clock = TestAppClock(),
+                logger = logger,
+                ioDispatcher = dispatcher,
+            ),
         )
+        serverProgress = gateway
 
         repository = DefaultPlaybackRepository(
             profileRepository = profiles,
@@ -461,10 +472,162 @@ class DefaultPlaybackRepositoryTest {
         .observe(profileId.value, EntityKey.of(SERVER, bookId.value), limit = 50)
         .first()
 
+    // ------------------------------------------- PRODUCT_SPEC SYNC-002, the check before an in-app Play
+
+    /*
+     * These are about one question — may this resume trust the position it is holding — and the three
+     * answers it has. What each answer *costs* matters as much as which one it is: the first version of
+     * this check read the account's whole listening history page by page and a device reported the Play
+     * taking seconds. `requests` is asserted for that reason, not for tidiness.
+     */
+
+    /** The server was written after this device and holds a different position: the one case that moves. */
+    @Test
+    fun `a newer server position is reported as ahead`() = runTest {
+        syncedProgress(position = 10.minutes, at = 1_000L)
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(position = 61.minutes, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
+        )
+
+        val outcome = repository.checkServerPosition(BOOK, localPosition = 10.minutes)
+
+        assertEquals(ExternalSessionCheck.Ahead(61.minutes), outcome)
+        assertEquals(1, serverProgress.requests, "one request for one book, never a sweep of the account")
+    }
+
+    /**
+     * **A server position that is *behind* is still ahead in the sense that matters.**
+     *
+     * Somebody rewinding on another device is newer activity even though the number is smaller. This is the
+     * case a position-magnitude comparison gets backwards, and honouring it is why the timestamp decides.
+     */
+    @Test
+    fun `an earlier server position from a later write is still adopted`() = runTest {
+        syncedProgress(position = 60.minutes, at = 1_000L)
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(position = 20.minutes, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
+        )
+
+        assertEquals(
+            ExternalSessionCheck.Ahead(20.minutes),
+            repository.checkServerPosition(BOOK, localPosition = 60.minutes),
+        )
+    }
+
+    /** Our own upload bumps the server's `lastUpdate`, so a newer timestamp alone must not move anything. */
+    @Test
+    fun `a newer timestamp at the same position keeps the local one`() = runTest {
+        syncedProgress(position = 30.minutes, at = 1_000L)
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(position = 30.minutes, updatedAt = Instant.ofEpochMilli(9_000L), isFinished = false),
+        )
+
+        assertEquals(
+            ExternalSessionCheck.Current,
+            repository.checkServerPosition(BOOK, localPosition = 30.minutes),
+        )
+    }
+
+    /** A second of drift is rounding between a fractional wire value and a stored millisecond, not a device. */
+    @Test
+    fun `a difference inside the tolerance keeps the local position`() = runTest {
+        syncedProgress(position = 30.minutes, at = 1_000L)
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(
+                position = 30.minutes + 1.seconds,
+                updatedAt = Instant.ofEpochMilli(2_000L),
+                isFinished = false,
+            ),
+        )
+
+        assertEquals(
+            ExternalSessionCheck.Current,
+            repository.checkServerPosition(BOOK, localPosition = 30.minutes),
+        )
+    }
+
+    /**
+     * **Unsynced local progress answers without asking the server at all.**
+     *
+     * The local row is the truth in that state by definition, so the request would be latency spent on an
+     * answer that could not be acted on. It is also the common case for one person on one device, which is
+     * why `requests` being zero here is the assertion that matters most for the reported delay.
+     */
+    @Test
+    fun `unsynced local progress skips the request`() = runTest {
+        repository.recordPosition(BOOK, position = 40.minutes, duration = 2.hours)
+        assertTrue(storedProgress().hasUnsyncedChanges)
+
+        assertEquals(
+            ExternalSessionCheck.Current,
+            repository.checkServerPosition(BOOK, localPosition = 40.minutes),
+        )
+        assertEquals(0, serverProgress.requests, "nothing to reconcile against, so nothing to ask")
+    }
+
+    /** A book this device has no row for has nothing to preserve and nothing to compare. */
+    @Test
+    fun `a book with no local progress skips the request`() = runTest {
+        assertEquals(
+            ExternalSessionCheck.Current,
+            repository.checkServerPosition(UNPLAYED, localPosition = Duration.ZERO),
+        )
+        assertEquals(0, serverProgress.requests)
+    }
+
+    /** A failed read is the outcome that earns the struck-through cloud: resumed, but unverified. */
+    @Test
+    fun `a failed read reports the server was not reached`() = runTest {
+        syncedProgress(position = 10.minutes, at = 1_000L)
+        serverProgress.answer = AppResult.Failure(AppError.Network(summary = "No connection."))
+
+        assertEquals(
+            ExternalSessionCheck.Unavailable,
+            repository.checkServerPosition(BOOK, localPosition = 10.minutes),
+        )
+    }
+
+    /**
+     * A stored row the server has already accepted, at a chosen moment.
+     *
+     * [MediaProgressEntity.updatedAt] is the *local* side of the freshness comparison and
+     * [MediaProgressEntity.hasUnsyncedChanges] is what short-circuits it, so both have to be set
+     * deliberately rather than left to whatever `recordPosition` produces.
+     */
+    private suspend fun syncedProgress(position: Duration, at: Long) {
+        repository.recordPosition(BOOK, position = position, duration = 2.hours)
+        database.progressDao().upsertProgress(
+            listOf(storedProgress().copy(updatedAt = at, hasUnsyncedChanges = false)),
+        )
+    }
+
     private suspend fun storedProgress(): MediaProgressEntity =
         requireNotNull(database.progressDao().findProgress(profileId.value, EntityKey.of(SERVER, BOOK.value))) {
             "no progress row was written"
         }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the fixture gateway, with `serverProgress` scripted and counted.
+     *
+     * Delegation rather than a hand-written stub: every other call goes to [FakeAudiobookshelfGateway], so
+     * this file's other twenty-odd cases are unaffected and cannot start passing for a new reason.
+     * [requests] exists because the defect being fixed was a cost, not a wrong answer — a version that
+     * returned the right outcome after four round trips would pass every assertion above it.
+     */
+    private class ScriptedProgressGateway(private val delegate: AudiobookshelfGateway) :
+        AudiobookshelfGateway by delegate,
+        PlaybackApi by delegate.playback {
+        var answer: AppResult<ServerProgress> = AppResult.Failure(AppError.Network(summary = "not scripted"))
+        var requests: Int = 0
+            private set
+
+        override val playback: PlaybackApi get() = this
+
+        override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> {
+            requests += 1
+            return answer
+        }
+    }
 
     /** The active profile, without a database of profiles behind it. */
     // ------------------------------------------- PRODUCT_SPEC 6.5, whose row a write lands on

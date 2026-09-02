@@ -898,32 +898,72 @@ session's own id rather than a fresh UUID, and the table's primary key was alrea
 A failed fetch is logged and otherwise silent. A pane whose local half is good must not become an error
 because the network was not there, and the rows from earlier refreshes stand.
 
-### The second reader: whether a Play may trust its own position (SYNC-002)
+### This route is **not** how a Play checks its position, and that is a correction
 
-`PlaybackHistoryRepository.checkExternalSession` reads the same route before an in-app Play resumes a
-loaded, paused book. It answers one of three things — another device is ahead, nothing newer exists, or the
-server could not be asked — and only the first is allowed to move the player.
+`PlaybackHistoryRepository.checkExternalSession` used to read this endpoint page by page to exhaustion
+before an in-app Play resumed, on the reasoning that the route is account-wide with no per-book form and a
+busy account could push the book past the first fifty sessions. It is account-wide, and it does, and reading
+all of it before any audio was reported from a device as *"pressing play takes very long time"*.
 
-Two properties of this endpoint are what make the check possible, and both are captured rather than assumed:
+`GET /api/me/progress/{itemId}` — one request, for one book — replaced it. See the next section.
 
-- **`updatedAt` moves and `startedAt` does not.** An already-open session that keeps progressing updates
-  the former, so "did somebody use this book after our session opened" is `candidate.updatedAt >
-  ours.startedAt` — a comparison of two fields from **the same server response**. This handset's clock never
-  enters it, which is the whole reason a fast or slow phone cannot invent or hide remote activity.
-- **`deviceInfo.deviceId` identifies the client**, so BookWave's own sessions can be excluded from the
-  comparison the way they are excluded from the import above.
+---
 
-Position magnitude is deliberately never compared: an intentional rewind on another client is *newer*
-activity even though its position is smaller, and a check that compared positions would refuse to honour it.
+## The stored position for one book, captured 2026-08-27 against 2.36.0
 
-**The read is exhaustive, not one page.** The route is account-wide, so a busy account can push this book
-past the first fifty sessions, and whether a resume is verified must not depend on what else the account
-played. A page that fails abandons the whole answer rather than deciding on the pages already in hand —
-partial evidence is not evidence for moving a loaded player.
+`GET /api/me/progress/{itemId}`, fixture `media-progress.json`. `scripts/capture-contracts.sh` writes a
+position with the `PATCH` on the same route and reads it straight back through this one.
 
-The outcome is written into the book's history as one row per Play, which is the only way to tell afterwards
-that a resume was verified rather than merely assumed. `PlaybackEvent.ServerCheckAhead` and
-`ServerCheckCurrent` draw a plain cloud; `ServerCheckUnavailable` draws a struck-through one.
+| Field | |
+| --- | --- |
+| `currentTime`, `duration` | **seconds**, fractional — the capture shows `42.5` |
+| `lastUpdate`, `startedAt`, `finishedAt` | **epoch milliseconds** |
+| `isFinished` | the explicit flag PLAY-004 is about |
+| `progress` | a fraction the app recomputes and does not model |
+
+Two units in one object again, and the capture scrubs the timestamps to `0` as volatile — the field names
+are confirmed, the values are not meaningful in the fixture.
+
+### How the freshness check before a Play uses it (SYNC-002)
+
+`PlaybackRepository.checkServerPosition` answers one of three things — another device is ahead, nothing
+newer exists, or the server could not be asked — and only the first is allowed to move the player, by
+**seeking** the already-loaded one rather than reloading it.
+
+`Ahead` needs two facts together:
+
+- **`lastUpdate` later than the moment this device recorded its position.** Two timestamps, one of them
+  ours, neither of them a clock reading taken now — so a phone running fast or slow can neither invent
+  remote activity nor hide it. The timestamp alone is not enough, because our own upload bumps `lastUpdate`.
+- **`currentTime` more than five seconds from where the player actually is.** The position alone is not
+  enough either: it cannot tell a remote change from our own unsynced one. The tolerance is there because
+  the wire carries fractional seconds against a stored millisecond, and because auto-rewind moves the
+  player without anybody having listened.
+
+Position *magnitude* is deliberately never compared. An intentional rewind on another client is newer
+activity even though its number is smaller, and a check that compared magnitudes would refuse to honour it.
+
+**What the two reference clients do**, read from their sources rather than inferred:
+
+| | `advplyr/audiobookshelf-app` | `pounat/absorb` |
+| --- | --- | --- |
+| Route | `GET /api/me/progress/{id}` | `GET /api/me/progress/{id}` |
+| Cap | a 3-second `pingClient`, built for this | 2 seconds, late answers dropped |
+| Gate | pause longer than 30s (`PAUSE_LEN_BEFORE_RECHECK`) | pause longer than 2 minutes, and only a play from the app screen |
+| Order | audio first, then seek if the server was ahead | audio first; once running it logs and does **not** seek |
+| Live? | **No** — the call site is commented out on Android with *"this needs to be reworked so that the audio doesn't start playing before it checks for updated progress"*, and the iOS equivalent is marked `// TODO: Unused for now` | Yes |
+
+BookWave takes absorb's cap and the official app's gate, and keeps the check *before* audio — which absorb
+also does, in the one case it still waits for (a play from the app screen). A play from the notification,
+the car or a headset never waits, because those reach `PlaybackController` without passing through the
+ViewModel the check lives in.
+
+**A non-`200` is "could not tell", including a `404`.** What the server answers for a book it has never
+recorded progress for is unobserved (PRODUCT_SPEC 22.4), and of the two available guesses only "could not
+tell" is safe for a loaded player.
+
+The outcome is recorded in the book's history and drawn as a small muted cloud on the Play row it belongs
+to: plain for `ServerCheckAhead` and `ServerCheckCurrent`, struck through for `ServerCheckUnavailable`.
 
 ---
 

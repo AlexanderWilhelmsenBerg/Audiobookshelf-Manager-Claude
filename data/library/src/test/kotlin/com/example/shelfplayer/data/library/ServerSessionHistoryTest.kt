@@ -18,11 +18,11 @@ import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.PlaybackSession
-import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.AuthApi
@@ -237,118 +237,20 @@ class ServerSessionHistoryTest {
         }
     }
 
-    // ------------------------------------------------------------------ the freshness check before a Play
-
-    /*
-     * PRODUCT_SPEC SYNC-002 — `checkExternalSession` reads the same endpoint as the import above, which is
-     * why it is covered here rather than in a file with a second copy of this harness. What it answers is a
-     * different question: not "what happened elsewhere" but "may this Play trust the position it is holding",
-     * and the three outcomes below are what a history row shows a listener afterwards.
-     */
-
-    /** Another device carried on after our session opened: the one outcome that may move a loaded player. */
-    @Test
-    fun `a later session elsewhere reports the server is ahead`() = runTest {
-        gateway.sessions = listOf(
-            session(id = "ours", deviceId = THIS_DEVICE),
-            session(id = "theirs", deviceId = OTHER_DEVICE, updatedAt = STARTED_AT.plusSeconds(3_600)),
-        )
-
-        assertEquals(ExternalSessionCheck.Ahead, repository.checkExternalSession(BOOK))
-    }
-
-    /**
-     * An older session elsewhere is not newer activity, and `Current` — not `Ahead` — is what keeps the
-     * loaded position. Position magnitude never enters it: this other device reached the same three hours.
-     */
-    @Test
-    fun `an earlier session elsewhere confirms the local position`() = runTest {
-        gateway.sessions = listOf(
-            session(id = "ours", deviceId = THIS_DEVICE),
-            session(id = "theirs", deviceId = OTHER_DEVICE, updatedAt = STARTED_AT.minusSeconds(3_600)),
-        )
-
-        assertEquals(ExternalSessionCheck.Current, repository.checkExternalSession(BOOK))
-    }
-
-    /**
-     * Our own later session is still ours.
-     *
-     * The comparison is against *another* device, so a second BookWave session on this install — which the
-     * app opens routinely — must not be read as somebody else listening.
-     */
-    @Test
-    fun `a later session on this device is not external activity`() = runTest {
-        gateway.sessions = listOf(
-            session(id = "ours", deviceId = THIS_DEVICE),
-            session(id = "ours-again", deviceId = THIS_DEVICE, updatedAt = STARTED_AT.plusSeconds(3_600)),
-        )
-
-        assertEquals(ExternalSessionCheck.Current, repository.checkExternalSession(BOOK))
-    }
-
-    /**
-     * **The server answered and none of the sessions are ours: that is `Current`, not `Unavailable`.**
-     *
-     * The distinction is the whole reason the outcome is not a boolean. There is nothing to compare a remote
-     * session against, so no evidence exists against the loaded position — and the history row must say the
-     * server was reached, because it was.
-     */
-    @Test
-    fun `an answer with none of our sessions in it confirms the local position`() = runTest {
-        gateway.sessions = listOf(
-            session(id = "theirs", deviceId = OTHER_DEVICE, updatedAt = STARTED_AT.plusSeconds(3_600)),
-        )
-
-        assertEquals(ExternalSessionCheck.Current, repository.checkExternalSession(BOOK))
-    }
-
-    /** A read that fails is the outcome that gets the struck-through cloud: resumed, but unverified. */
-    @Test
-    fun `a failed read reports the server was not reached`() = runTest {
-        gateway.sessions = listOf(session(id = "ours", deviceId = THIS_DEVICE))
-        gateway.fails = true
-
-        assertEquals(ExternalSessionCheck.Unavailable, repository.checkExternalSession(BOOK))
-    }
-
-    /** Another book's later session says nothing about this one. */
-    @Test
-    fun `a later session on another book confirms the local position`() = runTest {
-        gateway.sessions = listOf(
-            session(id = "ours", deviceId = THIS_DEVICE),
-            session(
-                id = "theirs",
-                deviceId = OTHER_DEVICE,
-                bookId = LibraryItemId("some-other-book"),
-                updatedAt = STARTED_AT.plusSeconds(3_600),
-            ),
-        )
-
-        assertEquals(ExternalSessionCheck.Current, repository.checkExternalSession(BOOK))
-    }
-
     // ------------------------------------------------------------------ fixtures
 
-    private fun session(
-        id: String,
-        deviceId: String?,
-        bookId: LibraryItemId = BOOK,
-        listened: Duration = 20.minutes,
-        startedAt: Instant = STARTED_AT,
-        updatedAt: Instant = startedAt,
-    ) = ListeningSession(
-        id = id,
-        bookId = bookId,
-        deviceId = deviceId,
-        deviceName = OTHER_DEVICE_NAME,
-        clientName = "Audiobookshelf Web",
-        listened = listened,
-        startedFrom = 2.hours,
-        reachedAt = 3.hours,
-        startedAt = startedAt,
-        updatedAt = updatedAt,
-    )
+    private fun session(id: String, deviceId: String?, bookId: LibraryItemId = BOOK, listened: Duration = 20.minutes) =
+        ListeningSession(
+            id = id,
+            bookId = bookId,
+            deviceId = deviceId,
+            deviceName = OTHER_DEVICE_NAME,
+            clientName = "Audiobookshelf Web",
+            listened = listened,
+            startedFrom = 2.hours,
+            reachedAt = 3.hours,
+            startedAt = STARTED_AT,
+        )
 
     private fun thisDevice() = PlaybackDevice(
         clientName = "BookWave",
@@ -412,6 +314,8 @@ class ServerSessionHistoryTest {
         }
 
         override suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
+            unused()
+        override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> =
             unused()
 
         override suspend fun syncSession(

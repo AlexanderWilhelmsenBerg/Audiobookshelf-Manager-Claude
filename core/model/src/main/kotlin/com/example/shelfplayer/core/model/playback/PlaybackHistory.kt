@@ -139,16 +139,6 @@ enum class PlaybackEvent {
     val isServerCheck: Boolean
         get() = this == ServerCheckAhead || this == ServerCheckCurrent || this == ServerCheckUnavailable
 
-    /**
-     * `true` for the rows carrying something Audiobookshelf said.
-     *
-     * Wider than [isRemote] by the two answered checks, and deliberately narrower than "is about the
-     * server": [ServerCheckUnavailable] is a row about *not* hearing from it, and reads as the absence it
-     * is rather than as a server fact.
-     */
-    val isFromServer: Boolean
-        get() = isRemote || this == ServerCheckAhead || this == ServerCheckCurrent
-
     companion object {
         /** PRODUCT_SPEC SYNC-001 — an unrecognized stored value reads back as the commonest kind. */
         fun parse(name: String?): PlaybackEvent = entries.firstOrNull { it.name == name } ?: Seek

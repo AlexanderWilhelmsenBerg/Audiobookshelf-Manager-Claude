@@ -1,7 +1,9 @@
 package com.example.shelfplayer.core.model.playback
 
+import kotlin.time.Duration
+
 /**
- * PRODUCT_SPEC SYNC-002 — what asking the server about a book's *other* sessions produced.
+ * PRODUCT_SPEC SYNC-002 — what asking the server about this book's position produced.
  *
  * ### Why an outcome rather than a boolean
  *
@@ -13,34 +15,42 @@ package com.example.shelfplayer.core.model.playback
  *
  * So the outcome is carried out of the repository and written into the book's history, where
  * [PlaybackEvent.ServerCheckAhead], [PlaybackEvent.ServerCheckCurrent] and
- * [PlaybackEvent.ServerCheckUnavailable] give each of the three its own row.
+ * [PlaybackEvent.ServerCheckUnavailable] mark the Play row that resumed under it.
  *
- * Only [Ahead] moves anything. The other two resume where the player already is, which is product priority
- * 2: a check that cannot prove the local position is stale must never replace it.
+ * Only [Ahead] moves anything, and it carries the position to move to. The other two resume where the
+ * player already is, which is product priority 2: a check that cannot prove the local position stale must
+ * never replace it.
  */
-enum class ExternalSessionCheck {
-    /** The server answered, and another device used this book after BookWave's own session opened. */
-    Ahead,
+sealed interface ExternalSessionCheck {
 
     /**
-     * The server answered, and nothing newer exists — or nothing newer can be attributed to another device.
+     * The server answered, and its stored position is somebody else's more recent work.
      *
-     * Also the answer when the server was reached but BookWave's own session for this book is not among the
-     * records it returned. There is then nothing to compare a remote session against, and "the loaded
-     * position stands" is the only claim the evidence supports.
+     * [position] is the server's own `currentTime`, so adopting it is a **seek** rather than a reload —
+     * the whole point of asking before audio starts. It may be *behind* the local position: an intentional
+     * rewind on another client is newer activity even though its number is smaller, which is why the
+     * timestamp decides and the magnitude never does.
      */
-    Current,
+    data class Ahead(val position: Duration) : ExternalSessionCheck
 
     /**
-     * The server was not reached, the read failed part-way, or the check was cancelled before it answered.
+     * The server answered, and there is nothing newer than what this device holds.
      *
-     * Playback resumes exactly as it would have without the check. The row this writes is the only trace
-     * that the guarantee was missing, which is why it is written even when the cancellation came from the
-     * listener pressing something else.
+     * Also the answer when this device has progress it has not yet uploaded: the local position is then the
+     * truth by definition, and there is no need to ask at all.
      */
-    Unavailable,
-    ;
+    data object Current : ExternalSessionCheck
+
+    /**
+     * The server was not reached, the read failed, it did not answer inside the cap, or the check was
+     * cancelled before it answered.
+     *
+     * Playback resumes exactly as it would have without the check. The mark this leaves on the Play row is
+     * the only trace that the guarantee was missing, which is why it is recorded even when the cancellation
+     * came from the listener pressing something else.
+     */
+    data object Unavailable : ExternalSessionCheck
 
     /** `true` when Audiobookshelf answered — the two outcomes that carry a server fact rather than a gap. */
-    val answered: Boolean get() = this != Unavailable
+    val answered: Boolean get() = this !is Unavailable
 }

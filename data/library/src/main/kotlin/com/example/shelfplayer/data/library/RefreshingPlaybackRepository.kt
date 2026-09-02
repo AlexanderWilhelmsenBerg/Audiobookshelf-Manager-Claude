@@ -41,4 +41,18 @@ class RefreshingPlaybackRepository @Inject constructor(
 
     override suspend fun setFinished(bookId: LibraryItemId, isFinished: Boolean, position: Duration): AppResult<Unit> =
         delegate.setFinished(bookId, isFinished, position)
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — passed straight through, and deliberately **without** draining the outbox
+     * first.
+     *
+     * A drain before the read would be the wrong shape twice over. It is a network write on the path
+     * between a tap and audio, which is the latency this check exists to keep down; and it would make the
+     * answer meaningless — uploading this device's position bumps the server's `lastUpdate`, so the very
+     * next read would report the server as newer than us. The check reads
+     * [com.example.shelfplayer.core.database.entity.MediaProgressEntity.hasUnsyncedChanges] instead and
+     * answers `Current` without asking at all when there is anything queued.
+     */
+    override suspend fun checkServerPosition(bookId: LibraryItemId, localPosition: Duration) =
+        delegate.checkServerPosition(bookId, localPosition)
 }

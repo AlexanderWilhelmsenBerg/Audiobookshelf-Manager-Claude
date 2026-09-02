@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import kotlin.time.Duration
 
 /**
@@ -83,4 +84,36 @@ interface PlaybackRepository {
      *   beginning.
      */
     suspend fun setFinished(bookId: LibraryItemId, isFinished: Boolean, position: Duration): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — asks the server whether another device has moved this book on, before an
+     * in-app Play resumes it.
+     *
+     * ### One request, capped, and never on the account's whole history
+     *
+     * `GET /api/me/progress/{bookId}`, one round trip. The first version of this read
+     * `/api/me/listening-sessions` page by page to exhaustion — the route is account-wide with no per-book
+     * form — which made a Play on a busy account wait for several round trips before any audio. Reported
+     * from a device as *"pressing play takes very long time"*.
+     *
+     * The read is also **capped**: an answer that has not arrived within a couple of seconds is treated as
+     * [ExternalSessionCheck.Unavailable] and playback proceeds. Both reference clients do the same, and
+     * `docs/api-compatibility.md` records where each of them landed.
+     *
+     * ### What decides, and what deliberately does not
+     *
+     * The server's `lastUpdate` against the moment this device last recorded a position — two timestamps,
+     * one of them ours, and neither of them a wall-clock reading taken now. Position **magnitude** never
+     * decides: an intentional rewind on another client is newer activity even though its number is
+     * smaller.
+     *
+     * Progress this device has not yet uploaded is [ExternalSessionCheck.Current] **without asking the
+     * server at all**. The local row is the truth by definition in that state, and the request would be
+     * latency spent on an answer that cannot be acted on.
+     *
+     * @param localPosition where the loaded player actually is, which is not always the stored position —
+     *   a seek while paused moves one and not the other, and the comparison has to be against what the
+     *   listener would hear if this returned [ExternalSessionCheck.Current].
+     */
+    suspend fun checkServerPosition(bookId: LibraryItemId, localPosition: Duration): ExternalSessionCheck
 }

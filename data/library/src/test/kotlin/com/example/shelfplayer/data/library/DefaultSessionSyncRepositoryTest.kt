@@ -34,6 +34,7 @@ import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
@@ -557,6 +558,9 @@ class DefaultSessionSyncRepositoryTest {
         }
 
         override suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
+            unsupported()
+
+        override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> =
             unsupported()
 
         override suspend fun syncSession(

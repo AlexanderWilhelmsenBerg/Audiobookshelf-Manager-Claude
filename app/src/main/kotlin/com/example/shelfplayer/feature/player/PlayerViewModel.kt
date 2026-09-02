@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
+import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.playback.AutoRewindController
 import com.example.shelfplayer.playback.NotificationAccessReader
@@ -39,8 +40,27 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
+
+/**
+ * PRODUCT_SPEC PLAY-003 / SYNC-002 — the two playback repositories this screen reads and writes through.
+ *
+ * Bundled for the reason `SettingsViewModel`'s `DeviceReaders` is: they are the same kind of collaborator,
+ * and a ViewModel that already holds a controller, a sleep timer, a sync coordinator and a surface has a
+ * real parameter budget — detekt's constructor limit is ten and the freshness check's arrival made it ten
+ * exactly.
+ *
+ * They stayed two repositories rather than becoming one. [history] answers "what has happened to this
+ * book"; [positions] answers "where is the listener and what does the server think" — different lifetimes,
+ * and the second is written every few seconds while a book plays.
+ *
+ * `@Inject constructor` so Hilt assembles it; nothing constructs one by hand except a test.
+ */
+data class PlaybackData @Inject constructor(val history: PlaybackHistoryRepository, val positions: PlaybackRepository)
 
 /**
  * PRODUCT_SPEC PLAY-001 — the screens' view of playback.
@@ -78,7 +98,7 @@ class PlayerViewModel @Inject constructor(
     private val sessionSync: SessionSyncCoordinator,
     private val notifications: NotificationAccessReader,
     private val autoRewind: AutoRewindController,
-    private val playbackHistory: PlaybackHistoryRepository,
+    private val playbackData: PlaybackData,
     private val bookmarks: BookmarkRepository,
     playbackSettings: PlaybackSettingsRepository,
     private val surface: PlayerSurface,
@@ -135,7 +155,7 @@ class PlayerViewModel @Inject constructor(
         .map { it.bookId }
         .distinctUntilChanged()
         .flatMapLatest { bookId ->
-            if (bookId == null) flowOf(emptyList()) else playbackHistory.observe(bookId)
+            if (bookId == null) flowOf(emptyList()) else playbackData.history.observe(bookId)
         }
         .stateIn(
             scope = viewModelScope,
@@ -159,7 +179,7 @@ class PlayerViewModel @Inject constructor(
      */
     fun onOpenHistory() {
         val bookId = controller.state.value.bookId ?: return
-        viewModelScope.launch { playbackHistory.refreshServerSessions(bookId) }
+        viewModelScope.launch { playbackData.history.refreshServerSessions(bookId) }
     }
 
     /**
@@ -209,6 +229,15 @@ class PlayerViewModel @Inject constructor(
 
     /** At most one server-freshness check may own the next in-app Play. */
     private var resumeJob: Job? = null
+
+    /**
+     * When this ViewModel last paused, or `null` if it has not.
+     *
+     * Only pauses that came through [onTogglePlayPause] are seen; a pause from the notification, the car or
+     * a headset button goes straight to the service. That is why `null` and a stale mark both mean *check*
+     * — see [shouldCheckServer].
+     */
+    private var pausedAt: TimeSource.Monotonic.ValueTimeMark? = null
 
     /**
      * PRODUCT_SPEC PLAY-001 — starts a book and opens the player over it.
@@ -284,12 +313,31 @@ class PlayerViewModel @Inject constructor(
     fun onRewindNoticeShown() = autoRewind.dismissUndo()
 
     /**
-     * Every in-app Play on a loaded paused book checks server-session freshness before it resumes.
+     * PRODUCT_SPEC SYNC-002 — an in-app Play checks the server's position before resuming, sometimes.
      *
-     * The repository compares Audiobookshelf session identity/device/timestamps, never progress magnitude
-     * and never this handset's wall clock. If it cannot prove newer external activity, the existing player
-     * resumes exactly where it is. A newer external rewind is therefore respected, while uncertainty cannot
-     * create a rewind of its own.
+     * ### What it costs, which is the part that had to be got right
+     *
+     * The first version read the account's whole listening history, page by page, before any audio. On a
+     * busy account that is several round trips for one tap, and it was reported from a device as *"pressing
+     * play takes very long time"*. Three things fix it, and each is what one of the two reference clients
+     * does — `docs/api-compatibility.md` § SYNC-002 records the evidence:
+     *
+     *  1. **one request for one book**, `GET /api/me/progress/{id}`, instead of an account-wide sweep;
+     *  2. **capped** — see [SERVER_CHECK_TIMEOUT] — so a slow server delays a resume by two seconds at most;
+     *  3. **skipped entirely for a resume that cannot have been overtaken** — see [MIN_PAUSE_BEFORE_CHECK].
+     *
+     * ### Only from here
+     *
+     * This is the app's own transport. A media button, the notification, the car and a headset all reach
+     * `PlaybackController` without passing through this ViewModel, so none of them waits on the network to
+     * start — which is the behaviour absorb arrived at deliberately and this gets for free from where the
+     * check happens to live.
+     *
+     * ### And when it says the server is ahead
+     *
+     * The player **seeks**, rather than being torn down and reloaded. It is already loaded with the right
+     * book; the position is the only thing that was wrong, and the reload was a second source of the delay
+     * this is fixing.
      *
      * Whichever of the three outcomes it lands on is written into the book's history by
      * [recordCheckOutcome], so "resumed on a verified position" and "resumed because the server was
@@ -299,30 +347,32 @@ class PlayerViewModel @Inject constructor(
         val current = playback.value
         if (current.isPlaying) {
             cancelResumeCheck()
+            pausedAt = TimeSource.Monotonic.markNow()
             controller.togglePlayPause()
             return
         }
         val bookId = current.bookId
-        if (bookId == null) {
+        if (bookId == null || !shouldCheckServer()) {
             controller.togglePlayPause()
             return
         }
         if (resumeJob?.isActive == true) return
         val pressedAt = current.position
         resumeJob = viewModelScope.launch {
-            var outcome = ExternalSessionCheck.Unavailable
+            var outcome: ExternalSessionCheck = ExternalSessionCheck.Unavailable
             try {
-                outcome = playbackHistory.checkExternalSession(bookId)
+                // The cap on the whole thing. A late answer is discarded rather than applied: a seek
+                // arriving after audio has started is worse than the position it would have corrected,
+                // which is the conclusion absorb reached from the other direction and wrote down.
+                outcome = withTimeoutOrNull(SERVER_CHECK_TIMEOUT) {
+                    playbackData.positions.checkServerPosition(bookId, pressedAt)
+                } ?: ExternalSessionCheck.Unavailable
                 val latest = playback.value
-                // A slower network answer may outlive the Play it belonged to. The book/state that now owns
-                // the player wins; an old request must never replace or toggle it.
+                // A slower answer may outlive the Play it belonged to. The book and state that now own the
+                // player win; an old request must never move or toggle them.
                 if (latest.bookId != bookId || latest.isPlaying) return@launch
-                if (outcome == ExternalSessionCheck.Ahead) {
-                    val result = controller.play(bookId)
-                    if (result is AppResult.Failure) _message.value = result.error.summary
-                } else {
-                    controller.togglePlayPause()
-                }
+                (outcome as? ExternalSessionCheck.Ahead)?.let { ahead -> controller.seekTo(ahead.position) }
+                controller.togglePlayPause()
             } finally {
                 recordCheckOutcome(bookId, pressedAt, outcome)
                 resumeJob = null
@@ -331,12 +381,30 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
+     * Whether this resume is one that could plausibly have been overtaken.
+     *
+     * A pause of a few seconds — a knock at the door, a wrong button, scrubbing while paused — cannot have
+     * been followed by somebody else listening on another device, so asking is a round trip spent to learn
+     * nothing. Absorb draws the same line at two minutes and it is the single biggest reason its Play feels
+     * instant; this is the same idea with a shorter fuse, because BookWave's check is capped and absorb's
+     * whole session refresh is not.
+     *
+     * A monotonic mark rather than a clock: the question is "how long since", which is an interval, and an
+     * interval read from wall-clock time is wrong across a time-zone change or an NTP correction. `null` —
+     * nothing has paused through this ViewModel yet, which is every resume after a cold start or a pause
+     * from the notification — means **check**. Erring towards asking is the safe direction: the cost is two
+     * seconds at worst and the alternative is resuming on a position somebody else has moved.
+     */
+    private fun shouldCheckServer(): Boolean =
+        pausedAt?.let { mark -> mark.elapsedNow() >= MIN_PAUSE_BEFORE_CHECK } ?: true
+
+    /**
      * PRODUCT_SPEC SYNC-002 — writes down which of the three outcomes this Play resumed under.
      *
      * The check is otherwise invisible: verified-and-current and could-not-reach-the-server produce the same
      * audio from the same position, and the difference only matters later, when somebody asks why a position
-     * is not where they left it. One row per Play, at the position Play was pressed at, is the cheapest
-     * record that can answer it.
+     * is not where they left it. The row is drawn as a small cloud on the Play row it belongs to rather than
+     * as a row of its own — see `HistorySheet` — so the record costs a listener nothing to scroll past.
      *
      * `NonCancellable` because the outcome that most needs writing down is the one that was interrupted, and
      * a `finally` block in a cancelled coroutine cannot suspend otherwise. It wraps one local database write,
@@ -344,10 +412,10 @@ class PlayerViewModel @Inject constructor(
      */
     private suspend fun recordCheckOutcome(bookId: LibraryItemId, position: Duration, outcome: ExternalSessionCheck) =
         withContext(NonCancellable) {
-            playbackHistory.record(
+            playbackData.history.record(
                 bookId = bookId,
                 event = when (outcome) {
-                    ExternalSessionCheck.Ahead -> PlaybackEvent.ServerCheckAhead
+                    is ExternalSessionCheck.Ahead -> PlaybackEvent.ServerCheckAhead
                     ExternalSessionCheck.Current -> PlaybackEvent.ServerCheckCurrent
                     ExternalSessionCheck.Unavailable -> PlaybackEvent.ServerCheckUnavailable
                 },
@@ -465,6 +533,32 @@ class PlayerViewModel @Inject constructor(
     }
 
     private companion object {
+        /**
+         * PRODUCT_SPEC SYNC-002 — how long a pause has to have lasted before a resume asks the server.
+         *
+         * Thirty seconds. Nobody listening on a second device gets a book open, played and synced inside
+         * that window, so a shorter pause cannot have been overtaken and the request would buy nothing.
+         *
+         * The number matches the constant the official app used for the same gate before it disabled its
+         * whole check (`PlayerListener.PAUSE_LEN_BEFORE_RECHECK`, 30 seconds); absorb draws the line at two
+         * minutes. The shorter of the two, because a capped two-second read is a cheaper thing to spend on
+         * a maybe than absorb's uncapped session refresh.
+         */
+        val MIN_PAUSE_BEFORE_CHECK: Duration = 30.seconds
+
+        /**
+         * PRODUCT_SPEC SYNC-002 — the longest a Play waits on the freshness check before resuming anyway.
+         *
+         * Two seconds, and the number is not arbitrary: `docs/api-compatibility.md` § SYNC-002 records
+         * where the two reference clients landed — absorb caps the same read at two seconds, and the
+         * official app's (disabled) version used a three-second client built for exactly this. Two is the
+         * shorter of the two observed choices, and this check is the only thing between a tap and audio.
+         *
+         * Here rather than in the repository because it is a decision about *this* caller. A background
+         * refresh reading the same position has no reason to give up after two seconds.
+         */
+        val SERVER_CHECK_TIMEOUT: Duration = 2.seconds
+
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
 }
