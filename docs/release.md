@@ -22,9 +22,32 @@ the owner was asked rather than guessed at.
 
 `versionCode` and `versionName` live in the application convention plugin. The channel decided the rule:
 Play requires a strictly increasing integer per upload and never permits a code to be reused for a package,
-so it stays a **hand-incremented integer**. A derived scheme — a timestamp, or a commit count — was
+so ~~it stays a **hand-incremented integer**~~. A derived scheme — a timestamp, or a commit count — was
 considered and rejected: both can go backwards or collide across branches, and Play's refusal of a reused
 code is permanent. See ADR-0024.
+
+**Amended.** The build now names itself after the **pull request** it came from: a build of pull request 72
+is `0.9.5.72`, code `72`. The rejection above stands as written and does not reach this scheme — GitHub
+issues pull request numbers from one monotonic per-repository counter, so unlike a timestamp or a commit
+count they cannot go backwards and cannot collide between branches. `BuildIdentity` carries the reasoning
+next to the code.
+
+Why it was amended: the hand-incremented pair went stale exactly as R-04 predicted. The name sat at
+`0.9.6-auto-shelves` for nine builds once, and had reached dozens of pull requests at
+`0.9.14-browse-and-genres` code 40 by the time this changed. Every device-test result recorded in such a
+window names the wrong build, and a tester holding two APKs cannot tell them apart.
+
+| | |
+| --- | --- |
+| **`0.9.5`** | The product version, still hand-bumped, and only when the product moves. |
+| **`.72` / code `72`** | The pull request, supplied by CI. `apk.yml` resolves it from the ref and passes `BOOKWAVE_PR`. |
+| **No pull request** | A local build, or `main` after a merge: `0.9.5.local` at code `BASE_VERSION_CODE` (40). |
+| **The commit** | `BOOKWAVE_COMMIT`, shown as the **Build** row in Settings → About and in the debug console. |
+
+**The one constraint the amendment keeps: a Play upload must be built from a pull request**, or
+`BASE_VERSION_CODE` must first be raised past the last code Play accepted. An unnumbered build reports 40,
+which is below every pull request number this repository has issued, and Play's refusal of a reused code is
+permanent.
 
 ## Signing
 
