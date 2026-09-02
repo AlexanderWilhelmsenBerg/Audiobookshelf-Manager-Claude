@@ -2,11 +2,13 @@ package com.example.shelfplayer.data.auth.di
 
 import com.example.shelfplayer.core.network.gateway.ProfileConnectionResolver
 import com.example.shelfplayer.core.network.http.TokenProvider
+import com.example.shelfplayer.data.auth.CoalescingAuthRepository
 import com.example.shelfplayer.data.auth.DefaultAuthRepository
 import com.example.shelfplayer.data.auth.DefaultCapabilityRepository
 import com.example.shelfplayer.data.auth.DefaultProfileConnectionResolver
 import com.example.shelfplayer.data.auth.DefaultProfileLockRepository
 import com.example.shelfplayer.data.auth.DefaultServerUserRepository
+import com.example.shelfplayer.data.auth.DefaultSessionRecoveryTestHook
 import com.example.shelfplayer.data.auth.SessionTokenProvider
 import com.example.shelfplayer.domain.lock.LockedProfileRecovery
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
@@ -15,6 +17,7 @@ import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ServerUserRepository
+import com.example.shelfplayer.domain.repository.SessionRecoveryTestHook
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -38,11 +41,18 @@ import javax.inject.Singleton
 interface AuthDataModule {
     @Binds
     @Singleton
-    fun bindsAuthRepository(impl: DefaultAuthRepository): AuthRepository
+    fun bindsCapabilityRepository(impl: DefaultCapabilityRepository): CapabilityRepository
 
+    /**
+     * AUTH-004 — the debug control that expires an access token on purpose.
+     *
+     * Bound unconditionally because a build-type-scoped Hilt module would need one per build type, and this
+     * project has three. The *control* is what is gated: `SettingsViewModel` offers it behind
+     * `BuildConfig.DEBUG`, so no release build has a way to reach this.
+     */
     @Binds
     @Singleton
-    fun bindsCapabilityRepository(impl: DefaultCapabilityRepository): CapabilityRepository
+    fun bindsSessionRecoveryTestHook(impl: DefaultSessionRecoveryTestHook): SessionRecoveryTestHook
 
     @Binds
     @Singleton
@@ -93,6 +103,18 @@ interface AuthDataModule {
      * letting a processor bug pick the architecture.
      */
     companion object {
+        /**
+         * AUTH-004 — every feature sees one renewal boundary.
+         *
+         * The wrapper coalesces refresh-token rotation across playback range requests, playback-session
+         * opens and ordinary sync. Binding the delegate directly would give those callers separate locks
+         * again and re-introduce the rotating-token race.
+         */
+        @Provides
+        @Singleton
+        fun providesAuthRepository(impl: DefaultAuthRepository, tokens: SessionTokenProvider): AuthRepository =
+            CoalescingAuthRepository(impl, tokens)
+
         @Provides
         @Singleton
         fun providesProfileActivationGuard(impl: DefaultProfileLockRepository): ProfileActivationGuard = impl

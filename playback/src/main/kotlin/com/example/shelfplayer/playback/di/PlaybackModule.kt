@@ -17,7 +17,9 @@ import com.example.shelfplayer.playback.DefaultNotificationAccessReader
 import com.example.shelfplayer.playback.DefaultPlayerFactory
 import com.example.shelfplayer.playback.MediaDataSource
 import com.example.shelfplayer.playback.NotificationAccessReader
+import com.example.shelfplayer.playback.PlaybackCredentialRenewer
 import com.example.shelfplayer.playback.PlayerFactory
+import com.example.shelfplayer.playback.RenewingDataSource
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.Binds
 import dagger.Module
@@ -80,7 +82,11 @@ internal interface PlaybackModule {
         fun providesMediaDataSourceFactory(
             @ApplicationContext context: Context,
             @MediaStreamingClient client: OkHttpClient,
-        ): DataSource.Factory = DefaultDataSource.Factory(context, OkHttpDataSource.Factory(client))
+            credentials: PlaybackCredentialRenewer,
+        ): DataSource.Factory {
+            val base = DefaultDataSource.Factory(context, OkHttpDataSource.Factory(client))
+            return RenewingDataSource.Factory(base, credentials)
+        }
 
         /**
          * PRODUCT_SPEC LIB-004 — the notification's cover art, over the same authenticated stack.

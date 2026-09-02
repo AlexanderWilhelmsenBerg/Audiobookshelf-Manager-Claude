@@ -490,11 +490,18 @@ single capability — a handshake is written and read as one set for one server.
 
 ### Session renewal (AUTH-004)
 
-`AuthRepository.renewSession` exchanges the stored refresh token; `RefreshLibraryUseCase` calls it on
-a `401` and retries the sync once. No refresh token, a refused refresh, and an unusable renewed
-session all mean "sign in again", all mark the profile, and none of them removes it or touches
-downloads or local progress. Exactly one renewal per failure and at most one retry — the tests assert
-that by counting calls, because "never loops login requests" is a bound, not an outcome.
+`AuthRepository.renewSession` exchanges the stored refresh token. Library/account sync, playback-session
+open, and an active Media3 range request all call the same generation-aware repository wrapper after a
+`401`. It serializes credential mutation, so concurrent callers that rejected generation X observe the
+first successful X → Y rotation and retry with Y instead of rotating the one-use refresh token again.
+Sign-out uses that same gate, ensuring an in-flight renewal cannot restore credentials after the user has
+signed out.
+
+Each caller renews at most once and retries its failed operation at most once. An Audiobookshelf stream
+creates a fresh authenticated data source for that retry; an external origin neither receives the bearer
+nor triggers renewal. No refresh token, a refused refresh, and an unusable renewed session all mean "sign
+in again", all mark the profile, and none removes it or touches downloads or local progress. The tests
+assert the call counts because "never loops login requests" is a bound, not an outcome.
 
 The renewal replaces **both** tokens: the server issues a new refresh token each time, so keeping the
 old one works once and then fails at the following renewal, hours later, looking like a random

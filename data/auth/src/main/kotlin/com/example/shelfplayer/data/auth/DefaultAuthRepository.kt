@@ -255,7 +255,7 @@ class DefaultAuthRepository @Inject constructor(
                     markReauthenticationRequired(profileId, reason = "server row missing at renewal")
                     return@withContext AppResult.Success(SessionStatus.ReauthenticationRequired)
                 }
-                sessionTokens.adopt(profileId, renewed.value, renewedBaseUrl)
+                sessionTokens.adoptRenewal(profileId, renewed.value, renewedBaseUrl)
                 profileDao.setRequiresReauthentication(profileId.value, required = false)
                 // A renewal is also a fresh statement of the account's permissions, so the stored grant is
                 // updated from it. PRODUCT_SPEC 5.2 wants the grant refreshed rather than assumed
@@ -366,6 +366,12 @@ class DefaultAuthRepository @Inject constructor(
                 AppResult.Success(account.value)
             }
         }
+    }
+
+    override suspend fun requireReauthentication(profileId: ProfileId): AppResult<Unit> = withContext(ioDispatcher) {
+        sessionTokens.clear(profileId)
+        markReauthenticationRequired(profileId, reason = "renewed session was rejected")
+        AppResult.Success(Unit)
     }
 
     override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = withContext(ioDispatcher) {
