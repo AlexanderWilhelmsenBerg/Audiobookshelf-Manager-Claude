@@ -16,10 +16,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
@@ -38,6 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -45,6 +47,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.shelfplayer.R
@@ -78,6 +81,13 @@ fun MiniPlayer(
     onExpand: () -> Unit,
     skips: SkipControls,
     modifier: Modifier = Modifier,
+    /**
+     * Called with the bar's measured height, system navigation bar included.
+     *
+     * Defaulted to a no-op so the screen tests and the accessibility net render it unchanged; the one
+     * caller that needs it is `MainActivity`, which turns it into the inset every screen reads.
+     */
+    onHeightMeasured: (Dp) -> Unit = {},
 ) {
     val activeTimerLabel = stringResource(R.string.sleep_timer_active, timer.remaining.asShortLabel())
     val openLabel = stringResource(R.string.player_open)
@@ -85,6 +95,15 @@ fun MiniPlayer(
     val forwardSeconds = skips.intervals.forward.inWholeSeconds.toInt()
     val hazeState = LocalGlassHazeState.current
     val systemBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val density = LocalDensity.current
+    /*
+     * Above this the bar has no spare vertical room.
+     *
+     * The title and the author are two lines in a bar that was 68dp, and the elapsed/-remaining clock
+     * was drawn over the same top strip as the title. All three fit at the default scale and none of
+     * them fit at 200%. The bar grows for the two that name the book; the clock is what gives way.
+     */
+    val isCompactText = density.fontScale >= COMPACT_TEXT_FONT_SCALE
     AnimatedVisibility(
         visible = state.bookId != null,
         modifier = modifier.fillMaxWidth(),
@@ -109,7 +128,13 @@ fun MiniPlayer(
                 // The glass runs to the bottom of the window and the *content* is inset instead. Stopping
                 // the surface above the system navigation bar would leave a strip of unblurred shelf under
                 // it; stopping the content there is what keeps the controls off the gesture handle.
-                .height(MINI_PLAYER_HEIGHT + systemBarInset)
+                // A floor, not a fixed height. At a large font scale the title and author need more
+                // than 68dp between them, and a bar that refused to grow would clip the author line.
+                .heightIn(min = MINI_PLAYER_MIN_HEIGHT + systemBarInset)
+                // What the bar actually took, reported upward so every screen under it can scroll
+                // clear. Nothing measures an overlay the way `Scaffold` measures a bottom bar, so the
+                // bar has to say. See `LocalPlayerChromeBottomInset`.
+                .onSizeChanged { size -> onHeightMeasured(with(density) { size.height.toDp() }) }
                 .frostedGlass(
                     state = hazeState,
                     backgroundColor = MaterialTheme.colorScheme.surface,
@@ -124,7 +149,7 @@ fun MiniPlayer(
                     .fillMaxSize()
                     .padding(bottom = systemBarInset),
             ) {
-                Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     // The cover and the text are one tap target that opens the player; the controls sit
                     // outside it. That is "anywhere except the buttons", expressed as a region rather than as
                     // a click on the whole bar that the buttons then have to out-compete.
@@ -231,17 +256,22 @@ fun MiniPlayer(
                         .fillMaxWidth()
                         .height(PROGRESS_HEIGHT),
                 )
-                MiniPlayerTimeLabels(
-                    state = state,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .padding(
-                            start = ARTWORK_WIDTH + TIME_LABEL_HORIZONTAL_INSET,
-                            top = TIME_LABEL_TOP_INSET,
-                            end = TIME_LABEL_HORIZONTAL_INSET,
-                        ),
-                )
+                // Only while there is room for them. They shared the top strip with the title, which is
+                // fine at 68dp and a collision at 200% — and a clock nobody can read is worth less than
+                // the title it was sitting on.
+                if (!isCompactText) {
+                    MiniPlayerTimeLabels(
+                        state = state,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(
+                                start = ARTWORK_WIDTH + TIME_LABEL_HORIZONTAL_INSET,
+                                top = TIME_LABEL_TOP_INSET,
+                                end = TIME_LABEL_HORIZONTAL_INSET,
+                            ),
+                    )
+                }
             }
         }
     }
@@ -274,8 +304,9 @@ private fun MiniPlayerButton(onClick: () -> Unit, content: @Composable () -> Uni
     IconButton(
         onClick = onClick,
         modifier = Modifier
-            .fillMaxHeight()
-            .width(CONTROL_WIDTH),
+            // Was `fillMaxHeight` against a fixed bar. The bar's height is now the content's, so a control
+            // that filled it would grow with the text it sits beside and push the bar taller still.
+            .size(CONTROL_WIDTH),
     ) {
         content()
     }
@@ -286,8 +317,7 @@ private fun MiniPlayerButton(onClick: () -> Unit, content: @Composable () -> Uni
 private fun MiniPlayerArtwork(state: PlaybackUiState, isLoading: Boolean, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .fillMaxHeight()
-            .width(ARTWORK_WIDTH)
+            .size(ARTWORK_WIDTH)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = GLASS_ARTWORK_ALPHA)),
         contentAlignment = Alignment.Center,
     ) {
@@ -317,7 +347,16 @@ private fun MiniPlayerArtwork(state: PlaybackUiState, isLoading: Boolean, modifi
 }
 
 /** Roughly 60% of the previous 112 dp mini-player height. Shared so Home can clear the floating axis bar. */
-internal val MINI_PLAYER_HEIGHT = 68.dp
+/**
+ * The bar's floor, and what `MainActivity` assumes until the bar has measured itself once.
+ *
+ * Renamed from `MINI_PLAYER_HEIGHT` because it is no longer *the* height: at a large font scale the bar is
+ * taller, and the number every other screen reads comes from `onHeightMeasured` rather than from here.
+ */
+internal val MINI_PLAYER_MIN_HEIGHT = 68.dp
+
+/** Where the clock gives up its place to the title and author. */
+private const val COMPACT_TEXT_FONT_SCALE = 1.3f
 private val ARTWORK_WIDTH = 46.dp
 private val CONTROL_WIDTH = 48.dp
 private val TRANSPORT_ICON_SIZE = 28.dp
