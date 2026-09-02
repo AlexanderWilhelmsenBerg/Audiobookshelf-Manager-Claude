@@ -10,10 +10,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -81,6 +84,7 @@ fun MiniPlayer(
     val backSeconds = skips.intervals.back.inWholeSeconds.toInt()
     val forwardSeconds = skips.intervals.forward.inWholeSeconds.toInt()
     val hazeState = LocalGlassHazeState.current
+    val systemBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     AnimatedVisibility(
         visible = state.bookId != null,
         modifier = modifier.fillMaxWidth(),
@@ -102,20 +106,24 @@ fun MiniPlayer(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(MINI_PLAYER_HEIGHT)
+                // The glass runs to the bottom of the window and the *content* is inset instead. Stopping
+                // the surface above the system navigation bar would leave a strip of unblurred shelf under
+                // it; stopping the content there is what keeps the controls off the gesture handle.
+                .height(MINI_PLAYER_HEIGHT + systemBarInset)
                 .frostedGlass(
                     state = hazeState,
                     backgroundColor = MaterialTheme.colorScheme.surface,
-                    tintAlpha = MINI_PLAYER_GLASS_TINT_ALPHA,
-                    fallbackTintAlpha = MINI_PLAYER_FALLBACK_TINT_ALPHA,
-                    blurRadius = MINI_PLAYER_BLUR_RADIUS,
                 ),
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             color = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = systemBarInset),
+            ) {
                 Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                     // The cover and the text are one tap target that opens the player; the controls sit
                     // outside it. That is "anywhere except the buttons", expressed as a region rather than as
@@ -317,7 +325,4 @@ private val PLAY_ICON_SIZE = 34.dp
 private val PROGRESS_HEIGHT = 2.dp
 private val TIME_LABEL_HORIZONTAL_INSET = 6.dp
 private val TIME_LABEL_TOP_INSET = 3.dp
-private val MINI_PLAYER_BLUR_RADIUS = 28.dp
-private const val MINI_PLAYER_GLASS_TINT_ALPHA = 0.18f
-private const val MINI_PLAYER_FALLBACK_TINT_ALPHA = 0.28f
 private const val GLASS_ARTWORK_ALPHA = 0.72f

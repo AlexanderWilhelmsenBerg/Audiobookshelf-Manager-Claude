@@ -36,6 +36,7 @@ import com.example.shelfplayer.feature.browse.BookCard
 import com.example.shelfplayer.feature.browse.CollectionArtwork
 import com.example.shelfplayer.feature.browse.CollectionArtworkStyle
 import com.example.shelfplayer.feature.browse.readable
+import com.example.shelfplayer.ui.glass.playerChromeClearance
 
 @Composable
 fun AuthorRoute(
@@ -126,7 +127,13 @@ private fun AuthorBooks(
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(contentPadding),
-        contentPadding = PaddingValues(16.dp),
+        // The mini player floats over this screen; the list has to be able to scroll clear of it.
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 16.dp,
+            end = 16.dp,
+            bottom = 16.dp + playerChromeClearance(),
+        ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = HEADER_KEY) { AuthorHeader(shelf = shelf) }
