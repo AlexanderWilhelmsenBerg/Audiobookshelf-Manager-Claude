@@ -3,8 +3,8 @@ package com.example.shelfplayer.playback
 import android.net.Uri
 import com.example.shelfplayer.core.network.http.ActiveCredential
 import com.example.shelfplayer.core.network.http.TokenProvider
-import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.RenewProfileSessionUseCase
+import com.example.shelfplayer.domain.usecase.RequireProfileReauthenticationUseCase
 import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import javax.inject.Inject
@@ -20,13 +20,12 @@ import javax.inject.Singleton
 @Singleton
 internal class PlaybackCredentialRenewer @Inject constructor(
     private val tokens: TokenProvider,
-    private val profiles: ProfileRepository,
     private val renewSession: RenewProfileSessionUseCase,
-) {
-    private val renewalLock = Any()
+    private val requireReauthentication: RequireProfileReauthenticationUseCase,
+) : PlaybackCredentialRecovery {
 
     /** The credential that would sign [uri], or null when that URI is outside the active server origin. */
-    fun tokenFor(uri: Uri): String? = credentialFor(uri)?.token
+    override fun tokenFor(uri: Uri): String? = credentialFor(uri)?.token
 
     /**
      * Recovers one rejected media request.
@@ -35,11 +34,16 @@ internal class PlaybackCredentialRenewer @Inject constructor(
      * replaced the token, or this call renewed the active profile successfully. A URI on another origin is
      * never allowed to cause credential renewal, matching AuthorizationInterceptor's bearer boundary.
      */
-    fun recoverAfterUnauthorized(uri: Uri, rejectedToken: String?): Boolean = synchronized(renewalLock) {
-        val current = credentialFor(uri) ?: return@synchronized false
-        if (rejectedToken != null && current.token != rejectedToken) return@synchronized true
-        val profileId = runBlocking { profiles.activeProfileId() } ?: return@synchronized false
-        runBlocking { renewSession(profileId) }
+    override fun recoverAfterUnauthorized(uri: Uri, rejectedToken: String?): Boolean {
+        val current = credentialFor(uri) ?: return false
+        if (rejectedToken != null && current.token != rejectedToken) return true
+        val profileId = current.profileId ?: return false
+        return runBlocking { renewSession(profileId) }
+    }
+
+    override fun rejectRenewedCredential(uri: Uri) {
+        val profileId = credentialFor(uri)?.profileId ?: return
+        runBlocking { requireReauthentication(profileId) }
     }
 
     private fun credentialFor(uri: Uri): ActiveCredential? {
@@ -50,4 +54,13 @@ internal class PlaybackCredentialRenewer @Inject constructor(
             request.scheme == issuer.scheme && request.host == issuer.host && request.port == issuer.port
         }
     }
+}
+
+/** Testable seam for the bounded Media3 retry; the implementation delegates coordination to AUTH-004. */
+internal interface PlaybackCredentialRecovery {
+    fun tokenFor(uri: Uri): String?
+
+    fun recoverAfterUnauthorized(uri: Uri, rejectedToken: String?): Boolean
+
+    fun rejectRenewedCredential(uri: Uri)
 }

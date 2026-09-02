@@ -21,3 +21,10 @@ cached tree, but a selected book could not open a server session and the media s
    than showing Source error.
 8. Confirm a truly refused refresh does not loop login/refresh requests and surfaces a stopped/auth-required
    state instead.
+9. Force playback-session open and an active range request to receive `401` concurrently. Confirm the server
+   sees one refresh-token exchange, both callers retry with the replacement access token, and neither sends
+   the rotated refresh token a second time.
+10. Repeat with an external HTTP media URL. Confirm it receives no Audiobookshelf `Authorization` header and
+    its `401` causes no Audiobookshelf refresh request.
+11. Start renewal and sign out before it completes. Confirm sign-out wins finally: the local access and
+    refresh credentials remain cleared and playback does not silently authenticate again.

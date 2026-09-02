@@ -56,6 +56,19 @@ class OpenPlaybackSessionUseCaseTest {
     }
 
     @Test
+    fun `401 after successful renewal marks session without a second renewal`() = runTest {
+        val rejected = AppResult.Failure(authentication())
+        val playback = FakePlaybackRepository(rejected, rejected)
+        val auth = FakeAuthRepository(SessionStatus.Active)
+        val opener = opener(playback, auth)
+
+        assertEquals(rejected, opener(book))
+        assertEquals(2, playback.openCalls)
+        assertEquals(1, auth.renewCalls)
+        assertEquals(1, auth.requireReauthenticationCalls)
+    }
+
+    @Test
     fun `non authentication failure is never renewed`() = runTest {
         val original = AppResult.Failure(
             AppError.Playback(summary = "stream unavailable", isRetryable = true),
@@ -77,6 +90,7 @@ class OpenPlaybackSessionUseCaseTest {
             profiles = profiles,
             playback = playback,
             renewSession = RenewProfileSessionUseCase(auth),
+            requireReauthentication = RequireProfileReauthenticationUseCase(auth),
         )
     }
 
@@ -136,10 +150,17 @@ class OpenPlaybackSessionUseCaseTest {
     private class FakeAuthRepository(private val renewalStatus: SessionStatus) : AuthRepository {
         var renewCalls = 0
             private set
+        var requireReauthenticationCalls = 0
+            private set
 
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> {
             renewCalls += 1
             return AppResult.Success(renewalStatus)
+        }
+
+        override suspend fun requireReauthentication(profileId: ProfileId): AppResult<Unit> {
+            requireReauthenticationCalls += 1
+            return AppResult.Success(Unit)
         }
 
         override suspend fun probeServer(serverUrl: String): AppResult<ServerCandidate> = unused()

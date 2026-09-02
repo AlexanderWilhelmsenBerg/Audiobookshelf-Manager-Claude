@@ -56,7 +56,7 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
     private val cached = AtomicReference<CachedToken?>(null)
 
     override fun current(): ActiveCredential? = cached.get()?.let { held ->
-        ActiveCredential(token = held.token, serverBaseUrl = held.serverBaseUrl)
+        ActiveCredential(token = held.token, serverBaseUrl = held.serverBaseUrl, profileId = held.profileId)
     }
 
     /** The profile whose credential is currently attached to outgoing requests, if any. */
@@ -89,6 +89,28 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
      * `AUTH-004` renewal try a credential the current session never issued.
      */
     suspend fun adopt(profileId: ProfileId, session: AuthSession, serverBaseUrl: String) {
+        store(profileId, session)
+        cached.set(CachedToken(profileId, session.accessToken.value, serverBaseUrl))
+    }
+
+    /**
+     * Replaces a renewed profile's stored tokens without stealing another profile's ambient credential.
+     *
+     * A background sync may renew profile A after the user switched to B. Only an already-active A is
+     * updated in memory; B stays active and will never send A's newly rotated bearer by accident.
+     */
+    suspend fun adoptRenewal(profileId: ProfileId, session: AuthSession, serverBaseUrl: String) {
+        store(profileId, session)
+        cached.updateAndGet { current ->
+            if (current?.profileId == profileId) {
+                CachedToken(profileId, session.accessToken.value, serverBaseUrl)
+            } else {
+                current
+            }
+        }
+    }
+
+    private suspend fun store(profileId: ProfileId, session: AuthSession) {
         store.save(profileId.value, SessionTokenKind.Access, session.accessToken.value)
         val refresh = session.refreshToken
         if (refresh == null) {
@@ -96,7 +118,6 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
         } else {
             store.save(profileId.value, SessionTokenKind.Refresh, refresh.value)
         }
-        cached.set(CachedToken(profileId, session.accessToken.value, serverBaseUrl))
     }
 
     /** PRODUCT_SPEC AUTH-004 — the credential a renewal needs, or `null` when the session cannot be renewed. */

@@ -386,6 +386,29 @@ class DefaultAuthRepositoryTest {
         assertFalse(assertNotNull(database.profileDao().findProfile(profile.id.value)).requiresReauthentication)
     }
 
+    @Test
+    fun `renewing a background profile does not replace the active profile credential`() = runTest {
+        val ada = successfulSignIn()
+        gateway.signInResult = AppResult.Success(
+            FakeAuthGateway.session(
+                accessToken = "access-grace",
+                refreshToken = "refresh-grace",
+                userId = "remote-user-2",
+                username = "grace",
+            ),
+        )
+        val grace = successfulSignIn(username = "grace")
+        gateway.refreshResult = AppResult.Success(
+            FakeAuthGateway.session(accessToken = "access-ada-2", refreshToken = "refresh-ada-2"),
+        )
+
+        repository.renewSession(ada.id)
+
+        assertEquals(grace.id, tokens.activeProfileId())
+        assertEquals("access-grace", tokens.current()?.token)
+        assertEquals("access-ada-2", tokens.accessTokenFor(ada.id)?.value)
+    }
+
     /**
      * PRODUCT_SPEC AUTH-004 — the case the whole `isRenewable` flag exists for. A session the server
      * never issued a refresh token for is marked for reauthentication and never silently signed out.

@@ -877,6 +877,8 @@ class HomeViewModelTest {
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
             AppResult.Success(SessionStatus.ReauthenticationRequired)
 
+        override suspend fun requireReauthentication(profileId: ProfileId): AppResult<Unit> = notUsed()
+
         override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> = notUsed()
 
         override suspend fun probeServer(serverUrl: String): AppResult<ServerCandidate> = notUsed()

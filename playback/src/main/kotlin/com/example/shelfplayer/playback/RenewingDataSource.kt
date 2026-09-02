@@ -18,7 +18,7 @@ import java.io.IOException
 @OptIn(markerClass = [UnstableApi::class])
 internal class RenewingDataSource(
     private val delegateFactory: DataSource.Factory,
-    private val credentials: PlaybackCredentialRenewer,
+    private val credentials: PlaybackCredentialRecovery,
 ) : DataSource {
     private val listeners = mutableListOf<TransferListener>()
     private var delegate = newDelegate()
@@ -39,7 +39,14 @@ internal class RenewingDataSource(
                 throw failure
             }
             replaceDelegate()
-            delegate.open(dataSpec)
+            try {
+                delegate.open(dataSpec)
+            } catch (retryFailure: IOException) {
+                if (retryFailure.httpResponseCode() == HTTP_UNAUTHORIZED) {
+                    credentials.rejectRenewedCredential(dataSpec.uri)
+                }
+                throw retryFailure
+            }
         }
     }
 
@@ -64,7 +71,7 @@ internal class RenewingDataSource(
 
     class Factory(
         private val delegateFactory: DataSource.Factory,
-        private val credentials: PlaybackCredentialRenewer,
+        private val credentials: PlaybackCredentialRecovery,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource = RenewingDataSource(delegateFactory, credentials)
     }

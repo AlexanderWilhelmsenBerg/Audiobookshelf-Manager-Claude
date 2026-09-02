@@ -20,7 +20,7 @@ import kotlinx.coroutines.sync.withLock
  * successfully.
  *
  * The refresh token is also the generation marker. A caller snapshots both stored tokens before it waits for
- * [renewalGate]. If another caller rotated them while it was waiting, the current access token is already the
+ * [credentialGate]. If another caller rotated them while it was waiting, the current access token is already the
  * result this caller wanted and no second refresh request is sent. This is deliberately below the playback
  * layer so library sync, playback-session open and stream recovery all share the same rule.
  */
@@ -28,20 +28,20 @@ internal class CoalescingAuthRepository(
     private val delegate: AuthRepository,
     private val tokens: SessionTokenProvider,
 ) : AuthRepository {
-    private val renewalGate = Mutex()
+    private val credentialGate = Mutex()
 
     override suspend fun probeServer(serverUrl: String): AppResult<ServerCandidate> = delegate.probeServer(serverUrl)
 
     override suspend fun signIn(serverUrl: String, username: String, password: String): AppResult<Profile> =
-        delegate.signIn(serverUrl, username, password)
+        credentialGate.withLock { delegate.signIn(serverUrl, username, password) }
 
     override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> =
-        delegate.restoreSession(profileId)
+        credentialGate.withLock { delegate.restoreSession(profileId) }
 
     override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> {
         val observedAccess = tokens.accessTokenFor(profileId)
         val observedRefresh = tokens.refreshTokenFor(profileId)
-        return renewalGate.withLock {
+        return credentialGate.withLock {
             val currentAccess = tokens.accessTokenFor(profileId)
             val currentRefresh = tokens.refreshTokenFor(profileId)
             val credentialChanged = currentAccess != null &&
@@ -57,7 +57,12 @@ internal class CoalescingAuthRepository(
     override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> =
         delegate.refreshPermissions(profileId)
 
-    override suspend fun signOut(profileId: ProfileId): AppResult<Unit> = delegate.signOut(profileId)
+    override suspend fun requireReauthentication(profileId: ProfileId): AppResult<Unit> =
+        credentialGate.withLock { delegate.requireReauthentication(profileId) }
 
-    override suspend fun removeProfile(profileId: ProfileId): AppResult<Unit> = delegate.removeProfile(profileId)
+    override suspend fun signOut(profileId: ProfileId): AppResult<Unit> =
+        credentialGate.withLock { delegate.signOut(profileId) }
+
+    override suspend fun removeProfile(profileId: ProfileId): AppResult<Unit> =
+        credentialGate.withLock { delegate.removeProfile(profileId) }
 }

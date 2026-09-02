@@ -20,6 +20,7 @@ class OpenPlaybackSessionUseCase @Inject constructor(
     private val profiles: ProfileRepository,
     private val playback: PlaybackRepository,
     private val renewSession: RenewProfileSessionUseCase,
+    private val requireReauthentication: RequireProfileReauthenticationUseCase,
 ) {
     suspend operator fun invoke(bookId: LibraryItemId): AppResult<PlaybackSession> {
         val profileId = profiles.activeProfileId()
@@ -31,6 +32,11 @@ class OpenPlaybackSessionUseCase @Inject constructor(
                 profiles.activeProfileId() == profileId &&
                 renewSession(profileId)
         val canRetry = renewed && profiles.activeProfileId() == profileId
-        return if (canRetry) playback.openSession(bookId) else first
+        if (!canRetry) return first
+        val retried = playback.openSession(bookId)
+        if (retried is AppResult.Failure && retried.error is AppError.Authentication) {
+            requireReauthentication(profileId)
+        }
+        return retried
     }
 }

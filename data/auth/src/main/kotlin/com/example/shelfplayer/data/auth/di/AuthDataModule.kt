@@ -99,10 +99,8 @@ interface AuthDataModule {
          */
         @Provides
         @Singleton
-        fun providesAuthRepository(
-            impl: DefaultAuthRepository,
-            tokens: SessionTokenProvider,
-        ): AuthRepository = CoalescingAuthRepository(impl, tokens)
+        fun providesAuthRepository(impl: DefaultAuthRepository, tokens: SessionTokenProvider): AuthRepository =
+            CoalescingAuthRepository(impl, tokens)
 
         @Provides
         @Singleton
