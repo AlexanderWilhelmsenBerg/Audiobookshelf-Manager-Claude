@@ -76,6 +76,9 @@ concurrency:
 
 permissions:
   contents: read
+  # Read-only, and only so the build can learn which pull request this ref belongs to. That number
+  # becomes the APK's versionName and versionCode — see `BuildIdentity`.
+  pull-requests: read
 
 env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false
@@ -154,8 +157,25 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           echo "path=$RUNNER_TEMP/upload.jks" >> "$GITHUB_OUTPUT"
 
+      # The pull request this ref belongs to, which the APK then names itself after. A branch with no open
+      # pull request yields nothing and the build falls back to an unnumbered name, which is the honest
+      # answer: there is no number to report.
+      - name: Find the pull request for this ref
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" \
+            --state open --limit 1 --json number --jq '.[0].number // empty')
+          echo "number=${NUMBER:-}" >> "$GITHUB_OUTPUT"
+          echo "Pull request for $GITHUB_REF_NAME: ${NUMBER:-none}"
+
       - name: Assemble
         env:
+          # Empty when the ref has no open pull request; `BuildIdentity` treats that as unnumbered.
+          BOOKWAVE_PR: ${{ steps.pr.outputs.number }}
+          BOOKWAVE_COMMIT: ${{ github.sha }}
           BOOKWAVE_SIGNING_STORE_FILE: ${{ steps.keystore.outputs.path }}
           BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
           BOOKWAVE_SIGNING_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}

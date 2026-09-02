@@ -76,7 +76,7 @@ fun DebugConsoleSheet(
     // and the sheet recomposes on every scroll.
     val report = remember(state, metrics, events) {
         DiagnosticsReport.of(
-            appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE})",
+            appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE} ${BuildConfig.GIT_COMMIT})",
             state = state,
             metrics = metrics,
             events = events,
