@@ -565,14 +565,38 @@ class DefaultPlaybackRepositoryTest {
         assertEquals(0, serverProgress.requests, "nothing to reconcile against, so nothing to ask")
     }
 
-    /** A book this device has no row for has nothing to preserve and nothing to compare. */
+    /**
+     * **A book with no local row is asked about, not assumed.**
+     *
+     * It used to skip the request, on the reasoning that a first play had just loaded from the server's own
+     * position. That holds only while the loaded position is fresh — a book opened here and then played
+     * elsewhere before Play is pressed has neither a fresh position nor a row to notice it with, which is
+     * the case a device run hit.
+     */
     @Test
-    fun `a book with no local progress skips the request`() = runTest {
+    fun `a book with no local progress still asks the server`() = runTest {
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(position = 25.minutes, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
+        )
+
         assertEquals(
-            ExternalSessionCheck.Current,
+            ExternalSessionCheck.Ahead(25.minutes),
             repository.checkServerPosition(UNPLAYED, localPosition = Duration.ZERO),
         )
-        assertEquals(0, serverProgress.requests)
+        assertEquals(1, serverProgress.requests)
+    }
+
+    /** And a genuine first play, where the player already sits on the server's position, does not seek. */
+    @Test
+    fun `a first play at the server's own position stays put`() = runTest {
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(position = 25.minutes, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
+        )
+
+        assertEquals(
+            ExternalSessionCheck.Current,
+            repository.checkServerPosition(UNPLAYED, localPosition = 25.minutes),
+        )
     }
 
     /** A failed read is the outcome that earns the struck-through cloud: resumed, but unverified. */

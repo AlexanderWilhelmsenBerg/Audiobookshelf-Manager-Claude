@@ -330,9 +330,14 @@ class DefaultPlaybackRepository @Inject constructor(
      * another client was never adopted. Reported from a device as *"play, then play on web, then play in
      * BookWave again — progress doesn't sync"*. `docs/risks.md` R-86.
      *
-     * A book with **no** local progress row also returns `Current` rather than asking. There is nothing to
-     * compare against and nothing to preserve: the player already loaded from wherever the session said,
-     * which for a first play is the server's own position.
+     * ### A book with no local progress row is asked about, not assumed
+     *
+     * This used to answer `Current` without asking, reasoning that a first play had just loaded from the
+     * server's own position so there was nothing to check. That holds only while the loaded position is
+     * *fresh*. A book opened here and then played on another device before Play is pressed has a stale
+     * loaded position and no local row to notice it with — the case a device run hit. There is no
+     * timestamp of ours for the server's to beat, so anything it holds is somebody else's; the position
+     * comparison is what stops a genuine first play seeking to where it already is.
      *
      * ### And `Unavailable`
      *
@@ -351,12 +356,13 @@ class DefaultPlaybackRepository @Inject constructor(
             val profileId = profileRepository.activeProfileId() ?: return@withContext ExternalSessionCheck.Unavailable
             val profile = profileDao.findProfile(profileId.value) ?: return@withContext ExternalSessionCheck.Unavailable
             val local = progressDao.findProgress(profileId.value, EntityKey.of(profile.serverId, bookId.value))
-                ?: return@withContext ExternalSessionCheck.Current
-            if (local.hasUnsyncedChanges) return@withContext ExternalSessionCheck.Current
+            if (local?.hasUnsyncedChanges == true) return@withContext ExternalSessionCheck.Current
 
             when (val remote = gateway.playback.serverProgress(profileId, bookId)) {
                 is AppResult.Failure -> ExternalSessionCheck.Unavailable
-                is AppResult.Success -> outcomeOf(remote.value, local.updatedAt, localPosition)
+                // No local row means no timestamp of ours for the server's to beat, so `0` lets the
+                // comparison run instead of skipping it. See the header.
+                is AppResult.Success -> outcomeOf(remote.value, local?.updatedAt ?: 0L, localPosition)
             }
         }
 
