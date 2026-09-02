@@ -55,6 +55,7 @@ import com.example.shelfplayer.feature.lock.ProfileLockActions
 import com.example.shelfplayer.feature.lock.ProfileLockViewModel
 import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
+import com.example.shelfplayer.ui.glass.playerChromeClearance
 import java.util.Locale
 import kotlin.time.Duration
 
@@ -207,7 +208,11 @@ fun SettingsScreen(
                 // two end up a hand-span apart with nothing between them. The column keeps a readable
                 // measure and the window keeps the rest; see `centredListPadding` for why this is padding
                 // rather than a width cap on each row.
-                contentPadding = centredListPadding(width = windowWidth(), bottom = 24.dp),
+                contentPadding = centredListPadding(
+                    width = windowWidth(),
+                    // Plus whatever the floating mini player is covering, so the last row can be read.
+                    bottom = 24.dp + playerChromeClearance(),
+                ),
             ) {
                 when (selected) {
                     SettingsTab.Server -> serverTab(uiState, serverTab)

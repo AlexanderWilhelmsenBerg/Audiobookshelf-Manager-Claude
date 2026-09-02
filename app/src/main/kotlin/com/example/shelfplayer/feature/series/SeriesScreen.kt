@@ -41,6 +41,7 @@ import com.example.shelfplayer.domain.library.SeriesShelf
 import com.example.shelfplayer.feature.browse.BookCard
 import com.example.shelfplayer.feature.browse.BookCoverThumbnail
 import com.example.shelfplayer.feature.browse.readable
+import com.example.shelfplayer.ui.glass.playerChromeClearance
 
 @Composable
 fun SeriesRoute(
@@ -127,7 +128,13 @@ private fun SeriesBooks(
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(contentPadding),
-        contentPadding = PaddingValues(16.dp),
+        // The mini player floats over this screen; the list has to be able to scroll clear of it.
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 16.dp,
+            end = 16.dp,
+            bottom = 16.dp + playerChromeClearance(),
+        ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = HEADER_KEY) {

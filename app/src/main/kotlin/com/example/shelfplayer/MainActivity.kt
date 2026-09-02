@@ -8,8 +8,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -19,7 +22,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -38,6 +43,7 @@ import com.example.shelfplayer.feature.player.BookmarkSheet
 import com.example.shelfplayer.feature.player.ChapterSheet
 import com.example.shelfplayer.feature.player.FullPlayer
 import com.example.shelfplayer.feature.player.HistorySheet
+import com.example.shelfplayer.feature.player.MINI_PLAYER_HEIGHT
 import com.example.shelfplayer.feature.player.MiniPlayer
 import com.example.shelfplayer.feature.player.OutputControls
 import com.example.shelfplayer.feature.player.PlayerActions
@@ -48,7 +54,11 @@ import com.example.shelfplayer.feature.player.SleepTimerSheet
 import com.example.shelfplayer.feature.player.SpeedSheet
 import com.example.shelfplayer.navigation.ShelfDestinations
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
+import com.example.shelfplayer.ui.glass.LocalGlassHazeState
+import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import dagger.hilt.android.AndroidEntryPoint
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 /**
  * PRODUCT_SPEC 4 — adaptive, never orientation-locked.
@@ -111,11 +121,11 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * The navigation graph, with the mini player pinned beneath it.
+ * The navigation graph with the mini player floating over it.
  *
- * A [Column] rather than a `Scaffold` bottom bar: every screen already has its own `Scaffold`, and
- * nesting one inside another is how insets end up applied twice. The bar contributes no height at all
- * when nothing is playing — see [MiniPlayer].
+ * The old column put the player in its own opaque strip, which meant there was literally nothing behind
+ * the bar to frost. The graph now remains full-height as the Haze source and the player is an overlay; Home
+ * receives the player's height separately so its floating axis bar still moves clear of the controls.
  */
 @Composable
 private fun ShelfPlayerContent(
@@ -165,31 +175,48 @@ private fun ShelfPlayerContent(
     var isSpeedSheetOpen by remember { mutableStateOf(false) }
     var isHistorySheetOpen by remember { mutableStateOf(false) }
     var isBookmarkSheetOpen by remember { mutableStateOf(false) }
+    val hazeState = remember { HazeState() }
+    val playerChromeInset by animateDpAsState(
+        targetValue = if (playback.bookId != null) MINI_PLAYER_HEIGHT else 0.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "mini-player-inset",
+    )
     NotificationPermission(hasPlayback = playback.bookId != null)
     SyncOnBackground(onBackgrounded = playerViewModel::onAppBackgrounded)
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        ShelfPlayerNavHost(
-            startDestination = startDestination,
-            onBookPlaySelected = playerViewModel::onPlayFromShelf,
-            playbackMessage = playbackMessage,
-            onPlaybackMessageShown = playerViewModel::onMessageShown,
-            modifier = Modifier.weight(WEIGHT_FILL),
-        )
-        MiniPlayer(
-            state = playback,
-            timer = timer,
-            onTogglePlayPause = playerViewModel::onTogglePlayPause,
-            onStop = playerViewModel::onStop,
-            onOpenSleepTimer = { isTimerSheetOpen = true },
-            onExpand = playerViewModel::onExpand,
-            skips = skipControls,
-        )
+    CompositionLocalProvider(
+        LocalGlassHazeState provides hazeState,
+        LocalPlayerChromeBottomInset provides playerChromeInset,
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            ShelfPlayerNavHost(
+                startDestination = startDestination,
+                onBookPlaySelected = playerViewModel::onPlayFromShelf,
+                playbackMessage = playbackMessage,
+                onPlaybackMessageShown = playerViewModel::onMessageShown,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(state = hazeState),
+            )
+            MiniPlayer(
+                state = playback,
+                timer = timer,
+                onTogglePlayPause = playerViewModel::onTogglePlayPause,
+                onStop = playerViewModel::onStop,
+                onOpenSleepTimer = { isTimerSheetOpen = true },
+                onExpand = playerViewModel::onExpand,
+                skips = skipControls,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
     }
 
     // PRODUCT_SPEC PLAY-001 — the full player, over everything.
     //
-    // Drawn after the column rather than instead of it, so collapsing reveals the screen the listener
+    // Drawn after the chrome rather than instead of it, so collapsing reveals the screen the listener
     // was on with its scroll intact. A book that stopped while the player was open collapses it: an
     // expanded player showing nothing has no content and no obvious way out.
     if (isExpanded && playback.bookId != null) {
@@ -346,6 +373,3 @@ private fun NotificationPermission(hasPlayback: Boolean) {
         if (hasPlayback) launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 }
-
-/** The navigation graph takes every pixel the mini player does not. */
-private const val WEIGHT_FILL = 1f

@@ -72,6 +72,7 @@ import com.example.shelfplayer.feature.browse.BookCover
 import com.example.shelfplayer.feature.player.HistorySheet
 import com.example.shelfplayer.feature.player.PlayerViewModel
 import com.example.shelfplayer.playback.PlaybackUiState
+import com.example.shelfplayer.ui.glass.playerChromeClearance
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -539,7 +540,12 @@ private fun BookDetails(
     }
 
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()),
+        // The padding is applied *after* `verticalScroll`, so it is inside the scrollable content: the
+        // page gains somewhere further to go rather than being squeezed. That is what lets the last of the
+        // description clear the mini player floating over this screen.
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = playerChromeClearance()),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         ActionPane(book, playback, actions, menuActions, download)
