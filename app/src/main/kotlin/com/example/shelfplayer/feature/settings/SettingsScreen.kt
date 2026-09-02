@@ -295,11 +295,13 @@ private fun LazyListScope.aboutTab(
     onOpenDebugConsole: () -> Unit,
 ) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
-    item { TextRow(labelRes = R.string.about_version, value = uiState.versionName) }
-    // Which build this is, for a report filed against it. The version name already carries the pull
-    // request; the commit is what pins it to one revision of that branch, and the type separates a debug
-    // APK from a release one on a device where both can be installed side by side.
+    item { TextRow(labelRes = R.string.about_version, value = uiState.versionLabel) }
+    // Which build this is, for a report filed against it. The commit pins it to one revision; the type
+    // separates a debug APK from a release one on a device where both can be installed side by side.
     item { TextRow(labelRes = R.string.about_build, value = uiState.buildLabel) }
+    // And which branch it came from. This row exists because the version no longer says: the code is a
+    // build counter now, so a tester holding two APKs reads the branch here rather than decoding a number.
+    item { TextRow(labelRes = R.string.about_source, value = uiState.sourceLabel) }
     item { Hint(text = stringResource(R.string.about_phase)) }
 
     // PRODUCT_SPEC SET-002 — theme, colours and language, above the icon because they are the same kind of
