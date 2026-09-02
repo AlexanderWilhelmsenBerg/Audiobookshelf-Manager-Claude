@@ -571,6 +571,15 @@
     <string name="about_version">Version</string>
     <string name="about_build">Build</string>
     <!--
+      Which branch and pull request this APK came from — `PR 67 · fix/playback-session-renewal`, or the
+      branch alone when there is no open pull request.
+
+      Its own row because the version stopped carrying it. The version code is a build counter now, so it
+      says which of two APKs is newer and nothing about where either came from; this is where a tester
+      filing a report reads what they are holding.
+    -->
+    <string name="about_source">Source</string>
+    <!--
       PRODUCT_SPEC SET-002 — one line saying what the app is, not a changelog.
 
       This used to enumerate every built feature and end with "Hardware verification and some

@@ -84,8 +84,9 @@ private fun ApplicationExtension.configureDefaultConfig(project: Project) {
         minSdk = project.libs.intVersion("minSdk")
         targetSdk = project.libs.intVersion("targetSdk")
         /*
-         * The build names itself after the pull request it came from — see [BuildIdentity] for why the
-         * pull request is a safe counter where a timestamp was not, and for what an unnumbered build does.
+         * The code is a counter that only ever goes up, and the name is a plain product version — see
+         * [BuildIdentity], which carries why an earlier scheme made the pull request number the code and
+         * why that had to be corrected.
          *
          * These were two hand-written constants, and the comment that used to stand here said the name
          * "has to move with the code" and then described it failing to for nine builds. It had since sat
@@ -94,9 +95,12 @@ private fun ApplicationExtension.configureDefaultConfig(project: Project) {
         val build = project.buildIdentity()
         versionCode = build.versionCode
         versionName = build.versionName
-        // Which commit, and which pull request, for a tester holding two APKs and a report to file. Read by
-        // the About tab and the debug console; `BUILD_TYPE` already distinguishes debug from release.
+        // Which commit, which branch and which pull request, for a tester holding two APKs and a report to
+        // file. Read by the About tab's Source row and the debug console; `BUILD_TYPE` already
+        // distinguishes debug from release. This is where a build says what it *is*, now that the version
+        // says only what the product is.
         buildConfigField("String", "GIT_COMMIT", "\"${build.commit}\"")
+        buildConfigField("String", "GIT_BRANCH", "\"${build.branch}\"")
         buildConfigField("String", "PULL_REQUEST", "\"${build.pullRequest}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
