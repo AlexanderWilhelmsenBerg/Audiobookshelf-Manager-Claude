@@ -234,15 +234,20 @@ class SettingsViewModel @Inject constructor(
             // Read per emission for the reason above it: neither the installed set of apps nor "has a car
             // connected yet" has a change callback, and this flow re-runs often enough to be current.
             car = device.car.read(),
-            versionName = BuildConfig.VERSION_NAME,
+            versionLabel = VERSION_LABEL,
             buildLabel = BUILD_LABEL,
+            sourceLabel = SOURCE_LABEL,
             isLoaded = true,
         )
     }.stateIn(
         scope = viewModelScope,
         // PRODUCT_SPEC 16.3: no unbounded collection in a lifecycle owner.
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-        initialValue = SettingsUiState(versionName = BuildConfig.VERSION_NAME, buildLabel = BUILD_LABEL),
+        initialValue = SettingsUiState(
+            versionLabel = VERSION_LABEL,
+            buildLabel = BUILD_LABEL,
+            sourceLabel = SOURCE_LABEL,
+        ),
     )
 
     /**
@@ -389,8 +394,36 @@ class SettingsViewModel @Inject constructor(
     }
 
     private companion object {
+        /**
+         * The product version with the build's own code beside it.
+         *
+         * The code is the field that decides whether one APK installs over another, so a tester comparing
+         * two builds needs to see it — and since it is now a build counter rather than a pull request
+         * number, the larger one is simply the newer one.
+         */
+        val VERSION_LABEL = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+
         /** One string, built once: nothing here changes while the process lives. */
         val BUILD_LABEL = "${BuildConfig.BUILD_TYPE} \u00b7 ${BuildConfig.GIT_COMMIT}"
+
+        /**
+         * Which branch, and which pull request, this APK was built from.
+         *
+         * This is the row that replaced reading the pull request out of the version name. It is strictly
+         * better than what it replaced: `0.9.5.67` told a tester a number to go and look up, where
+         * `PR 67 \u00b7 fix/playback-session-renewal` says what the build contains.
+         *
+         * A build with no open pull request — `main` after a merge, or a local one — shows the branch
+         * alone rather than "PR none", because the absence is not a fact worth a word.
+         */
+        val SOURCE_LABEL = if (BuildConfig.PULL_REQUEST == NO_PULL_REQUEST) {
+            BuildConfig.GIT_BRANCH
+        } else {
+            "PR ${BuildConfig.PULL_REQUEST} \u00b7 ${BuildConfig.GIT_BRANCH}"
+        }
+
+        /** What `BuildIdentity` writes into `PULL_REQUEST` when the build came from no pull request. */
+        const val NO_PULL_REQUEST = "none"
 
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
@@ -426,8 +459,11 @@ data class SettingsUiState(
     val networkPolicy: NetworkPolicy = NetworkPolicy.Default,
     /** PRODUCT_SPEC DL-005 / DL-006 — smart download, and the automatic cleanup. */
     val housekeeping: DownloadHousekeeping = DownloadHousekeeping.Default,
-    val versionName: String = "",
+    /** `0.9.6.1 (1045)` — the product version, and the code that decides what installs over what. */
+    val versionLabel: String = "",
     /** `debug \u00b7 a1b2c3d4e5f6` — the build type and the commit it was built from. */
     val buildLabel: String = "",
+    /** `PR 67 \u00b7 fix/playback-session-renewal`, or the branch alone when there is no pull request. */
+    val sourceLabel: String = "",
     val isLoaded: Boolean = false,
 )
