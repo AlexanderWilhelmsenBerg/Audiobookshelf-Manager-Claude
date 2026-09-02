@@ -313,6 +313,8 @@ class DefaultPlaybackRepository @Inject constructor(
      * more than [POSITION_TOLERANCE]. The timestamp alone is not enough — our own upload bumps
      * `lastUpdate`, so every resume after a sync would otherwise look like somebody else — and the
      * position alone is not enough either, since it cannot tell a remote change from our own unsynced one.
+     * The two timestamps come from two different clocks; [outcomeOf] carries what that does and does not
+     * cost.
      *
      * The tolerance exists because both sides round: the wire carries fractional seconds and the local row
      * carries milliseconds, and a resume must not seek by half a second and call it another device.
@@ -320,8 +322,13 @@ class DefaultPlaybackRepository @Inject constructor(
      * ### What returns `Current` without a request
      *
      * A book with unsynced local progress. The local row is the truth in that state by definition, so the
-     * request would be latency spent on an answer that could not be acted on. This is also the common case
-     * for somebody listening on one device, which is why it is checked first.
+     * request would be latency spent on an answer that could not be acted on.
+     *
+     * **This is only correct because the flag is cleared once the position is uploaded**, which it was not
+     * until `ProgressDao.markProgressSynced` existed: every `recordPosition` set it and nothing unset it,
+     * so after any playback here the check stopped asking the server altogether and a position moved on
+     * another client was never adopted. Reported from a device as *"play, then play on web, then play in
+     * BookWave again — progress doesn't sync"*. `docs/risks.md` R-86.
      *
      * A book with **no** local progress row also returns `Current` rather than asking. There is nothing to
      * compare against and nothing to preserve: the player already loaded from wherever the session said,
@@ -356,9 +363,22 @@ class DefaultPlaybackRepository @Inject constructor(
     /**
      * The comparison itself, split out so it can be read without the plumbing around it.
      *
-     * Both timestamps are milliseconds since the epoch, and — this is the point — one is the server's own
-     * `lastUpdate` and the other is the moment *this device* recorded its position. Neither is a clock
-     * reading taken now, so a phone running fast or slow cannot invent remote activity or hide it.
+     * ### It spans two clocks, and that is a known limitation rather than a claim of safety
+     *
+     * `remote.updatedAt` is the server's `lastUpdate`; [localUpdatedAt] is `MediaProgressEntity.updatedAt`,
+     * which `recordPosition` writes from **this device's** clock. So a phone whose clock runs ahead of the
+     * server hides genuine remote activity for the size of the skew, and one running behind sees its own
+     * uploads as remote.
+     *
+     * What keeps that from doing damage is the second condition: a difference in *position* beyond
+     * [POSITION_TOLERANCE]. Our own upload leaves the server holding the position we already have, so a
+     * skewed clock alone resolves to `Current`. What skew can still do is delay adopting a real remote
+     * change, and delaying is the safe direction — the position stands until the next Play asks again.
+     *
+     * The fix, if this ever bites, is to store the server's own `lastUpdate` alongside the position when a
+     * sync is accepted and compare server-to-server, which is what the official app does by keeping the
+     * `updatedAt` its session open returned. It needs a Room column, so it is recorded rather than done —
+     * `docs/risks.md` R-86.
      */
     private fun outcomeOf(
         remote: ServerProgress,

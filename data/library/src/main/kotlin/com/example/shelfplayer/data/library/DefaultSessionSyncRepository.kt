@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.common.time.ServerClock
 import com.example.shelfplayer.core.database.dao.ProfileDao
+import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.dao.SessionOutboxDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
@@ -67,6 +68,9 @@ class DefaultSessionSyncRepository @Inject constructor(
     private val settings: AppSettingsDataSource,
     private val profileDao: ProfileDao,
     private val outbox: SessionOutboxDao,
+    // PRODUCT_SPEC PLAY-004 — the outbox is where a *session* lives; this is where the book's position
+    // lives, and it is the table that has to stop claiming the position is unsent once it has been sent.
+    private val progressDao: ProgressDao,
     private val gateway: AudiobookshelfGateway,
     private val serverClock: ServerClock,
     private val clock: AppClock,
@@ -196,6 +200,7 @@ class DefaultSessionSyncRepository @Inject constructor(
                     syncedAt = clock.now().toEpochMilli(),
                     wasProgressApplied = true,
                 )
+                markProgressSynced(stored.profileId, stored.bookKey, updatedAt.toEpochMilli())
                 logger.info(
                     LogCategory.Playback,
                     "The server accepted a position",
@@ -242,6 +247,12 @@ class DefaultSessionSyncRepository @Inject constructor(
                 }
                 // A session the batch did not mention, or reported as not accepted, keeps its row and is sent
                 // again on the next drain. `success: false` with no id is the case that would otherwise vanish.
+                // The books whose positions the server has now taken. Only the accepted rows, and only
+                // those whose position the server actually *applied*: `wasProgressApplied == false` means
+                // it held something newer, so this device's row is still the one that has not landed.
+                val acceptedIds = accepted.filter { it.wasProgressApplied }.map { it.id }.toSet()
+                queued.filter { row -> row.sessionId in acceptedIds }
+                    .forEach { row -> markProgressSynced(row.profileId, row.bookKey, row.updatedAt) }
                 val unresolved = queued.map(PlaybackSessionEntity::sessionId) - accepted.map { it.id }.toSet()
                 if (unresolved.isNotEmpty()) outbox.markAttempted(unresolved, NOT_ACCEPTED)
                 logger.info(
@@ -255,6 +266,27 @@ class DefaultSessionSyncRepository @Inject constructor(
                 AppResult.Success(accepted.size)
             }
         }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — records that this book's position has reached the server.
+     *
+     * The session row and the progress row are two different tables with two different lifetimes: the
+     * session is a record of *listening*, kept for seven days and then compacted, while the progress row is
+     * the book's current position and lives as long as the book does. Uploading the first is what makes the
+     * second's `hasUnsyncedChanges` false, and nothing was joining the two — see
+     * [ProgressDao.markProgressSynced] for what that cost.
+     *
+     * [uploadedAt] is the moment whose position was actually sent — the live path's own `updatedAt`, and
+     * the queued row's for the batch — so a position recorded while the request was in flight keeps its
+     * flag.
+     *
+     * Failure to clear is not failure to upload. The position is on the server either way, so this logs
+     * nothing on a zero count: a book whose row moved on during the request is the ordinary case, not a
+     * fault.
+     */
+    private suspend fun markProgressSynced(profileId: String, bookKey: String, uploadedAt: Long) {
+        progressDao.markProgressSynced(profileId = profileId, bookKey = bookKey, uploadedAt = uploadedAt)
     }
 
     /** PRODUCT_SPEC PLAY-005 — "retained for seven days for diagnostics, then compacted". */

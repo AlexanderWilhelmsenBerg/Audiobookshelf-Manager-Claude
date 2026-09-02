@@ -9,6 +9,10 @@ import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.common.time.ServerClock
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.entity.BookEntity
+import com.example.shelfplayer.core.database.entity.EntityKey
+import com.example.shelfplayer.core.database.entity.LibraryEntity
+import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.database.entity.SessionOutboxState
@@ -64,6 +68,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
 import java.io.OutputStream
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -118,6 +123,7 @@ class DefaultSessionSyncRepositoryTest {
             settings = settings,
             profileDao = database.profileDao(),
             outbox = database.sessionOutboxDao(),
+            progressDao = database.progressDao(),
             gateway = gateway,
             serverClock = ServerClock(logger),
             clock = clock,
@@ -432,6 +438,149 @@ class DefaultSessionSyncRepositoryTest {
         assertIs<AppError.Conflict>(assertIs<AppResult.Failure>(result).error)
     }
 
+    // ------------------------------------------- PRODUCT_SPEC PLAY-004 / SYNC-002, the flag on the position
+
+    /*
+     * `media_progress.hasUnsyncedChanges` is the app's claim that a position has not reached the server.
+     * Every `recordPosition` sets it and, until R-86, nothing cleared it: `writeProgress` refuses to
+     * overwrite a flagged row, so only a server-sourced write could clear it and a flagged row was exactly
+     * what a server-sourced write skipped. It went unnoticed until the freshness check before a Play began
+     * reading the flag and stopped asking the server at all.
+     */
+
+    /** **A position the server accepted is no longer unsynced**, which is the whole of the fix. */
+    @Test
+    fun `a synced session clears the book's unsynced flag`() = runTest {
+        seedUnsyncedProgress(recordedAt = 1_000L)
+        val sessionId = openId()
+
+        val result = repository.syncOpenSession(
+            sessionId = sessionId,
+            progress = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 1.minutes),
+            updatedAt = Instant.ofEpochMilli(2_000L),
+            trigger = SyncTrigger.Interval,
+        )
+
+        assertIs<AppResult.Success<Unit>>(result)
+        assertEquals(false, storedProgress().hasUnsyncedChanges)
+    }
+
+    /**
+     * **A position recorded while the upload was in flight keeps its flag.**
+     *
+     * The request carried the position as it was when it was built. If the listener played on, the stored
+     * row is newer than what the server now holds and is genuinely still unsent — clearing it would let the
+     * next account sync overwrite it, which is losing progress.
+     */
+    @Test
+    fun `a position recorded after the upload keeps its flag`() = runTest {
+        seedUnsyncedProgress(recordedAt = 5_000L)
+        val sessionId = openId()
+
+        repository.syncOpenSession(
+            sessionId = sessionId,
+            progress = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 1.minutes),
+            updatedAt = Instant.ofEpochMilli(2_000L),
+            trigger = SyncTrigger.Interval,
+        )
+
+        assertEquals(true, storedProgress().hasUnsyncedChanges, "the row moved on after the request was built")
+    }
+
+    /** A failed upload leaves the claim standing: the position is still this device's alone. */
+    @Test
+    fun `a failed sync leaves the unsynced flag alone`() = runTest {
+        seedUnsyncedProgress(recordedAt = 1_000L)
+        val sessionId = openId()
+        gateway.syncResult = AppResult.Failure(AppError.Network(summary = "No connection."))
+
+        repository.syncOpenSession(
+            sessionId = sessionId,
+            progress = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 1.minutes),
+            updatedAt = Instant.ofEpochMilli(2_000L),
+            trigger = SyncTrigger.Interval,
+        )
+
+        assertEquals(true, storedProgress().hasUnsyncedChanges)
+    }
+
+    /**
+     * The row `recordPosition` would have written: a local position nothing has uploaded yet.
+     *
+     * The library and book rows come with it because `media_progress` is keyed through both — a position
+     * for a book this device has never heard of is not a state the app can reach.
+     */
+    private suspend fun seedUnsyncedProgress(recordedAt: Long) {
+        database.libraryWriteDao().upsertLibraries(
+            listOf(
+                LibraryEntity(
+                    libraryKey = LIBRARY_KEY,
+                    serverId = SERVER,
+                    remoteId = "lib-1",
+                    name = "Fiction",
+                    kind = "Book",
+                    displayOrder = 0,
+                    remoteUpdatedAt = null,
+                    lastFetchedAt = 0,
+                    isDeleted = false,
+                    finishedTimeRemainingSeconds = null,
+                ),
+            ),
+        )
+        database.libraryWriteDao().upsertBooks(
+            listOf(
+                BookEntity(
+                    bookKey = BOOK_KEY,
+                    serverId = SERVER,
+                    remoteId = "book-1",
+                    libraryKey = LIBRARY_KEY,
+                    title = BOOK_TITLE,
+                    subtitle = null,
+                    narratorsJson = "[]",
+                    genresJson = "[]",
+                    tagsJson = "[]",
+                    durationMillis = 6.hours.inWholeMilliseconds,
+                    description = null,
+                    publishedYear = null,
+                    publisher = null,
+                    language = null,
+                    isbn = null,
+                    asin = null,
+                    isExplicit = false,
+                    isAbridged = false,
+                    coverPath = null,
+                    trackCount = 1,
+                    sizeBytes = 0,
+                    remoteUpdatedAt = null,
+                    addedAt = null,
+                    lastFetchedAt = 0,
+                    isDeleted = false,
+                    localAvailability = "NotDownloaded",
+                ),
+            ),
+        )
+        database.progressDao().upsertProgress(
+            listOf(
+                MediaProgressEntity(
+                    progressKey = EntityKey.scoped(profileId.value, BOOK_KEY),
+                    profileId = profileId.value,
+                    bookKey = BOOK_KEY,
+                    serverId = SERVER,
+                    positionMillis = 40.minutes.inWholeMilliseconds,
+                    durationMillis = 6.hours.inWholeMilliseconds,
+                    isFinished = false,
+                    updatedAt = recordedAt,
+                    hasUnsyncedChanges = true,
+                ),
+            ),
+        )
+    }
+
+    private suspend fun storedProgress(): MediaProgressEntity =
+        requireNotNull(database.progressDao().findProgress(profileId.value, BOOK_KEY)) {
+            "no progress row was written"
+        }
+
     private suspend fun open(remoteSessionId: String? = "remote-1") = repository.openSession(
         bookId = LibraryItemId("book-1"),
         remoteSessionId = remoteSessionId,
@@ -657,6 +806,10 @@ class DefaultSessionSyncRepositoryTest {
     private companion object {
         const val SERVER = "server-1"
         const val BOOK_TITLE = "The Salt Harbour"
+
+        /** The key `openSession` derives for `book-1`, which the progress row has to share. */
+        val BOOK_KEY: String = EntityKey.of(SERVER, "book-1")
+        val LIBRARY_KEY: String = EntityKey.of(SERVER, "lib-1")
         const val BOOK_AUTHOR = "Marisol Holt"
     }
 }
