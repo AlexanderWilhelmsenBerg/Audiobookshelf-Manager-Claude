@@ -50,6 +50,7 @@ import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.SessionRecoveryTestHook
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ObserveLibrariesUseCase
@@ -111,11 +112,9 @@ class SettingsViewModelTest {
     private fun viewModel() = SettingsViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         observeServerDiagnostics = ObserveServerDiagnosticsUseCase(profiles, capabilities, StubRealtime()),
-        profiles = profiles,
         diagnostics = diagnostics,
         preferences = preferences,
         sleepTimer = sleepTimer,
-        sessionSync = sessionSync,
         device = DeviceReaders(
             notifications = notifications,
             car = car,
@@ -124,9 +123,23 @@ class SettingsViewModelTest {
             known = knownDevices,
         ),
         playbackSettings = playbackSettings,
+        session = SessionTools(
+            profiles = profiles,
+            sync = sessionSync,
+            recoveryTest = recoveryTestHook,
+        ),
     )
 
     private val knownDevices = FakeDevices()
+
+    /**
+     * AUTH-004 — the debug control's collaborator, recording rather than pretending.
+     *
+     * Throwing would be wrong here: no test in this file presses the control, so a throwing stand-in would
+     * be a landmine for whoever adds one. Recording gives that person something to assert on, and
+     * `wasCalled` starting `false` means a test that forgets to press it cannot accidentally pass.
+     */
+    private val recoveryTestHook = RecordingRecoveryTestHook()
 
     /** PRODUCT_SPEC PLAY-002 — the setting is written; the player picks it up when it is next built. */
     @Test
@@ -692,5 +705,22 @@ internal class FakeLauncherIcons : LauncherIcons {
     override fun apply(icon: LauncherIcon) {
         applied += icon
         if (accepts) stored = icon
+    }
+}
+
+/**
+ * AUTH-004 — a `SessionRecoveryTestHook` that remembers being asked.
+ *
+ * [expired] is what a future test asserts on; [result] is what it steers. The default `true` is the
+ * interesting case — a profile that *can* renew — because the refusal branch is the one a test would set
+ * up deliberately.
+ */
+private class RecordingRecoveryTestHook(var result: Boolean = true) : SessionRecoveryTestHook {
+    var expired: Int = 0
+        private set
+
+    override suspend fun expireAccessToken(): Boolean {
+        expired += 1
+        return result
     }
 }

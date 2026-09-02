@@ -22,9 +22,45 @@ the owner was asked rather than guessed at.
 
 `versionCode` and `versionName` live in the application convention plugin. The channel decided the rule:
 Play requires a strictly increasing integer per upload and never permits a code to be reused for a package,
-so it stays a **hand-incremented integer**. A derived scheme — a timestamp, or a commit count — was
+so ~~it stays a **hand-incremented integer**~~. A derived scheme — a timestamp, or a commit count — was
 considered and rejected: both can go backwards or collide across branches, and Play's refusal of a reused
 code is permanent. See ADR-0024.
+
+**Amended, then corrected.** The first amendment made the build name itself after the **pull request** it
+came from — pull request 72 built as `0.9.5.72`, code `72` — on the argument that GitHub issues pull request
+numbers from one monotonic per-repository counter and so, unlike a timestamp, they cannot go backwards.
+
+**That argument was about the repository, and the installer does not care about the repository.** A phone
+compares the code it holds against the code it is offered. The only order that matters is the order somebody
+installs in, and a tester works through open pull requests as they become ready rather than in numeric
+order: installing 70 and then 67 offers a lower code and Android refuses it outright
+(`INSTALL_FAILED_VERSION_DOWNGRADE`, which the package installer reports as a bare "App not installed" with
+no reason, indistinguishable on screen from R-68's signature mismatch). Reported from a device on
+2026-09-02. The unnumbered case was worse for the same reason: `main` after a merge fell back to code 40,
+below every pull request number in the repository, so no post-merge build would install over any test build.
+
+**What stands now.** The code is a counter that only ever goes up, and the name is a plain product version
+that encodes nothing:
+
+| | |
+| --- | --- |
+| **`versionName`** | `0.9.6.1`. The product version, hand-bumped, and only when the product moves. It carries no per-build fact, so there is nothing in it to go stale. |
+| **`versionCode`** | `BASE_VERSION_CODE` (1000) **+ the workflow run number**. `apk.yml` passes `BOOKWAVE_RUN_NUMBER`; GitHub increments it on every run of that file regardless of branch, and never decreases it. Builds therefore sort by when they were built, which is the order a device is asked to install them in. |
+| **Which pull request** | `BOOKWAVE_PR` and `BOOKWAVE_BRANCH`, shown as the **Source** row in Settings → About: `PR 67 · fix/playback-session-renewal`. Also in the artefact's name and in the debug console's pasted report. |
+| **The commit** | `BOOKWAVE_COMMIT`, shown as the **Build** row beside the build type. |
+| **A local build** | No run number, so code `1000` and branch `local`. It will not install over a CI build; `-Pbookwave.versionCode=N` is the way round that. |
+
+Why any of this was needed at all: the hand-incremented pair went stale exactly as R-04 predicted. The name
+sat at `0.9.6-auto-shelves` for nine builds once, and had reached dozens of pull requests at
+`0.9.14-browse-and-genres` code 40 by the time it changed. Every device-test result recorded in such a
+window names the wrong build, and a tester holding two APKs cannot tell them apart.
+
+**Two things still make codes go backwards, and one edit fixes both.** A local build falls back to the floor;
+and the run number restarts at 1 if `apk.yml` is renamed or replaced, because GitHub counts per workflow
+file. Raise `BASE_VERSION_CODE` past the highest code already installed — it is round and sparse so that the
+fix is a one-digit edit. The same edit is what a Play upload needs if its predecessor used a higher code:
+Play requires a strictly increasing code and its refusal of a reused code is permanent, which is the one
+part of the original decision that no scheme softens.
 
 ## Signing
 

@@ -279,9 +279,15 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 ### AUTH-004 Session expiry
 
 **Acceptance criteria**
-- A `401` pauses new network actions and marks the profile as requiring reauthentication.
+- A `401` from an authenticated Audiobookshelf request first uses one shared, generation-aware renewal
+  coordinator. A renewable session is renewed once and the failed operation is retried once; a missing or
+  refused refresh token marks the profile as requiring reauthentication.
 - Existing downloaded playback continues.
-- Active streamed playback may continue only while already-authorized media requests remain valid.
+- An active Audiobookshelf stream that receives `401` renews once, creates a fresh authenticated media data
+  source, and retries that range request once. A second `401` is surfaced without another renewal.
+- External media origins receive no Audiobookshelf credential and never trigger Audiobookshelf renewal.
+- Concurrent `401` recovery callers that observed the same credential generation cause at most one refresh
+  token rotation; sign-out and other credential mutations are serialized with that rotation.
 - The app never loops login requests.
 - The user can reauthenticate without losing downloads, local progress, or preferences.
 

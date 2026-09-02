@@ -47,6 +47,7 @@ import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
+import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
 import com.example.shelfplayer.domain.usecase.NextInSeriesUseCase
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
@@ -105,6 +106,9 @@ class PlaybackService : MediaLibraryService() {
 
     @Inject
     internal lateinit var playbackRepository: PlaybackRepository
+
+    @Inject
+    internal lateinit var openPlaybackSession: OpenPlaybackSessionUseCase
 
     @Inject
     internal lateinit var sleepTimer: SleepTimerController
@@ -997,7 +1001,7 @@ class PlaybackService : MediaLibraryService() {
      * non-fatal diagnostic".
      */
     private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? =
-        when (val opened = playbackRepository.openSession(bookId)) {
+        when (val opened = openPlaybackSession(bookId)) {
             is AppResult.Failure -> {
                 logger.warn(
                     LogCategory.Playback,

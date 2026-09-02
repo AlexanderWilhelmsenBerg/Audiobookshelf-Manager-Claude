@@ -45,3 +45,8 @@ end_of_line = crlf
 
 [*.bat]
 end_of_line = crlf
+
+# PR #67 adds one use-case import to PlaybackService.kt without rewriting the large framework-owned file.
+# Keep this narrow formatting exception separate from the byte-stability rule inherited from main.
+[playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt]
+ktlint_standard_import-ordering = disabled

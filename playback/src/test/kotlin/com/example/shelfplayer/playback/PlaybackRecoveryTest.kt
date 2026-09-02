@@ -74,19 +74,29 @@ class PlaybackRecoveryTest {
         assertNull(recovery.onError(error(PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)))
     }
 
-    /**
-     * Two IO errors that are still not worth retrying.
-     *
-     * A file the server does not have will not appear, and a 401 needs a new token rather than another
-     * attempt. PLAY-003 asks for stopping safely and offering repair, which is what surfacing them does.
-     */
     @Test
     fun `a missing file and a refused request are not retried`() {
         assertNull(recovery.onError(error(PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)))
         assertNull(recovery.onError(error(PlaybackException.ERROR_CODE_IO_NO_PERMISSION)))
     }
 
-    /** The whole IO block is retryable, including codes a future Media3 might add to it. */
+    /**
+     * Media3 reports an HTTP 401 as BAD_HTTP_STATUS, which is otherwise a retryable IO error.
+     *
+     * Re-preparing with the same bearer is guaranteed to fail. The media data source gets one credential
+     * renewal before this policy sees the failure; if that still returns 401 the honest answer is to stop.
+     */
+    @Test
+    fun `an http 401 is not retried as ordinary io`() {
+        assertNull(
+            recovery.onError(
+                error(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS),
+                responseCode = 401,
+            ),
+        )
+    }
+
+    /** The rest of the IO block remains retryable, including an ordinary server error. */
     @Test
     fun `every other io error is retried`() {
         listOf(
@@ -99,6 +109,12 @@ class PlaybackRecoveryTest {
             val fresh = PlaybackRecovery()
             assertNotNull(fresh.onError(error(code)), "code $code should be retried")
         }
+        assertNotNull(
+            PlaybackRecovery().onError(
+                error(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS),
+                responseCode = 503,
+            ),
+        )
     }
 
     private fun ioError() = error(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)

@@ -459,6 +459,9 @@ class ProfileSwitcherViewModelTest {
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> =
             error("not part of this fake")
 
+        override suspend fun requireReauthentication(profileId: ProfileId): AppResult<Unit> =
+            error("not part of this fake")
+
         override suspend fun refreshPermissions(profileId: ProfileId): AppResult<AccountState> = AppResult.Success(
             AccountState(
                 userId = null,

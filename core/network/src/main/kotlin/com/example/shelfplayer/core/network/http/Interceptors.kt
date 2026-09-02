@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.common.time.ServerClock
+import com.example.shelfplayer.core.model.ProfileId
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -37,7 +38,7 @@ fun interface TokenProvider {
  * @property serverBaseUrl the profile's server address as stored. Compared by scheme, host and port only;
  *   the path is irrelevant because a server may be hosted under a sub-path and its media served beside it.
  */
-data class ActiveCredential(val token: String, val serverBaseUrl: String)
+data class ActiveCredential(val token: String, val serverBaseUrl: String, val profileId: ProfileId? = null)
 
 /**
  * Phase 0 has no authentication, so there is no token to supply.

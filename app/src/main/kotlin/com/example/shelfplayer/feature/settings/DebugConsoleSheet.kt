@@ -76,7 +76,11 @@ fun DebugConsoleSheet(
     // and the sheet recomposes on every scroll.
     val report = remember(state, metrics, events) {
         DiagnosticsReport.of(
-            appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE})",
+            // Everything needed to identify the build a pasted report came from, in one line: the
+            // product version, the code that says which build it is, the type, and the branch and pull
+            // request it was cut from. The About tab shows the same four facts across three rows.
+            appVersion = state.versionLabel +
+                " ${BuildConfig.BUILD_TYPE} ${BuildConfig.GIT_COMMIT} ${state.sourceLabel}",
             state = state,
             metrics = metrics,
             events = events,

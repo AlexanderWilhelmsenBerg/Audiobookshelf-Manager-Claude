@@ -66,6 +66,14 @@ interface AuthRepository {
     suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus>
 
     /**
+     * PRODUCT_SPEC AUTH-004 — the one retry after renewal was also rejected.
+     *
+     * This does not perform another network renewal. It clears the now-proven-unusable local credentials
+     * and marks the saved profile so the UI can request sign-in without losing cached user data.
+     */
+    suspend fun requireReauthentication(profileId: ProfileId): AppResult<Unit>
+
+    /**
      * PRODUCT_SPEC 5.2 — re-reads the account's permissions from the server and stores them.
      *
      * The grant a profile was signed in with is otherwise never revisited, so access granted or revoked
