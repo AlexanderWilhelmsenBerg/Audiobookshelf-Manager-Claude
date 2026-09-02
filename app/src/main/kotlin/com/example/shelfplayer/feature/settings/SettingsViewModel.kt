@@ -76,6 +76,25 @@ data class DeviceReaders @Inject constructor(
 )
 
 /**
+ * PRODUCT_SPEC SET-001 / SYNC-001 / AUTH-004 — the three things the settings screen asks about the
+ * *signed-in session*.
+ *
+ * Whose session it is, whether the progress it produced has reached the server, and — in a debug build —
+ * a way to make its access token expire on demand. They travel together for the reason [DeviceReaders]
+ * does: they are the same kind of question, and a ViewModel that already combines five sources has a
+ * real parameter budget. The recovery hook arrived last and took the constructor to detekt's limit,
+ * which is what made the grouping overdue rather than optional.
+ *
+ * `@Inject constructor` so Hilt assembles it; nothing constructs one by hand except a test.
+ */
+data class SessionTools @Inject constructor(
+    val profiles: ProfileRepository,
+    val sync: SessionSyncRepository,
+    /** AUTH-004 — see `SettingsViewModel.onExpireAccessToken`. Bound in every build; offered in none but debug. */
+    val recoveryTest: SessionRecoveryTestHook,
+)
+
+/**
  * PRODUCT_SPEC SET-001 / SET-002 / SYNC-001 — everything the settings screen shows, across both tabs.
  *
  * ### Why one ViewModel for two tabs
@@ -103,15 +122,12 @@ data class DeviceReaders @Inject constructor(
 class SettingsViewModel @Inject constructor(
     observeLibraries: ObserveLibrariesUseCase,
     observeServerDiagnostics: ObserveServerDiagnosticsUseCase,
-    profiles: ProfileRepository,
     diagnostics: DiagnosticsRepository,
     private val preferences: PreferencesRepository,
     private val sleepTimer: SleepTimerRepository,
-    sessionSync: SessionSyncRepository,
     private val device: DeviceReaders,
     private val playbackSettings: PlaybackSettingsRepository,
-    // AUTH-004 — see `onExpireAccessToken`. Injected in every build; offered in none but debug.
-    private val recoveryTestHook: SessionRecoveryTestHook,
+    private val session: SessionTools,
 ) : ViewModel() {
 
     /**
@@ -169,7 +185,7 @@ class SettingsViewModel @Inject constructor(
      * how a device run reported it. The whole profile is carried instead, so the row can be drawn for
      * everybody and say what is missing when it cannot be used.
      */
-    val account: StateFlow<Profile?> = profiles.observeActiveProfile()
+    val account: StateFlow<Profile?> = session.profiles.observeActiveProfile()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -186,7 +202,7 @@ class SettingsViewModel @Inject constructor(
         combine(
             sleepTimer.observeSettings(),
             sleepTimer.observeRecentSessions(),
-            sessionSync.observeDiagnostics(),
+            session.sync.observeDiagnostics(),
             playbackSettings.observeSettings(),
             // PRODUCT_SPEC DL-004 / DL-005 / DL-006 — the download preferences pair up rather than
             // becoming a fifth and sixth source. `combine`'s typed overloads stop at five, and they are
@@ -360,7 +376,7 @@ class SettingsViewModel @Inject constructor(
      */
     fun onExpireAccessToken() {
         viewModelScope.launch {
-            _debugMessage.value = if (recoveryTestHook.expireAccessToken()) {
+            _debugMessage.value = if (session.recoveryTest.expireAccessToken()) {
                 "Access token expired. Play or seek to make the next request fail."
             } else {
                 "No profile with a refresh token — nothing to recover from."

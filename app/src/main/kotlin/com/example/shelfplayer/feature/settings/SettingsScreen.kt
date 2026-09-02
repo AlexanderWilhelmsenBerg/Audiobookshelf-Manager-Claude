@@ -250,8 +250,10 @@ fun SettingsScreen(
                         onLauncherIconChanged = onLauncherIconChanged,
                         metrics = metrics,
                         appearance = AppearanceInputs(appearance, appearanceActions),
-                        onOpenEventLog = { isEventLogOpen = true },
-                        onOpenDebugConsole = { isDebugConsoleOpen = true },
+                        diagnostics = DiagnosticsInputs(
+                            onOpenEventLog = { isEventLogOpen = true },
+                            onOpenDebugConsole = { isDebugConsoleOpen = true },
+                        ),
                         recovery = recovery,
                     )
                 }
@@ -303,8 +305,7 @@ private fun LazyListScope.aboutTab(
     onLauncherIconChanged: (LauncherIcon) -> Unit,
     metrics: PlaybackMetrics,
     appearance: AppearanceInputs,
-    onOpenEventLog: () -> Unit,
-    onOpenDebugConsole: () -> Unit,
+    diagnostics: DiagnosticsInputs,
     recovery: RecoveryTestInputs,
 ) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
@@ -330,7 +331,7 @@ private fun LazyListScope.aboutTab(
     item { SectionHeader(text = stringResource(R.string.about_section_diagnostics)) }
     item { Hint(text = stringResource(R.string.event_log_body)) }
     item {
-        TextButton(onClick = onOpenEventLog, modifier = Modifier.padding(horizontal = 8.dp)) {
+        TextButton(onClick = diagnostics.onOpenEventLog, modifier = Modifier.padding(horizontal = 8.dp)) {
             Text(text = stringResource(R.string.event_log_open))
         }
     }
@@ -338,7 +339,7 @@ private fun LazyListScope.aboutTab(
     // PRODUCT_SPEC 14.4 — the log plus everything around it, in one copyable block.
     item { Hint(text = stringResource(R.string.debug_console_body)) }
     item {
-        TextButton(onClick = onOpenDebugConsole, modifier = Modifier.padding(horizontal = 8.dp)) {
+        TextButton(onClick = diagnostics.onOpenDebugConsole, modifier = Modifier.padding(horizontal = 8.dp)) {
             Text(text = stringResource(R.string.debug_console_open))
         }
     }
@@ -405,6 +406,16 @@ private fun LazyListScope.recoveryTestRows(inputs: RecoveryTestInputs) {
         }
     }
 }
+
+/**
+ * The two diagnostics overlays the About tab can open, bundled for the reason the other `*Inputs` types
+ * are: `aboutTab` is at detekt's parameter limit and these always travel together.
+ *
+ * Built at the call site rather than passed in from [SettingsRoute], because both open a sheet whose
+ * open/closed state belongs to [SettingsScreen] and never leaves it.
+ */
+@Immutable
+data class DiagnosticsInputs(val onOpenEventLog: () -> Unit = {}, val onOpenDebugConsole: () -> Unit = {})
 
 /**
  * The debug recovery control's three parameters, bundled for the reason the other `*Inputs` types are:

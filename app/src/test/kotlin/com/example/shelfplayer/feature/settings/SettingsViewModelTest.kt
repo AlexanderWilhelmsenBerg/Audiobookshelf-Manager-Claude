@@ -112,11 +112,9 @@ class SettingsViewModelTest {
     private fun viewModel() = SettingsViewModel(
         observeLibraries = ObserveLibrariesUseCase(profiles, libraries),
         observeServerDiagnostics = ObserveServerDiagnosticsUseCase(profiles, capabilities, StubRealtime()),
-        profiles = profiles,
         diagnostics = diagnostics,
         preferences = preferences,
         sleepTimer = sleepTimer,
-        sessionSync = sessionSync,
         device = DeviceReaders(
             notifications = notifications,
             car = car,
@@ -125,7 +123,11 @@ class SettingsViewModelTest {
             known = knownDevices,
         ),
         playbackSettings = playbackSettings,
-        recoveryTestHook = recoveryTestHook,
+        session = SessionTools(
+            profiles = profiles,
+            sync = sessionSync,
+            recoveryTest = recoveryTestHook,
+        ),
     )
 
     private val knownDevices = FakeDevices()
