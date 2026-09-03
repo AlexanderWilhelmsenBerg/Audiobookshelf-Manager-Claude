@@ -38,6 +38,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.StartupMode
+import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
@@ -599,14 +600,14 @@ internal class FakeSessionSync : SessionSyncRepository {
         progress: SessionProgress,
         updatedAt: java.time.Instant,
         trigger: SyncTrigger,
-    ): AppResult<Unit> = AppResult.Success(Unit)
+    ): AppResult<SyncOutcome> = AppResult.Success(SyncOutcome.Accepted)
 
     override suspend fun closeSession(
         sessionId: String,
         progress: SessionProgress,
         updatedAt: java.time.Instant,
         trigger: SyncTrigger,
-    ): AppResult<Unit> = AppResult.Success(Unit)
+    ): AppResult<SyncOutcome> = AppResult.Success(SyncOutcome.Accepted)
 
     override suspend fun drainOutbox(): AppResult<Int> = AppResult.Success(0)
 }

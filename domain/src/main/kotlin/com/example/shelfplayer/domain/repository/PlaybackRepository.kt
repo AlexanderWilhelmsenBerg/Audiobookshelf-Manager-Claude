@@ -4,6 +4,8 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.AcknowledgedPause
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import kotlin.time.Duration
 
 /**
@@ -83,4 +85,41 @@ interface PlaybackRepository {
      *   beginning.
      */
     suspend fun setFinished(bookId: LibraryItemId, isFinished: Boolean, position: Duration): AppResult<Unit>
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — asks the server whether another device has moved this book on, before an
+     * in-app Play resumes it.
+     *
+     * ### One request, capped, and never on the account's whole history
+     *
+     * `GET /api/me/progress/{bookId}`, one round trip. The first version of this read
+     * `/api/me/listening-sessions` page by page to exhaustion — the route is account-wide with no per-book
+     * form — which made a Play on a busy account wait for several round trips before any audio. Reported
+     * from a device as *"pressing play takes very long time"*.
+     *
+     * The read is also **capped**: an answer that has not arrived within a couple of seconds is treated as
+     * [ExternalSessionCheck.Unavailable] and playback proceeds. Both reference clients do the same, and
+     * `docs/api-compatibility.md` records where each of them landed.
+     *
+     * ### What decides
+     *
+     * [baseline] and nothing else. It is a position this device paused at *and the server confirmed it had
+     * taken*, so a server that now reports something different can only have been moved by somebody else
+     * since — which is the one form of this question that is answerable without comparing two clocks.
+     *
+     * Position **magnitude** never decides: an intentional rewind on another client is newer activity even
+     * though its number is smaller.
+     *
+     * Four earlier versions decided on something else and each produced a device run where Play resumed on
+     * a stale position: the server's `lastUpdate` against a row this app had itself written from that same
+     * value (R-88), how long ago the listener pressed pause (R-89), and the persistence flag
+     * `hasUnsyncedChanges` (R-92, R-93). None of them is read here — see R-95.
+     *
+     * @param baseline the last acknowledged pause for this book, or `null` when there is not one. `null`
+     *   makes **no request** and returns [ExternalSessionCheck.Unavailable]: without an agreed reference
+     *   point the server's answer cannot be told from our own stale write, so nothing may be moved
+     *   (product priority 2). A cold start is the ordinary `null` case and needs no check — its position
+     *   came from the server's own `/play` response.
+     */
+    suspend fun checkServerPosition(bookId: LibraryItemId, baseline: AcknowledgedPause?): ExternalSessionCheck
 }

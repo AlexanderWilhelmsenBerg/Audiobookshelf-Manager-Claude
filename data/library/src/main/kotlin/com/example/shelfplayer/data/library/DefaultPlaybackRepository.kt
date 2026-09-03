@@ -19,7 +19,10 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.AcknowledgedPause
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.FinishedThreshold
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -27,6 +30,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.absoluteValue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -194,24 +198,47 @@ class DefaultPlaybackRepository @Inject constructor(
         val stored = progressDao.findProgress(profileId.value, bookKey)
         val isFinished = thresholdFor(bookKey).isFinished(position = position, duration = duration)
         val now = clock.now()
-        progressDao.upsertProgress(
-            listOf(
-                MediaProgressEntity(
-                    progressKey = progressKey,
-                    profileId = profileId.value,
-                    bookKey = bookKey,
-                    serverId = profile.serverId,
-                    positionMillis = position.inWholeMilliseconds.coerceAtLeast(0),
-                    // A duration the player does not know yet — a stream still buffering — must not
-                    // overwrite one the library already stored, or the book's progress bar empties.
-                    durationMillis = duration.inWholeMilliseconds.takeIf { it > 0 }
-                        ?: stored?.durationMillis ?: 0,
-                    isFinished = isFinished || stored?.isFinished == true,
-                    updatedAt = now.toEpochMilli(),
-                    hasUnsyncedChanges = true,
-                ),
-            ),
+        // PRODUCT_SPEC SYNC-002 — **the unsent decision is made inside the statement, not around it.**
+        //
+        // `ProgressDao.recordPosition` compares this position against the row's own and leaves the flag
+        // alone when nothing moved, all under SQLite's write lock. That is what makes a duplicate record
+        // of an already-acknowledged position safe rather than lucky: the earlier Kotlin-side version read
+        // the row, decided, and then upserted, and `markProgressSynced` could clear the flag in the gap —
+        // after which the already-decided write put it back over its own acknowledgement, and nothing was
+        // left to take it down. `docs/risks.md` R-94.
+        //
+        // The row is written by `UPDATE` because that is the only form in which the comparison can see the
+        // previous position at all; a first write for a book has nothing to compare against and is
+        // inserted, unsent, which is the correct answer for a position the server has never been told.
+        val written = progressDao.recordPosition(
+            profileId = profileId.value,
+            bookKey = bookKey,
+            positionMillis = position.inWholeMilliseconds.coerceAtLeast(0),
+            // A duration the player does not know yet — a stream still buffering — must not overwrite one
+            // the library already stored, or the book's progress bar empties. Zero means "unknown", and the
+            // statement keeps what is there.
+            durationMillis = duration.inWholeMilliseconds.coerceAtLeast(0),
+            isFinished = isFinished,
+            updatedAt = now.toEpochMilli(),
+            toleranceMillis = UNCHANGED_TOLERANCE_MS,
         )
+        if (written == 0) {
+            progressDao.upsertProgress(
+                listOf(
+                    MediaProgressEntity(
+                        progressKey = progressKey,
+                        profileId = profileId.value,
+                        bookKey = bookKey,
+                        serverId = profile.serverId,
+                        positionMillis = position.inWholeMilliseconds.coerceAtLeast(0),
+                        durationMillis = duration.inWholeMilliseconds.coerceAtLeast(0),
+                        isFinished = isFinished,
+                        updatedAt = now.toEpochMilli(),
+                        hasUnsyncedChanges = true,
+                    ),
+                ),
+            )
+        }
         if (stored?.isFinished != true && isFinished) {
             logger.info(
                 LogCategory.Playback,
@@ -302,6 +329,108 @@ class DefaultPlaybackRepository @Inject constructor(
         }
 
     /**
+     * PRODUCT_SPEC SYNC-002 — whether another device has moved this book since we last agreed with the
+     * server about it.
+     *
+     * ### The question is asked against a baseline, and that is the rework
+     *
+     * [baseline] is an [AcknowledgedPause]: a position this device stopped at and Audiobookshelf answered
+     * that it had taken. From that instant the two sides demonstrably held the same number. So the whole
+     * decision is one comparison against a fact rather than an inference:
+     *
+     *  - **the server still holds the baseline position** → nothing happened while we were paused, resume
+     *    locally ([ExternalSessionCheck.Current]);
+     *  - **the server holds something else** → it can only have got there after our acknowledgement, so it
+     *    is somebody else's more recent work and it is adopted ([ExternalSessionCheck.Ahead]);
+     *  - **there is no acknowledged baseline** → the server's freshness is genuinely unknowable, so
+     *    nothing is moved ([ExternalSessionCheck.Unavailable]).
+     *
+     * No timestamps are read on either side. The four earlier attempts each compared something that could
+     * not answer the question — the server's `lastUpdate` against a row this app had written from the
+     * server's own value (R-88), how long ago the listener pressed pause (R-89), and `hasUnsyncedChanges`
+     * (R-92, R-93) — and each produced a device run where Play resumed on a stale position.
+     *
+     * ### `hasUnsyncedChanges` is deliberately not consulted
+     *
+     * It is persistence bookkeeping: it says whether this row still owes the server an upload, which is a
+     * fact about a *queue*, not evidence about whether anybody else listened. Using it as a gate was the
+     * defect the device log named — a `200` accepting `22461280ms` at 19:58:08, and `Skipped the freshness
+     * check … stored=22461280ms player=22461280ms` at 19:58:54 — because a journal write that landed after
+     * its own acknowledgement re-raised a flag nothing would lower, and the check then never asked the
+     * server at all. The flag keeps its real job (stopping an account sync from rewinding a live position)
+     * and loses this one. `docs/risks.md` R-95.
+     *
+     * ### Exactly one request, and only when it can be acted on
+     *
+     * With a baseline there is **always** a request: the answer is not derivable from anything local, and
+     * the previous shortcuts are what hid remote activity. Without one there is **never** a request: the
+     * outcome would be `Unavailable` whatever came back, so the round trip would be latency spent on an
+     * answer that cannot move anything. `ProgressSyncChainTest` counts the reads.
+     *
+     * ### The tolerance
+     *
+     * [POSITION_TOLERANCE] exists because both sides round — the wire carries fractional seconds, the local
+     * row milliseconds — and a resume must not seek by half a second and call it another device.
+     *
+     * ### The cap is the caller's, not this function's
+     *
+     * How long a tap may wait is a decision about the tap, so `PlayerViewModel` wraps this call in its own
+     * timeout and treats a late answer as `Unavailable`. Putting it here would also have put a virtual
+     * clock inside every test of this repository, which is a lot of machinery for a policy that belongs one
+     * layer up.
+     */
+    override suspend fun checkServerPosition(
+        bookId: LibraryItemId,
+        baseline: AcknowledgedPause?,
+    ): ExternalSessionCheck = withContext(ioDispatcher) {
+        if (baseline == null || baseline.bookId != bookId) {
+            // Logged because the difference between "asked and the server agreed" and "could not ask" is
+            // invisible in the audio and is the first thing anyone wants to know afterwards.
+            logger.info(
+                LogCategory.Sync,
+                "No acknowledged pause for this book, so the server's position cannot be judged",
+            )
+            return@withContext ExternalSessionCheck.Unavailable
+        }
+        val profileId = profileRepository.activeProfileId() ?: return@withContext ExternalSessionCheck.Unavailable
+        when (val remote = gateway.playback.serverProgress(profileId, bookId)) {
+            is AppResult.Failure -> ExternalSessionCheck.Unavailable
+            is AppResult.Success -> outcomeOf(remote.value, baseline.position).also { outcome ->
+                logger.info(
+                    LogCategory.Sync,
+                    "Compared the server's position with the pause it acknowledged",
+                    LogField.Millis("server", remote.value.position.inWholeMilliseconds),
+                    LogField.Millis("baseline", baseline.position.inWholeMilliseconds),
+                    LogField.Public("generation", baseline.generation.toString()),
+                    LogField.Public("verdict", if (outcome is ExternalSessionCheck.Ahead) "ahead" else "current"),
+                )
+            }
+        }
+    }
+
+    /**
+     * The comparison itself, split out so it can be read without the plumbing around it.
+     *
+     * [acknowledged] is the position the **server said it had taken**, not what the local row holds and
+     * not where the player is. Those two can drift for reasons that have nothing to do with another
+     * device — a server-sourced refresh moves the row without moving Media3; a journal tick moves neither —
+     * and comparing against either of them is what made three earlier versions of this answer wrong.
+     *
+     * Magnitude is never compared — only distance. A rewind on another client is somebody else's decision
+     * and it is adopted exactly like a fast-forward; `max(position)` would silently overrule the listener
+     * who went back for a chapter they missed.
+     *
+     * `remote.updatedAt` is deliberately unread here. See the header for why the timestamp condition was
+     * removed rather than repaired.
+     */
+    private fun outcomeOf(remote: ServerProgress, acknowledged: Duration): ExternalSessionCheck =
+        if ((remote.position - acknowledged).absoluteValue > POSITION_TOLERANCE) {
+            ExternalSessionCheck.Ahead(remote.position)
+        } else {
+            ExternalSessionCheck.Current
+        }
+
+    /**
      * ADR-0013 — the rule in force for one book: its own library's, read fresh on every write.
      *
      * Not cached. The value changes when the server's library settings change, and it is one nullable number
@@ -323,5 +452,26 @@ class DefaultPlaybackRepository @Inject constructor(
          * short enough that nobody re-listening to a chapter trips it.
          */
         val RESTART_WITHIN: Duration = 60.seconds
+
+        /**
+         * How far the two positions may differ before it counts as somebody else having moved the book.
+         *
+         * Five seconds. The wire carries fractional seconds and the local row carries milliseconds, so
+         * they are never exactly equal; and the auto-rewind moves the player without anybody having
+         * listened, which a tighter tolerance would report as remote activity on every resume.
+         */
+        val POSITION_TOLERANCE: Duration = 5.seconds
+
+        /**
+         * How far a re-recorded position may drift and still count as *the same* position, in milliseconds.
+         *
+         * A second, matching `DefaultSessionSyncRepository`'s and for the same reason: every write reads
+         * the player afresh rather than remembering, so two records of a standing player land a few
+         * milliseconds apart. Two consecutive syncs of a paused book logged `22256204ms` and `22256207ms`.
+         *
+         * Well below [POSITION_TOLERANCE], deliberately. This asks "did anything move at all"; that one
+         * asks "did somebody else move it".
+         */
+        const val UNCHANGED_TOLERANCE_MS = 1_000L
     }
 }

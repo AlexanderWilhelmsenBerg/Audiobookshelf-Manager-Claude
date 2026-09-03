@@ -13,8 +13,10 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.SessionProgress
+import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.ListenedTime
+import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -58,6 +60,7 @@ import kotlin.time.Duration.Companion.seconds
 @Singleton
 class SessionSyncCoordinator @Inject constructor(
     private val repository: SessionSyncRepository,
+    private val baseline: ResumeBaseline,
     private val clock: AppClock,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
@@ -133,12 +136,32 @@ class SessionSyncCoordinator @Inject constructor(
      *
      * Everything is read on the main thread, because every [Player] property must be. The send itself is not:
      * the repository moves to IO for the row and the request.
+     *
+     * Fire and forget, on the application scope. [sync] is the same work awaited, for the one caller that
+     * has to know whether it landed.
      */
     fun request(trigger: SyncTrigger) {
-        applicationScope.launch {
-            gate.withLock { syncNow(trigger) }
-        }
+        applicationScope.launch { sync(trigger) }
     }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the same sync, **awaited**, returning whether the server took the position.
+     *
+     * ### Why the pause needs this and nothing else did
+     *
+     * The freshness check before a Play decides from an *acknowledged* pause: a position this device
+     * stopped at and Audiobookshelf confirmed it holds (see `ResumeBaseline`). "Confirmed" is only knowable
+     * by waiting for the answer, so the pause path awaits its own sync instead of launching it and moving
+     * on. Every other trigger stays fire-and-forget, because no decision hangs on their outcome.
+     *
+     * The promotion itself happens in [syncNow], for every trigger rather than only this one: a pause whose
+     * upload failed and whose next thirty-second tick succeeded is just as firmly agreed, and there is no
+     * reason to throw that away.
+     *
+     * Still under [gate], so awaiting this cannot overtake a sync already in flight — which is the ordering
+     * that stops the server being left holding the older of two positions.
+     */
+    suspend fun sync(trigger: SyncTrigger): Boolean = gate.withLock { syncNow(trigger) }
 
     /**
      * PRODUCT_SPEC PLAY-004 — the last sync, on the way out.
@@ -162,9 +185,12 @@ class SessionSyncCoordinator @Inject constructor(
         applicationScope.launch { repository.drainOutbox() }
     }
 
-    private suspend fun syncNow(trigger: SyncTrigger) {
-        val active = current ?: return
-        val snapshot = withContext(mainDispatcher) { snapshot() } ?: return
+    private suspend fun syncNow(trigger: SyncTrigger): Boolean {
+        val active = current ?: return false
+        val snapshot = withContext(mainDispatcher) { snapshot() } ?: return false
+        // PRODUCT_SPEC SYNC-002 — read *before* the send, so an acknowledgement can only ever be applied to
+        // the pause that was current when the upload was built. See `ResumeBaseline.generationFor`.
+        val generation = baseline.generationFor(active.bookId)
         // The position and the moment it was observed, together. `updatedAt` is stamped here rather than at
         // upload time because the server resolves conflicts on it: a timestamp taken when the request finally
         // succeeds would let a position observed ten minutes ago beat one set since (PLAY-004).
@@ -186,7 +212,27 @@ class SessionSyncCoordinator @Inject constructor(
                 LogField.Public("trigger", trigger.name),
                 LogField.Public("error", result.error.code),
             )
+            return false
         }
+        // PRODUCT_SPEC SYNC-002 — **only an accepted position may promote the baseline.** Success alone is
+        // not enough: a session that never reached `/play` has no server id, so its position is durably
+        // queued and never sent, and success says so honestly. Treating that as an acknowledgement would
+        // build a baseline the server has never seen, and the next Play would then read the server's older
+        // position, call it another device's work, and rewind the listener onto it. See `SyncOutcome`.
+        val accepted = (result as AppResult.Success).value == SyncOutcome.Accepted
+        if (accepted &&
+            generation != null &&
+            baseline.onPositionAccepted(active.bookId, progress.position, generation)
+        ) {
+            logger.debug(
+                LogCategory.Playback,
+                "The server acknowledged the position this device paused at",
+                LogField.Public("trigger", trigger.name),
+                LogField.Millis("position", progress.position.inWholeMilliseconds),
+                LogField.Public("generation", generation.toString()),
+            )
+        }
+        return accepted
     }
 
     /** Finalizes the open session, if any, and stops attributing listening time to it. */
