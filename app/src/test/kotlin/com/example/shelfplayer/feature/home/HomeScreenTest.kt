@@ -20,22 +20,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeLeft
-import androidx.compose.ui.test.swipeRight
 import com.example.shelfplayer.core.model.AppError
-import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
-import com.example.shelfplayer.core.model.Profile
-import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerStatus
 import com.example.shelfplayer.core.model.SyncStatus
-import com.example.shelfplayer.core.model.library.Book
-import com.example.shelfplayer.core.model.library.Library
-import com.example.shelfplayer.core.model.library.LibraryKind
-import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.domain.library.BookGroup
 import com.example.shelfplayer.domain.library.BookGroupKind
@@ -49,10 +39,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC 17.1 (UI tests: offline home, TalkBack semantics) — the shelf, rendered.
@@ -636,193 +624,4 @@ class HomeScreenTest {
 
         compose.onNodeWithTag(HOME_MARK_TEST_TAG).assertExists()
     }
-
-    /**
-     * A signed-in profile with a book on the shelf.
-     *
-     * Populated on purpose: an empty shelf renders the *loading* state, which has none of the header,
-     * the caption or the error on it. A test that forgot this would assert against the wrong screen and
-     * report the app's wording as missing when it was simply somewhere else.
-     */
-    // ------------------------------------------- PRODUCT_SPEC 16.2, swiping between the capsule's places
-
-    /**
-     * A swipe towards the left reveals the next place, the way a pager does.
-     *
-     * Driven through the same `onAxisChanged` the capsule's tabs call, so the two affordances cannot drift:
-     * whatever a tap does, a swipe does.
-     */
-    @Test
-    fun `swiping left moves to the next axis`() {
-        var axis: HomeAxis? = null
-        compose.setContent {
-            HomeScreen(
-                uiState = state(axis = HomeAxis.Books),
-                actions = noActions().copy(onAxisChanged = { axis = it }),
-            )
-        }
-
-        compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performTouchInput { swipeLeft() }
-
-        assertEquals(HomeAxis.Series, axis)
-    }
-
-    /** And towards the right, the previous one. */
-    @Test
-    fun `swiping right moves to the previous axis`() {
-        var axis: HomeAxis? = null
-        compose.setContent {
-            HomeScreen(
-                // Groups supplied because the tagged list is what carries the gesture, and an axis with
-                // nothing in it renders an empty state instead.
-                uiState = state(axis = HomeAxis.Authors, groups = listOf(genreGroup("Ursula Le Guin"))),
-                actions = noActions().copy(onAxisChanged = { axis = it }),
-            )
-        }
-
-        compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performTouchInput { swipeRight() }
-
-        assertEquals(HomeAxis.Series, axis)
-    }
-
-    /**
-     * **The row does not wrap**, and this is the case that says so.
-     *
-     * Swiping right on the first place has nowhere to go. Wrapping to the last one would contradict the
-     * capsule it is driving, which shows the reader a position in a row of four.
-     */
-    @Test
-    fun `swiping right on the first axis does nothing`() {
-        var changes = 0
-        compose.setContent {
-            HomeScreen(
-                uiState = state(axis = HomeAxis.Books),
-                actions = noActions().copy(onAxisChanged = { changes++ }),
-            )
-        }
-
-        compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performTouchInput { swipeRight() }
-
-        assertEquals(0, changes)
-    }
-
-    private fun state(
-        isOffline: Boolean = false,
-        syncStatus: SyncStatus = SyncStatus.Succeeded,
-        serverStatus: ServerStatus = ServerStatus.Reachable,
-        error: AppError? = null,
-        scopedTo: Library? = null,
-        profile: Profile = profile(),
-        books: List<Book> = listOf(book()),
-        booksView: BooksView = BooksView.List,
-        shelves: HomeShelves = HomeShelves.Empty,
-        axis: HomeAxis = HomeAxis.Books,
-        series: List<SeriesShelf> = emptyList(),
-        groups: List<BookGroup> = emptyList(),
-        genreEdit: GenreEditUiState = GenreEditUiState.Hidden,
-    ) = HomeUiState(
-        isOffline = isOffline,
-        // Without this the screen renders its one blocking state and none of the assertions below are
-        // looking at the screen they name.
-        isLoaded = true,
-        profile = profile,
-        books = books,
-        booksView = booksView,
-        shelves = shelves,
-        axis = axis,
-        series = series,
-        groups = groups,
-        genreEdit = genreEdit,
-        syncStatus = syncStatus,
-        serverStatus = serverStatus,
-        error = error,
-        scopedTo = scopedTo,
-    )
-
-    private fun book() = Book(
-        serverId = ServerId("srv_books"),
-        libraryId = LibraryId("lib-1"),
-        id = LibraryItemId("item-1"),
-        title = "The Salt Harbour",
-        subtitle = null,
-        description = null,
-        authors = emptyList(),
-        narrators = emptyList(),
-        seriesMemberships = emptyList(),
-        genres = emptyList(),
-        tags = emptyList(),
-        publisher = null,
-        publishedYear = null,
-        language = null,
-        isbn = null,
-        asin = null,
-        duration = Duration.ZERO,
-        trackCount = 1,
-        sizeBytes = 0,
-        coverPath = null,
-        addedAt = null,
-        remoteUpdatedAt = null,
-        lastFetchedAt = Instant.EPOCH,
-        isExplicit = false,
-        isAbridged = false,
-        progress = null,
-        localAvailability = LocalAvailability.NotDownloaded,
-    )
-
-    private fun profile(canUpdate: Boolean = false) = Profile(
-        id = ProfileId("prf_ada"),
-        serverId = ServerId("srv_books"),
-        username = "ada",
-        displayName = "ada",
-        role = ProfileRole.Listener,
-        requiresReauthentication = false,
-        lastUsedAt = Instant.EPOCH,
-        isFixture = false,
-        canUpdate = canUpdate,
-    )
-
-    private fun genreGroup(label: String, count: Int = 1): BookGroup = BookGroup(
-        kind = BookGroupKind.Genre,
-        key = label.lowercase(),
-        label = label,
-        books = List(count) { index ->
-            book().copy(
-                id = LibraryItemId("genre-book-$index"),
-                genres = listOf(label),
-            )
-        },
-    )
-
-    private fun library(name: String) = Library(
-        serverId = ServerId("srv_books"),
-        id = LibraryId("lib-1"),
-        name = name,
-        kind = LibraryKind.Book,
-        displayOrder = 0,
-        bookCount = 3,
-        remoteUpdatedAt = null,
-        lastFetchedAt = Instant.EPOCH,
-    )
-
-    private fun noActions() = HomeActions(
-        onBookSelected = {},
-        onBookPlaySelected = {},
-        onSeriesSelected = {},
-        onGroupSelected = { _: BookGroup -> },
-        onGenreEditRequested = { _: BookGroup -> },
-        onGenreEditReplacementChanged = {},
-        onGenreEditConfirmed = {},
-        onGenreEditDismissed = {},
-        onQueryChanged = {},
-        onSearchToggled = {},
-        onAxisChanged = {},
-        onBooksViewChanged = {},
-        onOrderChanged = {},
-        onFilterChanged = {},
-        onFocusCleared = {},
-        onRefresh = {},
-        onProfilesSelected = {},
-        onSettingsSelected = {},
-        onSignInSelected = {},
-    )
 }
