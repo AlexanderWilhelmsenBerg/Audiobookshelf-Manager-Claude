@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -40,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -135,6 +137,7 @@ fun MiniPlayer(
                 // clear. Nothing measures an overlay the way `Scaffold` measures a bottom bar, so the
                 // bar has to say. See `LocalPlayerChromeBottomInset`.
                 .onSizeChanged { size -> onHeightMeasured(with(density) { size.height.toDp() }) }
+                .testTag(MINI_PLAYER_TEST_TAG)
                 .frostedGlass(
                     state = hazeState,
                     backgroundColor = MaterialTheme.colorScheme.surface,
@@ -145,11 +148,34 @@ fun MiniPlayer(
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             Box(
+                // `fillMaxWidth`, never `fillMaxSize`. The surface above has a height *floor* rather than a
+                // fixed height, so its incoming maximum is whatever it was placed in — the whole window, in
+                // `MainActivity`'s overlay `Box`. A child that fills the maximum therefore made the bar the
+                // height of the screen: a full-window frosted surface over the app, and `onHeightMeasured`
+                // reporting the window height as the player's inset to every screen. Wrapping is what makes
+                // the floor a floor. `Surface` propagates its minimum constraints, so this is still 68dp
+                // tall when the content is shorter than that.
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
                     .padding(bottom = systemBarInset),
+                // Defensive rather than load-bearing: at every font scale the content is taller than the
+                // 68dp floor, so the floor does not currently decide the height. If it ever does — a
+                // shorter bar, a taller system inset — a wrapping child of a `Box` is placed at the top
+                // unless something says otherwise.
+                contentAlignment = Alignment.CenterStart,
             ) {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                // `IntrinsicSize.Min` is what actually bounds this bar, and it is not decoration. The tap
+                // region below still uses `fillMaxHeight` so that the whole visible row opens the player —
+                // and a child that fills the height *participates in measuring* its parent, resolving
+                // against the incoming maximum. With a height floor above instead of a fixed height, that
+                // maximum is the window. Asking the row for its intrinsic height replaces the maximum with
+                // the content's own before anything fills it.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     // The cover and the text are one tap target that opens the player; the controls sit
                     // outside it. That is "anywhere except the buttons", expressed as a region rather than as
                     // a click on the whole bar that the buttons then have to out-compete.
@@ -266,7 +292,7 @@ fun MiniPlayer(
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
                             .padding(
-                                start = ARTWORK_WIDTH + TIME_LABEL_HORIZONTAL_INSET,
+                                start = ARTWORK_SIZE + TIME_LABEL_HORIZONTAL_INSET,
                                 top = TIME_LABEL_TOP_INSET,
                                 end = TIME_LABEL_HORIZONTAL_INSET,
                             ),
@@ -306,7 +332,7 @@ private fun MiniPlayerButton(onClick: () -> Unit, content: @Composable () -> Uni
         modifier = Modifier
             // Was `fillMaxHeight` against a fixed bar. The bar's height is now the content's, so a control
             // that filled it would grow with the text it sits beside and push the bar taller still.
-            .size(CONTROL_WIDTH),
+            .size(CONTROL_SIZE),
     ) {
         content()
     }
@@ -317,7 +343,7 @@ private fun MiniPlayerButton(onClick: () -> Unit, content: @Composable () -> Uni
 private fun MiniPlayerArtwork(state: PlaybackUiState, isLoading: Boolean, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .size(ARTWORK_WIDTH)
+            .size(ARTWORK_SIZE)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = GLASS_ARTWORK_ALPHA)),
         contentAlignment = Alignment.Center,
     ) {
@@ -346,19 +372,24 @@ private fun MiniPlayerArtwork(state: PlaybackUiState, isLoading: Boolean, modifi
     }
 }
 
-/** Roughly 60% of the previous 112 dp mini-player height. Shared so Home can clear the floating axis bar. */
+/** The bar itself, so a test can ask whether it filled the window it floats in. */
+internal const val MINI_PLAYER_TEST_TAG = "mini-player-bar"
+
 /**
  * The bar's floor, and what `MainActivity` assumes until the bar has measured itself once.
  *
- * Renamed from `MINI_PLAYER_HEIGHT` because it is no longer *the* height: at a large font scale the bar is
- * taller, and the number every other screen reads comes from `onHeightMeasured` rather than from here.
+ * Roughly 60% of the 112dp this bar used to be. Renamed from `MINI_PLAYER_HEIGHT` because it is no longer
+ * *the* height: at a large font scale the bar is taller, and the number every other screen reads comes
+ * from `onHeightMeasured` rather than from here.
  */
 internal val MINI_PLAYER_MIN_HEIGHT = 68.dp
 
 /** Where the clock gives up its place to the title and author. */
 private const val COMPACT_TEXT_FONT_SCALE = 1.3f
-private val ARTWORK_WIDTH = 46.dp
-private val CONTROL_WIDTH = 48.dp
+
+/** Square, both of them, now that the bar's height is its content's and nothing may fill it. */
+private val ARTWORK_SIZE = 46.dp
+private val CONTROL_SIZE = 48.dp
 private val TRANSPORT_ICON_SIZE = 28.dp
 private val PLAY_ICON_SIZE = 34.dp
 private val PROGRESS_HEIGHT = 2.dp
