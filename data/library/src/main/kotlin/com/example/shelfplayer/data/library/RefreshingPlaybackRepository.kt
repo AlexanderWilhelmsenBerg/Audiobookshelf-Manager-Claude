@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import javax.inject.Inject
@@ -41,4 +42,20 @@ class RefreshingPlaybackRepository @Inject constructor(
 
     override suspend fun setFinished(bookId: LibraryItemId, isFinished: Boolean, position: Duration): AppResult<Unit> =
         delegate.setFinished(bookId, isFinished, position)
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — passed straight through, and deliberately **without** draining the outbox
+     * first.
+     *
+     * A drain before the read would be the wrong shape twice over. It is a network write on the path
+     * between a tap and audio, which is the latency this check exists to keep down; and it would make the
+     * answer meaningless — uploading this device's position moves the very number the read is about, so
+     * the check would then be comparing the server against a position the drain had just put there.
+     *
+     * There is nothing to drain *for*, either. The decision is made against an acknowledged pause
+     * ([AcknowledgedPause]): a position the server has already confirmed it holds. Anything still queued
+     * by definition has not been acknowledged and therefore is not what the comparison is against.
+     */
+    override suspend fun checkServerPosition(bookId: LibraryItemId, baseline: AcknowledgedPause?) =
+        delegate.checkServerPosition(bookId, baseline)
 }

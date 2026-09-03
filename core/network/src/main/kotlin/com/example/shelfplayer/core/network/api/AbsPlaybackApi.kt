@@ -13,6 +13,7 @@ import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
@@ -160,6 +161,52 @@ internal class AbsPlaybackApi @Inject constructor(
                 isFinished = isFinished,
             ),
         )
+    }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the server's stored position for one book.
+     *
+     * **Retried like the other read in this class and unlike the writes**, for the same reason
+     * [listeningSessions] is: a retried read cannot produce a second session for one tap. It reaches the
+     * retry through `AudiobookshelfServiceFactory`.
+     *
+     * Nothing about the book or the position is logged. The book id is private self-hosted data (14.5) and
+     * a position is what somebody is listening to; the caller records the *outcome* of the comparison in
+     * the book's own history, which is where it belongs and where it is not a shared log.
+     */
+    override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> {
+        val connection = connections.connectionFor(profileId)
+            ?: return AppResult.Failure(AppError.Authentication())
+        val transported = resultOf(onError = errors::fromThrowable) {
+            services.playbackService(connection.serverUrl).mediaProgress(
+                bearer = bearerOf(connection.accessToken.value),
+                itemId = bookId.value,
+            )
+        }
+        return when (transported) {
+            is AppResult.Failure -> AppResult.Failure(transported.error)
+            is AppResult.Success -> progressFrom(transported.value)
+        }
+    }
+
+    /**
+     * The response half of [serverProgress], split out for the reason [sessionsFrom] is: the transport and
+     * the reading of what came back are two different failures.
+     *
+     * **A non-`200` — a `404` included — is a failure and not "no progress".** What the server answers for a
+     * book it has never recorded progress for is unobserved (PRODUCT_SPEC 22.4), and of the two guesses only
+     * "could not tell" is safe for a loaded player.
+     */
+    private fun progressFrom(response: Response<MediaProgressDto>): AppResult<ServerProgress> {
+        if (!response.isSuccessful) return AppResult.Failure(errors.fromStatus(response.code()))
+        val body = response.body()
+            ?: return AppResult.Failure(
+                AppError.ApiCompatibility(
+                    summary = "The server answered the stored-progress read with no body",
+                    missingField = "currentTime",
+                ),
+            )
+        return AppResult.Success(PlaybackMapper.toServerProgress(body))
     }
 
     /**

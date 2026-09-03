@@ -5,10 +5,12 @@ import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.common.time.ServerClock
 import com.example.shelfplayer.core.database.dao.ProfileDao
+import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.dao.SessionOutboxDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
@@ -21,6 +23,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
+import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
@@ -36,6 +39,7 @@ import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.absoluteValue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.milliseconds
@@ -67,6 +71,9 @@ class DefaultSessionSyncRepository @Inject constructor(
     private val settings: AppSettingsDataSource,
     private val profileDao: ProfileDao,
     private val outbox: SessionOutboxDao,
+    // PRODUCT_SPEC PLAY-004 — the outbox is where a *session* lives; this is where the book's position
+    // lives, and it is the table that has to stop claiming the position is unsent once it has been sent.
+    private val progressDao: ProgressDao,
     private val gateway: AudiobookshelfGateway,
     private val serverClock: ServerClock,
     private val clock: AppClock,
@@ -132,14 +139,14 @@ class DefaultSessionSyncRepository @Inject constructor(
         progress: SessionProgress,
         updatedAt: Instant,
         trigger: SyncTrigger,
-    ): AppResult<Unit> = send(sessionId, progress, updatedAt, trigger, closing = false)
+    ): AppResult<SyncOutcome> = send(sessionId, progress, updatedAt, trigger, closing = false)
 
     override suspend fun closeSession(
         sessionId: String,
         progress: SessionProgress,
         updatedAt: Instant,
         trigger: SyncTrigger,
-    ): AppResult<Unit> = send(sessionId, progress, updatedAt, trigger, closing = true)
+    ): AppResult<SyncOutcome> = send(sessionId, progress, updatedAt, trigger, closing = true)
 
     /**
      * The shared path: store the position, then try to send it.
@@ -154,11 +161,28 @@ class DefaultSessionSyncRepository @Inject constructor(
         updatedAt: Instant,
         trigger: SyncTrigger,
         closing: Boolean,
-    ): AppResult<Unit> = withContext(ioDispatcher) {
+    ): AppResult<SyncOutcome> = withContext(ioDispatcher) {
         val stored = outbox.find(sessionId)
             ?: return@withContext AppResult.Failure(
                 AppError.Conflict(summary = "That listening session is no longer recorded on this device."),
             )
+        if (!closing && stored.isRedundant(progress, trigger)) {
+            // The skip asserts the server already holds this position, so the progress row has nothing
+            // unsent — and saying so is not optional. Every `recordPosition` sets `hasUnsyncedChanges`,
+            // and the upload is what clears it; a skip that stayed silent left the flag standing, and a
+            // standing flag makes the freshness check answer `Current` without asking the server at all.
+            // That is exactly what the first version of this guard did. R-92.
+            markProgressSynced(stored.profileId, stored.bookKey, progress.position)
+            logger.debug(
+                LogCategory.Playback,
+                "Nothing new to sync, so the server's position is left alone",
+                LogField.Public("trigger", trigger.name),
+                LogField.Millis("position", progress.position.inWholeMilliseconds),
+            )
+            // `Accepted`, and that is not a shortcut: the guard fires only against a row already in
+            // `SYNCED` whose position has not moved, so the server *is* still holding it.
+            return@withContext AppResult.Success(SyncOutcome.Accepted)
+        }
         // Stored before the request, and stored whatever the request does.
         outbox.upsert(
             stored.copy(
@@ -171,9 +195,10 @@ class DefaultSessionSyncRepository @Inject constructor(
         )
         lastTrigger.value = trigger
         // A session that never reached the server has no id to sync against, so the offline route is the only
-        // one open to it. Reporting success here is honest: the position is durably queued, and the drain is
-        // what sends it.
-        val remoteId = stored.remoteSessionId ?: return@withContext AppResult.Success(Unit)
+        // one open to it. Success here is honest — the position is durably queued and the drain is what sends
+        // it — but it is emphatically **not** an acknowledgement, and a caller that treated it as one would
+        // build a freshness baseline the server has never seen. See `SyncOutcome`.
+        val remoteId = stored.remoteSessionId ?: return@withContext AppResult.Success(SyncOutcome.Queued)
         val profileId = ProfileId(stored.profileId)
         val result = if (closing) {
             gateway.playback.closeSession(profileId, remoteId, progress)
@@ -196,13 +221,14 @@ class DefaultSessionSyncRepository @Inject constructor(
                     syncedAt = clock.now().toEpochMilli(),
                     wasProgressApplied = true,
                 )
+                markProgressSynced(stored.profileId, stored.bookKey, progress.position)
                 logger.info(
                     LogCategory.Playback,
                     "The server accepted a position",
                     LogField.Public("trigger", trigger.name),
                     LogField.Millis("position", progress.position.inWholeMilliseconds),
                 )
-                AppResult.Success(Unit)
+                AppResult.Success(SyncOutcome.Accepted)
             }
         }
     }
@@ -242,6 +268,14 @@ class DefaultSessionSyncRepository @Inject constructor(
                 }
                 // A session the batch did not mention, or reported as not accepted, keeps its row and is sent
                 // again on the next drain. `success: false` with no id is the case that would otherwise vanish.
+                // The books whose positions the server has now taken. Only the accepted rows, and only
+                // those whose position the server actually *applied*: `wasProgressApplied == false` means
+                // it held something newer, so this device's row is still the one that has not landed.
+                val acceptedIds = accepted.filter { it.wasProgressApplied }.map { it.id }.toSet()
+                queued.filter { row -> row.sessionId in acceptedIds }
+                    .forEach { row ->
+                        markProgressSynced(row.profileId, row.bookKey, row.positionMillis.milliseconds)
+                    }
                 val unresolved = queued.map(PlaybackSessionEntity::sessionId) - accepted.map { it.id }.toSet()
                 if (unresolved.isNotEmpty()) outbox.markAttempted(unresolved, NOT_ACCEPTED)
                 logger.info(
@@ -255,6 +289,32 @@ class DefaultSessionSyncRepository @Inject constructor(
                 AppResult.Success(accepted.size)
             }
         }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-004 — records that this book's position has reached the server.
+     *
+     * The session row and the progress row are two different tables with two different lifetimes: the
+     * session is a record of *listening*, kept for seven days and then compacted, while the progress row is
+     * the book's current position and lives as long as the book does. Uploading the first is what makes the
+     * second's `hasUnsyncedChanges` false, and nothing was joining the two — see
+     * [ProgressDao.markProgressSynced] for what that cost.
+     *
+     * [accepted] is the position the server is now holding — the one this request carried, or the queued
+     * row's for the batch. The clear matches on *that*, not on a timestamp: see
+     * [ProgressDao.markProgressSynced] for the race the timestamp version lost, and for the tolerance.
+     *
+     * Failure to clear is not failure to upload. The position is on the server either way, so this logs
+     * nothing on a zero count: a book whose row moved on during the request is the ordinary case, not a
+     * fault.
+     */
+    private suspend fun markProgressSynced(profileId: String, bookKey: String, accepted: Duration) {
+        progressDao.markProgressSynced(
+            profileId = profileId,
+            bookKey = bookKey,
+            positionMillis = accepted.inWholeMilliseconds.coerceAtLeast(0),
+            toleranceMillis = REDUNDANT_POSITION_TOLERANCE_MS,
+        )
     }
 
     /** PRODUCT_SPEC PLAY-005 — "retained for seven days for diagnostics, then compacted". */
@@ -346,3 +406,70 @@ class DefaultSessionSyncRepository @Inject constructor(
         const val NOT_ACCEPTED = "not_accepted"
     }
 }
+
+/**
+ * PRODUCT_SPEC SYNC-002 — whether this sync would tell the server anything it does not already know.
+ *
+ * ### The defect this exists for, which was destroying other devices' progress
+ *
+ * `POST /api/session/{id}/sync` is a **write**. It sets the session's `currentTime`, and Audiobookshelf
+ * carries that through to the item's media progress — so every sync overwrites whatever any other client
+ * has put there since.
+ *
+ * BookWave sent one every thirty seconds *whether or not the position had moved*, including while paused.
+ * A device log caught it:
+ *
+ * ```
+ * 14:41:46 trigger=Paused          position=22207165ms   <- real; the player had moved
+ * 14:42:04 trigger=Interval        position=22207165ms   <- same position, paused
+ * 14:42:17 trigger=AppBackgrounded position=22207165ms   <- same position again
+ * ```
+ *
+ * The listener paused, went to the web player, moved the book to 2:25:25 — and BookWave posted 6:10:07
+ * back over it within thirty seconds. The freshness check then asked the server, which by that point held
+ * BookWave's own position, and correctly answered `Current`. Three device runs read as "the position
+ * doesn't sync"; the app was overwriting the answer before it asked the question.
+ *
+ * ### Three conditions, and each one is load-bearing
+ *
+ * **Only the unprompted triggers.** [SyncTrigger.Interval] and [SyncTrigger.AppBackgrounded] are the two
+ * that fire without the listener doing anything, and they are the two in the log doing the damage.
+ * Everything else — a pause, a seek, a chapter, a track, a shutdown — is somebody's decision, and a
+ * decision is reported even when it barely moved the position.
+ *
+ * **Only after an accepted upload.** A row left `Open` by a failure carries a position the server does not
+ * have, and dropping its retry would lose progress: product priority 2, and the opposite of the defect
+ * this fixes.
+ *
+ * **A tolerance, not equality**, and the log is why. Two consecutive syncs of a *paused* player reported
+ * `22256204ms` and `22256207ms` — three milliseconds apart, because the position is read back from the
+ * player rather than remembered. Exact equality would have skipped neither.
+ * [REDUNDANT_POSITION_TOLERANCE_MS] is far below the thirty seconds a playing book covers between
+ * interval syncs and far above that drift.
+ *
+ * ### What this gives up, and it is not nothing
+ *
+ * Syncing every thirty seconds also kept the server session warm. How long Audiobookshelf leaves an
+ * un-synced session open is **unobserved** (PRODUCT_SPEC 22.4), so a long pause may now end with a sync
+ * against a session the server has closed. That path already exists and is handled — the failure marks
+ * the outbox row and the drain sends it through `/api/session/local-all` — and the skip is logged, so the
+ * next device run can tell the two apart. `docs/risks.md` R-91.
+ */
+internal fun PlaybackSessionEntity.isRedundant(progress: SessionProgress, trigger: SyncTrigger): Boolean {
+    if (trigger != SyncTrigger.Interval && trigger != SyncTrigger.AppBackgrounded) return false
+    if (state != SessionOutboxState.SYNCED) return false
+    val positionMoved =
+        (progress.position.inWholeMilliseconds - positionMillis).absoluteValue >= REDUNDANT_POSITION_TOLERANCE_MS
+    val listenedGrew =
+        progress.timeListened.inWholeMilliseconds - timeListenedMillis >= REDUNDANT_POSITION_TOLERANCE_MS
+    return !positionMoved && !listenedGrew
+}
+
+/**
+ * How far a *paused* player's reported position may drift and still count as unchanged, in milliseconds.
+ *
+ * A second. The position is read back from the player on every sync rather than remembered, so it wobbles
+ * by a few milliseconds even at a standstill; a playing book covers thirty seconds between interval syncs.
+ * Nothing in between is a case this has to tell apart.
+ */
+private const val REDUNDANT_POSITION_TOLERANCE_MS = 1_000L

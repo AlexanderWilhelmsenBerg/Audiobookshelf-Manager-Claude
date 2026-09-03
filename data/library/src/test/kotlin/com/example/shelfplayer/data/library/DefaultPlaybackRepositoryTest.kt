@@ -17,17 +17,18 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
-import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.auth.AccountProgress
-import com.example.shelfplayer.core.model.download.OfflineBook
-import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.playback.AcknowledgedPause
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
+import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
+import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.download.SmartDownload
-import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -47,6 +48,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -75,6 +77,9 @@ class DefaultPlaybackRepositoryTest {
     /** PRODUCT_SPEC DL-005 / 6.5 — records the halfway triggers a write produced, so absence is assertable. */
     private val smartDownloads = mutableListOf<LibraryItemId>()
 
+    /** PRODUCT_SPEC SYNC-002 — the scripted half of the gateway, set up in [setUp]. */
+    private lateinit var serverProgress: ScriptedProgressGateway
+
     @Before
     fun setUp() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -83,12 +88,15 @@ class DefaultPlaybackRepositoryTest {
             .build()
         val dispatcher = UnconfinedTestDispatcher()
         val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
-        val gateway = FakeAudiobookshelfGateway(
-            loader = FixtureLibraryLoader(),
-            clock = TestAppClock(),
-            logger = logger,
-            ioDispatcher = dispatcher,
+        val gateway = ScriptedProgressGateway(
+            FakeAudiobookshelfGateway(
+                loader = FixtureLibraryLoader(),
+                clock = TestAppClock(),
+                logger = logger,
+                ioDispatcher = dispatcher,
+            ),
         )
+        serverProgress = gateway
 
         repository = DefaultPlaybackRepository(
             profileRepository = profiles,
@@ -461,10 +469,299 @@ class DefaultPlaybackRepositoryTest {
         .observe(profileId.value, EntityKey.of(SERVER, bookId.value), limit = 50)
         .first()
 
+    // ------------------------------------------- PRODUCT_SPEC SYNC-002, the check before an in-app Play
+
+    /*
+     * These are about one question — has another device moved this book since we last agreed with the
+     * server about it — and the three answers it has.
+     *
+     * The question is asked against an `AcknowledgedPause`: a position this device stopped at *and the
+     * server confirmed it had taken*. That is a fact about both sides, which is what makes the comparison
+     * mean anything. Four earlier versions compared something else — the server's `lastUpdate` against a
+     * row this app had itself written from that same value (R-88), how long ago the listener pressed pause
+     * (R-89), `hasUnsyncedChanges` (R-92, R-93) — and each produced a device run where Play resumed on a
+     * stale position. None of them is read here.
+     *
+     * What each answer *costs* matters as much as which one it is: the first version read the account's
+     * whole listening history page by page and a device reported the Play taking seconds. `requests` is
+     * asserted for that reason, not for tidiness.
+     */
+
+    /** The server holds something other than the pause it acknowledged: the one case that moves. */
+    @Test
+    fun `a server position other than the acknowledged pause is reported as ahead`() = runTest {
+        serverProgress.answer = serverAt(61.minutes)
+
+        val outcome = repository.checkServerPosition(BOOK, acknowledged(10.minutes))
+
+        assertEquals(ExternalSessionCheck.Ahead(61.minutes), outcome)
+        assertEquals(1, serverProgress.requests, "one request for one book, never a sweep of the account")
+    }
+
+    /**
+     * **A server position that is *behind* the baseline is adopted just the same.**
+     *
+     * Somebody rewinding on another device is activity that happened after our acknowledgement even though
+     * the number is smaller. This is the case a position-magnitude comparison gets backwards, and it is
+     * why only the *distance* from the baseline is ever read.
+     */
+    @Test
+    fun `an earlier server position than the acknowledged pause is still adopted`() = runTest {
+        serverProgress.answer = serverAt(20.minutes)
+
+        assertEquals(
+            ExternalSessionCheck.Ahead(20.minutes),
+            repository.checkServerPosition(BOOK, acknowledged(60.minutes)),
+        )
+    }
+
+    /**
+     * The server is still holding the pause it acknowledged, so nothing happened and nothing moves.
+     *
+     * A late `lastUpdate` is supplied deliberately: our own upload bumps the server's timestamp, and a
+     * version that read it would have called this remote activity. The timestamp is not read at all.
+     */
+    @Test
+    fun `the server still holding the acknowledged pause keeps the local position`() = runTest {
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(position = 30.minutes, updatedAt = Instant.ofEpochMilli(9_000L), isFinished = false),
+        )
+
+        assertEquals(
+            ExternalSessionCheck.Current,
+            repository.checkServerPosition(BOOK, acknowledged(30.minutes)),
+        )
+        assertEquals(1, serverProgress.requests, "an acknowledged pause is always asked about")
+    }
+
+    /**
+     * **A row this app has already refreshed from the server still moves the player.**
+     *
+     * The case that cost a second device report. When BookWave is open and another client moves a book,
+     * `ObserveRealtimeUpdatesUseCase` applies the push and `ProgressMappers.toEntity` stores the server's
+     * own `lastUpdate` as the row's `updatedAt` — so the two timestamps become **equal**, and the old
+     * `lastUpdate > updatedAt` condition answered `Current` while Media3 still held the old position,
+     * because refreshing a database row does not move a loaded player.
+     *
+     * The row here is exactly what a server-sourced write leaves behind — position 15:00, the server's
+     * timestamp, nothing unsent — while the pause this device had acknowledged was 10:00. The answer must
+     * be `Ahead`, and it is, because the row is not consulted either.
+     */
+    @Test
+    fun `a row already refreshed from the server still reports the baseline as overtaken`() = runTest {
+        val serverTimestamp = Instant.ofEpochMilli(2_000L)
+        seedServerSourcedProgress(position = 15.minutes, at = serverTimestamp)
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(position = 15.minutes, updatedAt = serverTimestamp, isFinished = false),
+        )
+
+        assertEquals(
+            ExternalSessionCheck.Ahead(15.minutes),
+            repository.checkServerPosition(BOOK, acknowledged(10.minutes)),
+            "the row agrees with the server; the acknowledged pause is the thing that has been overtaken",
+        )
+    }
+
+    /** A second of drift is rounding between a fractional wire value and a stored millisecond, not a device. */
+    @Test
+    fun `a difference inside the tolerance keeps the local position`() = runTest {
+        serverProgress.answer = serverAt(30.minutes + 1.seconds)
+
+        assertEquals(
+            ExternalSessionCheck.Current,
+            repository.checkServerPosition(BOOK, acknowledged(30.minutes)),
+        )
+    }
+
+    /**
+     * **`hasUnsyncedChanges` does not skip the request, and this is the rework.**
+     *
+     * It used to. The reasoning sounded right — a row still owing the server an upload is the truth by
+     * definition, so why ask — and it was the fourth thing to break this feature. The flag is
+     * *persistence bookkeeping*: it says whether a queue is empty, not whether anybody else listened. A
+     * journal write that landed after its own acknowledgement re-raised it with nothing left to lower it,
+     * and the check then stopped asking the server about that book at all. The device log's contradiction
+     * is one line: a `200` accepting `22461280ms` at 19:58:08, and `Skipped the freshness check …
+     * stored=22461280ms player=22461280ms` at 19:58:54. `docs/risks.md` R-95.
+     *
+     * So: a flagged row, an acknowledged pause, and the request **is** made.
+     */
+    @Test
+    fun `an unsynced row does not skip the request`() = runTest {
+        repository.recordPosition(BOOK, position = 40.minutes, duration = 2.hours)
+        assertTrue(storedProgress().hasUnsyncedChanges, "a fresh local position is unsent by definition")
+        serverProgress.answer = serverAt(55.minutes)
+
+        assertEquals(
+            ExternalSessionCheck.Ahead(55.minutes),
+            repository.checkServerPosition(BOOK, acknowledged(40.minutes)),
+        )
+        assertEquals(1, serverProgress.requests, "the flag is about a queue, not about another device")
+    }
+
+    /**
+     * **No acknowledged pause makes no request and moves nothing.**
+     *
+     * Every way of having no baseline lands here: nothing has paused yet, the pause's sync failed or has
+     * not answered, or the listener has seeked since. Without a moment at which this device and the server
+     * demonstrably agreed, a difference between them cannot be told from this device's own un-uploaded
+     * write — so adopting it could throw away a position (product priority 2), and the round trip would
+     * buy an answer that cannot be acted on.
+     *
+     * A cold start is the ordinary case, and it loses nothing: its position came from the server's own
+     * `/play` response.
+     */
+    @Test
+    fun `no acknowledged pause makes no request at all`() = runTest {
+        serverProgress.answer = serverAt(25.minutes)
+
+        assertEquals(
+            ExternalSessionCheck.Unavailable,
+            repository.checkServerPosition(BOOK, baseline = null),
+        )
+        assertEquals(0, serverProgress.requests, "nothing to compare against, so nothing to ask")
+    }
+
+    /**
+     * A baseline for a *different* book is no baseline either.
+     *
+     * The service invalidates on a track boundary, so this should not arise — but a Play that raced a book
+     * change would otherwise judge the new book's server position against the old book's pause, which is
+     * the one way this comparison could adopt a position from the wrong book entirely.
+     */
+    @Test
+    fun `a baseline for another book makes no request`() = runTest {
+        serverProgress.answer = serverAt(25.minutes)
+
+        assertEquals(
+            ExternalSessionCheck.Unavailable,
+            repository.checkServerPosition(
+                UNPLAYED,
+                AcknowledgedPause(bookId = BOOK, position = 10.minutes, generation = 4),
+            ),
+        )
+        assertEquals(0, serverProgress.requests)
+    }
+
+    /** A failed read is the outcome that earns the struck-through cloud: resumed, but unverified. */
+    @Test
+    fun `a failed read reports the server was not reached`() = runTest {
+        serverProgress.answer = AppResult.Failure(AppError.Network(summary = "No connection."))
+
+        assertEquals(
+            ExternalSessionCheck.Unavailable,
+            repository.checkServerPosition(BOOK, acknowledged(10.minutes)),
+        )
+    }
+
+    /**
+     * **The reported case, whole: 10:00 acknowledged here, 15:00 on the web.**
+     *
+     * The device report was *"play, then play on web, then play in BookWave again — progress doesn't
+     * sync"*, and five defects were needed to produce it. This pins the shape it finally took:
+     *
+     *  1. BookWave plays to 10:00 and pauses. `recordPosition` journals it and flags the row.
+     *  2. The pause sync uploads it; `ProgressDao.markProgressSynced` clears the flag and the pause is
+     *     **acknowledged** — the server and this device demonstrably hold the same number.
+     *  3. The web player listens on to 15:00.
+     *  4. Play is pressed here. The server is asked, **once**, and answers `Ahead(15:00)` — because it is
+     *     no longer holding the position it acknowledged, and nothing else about that is ambiguous.
+     *
+     * Step 2's clear is the real call `DefaultSessionSyncRepository` makes;
+     * `DefaultSessionSyncRepositoryTest` covers when it fires and when it must not. What the resume then
+     * does with 15:00 is `AtomicResumeTest`'s: seek the service's own ExoPlayer, confirm the
+     * discontinuity, and only then play.
+     */
+    @Test
+    fun `the reported case - acknowledged at ten minutes, web at fifteen - reports fifteen`() = runTest {
+        repository.recordPosition(BOOK, position = 10.minutes, duration = 2.hours)
+        val recordedAt = storedProgress().updatedAt
+        assertTrue(storedProgress().hasUnsyncedChanges, "a fresh local position is unsent by definition")
+
+        val cleared = database.progressDao().markProgressSynced(
+            profileId = profileId.value,
+            bookKey = EntityKey.of(SERVER, BOOK.value),
+            positionMillis = 10.minutes.inWholeMilliseconds,
+            toleranceMillis = 1_000L,
+        )
+        assertEquals(1, cleared, "the upload covered the stored position, so the row is no longer unsent")
+
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(
+                position = 15.minutes,
+                updatedAt = Instant.ofEpochMilli(recordedAt + WEB_LISTENED_FOR),
+                isFinished = false,
+            ),
+        )
+
+        assertEquals(
+            ExternalSessionCheck.Ahead(15.minutes),
+            repository.checkServerPosition(BOOK, acknowledged(10.minutes)),
+        )
+        assertEquals(1, serverProgress.requests, "one request for one book, never a sweep of the account")
+    }
+
+    /** An acknowledged pause for [BOOK]. The generation is opaque to the repository and only travels. */
+    private fun acknowledged(position: Duration, bookId: LibraryItemId = BOOK): AcknowledgedPause =
+        AcknowledgedPause(bookId = bookId, position = position, generation = 7)
+
+    /** A scripted server answer. The timestamp is realistic and deliberately never decides anything. */
+    private fun serverAt(position: Duration): AppResult<ServerProgress> = AppResult.Success(
+        ServerProgress(position = position, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
+    )
+
+    /**
+     * The row a server-sourced write leaves: the server's position, the server's timestamp, nothing unsent.
+     *
+     * Written through the DAO rather than through `recordPosition`, because `recordPosition` is the *local*
+     * journal and flags what it writes. This is what `LibrarySnapshotWriter` produces when a realtime push
+     * or an account sync is applied.
+     */
+    private suspend fun seedServerSourcedProgress(position: Duration, at: Instant) {
+        database.progressDao().upsertProgress(
+            listOf(
+                MediaProgressEntity(
+                    progressKey = EntityKey.scoped(profileId.value, EntityKey.of(SERVER, BOOK.value)),
+                    profileId = profileId.value,
+                    bookKey = EntityKey.of(SERVER, BOOK.value),
+                    serverId = SERVER,
+                    positionMillis = position.inWholeMilliseconds,
+                    durationMillis = 2.hours.inWholeMilliseconds,
+                    isFinished = false,
+                    updatedAt = at.toEpochMilli(),
+                    hasUnsyncedChanges = false,
+                ),
+            ),
+        )
+    }
+
     private suspend fun storedProgress(): MediaProgressEntity =
         requireNotNull(database.progressDao().findProgress(profileId.value, EntityKey.of(SERVER, BOOK.value))) {
             "no progress row was written"
         }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the fixture gateway, with `serverProgress` scripted and counted.
+     *
+     * Delegation rather than a hand-written stub: every other call goes to [FakeAudiobookshelfGateway], so
+     * this file's other twenty-odd cases are unaffected and cannot start passing for a new reason.
+     * [requests] exists because the defect being fixed was a cost, not a wrong answer — a version that
+     * returned the right outcome after four round trips would pass every assertion above it.
+     */
+    private class ScriptedProgressGateway(private val delegate: AudiobookshelfGateway) :
+        AudiobookshelfGateway by delegate,
+        PlaybackApi by delegate.playback {
+        var answer: AppResult<ServerProgress> = AppResult.Failure(AppError.Network(summary = "not scripted"))
+        var requests: Int = 0
+            private set
+
+        override val playback: PlaybackApi get() = this
+
+        override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> {
+            requests += 1
+            return answer
+        }
+    }
 
     /** The active profile, without a database of profiles behind it. */
     // ------------------------------------------- PRODUCT_SPEC 6.5, whose row a write lands on
@@ -555,57 +852,6 @@ class DefaultPlaybackRepositoryTest {
      * The offline path has its own tests. Here the point is that a repository with no local copy behaves
      * exactly as it did before downloads existed, and a stub that answers `null` is what asserts that.
      */
-    private object NoDownloads : DownloadRepository {
-        override fun observeAll(): Flow<List<OfflineBook>> = flowOf(emptyList())
-        override fun observe(serverId: ServerId, itemId: LibraryItemId): Flow<OfflineBook?> = flowOf(null)
-        override fun observeCompletedFor(profileId: ProfileId): Flow<Set<LibraryItemId>> = flowOf(emptySet())
-        override fun observeTotalBytes(): Flow<Long> = flowOf(0)
-        override suspend fun freeBytes(): Long = Long.MAX_VALUE
-        override suspend fun request(
-            serverId: ServerId,
-            itemId: LibraryItemId,
-            profileId: ProfileId,
-            files: List<OfflineFile>,
-        ): AppResult<OfflineBook> = unsupported()
-
-        override suspend fun updateFile(
-            serverId: ServerId,
-            itemId: LibraryItemId,
-            file: OfflineFile,
-        ): AppResult<Unit> = unsupported()
-
-        override suspend fun markComplete(
-            serverId: ServerId,
-            itemId: LibraryItemId,
-            coverUri: String?,
-        ): AppResult<OfflineBook> = unsupported()
-
-        override suspend fun markFailed(serverId: ServerId, itemId: LibraryItemId, summary: String): AppResult<Unit> =
-            unsupported()
-
-        override suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = unsupported()
-
-        override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = unsupported()
-
-        override suspend fun setPinned(
-            serverId: ServerId,
-            itemId: LibraryItemId,
-            profileId: ProfileId,
-            isPinned: Boolean,
-        ): AppResult<Unit> = unsupported()
-
-        override suspend fun release(
-            serverId: ServerId,
-            itemId: LibraryItemId,
-            profileId: ProfileId,
-        ): AppResult<Boolean> = unsupported()
-
-        override suspend fun unreferenced(): AppResult<List<OfflineBook>> = unsupported()
-        override suspend fun forget(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = unsupported()
-
-        private fun <T> unsupported(): AppResult<T> =
-            AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this test"))
-    }
 
     private companion object {
         const val SERVER = "fixture-server"
@@ -629,5 +875,8 @@ class DefaultPlaybackRepositoryTest {
          * stale read rewinding a book — so a test about *newer* server data has to actually be newer.
          */
         val LATER: Instant = Instant.ofEpochMilli(1_800_000_000_000)
+
+        /** How long the web player listened for in the reported case, in milliseconds after our own write. */
+        const val WEB_LISTENED_FOR = 300_000L
     }
 }
