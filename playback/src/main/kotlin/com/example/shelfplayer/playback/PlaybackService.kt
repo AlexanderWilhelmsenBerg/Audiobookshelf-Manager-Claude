@@ -493,8 +493,15 @@ class PlaybackService : MediaLibraryService() {
                 // playback had started would be audible as a stutter.
                 autoRewind.onResumed()
             } else {
-                scope.launch { recordPosition() }
-                sessionSync.request(SyncTrigger.Paused)
+                // Serialized, and that ordering is the defect. `recordPosition` raises
+                // `hasUnsyncedChanges`; the sync that follows is what lowers it again. Launched
+                // separately, the record could land *after* the sync had already acknowledged the same
+                // position — leaving a flag up that nothing would ever take down, and a freshness check
+                // that short-circuited on it without asking the server. `docs/risks.md` R-93.
+                scope.launch {
+                    recordPosition()
+                    sessionSync.request(SyncTrigger.Paused)
+                }
             }
         }
 
@@ -567,8 +574,11 @@ class PlaybackService : MediaLibraryService() {
             // this fires for every book including one started from a car or by a media button, and the wait
             // to hear a book is the wait for *that* book.
             if (mediaItem != null) metrics.onItemPrepared()
-            scope.launch { recordPosition() }
-            sessionSync.request(SyncTrigger.TrackChanged)
+            // Record before the sync that acknowledges it — see the pause branch and R-93.
+            scope.launch {
+                recordPosition()
+                sessionSync.request(SyncTrigger.TrackChanged)
+            }
         }
 
         /**
@@ -589,8 +599,11 @@ class PlaybackService : MediaLibraryService() {
                 // PRODUCT_SPEC PLAY-009 — "rewind is not applied after a user seek". A listener who chose a
                 // position chose it; moving it afterwards is the app overruling them.
                 autoRewind.onSeeked()
-                scope.launch { recordPosition() }
-                sessionSync.request(SyncTrigger.SeekCompleted)
+                // Record before the sync that acknowledges it — see the pause branch and R-93.
+                scope.launch {
+                    recordPosition()
+                    sessionSync.request(SyncTrigger.SeekCompleted)
+                }
             }
         }
 
@@ -618,8 +631,11 @@ class PlaybackService : MediaLibraryService() {
                 else -> Unit
             }
             if (playbackState == Player.STATE_ENDED) {
-                scope.launch { recordPosition() }
-                sessionSync.request(SyncTrigger.BookChanged)
+                // Record before the sync that acknowledges it — see the pause branch and R-93.
+                scope.launch {
+                    recordPosition()
+                    sessionSync.request(SyncTrigger.BookChanged)
+                }
                 // PRODUCT_SPEC 6.4 step 6 — after the position is journalled and the sync is asked for,
                 // never before: the book that just ended has to be recorded as finished whether or not
                 // anything follows it, and an advance that failed must not have cost the last write.

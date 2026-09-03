@@ -29,6 +29,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.absoluteValue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -196,6 +197,21 @@ class DefaultPlaybackRepository @Inject constructor(
         val stored = progressDao.findProgress(profileId.value, bookKey)
         val isFinished = thresholdFor(bookKey).isFinished(position = position, duration = duration)
         val now = clock.now()
+        // PRODUCT_SPEC SYNC-002 — **a write that changes nothing cannot make a synced row unsent.**
+        //
+        // This used to be an unconditional `true`, and it is the last of the four ways one report kept
+        // coming back. The service records a position and asks for a sync; the sync uploads it and clears
+        // the flag. A *second* record of the same position — a pause from audio focus loss arriving after
+        // a user pause, a track callback firing behind a seek — then raised the flag again over an upload
+        // that had already acknowledged it, and nothing was left to take it down. `checkServerPosition`
+        // short-circuits on the flag, so it stopped asking the server at all: a device log shows the
+        // contradiction plainly, a `200` for 22461280ms at 19:58:08 and `stored=22461280ms
+        // player=22461280ms` still claiming unsent progress at 19:58:54. `docs/risks.md` R-93.
+        //
+        // The ordering is fixed at the producer too, but this is what makes it safe rather than lucky:
+        // no interleaving of a record and its own acknowledgement can invent unsent progress that does
+        // not exist.
+        val isUnchanged = stored.alreadyHolds(position = position, duration = duration, isFinished = isFinished)
         progressDao.upsertProgress(
             listOf(
                 MediaProgressEntity(
@@ -210,7 +226,7 @@ class DefaultPlaybackRepository @Inject constructor(
                         ?: stored?.durationMillis ?: 0,
                     isFinished = isFinished || stored?.isFinished == true,
                     updatedAt = now.toEpochMilli(),
-                    hasUnsyncedChanges = true,
+                    hasUnsyncedChanges = !isUnchanged,
                 ),
             ),
         )
@@ -302,6 +318,34 @@ class DefaultPlaybackRepository @Inject constructor(
             )
             gateway.playback.setFinished(profileId, bookId, isFinished, at)
         }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — whether this row already says everything the incoming write would say.
+     *
+     * Split out because `recordPosition` was at detekt's complexity limit, and it reads better here
+     * anyway: three fields and a flag, each of which is a reason the server might need telling.
+     *
+     * The **flag itself is a condition**, and the important one. A row that is already claiming unsent
+     * progress keeps claiming it however little this write moves: the question is not "did anything
+     * change" but "is this row now saying something the server has not been told", and a row that was
+     * behind stays behind.
+     *
+     * The tolerance is [UNCHANGED_TOLERANCE_MS] rather than exact equality because every write reads the
+     * player afresh; two records of a standing player land a few milliseconds apart.
+     */
+    private fun MediaProgressEntity?.alreadyHolds(
+        position: Duration,
+        duration: Duration,
+        isFinished: Boolean,
+    ): Boolean {
+        val row = this ?: return false
+        if (row.hasUnsyncedChanges) return false
+        val samePosition =
+            (position.inWholeMilliseconds - row.positionMillis).absoluteValue <= UNCHANGED_TOLERANCE_MS
+        val sameFinished = (isFinished || row.isFinished) == row.isFinished
+        val sameDuration = (duration.inWholeMilliseconds.takeIf { it > 0 } ?: row.durationMillis) == row.durationMillis
+        return samePosition && sameFinished && sameDuration
+    }
 
     /**
      * PRODUCT_SPEC SYNC-002 — whether the position the player is holding is still the right one.
@@ -455,5 +499,17 @@ class DefaultPlaybackRepository @Inject constructor(
          * listened, which a tighter tolerance would report as remote activity on every resume.
          */
         val POSITION_TOLERANCE: Duration = 5.seconds
+
+        /**
+         * How far a re-recorded position may drift and still count as *the same* position, in milliseconds.
+         *
+         * A second, matching `DefaultSessionSyncRepository`'s and for the same reason: every write reads
+         * the player afresh rather than remembering, so two records of a standing player land a few
+         * milliseconds apart. Two consecutive syncs of a paused book logged `22256204ms` and `22256207ms`.
+         *
+         * Well below [POSITION_TOLERANCE], deliberately. This asks "did anything move at all"; that one
+         * asks "did somebody else move it".
+         */
+        const val UNCHANGED_TOLERANCE_MS = 1_000L
     }
 }
