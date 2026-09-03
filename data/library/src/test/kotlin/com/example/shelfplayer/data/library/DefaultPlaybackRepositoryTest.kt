@@ -514,7 +514,13 @@ class DefaultPlaybackRepositoryTest {
         )
     }
 
-    /** Our own upload bumps the server's `lastUpdate`, so a newer timestamp alone must not move anything. */
+    /**
+     * Our own upload bumps the server's `lastUpdate`, and a newer timestamp alone must not move anything.
+     *
+     * The timestamp is not read at all any more, so this passes for a simpler reason than it used to: the
+     * server is holding the position the player is already on. That is the case it always had to cover —
+     * a resume after this device's own sync — and the position is what settles it.
+     */
     @Test
     fun `a newer timestamp at the same position keeps the local one`() = runTest {
         syncedProgress(position = 30.minutes, at = 1_000L)
@@ -525,6 +531,33 @@ class DefaultPlaybackRepositoryTest {
         assertEquals(
             ExternalSessionCheck.Current,
             repository.checkServerPosition(BOOK, localPosition = 30.minutes),
+        )
+    }
+
+    /**
+     * **A row this app has already refreshed from the server still moves the player.**
+     *
+     * The case that cost a second device report. When BookWave is open and another client moves a book,
+     * `ObserveRealtimeUpdatesUseCase` applies the push and `ProgressMappers.toEntity` stores the server's
+     * own `lastUpdate` as the row's `updatedAt` — so the two timestamps become **equal** and the old
+     * `lastUpdate > updatedAt` condition answered `Current`. Meanwhile Media3 was untouched and still held
+     * the old position, because refreshing a database row does not move a loaded player.
+     *
+     * So the row here is exactly what a server-sourced write leaves behind — position 15:00, the server's
+     * timestamp, nothing unsent — while the player is still at 10:00. The answer must be `Ahead`.
+     */
+    @Test
+    fun `a row already refreshed from the server still reports the player as behind`() = runTest {
+        val serverTimestamp = Instant.ofEpochMilli(2_000L)
+        seedServerSourcedProgress(position = 15.minutes, at = serverTimestamp)
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(position = 15.minutes, updatedAt = serverTimestamp, isFinished = false),
+        )
+
+        assertEquals(
+            ExternalSessionCheck.Ahead(15.minutes),
+            repository.checkServerPosition(BOOK, localPosition = 10.minutes),
+            "the row agrees with the server; the player is the thing that is behind",
         )
     }
 
@@ -608,6 +641,81 @@ class DefaultPlaybackRepositoryTest {
         assertEquals(
             ExternalSessionCheck.Unavailable,
             repository.checkServerPosition(BOOK, localPosition = 10.minutes),
+        )
+    }
+
+    /**
+     * **The reported case, whole: 10:00 here, 15:00 on the web, and the flag in between.**
+     *
+     * The device report was *"play, then play on web, then play in BookWave again — progress doesn't
+     * sync"*, and it took three separate defects to produce. This pins the one that lives in this class,
+     * in the order the listener met it:
+     *
+     *  1. BookWave plays to 10:00. `recordPosition` flags the row as this device's alone.
+     *  2. The check answers `Current` **without asking** — correct while the position really is unsent,
+     *     and before R-86 it stayed that way forever, because nothing ever cleared the flag.
+     *  3. The sync uploads it and clears the flag through `ProgressDao.markProgressSynced` — the exact
+     *     call `DefaultSessionSyncRepository` makes; `DefaultSessionSyncRepositoryTest` covers when it
+     *     fires and when it must not.
+     *  4. The web player listens on to 15:00. Play is pressed here, more than the pause gate later —
+     *     `PlayerViewModel` owns that gate — and now the server is asked, once, and answers `Ahead`. The
+     *     server's timestamp is supplied realistically and is not what decides it: see R-88.
+     *
+     * What the resume then does with that position is `ResumeSurfaceTest`'s: prepare if needed, seek to
+     * 15:00, and only then play, so the first sound is from 15:00 rather than from 10:00.
+     */
+    @Test
+    fun `the reported case - synced at ten minutes, web at fifteen - reports fifteen`() = runTest {
+        repository.recordPosition(BOOK, position = 10.minutes, duration = 2.hours)
+        val recordedAt = storedProgress().updatedAt
+        assertTrue(storedProgress().hasUnsyncedChanges, "a fresh local position is unsent by definition")
+        serverProgress.answer = AppResult.Success(
+            ServerProgress(
+                position = 15.minutes,
+                updatedAt = Instant.ofEpochMilli(recordedAt + WEB_LISTENED_FOR),
+                isFinished = false,
+            ),
+        )
+
+        assertEquals(ExternalSessionCheck.Current, repository.checkServerPosition(BOOK, localPosition = 10.minutes))
+        assertEquals(0, serverProgress.requests, "an unsent position has nothing to reconcile against")
+
+        val cleared = database.progressDao().markProgressSynced(
+            profileId = profileId.value,
+            bookKey = EntityKey.of(SERVER, BOOK.value),
+            uploadedAt = recordedAt,
+        )
+
+        assertEquals(1, cleared, "the upload covered the stored position, so the row is no longer unsent")
+        assertEquals(
+            ExternalSessionCheck.Ahead(15.minutes),
+            repository.checkServerPosition(BOOK, localPosition = 10.minutes),
+        )
+        assertEquals(1, serverProgress.requests, "one request for one book, never a sweep of the account")
+    }
+
+    /**
+     * The row a server-sourced write leaves: the server's position, the server's timestamp, nothing unsent.
+     *
+     * Written through the DAO rather than through `recordPosition`, because `recordPosition` is the *local*
+     * journal and flags what it writes. This is what `LibrarySnapshotWriter` produces when a realtime push
+     * or an account sync is applied.
+     */
+    private suspend fun seedServerSourcedProgress(position: Duration, at: Instant) {
+        database.progressDao().upsertProgress(
+            listOf(
+                MediaProgressEntity(
+                    progressKey = EntityKey.scoped(profileId.value, EntityKey.of(SERVER, BOOK.value)),
+                    profileId = profileId.value,
+                    bookKey = EntityKey.of(SERVER, BOOK.value),
+                    serverId = SERVER,
+                    positionMillis = position.inWholeMilliseconds,
+                    durationMillis = 2.hours.inWholeMilliseconds,
+                    isFinished = false,
+                    updatedAt = at.toEpochMilli(),
+                    hasUnsyncedChanges = false,
+                ),
+            ),
         )
     }
 
@@ -816,5 +924,8 @@ class DefaultPlaybackRepositoryTest {
          * stale read rewinding a book — so a test about *newer* server data has to actually be newer.
          */
         val LATER: Instant = Instant.ofEpochMilli(1_800_000_000_000)
+
+        /** How long the web player listened for in the reported case, in milliseconds after our own write. */
+        const val WEB_LISTENED_FOR = 300_000L
     }
 }

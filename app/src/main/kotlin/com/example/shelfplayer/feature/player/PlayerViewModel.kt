@@ -339,6 +339,12 @@ class PlayerViewModel @Inject constructor(
      * book; the position is the only thing that was wrong, and the reload was a second source of the delay
      * this is fixing.
      *
+     * The seek and the resume are **one** call — [PlaybackController.resumeLoadedAt]. They used to be two,
+     * `seekTo` then `togglePlayPause`, and that was the defect: each launched its own coroutine and only the
+     * second one connected, so a resume after the controller had been released played from the stale
+     * position with nothing recorded to say why. Reported from a device. `ResumeSurfaceTest` now holds the
+     * order — prepare if needed, seek, play — so it cannot come apart again.
+     *
      * Whichever of the three outcomes it lands on is written into the book's history by
      * [recordCheckOutcome], so "resumed on a verified position" and "resumed because the server was
      * unreachable" are distinguishable afterwards rather than only in the moment.
@@ -371,8 +377,11 @@ class PlayerViewModel @Inject constructor(
                 // A slower answer may outlive the Play it belonged to. The book and state that now own the
                 // player win; an old request must never move or toggle them.
                 if (latest.bookId != bookId || latest.isPlaying) return@launch
-                (outcome as? ExternalSessionCheck.Ahead)?.let { ahead -> controller.seekTo(ahead.position) }
-                controller.togglePlayPause()
+                // One call, not two. `resumeLoadedAt` connects, prepares if it has to, seeks and only
+                // then plays, all inside a single main-thread block — see `ResumeSurface.kt` for why the
+                // two-call form dropped the seek. `null` means "resume where you are".
+                val target = (outcome as? ExternalSessionCheck.Ahead)?.position
+                controller.resumeLoadedAt(target)
             } finally {
                 recordCheckOutcome(bookId, pressedAt, outcome)
                 resumeJob = null

@@ -304,20 +304,42 @@ class DefaultPlaybackRepository @Inject constructor(
         }
 
     /**
-     * PRODUCT_SPEC SYNC-002 — whether the server has been moved on since this device last wrote.
+     * PRODUCT_SPEC SYNC-002 — whether the position the player is holding is still the right one.
      *
-     * ### The three answers, and which facts produce each
+     * ### One gate and one comparison
      *
-     * `Ahead` needs two things to be true: the server's `lastUpdate` is later than the moment this device
-     * last recorded a position, **and** the stored position differs from where the player actually is by
-     * more than [POSITION_TOLERANCE]. The timestamp alone is not enough — our own upload bumps
-     * `lastUpdate`, so every resume after a sync would otherwise look like somebody else — and the
-     * position alone is not enough either, since it cannot tell a remote change from our own unsynced one.
-     * The two timestamps come from two different clocks; [outcomeOf] carries what that does and does not
-     * cost.
+     * `Ahead` needs two things: the book has **no unsynced local progress**, and the server's position is
+     * more than [POSITION_TOLERANCE] from where the player actually is. Together those say "somebody else
+     * moved this book", and neither alone does.
+     *
+     * The gate is what makes the comparison mean that. Every `recordPosition` sets
+     * `hasUnsyncedChanges`, and only a successful upload clears it, so a **clear** flag is the app's own
+     * statement that the server holds this device's latest recorded position. A paused player sits on that
+     * same recorded position — the recording happens on pause, on every seek and on every track change —
+     * so if the server now disagrees with the player and we have nothing unsent, the disagreement did not
+     * come from here.
      *
      * The tolerance exists because both sides round: the wire carries fractional seconds and the local row
      * carries milliseconds, and a resume must not seek by half a second and call it another device.
+     *
+     * ### Why there is no longer a timestamp comparison, which is a correction
+     *
+     * This used to *also* require the server's `lastUpdate` to be later than the local row's `updatedAt`,
+     * and that condition vetoed the very case the check exists for. Two ways:
+     *
+     *  - **Two clocks.** `lastUpdate` is the server's; `updatedAt` is written from this device's. A phone
+     *    running fast hid real remote activity for the size of the skew. That was recorded as R-86 and left
+     *    open.
+     *  - **Our own refresh made the timestamps equal.** A server-sourced write — `ObserveRealtimeUpdates`
+     *    applying a `user_updated` push, or `SyncAccountUseCase` — stores the server's `lastUpdate` *as*
+     *    `updatedAt` (see `ProgressMappers.toEntity`). So once the app had noticed the remote change,
+     *    `lastUpdate > updatedAt` was false and the check answered `Current` — while the loaded player was
+     *    still sitting on the old position, because refreshing a database row does not move Media3. This
+     *    is the second reason a device saw the history pane say *"listened on another device"* and Play
+     *    resume where it was anyway. `docs/risks.md` R-88.
+     *
+     * Dropping it costs nothing the gate was not already covering: a resume this device is responsible for
+     * has either an unsent position (gate) or a server that agrees with the player (comparison).
      *
      * ### What returns `Current` without a request
      *
@@ -335,8 +357,7 @@ class DefaultPlaybackRepository @Inject constructor(
      * This used to answer `Current` without asking, reasoning that a first play had just loaded from the
      * server's own position so there was nothing to check. That holds only while the loaded position is
      * *fresh*. A book opened here and then played on another device before Play is pressed has a stale
-     * loaded position and no local row to notice it with — the case a device run hit. There is no
-     * timestamp of ours for the server's to beat, so anything it holds is somebody else's; the position
+     * loaded position and no local row to notice it with — the case a device run hit. The position
      * comparison is what stops a genuine first play seeking to where it already is.
      *
      * ### And `Unavailable`
@@ -360,41 +381,30 @@ class DefaultPlaybackRepository @Inject constructor(
 
             when (val remote = gateway.playback.serverProgress(profileId, bookId)) {
                 is AppResult.Failure -> ExternalSessionCheck.Unavailable
-                // No local row means no timestamp of ours for the server's to beat, so `0` lets the
-                // comparison run instead of skipping it. See the header.
-                is AppResult.Success -> outcomeOf(remote.value, local?.updatedAt ?: 0L, localPosition)
+                is AppResult.Success -> outcomeOf(remote.value, localPosition)
             }
         }
 
     /**
      * The comparison itself, split out so it can be read without the plumbing around it.
      *
-     * ### It spans two clocks, and that is a known limitation rather than a claim of safety
+     * [playerPosition] is where the **player** is, not what the database holds, and that is the point: a
+     * server-sourced refresh moves the row without moving Media3, so a row-to-row comparison would report
+     * agreement on a book whose audio is about to resume in the wrong place.
      *
-     * `remote.updatedAt` is the server's `lastUpdate`; [localUpdatedAt] is `MediaProgressEntity.updatedAt`,
-     * which `recordPosition` writes from **this device's** clock. So a phone whose clock runs ahead of the
-     * server hides genuine remote activity for the size of the skew, and one running behind sees its own
-     * uploads as remote.
+     * Magnitude is never compared — only distance. A rewind on another client is somebody else's decision
+     * and it is adopted exactly like a fast-forward; `max(position)` would silently overrule the listener
+     * who went back for a chapter they missed.
      *
-     * What keeps that from doing damage is the second condition: a difference in *position* beyond
-     * [POSITION_TOLERANCE]. Our own upload leaves the server holding the position we already have, so a
-     * skewed clock alone resolves to `Current`. What skew can still do is delay adopting a real remote
-     * change, and delaying is the safe direction — the position stands until the next Play asks again.
-     *
-     * The fix, if this ever bites, is to store the server's own `lastUpdate` alongside the position when a
-     * sync is accepted and compare server-to-server, which is what the official app does by keeping the
-     * `updatedAt` its session open returned. It needs a Room column, so it is recorded rather than done —
-     * `docs/risks.md` R-86.
+     * `remote.updatedAt` is deliberately unread here. See the header for why the timestamp condition was
+     * removed rather than repaired.
      */
-    private fun outcomeOf(
-        remote: ServerProgress,
-        localUpdatedAt: Long,
-        localPosition: Duration,
-    ): ExternalSessionCheck {
-        val serverIsNewer = remote.updatedAt.toEpochMilli() > localUpdatedAt
-        val moved = (remote.position - localPosition).absoluteValue > POSITION_TOLERANCE
-        return if (serverIsNewer && moved) ExternalSessionCheck.Ahead(remote.position) else ExternalSessionCheck.Current
-    }
+    private fun outcomeOf(remote: ServerProgress, playerPosition: Duration): ExternalSessionCheck =
+        if ((remote.position - playerPosition).absoluteValue > POSITION_TOLERANCE) {
+            ExternalSessionCheck.Ahead(remote.position)
+        } else {
+            ExternalSessionCheck.Current
+        }
 
     /**
      * ADR-0013 — the rule in force for one book: its own library's, read fresh on every write.

@@ -932,16 +932,32 @@ newer exists, or the server could not be asked — and only the first is allowed
 
 `Ahead` needs two facts together:
 
-- **`lastUpdate` later than the moment this device recorded its position.** Two timestamps, one of them
-  ours, neither of them a clock reading taken now — so a phone running fast or slow can neither invent
-  remote activity nor hide it. The timestamp alone is not enough, because our own upload bumps `lastUpdate`.
-- **`currentTime` more than five seconds from where the player actually is.** The position alone is not
-  enough either: it cannot tell a remote change from our own unsynced one. The tolerance is there because
-  the wire carries fractional seconds against a stored millisecond, and because auto-rewind moves the
-  player without anybody having listened.
+- **The book has no unsynced local progress.** Every `recordPosition` sets `hasUnsyncedChanges` and only a
+  successful upload clears it, so a clear flag is the app's own statement that the server holds this
+  device's latest recorded position — and a paused player is sitting on that same position, because the
+  recording happens on pause, on every seek and on every track change.
+- **`currentTime` more than five seconds from where the player actually is.** The tolerance is there
+  because the wire carries fractional seconds against a stored millisecond. The comparison is against the
+  *player*, not against the stored row: a server-sourced refresh moves the row and leaves Media3 where it
+  was, so a row-to-row comparison would report agreement on a book about to resume in the wrong place.
+
+Together those two say "somebody else moved this book", and neither alone does.
+
+**`lastUpdate` is read and stored but no longer decides this**, which is a correction. The check also used
+to require `lastUpdate` later than the local row's `updatedAt`, and that condition vetoed the case the
+check exists for: a server-sourced write stores the server's `lastUpdate` *as* `updatedAt`, so as soon as
+the app had noticed the remote change the two were equal and the answer was `Current` — with the loaded
+player still on the old position. It was also a comparison across two clocks (R-86). Both are R-88.
 
 Position *magnitude* is deliberately never compared. An intentional rewind on another client is newer
 activity even though its number is smaller, and a check that compared magnitudes would refuse to honour it.
+
+**Adopting the answer is one operation, not two.** `PlaybackController.resumeLoadedAt(position)` connects,
+prepares if the player is idle, seeks, and only then plays — inside a single `withContext(mainDispatcher)`,
+so nothing can interleave and the first sound is from the adopted position. It was two calls until R-87
+(`seekTo` then `togglePlayPause`, each launching its own coroutine, and only the second one connecting),
+which is how a device came to resume at the stale position while the history pane correctly said another
+device had moved it. `ResumeSurfaceTest` pins the order.
 
 **What the two reference clients do**, read from their sources rather than inferred:
 

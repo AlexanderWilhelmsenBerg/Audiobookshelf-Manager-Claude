@@ -213,6 +213,59 @@ class PlaybackController @Inject constructor(
     }
 
     /**
+     * PRODUCT_SPEC SYNC-002 — resumes as **one** operation, optionally at a position from another device.
+     *
+     * ### The defect this replaces
+     *
+     * Adopting another device's position was two calls from the ViewModel, `seekTo(remote)` then
+     * `togglePlayPause()`. Each launched its own coroutine, and — the part that actually broke it —
+     * [seekTo] reads the cached `controller` while [togglePlayPause] calls `connect()`. A resume after the
+     * controller had been released therefore *played without seeking*: the seek returned early on a null
+     * controller, silently, and the listener heard the stale position with nothing in the history to say
+     * why.
+     *
+     * `suspend` rather than fire-and-forget, so the caller can know it finished, and one `withContext` so
+     * the connect, the prepare, the seek and the play cannot interleave with anything else on the main
+     * thread. The order lives in [resumeAt]; see there for why it is prepare, seek, play and not any other
+     * arrangement.
+     *
+     * ### What it records
+     *
+     * A [PlaybackEvent.RemoteProgress] row when a position was adopted — "the server moved this book, and
+     * this device did not", which is exactly what happened. Nothing when [position] is `null`: an ordinary
+     * resume is already a `Play` row, written by the session callbacks.
+     *
+     * @param position where to resume, or `null` to resume where the player already is.
+     */
+    suspend fun resumeLoadedAt(position: Duration?): Unit = withContext(mainDispatcher) {
+        val media = connect() ?: return@withContext
+        if (media.mediaItemCount == 0) return@withContext
+        val from = media.bookPosition()
+        val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf)
+        val owner = media.currentMediaItem?.let(MediaItems::ownerOf)
+        media.asResumeSurface().resumeAt(position?.inWholeMilliseconds)
+        publish(media)
+        // Recorded after the fact and off this thread, for the reason `seekTo` does it that way: a database
+        // write must not sit between a finger and a position. Only when something actually moved.
+        if (position != null && bookId != null) {
+            applicationScope.launch {
+                history.record(bookId, PlaybackEvent.RemoteProgress, from, position, owner = owner)
+            }
+        }
+    }
+
+    /** Adapts the Media3 controller to the surface [resumeAt] drives. See `ResumeSurface.kt`. */
+    private fun MediaController.asResumeSurface(): ResumeSurface = object : ResumeSurface {
+        override val needsPreparing: Boolean get() = this@asResumeSurface.needsPreparing()
+
+        override fun prepare() = this@asResumeSurface.prepare()
+
+        override fun seekTo(positionMillis: Long) = this@asResumeSurface.seekTo(positionMillis)
+
+        override fun play() = this@asResumeSurface.play()
+    }
+
+    /**
      * PRODUCT_SPEC PLAY-001 — retry after a failure the service gave up on.
      *
      * The service retries a transient error a few times on its own (see [PlaybackRecovery]); this is what
@@ -259,7 +312,12 @@ class PlaybackController @Inject constructor(
      */
     private fun seekTo(position: Duration, event: PlaybackEvent) {
         applicationScope.launch(mainDispatcher) {
-            val media = controller ?: return@launch
+            // `connect()`, not the cached field. Reading `controller` directly was R-87's mechanism: a seek
+            // arriving after the controller had been released returned here silently, and the caller had no
+            // way to tell a dropped seek from a completed one. Connecting costs nothing when one is already
+            // held — `connect` returns the cached instance — and the item-count guard below is what stops a
+            // seek with no session from doing anything.
+            val media = connect() ?: return@launch
             if (media.mediaItemCount == 0) return@launch
             val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf)
             val owner = media.currentMediaItem?.let(MediaItems::ownerOf)
