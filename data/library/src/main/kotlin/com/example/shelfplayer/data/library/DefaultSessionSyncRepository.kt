@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.common.time.ServerClock
@@ -37,6 +38,7 @@ import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.absoluteValue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.milliseconds
@@ -163,6 +165,15 @@ class DefaultSessionSyncRepository @Inject constructor(
             ?: return@withContext AppResult.Failure(
                 AppError.Conflict(summary = "That listening session is no longer recorded on this device."),
             )
+        if (!closing && stored.isRedundant(progress, trigger)) {
+            logger.debug(
+                LogCategory.Playback,
+                "Nothing new to sync, so the server's position is left alone",
+                LogField.Public("trigger", trigger.name),
+                LogField.Millis("position", progress.position.inWholeMilliseconds),
+            )
+            return@withContext AppResult.Success(Unit)
+        }
         // Stored before the request, and stored whatever the request does.
         outbox.upsert(
             stored.copy(
@@ -378,3 +389,70 @@ class DefaultSessionSyncRepository @Inject constructor(
         const val NOT_ACCEPTED = "not_accepted"
     }
 }
+
+/**
+ * PRODUCT_SPEC SYNC-002 — whether this sync would tell the server anything it does not already know.
+ *
+ * ### The defect this exists for, which was destroying other devices' progress
+ *
+ * `POST /api/session/{id}/sync` is a **write**. It sets the session's `currentTime`, and Audiobookshelf
+ * carries that through to the item's media progress — so every sync overwrites whatever any other client
+ * has put there since.
+ *
+ * BookWave sent one every thirty seconds *whether or not the position had moved*, including while paused.
+ * A device log caught it:
+ *
+ * ```
+ * 14:41:46 trigger=Paused          position=22207165ms   <- real; the player had moved
+ * 14:42:04 trigger=Interval        position=22207165ms   <- same position, paused
+ * 14:42:17 trigger=AppBackgrounded position=22207165ms   <- same position again
+ * ```
+ *
+ * The listener paused, went to the web player, moved the book to 2:25:25 — and BookWave posted 6:10:07
+ * back over it within thirty seconds. The freshness check then asked the server, which by that point held
+ * BookWave's own position, and correctly answered `Current`. Three device runs read as "the position
+ * doesn't sync"; the app was overwriting the answer before it asked the question.
+ *
+ * ### Three conditions, and each one is load-bearing
+ *
+ * **Only the unprompted triggers.** [SyncTrigger.Interval] and [SyncTrigger.AppBackgrounded] are the two
+ * that fire without the listener doing anything, and they are the two in the log doing the damage.
+ * Everything else — a pause, a seek, a chapter, a track, a shutdown — is somebody's decision, and a
+ * decision is reported even when it barely moved the position.
+ *
+ * **Only after an accepted upload.** A row left `Open` by a failure carries a position the server does not
+ * have, and dropping its retry would lose progress: product priority 2, and the opposite of the defect
+ * this fixes.
+ *
+ * **A tolerance, not equality**, and the log is why. Two consecutive syncs of a *paused* player reported
+ * `22256204ms` and `22256207ms` — three milliseconds apart, because the position is read back from the
+ * player rather than remembered. Exact equality would have skipped neither.
+ * [REDUNDANT_POSITION_TOLERANCE_MS] is far below the thirty seconds a playing book covers between
+ * interval syncs and far above that drift.
+ *
+ * ### What this gives up, and it is not nothing
+ *
+ * Syncing every thirty seconds also kept the server session warm. How long Audiobookshelf leaves an
+ * un-synced session open is **unobserved** (PRODUCT_SPEC 22.4), so a long pause may now end with a sync
+ * against a session the server has closed. That path already exists and is handled — the failure marks
+ * the outbox row and the drain sends it through `/api/session/local-all` — and the skip is logged, so the
+ * next device run can tell the two apart. `docs/risks.md` R-91.
+ */
+internal fun PlaybackSessionEntity.isRedundant(progress: SessionProgress, trigger: SyncTrigger): Boolean {
+    if (trigger != SyncTrigger.Interval && trigger != SyncTrigger.AppBackgrounded) return false
+    if (state != SessionOutboxState.SYNCED) return false
+    val positionMoved =
+        (progress.position.inWholeMilliseconds - positionMillis).absoluteValue >= REDUNDANT_POSITION_TOLERANCE_MS
+    val listenedGrew =
+        progress.timeListened.inWholeMilliseconds - timeListenedMillis >= REDUNDANT_POSITION_TOLERANCE_MS
+    return !positionMoved && !listenedGrew
+}
+
+/**
+ * How far a *paused* player's reported position may drift and still count as unchanged, in milliseconds.
+ *
+ * A second. The position is read back from the player on every sync rather than remembered, so it wobbles
+ * by a few milliseconds even at a standstill; a playing book covers thirty seconds between interval syncs.
+ * Nothing in between is a case this has to tell apart.
+ */
+private const val REDUNDANT_POSITION_TOLERANCE_MS = 1_000L

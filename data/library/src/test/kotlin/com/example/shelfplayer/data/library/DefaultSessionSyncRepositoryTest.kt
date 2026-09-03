@@ -77,6 +77,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -438,6 +439,163 @@ class DefaultSessionSyncRepositoryTest {
         assertIs<AppError.Conflict>(assertIs<AppResult.Failure>(result).error)
     }
 
+    // ------------------------------------------- PRODUCT_SPEC SYNC-002, not overwriting another device
+
+    /*
+     * `POST /api/session/{id}/sync` is a write, and Audiobookshelf carries the session's `currentTime`
+     * through to the item's media progress. BookWave sent one every thirty seconds whether or not the
+     * position had moved — so a listener who paused, went to the web player and moved the book had their
+     * change overwritten before they came back. A device log caught three of those writes in under a
+     * minute, all carrying the same 22207165ms while the player sat paused.
+     */
+
+    /** **A position the server has already accepted is not sent again.** This is the fix. */
+    @Test
+    fun `a sync with nothing new does not reach the server`() = runTest {
+        val sessionId = openId()
+        val paused = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes)
+        assertIs<AppResult.Success<Unit>>(
+            repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Paused),
+        )
+        val afterFirst = gateway.syncCount
+
+        // The interval tick thirty seconds later, with the player still paused on the same position.
+        val result = repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Interval)
+
+        assertIs<AppResult.Success<Unit>>(result)
+        assertEquals(afterFirst, gateway.syncCount, "the server's position was overwritten with our own")
+    }
+
+    /**
+     * **A paused player's few milliseconds of drift still count as nothing new**, and the log is why.
+     *
+     * Two consecutive syncs of the same paused player reported `22256204ms` and `22256207ms`, because the
+     * position is read back from the player on every sync rather than remembered. Exact equality would
+     * have let the second one through and overwritten the other device after all.
+     */
+    @Test
+    fun `a paused position that drifted a few milliseconds is still nothing new`() = runTest {
+        val sessionId = openId()
+        repository.syncOpenSession(
+            sessionId,
+            SessionProgress(position = 22_256_204.milliseconds, duration = 6.hours, timeListened = 2.minutes),
+            clock.now(),
+            SyncTrigger.Paused,
+        )
+        val afterFirst = gateway.syncCount
+
+        repository.syncOpenSession(
+            sessionId,
+            SessionProgress(position = 22_256_207.milliseconds, duration = 6.hours, timeListened = 2.minutes),
+            clock.now(),
+            SyncTrigger.Interval,
+        )
+
+        assertEquals(afterFirst, gateway.syncCount, "three milliseconds of drift is not news")
+    }
+
+    /**
+     * A pause, a seek or a chapter change is **somebody's decision**, and is reported even when the
+     * position barely moved.
+     *
+     * Only the two unprompted triggers are skippable. A listener who nudged the bar and let go chose that
+     * position, and the server hearing about it is the point of the sync.
+     */
+    @Test
+    fun `a prompted trigger is sent even when nothing moved`() = runTest {
+        val sessionId = openId()
+        val where = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes)
+        repository.syncOpenSession(sessionId, where, clock.now(), SyncTrigger.Interval)
+        val afterFirst = gateway.syncCount
+
+        repository.syncOpenSession(sessionId, where, clock.now(), SyncTrigger.SeekCompleted)
+
+        assertEquals(afterFirst + 1, gateway.syncCount)
+    }
+
+    /** A position that moved is sent, which is every sync while a book is actually playing. */
+    @Test
+    fun `a sync whose position moved reaches the server`() = runTest {
+        val sessionId = openId()
+        repository.syncOpenSession(
+            sessionId,
+            SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes),
+            clock.now(),
+            SyncTrigger.Interval,
+        )
+        val afterFirst = gateway.syncCount
+
+        repository.syncOpenSession(
+            sessionId,
+            SessionProgress(position = 41.minutes, duration = 6.hours, timeListened = 3.minutes),
+            clock.now(),
+            SyncTrigger.Interval,
+        )
+
+        assertEquals(afterFirst + 1, gateway.syncCount)
+    }
+
+    /**
+     * Listening time that accrued without the position moving is still reported.
+     *
+     * The two are separate facts and the server stores both. A book played at a stall — buffering, a
+     * sleep-timer fade — can add time without adding position.
+     */
+    @Test
+    fun `a sync reporting more listening time reaches the server`() = runTest {
+        val sessionId = openId()
+        repository.syncOpenSession(
+            sessionId,
+            SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes),
+            clock.now(),
+            SyncTrigger.Interval,
+        )
+        val afterFirst = gateway.syncCount
+
+        repository.syncOpenSession(
+            sessionId,
+            SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 4.minutes),
+            clock.now(),
+            SyncTrigger.Interval,
+        )
+
+        assertEquals(afterFirst + 1, gateway.syncCount)
+    }
+
+    /**
+     * **A retry after a failed upload is never skipped**, which is what makes the rule safe.
+     *
+     * The skip is gated on the last upload having been *accepted*. A row left `Open` by a failure carries
+     * a position the server does not have, and dropping its retry would lose progress — product
+     * priority 2, and the opposite of the defect this rule fixes.
+     */
+    @Test
+    fun `a retry after a failed sync still reaches the server`() = runTest {
+        val sessionId = openId()
+        val paused = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes)
+        gateway.syncResult = AppResult.Failure(AppError.Network(summary = "No connection."))
+        repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Paused)
+        val afterFailure = gateway.syncCount
+        gateway.syncResult = AppResult.Success(Unit)
+
+        repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Interval)
+
+        assertEquals(afterFailure + 1, gateway.syncCount, "an unsent position must always get another go")
+    }
+
+    /** And a **close** is never skipped: it finalizes the session, which the position alone does not. */
+    @Test
+    fun `closing a session is not skipped when the position has not moved`() = runTest {
+        val sessionId = openId()
+        val paused = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes)
+        repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Paused)
+        val afterSync = gateway.closeCount
+
+        repository.closeSession(sessionId, paused, clock.now(), SyncTrigger.ServiceShutdown)
+
+        assertEquals(afterSync + 1, gateway.closeCount)
+    }
+
     // ------------------------------------------- PRODUCT_SPEC PLAY-004 / SYNC-002, the flag on the position
 
     /*
@@ -661,6 +819,19 @@ class DefaultSessionSyncRepositoryTest {
         val syncedProgress = mutableListOf<SessionProgress>()
         val uploaded = mutableListOf<List<OfflineSession>>()
 
+        /**
+         * How many times the *request* was made, whether or not it succeeded.
+         *
+         * `syncedProgress` counts accepted writes; these count attempts, which is the question SYNC-002's
+         * redundant-sync rule turns on. A sync that was skipped never reaches the gateway at all, and a
+         * fake that only recorded successes could not tell that apart from one that failed.
+         */
+        var syncCount: Int = 0
+            private set
+
+        var closeCount: Int = 0
+            private set
+
         override val playback: PlaybackApi get() = this
 
         /** PRODUCT_SPEC 11.1 — not part of these tests; every method reports so rather than pretending. */
@@ -722,6 +893,7 @@ class DefaultSessionSyncRepositoryTest {
             sessionId: String,
             progress: SessionProgress,
         ): AppResult<Unit> {
+            syncCount += 1
             if (syncResult is AppResult.Success) syncedProgress += progress
             return syncResult
         }
@@ -731,6 +903,7 @@ class DefaultSessionSyncRepositoryTest {
             sessionId: String,
             progress: SessionProgress,
         ): AppResult<Unit> {
+            closeCount += 1
             if (syncResult is AppResult.Success) syncedProgress += progress
             return syncResult
         }

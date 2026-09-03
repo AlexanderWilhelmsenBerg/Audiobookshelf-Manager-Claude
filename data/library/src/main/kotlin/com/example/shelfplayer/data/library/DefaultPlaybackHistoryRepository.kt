@@ -114,6 +114,14 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
      * does the rest. The existing schema already had a `String` primary key, so persisting these needed no
      * Room migration at all.
      *
+     * **A row therefore moves while the other device is still listening**, and that is correct rather than
+     * a defect. Audiobookshelf keeps one session per visit to a player and updates it, so a listener who
+     * scrubs around on the web for five minutes produces *one* session whose `currentTime` and
+     * `timeListening` both change — observed on a device as a single row going `6:06:42 → 10:35:08 · 2 min`
+     * and then `6:06:42 → 2:25:25 · 3 min`, with `imported=1` on every refresh. Separate rows appear for
+     * separate visits, which is the distinction the session id draws. A new row per refresh would be the
+     * same event listed over and over.
+     *
      * [SERVER_SESSION_PREFIX] keeps the derived ids in their own namespace: a locally recorded event uses a
      * random UUID, and a server session id colliding with one is not a risk worth leaving to chance.
      *
