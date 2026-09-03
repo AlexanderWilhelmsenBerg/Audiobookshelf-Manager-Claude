@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
@@ -616,20 +618,32 @@ private fun HomeAxisBar(
             ),
             label = "home-axis-selection",
         )
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(x = selectionOffset.roundToPx(), y = 0) }
-                .width(tabWidth)
-                .fillMaxHeight()
-                .padding(AXIS_SELECTION_INSET)
-                .background(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = AXIS_SELECTION_ALPHA),
-                    shape = CircleShape,
-                ),
-        )
+        // `matchParentSize` rather than `fillMaxHeight`, and the distinction is load-bearing now that the
+        // capsule has no fixed height. A child that fills the height *participates in measuring* its
+        // parent, so it resolves against the incoming maximum — which in a `Scaffold`'s bottom-bar slot is
+        // the whole window. `matchParentSize` sizes to the parent **after** the parent is measured, so the
+        // pill follows the capsule instead of stretching it.
+        Box(modifier = Modifier.matchParentSize()) {
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(x = selectionOffset.roundToPx(), y = 0) }
+                    .width(tabWidth)
+                    .fillMaxHeight()
+                    .padding(AXIS_SELECTION_INSET)
+                    .background(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = AXIS_SELECTION_ALPHA),
+                        shape = CircleShape,
+                    ),
+            )
+        }
+        // `IntrinsicSize.Min` is what makes the capsule content-sized. The row asks its tabs how tall they
+        // need to be and takes the largest; the tabs then fill *that*. Without it, `fillMaxHeight` on a tab
+        // resolves against the window and the capsule grows to cover the screen — which is exactly what
+        // happened when this bar's fixed height became a floor, and it swallowed every tap on the shelf.
         Row(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
                 .padding(vertical = AXIS_SELECTION_INSET)
                 .selectableGroup(),
             verticalAlignment = Alignment.CenterVertically,
@@ -683,7 +697,7 @@ private fun HomeAxisTab(axis: HomeAxis, isStacked: Boolean, modifier: Modifier =
     if (isStacked) {
         Column(
             modifier = modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .padding(horizontal = 2.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -694,7 +708,7 @@ private fun HomeAxisTab(axis: HomeAxis, isStacked: Boolean, modifier: Modifier =
     } else {
         Row(
             modifier = modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .padding(horizontal = 5.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
