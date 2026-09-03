@@ -23,6 +23,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
+import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
@@ -138,14 +139,14 @@ class DefaultSessionSyncRepository @Inject constructor(
         progress: SessionProgress,
         updatedAt: Instant,
         trigger: SyncTrigger,
-    ): AppResult<Unit> = send(sessionId, progress, updatedAt, trigger, closing = false)
+    ): AppResult<SyncOutcome> = send(sessionId, progress, updatedAt, trigger, closing = false)
 
     override suspend fun closeSession(
         sessionId: String,
         progress: SessionProgress,
         updatedAt: Instant,
         trigger: SyncTrigger,
-    ): AppResult<Unit> = send(sessionId, progress, updatedAt, trigger, closing = true)
+    ): AppResult<SyncOutcome> = send(sessionId, progress, updatedAt, trigger, closing = true)
 
     /**
      * The shared path: store the position, then try to send it.
@@ -160,7 +161,7 @@ class DefaultSessionSyncRepository @Inject constructor(
         updatedAt: Instant,
         trigger: SyncTrigger,
         closing: Boolean,
-    ): AppResult<Unit> = withContext(ioDispatcher) {
+    ): AppResult<SyncOutcome> = withContext(ioDispatcher) {
         val stored = outbox.find(sessionId)
             ?: return@withContext AppResult.Failure(
                 AppError.Conflict(summary = "That listening session is no longer recorded on this device."),
@@ -178,7 +179,9 @@ class DefaultSessionSyncRepository @Inject constructor(
                 LogField.Public("trigger", trigger.name),
                 LogField.Millis("position", progress.position.inWholeMilliseconds),
             )
-            return@withContext AppResult.Success(Unit)
+            // `Accepted`, and that is not a shortcut: the guard fires only against a row already in
+            // `SYNCED` whose position has not moved, so the server *is* still holding it.
+            return@withContext AppResult.Success(SyncOutcome.Accepted)
         }
         // Stored before the request, and stored whatever the request does.
         outbox.upsert(
@@ -192,9 +195,10 @@ class DefaultSessionSyncRepository @Inject constructor(
         )
         lastTrigger.value = trigger
         // A session that never reached the server has no id to sync against, so the offline route is the only
-        // one open to it. Reporting success here is honest: the position is durably queued, and the drain is
-        // what sends it.
-        val remoteId = stored.remoteSessionId ?: return@withContext AppResult.Success(Unit)
+        // one open to it. Success here is honest — the position is durably queued and the drain is what sends
+        // it — but it is emphatically **not** an acknowledgement, and a caller that treated it as one would
+        // build a freshness baseline the server has never seen. See `SyncOutcome`.
+        val remoteId = stored.remoteSessionId ?: return@withContext AppResult.Success(SyncOutcome.Queued)
         val profileId = ProfileId(stored.profileId)
         val result = if (closing) {
             gateway.playback.closeSession(profileId, remoteId, progress)
@@ -224,7 +228,7 @@ class DefaultSessionSyncRepository @Inject constructor(
                     LogField.Public("trigger", trigger.name),
                     LogField.Millis("position", progress.position.inWholeMilliseconds),
                 )
-                AppResult.Success(Unit)
+                AppResult.Success(SyncOutcome.Accepted)
             }
         }
     }

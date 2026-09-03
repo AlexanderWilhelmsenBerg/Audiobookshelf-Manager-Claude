@@ -38,6 +38,66 @@ interface ProgressDao {
     suspend fun upsertProgress(progress: List<MediaProgressEntity>)
 
     /**
+     * PRODUCT_SPEC PLAY-004 / SYNC-002 — the journal's write, with its unsent decision made *in the
+     * statement*.
+     *
+     * ### The race this exists to make impossible
+     *
+     * The decision "does this row now say something the server has not been told" needs the row's previous
+     * position, so the write that makes it is a read, a comparison and an upsert. Done in Kotlin those are
+     * three steps with two gaps, and [markProgressSynced] runs from a different coroutine: a journal write
+     * could read a dirty row, the upload could acknowledge and clear it, and the write that had already
+     * decided would then upsert `hasUnsyncedChanges = 1` back over the acknowledgement. Nothing lowers it
+     * again, and the flag was — until this rework — what the freshness check short-circuited on, so the app
+     * stopped asking the server about that book entirely. Four repository-level fixes each narrowed the
+     * window without closing it; `docs/risks.md` R-94 is the interleaving that survived them.
+     *
+     * SQLite evaluates every expression in a `SET` clause against the row as it was *before* the update, and
+     * does so holding the write lock. So the read, the comparison and the write here are one indivisible
+     * step: a clear either lands entirely before this statement, in which case the `CASE` sees the clean row
+     * and the position it has to compare against, or entirely after it, in which case it clears whatever
+     * this wrote. Neither order can invent unsent progress. `ProgressWriteInterleavingTest` holds it with a
+     * latch inside the DAO.
+     *
+     * ### The three reasons a row becomes unsent, and the one that keeps it so
+     *
+     * The position moved beyond [toleranceMillis]; the book became finished; the duration became known or
+     * changed. Otherwise the flag is left **exactly as it was** — which is the important clause in both
+     * directions: a row already claiming unsent progress keeps claiming it however little this write moves,
+     * and a row the server has just acknowledged is not re-dirtied by a duplicate record of the same
+     * position.
+     *
+     * @return `1` when the row existed and was written, `0` when there is no row yet and the caller must
+     *   insert one.
+     */
+    @Query(
+        """
+        UPDATE media_progress
+        SET positionMillis = :positionMillis,
+            durationMillis = CASE WHEN :durationMillis > 0 THEN :durationMillis ELSE durationMillis END,
+            isFinished = CASE WHEN :isFinished <> 0 OR isFinished <> 0 THEN 1 ELSE 0 END,
+            updatedAt = :updatedAt,
+            hasUnsyncedChanges = CASE
+                WHEN ABS(positionMillis - :positionMillis) > :toleranceMillis THEN 1
+                WHEN :isFinished <> 0 AND isFinished = 0 THEN 1
+                WHEN :durationMillis > 0 AND durationMillis <> :durationMillis THEN 1
+                ELSE hasUnsyncedChanges
+            END
+        WHERE profileId = :profileId AND bookKey = :bookKey
+        """,
+    )
+    @Suppress("LongParameterList")
+    suspend fun recordPosition(
+        profileId: String,
+        bookKey: String,
+        positionMillis: Long,
+        durationMillis: Long,
+        isFinished: Boolean,
+        updatedAt: Long,
+        toleranceMillis: Long,
+    ): Int
+
+    /**
      * PRODUCT_SPEC PLAY-004 / SYNC-002 — the position for this book has reached the server, so stop
      * claiming otherwise.
      *

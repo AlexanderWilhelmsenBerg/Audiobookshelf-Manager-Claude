@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.model.ServerCandidate
 import com.example.shelfplayer.core.model.auth.AccountState
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
@@ -139,7 +140,7 @@ class OpenPlaybackSessionUseCaseTest {
         /** SYNC-002 — no server behind this fake, which is what `Unavailable` means. */
         override suspend fun checkServerPosition(
             bookId: LibraryItemId,
-            localPosition: Duration,
+            baseline: AcknowledgedPause?,
         ): ExternalSessionCheck = ExternalSessionCheck.Unavailable
     }
 

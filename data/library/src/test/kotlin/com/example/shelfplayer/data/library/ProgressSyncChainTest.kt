@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.AppSettingsSerializer
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
@@ -24,6 +25,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
+import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.network.fake.FakeAudiobookshelfGateway
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
@@ -32,6 +34,7 @@ import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.download.SmartDownload
+import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -51,6 +54,8 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -63,26 +68,33 @@ import kotlin.time.Duration.Companion.seconds
  *
  * ### Why this is not another repository test
  *
- * Four separate defects were found and fixed in this path — R-86, R-87, R-88, R-91 — and after every one
- * of them a device still resumed in the wrong place. Each was proved by a test of *one* repository, and
- * the thing that kept breaking lived between two of them: `DefaultPlaybackRepository.recordPosition`
- * raises `media_progress.hasUnsyncedChanges`, `DefaultSessionSyncRepository` is what lowers it again, and
- * `checkServerPosition` refuses to ask the server while it is up. Three collaborators, one boolean, and
- * no test that held all three at once.
+ * Five separate defects were found and fixed in this path — R-86, R-87, R-88, R-91, R-93 — and after every
+ * one of them a device still resumed in the wrong place. Each was proved by a test of *one* repository,
+ * and the thing that kept breaking lived between two of them.
  *
- * So this holds all three: the real playback repository, the real session-sync repository, the real DAOs
- * and a real Room database, with only the network faked. The sequences it replays are the ones
- * `PlaybackService.PlayerEvents` actually emits, including the duplicate callback that produced the
- * contradiction in the device log — a `200` for 22461280ms at 19:58:08, and `stored=22461280ms
- * player=22461280ms` still claiming unsent progress 46 seconds later.
+ * So this holds all of them at once: the real playback repository, the real session-sync repository, the
+ * real [ResumeBaseline], the real DAOs and a real Room database, with only the network faked. The
+ * sequences it replays are the ones `PlaybackService.PlayerEvents` actually emits — [pauseAt] is
+ * `onCameToRest` plus the promotion `SessionSyncCoordinator.syncNow` performs, in that order.
+ *
+ * ### The baseline is what the freshness check now decides from
+ *
+ * Not `hasUnsyncedChanges`, which was the fourth wrong answer: it says whether a queue is empty, and the
+ * device log's contradiction is one line of it — a `200` accepting `22461280ms` at 19:58:08, and `Skipped
+ * the freshness check … stored=22461280ms player=22461280ms` at 19:58:54. An **acknowledged pause** is a
+ * fact about both sides, and the cases below are the four states it can be in when Play is pressed:
+ * acknowledged and agreed, acknowledged and overtaken, never acknowledged, and invalidated by a local
+ * move.
  *
  * ### What it does not reproduce
  *
- * `PlaybackService` itself, which needs a bound `MediaLibraryService` and an emulator. What is asserted
- * here is the invariant that makes the service's ordering safe rather than lucky: **no interleaving of a
- * position write and its own acknowledgement may leave the row claiming unsent progress.** The service
- * now serialises the two, and `a record that arrives after its own acknowledgement leaves the row clean`
- * is the case that says it does not have to.
+ * `PlaybackService` itself, which needs a bound `MediaLibraryService` and an emulator, and the seek that
+ * applies an adopted position — which is `internal` to `:playback` and pinned by `AtomicResumeTest`. The
+ * seam between the two halves is a number, and both sides assert it.
+ *
+ * The **flag**'s own invariant is still held, in `ProgressWriteInterleavingTest`, with latches: it is no
+ * longer load-bearing for the resume, but a row that wrongly claims unsent progress still blocks an
+ * account sync from correcting it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -100,6 +112,9 @@ class ProgressSyncChainTest {
 
     private val sink = RecordingLogSink()
     private val clock = TestAppClock()
+
+    /** The real thing, driven exactly as `PlaybackService` and `SessionSyncCoordinator` drive it. */
+    private val baseline = ResumeBaseline()
     private val profileId = ProfileId("fixture-profile")
     private val profiles = StubProfiles(profileId)
 
@@ -256,59 +271,177 @@ class ProgressSyncChainTest {
     }
 
     /**
-     * **The reported case, end to end: pause here, move it there, press Play.**
+     * **The acceptance case, end to end: an acknowledged pause at 6:14:21, a move to 10:39:02, and Play.**
      *
-     * Everything above is the setup for this. The listener pauses at 6:14:21 and the sync takes it; the
-     * web player moves the book to 10:39:02; Play asks the server **once** and is told to go there.
+     * Everything above is the setup for this. The listener pauses at 6:14:21 and the sync takes it, so the
+     * pause is *acknowledged*; the web player moves the book to 10:39:02; Play asks the server **once** and
+     * is told to go there.
      *
-     * `requests` is asserted because the answer arriving is not enough — it has to arrive without the
-     * account-wide sweep that made the first version of this check take seconds, and it has to arrive at
-     * all, which is what the flag was preventing.
+     * `progressReads` is asserted because the answer arriving is not enough. It has to arrive without the
+     * account-wide sweep that made the first version of this check take seconds, and it has to arrive **at
+     * all** — four device runs contain no `GET /api/me/progress/` request whatsoever, because each version
+     * of the gate in front of it short-circuited on something local.
+     *
+     * What happens to 10:39:02 next is `AtomicResumeTest`: the service seeks its own ExoPlayer there,
+     * waits for that player's discontinuity, confirms the landing, and only then plays.
      */
     @Test
-    fun `a pause, a move on another device, and a Play that is told to follow`() = runTest {
+    fun `an acknowledged pause, a move on another device, and a Play that is told to follow`() = runTest {
         val sessionId = openSession()
-        pauseAt(PAUSED_AT, sessionId)
+        assertTrue(pauseAt(PAUSED_AT, sessionId), "the pause has to reach the server to be a baseline")
+        val acknowledged = assertNotNull(baseline.acknowledged(BOOK), "the server took 6:14:21")
+        assertEquals(PAUSED_AT, acknowledged.position)
         gateway.serverProgress = AppResult.Success(
             ServerProgress(position = MOVED_TO, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
         )
 
-        val outcome = playback.checkServerPosition(BOOK, localPosition = PAUSED_AT)
+        val outcome = playback.checkServerPosition(BOOK, acknowledged)
 
         assertEquals(ExternalSessionCheck.Ahead(MOVED_TO), outcome)
         assertEquals(1, gateway.progressReads, "one request for one book, and exactly one")
+        assertEquals(
+            37_142_000L,
+            (outcome as ExternalSessionCheck.Ahead).position.inWholeMilliseconds,
+            "10:39:02, the position the web player reached",
+        )
     }
 
     /**
-     * The same run, ending where `ResumeSurface` takes over.
+     * The same run with the server **still holding 6:14:21**: asked, answered, and nothing moved.
      *
-     * The adopted position is what `PlaybackController.resumeLoadedAt` receives, and `ResumeSurfaceTest`
-     * pins what it does with it: prepare if needed, `seekTo(10:39:02)`, then `play()`. The two halves are
-     * asserted in two modules because `ResumeSurface` is internal to `:playback`; this is the seam between
-     * them, and it carries the number.
+     * This is the ordinary resume for one person on one device, and it is the case the request is spent on.
+     * Getting `Current` here rather than `Ahead` is what stops every Play seeking to where it already is.
      */
     @Test
-    fun `the position handed to the resume is the one the other device reached`() = runTest {
+    fun `an acknowledged pause the server still holds resumes locally`() = runTest {
         val sessionId = openSession()
         pauseAt(PAUSED_AT, sessionId)
         gateway.serverProgress = AppResult.Success(
-            ServerProgress(position = MOVED_TO, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
+            ServerProgress(position = PAUSED_AT, updatedAt = Instant.ofEpochMilli(9_000L), isFinished = false),
         )
 
-        val outcome = playback.checkServerPosition(BOOK, localPosition = PAUSED_AT)
-        val adopted = (outcome as? ExternalSessionCheck.Ahead)?.position
+        val outcome = playback.checkServerPosition(BOOK, baseline.acknowledged(BOOK))
 
-        assertEquals(MOVED_TO, adopted)
-        assertEquals(37_142_000L, adopted?.inWholeMilliseconds, "10:39:02, the position the web player reached")
+        assertEquals(ExternalSessionCheck.Current, outcome)
+        assertEquals(1, gateway.progressReads)
     }
 
     /**
-     * The pause callback, in the order `PlaybackService.onIsPlayingChanged(false)` emits it.
+     * **A pause whose sync failed is not a baseline, and Play does not ask.**
      *
-     * Record, then the sync that acknowledges the record. Those were two independent `launch`es until the
-     * device log showed the acknowledgement being undone by its own producer.
+     * "Failed pause acknowledgement = preserve local because server freshness is ambiguous." The server
+     * might be holding our position or something older; there is no way to tell those apart, and adopting
+     * on a guess is how a position gets lost (product priority 2). The row keeps its unsent flag and the
+     * outbox will carry it up later — that half is `DefaultSessionSyncRepositoryTest`'s.
      */
-    private suspend fun pauseAt(position: Duration, sessionId: String) {
+    @Test
+    fun `a pause the server refused is not a baseline and Play asks nothing`() = runTest {
+        val sessionId = openSession()
+        gateway.syncResult = AppResult.Failure(AppError.Network(summary = "No connection."))
+
+        assertFalse(pauseAt(PAUSED_AT, sessionId), "the sync failed, so nothing was acknowledged")
+
+        assertNull(baseline.acknowledged(BOOK))
+        assertTrue(storedProgress().hasUnsyncedChanges, "the position is still owed to the server")
+        assertEquals(
+            ExternalSessionCheck.Unavailable,
+            playback.checkServerPosition(BOOK, baseline.acknowledged(BOOK)),
+        )
+        assertEquals(0, gateway.progressReads, "an unacknowledged pause has nothing to compare against")
+    }
+
+    /**
+     * **A pause on a session the server never opened is not a baseline either**, and this one is subtle.
+     *
+     * A book started while offline has no server session id, so `syncOpenSession` stores the position in the
+     * outbox and returns **success without sending anything** — which is the honest answer for an outbox and
+     * was, until [SyncOutcome] existed, indistinguishable from an acknowledgement. Promoting on it would
+     * build a baseline for a position Audiobookshelf has never seen; the next Play would then read whatever
+     * older position the server does hold, conclude another device had moved the book, and **rewind the
+     * listener onto it**. Losing a position to a check written to protect positions.
+     */
+    @Test
+    fun `a pause on a session the server never opened is not a baseline`() = runTest {
+        val offline = assertIs<AppResult.Success<String>>(
+            sync.openSession(
+                bookId = BOOK,
+                remoteSessionId = null,
+                title = "The Voyage",
+                author = "A. Cartographer",
+                position = Duration.ZERO,
+                duration = BOOK_DURATION,
+                startedAt = clock.now(),
+            ),
+        ).value
+
+        assertFalse(pauseAt(PAUSED_AT, offline), "nothing was sent, so nothing was acknowledged")
+
+        assertNull(baseline.acknowledged(BOOK))
+        assertEquals(
+            ExternalSessionCheck.Unavailable,
+            playback.checkServerPosition(BOOK, baseline.acknowledged(BOOK)),
+        )
+        assertEquals(0, gateway.progressReads)
+    }
+
+    /**
+     * **A local seek after the pause invalidates the baseline**, so the next Play asks nothing.
+     *
+     * The acknowledged position described where this device was at rest. A seek moves it, and the server
+     * is then holding a position that differs for a reason that has nothing to do with another device —
+     * comparing against it would adopt the server's number over the listener's own choice, which is the
+     * app overruling them.
+     *
+     * `PlaybackService.onPositionDiscontinuity` calls `onLocalMove` for exactly this, and it is also what
+     * the adopting seek itself triggers: the pause it belonged to is over either way.
+     */
+    @Test
+    fun `a local seek after the pause invalidates the baseline`() = runTest {
+        val sessionId = openSession()
+        pauseAt(PAUSED_AT, sessionId)
+        assertNotNull(baseline.acknowledged(BOOK))
+
+        baseline.onLocalMove()
+
+        assertNull(baseline.acknowledged(BOOK), "the listener moved the book; the pause no longer describes it")
+        assertEquals(
+            ExternalSessionCheck.Unavailable,
+            playback.checkServerPosition(BOOK, baseline.acknowledged(BOOK)),
+        )
+        assertEquals(0, gateway.progressReads)
+    }
+
+    /**
+     * **A late acknowledgement for a superseded pause is refused.**
+     *
+     * The generation guard, driven the way the coordinator drives it: the generation is read before the
+     * send, the listener seeks while the request is in flight, and the answer then arrives. Without the
+     * guard that answer would promote a record describing a position the player has left — and, because a
+     * paused player syncs the same position every thirty seconds, matching on the position alone is not
+     * enough to tell "this confirms my pause" from "this confirms a pause two seeks ago".
+     */
+    @Test
+    fun `an acknowledgement that arrives after a seek is refused`() = runTest {
+        val generation = baseline.onPaused(BOOK, PAUSED_AT)
+
+        baseline.onLocalMove()
+
+        assertFalse(baseline.onPositionAccepted(BOOK, PAUSED_AT, generation))
+        assertNull(baseline.acknowledged(BOOK))
+    }
+
+    /**
+     * The pause, in the order the service emits it — `PlaybackService.onCameToRest`, whole.
+     *
+     * Capture the position as pending, journal it, await the sync, and let the sync's success promote the
+     * baseline. Each of the four is a step some earlier version skipped or reordered: the awaiting is why
+     * `SessionSyncCoordinator.sync` exists at all, and the generation is read *before* the send so a late
+     * answer cannot confirm a pause the listener has already moved past.
+     *
+     * @return whether the server took the position, which is what the service's coroutine sees.
+     */
+    private suspend fun pauseAt(position: Duration, sessionId: String): Boolean {
+        val generation = baseline.onPaused(BOOK, position)
         playback.recordPosition(BOOK, position = position, duration = BOOK_DURATION)
         val result = sync.syncOpenSession(
             sessionId = sessionId,
@@ -316,7 +449,11 @@ class ProgressSyncChainTest {
             updatedAt = clock.now(),
             trigger = SyncTrigger.Paused,
         )
-        assertIs<AppResult.Success<Unit>>(result)
+        // Only [SyncOutcome.Accepted] promotes. A `Success` carrying `Queued` means the position is safe on
+        // this device and the server has never seen it — see the offline case below.
+        val accepted = result is AppResult.Success && result.value == SyncOutcome.Accepted
+        if (accepted) baseline.onPositionAccepted(BOOK, position, generation)
+        return accepted
     }
 
     private suspend fun openSession(): String = assertIs<AppResult.Success<String>>(

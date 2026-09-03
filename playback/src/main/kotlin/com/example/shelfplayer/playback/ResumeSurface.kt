@@ -1,7 +1,5 @@
 package com.example.shelfplayer.playback
 
-import kotlin.time.Duration
-
 /**
  * PRODUCT_SPEC SYNC-002 — the three commands a resume issues, and the order that makes them one thing.
  *
@@ -18,6 +16,14 @@ import kotlin.time.Duration
  * tests and why this defect survived review twice. Behind this interface the ordering is a pure function
  * over a recorder, so `ResumeSurfaceTest` can assert *prepare, then seek, then play* rather than a comment
  * claiming it.
+ *
+ * ### What this is still for, now that adopting a position is a session command
+ *
+ * The **ordinary** resume: nothing to adopt, so nothing to verify. Adopting another device's position moved
+ * to `PlaybackService`, which owns the `ExoPlayer` and can therefore confirm the seek landed instead of
+ * asking a proxy whether it thinks it did — see `AtomicResume.kt`. `positionMillis` stays on this surface
+ * because the ordering it encodes is the same one that path needs, and because a seek without a
+ * verification is still the right shape for anything that is not adopting from elsewhere.
  */
 internal interface ResumeSurface {
     /** `true` when the player is idle or holding an error — the two states `play()` cannot leave. */
@@ -50,23 +56,3 @@ internal fun ResumeSurface.resumeAt(positionMillis: Long?) {
     if (positionMillis != null) seekTo(positionMillis.coerceAtLeast(0L))
     play()
 }
-
-/**
- * PRODUCT_SPEC SYNC-002 — whether a resume ended up at the position it adopted, or at the one it left.
- *
- * ### Why this is a comparison and not a tolerance
- *
- * By the time it can be asked, audio is playing: the position has moved on from wherever it started, so
- * `landed == target` is never true and a tolerance on [target] would have to be sized against playback
- * speed, the confirmation delay and the buffer. The useful question is simpler — *which of the two places
- * did it move on from?*
- *
- * `Ahead` requires more than five seconds between [from] and [target] before a resume adopts anything, so
- * the two are never close enough for this to be a coin toss.
- *
- * A device run is why it is asked at all: `MediaController` returns `void` from `seekTo` and reports
- * nothing about whether the session applied it, and one that was not applied produced a complete,
- * confident history row over audio that never moved.
- */
-internal fun didAdopt(landed: Duration, from: Duration, target: Duration): Boolean =
-    (landed - target).absoluteValue < (landed - from).absoluteValue

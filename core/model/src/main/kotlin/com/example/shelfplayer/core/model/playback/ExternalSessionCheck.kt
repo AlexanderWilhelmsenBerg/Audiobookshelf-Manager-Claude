@@ -34,16 +34,25 @@ sealed interface ExternalSessionCheck {
     data class Ahead(val position: Duration) : ExternalSessionCheck
 
     /**
-     * The server answered, and there is nothing newer than what this device holds.
+     * The server answered, and it is still holding the position this device paused at and it acknowledged.
      *
-     * Also the answer when this device has progress it has not yet uploaded: the local position is then the
-     * truth by definition, and there is no need to ask at all.
+     * So nothing happened while we were paused, and the loaded position is right. This is the *strong*
+     * outcome — the one that says the local position was checked and stands — which is why it is
+     * distinguished from [Unavailable] rather than collapsed into "did not move anything".
      */
     data object Current : ExternalSessionCheck
 
     /**
-     * The server was not reached, the read failed, it did not answer inside the cap, or the check was
-     * cancelled before it answered.
+     * The check could not be **completed or trusted**, so nothing is moved.
+     *
+     * Three ways, and they are one outcome because they have one consequence:
+     *
+     *  - the server was not reached, the read failed, or it did not answer inside the cap;
+     *  - the check was cancelled before it answered;
+     *  - there was **no acknowledged pause** to compare against — see `AcknowledgedPause`. Without a
+     *    moment at which this device and the server demonstrably agreed, a difference between them cannot
+     *    be told from this device's own un-uploaded write, and adopting it could throw away a position
+     *    (product priority 2).
      *
      * Playback resumes exactly as it would have without the check. The mark this leaves on the Play row is
      * the only trace that the guarantee was missing, which is why it is recorded even when the cancellation

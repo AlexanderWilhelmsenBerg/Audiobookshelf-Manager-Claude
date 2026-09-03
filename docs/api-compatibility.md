@@ -927,37 +927,58 @@ are confirmed, the values are not meaningful in the fixture.
 ### How the freshness check before a Play uses it (SYNC-002)
 
 `PlaybackRepository.checkServerPosition` answers one of three things — another device is ahead, nothing
-newer exists, or the server could not be asked — and only the first is allowed to move the player, by
-**seeking** the already-loaded one rather than reloading it.
+newer exists, or the check could not be completed or trusted — and only the first is allowed to move the
+player, by **seeking** the already-loaded one rather than reloading it.
 
-`Ahead` needs two facts together:
+**The question is asked against an acknowledged pause, and nothing else.** An `AcknowledgedPause` is a
+position this device came to rest at *and Audiobookshelf answered that it had taken*. From that instant the
+two sides demonstrably held the same number, so:
 
-- **The book has no unsynced local progress.** Every `recordPosition` sets `hasUnsyncedChanges` and only a
-  successful upload clears it, so a clear flag is the app's own statement that the server holds this
-  device's latest recorded position — and a paused player is sitting on that same position, because the
-  recording happens on pause, on every seek and on every track change.
-- **`currentTime` more than five seconds from where the player actually is.** The tolerance is there
-  because the wire carries fractional seconds against a stored millisecond. The comparison is against the
-  *player*, not against the stored row: a server-sourced refresh moves the row and leaves Media3 where it
-  was, so a row-to-row comparison would report agreement on a book about to resume in the wrong place.
+- **the server still holds it** → nothing happened while we were paused, resume locally (`Current`);
+- **the server holds something else** → it can only have got there after our acknowledgement, so it is
+  somebody else's more recent work, and it is adopted (`Ahead`);
+- **there is no acknowledged pause** → the server's freshness is not knowable, and **no request is made**
+  (`Unavailable`).
 
-Together those two say "somebody else moved this book", and neither alone does.
+`ResumeBaseline` in `:domain` owns that record — `{bookId, position, generation, acknowledged}` — and
+`PlaybackService` is the only thing that writes it, because it is the one object that sees every pause,
+seek and track boundary whatever pressed them. The pause path captures the exact position, journals it,
+and **awaits** its own session sync; a successful sync for that position promotes the record. A local
+seek, skip, track change or resume bumps the generation and drops it, and the generation is read *before*
+the upload is sent, so an answer that arrives after the listener has moved on cannot confirm a pause it
+does not describe.
 
-**`lastUpdate` is read and stored but no longer decides this**, which is a correction. The check also used
-to require `lastUpdate` later than the local row's `updatedAt`, and that condition vetoed the case the
-check exists for: a server-sourced write stores the server's `lastUpdate` *as* `updatedAt`, so as soon as
-the app had noticed the remote change the two were equal and the answer was `Current` — with the loaded
-player still on the old position. It was also a comparison across two clocks (R-86). Both are R-88.
+A five-second tolerance separates "still holding it" from "moved", because the wire carries fractional
+seconds against a stored millisecond.
 
-Position *magnitude* is deliberately never compared. An intentional rewind on another client is newer
-activity even though its number is smaller, and a check that compared magnitudes would refuse to honour it.
+**Four things this deliberately does not read**, each of which was tried and each of which produced a
+device run that resumed in the wrong place:
 
-**Adopting the answer is one operation, not two.** `PlaybackController.resumeLoadedAt(position)` connects,
-prepares if the player is idle, seeks, and only then plays — inside a single `withContext(mainDispatcher)`,
-so nothing can interleave and the first sound is from the adopted position. It was two calls until R-87
-(`seekTo` then `togglePlayPause`, each launching its own coroutine, and only the second one connecting),
-which is how a device came to resume at the stale position while the history pane correctly said another
-device had moved it. `ResumeSurfaceTest` pins the order.
+| Read instead of the baseline | Why it cannot answer the question | Risk |
+| --- | --- | --- |
+| `lastUpdate` vs the row's `updatedAt` | Two clocks — and a server-sourced write stores the server's own `lastUpdate` *as* `updatedAt`, so noticing the remote change made the condition false | R-86, R-88 |
+| How long ago the listener pressed pause | Says nothing about anybody else; and going to the web player and back takes seconds, so a duration gate skips exactly the case the check exists for | R-89 |
+| `hasUnsyncedChanges` | Persistence bookkeeping: it says whether a queue is empty, not whether another device listened. A journal write landing after its own acknowledgement re-raised it with nothing left to lower it, and the check then stopped asking the server at all | R-92, R-93, R-94, R-95 |
+| The player's live position | That is the thing being judged, not evidence about it | R-95 |
+
+Position *magnitude* is deliberately never compared. An intentional rewind on another client is activity
+that happened after our acknowledgement even though its number is smaller, and a check that compared
+magnitudes would refuse to honour it.
+
+**Adopting the answer is one operation, on the player that owns it.** It is a custom session command —
+`ResumeCommand`, granted only to a first-party controller — and `PlaybackService` handles it against its
+own `ExoPlayer`: seek, wait for *that player's* position discontinuity, confirm the landing within a
+second, then `play()`, and answer the controller with a `SessionResult`. Nothing is played on an
+unconfirmed seek; on failure the app reopens the book through `OpenPlaybackSessionUseCase`, which starts
+it from the server's position via `setMediaItem(item, startPositionMs)`.
+
+Two earlier shapes of this are recorded because both failed on a device. It was **two controller calls**
+until R-87 (`seekTo` then `togglePlayPause`, each launching its own coroutine and only the second one
+connecting), which is how a device resumed at the stale position while the history pane correctly said
+another device had moved it. It then verified itself by **re-reading `MediaController.currentPosition`**,
+which cannot work: the controller is an IPC proxy that masks a seek locally the instant it is asked, so a
+dropped seek and an honoured one give the same answer from the same object (R-90). `AtomicResumeTest`
+pins the order and, more to the point, that no `play` follows a seek the player did not confirm.
 
 **What the two reference clients do**, read from their sources rather than inferred:
 
@@ -969,20 +990,17 @@ device had moved it. `ResumeSurfaceTest` pins the order.
 | Order | audio first, then seek if the server was ahead | audio first; once running it logs and does **not** seek |
 | Live? | **No** — the call site is commented out on Android with *"this needs to be reworked so that the audio doesn't start playing before it checks for updated progress"*, and the iOS equivalent is marked `// TODO: Unused for now` | Yes |
 
-BookWave takes absorb's cap and the official app's gate, and keeps the check *before* audio — which absorb
-also does, in the one case it still waits for (a play from the app screen). A play from the notification,
-the car or a headset never waits, because those reach `PlaybackController` without passing through the
-ViewModel the check lives in.
+BookWave takes absorb's cap and keeps the check *before* audio — which absorb also does, in the one case it
+still waits for (a play from the app screen). A play from the notification, the car or a headset never
+waits, because those reach `PlaybackController` without passing through the ViewModel the check lives in.
 
-**The gate has one clause neither reference client has, and a device run is why.** Leaving BookWave
-forgets the pause, so a resume after a trip to the background always asks however short the pause was.
-Both reference gates are pure duration, and a pure duration gate skips the very listener the check
-exists for: going to the web player and coming back takes seconds. `docs/risks.md` R-89.
-
-**And the adoption verifies itself**, because `MediaController` cannot report whether the session applied
-a seek. A device run recorded a complete adoption over audio that never moved, so `resumeLoadedAt` reads
-the position back a second later and reopens the book at the server's position when the seek did not
-take. R-90 — the cause of the dropped seek is not yet established.
+**BookWave no longer has either client's duration gate, and that is a deliberate divergence.** It had the
+official app's thirty seconds, and a device log showed it suppressing a Play at 12:19 after an in-app pause
+at 12:18 — the trip to the web player and back that the check exists for. The patch for that (forget the
+pause on backgrounding) turned one guess into three. What replaced both is the acknowledged pause, which
+answers the question rather than approximating it: a Play with a baseline **always** asks, a Play without
+one never does, and the two-second cap is the only cost control left. The trade is that a resume after an
+acknowledged pause now costs one capped round trip where most used to be instant.
 
 **A non-`200` is "could not tell", including a `404`.** What the server answers for a book it has never
 recorded progress for is unobserved (PRODUCT_SPEC 22.4), and of the two available guesses only "could not

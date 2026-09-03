@@ -230,14 +230,6 @@ class PlayerViewModel @Inject constructor(
     private var resumeJob: Job? = null
 
     /**
-     * Whether the next in-app Play needs to ask the server where the book is.
-     *
-     * Its own object rather than a mark in this field, because the rule has three transitions and a device
-     * run found one of them missing. [ResumeFreshness] carries them and `ResumeFreshnessTest` pins them.
-     */
-    private val freshness = ResumeFreshness(MIN_PAUSE_BEFORE_CHECK)
-
-    /**
      * PRODUCT_SPEC PLAY-001 — starts a book and opens the player over it.
      *
      * Expanding only on success. A play that failed leaves the user on the book screen with a message,
@@ -322,7 +314,17 @@ class PlayerViewModel @Inject constructor(
      *
      *  1. **one request for one book**, `GET /api/me/progress/{id}`, instead of an account-wide sweep;
      *  2. **capped** — see [SERVER_CHECK_TIMEOUT] — so a slow server delays a resume by two seconds at most;
-     *  3. **skipped entirely for a resume that cannot have been overtaken** — see [MIN_PAUSE_BEFORE_CHECK].
+     *  3. **asked only when the answer can be acted on** — see `ResumeBaseline`.
+     *
+     * ### The thirty-second gate is gone, and that is deliberate
+     *
+     * There used to be a third saving: a pause shorter than thirty seconds skipped the request, on the
+     * reasoning that nobody could have got a book open on another device inside it. A device log showed the
+     * gate suppressing exactly the case the check exists for — *leaving BookWave, moving the book on the
+     * web player, and coming back* is a trip of seconds — and the patch for that (forget the pause on
+     * backgrounding) made the rule three transitions of guesswork about a question none of them could
+     * answer. Correctness here is worth more than the round trip: the gate is removed, and what is left is
+     * a fact (an acknowledged pause) and a cap (two seconds). `docs/risks.md` R-89, R-95.
      *
      * ### Only from here
      *
@@ -351,12 +353,17 @@ class PlayerViewModel @Inject constructor(
         val current = playback.value
         if (current.isPlaying) {
             cancelResumeCheck()
-            freshness.onPausedInApp()
             controller.togglePlayPause()
             return
         }
         val bookId = current.bookId
-        if (bookId == null || !shouldCheckServer()) {
+        // No book, or no acknowledged pause to compare the server's answer against. The second is the
+        // ordinary case for a cold start — whose position came from the server's own `/play` response —
+        // and for a resume the listener has already seeked since. `checkServerPosition` refuses the same
+        // resume for the same reason; this is the copy that keeps Play instant when it cannot help, and
+        // the repository's is the one that keeps the rule true whoever calls it.
+        val baseline = bookId?.let(controller::acknowledgedPause)
+        if (bookId == null || baseline == null) {
             controller.togglePlayPause()
             return
         }
@@ -369,15 +376,15 @@ class PlayerViewModel @Inject constructor(
                 // arriving after audio has started is worse than the position it would have corrected,
                 // which is the conclusion absorb reached from the other direction and wrote down.
                 outcome = withTimeoutOrNull(SERVER_CHECK_TIMEOUT) {
-                    playbackData.positions.checkServerPosition(bookId, pressedAt)
+                    playbackData.positions.checkServerPosition(bookId, baseline)
                 } ?: ExternalSessionCheck.Unavailable
                 val latest = playback.value
                 // A slower answer may outlive the Play it belonged to. The book and state that now own the
                 // player win; an old request must never move or toggle them.
                 if (latest.bookId != bookId || latest.isPlaying) return@launch
-                // One call, not two. `resumeLoadedAt` connects, prepares if it has to, seeks and only
-                // then plays, all inside a single main-thread block — see `ResumeSurface.kt` for why the
-                // two-call form dropped the seek. `null` means "resume where you are".
+                // One call, not two. `resumeLoadedAt` connects and then hands the whole adoption to the
+                // service, which owns the player and can confirm the seek landed — see `AtomicResume`.
+                // `null` means "resume where you are".
                 val target = (outcome as? ExternalSessionCheck.Ahead)?.position
                 controller.resumeLoadedAt(target)
             } finally {
@@ -386,16 +393,6 @@ class PlayerViewModel @Inject constructor(
             }
         }
     }
-
-    /**
-     * Whether this resume is one that could plausibly have been overtaken.
-     *
-     * The rule and its three transitions live in [ResumeFreshness]; this is the one line that reads it.
-     * The short version: a pause of a few seconds cannot have been followed by somebody else listening
-     * somewhere else — but **leaving the app** can, and a device run found the gate suppressing exactly
-     * that case.
-     */
-    private fun shouldCheckServer(): Boolean = freshness.isCheckNeeded()
 
     /**
      * PRODUCT_SPEC SYNC-002 — writes down which of the three outcomes this Play resumed under.
@@ -465,10 +462,6 @@ class PlayerViewModel @Inject constructor(
     fun onAppBackgrounded() {
         sessionSync.request(SyncTrigger.AppBackgrounded)
         sessionSync.drain()
-        // PRODUCT_SPEC SYNC-002 — and no pause is short any more. The listener who leaves to move the book
-        // on another client is exactly who the freshness check exists for, and their trip takes seconds:
-        // a device log showed a Play at 12:19 after an in-app pause at 12:18 skip the check entirely.
-        freshness.onLeftApp()
     }
 
     /**
@@ -536,19 +529,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     private companion object {
-        /**
-         * PRODUCT_SPEC SYNC-002 — how long a pause has to have lasted before a resume asks the server.
-         *
-         * Thirty seconds. Nobody listening on a second device gets a book open, played and synced inside
-         * that window, so a shorter pause cannot have been overtaken and the request would buy nothing.
-         *
-         * The number matches the constant the official app used for the same gate before it disabled its
-         * whole check (`PlayerListener.PAUSE_LEN_BEFORE_RECHECK`, 30 seconds); absorb draws the line at two
-         * minutes. The shorter of the two, because a capped two-second read is a cheaper thing to spend on
-         * a maybe than absorb's uncapped session refresh.
-         */
-        val MIN_PAUSE_BEFORE_CHECK: Duration = 30.seconds
-
         /**
          * PRODUCT_SPEC SYNC-002 — the longest a Play waits on the freshness check before resuming anyway.
          *

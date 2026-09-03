@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import javax.inject.Inject
@@ -48,11 +49,13 @@ class RefreshingPlaybackRepository @Inject constructor(
      *
      * A drain before the read would be the wrong shape twice over. It is a network write on the path
      * between a tap and audio, which is the latency this check exists to keep down; and it would make the
-     * answer meaningless — uploading this device's position bumps the server's `lastUpdate`, so the very
-     * next read would report the server as newer than us. The check reads
-     * [com.example.shelfplayer.core.database.entity.MediaProgressEntity.hasUnsyncedChanges] instead and
-     * answers `Current` without asking at all when there is anything queued.
+     * answer meaningless — uploading this device's position moves the very number the read is about, so
+     * the check would then be comparing the server against a position the drain had just put there.
+     *
+     * There is nothing to drain *for*, either. The decision is made against an acknowledged pause
+     * ([AcknowledgedPause]): a position the server has already confirmed it holds. Anything still queued
+     * by definition has not been acknowledged and therefore is not what the comparison is against.
      */
-    override suspend fun checkServerPosition(bookId: LibraryItemId, localPosition: Duration) =
-        delegate.checkServerPosition(bookId, localPosition)
+    override suspend fun checkServerPosition(bookId: LibraryItemId, baseline: AcknowledgedPause?) =
+        delegate.checkServerPosition(bookId, baseline)
 }

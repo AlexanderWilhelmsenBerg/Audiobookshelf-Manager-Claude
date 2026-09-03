@@ -18,6 +18,7 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.ServerProgress
@@ -471,63 +472,66 @@ class DefaultPlaybackRepositoryTest {
     // ------------------------------------------- PRODUCT_SPEC SYNC-002, the check before an in-app Play
 
     /*
-     * These are about one question — may this resume trust the position it is holding — and the three
-     * answers it has. What each answer *costs* matters as much as which one it is: the first version of
-     * this check read the account's whole listening history page by page and a device reported the Play
-     * taking seconds. `requests` is asserted for that reason, not for tidiness.
+     * These are about one question — has another device moved this book since we last agreed with the
+     * server about it — and the three answers it has.
+     *
+     * The question is asked against an `AcknowledgedPause`: a position this device stopped at *and the
+     * server confirmed it had taken*. That is a fact about both sides, which is what makes the comparison
+     * mean anything. Four earlier versions compared something else — the server's `lastUpdate` against a
+     * row this app had itself written from that same value (R-88), how long ago the listener pressed pause
+     * (R-89), `hasUnsyncedChanges` (R-92, R-93) — and each produced a device run where Play resumed on a
+     * stale position. None of them is read here.
+     *
+     * What each answer *costs* matters as much as which one it is: the first version read the account's
+     * whole listening history page by page and a device reported the Play taking seconds. `requests` is
+     * asserted for that reason, not for tidiness.
      */
 
-    /** The server was written after this device and holds a different position: the one case that moves. */
+    /** The server holds something other than the pause it acknowledged: the one case that moves. */
     @Test
-    fun `a newer server position is reported as ahead`() = runTest {
-        syncedProgress(position = 10.minutes, at = 1_000L)
-        serverProgress.answer = AppResult.Success(
-            ServerProgress(position = 61.minutes, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
-        )
+    fun `a server position other than the acknowledged pause is reported as ahead`() = runTest {
+        serverProgress.answer = serverAt(61.minutes)
 
-        val outcome = repository.checkServerPosition(BOOK, localPosition = 10.minutes)
+        val outcome = repository.checkServerPosition(BOOK, acknowledged(10.minutes))
 
         assertEquals(ExternalSessionCheck.Ahead(61.minutes), outcome)
         assertEquals(1, serverProgress.requests, "one request for one book, never a sweep of the account")
     }
 
     /**
-     * **A server position that is *behind* is still ahead in the sense that matters.**
+     * **A server position that is *behind* the baseline is adopted just the same.**
      *
-     * Somebody rewinding on another device is newer activity even though the number is smaller. This is the
-     * case a position-magnitude comparison gets backwards, and honouring it is why the timestamp decides.
+     * Somebody rewinding on another device is activity that happened after our acknowledgement even though
+     * the number is smaller. This is the case a position-magnitude comparison gets backwards, and it is
+     * why only the *distance* from the baseline is ever read.
      */
     @Test
-    fun `an earlier server position from a later write is still adopted`() = runTest {
-        syncedProgress(position = 60.minutes, at = 1_000L)
-        serverProgress.answer = AppResult.Success(
-            ServerProgress(position = 20.minutes, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
-        )
+    fun `an earlier server position than the acknowledged pause is still adopted`() = runTest {
+        serverProgress.answer = serverAt(20.minutes)
 
         assertEquals(
             ExternalSessionCheck.Ahead(20.minutes),
-            repository.checkServerPosition(BOOK, localPosition = 60.minutes),
+            repository.checkServerPosition(BOOK, acknowledged(60.minutes)),
         )
     }
 
     /**
-     * Our own upload bumps the server's `lastUpdate`, and a newer timestamp alone must not move anything.
+     * The server is still holding the pause it acknowledged, so nothing happened and nothing moves.
      *
-     * The timestamp is not read at all any more, so this passes for a simpler reason than it used to: the
-     * server is holding the position the player is already on. That is the case it always had to cover —
-     * a resume after this device's own sync — and the position is what settles it.
+     * A late `lastUpdate` is supplied deliberately: our own upload bumps the server's timestamp, and a
+     * version that read it would have called this remote activity. The timestamp is not read at all.
      */
     @Test
-    fun `a newer timestamp at the same position keeps the local one`() = runTest {
-        syncedProgress(position = 30.minutes, at = 1_000L)
+    fun `the server still holding the acknowledged pause keeps the local position`() = runTest {
         serverProgress.answer = AppResult.Success(
             ServerProgress(position = 30.minutes, updatedAt = Instant.ofEpochMilli(9_000L), isFinished = false),
         )
 
         assertEquals(
             ExternalSessionCheck.Current,
-            repository.checkServerPosition(BOOK, localPosition = 30.minutes),
+            repository.checkServerPosition(BOOK, acknowledged(30.minutes)),
         )
+        assertEquals(1, serverProgress.requests, "an acknowledged pause is always asked about")
     }
 
     /**
@@ -535,15 +539,16 @@ class DefaultPlaybackRepositoryTest {
      *
      * The case that cost a second device report. When BookWave is open and another client moves a book,
      * `ObserveRealtimeUpdatesUseCase` applies the push and `ProgressMappers.toEntity` stores the server's
-     * own `lastUpdate` as the row's `updatedAt` — so the two timestamps become **equal** and the old
-     * `lastUpdate > updatedAt` condition answered `Current`. Meanwhile Media3 was untouched and still held
-     * the old position, because refreshing a database row does not move a loaded player.
+     * own `lastUpdate` as the row's `updatedAt` — so the two timestamps become **equal**, and the old
+     * `lastUpdate > updatedAt` condition answered `Current` while Media3 still held the old position,
+     * because refreshing a database row does not move a loaded player.
      *
-     * So the row here is exactly what a server-sourced write leaves behind — position 15:00, the server's
-     * timestamp, nothing unsent — while the player is still at 10:00. The answer must be `Ahead`.
+     * The row here is exactly what a server-sourced write leaves behind — position 15:00, the server's
+     * timestamp, nothing unsent — while the pause this device had acknowledged was 10:00. The answer must
+     * be `Ahead`, and it is, because the row is not consulted either.
      */
     @Test
-    fun `a row already refreshed from the server still reports the player as behind`() = runTest {
+    fun `a row already refreshed from the server still reports the baseline as overtaken`() = runTest {
         val serverTimestamp = Instant.ofEpochMilli(2_000L)
         seedServerSourcedProgress(position = 15.minutes, at = serverTimestamp)
         serverProgress.answer = AppResult.Success(
@@ -552,119 +557,135 @@ class DefaultPlaybackRepositoryTest {
 
         assertEquals(
             ExternalSessionCheck.Ahead(15.minutes),
-            repository.checkServerPosition(BOOK, localPosition = 10.minutes),
-            "the row agrees with the server; the player is the thing that is behind",
+            repository.checkServerPosition(BOOK, acknowledged(10.minutes)),
+            "the row agrees with the server; the acknowledged pause is the thing that has been overtaken",
         )
     }
 
     /** A second of drift is rounding between a fractional wire value and a stored millisecond, not a device. */
     @Test
     fun `a difference inside the tolerance keeps the local position`() = runTest {
-        syncedProgress(position = 30.minutes, at = 1_000L)
-        serverProgress.answer = AppResult.Success(
-            ServerProgress(
-                position = 30.minutes + 1.seconds,
-                updatedAt = Instant.ofEpochMilli(2_000L),
-                isFinished = false,
+        serverProgress.answer = serverAt(30.minutes + 1.seconds)
+
+        assertEquals(
+            ExternalSessionCheck.Current,
+            repository.checkServerPosition(BOOK, acknowledged(30.minutes)),
+        )
+    }
+
+    /**
+     * **`hasUnsyncedChanges` does not skip the request, and this is the rework.**
+     *
+     * It used to. The reasoning sounded right — a row still owing the server an upload is the truth by
+     * definition, so why ask — and it was the fourth thing to break this feature. The flag is
+     * *persistence bookkeeping*: it says whether a queue is empty, not whether anybody else listened. A
+     * journal write that landed after its own acknowledgement re-raised it with nothing left to lower it,
+     * and the check then stopped asking the server about that book at all. The device log's contradiction
+     * is one line: a `200` accepting `22461280ms` at 19:58:08, and `Skipped the freshness check …
+     * stored=22461280ms player=22461280ms` at 19:58:54. `docs/risks.md` R-95.
+     *
+     * So: a flagged row, an acknowledged pause, and the request **is** made.
+     */
+    @Test
+    fun `an unsynced row does not skip the request`() = runTest {
+        repository.recordPosition(BOOK, position = 40.minutes, duration = 2.hours)
+        assertTrue(storedProgress().hasUnsyncedChanges, "a fresh local position is unsent by definition")
+        serverProgress.answer = serverAt(55.minutes)
+
+        assertEquals(
+            ExternalSessionCheck.Ahead(55.minutes),
+            repository.checkServerPosition(BOOK, acknowledged(40.minutes)),
+        )
+        assertEquals(1, serverProgress.requests, "the flag is about a queue, not about another device")
+    }
+
+    /**
+     * **No acknowledged pause makes no request and moves nothing.**
+     *
+     * Every way of having no baseline lands here: nothing has paused yet, the pause's sync failed or has
+     * not answered, or the listener has seeked since. Without a moment at which this device and the server
+     * demonstrably agreed, a difference between them cannot be told from this device's own un-uploaded
+     * write — so adopting it could throw away a position (product priority 2), and the round trip would
+     * buy an answer that cannot be acted on.
+     *
+     * A cold start is the ordinary case, and it loses nothing: its position came from the server's own
+     * `/play` response.
+     */
+    @Test
+    fun `no acknowledged pause makes no request at all`() = runTest {
+        serverProgress.answer = serverAt(25.minutes)
+
+        assertEquals(
+            ExternalSessionCheck.Unavailable,
+            repository.checkServerPosition(BOOK, baseline = null),
+        )
+        assertEquals(0, serverProgress.requests, "nothing to compare against, so nothing to ask")
+    }
+
+    /**
+     * A baseline for a *different* book is no baseline either.
+     *
+     * The service invalidates on a track boundary, so this should not arise — but a Play that raced a book
+     * change would otherwise judge the new book's server position against the old book's pause, which is
+     * the one way this comparison could adopt a position from the wrong book entirely.
+     */
+    @Test
+    fun `a baseline for another book makes no request`() = runTest {
+        serverProgress.answer = serverAt(25.minutes)
+
+        assertEquals(
+            ExternalSessionCheck.Unavailable,
+            repository.checkServerPosition(
+                UNPLAYED,
+                AcknowledgedPause(bookId = BOOK, position = 10.minutes, generation = 4),
             ),
         )
-
-        assertEquals(
-            ExternalSessionCheck.Current,
-            repository.checkServerPosition(BOOK, localPosition = 30.minutes),
-        )
-    }
-
-    /**
-     * **Unsynced local progress answers without asking the server at all.**
-     *
-     * The local row is the truth in that state by definition, so the request would be latency spent on an
-     * answer that could not be acted on. It is also the common case for one person on one device, which is
-     * why `requests` being zero here is the assertion that matters most for the reported delay.
-     */
-    @Test
-    fun `unsynced local progress skips the request`() = runTest {
-        repository.recordPosition(BOOK, position = 40.minutes, duration = 2.hours)
-        assertTrue(storedProgress().hasUnsyncedChanges)
-
-        assertEquals(
-            ExternalSessionCheck.Current,
-            repository.checkServerPosition(BOOK, localPosition = 40.minutes),
-        )
-        assertEquals(0, serverProgress.requests, "nothing to reconcile against, so nothing to ask")
-    }
-
-    /**
-     * **A book with no local row is asked about, not assumed.**
-     *
-     * It used to skip the request, on the reasoning that a first play had just loaded from the server's own
-     * position. That holds only while the loaded position is fresh — a book opened here and then played
-     * elsewhere before Play is pressed has neither a fresh position nor a row to notice it with, which is
-     * the case a device run hit.
-     */
-    @Test
-    fun `a book with no local progress still asks the server`() = runTest {
-        serverProgress.answer = AppResult.Success(
-            ServerProgress(position = 25.minutes, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
-        )
-
-        assertEquals(
-            ExternalSessionCheck.Ahead(25.minutes),
-            repository.checkServerPosition(UNPLAYED, localPosition = Duration.ZERO),
-        )
-        assertEquals(1, serverProgress.requests)
-    }
-
-    /** And a genuine first play, where the player already sits on the server's position, does not seek. */
-    @Test
-    fun `a first play at the server's own position stays put`() = runTest {
-        serverProgress.answer = AppResult.Success(
-            ServerProgress(position = 25.minutes, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
-        )
-
-        assertEquals(
-            ExternalSessionCheck.Current,
-            repository.checkServerPosition(UNPLAYED, localPosition = 25.minutes),
-        )
+        assertEquals(0, serverProgress.requests)
     }
 
     /** A failed read is the outcome that earns the struck-through cloud: resumed, but unverified. */
     @Test
     fun `a failed read reports the server was not reached`() = runTest {
-        syncedProgress(position = 10.minutes, at = 1_000L)
         serverProgress.answer = AppResult.Failure(AppError.Network(summary = "No connection."))
 
         assertEquals(
             ExternalSessionCheck.Unavailable,
-            repository.checkServerPosition(BOOK, localPosition = 10.minutes),
+            repository.checkServerPosition(BOOK, acknowledged(10.minutes)),
         )
     }
 
     /**
-     * **The reported case, whole: 10:00 here, 15:00 on the web, and the flag in between.**
+     * **The reported case, whole: 10:00 acknowledged here, 15:00 on the web.**
      *
      * The device report was *"play, then play on web, then play in BookWave again — progress doesn't
-     * sync"*, and it took three separate defects to produce. This pins the one that lives in this class,
-     * in the order the listener met it:
+     * sync"*, and five defects were needed to produce it. This pins the shape it finally took:
      *
-     *  1. BookWave plays to 10:00. `recordPosition` flags the row as this device's alone.
-     *  2. The check answers `Current` **without asking** — correct while the position really is unsent,
-     *     and before R-86 it stayed that way forever, because nothing ever cleared the flag.
-     *  3. The sync uploads it and clears the flag through `ProgressDao.markProgressSynced` — the exact
-     *     call `DefaultSessionSyncRepository` makes; `DefaultSessionSyncRepositoryTest` covers when it
-     *     fires and when it must not.
-     *  4. The web player listens on to 15:00. Play is pressed here, more than the pause gate later —
-     *     `PlayerViewModel` owns that gate — and now the server is asked, once, and answers `Ahead`. The
-     *     server's timestamp is supplied realistically and is not what decides it: see R-88.
+     *  1. BookWave plays to 10:00 and pauses. `recordPosition` journals it and flags the row.
+     *  2. The pause sync uploads it; `ProgressDao.markProgressSynced` clears the flag and the pause is
+     *     **acknowledged** — the server and this device demonstrably hold the same number.
+     *  3. The web player listens on to 15:00.
+     *  4. Play is pressed here. The server is asked, **once**, and answers `Ahead(15:00)` — because it is
+     *     no longer holding the position it acknowledged, and nothing else about that is ambiguous.
      *
-     * What the resume then does with that position is `ResumeSurfaceTest`'s: prepare if needed, seek to
-     * 15:00, and only then play, so the first sound is from 15:00 rather than from 10:00.
+     * Step 2's clear is the real call `DefaultSessionSyncRepository` makes;
+     * `DefaultSessionSyncRepositoryTest` covers when it fires and when it must not. What the resume then
+     * does with 15:00 is `AtomicResumeTest`'s: seek the service's own ExoPlayer, confirm the
+     * discontinuity, and only then play.
      */
     @Test
-    fun `the reported case - synced at ten minutes, web at fifteen - reports fifteen`() = runTest {
+    fun `the reported case - acknowledged at ten minutes, web at fifteen - reports fifteen`() = runTest {
         repository.recordPosition(BOOK, position = 10.minutes, duration = 2.hours)
         val recordedAt = storedProgress().updatedAt
         assertTrue(storedProgress().hasUnsyncedChanges, "a fresh local position is unsent by definition")
+
+        val cleared = database.progressDao().markProgressSynced(
+            profileId = profileId.value,
+            bookKey = EntityKey.of(SERVER, BOOK.value),
+            positionMillis = 10.minutes.inWholeMilliseconds,
+            toleranceMillis = 1_000L,
+        )
+        assertEquals(1, cleared, "the upload covered the stored position, so the row is no longer unsent")
+
         serverProgress.answer = AppResult.Success(
             ServerProgress(
                 position = 15.minutes,
@@ -673,23 +694,21 @@ class DefaultPlaybackRepositoryTest {
             ),
         )
 
-        assertEquals(ExternalSessionCheck.Current, repository.checkServerPosition(BOOK, localPosition = 10.minutes))
-        assertEquals(0, serverProgress.requests, "an unsent position has nothing to reconcile against")
-
-        val cleared = database.progressDao().markProgressSynced(
-            profileId = profileId.value,
-            bookKey = EntityKey.of(SERVER, BOOK.value),
-            positionMillis = 10.minutes.inWholeMilliseconds,
-            toleranceMillis = 1_000L,
-        )
-
-        assertEquals(1, cleared, "the upload covered the stored position, so the row is no longer unsent")
         assertEquals(
             ExternalSessionCheck.Ahead(15.minutes),
-            repository.checkServerPosition(BOOK, localPosition = 10.minutes),
+            repository.checkServerPosition(BOOK, acknowledged(10.minutes)),
         )
         assertEquals(1, serverProgress.requests, "one request for one book, never a sweep of the account")
     }
+
+    /** An acknowledged pause for [BOOK]. The generation is opaque to the repository and only travels. */
+    private fun acknowledged(position: Duration, bookId: LibraryItemId = BOOK): AcknowledgedPause =
+        AcknowledgedPause(bookId = bookId, position = position, generation = 7)
+
+    /** A scripted server answer. The timestamp is realistic and deliberately never decides anything. */
+    private fun serverAt(position: Duration): AppResult<ServerProgress> = AppResult.Success(
+        ServerProgress(position = position, updatedAt = Instant.ofEpochMilli(2_000L), isFinished = false),
+    )
 
     /**
      * The row a server-sourced write leaves: the server's position, the server's timestamp, nothing unsent.
@@ -713,20 +732,6 @@ class DefaultPlaybackRepositoryTest {
                     hasUnsyncedChanges = false,
                 ),
             ),
-        )
-    }
-
-    /**
-     * A stored row the server has already accepted, at a chosen moment.
-     *
-     * [MediaProgressEntity.updatedAt] is the *local* side of the freshness comparison and
-     * [MediaProgressEntity.hasUnsyncedChanges] is what short-circuits it, so both have to be set
-     * deliberately rather than left to whatever `recordPosition` produces.
-     */
-    private suspend fun syncedProgress(position: Duration, at: Long) {
-        repository.recordPosition(BOOK, position = position, duration = 2.hours)
-        database.progressDao().upsertProgress(
-            listOf(storedProgress().copy(updatedAt = at, hasUnsyncedChanges = false)),
         )
     }
 

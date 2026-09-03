@@ -42,6 +42,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.domain.lock.ProfileLockGuard
+import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
@@ -55,6 +56,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -67,9 +69,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-001 — the one player and the one media session, both owned by this service.
@@ -168,6 +172,16 @@ class PlaybackService : MediaLibraryService() {
     /** PRODUCT_SPEC 11.1 — "expose custom commands for bookmark". This is what that command writes to. */
     @Inject
     internal lateinit var bookmarks: BookmarkRepository
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the pause the server has confirmed, which is service state by nature.
+     *
+     * Written here and only here: this listener is the one thing that sees every pause, every seek and every
+     * track boundary, whether they came from the app's screen, the notification, a headset or a car. The
+     * app's ViewModel only reads it. A singleton, so the two are the same object — see [ResumeBaseline].
+     */
+    @Inject
+    internal lateinit var resumeBaseline: ResumeBaseline
 
     @Inject
     internal lateinit var logger: Logger
@@ -393,13 +407,77 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun recordPosition() {
-        val snapshot = positionSnapshot() ?: return
+        recordPosition(positionSnapshot() ?: return)
+    }
+
+    /**
+     * The same write against a snapshot the caller already took.
+     *
+     * The pause path needs it: the baseline it establishes and the row it journals have to be the **same**
+     * position, and reading the player twice a few milliseconds apart is how they would stop being.
+     */
+    private suspend fun recordPosition(snapshot: PositionSnapshot) {
         playbackRepository.recordPosition(
             bookId = snapshot.bookId,
             position = snapshot.position,
             duration = snapshot.duration,
             owner = snapshot.owner,
         )
+    }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the pause, as one ordered transaction.
+     *
+     * ### The four steps, and why they are one coroutine
+     *
+     *  1. **capture** the exact position the player came to rest at, once, on the main thread;
+     *  2. **journal** that same position locally, so nothing is lost if the process dies here;
+     *  3. **await** the session sync for it — not `request`, which returns before the server has answered;
+     *  4. and the sync itself **promotes** the baseline when the server took that position.
+     *
+     * Step 3 is the whole reason this is a suspending sequence rather than three launches. The freshness
+     * check before the next Play decides from an *acknowledged* pause, and "acknowledged" is a fact that
+     * only exists after the answer arrives (see [ResumeBaseline]). Launching the sync separately and moving
+     * on is what four previous versions did, and each of them then had to guess at the acknowledgement from
+     * something local — a timestamp, a stopwatch, a persistence flag — and each guess was wrong on a device.
+     *
+     * ### On the application scope, on the main dispatcher
+     *
+     * The same reasoning as [flushProgress]: a pause is often the last thing that happens before the
+     * service is torn down, and [scope] is cancelled in `onDestroy`. Awaiting a network round trip on a
+     * scope that is about to die would abandon the acknowledgement at exactly the moment it matters most.
+     * Nothing is *lost* by that — the outbox row is written before the send, so the drain carries it up
+     * later — but the pause would stay unacknowledged and the next Play would decline to ask the server.
+     *
+     * `MainImmediate` means the capture happens synchronously inside this callback rather than on a later
+     * dispatch, so no other player event can slip between the pause and the position it is recorded at.
+     *
+     * ### This fires on a rebuffer too, and that is harmless
+     *
+     * `isPlaying` goes false whenever the player stalls, not only when somebody pressed pause. Such a
+     * baseline describes a real position that really was uploaded, and the `isPlaying = true` that follows
+     * the stall invalidates it. Capturing here rather than from `playWhenReady` — which *is* intent — is
+     * deliberate: it puts the capture in the same callback and the same coroutine as the sync that
+     * acknowledges it, so no dispatch order can put the acknowledgement before the thing it acknowledges.
+     */
+    private suspend fun onCameToRest() {
+        val snapshot = positionSnapshot()
+        if (snapshot == null) {
+            // Nothing worth a baseline — a player that has not started, or the single-file fallback whose
+            // offsets are not book positions at all (R-61). The next Play has no acknowledged pause and
+            // therefore resumes locally, which is the correct answer for a position we cannot vouch for.
+            resumeBaseline.onLocalMove()
+            return
+        }
+        val generation = resumeBaseline.onPaused(snapshot.bookId, snapshot.position)
+        logger.debug(
+            LogCategory.Playback,
+            "The player came to rest, pending the server's acknowledgement",
+            LogField.Millis("position", snapshot.position.inWholeMilliseconds),
+            LogField.Public("generation", generation.toString()),
+        )
+        recordPosition(snapshot)
+        sessionSync.sync(SyncTrigger.Paused)
     }
 
     /**
@@ -475,6 +553,111 @@ class PlaybackService : MediaLibraryService() {
     )
 
     /**
+     * PRODUCT_SPEC SYNC-002 — the whole adopt-a-remote-position operation, on the player this service owns.
+     *
+     * ### Why the app cannot do this for itself
+     *
+     * It used to try. `PlaybackController` seeked through `MediaController` and then read the position back
+     * off the same proxy a second later to see whether it had taken — which cannot distinguish a seek the
+     * player dropped from one it honoured, because both answers come from the session rather than from the
+     * player (see `AtomicResume.kt`). Here there is no proxy: [player] *is* the `ExoPlayer`, the discontinuity
+     * is its own, and the answer that goes back over the binder is a fact rather than an assumption.
+     *
+     * Everything runs on [mainDispatcher] because every `Player` read and write must.
+     */
+    private suspend fun resumeAt(bookId: LibraryItemId, target: Duration): ResumeOutcome = withContext(mainDispatcher) {
+        val current = player ?: return@withContext ResumeOutcome.NotLoaded
+        val outcome = OwnedPlayer(current).seekAndResume(
+            bookId = bookId,
+            target = target,
+            tolerance = ADOPT_TOLERANCE,
+            timeout = SEEK_CONFIRM_TIMEOUT,
+        )
+        // Where the seek landed is logged by `OwnedPlayer.seekAndAwait`, which is the only place that holds
+        // it *before* audio starts. Reading the position again here would report the target plus however
+        // much has played since, which is the kind of confident wrong number R-90 was made of.
+        logger.info(
+            LogCategory.Playback,
+            if (outcome == ResumeOutcome.Resumed) {
+                "Resumed on a position adopted from another device"
+            } else {
+                "A position adopted from another device did not take"
+            },
+            LogField.Millis("target", target.inWholeMilliseconds),
+            LogField.Public("outcome", outcome.name),
+        )
+        outcome
+    }
+
+    /**
+     * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.
+     *
+     * Thin on purpose: the ordering it is driven by is asserted against a fake in `AtomicResumeTest`, and
+     * everything here is a single Media3 call so that there is as little as possible that only a device can
+     * exercise.
+     */
+    private inner class OwnedPlayer(private val media: ExoPlayer) : ResumeTarget {
+
+        override fun loadedBookId(): LibraryItemId? =
+            media.currentMediaItem?.takeIf { media.mediaItemCount > 0 }?.let(MediaItems::bookIdOf)
+
+        override fun needsPreparing(): Boolean = media.playbackState == Player.STATE_IDLE || media.playerError != null
+
+        override fun prepare() = media.prepare()
+
+        /**
+         * Seeks, and waits for **this player** to say where it ended up.
+         *
+         * The listener is attached before the seek is issued, because `ExoPlayer` dispatches the
+         * discontinuity synchronously from `seekTo` on this same thread: registering afterwards would
+         * reliably miss it.
+         *
+         * If no discontinuity arrives inside [timeout] the player's live position is read instead. That is
+         * not the discredited controller re-read — this is the player itself, on its own thread — and it
+         * covers the one case Media3 does not promise a callback for: a seek to where the player already
+         * is. Either way the caller compares the answer against the target before any audio starts.
+         */
+        override suspend fun seekAndAwait(position: Duration, timeout: Duration): Duration? {
+            val landed = CompletableDeferred<Duration>()
+            val listener = object : Player.Listener {
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    if (reason != Player.DISCONTINUITY_REASON_SEEK &&
+                        reason != Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
+                    ) {
+                        return
+                    }
+                    landed.complete(newPosition.positionMs.coerceAtLeast(0).milliseconds)
+                }
+            }
+            media.addListener(listener)
+            return try {
+                media.seekTo(position.inWholeMilliseconds.coerceAtLeast(0))
+                val reported = withTimeoutOrNull(timeout) { landed.await() }
+                (reported ?: media.bookPosition()).also { where ->
+                    logger.debug(
+                        LogCategory.Playback,
+                        "The player reported where a seek landed",
+                        LogField.Millis("target", position.inWholeMilliseconds),
+                        LogField.Millis("landed", where.inWholeMilliseconds),
+                        LogField.Public("source", if (reported == null) "position" else "discontinuity"),
+                    )
+                }
+            } finally {
+                // In the `finally` rather than on cancellation: this block runs in this coroutine's
+                // context, which is the main dispatcher, and `removeListener` off the main thread is a
+                // Media3 violation whatever the reason for unwinding.
+                media.removeListener(listener)
+            }
+        }
+
+        override fun play() = media.play()
+    }
+
+    /**
      * The moments a five-second timer would round off.
      *
      * Pausing, crossing into another track and reaching the end of a book are all points a listener
@@ -489,19 +672,17 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) {
                 // Audio is coming out, so whatever went wrong is over and the next failure starts from one.
                 recovery.onPlaying()
+                // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
+                // longer a description of where this device is. See `ResumeBaseline.onLocalMove`.
+                resumeBaseline.onLocalMove()
                 // PRODUCT_SPEC PLAY-009 — before anything else on the resume path: a rewind that landed after
                 // playback had started would be audible as a stutter.
                 autoRewind.onResumed()
             } else {
-                // Serialized, and that ordering is the defect. `recordPosition` raises
-                // `hasUnsyncedChanges`; the sync that follows is what lowers it again. Launched
-                // separately, the record could land *after* the sync had already acknowledged the same
-                // position — leaving a flag up that nothing would ever take down, and a freshness check
-                // that short-circuited on it without asking the server. `docs/risks.md` R-93.
-                scope.launch {
-                    recordPosition()
-                    sessionSync.request(SyncTrigger.Paused)
-                }
+                // PRODUCT_SPEC SYNC-002 — capture, journal, then *await* the sync that acknowledges it. See
+                // `onCameToRest` for why the awaiting is the point, and why it is not on this service's
+                // scope.
+                applicationScope.launch(mainDispatcher) { onCameToRest() }
             }
         }
 
@@ -574,7 +755,9 @@ class PlaybackService : MediaLibraryService() {
             // this fires for every book including one started from a car or by a media button, and the wait
             // to hear a book is the wait for *that* book.
             if (mediaItem != null) metrics.onItemPrepared()
-            // Record before the sync that acknowledges it — see the pause branch and R-93.
+            // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
+            resumeBaseline.onBookClosed()
+            // Record before the sync that follows it, so the row the sync uploads is this item's own.
             scope.launch {
                 recordPosition()
                 sessionSync.request(SyncTrigger.TrackChanged)
@@ -599,7 +782,10 @@ class PlaybackService : MediaLibraryService() {
                 // PRODUCT_SPEC PLAY-009 — "rewind is not applied after a user seek". A listener who chose a
                 // position chose it; moving it afterwards is the app overruling them.
                 autoRewind.onSeeked()
-                // Record before the sync that acknowledges it — see the pause branch and R-93.
+                // PRODUCT_SPEC SYNC-002 — the book has moved, so whatever pause was acknowledged no longer
+                // describes it. Including the adopting seek itself: the pause it belonged to is over.
+                resumeBaseline.onLocalMove()
+                // Record before the sync that follows it, so the row the sync uploads is the seek's own.
                 scope.launch {
                     recordPosition()
                     sessionSync.request(SyncTrigger.SeekCompleted)
@@ -631,7 +817,9 @@ class PlaybackService : MediaLibraryService() {
                 else -> Unit
             }
             if (playbackState == Player.STATE_ENDED) {
-                // Record before the sync that acknowledges it — see the pause branch and R-93.
+                // PRODUCT_SPEC SYNC-002 — the book is over; nothing about its last pause is still true.
+                resumeBaseline.onBookClosed()
+                // Record before the sync that follows it, so the row the sync uploads is the final one.
                 scope.launch {
                     recordPosition()
                     sessionSync.request(SyncTrigger.BookChanged)
@@ -1662,6 +1850,11 @@ class PlaybackService : MediaLibraryService() {
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT, Bundle.EMPTY))
+                        // PRODUCT_SPEC SYNC-002 — the app's own atomic resume. Granted on the same
+                        // condition as the four above and refused to everything else: a seek followed by a
+                        // play, driven from outside the app, is exactly the pair `ControllerTrust`
+                        // withholds. See `ResumeCommand`.
+                        .add(ResumeCommand.command())
                         .build()
 
                 ControllerAccess.PlaybackOnly -> {
@@ -1861,6 +2054,34 @@ class PlaybackService : MediaLibraryService() {
             return LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
         }
 
+        /**
+         * PRODUCT_SPEC SYNC-002 — runs the atomic resume and answers with whether it worked.
+         *
+         * A `SessionResult` rather than a fire-and-forget: the caller adopted a position because the server
+         * said another device had moved the book, and "the seek did not take" is something the app has to
+         * be able to act on rather than discover from a log line a second later.
+         *
+         * `ERROR_INVALID_STATE` covers every failure the same way on purpose — the specific outcome is in
+         * the service's log, where the position that failed can be recorded, and the controller's only
+         * decision is the same in all three cases: reopen the book rather than play the wrong position.
+         */
+        private fun resumeCommand(args: Bundle): ListenableFuture<SessionResult> {
+            val bookId = ResumeCommand.bookIdFrom(args)?.takeIf(String::isNotBlank)
+            val positionMs = ResumeCommand.positionFrom(args)
+            if (bookId == null || positionMs == null) {
+                logger.warn(LogCategory.Playback, "A resume command arrived without a book and a position")
+                return Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
+            }
+            return future {
+                val outcome = resumeAt(LibraryItemId(bookId), positionMs.milliseconds)
+                if (outcome == ResumeOutcome.Resumed) {
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                } else {
+                    SessionResult(SessionError.ERROR_INVALID_STATE)
+                }
+            }
+        }
+
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -1874,6 +2095,9 @@ class PlaybackService : MediaLibraryService() {
                 denied(controller, "onCustomCommand")
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
             }
+            // PRODUCT_SPEC SYNC-002 — the one command with an answer, so it is handled before the
+            // fire-and-forget four rather than inside their `when`.
+            if (customCommand.customAction == ResumeCommand.ACTION) return resumeCommand(args)
             when (customCommand.customAction) {
                 // PLAY-008 says the notification action *extends*; the shake *restarts*. See ADR-0014.
                 NotificationButtons.ACTION_EXTEND_SLEEP_TIMER -> sleepTimer.extend()
@@ -1892,6 +2116,25 @@ class PlaybackService : MediaLibraryService() {
     private companion object {
         /** PRODUCT_SPEC PLAY-004 — "at least every five seconds". */
         const val JOURNAL_INTERVAL_MS = 5_000L
+
+        /**
+         * PRODUCT_SPEC SYNC-002 — how far from the adopted position the player may land and still count.
+         *
+         * `ExoPlayer` seeks to the nearest sync sample unless the extractor can do better, so an exact
+         * landing is not something a seek promises. A second is well inside "the same place in the book"
+         * and far below any difference another device's listening could produce.
+         */
+        val ADOPT_TOLERANCE: Duration = 1.seconds
+
+        /**
+         * How long the seek has to report back before it is treated as lost.
+         *
+         * Nothing is playing yet, so this is dead air on a Play the listener has already waited a network
+         * round trip for; two seconds is the same budget the freshness read itself gets. A seek that has not
+         * landed by then has almost certainly been dropped, and the recovery — reopening the book — is
+         * faster than waiting longer.
+         */
+        val SEEK_CONFIRM_TIMEOUT: Duration = 2.seconds
 
         const val SECONDS_PER_MINUTE = 60L
 
