@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
@@ -38,6 +39,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-001 — the app's one handle on playback.
@@ -245,12 +247,79 @@ class PlaybackController @Inject constructor(
         val owner = media.currentMediaItem?.let(MediaItems::ownerOf)
         media.asResumeSurface().resumeAt(position?.inWholeMilliseconds)
         publish(media)
+        if (position == null || bookId == null) return@withContext
         // Recorded after the fact and off this thread, for the reason `seekTo` does it that way: a database
-        // write must not sit between a finger and a position. Only when something actually moved.
-        if (position != null && bookId != null) {
-            applicationScope.launch {
-                history.record(bookId, PlaybackEvent.RemoteProgress, from, position, owner = owner)
-            }
+        // write must not sit between a finger and a position.
+        applicationScope.launch {
+            history.record(bookId, PlaybackEvent.RemoteProgress, from, position, owner = owner)
+        }
+        confirmAdopted(media, bookId, from = from, target = position)
+    }
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — did the seek actually happen, and what to do when it did not.
+     *
+     * ### Why a resume verifies itself
+     *
+     * A device run recorded the whole adoption and heard none of it: the history pane carried
+     * *"moved on another device, 9:59 → 15:58"*, the freshness check had answered `Ahead`, `resumeLoadedAt`
+     * had run — and the next interval sync reported 611177ms, which is 10:11. The audio never left 9:59,
+     * and `PlaybackService.onPositionDiscontinuity` never fired, so the seek did not reach the player at
+     * all. Silently. `MediaController` returns `void` from every one of these calls and reports nothing
+     * about whether the session applied them.
+     *
+     * That is the third distinct way this one feature has failed, and all three were invisible from
+     * inside the app. So this one does not trust its own call: it reads the position back and says what it
+     * found, in the log the owner already reads when a resume goes wrong.
+     *
+     * ### After a delay, and compared against where it started
+     *
+     * `MediaController` masks a seek locally the instant it is asked, so reading the position back
+     * immediately reports the target whether or not the session ever heard about it. The reading that
+     * means something comes after a beat — hence [ADOPT_CONFIRM_DELAY], which is long enough for the round
+     * trip through the session and short enough that a recovery still lands before the listener has heard
+     * much of the wrong place.
+     *
+     * Compared against **[from]** rather than against a tolerance on [target]: audio is playing by now, so
+     * the position has moved on either way, and the question is which of the two places it moved on
+     * *from*. `Ahead` needs more than five seconds between them, so "nearer the target than the start" is
+     * never a coin toss.
+     *
+     * ### The recovery is the route this pull request originally proposed
+     *
+     * Reopening the book. `openPlaybackSession` asks the server, which is holding the position the check
+     * just read, and `MediaItems.queueFor` hands it to the player as a start position — the path every
+     * book already opens through, and demonstrably the one that works. It costs a rebuffer, which is why
+     * it is the fallback and not the mechanism.
+     *
+     * Nothing is done if the listener has moved on: a book swap or a pause means they are driving now.
+     */
+    private suspend fun confirmAdopted(
+        media: MediaController,
+        bookId: LibraryItemId,
+        from: Duration,
+        target: Duration,
+    ) {
+        delay(ADOPT_CONFIRM_DELAY)
+        val landed = media.bookPosition()
+        val adopted = didAdopt(landed = landed, from = from, target = target)
+        logger.info(
+            LogCategory.Playback,
+            if (adopted) "Resumed at a position from another device" else "The adopted position did not take",
+            LogField.Millis("target", target.inWholeMilliseconds),
+            LogField.Millis("from", from.inWholeMilliseconds),
+            LogField.Millis("landed", landed.inWholeMilliseconds),
+        )
+        if (adopted) return
+        // Still this book, and still playing: anything else means the listener took over in the last second.
+        if (media.currentMediaItem?.let(MediaItems::bookIdOf) != bookId || !media.isPlaying) return
+        val reopened = play(bookId)
+        if (reopened is AppResult.Failure) {
+            logger.warn(
+                LogCategory.Playback,
+                "Reopening the book at the server's position failed",
+                LogField.Public("summary", reopened.error.summary),
+            )
         }
     }
 
@@ -592,6 +661,16 @@ class PlaybackController @Inject constructor(
 
     private companion object {
         const val TICK_MS = 500L
+
+        /**
+         * How long to wait before believing a position read back from the controller.
+         *
+         * `MediaController` masks a seek locally the moment it is asked, so an immediate reading reports
+         * the target whether or not the session ever applied it. A second is comfortably more than the
+         * binder round trip and little enough that a recovery lands before much of the wrong place has
+         * been heard.
+         */
+        val ADOPT_CONFIRM_DELAY: Duration = 1.seconds
     }
 }
 

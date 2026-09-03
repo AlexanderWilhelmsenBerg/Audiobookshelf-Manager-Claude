@@ -44,7 +44,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
 
 /**
  * PRODUCT_SPEC PLAY-003 / SYNC-002 — the two playback repositories this screen reads and writes through.
@@ -231,13 +230,12 @@ class PlayerViewModel @Inject constructor(
     private var resumeJob: Job? = null
 
     /**
-     * When this ViewModel last paused, or `null` if it has not.
+     * Whether the next in-app Play needs to ask the server where the book is.
      *
-     * Only pauses that came through [onTogglePlayPause] are seen; a pause from the notification, the car or
-     * a headset button goes straight to the service. That is why `null` and a stale mark both mean *check*
-     * — see [shouldCheckServer].
+     * Its own object rather than a mark in this field, because the rule has three transitions and a device
+     * run found one of them missing. [ResumeFreshness] carries them and `ResumeFreshnessTest` pins them.
      */
-    private var pausedAt: TimeSource.Monotonic.ValueTimeMark? = null
+    private val freshness = ResumeFreshness(MIN_PAUSE_BEFORE_CHECK)
 
     /**
      * PRODUCT_SPEC PLAY-001 — starts a book and opens the player over it.
@@ -353,7 +351,7 @@ class PlayerViewModel @Inject constructor(
         val current = playback.value
         if (current.isPlaying) {
             cancelResumeCheck()
-            pausedAt = TimeSource.Monotonic.markNow()
+            freshness.onPausedInApp()
             controller.togglePlayPause()
             return
         }
@@ -392,20 +390,12 @@ class PlayerViewModel @Inject constructor(
     /**
      * Whether this resume is one that could plausibly have been overtaken.
      *
-     * A pause of a few seconds — a knock at the door, a wrong button, scrubbing while paused — cannot have
-     * been followed by somebody else listening on another device, so asking is a round trip spent to learn
-     * nothing. Absorb draws the same line at two minutes and it is the single biggest reason its Play feels
-     * instant; this is the same idea with a shorter fuse, because BookWave's check is capped and absorb's
-     * whole session refresh is not.
-     *
-     * A monotonic mark rather than a clock: the question is "how long since", which is an interval, and an
-     * interval read from wall-clock time is wrong across a time-zone change or an NTP correction. `null` —
-     * nothing has paused through this ViewModel yet, which is every resume after a cold start or a pause
-     * from the notification — means **check**. Erring towards asking is the safe direction: the cost is two
-     * seconds at worst and the alternative is resuming on a position somebody else has moved.
+     * The rule and its three transitions live in [ResumeFreshness]; this is the one line that reads it.
+     * The short version: a pause of a few seconds cannot have been followed by somebody else listening
+     * somewhere else — but **leaving the app** can, and a device run found the gate suppressing exactly
+     * that case.
      */
-    private fun shouldCheckServer(): Boolean =
-        pausedAt?.let { mark -> mark.elapsedNow() >= MIN_PAUSE_BEFORE_CHECK } ?: true
+    private fun shouldCheckServer(): Boolean = freshness.isCheckNeeded()
 
     /**
      * PRODUCT_SPEC SYNC-002 — writes down which of the three outcomes this Play resumed under.
@@ -475,6 +465,10 @@ class PlayerViewModel @Inject constructor(
     fun onAppBackgrounded() {
         sessionSync.request(SyncTrigger.AppBackgrounded)
         sessionSync.drain()
+        // PRODUCT_SPEC SYNC-002 — and no pause is short any more. The listener who leaves to move the book
+        // on another client is exactly who the freshness check exists for, and their trip takes seconds:
+        // a device log showed a Play at 12:19 after an in-app pause at 12:18 skip the check entirely.
+        freshness.onLeftApp()
     }
 
     /**

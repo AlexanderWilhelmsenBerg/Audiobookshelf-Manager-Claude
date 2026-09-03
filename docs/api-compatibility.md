@@ -974,6 +974,16 @@ also does, in the one case it still waits for (a play from the app screen). A pl
 the car or a headset never waits, because those reach `PlaybackController` without passing through the
 ViewModel the check lives in.
 
+**The gate has one clause neither reference client has, and a device run is why.** Leaving BookWave
+forgets the pause, so a resume after a trip to the background always asks however short the pause was.
+Both reference gates are pure duration, and a pure duration gate skips the very listener the check
+exists for: going to the web player and coming back takes seconds. `docs/risks.md` R-89.
+
+**And the adoption verifies itself**, because `MediaController` cannot report whether the session applied
+a seek. A device run recorded a complete adoption over audio that never moved, so `resumeLoadedAt` reads
+the position back a second later and reopens the book at the server's position when the seek did not
+take. R-90 — the cause of the dropped seek is not yet established.
+
 **A non-`200` is "could not tell", including a `404`.** What the server answers for a book it has never
 recorded progress for is unobserved (PRODUCT_SPEC 22.4), and of the two available guesses only "could not
 tell" is safe for a loaded player.

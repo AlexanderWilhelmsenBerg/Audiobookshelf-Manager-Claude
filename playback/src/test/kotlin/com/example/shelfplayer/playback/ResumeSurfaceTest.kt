@@ -2,7 +2,10 @@ package com.example.shelfplayer.playback
 
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC SYNC-002 — the order a resume issues its commands in, pinned.
@@ -135,6 +138,50 @@ class ResumeSurfaceTest {
             surface.commands.indexOf("seekTo($FIFTEEN_MINUTES)") < surface.commands.indexOf("play"),
             "the seek must precede the play, or the listener hears the position being left behind",
         )
+    }
+
+    // ------------------------------------------- did the seek actually happen
+
+    /*
+     * `MediaController` returns `void` from `seekTo` and says nothing about whether the session applied
+     * it. A device run found one that was not applied: the history pane carried a complete "moved on
+     * another device, 9:59 → 15:58" row, `onPositionDiscontinuity` never fired, and the next sync
+     * reported 10:11 — audio that had never left 9:59. These pin the reading that tells the two apart.
+     */
+
+    /** Playing on from the adopted position, a second later. This is the resume having worked. */
+    @Test
+    fun `a position near the target counts as adopted`() {
+        assertTrue(didAdopt(landed = 15.minutes + 59.seconds, from = 10.minutes, target = 15.minutes + 58.seconds))
+    }
+
+    /** The reported failure: still playing on from where it started, with the target ignored. */
+    @Test
+    fun `a position still near the start counts as not adopted`() {
+        assertFalse(didAdopt(landed = 10.minutes + 11.seconds, from = 10.minutes, target = 15.minutes + 58.seconds))
+    }
+
+    /**
+     * A **remote rewind** reads the same way round, which a magnitude comparison would get wrong.
+     *
+     * Somebody re-listening to a chapter on the web leaves the server *behind* this device. Landing near
+     * the smaller number is the resume having worked, not having failed.
+     */
+    @Test
+    fun `a rewind that landed counts as adopted`() {
+        assertTrue(didAdopt(landed = 2.minutes + 1.seconds, from = 15.minutes, target = 2.minutes))
+        assertFalse(didAdopt(landed = 15.minutes + 1.seconds, from = 15.minutes, target = 2.minutes))
+    }
+
+    /**
+     * Exactly between the two is **not** adopted, and the tie belongs on that side deliberately.
+     *
+     * A resume that cannot be shown to have moved has not been shown to have moved. The recovery costs a
+     * rebuffer; leaving the listener in the wrong place costs them the thing the feature exists for.
+     */
+    @Test
+    fun `a position exactly between the two is not adopted`() {
+        assertFalse(didAdopt(landed = 10.minutes, from = 5.minutes, target = 15.minutes))
     }
 
     /**

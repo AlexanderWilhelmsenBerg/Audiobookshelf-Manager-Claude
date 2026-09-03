@@ -1,5 +1,7 @@
 package com.example.shelfplayer.playback
 
+import kotlin.time.Duration
+
 /**
  * PRODUCT_SPEC SYNC-002 — the three commands a resume issues, and the order that makes them one thing.
  *
@@ -48,3 +50,23 @@ internal fun ResumeSurface.resumeAt(positionMillis: Long?) {
     if (positionMillis != null) seekTo(positionMillis.coerceAtLeast(0L))
     play()
 }
+
+/**
+ * PRODUCT_SPEC SYNC-002 — whether a resume ended up at the position it adopted, or at the one it left.
+ *
+ * ### Why this is a comparison and not a tolerance
+ *
+ * By the time it can be asked, audio is playing: the position has moved on from wherever it started, so
+ * `landed == target` is never true and a tolerance on [target] would have to be sized against playback
+ * speed, the confirmation delay and the buffer. The useful question is simpler — *which of the two places
+ * did it move on from?*
+ *
+ * `Ahead` requires more than five seconds between [from] and [target] before a resume adopts anything, so
+ * the two are never close enough for this to be a coin toss.
+ *
+ * A device run is why it is asked at all: `MediaController` returns `void` from `seekTo` and reports
+ * nothing about whether the session applied it, and one that was not applied produced a complete,
+ * confident history row over audio that never moved.
+ */
+internal fun didAdopt(landed: Duration, from: Duration, target: Duration): Boolean =
+    (landed - target).absoluteValue < (landed - from).absoluteValue
