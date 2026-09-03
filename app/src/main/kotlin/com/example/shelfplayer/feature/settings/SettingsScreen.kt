@@ -57,6 +57,9 @@ import com.example.shelfplayer.feature.lock.ProfileLockActions
 import com.example.shelfplayer.feature.lock.ProfileLockViewModel
 import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
+import com.example.shelfplayer.ui.gesture.nextOf
+import com.example.shelfplayer.ui.gesture.previousOf
+import com.example.shelfplayer.ui.gesture.swipeBetween
 import com.example.shelfplayer.ui.glass.playerChromeClearance
 import java.util.Locale
 import kotlin.time.Duration
@@ -202,7 +205,19 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                // PRODUCT_SPEC SET-002 — the tabs, reachable by swiping as well as tapping.
+                //
+                // Swiping back past the first tab leaves the screen entirely. That is the owner's ask and
+                // it is also the honest continuation of the gesture: Server is the leftmost tab, there is
+                // nothing to its left inside this screen, and what is behind the screen is the shelf.
+                .swipeBetween(
+                    onPrevious = previousOf(SettingsTab.entries, selected)
+                        ?.let { previous -> { selected = previous } }
+                        ?: onNavigateUp,
+                    onNext = nextOf(SettingsTab.entries, selected)
+                        ?.let { next -> { selected = next } },
+                ),
         ) {
             TabRow(selectedTabIndex = selected.ordinal) {
                 SettingsTab.entries.forEach { tab ->

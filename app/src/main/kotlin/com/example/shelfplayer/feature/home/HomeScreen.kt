@@ -109,6 +109,9 @@ import com.example.shelfplayer.feature.browse.BookSortRow
 import com.example.shelfplayer.feature.browse.GroupCard
 import com.example.shelfplayer.feature.browse.GroupCardEditAction
 import com.example.shelfplayer.feature.browse.SeriesCard
+import com.example.shelfplayer.ui.gesture.nextOf
+import com.example.shelfplayer.ui.gesture.previousOf
+import com.example.shelfplayer.ui.gesture.swipeBetween
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import com.example.shelfplayer.ui.glass.frostedGlass
 import dev.chrisbanes.haze.HazeState
@@ -328,6 +331,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
+                .swipeBetweenAxes(current = uiState.axis, onAxisChanged = actions.onAxisChanged)
                 .hazeSource(state = axisBarHaze),
         ) {
             /*
@@ -650,6 +654,20 @@ private fun HomeAxisBar(
         }
     }
 }
+
+/**
+ * PRODUCT_SPEC LIB-002 — the capsule's four places, reachable by swiping as well as tapping.
+ *
+ * On the body rather than the whole screen, so a drag across the capsule itself still belongs to the
+ * capsule's own tabs. Extracted from `HomeScreen` rather than inlined there: the two null-safe branches are
+ * what took that composable to detekt's complexity limit, and a named modifier says at the call site what
+ * three lines of `?.let` did not.
+ */
+@Composable
+private fun Modifier.swipeBetweenAxes(current: HomeAxis, onAxisChanged: (HomeAxis) -> Unit): Modifier = swipeBetween(
+    onPrevious = previousOf(HomeAxis.entries, current)?.let { previous -> { onAxisChanged(previous) } },
+    onNext = nextOf(HomeAxis.entries, current)?.let { next -> { onAxisChanged(next) } },
+)
 
 private val AXIS_BAR_HEIGHT = 46.dp
 private val AXIS_BAR_SIDE_MARGIN = 14.dp

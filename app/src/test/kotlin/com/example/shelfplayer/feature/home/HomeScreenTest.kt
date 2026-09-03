@@ -20,6 +20,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
@@ -642,6 +644,68 @@ class HomeScreenTest {
      * the caption or the error on it. A test that forgot this would assert against the wrong screen and
      * report the app's wording as missing when it was simply somewhere else.
      */
+    // ------------------------------------------- PRODUCT_SPEC 16.2, swiping between the capsule's places
+
+    /**
+     * A swipe towards the left reveals the next place, the way a pager does.
+     *
+     * Driven through the same `onAxisChanged` the capsule's tabs call, so the two affordances cannot drift:
+     * whatever a tap does, a swipe does.
+     */
+    @Test
+    fun `swiping left moves to the next axis`() {
+        var axis: HomeAxis? = null
+        compose.setContent {
+            HomeScreen(
+                uiState = state(axis = HomeAxis.Books),
+                actions = noActions().copy(onAxisChanged = { axis = it }),
+            )
+        }
+
+        compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performTouchInput { swipeLeft() }
+
+        assertEquals(HomeAxis.Series, axis)
+    }
+
+    /** And towards the right, the previous one. */
+    @Test
+    fun `swiping right moves to the previous axis`() {
+        var axis: HomeAxis? = null
+        compose.setContent {
+            HomeScreen(
+                // Groups supplied because the tagged list is what carries the gesture, and an axis with
+                // nothing in it renders an empty state instead.
+                uiState = state(axis = HomeAxis.Authors, groups = listOf(genreGroup("Ursula Le Guin"))),
+                actions = noActions().copy(onAxisChanged = { axis = it }),
+            )
+        }
+
+        compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performTouchInput { swipeRight() }
+
+        assertEquals(HomeAxis.Series, axis)
+    }
+
+    /**
+     * **The row does not wrap**, and this is the case that says so.
+     *
+     * Swiping right on the first place has nowhere to go. Wrapping to the last one would contradict the
+     * capsule it is driving, which shows the reader a position in a row of four.
+     */
+    @Test
+    fun `swiping right on the first axis does nothing`() {
+        var changes = 0
+        compose.setContent {
+            HomeScreen(
+                uiState = state(axis = HomeAxis.Books),
+                actions = noActions().copy(onAxisChanged = { changes++ }),
+            )
+        }
+
+        compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performTouchInput { swipeRight() }
+
+        assertEquals(0, changes)
+    }
+
     private fun state(
         isOffline: Boolean = false,
         syncStatus: SyncStatus = SyncStatus.Succeeded,
