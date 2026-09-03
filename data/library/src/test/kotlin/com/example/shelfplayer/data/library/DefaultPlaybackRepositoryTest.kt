@@ -683,7 +683,8 @@ class DefaultPlaybackRepositoryTest {
         val cleared = database.progressDao().markProgressSynced(
             profileId = profileId.value,
             bookKey = EntityKey.of(SERVER, BOOK.value),
-            uploadedAt = recordedAt,
+            positionMillis = 10.minutes.inWholeMilliseconds,
+            toleranceMillis = 1_000L,
         )
 
         assertEquals(1, cleared, "the upload covered the stored position, so the row is no longer unsent")

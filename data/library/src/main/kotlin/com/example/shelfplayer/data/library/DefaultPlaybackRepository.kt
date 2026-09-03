@@ -377,11 +377,29 @@ class DefaultPlaybackRepository @Inject constructor(
             val profileId = profileRepository.activeProfileId() ?: return@withContext ExternalSessionCheck.Unavailable
             val profile = profileDao.findProfile(profileId.value) ?: return@withContext ExternalSessionCheck.Unavailable
             val local = progressDao.findProgress(profileId.value, EntityKey.of(profile.serverId, bookId.value))
-            if (local?.hasUnsyncedChanges == true) return@withContext ExternalSessionCheck.Current
+            if (local?.hasUnsyncedChanges == true) {
+                // Logged, because three device runs went by before anyone could tell this apart from the
+                // server answering. `docs/risks.md` R-92 is what a silent short-circuit cost.
+                logger.info(
+                    LogCategory.Sync,
+                    "Skipped the freshness check: this device has a position the server has not taken",
+                    LogField.Millis("stored", local.positionMillis),
+                    LogField.Millis("player", localPosition.inWholeMilliseconds),
+                )
+                return@withContext ExternalSessionCheck.Current
+            }
 
             when (val remote = gateway.playback.serverProgress(profileId, bookId)) {
                 is AppResult.Failure -> ExternalSessionCheck.Unavailable
-                is AppResult.Success -> outcomeOf(remote.value, localPosition)
+                is AppResult.Success -> outcomeOf(remote.value, localPosition).also { outcome ->
+                    logger.info(
+                        LogCategory.Sync,
+                        "Compared the server's position with the player's",
+                        LogField.Millis("server", remote.value.position.inWholeMilliseconds),
+                        LogField.Millis("player", localPosition.inWholeMilliseconds),
+                        LogField.Public("verdict", if (outcome is ExternalSessionCheck.Ahead) "ahead" else "current"),
+                    )
+                }
             }
         }
 

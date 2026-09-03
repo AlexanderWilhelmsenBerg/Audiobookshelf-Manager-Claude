@@ -627,12 +627,18 @@ class DefaultSessionSyncRepositoryTest {
      * **A position recorded while the upload was in flight keeps its flag.**
      *
      * The request carried the position as it was when it was built. If the listener played on, the stored
-     * row is newer than what the server now holds and is genuinely still unsent — clearing it would let the
-     * next account sync overwrite it, which is losing progress.
+     * row holds more than the server does and is genuinely still unsent — clearing it would let the next
+     * account sync overwrite it, which is losing progress.
+     *
+     * The row has moved to 45 minutes while the request carried 40, and it is that difference the clear
+     * reads. It used to read a pair of timestamps instead, and lost a race to them: `recordPosition` and
+     * the session sync each stamp their own `clock.now()` on independent coroutines, so the sync's stamp
+     * could precede the row's and the clear would match nothing at all — leaving the flag standing
+     * forever and the freshness check short-circuiting on it. `docs/risks.md` R-92.
      */
     @Test
     fun `a position recorded after the upload keeps its flag`() = runTest {
-        seedUnsyncedProgress(recordedAt = 5_000L)
+        seedUnsyncedProgress(recordedAt = 5_000L, position = 45.minutes)
         val sessionId = openId()
 
         repository.syncOpenSession(
@@ -643,6 +649,55 @@ class DefaultSessionSyncRepositoryTest {
         )
 
         assertEquals(true, storedProgress().hasUnsyncedChanges, "the row moved on after the request was built")
+    }
+
+    /**
+     * **And the clear no longer depends on which coroutine stamped its clock first.**
+     *
+     * This is the case the timestamp version got wrong, and it is why three device logs contain no
+     * `GET /api/me/progress/{id}` request at all. The row was written *after* the sync took its stamp —
+     * `5_000` against `2_000` — while holding the very position the sync is uploading. The old rule
+     * required `updatedAt <= uploadedAt` and so cleared nothing; the position says plainly that the
+     * server now holds this, and the flag comes down.
+     */
+    @Test
+    fun `a flag is cleared even when the row was stamped after the upload`() = runTest {
+        seedUnsyncedProgress(recordedAt = 5_000L, position = 40.minutes)
+        val sessionId = openId()
+
+        repository.syncOpenSession(
+            sessionId = sessionId,
+            progress = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 1.minutes),
+            updatedAt = Instant.ofEpochMilli(2_000L),
+            trigger = SyncTrigger.Interval,
+        )
+
+        assertEquals(false, storedProgress().hasUnsyncedChanges, "the server holds this position")
+    }
+
+    /**
+     * **A skipped sync clears the flag too**, and forgetting that is what broke the device test.
+     *
+     * The skip's whole premise is that the server already holds this position — so the progress row has
+     * nothing unsent, and must not go on claiming it does. The first version of the redundant-sync guard
+     * returned early without saying so, which left a flag set by the pause standing through every
+     * subsequent skip; `checkServerPosition` then answered `Current` without a request, and the log shows
+     * exactly that: eight `Nothing new to sync` lines and no `GET /api/me/progress` anywhere. R-92.
+     */
+    @Test
+    fun `a skipped sync still clears the unsynced flag`() = runTest {
+        val sessionId = openId()
+        val paused = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes)
+        repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Paused)
+        // What a pause from audio focus loss does: records the position again and re-raises the flag.
+        seedUnsyncedProgress(recordedAt = 9_000L, position = 40.minutes)
+        assertEquals(true, storedProgress().hasUnsyncedChanges)
+        val beforeSkip = gateway.syncCount
+
+        repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Interval)
+
+        assertEquals(beforeSkip, gateway.syncCount, "this sync had nothing to say")
+        assertEquals(false, storedProgress().hasUnsyncedChanges, "but the server does hold this position")
     }
 
     /** A failed upload leaves the claim standing: the position is still this device's alone. */
@@ -663,7 +718,7 @@ class DefaultSessionSyncRepositoryTest {
     }
 
     /** The row `recordPosition` would have written: a local position nothing has uploaded yet. */
-    private suspend fun seedUnsyncedProgress(recordedAt: Long) {
+    private suspend fun seedUnsyncedProgress(recordedAt: Long, position: Duration = 40.minutes) {
         seedBook()
         database.progressDao().upsertProgress(
             listOf(
@@ -672,7 +727,7 @@ class DefaultSessionSyncRepositoryTest {
                     profileId = profileId.value,
                     bookKey = BOOK_KEY,
                     serverId = SERVER,
-                    positionMillis = 40.minutes.inWholeMilliseconds,
+                    positionMillis = position.inWholeMilliseconds,
                     durationMillis = 6.hours.inWholeMilliseconds,
                     isFinished = false,
                     updatedAt = recordedAt,

@@ -53,12 +53,23 @@ interface ProgressDao {
      * playback in this app, the check short-circuited to "nothing newer" and never asked the server, so a
      * position moved on another client was never picked up.
      *
-     * ### `updatedAt <= :uploadedAt` is load-bearing
+     * ### It compares the **position**, not a timestamp, and that is a correction
      *
-     * The upload carries the position as it was when the request was built. If the listener kept playing
-     * while it was in flight, the stored row is newer than what the server now holds and is still unsynced
-     * — clearing it would be a lie that lets the next account sync overwrite it. Comparing against the
-     * uploaded moment keeps the flag exactly when it is still true.
+     * The first version cleared rows whose `updatedAt` was at or before the moment the upload was built,
+     * so that a position recorded while the request was in flight kept its flag. The intent was right and
+     * the mechanism raced: `recordPosition` and the session sync each stamp their own `clock.now()` on
+     * independent coroutines, so the sync could easily take its stamp *before* the launched
+     * `recordPosition` wrote its row — and then the clear matched nothing and the flag stood forever.
+     *
+     * Which is not theoretical. Three device logs contain no `GET /api/me/progress/{id}` request at all:
+     * the freshness check was short-circuiting on a flag that no upload could clear, so it never once
+     * asked the server. `docs/risks.md` R-92.
+     *
+     * Comparing positions says the true thing directly — *the server is holding this position, so this row
+     * has nothing unsent* — and it cannot race, because a listener who kept playing has a row whose
+     * position has moved well past the uploaded one and correctly keeps its flag. The tolerance is there
+     * because `recordPosition` and the sync read the player independently and land a few milliseconds
+     * apart; two consecutive syncs of a *paused* player logged `22256204ms` and `22256207ms`.
      *
      * @return how many rows were cleared, so a caller can log the count rather than assume one.
      */
@@ -66,10 +77,16 @@ interface ProgressDao {
         """
         UPDATE media_progress
         SET hasUnsyncedChanges = 0
-        WHERE profileId = :profileId AND bookKey = :bookKey AND updatedAt <= :uploadedAt
+        WHERE profileId = :profileId AND bookKey = :bookKey
+          AND ABS(positionMillis - :positionMillis) <= :toleranceMillis
         """,
     )
-    suspend fun markProgressSynced(profileId: String, bookKey: String, uploadedAt: Long): Int
+    suspend fun markProgressSynced(
+        profileId: String,
+        bookKey: String,
+        positionMillis: Long,
+        toleranceMillis: Long,
+    ): Int
 
     /**
      * PRODUCT_SPEC DL-006 — cleanup must never remove a book with unsynced progress, so the count is

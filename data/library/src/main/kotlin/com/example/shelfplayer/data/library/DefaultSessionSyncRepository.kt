@@ -166,6 +166,12 @@ class DefaultSessionSyncRepository @Inject constructor(
                 AppError.Conflict(summary = "That listening session is no longer recorded on this device."),
             )
         if (!closing && stored.isRedundant(progress, trigger)) {
+            // The skip asserts the server already holds this position, so the progress row has nothing
+            // unsent — and saying so is not optional. Every `recordPosition` sets `hasUnsyncedChanges`,
+            // and the upload is what clears it; a skip that stayed silent left the flag standing, and a
+            // standing flag makes the freshness check answer `Current` without asking the server at all.
+            // That is exactly what the first version of this guard did. R-92.
+            markProgressSynced(stored.profileId, stored.bookKey, progress.position)
             logger.debug(
                 LogCategory.Playback,
                 "Nothing new to sync, so the server's position is left alone",
@@ -211,7 +217,7 @@ class DefaultSessionSyncRepository @Inject constructor(
                     syncedAt = clock.now().toEpochMilli(),
                     wasProgressApplied = true,
                 )
-                markProgressSynced(stored.profileId, stored.bookKey, updatedAt.toEpochMilli())
+                markProgressSynced(stored.profileId, stored.bookKey, progress.position)
                 logger.info(
                     LogCategory.Playback,
                     "The server accepted a position",
@@ -263,7 +269,9 @@ class DefaultSessionSyncRepository @Inject constructor(
                 // it held something newer, so this device's row is still the one that has not landed.
                 val acceptedIds = accepted.filter { it.wasProgressApplied }.map { it.id }.toSet()
                 queued.filter { row -> row.sessionId in acceptedIds }
-                    .forEach { row -> markProgressSynced(row.profileId, row.bookKey, row.updatedAt) }
+                    .forEach { row ->
+                        markProgressSynced(row.profileId, row.bookKey, row.positionMillis.milliseconds)
+                    }
                 val unresolved = queued.map(PlaybackSessionEntity::sessionId) - accepted.map { it.id }.toSet()
                 if (unresolved.isNotEmpty()) outbox.markAttempted(unresolved, NOT_ACCEPTED)
                 logger.info(
@@ -288,16 +296,21 @@ class DefaultSessionSyncRepository @Inject constructor(
      * second's `hasUnsyncedChanges` false, and nothing was joining the two — see
      * [ProgressDao.markProgressSynced] for what that cost.
      *
-     * [uploadedAt] is the moment whose position was actually sent — the live path's own `updatedAt`, and
-     * the queued row's for the batch — so a position recorded while the request was in flight keeps its
-     * flag.
+     * [accepted] is the position the server is now holding — the one this request carried, or the queued
+     * row's for the batch. The clear matches on *that*, not on a timestamp: see
+     * [ProgressDao.markProgressSynced] for the race the timestamp version lost, and for the tolerance.
      *
      * Failure to clear is not failure to upload. The position is on the server either way, so this logs
      * nothing on a zero count: a book whose row moved on during the request is the ordinary case, not a
      * fault.
      */
-    private suspend fun markProgressSynced(profileId: String, bookKey: String, uploadedAt: Long) {
-        progressDao.markProgressSynced(profileId = profileId, bookKey = bookKey, uploadedAt = uploadedAt)
+    private suspend fun markProgressSynced(profileId: String, bookKey: String, accepted: Duration) {
+        progressDao.markProgressSynced(
+            profileId = profileId,
+            bookKey = bookKey,
+            positionMillis = accepted.inWholeMilliseconds.coerceAtLeast(0),
+            toleranceMillis = REDUNDANT_POSITION_TOLERANCE_MS,
+        )
     }
 
     /** PRODUCT_SPEC PLAY-005 — "retained for seven days for diagnostics, then compacted". */
