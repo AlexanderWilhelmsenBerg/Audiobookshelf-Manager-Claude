@@ -56,4 +56,7 @@
     <string name="car_event_remote_progress">Flyttet på en annen enhet</string>
     <string name="car_event_remote_finished">Fullført på en annen enhet</string>
     <string name="car_event_server_session">Lyttet på en annen enhet</string>
+    <string name="car_event_check_ahead">Serveren hadde nyere aktivitet</string>
+    <string name="car_event_check_current">Posisjon bekreftet</string>
+    <string name="car_event_check_unavailable">Server ikke nådd</string>
 </resources>

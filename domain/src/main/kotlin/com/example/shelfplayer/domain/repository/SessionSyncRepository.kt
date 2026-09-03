@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
+import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
@@ -57,13 +58,15 @@ interface SessionSyncRepository {
      *
      * @param updatedAt the honest moment the position was observed. Never "now at upload time": the server
      *   resolves conflicts on this value, and stamping it late would let a stale position win (PLAY-004).
+     * @return [SyncOutcome.Accepted] only when Audiobookshelf is now holding this position. Success alone
+     *   does not mean that — see [SyncOutcome] for the case that made the distinction load-bearing.
      */
     suspend fun syncOpenSession(
         sessionId: String,
         progress: SessionProgress,
         updatedAt: Instant,
         trigger: SyncTrigger,
-    ): AppResult<Unit>
+    ): AppResult<SyncOutcome>
 
     /**
      * Finalizes a session: one last position, and the row leaves the `Open` state.
@@ -77,7 +80,7 @@ interface SessionSyncRepository {
         progress: SessionProgress,
         updatedAt: Instant,
         trigger: SyncTrigger,
-    ): AppResult<Unit>
+    ): AppResult<SyncOutcome>
 
     /**
      * PRODUCT_SPEC PLAY-005 — uploads every queued session, then compacts what the server has accepted.

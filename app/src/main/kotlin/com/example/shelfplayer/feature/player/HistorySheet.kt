@@ -14,8 +14,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Pause
@@ -75,6 +77,24 @@ import kotlin.time.Duration
  * The detail is three additions: the **wall-clock time** each row happened at, the **chapter** the position
  * falls in, and a **day heading** above each group. Together they turn "At 4:12:30" — which is a number —
  * into "21:04 · The Flood", which is a memory.
+ *
+ * ### The clouds
+ *
+ * PRODUCT_SPEC SYNC-002 — an in-app Play after a pause long enough to matter asks the server whether
+ * another device moved on first, and a small cloud at the **trailing edge of the Play row** says what came
+ * back. A **plain cloud**: the server answered, whichever way it answered. A **struck-through cloud**: it
+ * did not — not reached, too slow, or interrupted — so the position stood unverified and playback carried
+ * on as it would have anyway. No cloud at all: this resume did not ask, because it followed too short a
+ * pause to have been overtaken, or it came from the notification or the car rather than from here.
+ *
+ * A footnote on the row rather than a row of its own, and muted rather than coloured. The first version
+ * made each outcome its own entry with the cloud in the leading icon slot — which put a cloud where the
+ * row should have said "started playing", and stood a near-duplicate beside every Play. The check is not
+ * something that happened to the book; it is a property of the resume.
+ *
+ * They are here at all because a resume on a confirmed position and a resume on an assumed one sound
+ * identical. The question they answer is asked later, after a position turns out not to be where somebody
+ * left it, and by then the only place the answer can live is this list.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,6 +136,7 @@ fun HistorySheet(
                             is HistoryRowItem.Day -> DayHeading(row.date)
                             is HistoryRowItem.Event -> HistoryRow(
                                 entry = row.entry,
+                                check = row.check,
                                 chapters = chapters,
                                 onReturnTo = { position ->
                                     onReturnTo(position)
@@ -144,23 +165,66 @@ internal sealed interface HistoryRowItem {
         override val key: String get() = "day-$date"
     }
 
-    data class Event(val entry: PlaybackHistoryEntry) : HistoryRowItem {
+    /**
+     * @property check the freshness check this row resumed under, for a `Play` row that had one. Drawn as
+     *   a small cloud at the row's trailing edge; `null` on every other row and on a `Play` that did not
+     *   ask — an in-app resume after a short pause, or a play from the notification or the car.
+     */
+    data class Event(val entry: PlaybackHistoryEntry, val check: PlaybackEvent? = null) : HistoryRowItem {
         override val key: String get() = entry.id
     }
 }
 
+/**
+ * The list as it is drawn, with each freshness check folded into the Play it belongs to.
+ *
+ * ### Why the checks are not rows of their own
+ *
+ * They were, and it was wrong twice over. A check row sat beside the `Play` row for the same tap at the
+ * same position, which reads as a duplicate; and it carried a cloud in the leading icon slot, where every
+ * other row carries what *happened* — so the row that should have said "started playing" said "asked the
+ * server" instead. The check is not an event in the book's history. It is a **property of** the resume: a
+ * mark saying whether that Play trusted its position or assumed it.
+ *
+ * So it is drawn where a property belongs — small, at the trailing edge, in the muted colour — and the Play
+ * keeps its own icon. Folding happens here rather than in the ViewModel for the reason the day headings do:
+ * it is a rendering decision about one list, and the data underneath is unchanged.
+ *
+ * ### The pairing rule
+ *
+ * A check attaches to the nearest `Play` within [CHECK_PAIRING_WINDOW]. Both are written by the same tap
+ * milliseconds apart, so the window is generous by two orders of magnitude and still cannot reach the
+ * previous resume. Entries arrive newest first and the check is written after the Play it caused, so the
+ * search runs forwards from the check.
+ *
+ * A check with no Play beside it — a resume cancelled inside the two-second cap — is **dropped from the
+ * list** rather than drawn alone. Nothing played, so there is nothing in the book's history to annotate;
+ * the row is still in the database and still in the debug console's report, which is where a question about
+ * a check that led nowhere gets answered.
+ */
 internal fun rowsFor(entries: List<PlaybackHistoryEntry>, zone: ZoneId = ZoneId.systemDefault()): List<HistoryRowItem> {
     val rows = mutableListOf<HistoryRowItem>()
     var lastDay: LocalDate? = null
-    entries.forEach { entry ->
+    entries.forEachIndexed { index, entry ->
+        if (entry.event.isServerCheck) return@forEachIndexed
         val day = entry.at.atZone(zone).toLocalDate()
         if (day != lastDay) {
             rows += HistoryRowItem.Day(day)
             lastDay = day
         }
-        rows += HistoryRowItem.Event(entry)
+        rows += HistoryRowItem.Event(entry, check = checkFor(entry, entries, index))
     }
     return rows
+}
+
+/** The check written for [entry], if [entry] is a `Play` and one was written alongside it. */
+private fun checkFor(entry: PlaybackHistoryEntry, entries: List<PlaybackHistoryEntry>, index: Int): PlaybackEvent? {
+    if (entry.event != PlaybackEvent.Play) return null
+    return entries.asSequence()
+        .drop(index + 1)
+        .takeWhile { candidate -> entry.at.toEpochMilli() - candidate.at.toEpochMilli() <= CHECK_PAIRING_WINDOW }
+        .firstOrNull { candidate -> candidate.event.isServerCheck }
+        ?.event
 }
 
 /**
@@ -200,6 +264,7 @@ private fun DayHeading(date: LocalDate, modifier: Modifier = Modifier) {
 @Composable
 private fun HistoryRow(
     entry: PlaybackHistoryEntry,
+    check: PlaybackEvent?,
     chapters: List<Chapter>,
     onReturnTo: (Duration) -> Unit,
     modifier: Modifier = Modifier,
@@ -221,13 +286,16 @@ private fun HistoryRow(
             entry.to.asChapterClock(),
         )
     }
+    // The cloud is a shape, so what it says has to be said as well. Appended rather than substituted: the
+    // row's own description is the useful part and the check is a qualifier on it.
+    val checkLabel = check?.let { stringResource(it.labelRes()) }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onReturnTo(entry.returnTo) }
             .padding(horizontal = 24.dp, vertical = 12.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = "$spoken $whenAndWhere"
+                contentDescription = listOfNotNull(spoken, whenAndWhere, checkLabel).joinToString(" ")
             },
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -264,6 +332,21 @@ private fun HistoryRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // PRODUCT_SPEC SYNC-002 — whether this resume verified its position against the server.
+        //
+        // Trailing, small and **muted on purpose**: it is a footnote on the row, not the row's subject, and
+        // it must not compete with the leading icon that says what happened. The struck-through cloud gets
+        // the same colour as the plain one rather than the error colour — a Play that could not reach the
+        // server lost nothing, the position simply stands unverified, and colouring it red would make an
+        // ordinary offline resume look like a failure.
+        if (check != null) {
+            Icon(
+                imageVector = check.checkIcon(),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
         Icon(
             imageVector = Icons.AutoMirrored.Filled.Undo,
             contentDescription = null,
@@ -272,6 +355,16 @@ private fun HistoryRow(
         )
     }
 }
+
+/**
+ * The cloud for a check outcome: plain when the server answered, struck through when it did not.
+ *
+ * One shape for both answered outcomes, which is the whole point of the pair — a run of clouds down the
+ * list says every resume that evening was verified, and one gap says which was not. Which *way* it answered
+ * is in the row's spoken description and does not need a third icon.
+ */
+private fun PlaybackEvent.checkIcon(): ImageVector =
+    if (this == PlaybackEvent.ServerCheckUnavailable) Icons.Filled.CloudOff else Icons.Filled.Cloud
 
 /*
  * `CyclomaticComplexMethod` is suppressed on the three exhaustive `when`s below, and the reason is the
@@ -297,6 +390,9 @@ private fun PlaybackEvent.labelRes(): Int = when (this) {
     PlaybackEvent.RemoteProgress -> R.string.player_history_remote
     PlaybackEvent.RemoteFinished -> R.string.player_history_remote_finished
     PlaybackEvent.ServerSession -> R.string.player_history_server_session
+    PlaybackEvent.ServerCheckAhead -> R.string.player_history_check_ahead
+    PlaybackEvent.ServerCheckCurrent -> R.string.player_history_check_current
+    PlaybackEvent.ServerCheckUnavailable -> R.string.player_history_check_unavailable
 }
 
 @Suppress("CyclomaticComplexMethod")
@@ -317,6 +413,12 @@ private fun PlaybackEvent.icon(): ImageVector = when (this) {
     // A different cloud from RemoteProgress's: that row says a position arrived, this one says somebody
     // sat and listened on another device, which is a different thing to read at a glance.
     PlaybackEvent.ServerSession -> Icons.Filled.CloudDownload
+    // Never drawn in the leading slot: `rowsFor` folds these into the Play row they belong to, where
+    // `checkIcon` draws them small and trailing. The branches exist because this `when` is the compile-time
+    // net — see the comment above it — and because the fold is a rendering rule that could change.
+    PlaybackEvent.ServerCheckAhead -> Icons.Filled.Cloud
+    PlaybackEvent.ServerCheckCurrent -> Icons.Filled.Cloud
+    PlaybackEvent.ServerCheckUnavailable -> Icons.Filled.CloudOff
 }
 
 /**
@@ -331,6 +433,14 @@ private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm"
 
 /** Localised, because a date is the one thing on this sheet whose order differs by country. */
 private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+
+/**
+ * How far from a `Play` a freshness check may sit and still belong to it.
+ *
+ * Both rows are written by one tap, milliseconds apart. Ten seconds is generous by two orders of magnitude
+ * and still nowhere near the previous resume, which is the only thing a wrong pairing could reach.
+ */
+private const val CHECK_PAIRING_WINDOW = 10_000L
 
 private const val WEIGHT_FILL = 1f
 

@@ -121,4 +121,12 @@
     <string name="car_event_remote_progress">Moved on another device</string>
     <string name="car_event_remote_finished">Finished on another device</string>
     <string name="car_event_server_session">Listened on another device</string>
+    <!--
+      PRODUCT_SPEC SYNC-002 — the freshness check before a Play. The car's history list filters these out;
+      these exist because the label lookup is an exhaustive `when` over every event, which is what makes a
+      new event a compile error rather than a blank row in a car.
+    -->
+    <string name="car_event_check_ahead">Server had newer activity</string>
+    <string name="car_event_check_current">Position confirmed</string>
+    <string name="car_event_check_unavailable">Server not reached</string>
 </resources>

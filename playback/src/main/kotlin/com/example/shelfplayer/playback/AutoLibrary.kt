@@ -620,7 +620,9 @@ class AutoLibrary @Inject constructor(
     private suspend fun historyOf(currentBookId: LibraryItemId?): List<MediaItem> {
         val book = bookFor(currentBookId) ?: return emptyList()
         return history.observe(book.id, limit = CAR_HISTORY_LIMIT).first()
-            .filter { entry -> entry.event != PlaybackEvent.Play }
+            // `Play` and the three freshness-check rows are dropped for the same reason: neither returns
+            // a driver anywhere they are not already, and both would spend rows out of fifteen.
+            .filter { entry -> entry.event != PlaybackEvent.Play && !entry.event.isServerCheck }
             .map { entry ->
                 playable(
                     id = "$AT_PREFIX${book.id.value}/${entry.returnTo.inWholeMilliseconds}",
@@ -719,6 +721,12 @@ class AutoLibrary @Inject constructor(
             PlaybackEvent.RemoteProgress -> R.string.car_event_remote_progress
             PlaybackEvent.RemoteFinished -> R.string.car_event_remote_finished
             PlaybackEvent.ServerSession -> R.string.car_event_server_session
+            // Labelled but never drawn: `historyOf` filters these out, the way it filters `Play` out. The
+            // branch exists so that adding a `PlaybackEvent` still fails to compile here rather than
+            // reaching a car as a blank subtitle if the filter ever changes.
+            PlaybackEvent.ServerCheckAhead -> R.string.car_event_check_ahead
+            PlaybackEvent.ServerCheckCurrent -> R.string.car_event_check_current
+            PlaybackEvent.ServerCheckUnavailable -> R.string.car_event_check_unavailable
         },
     )
 
