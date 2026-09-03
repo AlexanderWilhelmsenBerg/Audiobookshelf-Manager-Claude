@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -64,6 +65,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -219,8 +221,18 @@ fun HomeScreen(
             .fillMaxSize()
             .captureHomeAxisBarMotion(axisBarMotion),
         snackbarHost = { SnackbarHost(snackbars) },
+        // PRODUCT_SPEC LIB-002 — frosted, like the capsule at the other end of the screen, and sharing its
+        // blur source. Both are siblings of the body in the `Scaffold`, so both may read a state whose
+        // source is that body; an effect that is a descendant of its own source draws nothing.
         topBar = {
             TopAppBar(
+                modifier = Modifier.frostedGlass(
+                    state = axisBarHaze,
+                    backgroundColor = MaterialTheme.colorScheme.surface,
+                ),
+                // Transparent so the glass is what is seen. `TopAppBar` paints its own container over the
+                // modifier's background otherwise, and the blur would be hidden beneath it.
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 title = {
                     BoxWithConstraints {
                         // Five 48 dp actions can leave less than a logo's width on a compact phone. The
@@ -327,7 +339,10 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = innerPadding.calculateTopPadding())
+                // No top padding: the shelf runs under the bar, which is what gives the glass something
+                // to refract. The bar's measured height reaches the list as content padding instead —
+                // `Scaffold` measures its top bar before the body, the same property the capsule relies
+                // on at the other end.
                 .hazeSource(state = axisBarHaze),
         ) {
             /*
@@ -342,6 +357,7 @@ fun HomeScreen(
             HomeContent(
                 uiState = uiState,
                 actions = actions,
+                topInset = innerPadding.calculateTopPadding(),
                 bottomInset = AXIS_BAR_OCCUPIED_HEIGHT + systemBarInset + playerInset,
             )
         }
@@ -729,7 +745,7 @@ private fun refreshSpin(syncing: Boolean): Float {
 }
 
 @Composable
-private fun HomeContent(uiState: HomeUiState, actions: HomeActions, bottomInset: Dp) {
+private fun HomeContent(uiState: HomeUiState, actions: HomeActions, topInset: Dp, bottomInset: Dp) {
     val content = Modifier.fillMaxSize()
 
     when {
@@ -752,7 +768,13 @@ private fun HomeContent(uiState: HomeUiState, actions: HomeActions, bottomInset:
                 modifier = content,
             )
 
-        else -> BookShelf(uiState = uiState, actions = actions, bottomInset = bottomInset, modifier = content)
+        else -> BookShelf(
+            uiState = uiState,
+            actions = actions,
+            topInset = topInset,
+            bottomInset = bottomInset,
+            modifier = content,
+        )
     }
 }
 
@@ -764,8 +786,18 @@ private fun HomeContent(uiState: HomeUiState, actions: HomeActions, bottomInset:
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BookShelf(uiState: HomeUiState, actions: HomeActions, bottomInset: Dp, modifier: Modifier = Modifier) {
+private fun BookShelf(
+    uiState: HomeUiState,
+    actions: HomeActions,
+    topInset: Dp,
+    bottomInset: Dp,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier) {
+        // The search field and the chip rows stay *below* the bar rather than scrolling under it: a filter
+        // that produced an empty shelf would otherwise hide the only control that can clear it. They take
+        // the bar's height as their own top padding, and the list behind them keeps the full window.
+        Spacer(modifier = Modifier.height(topInset))
         if (uiState.isSearching) {
             SearchField(query = uiState.query, onQueryChanged = actions.onQueryChanged)
         }
