@@ -4,6 +4,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionError
+import androidx.media3.session.SessionResult
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
@@ -17,10 +19,13 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
+import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.domain.playback.GlobalTimeline
+import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
@@ -65,6 +70,8 @@ class PlaybackController @Inject constructor(
     private val bookChanges: BookChanges,
     private val playbackSettings: PlaybackSettingsRepository,
     private val history: PlaybackHistoryRepository,
+    /** PRODUCT_SPEC SYNC-002 — the service's record of the last acknowledged pause. Read only, here. */
+    private val resumeBaseline: ResumeBaseline,
     /** PRODUCT_SPEC PLAY-002 — where the book goes, which is part of what the player screen shows. */
     private val audioOutputs: AudioOutputRouter,
     private val logger: Logger,
@@ -213,6 +220,131 @@ class PlaybackController @Inject constructor(
     }
 
     /**
+     * PRODUCT_SPEC SYNC-002 — the last pause for [bookId] that the server confirmed, or `null`.
+     *
+     * Through this façade rather than by injecting `ResumeBaseline` into the player's view model, for the
+     * same reason [outputs] is: the screen already takes everything it knows about playback from here, and
+     * a second object in the view model would be a second place for the two to disagree. `PlaybackService`
+     * writes it; nothing outside `:playback` writes it at all.
+     */
+    fun acknowledgedPause(bookId: LibraryItemId): AcknowledgedPause? = resumeBaseline.acknowledged(bookId)
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — resumes, adopting [position] when another device has moved the book.
+     *
+     * ### The two paths, and why only one of them is a command
+     *
+     * `null` is the ordinary resume: nothing to adopt, nothing to verify, so it stays right here — connect,
+     * prepare if the player is idle, play, in one main-thread block. The order lives in [resumeAt]; see
+     * `ResumeSurface.kt` for why it is prepare-then-play and how the two-coroutine version dropped its seek.
+     *
+     * A **position** goes to the service as one custom command instead. Adopting means *seek, confirm the
+     * player got there, then play*, and only the side that owns the player can do the confirming — this
+     * class holds a `MediaController`, which is an IPC proxy that masks a seek locally the moment it is
+     * asked and therefore reports success whether or not the player ever heard about it. The previous
+     * version issued the seek here and read the position back off the same proxy a second later; a device
+     * run recorded the whole adoption and heard none of it, because that read cannot tell a dropped seek
+     * from an honoured one. `ResumeCommand` and `AtomicResume` carry the full account.
+     *
+     * ### What comes back, and what is done with it
+     *
+     * A `SessionResult`. On failure the book is **reopened** at the server's position —
+     * `openPlaybackSession` asks the server, which is holding the position the freshness check just read,
+     * and hands it to the player as a start position, which is the path every book already opens through
+     * and demonstrably the one that works. It costs a rebuffer, which is why it is the fallback and not
+     * the mechanism.
+     *
+     * ### What it records
+     *
+     * A [PlaybackEvent.RemoteProgress] row when a position was adopted — "the server moved this book, and
+     * this device did not", which is exactly what happened. Nothing when [position] is `null`: an ordinary
+     * resume is already a `Play` row, written by the session callbacks.
+     *
+     * @param position where to resume, or `null` to resume where the player already is.
+     */
+    suspend fun resumeLoadedAt(position: Duration?): Unit = withContext(mainDispatcher) {
+        val media = connect() ?: return@withContext
+        if (media.mediaItemCount == 0) return@withContext
+        val from = media.bookPosition()
+        val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf)
+        val owner = media.currentMediaItem?.let(MediaItems::ownerOf)
+        if (position == null || bookId == null) {
+            media.asResumeSurface().resumeAt(null)
+            publish(media)
+            return@withContext
+        }
+        // Recorded off this thread, for the reason `seekTo` does it that way: a database write must not sit
+        // between a finger and a position. Before the command rather than after, so the row exists even if
+        // the adoption fails — a failed adoption is exactly the case somebody asks about afterwards.
+        applicationScope.launch {
+            history.record(bookId, PlaybackEvent.RemoteProgress, from, position, owner = owner)
+        }
+        val adopted = adopt(media, bookId, position)
+        publish(media)
+        if (!adopted) reopenAt(bookId)
+    }
+
+    /**
+     * Sends the atomic resume to the service and waits for its answer.
+     *
+     * `false` for every failure — a refused command, a session that has gone away, or the service reporting
+     * that the seek did not land. All three mean the same thing to the caller and all three are logged with
+     * their reason on the service's side, where the position that failed can be named.
+     */
+    private suspend fun adopt(media: MediaController, bookId: LibraryItemId, position: Duration): Boolean {
+        // ADR-0003 — `resultOf` is the app's single exception boundary, and a command that crosses a binder
+        // is one: a session torn down mid-flight throws through the future. It rethrows cancellation before
+        // it catches anything, so a Play the listener has already replaced still unwinds as cancellation.
+        val sent = resultOf {
+            media.sendCustomCommand(
+                ResumeCommand.command(),
+                ResumeCommand.argsFor(bookId = bookId.value, positionMillis = position.inWholeMilliseconds),
+            ).awaitOutcome()
+        }
+        val code = when (sent) {
+            is AppResult.Success -> sent.value.resultCode
+            is AppResult.Failure -> SessionError.ERROR_UNKNOWN
+        }
+        if (code == SessionResult.RESULT_SUCCESS) return true
+        logger.warn(
+            LogCategory.Playback,
+            "The service could not resume on the position another device had moved to",
+            LogField.Millis("target", position.inWholeMilliseconds),
+            LogField.Count("resultCode", code),
+        )
+        return false
+    }
+
+    /**
+     * The fallback: load the book again, which starts it from the position the server is holding.
+     *
+     * Not a second attempt at the same mechanism. [play] goes through `openPlaybackSession`, so the start
+     * position comes from the server's own `/play` response rather than from a seek that has already been
+     * shown not to arrive.
+     */
+    private suspend fun reopenAt(bookId: LibraryItemId) {
+        val reopened = play(bookId)
+        if (reopened is AppResult.Failure) {
+            logger.warn(
+                LogCategory.Playback,
+                "Reopening the book at the server's position failed",
+                LogField.Public("summary", reopened.error.summary),
+            )
+        }
+    }
+
+    /** Adapts the Media3 controller to the surface [resumeAt] drives. See `ResumeSurface.kt`. */
+    private fun MediaController.asResumeSurface(): ResumeSurface = object : ResumeSurface {
+        override val needsPreparing: Boolean get() = this@asResumeSurface.needsPreparing()
+
+        override fun prepare() = this@asResumeSurface.prepare()
+
+        override fun seekTo(positionMillis: Long) = this@asResumeSurface.seekTo(positionMillis)
+
+        override fun play() = this@asResumeSurface.play()
+    }
+
+    /**
      * PRODUCT_SPEC PLAY-001 — retry after a failure the service gave up on.
      *
      * The service retries a transient error a few times on its own (see [PlaybackRecovery]); this is what
@@ -259,7 +391,12 @@ class PlaybackController @Inject constructor(
      */
     private fun seekTo(position: Duration, event: PlaybackEvent) {
         applicationScope.launch(mainDispatcher) {
-            val media = controller ?: return@launch
+            // `connect()`, not the cached field. Reading `controller` directly was R-87's mechanism: a seek
+            // arriving after the controller had been released returned here silently, and the caller had no
+            // way to tell a dropped seek from a completed one. Connecting costs nothing when one is already
+            // held — `connect` returns the cached instance — and the item-count guard below is what stops a
+            // seek with no session from doing anything.
+            val media = connect() ?: return@launch
             if (media.mediaItemCount == 0) return@launch
             val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf)
             val owner = media.currentMediaItem?.let(MediaItems::ownerOf)

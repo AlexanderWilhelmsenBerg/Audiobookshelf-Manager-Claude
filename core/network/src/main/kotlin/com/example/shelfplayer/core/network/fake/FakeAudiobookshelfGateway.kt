@@ -39,6 +39,7 @@ import com.example.shelfplayer.core.model.map
 import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.network.fixture.FixtureLibraryLoader
 import com.example.shelfplayer.core.network.fixture.FixtureMapper
@@ -283,6 +284,18 @@ class FakeAudiobookshelfGateway @Inject constructor(
         isFinished: Boolean,
         position: Duration,
     ): AppResult<Unit> = noServer()
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the demo document has no server, so it cannot say what a server holds.
+     *
+     * [noServer] rather than an empty position, and unlike [listeningSessions] this really is the honest
+     * answer: "the server holds nothing for this book" and "there is no server" lead a loaded player to
+     * the same place, but only the second is true here, and the caller writes which of the two happened
+     * into the book's history. A fake claiming an answer would put a cloud on a row that never asked
+     * anything.
+     */
+    override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> =
+        noServer()
 
     /**
      * PRODUCT_SPEC PLAY-003 — the demo document has no server, so it has no listening sessions either.

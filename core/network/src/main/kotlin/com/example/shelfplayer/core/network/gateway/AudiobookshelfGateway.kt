@@ -26,6 +26,7 @@ import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.ListeningSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
@@ -132,6 +133,20 @@ interface PlaybackApi {
      * escaping this boundary is a path waiting to be resolved against the wrong one.
      */
     suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession>
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — what the server currently holds for [bookId], as one request.
+     *
+     * The read behind the freshness check an in-app Play runs before it resumes. It replaced a sweep of
+     * `listeningSessions`, whose cost grew with everything else the account had ever played; this route is
+     * per book, so the check costs one round trip on any account.
+     *
+     * A non-`200` is a [AppResult.Failure], **including a `404`**. The capture only ever saw `200` for a
+     * book with stored progress, and what the server answers for a book with none is unobserved
+     * (PRODUCT_SPEC 22.4) — so it is reported as "could not tell" rather than as "no progress exists",
+     * because only one of those two guesses is safe for a loaded player.
+     */
+    suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress>
 
     /**
      * PRODUCT_SPEC PLAY-004 — sends a position against a session the server opened.

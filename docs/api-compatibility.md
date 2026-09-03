@@ -898,6 +898,117 @@ session's own id rather than a fresh UUID, and the table's primary key was alrea
 A failed fetch is logged and otherwise silent. A pane whose local half is good must not become an error
 because the network was not there, and the rows from earlier refreshes stand.
 
+### This route is **not** how a Play checks its position, and that is a correction
+
+`PlaybackHistoryRepository.checkExternalSession` used to read this endpoint page by page to exhaustion
+before an in-app Play resumed, on the reasoning that the route is account-wide with no per-book form and a
+busy account could push the book past the first fifty sessions. It is account-wide, and it does, and reading
+all of it before any audio was reported from a device as *"pressing play takes very long time"*.
+
+`GET /api/me/progress/{itemId}` — one request, for one book — replaced it. See the next section.
+
+---
+
+## The stored position for one book, captured 2026-08-27 against 2.36.0
+
+`GET /api/me/progress/{itemId}`, fixture `media-progress.json`. `scripts/capture-contracts.sh` writes a
+position with the `PATCH` on the same route and reads it straight back through this one.
+
+| Field | |
+| --- | --- |
+| `currentTime`, `duration` | **seconds**, fractional — the capture shows `42.5` |
+| `lastUpdate`, `startedAt`, `finishedAt` | **epoch milliseconds** |
+| `isFinished` | the explicit flag PLAY-004 is about |
+| `progress` | a fraction the app recomputes and does not model |
+
+Two units in one object again, and the capture scrubs the timestamps to `0` as volatile — the field names
+are confirmed, the values are not meaningful in the fixture.
+
+### How the freshness check before a Play uses it (SYNC-002)
+
+`PlaybackRepository.checkServerPosition` answers one of three things — another device is ahead, nothing
+newer exists, or the check could not be completed or trusted — and only the first is allowed to move the
+player, by **seeking** the already-loaded one rather than reloading it.
+
+**The question is asked against an acknowledged pause, and nothing else.** An `AcknowledgedPause` is a
+position this device came to rest at *and Audiobookshelf answered that it had taken*. From that instant the
+two sides demonstrably held the same number, so:
+
+- **the server still holds it** → nothing happened while we were paused, resume locally (`Current`);
+- **the server holds something else** → it can only have got there after our acknowledgement, so it is
+  somebody else's more recent work, and it is adopted (`Ahead`);
+- **there is no acknowledged pause** → the server's freshness is not knowable, and **no request is made**
+  (`Unavailable`).
+
+`ResumeBaseline` in `:domain` owns that record — `{bookId, position, generation, acknowledged}` — and
+`PlaybackService` is the only thing that writes it, because it is the one object that sees every pause,
+seek and track boundary whatever pressed them. The pause path captures the exact position, journals it,
+and **awaits** its own session sync; a successful sync for that position promotes the record. A local
+seek, skip, track change or resume bumps the generation and drops it, and the generation is read *before*
+the upload is sent, so an answer that arrives after the listener has moved on cannot confirm a pause it
+does not describe.
+
+A five-second tolerance separates "still holding it" from "moved", because the wire carries fractional
+seconds against a stored millisecond.
+
+**Four things this deliberately does not read**, each of which was tried and each of which produced a
+device run that resumed in the wrong place:
+
+| Read instead of the baseline | Why it cannot answer the question | Risk |
+| --- | --- | --- |
+| `lastUpdate` vs the row's `updatedAt` | Two clocks — and a server-sourced write stores the server's own `lastUpdate` *as* `updatedAt`, so noticing the remote change made the condition false | R-86, R-88 |
+| How long ago the listener pressed pause | Says nothing about anybody else; and going to the web player and back takes seconds, so a duration gate skips exactly the case the check exists for | R-89 |
+| `hasUnsyncedChanges` | Persistence bookkeeping: it says whether a queue is empty, not whether another device listened. A journal write landing after its own acknowledgement re-raised it with nothing left to lower it, and the check then stopped asking the server at all | R-92, R-93, R-94, R-95 |
+| The player's live position | That is the thing being judged, not evidence about it | R-95 |
+
+Position *magnitude* is deliberately never compared. An intentional rewind on another client is activity
+that happened after our acknowledgement even though its number is smaller, and a check that compared
+magnitudes would refuse to honour it.
+
+**Adopting the answer is one operation, on the player that owns it.** It is a custom session command —
+`ResumeCommand`, granted only to a first-party controller — and `PlaybackService` handles it against its
+own `ExoPlayer`: seek, wait for *that player's* position discontinuity, confirm the landing within a
+second, then `play()`, and answer the controller with a `SessionResult`. Nothing is played on an
+unconfirmed seek; on failure the app reopens the book through `OpenPlaybackSessionUseCase`, which starts
+it from the server's position via `setMediaItem(item, startPositionMs)`.
+
+Two earlier shapes of this are recorded because both failed on a device. It was **two controller calls**
+until R-87 (`seekTo` then `togglePlayPause`, each launching its own coroutine and only the second one
+connecting), which is how a device resumed at the stale position while the history pane correctly said
+another device had moved it. It then verified itself by **re-reading `MediaController.currentPosition`**,
+which cannot work: the controller is an IPC proxy that masks a seek locally the instant it is asked, so a
+dropped seek and an honoured one give the same answer from the same object (R-90). `AtomicResumeTest`
+pins the order and, more to the point, that no `play` follows a seek the player did not confirm.
+
+**What the two reference clients do**, read from their sources rather than inferred:
+
+| | `advplyr/audiobookshelf-app` | `pounat/absorb` |
+| --- | --- | --- |
+| Route | `GET /api/me/progress/{id}` | `GET /api/me/progress/{id}` |
+| Cap | a 3-second `pingClient`, built for this | 2 seconds, late answers dropped |
+| Gate | pause longer than 30s (`PAUSE_LEN_BEFORE_RECHECK`) | pause longer than 2 minutes, and only a play from the app screen |
+| Order | audio first, then seek if the server was ahead | audio first; once running it logs and does **not** seek |
+| Live? | **No** — the call site is commented out on Android with *"this needs to be reworked so that the audio doesn't start playing before it checks for updated progress"*, and the iOS equivalent is marked `// TODO: Unused for now` | Yes |
+
+BookWave takes absorb's cap and keeps the check *before* audio — which absorb also does, in the one case it
+still waits for (a play from the app screen). A play from the notification, the car or a headset never
+waits, because those reach `PlaybackController` without passing through the ViewModel the check lives in.
+
+**BookWave no longer has either client's duration gate, and that is a deliberate divergence.** It had the
+official app's thirty seconds, and a device log showed it suppressing a Play at 12:19 after an in-app pause
+at 12:18 — the trip to the web player and back that the check exists for. The patch for that (forget the
+pause on backgrounding) turned one guess into three. What replaced both is the acknowledged pause, which
+answers the question rather than approximating it: a Play with a baseline **always** asks, a Play without
+one never does, and the two-second cap is the only cost control left. The trade is that a resume after an
+acknowledged pause now costs one capped round trip where most used to be instant.
+
+**A non-`200` is "could not tell", including a `404`.** What the server answers for a book it has never
+recorded progress for is unobserved (PRODUCT_SPEC 22.4), and of the two available guesses only "could not
+tell" is safe for a loaded player.
+
+The outcome is recorded in the book's history and drawn as a small muted cloud on the Play row it belongs
+to: plain for `ServerCheckAhead` and `ServerCheckCurrent`, struck through for `ServerCheckUnavailable`.
+
 ---
 
 ## The embed task's own frames, captured 2026-08-23 against 2.36.0

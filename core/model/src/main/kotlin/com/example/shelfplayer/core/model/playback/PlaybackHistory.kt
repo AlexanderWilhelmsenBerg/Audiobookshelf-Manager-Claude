@@ -98,11 +98,46 @@ enum class PlaybackEvent {
      * and they would duplicate the `Play` and `Pause` entries the player already writes.
      */
     ServerSession,
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — an in-app Play asked the server, and another device was ahead.
+     *
+     * The three `ServerCheck*` rows exist because the check itself is invisible otherwise. A Play that
+     * verified the position against Audiobookshelf and a Play that resumed because the server could not be
+     * reached produce the same audio, and when a position later turns out to be wrong the first question is
+     * which of the two happened. These rows answer it, at the position Play was pressed at.
+     *
+     * This one is the outcome that *moved* something: the book was reloaded from the server's position
+     * rather than resumed where it stood.
+     */
+    ServerCheckAhead,
+
+    /** PRODUCT_SPEC SYNC-002 — the server answered and nothing newer existed, so the position stood. */
+    ServerCheckCurrent,
+
+    /**
+     * PRODUCT_SPEC SYNC-002 — the server was not reached, the read failed, or the check was cancelled.
+     *
+     * The position stood, unverified. Written even when the listener's own next action cancelled the check,
+     * because "resumed without an answer" is the fact worth keeping and the reason it went unanswered is
+     * not something the history can be sure of.
+     */
+    ServerCheckUnavailable,
     ;
 
     /** `true` for the events that come from somewhere other than this device. */
     val isRemote: Boolean
         get() = this == RemoteProgress || this == RemoteFinished || this == ServerSession
+
+    /**
+     * `true` for the three rows that record what the check before an in-app Play found.
+     *
+     * They are diagnostic rather than navigational — every one of them returns to the position Play was
+     * pressed at, which is where the listener already is — so a surface with room for a handful of rows
+     * leaves them out. `AutoLibrary.historyOf` does, for the reason it leaves `Play` out.
+     */
+    val isServerCheck: Boolean
+        get() = this == ServerCheckAhead || this == ServerCheckCurrent || this == ServerCheckUnavailable
 
     companion object {
         /** PRODUCT_SPEC SYNC-001 — an unrecognized stored value reads back as the commonest kind. */
@@ -133,6 +168,19 @@ data class PlaybackHistoryEntry(
      * For a jump it is the position the jump replaced — the undo that a seek has never had. For a marker
      * it is the marker's own position, which is still worth returning to: "take me back to where I fell
      * asleep" is the single most useful thing this list can do.
+     *
+     * ### Another device's listening is the exception, and getting it wrong was a defect
+     *
+     * A [PlaybackEvent.ServerSession] row's [from] is where that session **opened** and [to] is where it
+     * **reached**. Undo is meaningless for it: nothing moved this device, so there is nothing to put back.
+     * What a listener wants from "Listened on another device · 2:00:00 → 3:00:00" is to carry on at
+     * 3:00:00 — and returning them to 2:00:00 lands them exactly where they were *before* the other device
+     * played, which is indistinguishable from the app having ignored the other device entirely. Reported
+     * from a device on 2026-09-02 in those words.
+     *
+     * [PlaybackEvent.RemoteProgress] deliberately keeps the undo. There [from] is where *this* device was
+     * when a sync moved it, the app has already applied the move, and "take me back to where I was" is a
+     * real thing to want and the only way back.
      */
-    val returnTo: Duration get() = from ?: to
+    val returnTo: Duration get() = if (event == PlaybackEvent.ServerSession) to else from ?: to
 }

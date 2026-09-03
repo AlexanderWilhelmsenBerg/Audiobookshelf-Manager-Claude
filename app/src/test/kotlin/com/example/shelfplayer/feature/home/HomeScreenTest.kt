@@ -676,6 +676,41 @@ class HomeScreenTest {
         assertTrue(chips.bottom <= card.top, "the chips are ${chips.bottom} and the first card ${card.top}")
     }
 
+    /**
+     * PRODUCT_SPEC 3.1 — the navigation capsule at twice the font size, where it swallowed the shelf.
+     *
+     * **The clicks are what this asserts**, and the first of them is the regression. Making the capsule's
+     * fixed height a floor let its tab row measure itself against the window rather than against its
+     * content, and a screen-tall capsule sat invisibly over the books: the shelf rendered correctly and
+     * nothing on it could be tapped. `IntrinsicSize.Min` is the fix, and a book click at 200% is what
+     * proves it — the stacked arrangement is exactly when the capsule is tallest.
+     *
+     * The second click says the tabs themselves still work when stacked.
+     *
+     * What it deliberately does **not** claim: that the labels are *readable*. `onNodeWithText` matches
+     * semantics, and an ellipsised label still carries its full text, so the reason for stacking — a label
+     * reduced to an icon and one letter at 200% — cannot be asserted here. That is a screenshot's job and
+     * this project has no screenshot tier; the APK is what settled the threshold.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h740dp", fontScale = 2.0f)
+    fun `the capsule leaves the shelf tappable at twice the font size`() {
+        var selected: LibraryItemId? = null
+        var axis: HomeAxis? = null
+        compose.setContent {
+            HomeScreen(
+                uiState = state(),
+                actions = noActions().copy(onBookSelected = { selected = it }, onAxisChanged = { axis = it }),
+            )
+        }
+
+        compose.onNodeWithText("The Salt Harbour").performClick()
+        assertEquals(LibraryItemId("item-1"), selected, "the capsule is covering the shelf")
+
+        compose.onNodeWithText("Series").performClick()
+        assertEquals(HomeAxis.Series, axis)
+    }
+
     /** The supplied brand mark remains visible when it does not compete with navigation controls. */
     @Test
     @Config(sdk = [34], qualifiers = "w600dp-h800dp")

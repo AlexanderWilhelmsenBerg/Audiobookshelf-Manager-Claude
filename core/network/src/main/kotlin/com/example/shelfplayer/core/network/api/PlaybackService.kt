@@ -78,6 +78,24 @@ internal interface PlaybackService {
      * `scripts/capture-contracts.sh`, which writes `{"currentTime":…,"isFinished":…}` and reads the stored
      * progress straight back.
      */
+    /**
+     * PRODUCT_SPEC SYNC-002 — what the server currently holds for one book.
+     *
+     * **One request, for one book**, which is the whole reason this exists: the freshness check before an
+     * in-app Play used to read `listeningSessions` page by page to exhaustion, because that route is
+     * account-wide and has no per-book form. This route does, so the check is a single round trip whose
+     * cost does not depend on how much else the account has played.
+     *
+     * `media-progress.json` is the capture — `scripts/capture-contracts.sh` writes a position with the
+     * `PATCH` below and reads it straight back through here. [MediaProgressDto] is the same DTO the account
+     * sync reads this object with from `/api/me`; one wire shape, one type.
+     */
+    @GET("api/me/progress/{itemId}")
+    suspend fun mediaProgress(
+        @Header(AUTHORIZATION) bearer: String,
+        @Path("itemId") itemId: String,
+    ): Response<MediaProgressDto>
+
     @PATCH("api/me/progress/{itemId}")
     suspend fun updateProgress(
         @Header(AUTHORIZATION) bearer: String,
