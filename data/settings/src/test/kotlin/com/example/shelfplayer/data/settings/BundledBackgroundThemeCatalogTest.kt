@@ -3,6 +3,7 @@ package com.example.shelfplayer.data.settings
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.settings.AccentScheme
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -48,6 +49,30 @@ class BundledBackgroundThemeCatalogTest {
 
         assertEquals(EXPECTED_THEMES, themes.size, "themes: ${themes.map { it.id }}")
         assertEquals(EXPECTED_THEMES, themes.map { it.id }.toSet().size, "ids are not unique")
+    }
+
+    /**
+     * **Every bundled pack's accent is a usable pair, measured rather than assumed.**
+     *
+     * `AccentScheme` takes a pack's `primary` as its dark-ground tone and `primaryContainer` as its light-
+     * ground one, on the strength of one sentence: the packs are authored dark, so the first is pale and
+     * the second deep. That sentence is a claim about six JSON files nobody in this codebase wrote, and if
+     * it were wrong for one of them the failure would be a reader choosing that pack's colours on a light
+     * theme and getting pale-on-white — unreadable, and only visible on a device.
+     *
+     * So it is measured. R-101 is the same lesson from the same packs: the one called *Light Pack* is dark,
+     * and believing the name would have shipped it as a light theme.
+     */
+    @Test
+    fun `every pack's accent is dark enough for paper and light enough for its own artwork`() = runTest(dispatcher) {
+        catalog.themes().forEach { theme ->
+            val scheme = AccentScheme.of(theme)
+            val onPaper = scheme.argbFor(isDark = false).luminance()
+            val onArtwork = scheme.argbFor(isDark = true).luminance()
+
+            assertTrue(onPaper < MIDPOINT, "${theme.id}: the light-ground accent is not dark ($onPaper)")
+            assertTrue(onArtwork > MIDPOINT, "${theme.id}: the dark-ground accent is not light ($onArtwork)")
+        }
     }
 
     /**
@@ -115,6 +140,14 @@ class BundledBackgroundThemeCatalogTest {
     }
 
     private companion object {
+        /**
+         * Where "light enough to need dark text on it" begins.
+         *
+         * The same figure `ShelfPlayerTheme.contrastOn` splits on, so a pack that passes here is one whose
+         * accent that function will pair the way the pack author expected.
+         */
+        const val MIDPOINT = 0.5
+
         /** Three per pack. A theme added without updating this is a theme nobody asserted. */
         const val EXPECTED_THEMES = 6
     }

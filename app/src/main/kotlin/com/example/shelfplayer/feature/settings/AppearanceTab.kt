@@ -2,29 +2,33 @@ package com.example.shelfplayer.feature.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FormatColorReset
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,8 +44,10 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.settings.AccentColor
+import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
@@ -77,13 +83,19 @@ internal fun LazyListScope.appearanceTab(state: AppearanceUiState, actions: Appe
 }
 
 /**
- * PRODUCT_SPEC SET-002 — the bundled packs, shown as what they actually look like.
+ * PRODUCT_SPEC SET-002 — the bundled packs, as a list you open.
  *
- * ### Why thumbnails and not a list of names
+ * ### Why a dropdown and not the row of thumbnails this used to be
  *
- * Because *Nebula Glow* tells a reader nothing. These themes are a picture and a palette chosen against
- * it, so the only honest control is the picture — and the thumbnail is the real artwork, loaded from the
- * same asset the backdrop uses, not an approximation that could drift from it.
+ * The row was six 104dp cells and it could only ever be scrolled sideways to reach the sixth — a
+ * horizontal scroller nested in a vertical one, which is awkward with a thumb and worse with a switch or
+ * a screen reader. A dropdown names every pack in one list that opens where the setting is, and it takes
+ * one row of the tab instead of a fifth of it. The owner asked for the change; this is why it is also the
+ * better control.
+ *
+ * **The picture is not lost.** Each row still carries its own artwork as a leading thumbnail, loaded from
+ * the same asset the backdrop uses rather than an approximation that could drift from it, because
+ * *Nebula Glow* on its own still tells a reader nothing.
  *
  * ### Why *None* is first
  *
@@ -95,95 +107,54 @@ private fun LazyListScope.backgroundThemeGroup(state: AppearanceUiState, actions
     item { SectionHeader(text = stringResource(R.string.settings_section_background)) }
     item {
         SettingsGroup {
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-                    .selectableGroup(),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                item {
-                    ThemeThumbnail(
-                        label = stringResource(R.string.settings_background_none),
-                        assetPath = null,
-                        isSelected = state.backgroundThemeId == null,
-                        onClick = { actions.onBackgroundThemeChanged(null) },
-                    )
-                }
-                items(items = state.backgroundThemes, key = { it.id }) { theme ->
-                    ThemeThumbnail(
-                        label = theme.name,
-                        assetPath = theme.ground.asset,
-                        isSelected = state.backgroundThemeId == theme.id,
-                        onClick = { actions.onBackgroundThemeChanged(theme.id) },
-                    )
-                }
-            }
+            // `null` is a real option rather than a way of clearing the choice, so it is in the list.
+            val options: List<BackgroundTheme?> = listOf(null) + state.backgroundThemes
+            val none = stringResource(R.string.settings_background_none)
+            DropdownRow(
+                label = stringResource(R.string.settings_section_background),
+                options = options,
+                selected = options.firstOrNull { it?.id == state.backgroundThemeId },
+                labelOf = { theme -> theme?.name ?: none },
+                leadingOf = { theme -> ThemeThumbnail(assetPath = theme?.ground?.asset) },
+                onSelected = { theme -> actions.onBackgroundThemeChanged(theme?.id) },
+            )
             Hint(text = stringResource(R.string.settings_background_hint))
         }
     }
 }
 
 /**
- * One theme, as its own artwork.
+ * One pack's artwork, small.
  *
- * The name is drawn under the picture *and* set as the cell's description, so the control is usable by
- * eye and by screen reader without the reader hearing the name twice — `clearAndSetSemantics` on the
- * label is what stops the text and the description both being announced.
+ * Never named: it sits inside a row the dropdown has already labelled with the pack's name, and a picture
+ * that announced itself as well would have a screen reader say the name twice.
  */
 @Composable
-private fun ThemeThumbnail(label: String, assetPath: String?, isSelected: Boolean, onClick: () -> Unit) {
+private fun ThemeThumbnail(assetPath: String?) {
     val shape = RoundedCornerShape(THUMBNAIL_CORNER)
-    Column(
+    Box(
         modifier = Modifier
-            .width(THUMBNAIL_WIDTH)
-            .selectable(selected = isSelected, role = Role.RadioButton, onClick = onClick)
-            .semantics { contentDescription = label },
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .size(width = THUMBNAIL_WIDTH, height = THUMBNAIL_HEIGHT)
+            .clip(shape)
+            .background(color = MaterialTheme.colorScheme.surfaceVariant, shape = shape)
+            .border(width = THUMBNAIL_EDGE, color = MaterialTheme.colorScheme.outlineVariant, shape = shape),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(THUMBNAIL_HEIGHT)
-                .clip(shape)
-                .background(color = MaterialTheme.colorScheme.surfaceVariant, shape = shape)
-                .border(
-                    width = if (isSelected) THUMBNAIL_RING else THUMBNAIL_EDGE,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outlineVariant
-                    },
-                    shape = shape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (assetPath == null) {
-                Icon(
-                    imageVector = Icons.Filled.FormatColorReset,
-                    // The cell is already named; naming the glyph too would announce it twice.
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                AsyncImage(
-                    model = "file:///android_asset/$assetPath",
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+        if (assetPath == null) {
+            Icon(
+                imageVector = Icons.Filled.FormatColorReset,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(THUMBNAIL_GLYPH),
+            )
+        } else {
+            AsyncImage(
+                model = "file:///android_asset/$assetPath",
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .padding(top = 4.dp)
-                .clearAndSetSemantics { },
-        )
     }
 }
 
@@ -211,24 +182,28 @@ private fun LazyListScope.colourGroup(state: AppearanceUiState, actions: Appeara
     item { SectionHeader(text = stringResource(R.string.settings_section_colour)) }
     item {
         SettingsGroup {
-            SubHeader(text = stringResource(R.string.settings_accent_colour))
-            SwatchRow(
-                options = AccentColor.entries,
+            DropdownRow(
+                label = stringResource(R.string.settings_accent_colour),
+                // The closed palette, then one entry per bundled pack — see `AccentScheme` for why a
+                // pack's colours are choosable on their own and how both tones come from the pack itself.
+                options = AccentScheme.all(state.backgroundThemes),
                 selected = state.accent,
+                labelOf = { accent -> accent.label(state.backgroundThemes) },
                 // The tone for the ground the reader is actually looking at, so the swatch is the colour
                 // they will get rather than the other half of the pair.
-                colorOf = { accent -> Color(accent.argbFor(state.isDark)) },
-                labelOf = { accent -> stringResource(accent.labelRes()) },
+                leadingOf = { accent -> Swatch(color = Color(accent.argbFor(state.isDark))) },
                 onSelected = actions.onAccentChanged,
             )
             Hint(text = stringResource(R.string.settings_accent_colour_hint))
 
-            SubHeader(text = stringResource(R.string.settings_tint_colour))
-            SwatchRow(
+            DropdownRow(
+                label = stringResource(R.string.settings_tint_colour),
                 options = GlassTint.entries,
                 selected = state.glassTint,
-                colorOf = { tint -> Color(tint.argbOr(state.accent.argbFor(state.isDark))) },
                 labelOf = { tint -> stringResource(tint.labelRes()) },
+                leadingOf = { tint ->
+                    Swatch(color = Color(tint.argbOr(state.accent.argbFor(state.isDark))))
+                },
                 onSelected = actions.onGlassTintChanged,
             )
             Hint(text = stringResource(R.string.settings_tint_colour_hint))
@@ -292,10 +267,11 @@ private fun LazyListScope.languageGroup(state: AppearanceUiState, actions: Appea
     item { SectionHeader(text = stringResource(R.string.settings_language)) }
     item {
         SettingsGroup {
-            ChoiceRow(
+            DropdownRow(
+                label = stringResource(R.string.settings_language),
                 options = AppLanguage.entries,
                 selected = state.language,
-                label = { language -> language.label() },
+                labelOf = { language -> language.label() },
                 onSelected = actions.onLanguageChanged,
             )
             Hint(text = stringResource(R.string.settings_language_hint))
@@ -317,74 +293,104 @@ private fun SettingsGroup(content: @Composable () -> Unit) {
 }
 
 /**
- * A row of colours, one of which is chosen.
+ * PRODUCT_SPEC SET-002 — one setting, chosen from a list that opens where the setting is.
  *
- * ### Why each swatch carries its name
+ * ### Why this replaced a row of swatches and three radio rows
  *
- * A colour is not a label. Without [labelOf] on the semantics this row is six identical unnamed circles
- * to a screen reader and unusable to anyone who cannot distinguish them by eye — which is the group most
- * likely to be in an appearance screen changing the colours in the first place. `Role.RadioButton` and
- * the selected state come from `selectable`, so the reader is told which one is on as well.
+ * The swatch rows were six 48dp circles that had to scroll sideways inside a vertically scrolling tab, and
+ * the radio rows spent a full line on every option whether or not anyone would ever pick it. Neither
+ * scales: the accent list grew by one entry per bundled background pack the moment those landed. A
+ * dropdown is one row per setting however long the list gets, and it puts the current value on screen —
+ * which a row of unlabelled circles never did.
  *
- * The ring is drawn rather than an overlaid check mark, because a mark's own colour would have to contrast
- * with every swatch and one of them would always lose.
+ * ### The semantics, which are the whole reason this is hand-rolled
+ *
+ * The collapsed row announces itself as **"<setting>, <value>"** and nothing else: [label] and the value
+ * are drawn as two `Text`s for the eye and both are silenced with `clearAndSetSemantics`, because a screen
+ * reader hearing "Accent colour" and then "Teal" as two separate nodes has to assemble the sentence
+ * itself. `Role.DropdownList` is what tells it the row opens something.
+ *
+ * A colour is not a label, so [leadingOf] is decorative by construction — every swatch and thumbnail this
+ * draws passes `contentDescription = null`, and the name beside it is the label. That is the same rule the
+ * thumbnails followed before, and it is why this control is usable by someone who cannot tell the colours
+ * apart, which is a group with an unusually strong reason to be on an appearance screen.
  */
 @Composable
-private fun <T> SwatchRow(
+private fun <T> DropdownRow(
+    label: String,
     options: List<T>,
     selected: T,
-    colorOf: (T) -> Color,
     labelOf: @Composable (T) -> String,
     onSelected: (T) -> Unit,
+    leadingOf: (@Composable (T) -> Unit)? = null,
 ) {
-    /*
-     * A `LazyRow`, not a `Row`, and the accessibility suite is why.
-     *
-     * Six 48dp targets with their gaps need 348dp, and the tab is narrower than that on a compact phone
-     * once the page inset, the card inset and the row's own padding are taken off. A `Row` answers that
-     * by *compressing its children* — `assertEveryControlIsBigEnough` caught them at 31dp, under the
-     * 40dp floor — where a lazy row lets them keep their size and scroll. A control that silently shrinks
-     * to fit is the failure mode worth designing out, because it looks fine until somebody measures it.
-     */
-    LazyRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .selectableGroup(),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(items = options) { option ->
-            val isSelected = option == selected
-            val label = labelOf(option)
-            Box(
-                modifier = Modifier
-                    .size(SWATCH_TOUCH_TARGET)
-                    .selectable(
-                        selected = isSelected,
-                        role = Role.RadioButton,
-                        onClick = { onSelected(option) },
-                    )
-                    .semantics { contentDescription = label },
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(SWATCH_SIZE)
-                        .background(color = colorOf(option), shape = CircleShape)
-                        .border(
-                            width = if (isSelected) SWATCH_RING_WIDTH else SWATCH_EDGE_WIDTH,
-                            color = if (isSelected) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.outlineVariant
-                            },
-                            shape = CircleShape,
-                        ),
+    var expanded by remember { mutableStateOf(false) }
+    val current = labelOf(selected)
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = ROW_MIN_HEIGHT)
+                .clickable(role = Role.DropdownList) { expanded = true }
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .semantics { contentDescription = "$label, $current" },
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(WEIGHT_FILL).clearAndSetSemantics { },
+            )
+            leadingOf?.invoke(selected)
+            Text(
+                text = current,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clearAndSetSemantics { },
+            )
+            Icon(
+                imageVector = Icons.Filled.ArrowDropDown,
+                // The row is already named and already says it is a dropdown; naming the arrow as well
+                // would have a screen reader announce the same fact twice.
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                val optionLabel = labelOf(option)
+                DropdownMenuItem(
+                    text = { Text(text = optionLabel) },
+                    leadingIcon = leadingOf?.let { draw -> { draw(option) } },
+                    // A tick rather than a highlight: the menu is drawn over the app's own glass, and a
+                    // selected-row background would have to contrast with whatever artwork is behind it.
+                    trailingIcon = if (option == selected) {
+                        { Icon(imageVector = Icons.Filled.Check, contentDescription = null) }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelected(option)
+                    },
                 )
             }
         }
     }
+}
+
+/** A colour, as a circle. Decorative — the name beside it is what the row is labelled with. */
+@Composable
+private fun Swatch(color: Color) {
+    Box(
+        modifier = Modifier
+            .size(SWATCH_SIZE)
+            .background(color = color, shape = CircleShape)
+            .border(width = SWATCH_EDGE_WIDTH, color = MaterialTheme.colorScheme.outlineVariant, shape = CircleShape),
+    )
 }
 
 private fun AppTheme.labelRes(): Int = when (this) {
@@ -401,6 +407,23 @@ private fun AccentColor.labelRes(): Int = when (this) {
     AccentColor.Ember -> R.string.settings_accent_ember
     AccentColor.Moss -> R.string.settings_accent_moss
     AccentColor.Slate -> R.string.settings_accent_slate
+}
+
+/**
+ * An accent's name: the built-in's, or the pack the colours were authored for.
+ *
+ * A pack accent is named after its pack rather than after its hue, because *Teal Horizon* is what the
+ * reader picked in the row above and a second word for the same colour would read as a different one.
+ *
+ * The fallback is unreachable through `AppearanceViewModel` — it resolves the accent against the same
+ * [themes] the tab is given, so a key naming a pack that is not in the list has already become the
+ * default. It is here rather than as a `!!` because a screen that cannot name its own value should say
+ * something true and vague, not crash.
+ */
+@Composable
+private fun AccentScheme.label(themes: List<BackgroundTheme>): String = when {
+    isFromTheme -> themes.firstOrNull(::belongsTo)?.name ?: stringResource(R.string.settings_accent_theme)
+    else -> stringResource(AccentColor.ofKey(key).labelRes())
 }
 
 private fun TextContrast.labelRes(): Int = when (this) {
@@ -425,15 +448,24 @@ private fun GlassTint.labelRes(): Int = when (this) {
 @Composable
 private fun AppLanguage.label(): String = displayName ?: stringResource(R.string.settings_language_system)
 
-/** 48dp, because a colour the size of the colour would be a target below the accessibility floor. */
-/** Wide enough that a 16:9 crop of the artwork is recognisable, narrow enough that three fit on a phone. */
-private val THUMBNAIL_WIDTH = 104.dp
-private val THUMBNAIL_HEIGHT = 68.dp
-private val THUMBNAIL_CORNER = 10.dp
-private val THUMBNAIL_RING = 3.dp
+/** A 3:2 crop, large enough that the artwork is recognisable beside a name and small enough for a row. */
+private val THUMBNAIL_WIDTH = 42.dp
+private val THUMBNAIL_HEIGHT = 28.dp
+private val THUMBNAIL_CORNER = 6.dp
 private val THUMBNAIL_EDGE = 1.dp
+private val THUMBNAIL_GLYPH = 18.dp
 
-private val SWATCH_TOUCH_TARGET = 48.dp
-private val SWATCH_SIZE = 32.dp
-private val SWATCH_RING_WIDTH = 3.dp
+private val SWATCH_SIZE = 24.dp
 private val SWATCH_EDGE_WIDTH = 1.dp
+
+/**
+ * The floor for a dropdown row.
+ *
+ * 48dp is the platform's touch target and the figure `assertEveryControlIsBigEnough` measures against —
+ * with 8dp of slack, because that assertion checks *visual* bounds and a row sized only by its content
+ * would land under the line as soon as somebody shortened the text.
+ */
+private val ROW_MIN_HEIGHT = 48.dp
+
+/** The label takes the row and the value sits at its end, as every other settings row is laid out. */
+private const val WEIGHT_FILL = 1f

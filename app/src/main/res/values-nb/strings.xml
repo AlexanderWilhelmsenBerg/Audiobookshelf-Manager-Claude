@@ -899,6 +899,7 @@
     <string name="settings_section_colour">Farge</string>
     <string name="settings_accent_colour">Aksentfarge</string>
     <string name="settings_accent_colour_hint">Brukt p\u00e5 knapper, brytere og alt som er valgt. Hvert valg er et par som er kontrollert for kontrast mot b\u00e5de lys og m\u00f8rk bakgrunn.</string>
+    <string name="settings_accent_theme">Temafarger</string>
     <string name="settings_accent_teal">Bl\u00e5gr\u00f8nn</string>
     <string name="settings_accent_indigo">Indigo</string>
     <string name="settings_accent_plum">Plomme</string>

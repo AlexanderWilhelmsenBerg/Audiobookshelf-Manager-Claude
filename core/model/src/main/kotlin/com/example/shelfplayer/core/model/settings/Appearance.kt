@@ -77,6 +77,102 @@ enum class AccentColor(val key: String, val lightArgb: Long, val darkArgb: Long)
 }
 
 /**
+ * PRODUCT_SPEC SET-002 — the accent actually in force: a built-in pair, or a bundled pack's own.
+ *
+ * ### Why a value type over the enum rather than more enum entries
+ *
+ * Because the pack accents are not knowable at compile time. [AccentColor] is a closed palette on purpose
+ * and stays one; what a [BackgroundTheme] adds is a pair somebody authored against a specific picture, and
+ * the set of those grows when a directory is added to the assets. An enum would have to be edited in step
+ * or the new pack's colours would be unreachable — the same argument `app_theme_key` and
+ * `library_sort_order` make for storing a key rather than an ordinal.
+ *
+ * ### Both tones come from the pack, and neither is derived
+ *
+ * A pack supplies `accent.primary` — a light tone, authored to sit on its own dark artwork — and
+ * `accent.primaryContainer`, a dark one. That is exactly the pair [AccentColor] needs, so a pack accent is
+ * as legible on a light ground as a built-in is, and nothing here invents a colour by arithmetic.
+ * `AccentSchemeTest` measures every bundled pack rather than trusting that sentence.
+ *
+ * @property key what is stored. A built-in's is [AccentColor.key]; a pack's is its id behind
+ *   [THEME_PREFIX], which is why a pack called `teal` could never be mistaken for the built-in *Teal*.
+ */
+data class AccentScheme(val key: String, val lightArgb: Long, val darkArgb: Long) {
+
+    /** The tone for the ground the reader is actually looking at. */
+    fun argbFor(isDark: Boolean): Long = if (isDark) darkArgb else lightArgb
+
+    /** Whether this came from a bundled pack rather than the closed palette. */
+    val isFromTheme: Boolean get() = key.startsWith(THEME_PREFIX)
+
+    /** Whether this is [theme]'s own authored accent, which is what the pack is drawn with by default. */
+    fun belongsTo(theme: BackgroundTheme): Boolean = key == keyFor(theme)
+
+    companion object {
+        /**
+         * What a pack's accent key begins with.
+         *
+         * A prefix rather than a separate stored field, because the choice is *one* choice: a reader picks
+         * an accent, and where it came from is a property of the answer rather than a second question. One
+         * field also means an unknown key has one fallback path instead of two that can disagree.
+         */
+        const val THEME_PREFIX: String = "theme:"
+
+        val Default: AccentScheme = of(AccentColor.Default)
+
+        fun of(colour: AccentColor): AccentScheme =
+            AccentScheme(key = colour.key, lightArgb = colour.lightArgb, darkArgb = colour.darkArgb)
+
+        /**
+         * A pack's own accent.
+         *
+         * `primaryContainer` is the light-ground tone. The packs are authored dark, so their `primary` is
+         * the pale tone that reads on their artwork and the container is the deep one that reads on paper —
+         * the same two roles [AccentColor] holds, in the same order.
+         */
+        fun of(theme: BackgroundTheme): AccentScheme = AccentScheme(
+            key = keyFor(theme),
+            lightArgb = theme.accents.primaryContainer,
+            darkArgb = theme.accents.primary,
+        )
+
+        /** Every accent a reader may choose: the closed palette first, then one per bundled pack. */
+        fun all(themes: List<BackgroundTheme>): List<AccentScheme> = AccentColor.entries.map(::of) + themes.map(::of)
+
+        /**
+         * The stored key, resolved.
+         *
+         * A key naming a pack this build no longer ships falls back to [Default] rather than to the
+         * built-in whose name happens to follow the prefix — [THEME_PREFIX] is what keeps those two
+         * namespaces apart, and losing a pack must not silently repaint the app in a colour nobody chose.
+         */
+        fun ofKey(key: String, themes: List<BackgroundTheme>): AccentScheme = when {
+            key.startsWith(THEME_PREFIX) ->
+                themes.firstOrNull { theme -> keyFor(theme) == key }?.let(::of) ?: Default
+
+            else -> of(AccentColor.ofKey(key))
+        }
+
+        /**
+         * The accent to write when the background theme changes, or `null` to leave the choice alone.
+         *
+         * *"Picking a theme chooses the right scheme, but it should be possible to change the colors."*
+         * Both halves are here. Choosing a pack adopts its authored accent, because a pack is a picture and
+         * a palette chosen against it and offering one without the other is offering half of it. Choosing
+         * **None** only undoes that adoption — it returns to [Default] when the accent in force came from a
+         * pack, and leaves a deliberate choice of *Plum* exactly where the reader put it.
+         */
+        fun following(current: AccentScheme, theme: BackgroundTheme?): AccentScheme? = when {
+            theme != null -> of(theme).takeIf { next -> next != current }
+            current.isFromTheme -> Default
+            else -> null
+        }
+
+        private fun keyFor(theme: BackgroundTheme): String = THEME_PREFIX + theme.id
+    }
+}
+
+/**
  * PRODUCT_SPEC SET-002 — the colour of the wash over the app's frosted surfaces.
  *
  * The wash is what makes a blur read as *frosted* rather than merely out of focus. It has always been

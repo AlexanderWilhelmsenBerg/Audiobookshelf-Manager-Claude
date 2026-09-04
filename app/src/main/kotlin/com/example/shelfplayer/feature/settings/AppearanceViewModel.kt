@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.ThemeMode
-import com.example.shelfplayer.core.model.settings.AccentColor
+import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -49,7 +50,7 @@ import javax.inject.Inject
 @HiltViewModel
 class AppearanceViewModel @Inject constructor(
     private val settings: AppSettingsDataSource,
-    backgroundThemes: BackgroundThemeCatalog,
+    private val backgroundThemes: BackgroundThemeCatalog,
 ) : ViewModel() {
 
     /** The bundled packs. Read once — see `BackgroundThemeCatalog`; the catalog itself caches. */
@@ -67,7 +68,7 @@ class AppearanceViewModel @Inject constructor(
                 } else {
                     stored.themeMode.asAppTheme()
                 },
-                accent = AccentColor.ofKey(stored.accentColorKey),
+                accent = AccentScheme.ofKey(stored.accentColorKey, themes),
                 glassTint = GlassTint.ofKey(stored.glassTintKey),
                 cardGlassTintEnabled = !stored.cardGlassTintDisabled,
                 systemGlassTintEnabled = !stored.systemGlassTintDisabled,
@@ -93,8 +94,8 @@ class AppearanceViewModel @Inject constructor(
         viewModelScope.launch { settings.setAppTheme(theme) }
     }
 
-    fun onAccentChanged(accent: AccentColor) {
-        viewModelScope.launch { settings.setAccentColor(accent) }
+    fun onAccentChanged(accent: AccentScheme) {
+        viewModelScope.launch { settings.setAccent(accent) }
     }
 
     fun onGlassTintChanged(tint: GlassTint) {
@@ -117,8 +118,37 @@ class AppearanceViewModel @Inject constructor(
         viewModelScope.launch { settings.setGlassBlurDp(dp) }
     }
 
+    /**
+     * PRODUCT_SPEC SET-002 — the pack, and the accent that comes with it.
+     *
+     * Two writes rather than one, because *"picking a theme chooses the right scheme"* is a second fact
+     * about the same press. `AccentScheme.following` owns which — including the case it declines: a reader
+     * who deliberately chose *Plum* keeps it when they turn a pack off, and only an accent that came from
+     * a pack is taken back to the default. The decision is a pure function so that rule is testable
+     * without a screen.
+     *
+     * The accent is written **first**. Both land on the same `DataStore`, and writing the pack first would
+     * publish one frame in which the new artwork is drawn under the old pack's colours.
+     *
+     * ### Why the current accent is read from the store and not from [state]
+     *
+     * Because [state] is `WhileSubscribed`, so `state.value` is the *initial* value — no pack list, and the
+     * default accent — whenever nothing is collecting. From the screen there always is, which is exactly
+     * what makes this the kind of coupling that holds until it does not: a press routed from anywhere else,
+     * or a collector that had timed out, would silently deselect the pack and write nothing else.
+     * `AppearanceViewModelTest` found it by driving the view model without a collector, which is the shape
+     * the bug has. Reading the store answers the question the write is actually about.
+     */
     fun onBackgroundThemeChanged(id: String?) {
-        viewModelScope.launch { settings.setBackgroundThemeId(id) }
+        viewModelScope.launch {
+            // The catalog caches, so this is a map lookup after the first call rather than a second read
+            // of the assets. See `BackgroundThemeCatalog`.
+            val themes = backgroundThemes.themes()
+            val theme = id?.let { chosen -> themes.firstOrNull { it.id == chosen } }
+            val current = AccentScheme.ofKey(settings.settings.first().accentColorKey, themes)
+            AccentScheme.following(current, theme)?.let { next -> settings.setAccent(next) }
+            settings.setBackgroundThemeId(theme?.id)
+        }
     }
 
     fun onDynamicColorChanged(enabled: Boolean) {
@@ -151,7 +181,7 @@ class AppearanceViewModel @Inject constructor(
  */
 data class AppearanceUiState(
     val theme: AppTheme = AppTheme.Default,
-    val accent: AccentColor = AccentColor.Default,
+    val accent: AccentScheme = AccentScheme.Default,
     val glassTint: GlassTint = GlassTint.Default,
     val cardGlassTintEnabled: Boolean = true,
     val systemGlassTintEnabled: Boolean = true,

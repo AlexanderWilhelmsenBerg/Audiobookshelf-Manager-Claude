@@ -98,15 +98,35 @@ fun ShelfPlayerTheme(
     // Dynamic colour is the device's own accent, so a chosen one would be overriding the thing the
     // reader turned on to see. Whichever they enabled last is not knowable here; Material You wins,
     // because it is the more specific request — "use my wallpaper" rather than "use this hue".
-    val accented = if (accent != null && !(dynamicColor && supportsDynamicColor)) base.withAccent(accent) else base
-
-    val grounded = override ?: if (pureBlack) accented.asPureBlack() else accented
+    val chosenAccent = accent?.takeUnless { dynamicColor && supportsDynamicColor }
+    val grounded = base.grounded(chosenAccent, pureBlack, override)
 
     MaterialTheme(
         colorScheme = if (textContrast == null) grounded else grounded.withTextContrast(textContrast),
         typography = ShelfPlayerTypography,
         content = content,
     )
+}
+
+/**
+ * The shipped scheme, with the accent, the AMOLED grounds and an authored palette applied in that order.
+ *
+ * ### An override wins, and does not swallow the accent
+ *
+ * [override] is a complete scheme somebody wrote — a background pack's palette — so it replaces the
+ * shipped one entirely rather than being blended with it, and [pureBlack] does not apply on top of it: a
+ * pack's grounds are its own picture, and blacking them out would hide the artwork the pack exists for.
+ *
+ * What the override does **not** replace is the accent. A reader who picks a different colour while a pack
+ * is drawn has to see it, or the colour setting looks broken for exactly the person who chose a pack. The
+ * caller passes `null` when the chosen accent already **is** the pack's own, which leaves the author's
+ * `onPrimary` and container exactly as written instead of re-deriving them from a colour they agree with.
+ * See `AppUiState.accentArgbFor`.
+ */
+private fun ColorScheme.grounded(accent: Color?, pureBlack: Boolean, override: ColorScheme?): ColorScheme {
+    if (override != null) return if (accent == null) override else override.withAccent(accent)
+    val accented = if (accent == null) this else withAccent(accent)
+    return if (pureBlack) accented.asPureBlack() else accented
 }
 
 /**

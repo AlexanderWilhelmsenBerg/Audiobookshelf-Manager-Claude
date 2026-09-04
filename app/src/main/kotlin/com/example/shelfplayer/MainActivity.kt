@@ -110,7 +110,7 @@ class MainActivity : ComponentActivity() {
                     darkTheme = isDark,
                     dynamicColor = appState.dynamicColor,
                     pureBlack = background == null && theme.prefersFlatBackdrop,
-                    accent = Color(appState.accent.argbFor(isDark)),
+                    accent = appState.accentArgbFor(isDark)?.let(::Color),
                     textContrast = appState.textContrast.contrast,
                     override = background?.toColorScheme(),
                 ) {

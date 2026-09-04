@@ -6,6 +6,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import com.example.shelfplayer.core.model.settings.AccentColor
+import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
@@ -97,27 +99,81 @@ class AppearanceSettingsScreenTest {
     }
 
     /**
-     * **Each swatch is named.** A row of coloured circles with no `contentDescription` is unusable to a
-     * screen reader and to anyone who cannot tell the colours apart — which is a group with an unusually
-     * strong reason to be on an appearance screen in the first place.
+     * **Every colour is named.** A list of coloured circles with no words is unusable to a screen reader
+     * and to anyone who cannot tell the colours apart — which is a group with an unusually strong reason
+     * to be on an appearance screen in the first place. The swatch is decorative; the name is the control.
      */
     @Test
-    fun `every accent swatch carries its name`() {
+    fun `every accent in the closed palette is named in the list`() {
         render()
 
+        open("Accent colour, Teal")
+
         AccentColor.entries.forEach { accent ->
-            composeRule.onNodeWithContentDescription(accent.name).assertIsDisplayed()
+            composeRule.onNodeWithText(accent.name).assertIsDisplayed()
         }
+    }
+
+    /**
+     * The collapsed row says which colour is in force, as one sentence a screen reader can read.
+     *
+     * Two `Text`s would be announced as two unrelated nodes — "Accent colour", then "Teal" — leaving the
+     * listener to assemble the sentence. Both are silenced and the row carries the pair.
+     */
+    @Test
+    fun `the collapsed row announces the setting and its value together`() {
+        render()
+
+        composeRule.onNodeWithContentDescription("Accent colour, Teal").assertIsDisplayed()
+
+        scrollToDescription("Language, System default")
+        composeRule.onNodeWithContentDescription("Language, System default").assertIsDisplayed()
     }
 
     @Test
     fun `choosing an accent reports it`() {
-        var chosen: AccentColor? = null
+        var chosen: AccentScheme? = null
         render(actions = AppearanceActions(onAccentChanged = { chosen = it }))
 
-        composeRule.onNodeWithContentDescription("Plum").performClick()
+        open("Accent colour, Teal")
+        composeRule.onNodeWithText("Plum").performClick()
 
-        assertEquals(AccentColor.Plum, chosen)
+        assertEquals(AccentScheme.of(AccentColor.Plum), chosen)
+    }
+
+    /**
+     * **Every pack's own scheme is choosable as a colour, and its name is the pack's.**
+     *
+     * *"The color scheme from the themes, add them to colors."* The list is the closed palette **and** one
+     * entry per bundled pack, so a reader can take *Teal Horizon*'s colours without its picture — and can
+     * take its picture and then change the colour, which is the other half of the same request.
+     */
+    @Test
+    fun `a background pack's own scheme is offered among the accents`() {
+        var chosen: AccentScheme? = null
+        render(
+            state = AppearanceUiState(backgroundThemes = themes()),
+            actions = AppearanceActions(onAccentChanged = { chosen = it }),
+        )
+
+        open("Accent colour, Teal")
+        composeRule.onNodeWithText("Nebula Glow").assertIsDisplayed()
+        composeRule.onNodeWithText("Teal Horizon").performClick()
+
+        assertEquals(AccentScheme.of(themes().first()), chosen)
+    }
+
+    /** A pack accent already in force is named after its pack in the collapsed row, not after a hue. */
+    @Test
+    fun `a chosen pack accent shows the pack's name`() {
+        render(
+            state = AppearanceUiState(
+                backgroundThemes = themes(),
+                accent = AccentScheme.of(themes().first()),
+            ),
+        )
+
+        composeRule.onNodeWithContentDescription("Accent colour, Teal Horizon").assertIsDisplayed()
     }
 
     @Test
@@ -125,10 +181,8 @@ class AppearanceSettingsScreenTest {
         var chosen: GlassTint? = null
         render(actions = AppearanceActions(onGlassTintChanged = { chosen = it }))
 
-        // Scrolled to by the heading above it: a swatch's name is a `contentDescription`, and
-        // `hasText` does not see one — which is the whole reason the swatches need the description.
-        scrollTo("Tint colour")
-        composeRule.onNodeWithContentDescription("Warm").performClick()
+        open("Tint colour, White")
+        composeRule.onNodeWithText("Warm").performClick()
 
         assertEquals(GlassTint.Warm, chosen)
     }
@@ -211,34 +265,50 @@ class AppearanceSettingsScreenTest {
     }
 
     /**
-     * **The picker shows the themes, and every cell is named.**
+     * **The list names every pack, and offers the way back.**
      *
-     * A row of pictures with no `contentDescription` is six unlabelled controls to a screen reader, and
-     * the label is the only thing that distinguishes them — the artwork cannot be described. *None* is
-     * asserted alongside them because a picker whose only exits are pictures is one you cannot leave.
+     * The artwork cannot be described, so the name is the only thing that distinguishes one row from
+     * another — the thumbnail beside it is decorative. *None* is asserted alongside them because a picker
+     * whose only exits are pictures is one you cannot leave.
      */
     @Test
-    fun `the background themes are offered as named thumbnails, with a way back to none`() {
+    fun `the background themes are offered by name, with a way back to none`() {
         render(state = AppearanceUiState(backgroundThemes = themes()))
 
-        composeRule.onNodeWithContentDescription("None").assertIsDisplayed()
+        open("Background theme, None")
+
+        composeRule.onNodeWithText("None").assertIsDisplayed()
         themes().forEach { theme ->
-            composeRule.onNodeWithContentDescription(theme.name).assertIsDisplayed()
+            composeRule.onNodeWithText(theme.name).assertIsDisplayed()
         }
     }
 
     @Test
-    fun `choosing a background theme reports its id, and none reports null`() {
+    fun `choosing a background theme reports its id`() {
         var chosen: String? = "unset"
         render(
             state = AppearanceUiState(backgroundThemes = themes(), backgroundThemeId = null),
             actions = AppearanceActions(onBackgroundThemeChanged = { chosen = it }),
         )
 
-        composeRule.onNodeWithContentDescription("Teal Horizon").performClick()
-        assertEquals("teal_horizon", chosen)
+        open("Background theme, None")
+        composeRule.onNodeWithText("Teal Horizon").performClick()
 
-        composeRule.onNodeWithContentDescription("None").performClick()
+        assertEquals("teal_horizon", chosen)
+    }
+
+    /** And the way back reports `null`, which is what returns the app to its own palette. */
+    @Test
+    fun `choosing none reports null`() {
+        var chosen: String? = "unset"
+        render(
+            state = AppearanceUiState(backgroundThemes = themes(), backgroundThemeId = "teal_horizon"),
+            actions = AppearanceActions(onBackgroundThemeChanged = { chosen = it }),
+        )
+
+        open("Background theme, Teal Horizon")
+        composeRule.onNodeWithText("None").performClick()
+
         assertEquals(null, chosen)
     }
 
@@ -254,7 +324,7 @@ class AppearanceSettingsScreenTest {
         render(state = AppearanceUiState(backgroundThemes = emptyList()))
 
         composeRule.onNodeWithText("Background theme").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("None").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Background theme, None").assertDoesNotExist()
     }
 
     @Test
@@ -278,7 +348,8 @@ class AppearanceSettingsScreenTest {
     fun `languages are listed in their own names`() {
         render()
 
-        scrollTo("Norsk bokmål")
+        open("Language, System default")
+
         composeRule.onNodeWithText("Norsk bokmål").assertIsDisplayed()
         composeRule.onNodeWithText("English").assertIsDisplayed()
     }
@@ -288,25 +359,39 @@ class AppearanceSettingsScreenTest {
         var chosen: AppLanguage? = null
         render(actions = AppearanceActions(onLanguageChanged = { chosen = it }))
 
-        scrollTo("Norsk bokmål")
+        open("Language, System default")
         composeRule.onNodeWithText("Norsk bokmål").performClick()
 
         assertEquals(AppLanguage.NorwegianBokmal, chosen)
     }
 
     /**
-     * The default, shown as selected — so the row is never blank on a device that has chosen nothing.
+     * The default, on the collapsed row — so it is never blank on a device that has chosen nothing.
      *
-     * The two "system" chips on this tab are deliberately worded differently: the theme's says *System* and
-     * the language's *System default*, which is what Android's own per-app language picker calls it. They
-     * used to share a label, and a test that could not tell them apart is what said so.
+     * The two "system" answers on this tab are deliberately worded differently: the theme's says *System*
+     * and the language's *System default*, which is what Android's own per-app language picker calls it.
+     * They used to share a label, and a test that could not tell them apart is what said so.
      */
     @Test
-    fun `the system default is the selected language until one is chosen`() {
+    fun `the system default is the language shown until one is chosen`() {
         render()
 
-        scrollTo("System default")
-        composeRule.onNodeWithText("System default").assertIsSelected()
+        scrollToDescription("Language, System default")
+        composeRule.onNodeWithContentDescription("Language, System default").assertIsDisplayed()
+    }
+
+    /**
+     * Scrolls to a dropdown and opens it, by the sentence its collapsed row announces.
+     *
+     * By description rather than by text on purpose, and the distinction is the control's own design: the
+     * row's two words are silenced so a screen reader hears one sentence, which also means neither can be
+     * confused with the identical word in the list it opens. See `DropdownRow`.
+     */
+    private fun open(description: String) {
+        composeRule
+            .onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            .performScrollToNode(hasContentDescription(description))
+        composeRule.onNodeWithContentDescription(description).performClick()
     }
 
     /** Two packs' worth of shape, which is all the picker reads. Colours are irrelevant to these cases. */
@@ -349,6 +434,11 @@ class AppearanceSettingsScreenTest {
     private fun scrollTo(text: String) = composeRule
         .onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
         .performScrollToNode(hasText(text, substring = true))
+
+    /** The same, for a dropdown row — whose words are a description rather than text. */
+    private fun scrollToDescription(description: String) = composeRule
+        .onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+        .performScrollToNode(hasContentDescription(description))
 
     private fun render(
         state: AppearanceUiState = AppearanceUiState(),

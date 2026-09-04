@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.ThemeMode
 import com.example.shelfplayer.core.model.ServerId
-import com.example.shelfplayer.core.model.settings.AccentColor
+import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
@@ -57,7 +57,9 @@ class AppViewModel @Inject constructor(
             // than instead of it: `appTheme` is empty for every install that predates the setting, and
             // `themeMode` is what those devices have. `resolveTheme` is where the two are reconciled.
             appThemeKey = stored.appThemeKey,
-            accent = AccentColor.ofKey(stored.accentColorKey),
+            // Resolved against the packs, because since they landed an accent may be a pack's own
+            // authored pair as well as one of the closed palette's. See `AccentScheme`.
+            accent = AccentScheme.ofKey(stored.accentColorKey, themes),
             glassTint = GlassTint.ofKey(stored.glassTintKey),
             cardGlassTintEnabled = !stored.cardGlassTintDisabled,
             systemGlassTintEnabled = !stored.systemGlassTintDisabled,
@@ -105,7 +107,7 @@ data class AppUiState(
     val themeMode: ThemeMode = ThemeMode.THEME_MODE_SYSTEM,
     /** PRODUCT_SPEC SET-002 — an `AppTheme.key`, or empty on a device that has never chosen one. */
     val appThemeKey: String = "",
-    val accent: AccentColor = AccentColor.Default,
+    val accent: AccentScheme = AccentScheme.Default,
     val glassTint: GlassTint = GlassTint.Default,
     val cardGlassTintEnabled: Boolean = true,
     val systemGlassTintEnabled: Boolean = true,
@@ -146,5 +148,23 @@ data class AppUiState(
             ThemeMode.UNRECOGNIZED,
             -> AppTheme.System
         }
+    }
+
+    /**
+     * PRODUCT_SPEC SET-002 — the accent to impose, or `null` to leave the scheme's own alone.
+     *
+     * `null` in exactly one case: a pack is drawn and the chosen accent **is** that pack's. Its author
+     * wrote `primary`, `onPrimary` and `primaryContainer` as a set against their own artwork, and
+     * recomputing two of the three from the first — which is what imposing an accent does — would replace
+     * a considered pairing with a derived one for no gain, since the colour is already the same.
+     *
+     * Every other case imposes. That includes a pack with a *different* accent chosen, which is the half of
+     * *"it should be possible to change the colors"* that has to reach the screen: without it the pack's
+     * override would silently win and the accent dropdown would move nothing.
+     */
+    fun accentArgbFor(isDark: Boolean): Long? {
+        val pack = backgroundTheme
+        if (pack != null && accent.belongsTo(pack)) return null
+        return accent.argbFor(isDark)
     }
 }
