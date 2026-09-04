@@ -3,11 +3,9 @@ package com.example.shelfplayer.feature.home
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -34,6 +32,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -72,6 +73,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,6 +82,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -112,10 +115,15 @@ import com.example.shelfplayer.feature.browse.BookSortRow
 import com.example.shelfplayer.feature.browse.GroupCard
 import com.example.shelfplayer.feature.browse.GroupCardEditAction
 import com.example.shelfplayer.feature.browse.SeriesCard
+import com.example.shelfplayer.ui.gesture.offscreenPage
+import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import com.example.shelfplayer.ui.glass.frostedGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlin.math.roundToInt
 
 /**
  * PRODUCT_SPEC 16.4 — `*Route` wires navigation and state; `*Screen` is a pure function of its
@@ -164,6 +172,7 @@ fun HomeRoute(
             onSettingsSelected = onSettingsSelected,
             onSignInSelected = onSignInSelected,
         ),
+        onSwipeStarted = viewModel::onSwipeStarted,
         playbackMessage = playbackMessage,
         onPlaybackMessageShown = onPlaybackMessageShown,
         modifier = modifier,
@@ -176,6 +185,8 @@ fun HomeScreen(
     uiState: HomeUiState,
     actions: HomeActions,
     modifier: Modifier = Modifier,
+    /** Told the moment a swipe begins, so the neighbouring axes are worth collecting. */
+    onSwipeStarted: () -> Unit = {},
     playbackMessage: String? = null,
     onPlaybackMessageShown: () -> Unit = {},
 ) {
@@ -196,6 +207,14 @@ fun HomeScreen(
      */
     ReportDrawnWhen { uiState.profile != null }
     val snackbars = remember { SnackbarHostState() }
+    val axisPages = HomeAxis.entries
+    val pagerState = rememberAxisPager(
+        axis = uiState.axis,
+        onAxisChanged = actions.onAxisChanged,
+        onSwipeStarted = onSwipeStarted,
+    )
+    // PRODUCT_SPEC 16.2 — a little give at Books and at Genres, with resistance and a spring back.
+    val overspill = rememberEdgeOverspill()
     val axisBarMotion = rememberHomeAxisBarMotion()
     /*
      * The capsule's own blur source, and the reason it is not `LocalGlassHazeState`.
@@ -319,6 +338,11 @@ fun HomeScreen(
             if (uiState.profile != null) {
                 HomeAxisBar(
                     current = uiState.axis,
+                    // PRODUCT_SPEC 16.2 — where the pill is, as a continuous position rather than an
+                    // index. *"On the navigation bar the selection should move to the next button when
+                    // pulling over"* — so the pill is at 1.4 when the drag is 40% of the way from Series
+                    // to Authors, and it comes back to 1.0 by itself if the drag springs back.
+                    position = pagerState.currentPage + pagerState.currentPageOffsetFraction,
                     onAxisChanged = actions.onAxisChanged,
                     motion = axisBarMotion,
                     haze = axisBarHaze,
@@ -331,6 +355,8 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
+                // Outside the offset below, so it reads the drag rather than the drag's result.
+                .nestedScroll(overspill.connection)
                 .hazeSource(state = axisBarHaze),
         ) {
             /*
@@ -354,11 +380,28 @@ fun HomeScreen(
              * Which is what lets the capsule grow: at a large font scale its tabs stack and it gets
              * taller, and the shelf's scroll range follows with nothing to keep in step.
              */
-            HomeContent(
-                uiState = uiState,
-                actions = actions,
-                bottomInset = innerPadding.calculateBottomPadding(),
-            )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(x = overspill.offsetPx.roundToInt(), y = 0) },
+                // The platform's stretch would consume the delta at the edges before `overspill` could see
+                // it, and it distorts pixels rather than moving the page. This owns both ends instead.
+                overscrollEffect = null,
+                // One page composed either side, so the reveal has something in it from the first
+                // pixel of the drag rather than after a recomposition the finger has already outrun.
+                beyondViewportPageCount = 1,
+                key = { page -> axisPages[page].name },
+            ) { page ->
+                val axis = axisPages[page]
+                Box(modifier = Modifier.offscreenPage(isCurrent = page == pagerState.currentPage)) {
+                    HomeContent(
+                        uiState = uiState.forAxis(axis),
+                        actions = actions,
+                        bottomInset = innerPadding.calculateBottomPadding(),
+                    )
+                }
+            }
         }
     }
     GenreEditDialog(state = uiState.genreEdit, actions = actions)
@@ -565,9 +608,74 @@ private fun GenreEditChangeSummary(request: GenreEditRequest) {
 }
 
 /** PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */
+/**
+ * PRODUCT_SPEC 16.2 — the axes as pages, kept in step with the axis the view model holds.
+ *
+ * ### Why a pager rather than the threshold gesture it replaces
+ *
+ * The first version watched a horizontal drag and, on release past 56dp, called `onAxisChanged`. The page
+ * changed but nothing moved with the finger: no reveal, no snap back, and the capsule's pill jumped a
+ * quarter of the bar in one frame. Reported from a device as *"pulling at one side should reveal the next
+ * view and releasing should animate it over"*, and *"pull a little and release and it won't switch page,
+ * just snap back"*.
+ *
+ * A `HorizontalPager` is all of that and none of it is written here: the page follows the finger, the
+ * fling decides between settling forward and springing back, and `currentPageOffsetFraction` is the
+ * continuous position the capsule's pill needs.
+ *
+ * ### The two directions, and why they do not chase each other
+ *
+ * A **tap** on the capsule changes the axis in the view model, and the effect below animates the pager to
+ * it. A **settled swipe** reports its axis back. Each is a no-op for the other's cause — the tap's effect
+ * finds the pager already there once the state arrives, and the swipe's report finds the axis already
+ * changed — so there is no loop to break.
+ *
+ * `settledPage` and not `currentPage`: the latter flips at the half-way point of a drag that may still
+ * spring back, which would change the axis for a gesture the user abandoned.
+ *
+ * Extracted from `HomeScreen` because that composable was already at detekt's cyclomatic limit — #74 said
+ * so in as many words, and this is the change that would have tripped it.
+ */
+@Composable
+private fun rememberAxisPager(
+    axis: HomeAxis,
+    onAxisChanged: (HomeAxis) -> Unit,
+    onSwipeStarted: () -> Unit,
+): PagerState {
+    val pages = HomeAxis.entries
+    val state = rememberPagerState(
+        initialPage = pages.indexOf(axis).coerceAtLeast(0),
+        pageCount = { pages.size },
+    )
+    LaunchedEffect(axis) {
+        val target = pages.indexOf(axis).coerceAtLeast(0)
+        if (target != state.currentPage) state.animateScrollToPage(target)
+    }
+    LaunchedEffect(state, onAxisChanged) {
+        snapshotFlow { state.settledPage }
+            .map { page -> pages[page.coerceIn(pages.indices)] }
+            .filter { settled -> settled != axis }
+            .collect(onAxisChanged)
+    }
+    // The neighbouring axes are worth collecting from the first drag onward — see
+    // `HomeViewModel.swipePreview` for why it latches rather than following the gesture.
+    LaunchedEffect(state, onSwipeStarted) {
+        snapshotFlow { state.isScrollInProgress }.filter { it }.collect { onSwipeStarted() }
+    }
+    return state
+}
+
 @Composable
 private fun HomeAxisBar(
     current: HomeAxis,
+    /**
+     * PRODUCT_SPEC 16.2 — where the highlight is, as a **fractional** index into the four places.
+     *
+     * `1.4` means the drag is 40% of the way from the second place to the third, and the pill is drawn
+     * there. It is the pager's own position rather than a copy of it, so releasing mid-drag brings the
+     * pill back with the page and no second animation has to be kept in step with the first.
+     */
+    position: Float,
     onAxisChanged: (HomeAxis) -> Unit,
     motion: HomeAxisBarMotionState,
     haze: HazeState,
@@ -609,15 +717,18 @@ private fun HomeAxisBar(
         // width, the tabs from the width less the row's own padding — so the highlight drifted a little
         // further right of its label with every tab. Both now measure the same quarter.
         val tabWidth = maxWidth / HomeAxis.entries.size.toFloat()
-        val selectedIndex = HomeAxis.entries.indexOf(current).toFloat()
-        val selectionOffset by animateDpAsState(
-            targetValue = tabWidth * selectedIndex,
-            animationSpec = spring(
-                dampingRatio = AXIS_SELECTION_DAMPING_RATIO,
-                stiffness = AXIS_SELECTION_STIFFNESS,
-            ),
-            label = "home-axis-selection",
-        )
+        /*
+         * Read straight from the drag, with no animation of its own.
+         *
+         * It was `animateDpAsState` over the selected *index*, which is right for a tap and wrong for a
+         * drag: a spring chasing a finger lags it, and on release two animations — the page settling and
+         * the pill springing — would have to agree about where they were going. The pager already
+         * animates [position] on both settle and spring-back, so following it exactly is both simpler
+         * and the only way the pill and the page cannot disagree.
+         *
+         * A tap still animates, because `animateScrollToPage` is what the tap does.
+         */
+        val selectionOffset = tabWidth * position.coerceIn(0f, (HomeAxis.entries.size - 1).toFloat())
         // `matchParentSize` rather than `fillMaxHeight`, and the distinction is load-bearing now that the
         // capsule has no fixed height. A child that fills the height *participates in measuring* its
         // parent, so it resolves against the incoming maximum — which in a `Scaffold`'s bottom-bar slot is
@@ -671,6 +782,31 @@ private fun HomeAxisBar(
             }
         }
     }
+}
+
+/**
+ * PRODUCT_SPEC 16.2 — this state as the page for [axis] should render it.
+ *
+ * The visible axis is the state itself. Any other axis is the same state with that axis's rows copied
+ * over it, so the revealed page goes through exactly the code path the visible one does — the same
+ * header, the same empty states, the same cards — rather than a second, thinner rendering that would
+ * drift from it.
+ *
+ * An axis missing from [preview] has not loaded yet, and `isLoaded = false` is how the page says so. That
+ * is the distinction the map's *absence* carries: without it the first frame of a reveal would say "no
+ * series" about an axis nobody had asked the database about.
+ */
+private fun HomeUiState.forAxis(axis: HomeAxis): HomeUiState {
+    if (axis == this.axis) return this
+    val rows = axisRows[axis] ?: return copy(axis = axis, isLoaded = false)
+    return copy(
+        axis = axis,
+        isLoaded = true,
+        books = rows.books,
+        shelves = rows.shelves,
+        series = rows.series,
+        groups = rows.groups,
+    )
 }
 
 /**
@@ -735,8 +871,6 @@ private val AXIS_BAR_VERTICAL_MARGIN = 4.dp
 private val AXIS_SELECTION_INSET = 3.dp
 
 private const val AXIS_SELECTION_ALPHA = 0.34f
-private const val AXIS_SELECTION_DAMPING_RATIO = 0.44f
-private const val AXIS_SELECTION_STIFFNESS = 300f
 
 private fun HomeAxis.icon(): ImageVector = when (this) {
     HomeAxis.Books -> Icons.AutoMirrored.Filled.MenuBook
