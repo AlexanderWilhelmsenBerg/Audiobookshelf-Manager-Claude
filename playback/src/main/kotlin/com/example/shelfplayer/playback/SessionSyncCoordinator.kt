@@ -156,7 +156,6 @@ class SessionSyncCoordinator @Inject constructor(
         } ?: return false
 
         val active = prepared.active
-        // Read before the send so an acknowledgement can only promote the generation the request observed.
         val generation = baseline.generationFor(active.bookId)
         val progress = SessionProgress(
             position = prepared.snapshot.position,
@@ -271,23 +270,11 @@ class SessionSyncCoordinator @Inject constructor(
 
     private data class Active(val sessionId: String, val bookId: LibraryItemId)
 
-    private data class Snapshot(
-        val bookId: LibraryItemId,
-        val position: Duration,
-        val duration: Duration,
-    )
+    private data class Snapshot(val bookId: LibraryItemId, val position: Duration, val duration: Duration)
 
-    private data class PreparedSync(
-        val active: Active,
-        val snapshot: Snapshot,
-        val timeListened: Duration,
-    )
+    private data class PreparedSync(val active: Active, val snapshot: Snapshot, val timeListened: Duration)
 
-    private data class PreparedClose(
-        val active: Active,
-        val snapshot: Snapshot,
-        val timeListened: Duration,
-    )
+    private data class PreparedClose(val active: Active, val snapshot: Snapshot, val timeListened: Duration)
 
     private companion object {
         /** PRODUCT_SPEC PLAY-004 — "approximately every 30 seconds". */
