@@ -1,5 +1,8 @@
 package com.example.shelfplayer.feature.home
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -14,6 +17,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * PRODUCT_SPEC 16.2 — swiping between the places the navigation capsule offers.
@@ -133,6 +137,59 @@ class HomeGestureScreenTest {
         compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performTouchInput { swipeRight() }
 
         assertEquals(0, changes)
+    }
+
+    /**
+     * **A short drag springs back and changes nothing**, which is the owner's fourth ask in as many words:
+     * *"pull a little and releasing and it won't switch page, just snap back"*.
+     *
+     * The drag is a third of the way and then lifts, with no velocity to carry it — `moveTo` and `up`
+     * rather than `swipeLeft`, which flings. A pager settles to whichever page is nearer, so the test is
+     * that the axis was never reported changed rather than that it changed and came back.
+     *
+     * The threshold gesture this replaces could not express the case at all: it compared total distance
+     * on release against 56dp, so a slow drag of half the screen committed exactly like a flick.
+     */
+    @Test
+    fun `a short drag springs back without changing the axis`() {
+        var changes = 0
+        compose.setContent {
+            HomeScreen(
+                uiState = state(axis = HomeAxis.Books),
+                actions = noActions().copy(onAxisChanged = { changes++ }),
+            )
+        }
+
+        compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performTouchInput {
+            down(centerRight)
+            moveTo(centerRight - Offset(width * 0.28f, 0f))
+            up()
+        }
+        compose.waitForIdle()
+
+        assertEquals(0, changes, "a drag that did not reach half way must settle back where it started")
+    }
+
+    /**
+     * **The page next door is composed but not *announced*.**
+     *
+     * A pager composes its neighbours so a drag reveals real content immediately, and composed means
+     * present in the semantics tree — which is what TalkBack reads. Home's not-yet-loaded axes render a
+     * loading state whose title is a polite live region, so without `offscreenPage` three of them would
+     * announce "Loading your books" over whatever the reader was actually on.
+     *
+     * Two screen tests found this before a person did, by starting to fail for a reason that had nothing
+     * to do with them. Asserted here on purpose so the next change to the pager cannot quietly undo it.
+     */
+    @Test
+    fun `the pages either side contribute nothing to the semantics tree`() {
+        compose.setContent {
+            HomeScreen(uiState = state(axis = HomeAxis.Books), actions = noActions())
+        }
+
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .let { live -> assertTrue(live.size <= 1, "an off-screen page is announcing itself: $live") }
     }
 
     private companion object {
