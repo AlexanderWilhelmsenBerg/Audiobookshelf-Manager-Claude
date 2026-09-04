@@ -428,6 +428,49 @@ class HomeViewModelTest {
     }
 
     /**
+     * **Once the neighbours are loaded, the state never describes an axis it has no rows for.**
+     *
+     * The invariant behind a device report against the pager: *"going from one view to the next shows a
+     * brief no series here, or no authors here. Just for a fraction of a second."*
+     *
+     * The cause was a split between two flows. `controls.axis` changed the instant a swipe settled, while
+     * the rows for that axis arrived one emission later, so there was a state in between that said
+     * *Genres* and carried the book shelves — and the page read it as "no genres here". Collapsing both
+     * into one `axisRows` map closes it, because `flatMapLatest` retains its previous value while the next
+     * is assembled and that retained map already holds the axis being moved to.
+     *
+     * The assertion is the emission **count**, which is what makes it catch the bug rather than describe
+     * the fix: the defect was never in the final state, it was an extra frame on the way there. One
+     * emission means the axis and its rows arrived together; two means the screen was shown an axis with
+     * somebody else's rows first, which is the fraction of a second the report describes.
+     */
+    @Test
+    fun `changing axis emits once, already carrying that axis rows`() = runTest {
+        profiles.setActive(demoProfile)
+        libraries.emitBooks(listOf(book("cached", "A cached book")))
+
+        val viewModel = listViewModel()
+        viewModel.uiState.test {
+            awaitItem()
+            // The first swipe, which is what puts the neighbours in the map.
+            viewModel.onSwipeStarted()
+            awaitItem()
+
+            viewModel.onAxisChanged(HomeAxis.Genres)
+
+            val settled = awaitItem()
+            assertEquals(HomeAxis.Genres, settled.axis)
+            assertTrue(
+                settled.axisRows.containsKey(HomeAxis.Genres),
+                "the axis changed before its rows were there: ${settled.axisRows.keys}",
+            )
+            // **The assertion that is the bug.** A second emission here is the frame the device saw: the
+            // first one saying Genres with the previous axis's rows, the second correcting it.
+            expectNoEvents()
+        }
+    }
+
+    /**
      * PRODUCT_SPEC LIB-002 — reported from a device: the app opened on a single library card with the
      * rest of the screen empty, and the books were one tap further in.
      *

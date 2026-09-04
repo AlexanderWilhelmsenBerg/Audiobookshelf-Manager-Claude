@@ -7,10 +7,15 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,7 +28,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabPosition
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -31,19 +38,24 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.BuildConfig
@@ -63,11 +75,16 @@ import com.example.shelfplayer.feature.lock.ProfileLockActions
 import com.example.shelfplayer.feature.lock.ProfileLockViewModel
 import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
+import com.example.shelfplayer.ui.gesture.offscreenPage
+import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
 import com.example.shelfplayer.ui.glass.frostedGlass
 import com.example.shelfplayer.ui.glass.playerChromeClearance
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.roundToInt
 import kotlin.time.Duration
 
 @Composable
@@ -185,6 +202,36 @@ fun SettingsScreen(
     recovery: RecoveryTestInputs = RecoveryTestInputs(),
 ) {
     var selected by rememberSaveable { mutableStateOf(SettingsTab.Server) }
+    /*
+     * PRODUCT_SPEC SET-002 / 16.2 — the tabs are pages, and the drag is the transition.
+     *
+     * [selected] stays the saved truth — it is what survives a rotation, and what a tap sets — and the
+     * pager is kept in step with it in both directions. `settledPage` rather than `currentPage` on the
+     * way back, so a drag the user abandons half-way does not change the tab it sprang back from.
+     */
+    val pagerState = rememberPagerState(
+        initialPage = selected.ordinal,
+        pageCount = { SettingsTab.entries.size },
+    )
+    LaunchedEffect(selected) {
+        if (selected.ordinal != pagerState.currentPage) pagerState.animateScrollToPage(selected.ordinal)
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            SettingsTab.entries.getOrNull(page)?.let { settled -> selected = settled }
+        }
+    }
+    /** Where the underline is, as a fractional tab index. See [TabIndicator]. */
+    val tabPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction
+    /*
+     * PRODUCT_SPEC SET-002 / 16.2 — the give at both ends, and the pull that leaves the screen.
+     *
+     * One component for both because they are one gesture: at the first tab there is no page to the left,
+     * so a drag back is overspill, and letting go past the threshold is what leaves for the shelf. Two
+     * nested-scroll connections reading the same delta would each count it and the screen would leave at
+     * half the distance it looks like.
+     */
+    val overspill = rememberEdgeOverspill(onPulledPastStart = onNavigateUp)
     // PRODUCT_SPEC 14.4 — the event log's open/closed state is this screen's, not the caller's. Lifting it
     // would add a parameter and a callback to a signature that is already at detekt's limit, to describe a
     // sheet nothing outside this screen can open.
@@ -225,7 +272,25 @@ fun SettingsScreen(
                     // over the modifier's background otherwise, and the blur would be invisible under it.
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 )
-                TabRow(selectedTabIndex = selected.ordinal, containerColor = Color.Transparent) {
+                /*
+                 * PRODUCT_SPEC 16.2 — the indicator follows the drag rather than jumping when it lands.
+                 *
+                 * `TabRow` positions its own indicator from `selectedTabIndex`, which is an `Int` — so
+                 * during a drag it either sits still or snaps. Its `indicator` slot takes the tab
+                 * positions, and interpolating between the two the drag is between is what makes the
+                 * underline travel with the page. `selectedTabIndex` still drives the *labels*, which
+                 * have nothing to interpolate.
+                 *
+                 * This sits in the `topBar` slot rather than in the body, so the title and the tabs are
+                 * one glass surface and the list runs under both. The pager does not mind where the row
+                 * lives: it reads `pagerState` for the indicator and writes `selected` on a tap, and
+                 * both work from here.
+                 */
+                TabRow(
+                    selectedTabIndex = pagerState.currentPage,
+                    containerColor = Color.Transparent,
+                    indicator = { positions -> TabIndicator(positions = positions, position = tabPosition) },
+                ) {
                     SettingsTab.entries.forEach { tab ->
                         Tab(
                             selected = tab == selected,
@@ -240,62 +305,104 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // No top padding: the list runs under the header, which is the whole point of frosting it.
-                // The horizontal and bottom insets still apply.
+                /*
+                 * No top padding: the list runs under the header, which is the whole point of frosting
+                 * it. The horizontal and bottom insets still apply.
+                 */
                 .padding(
                     start = innerPadding.calculateStartPadding(LocalLayoutDirection.current),
                     end = innerPadding.calculateEndPadding(LocalLayoutDirection.current),
                     bottom = innerPadding.calculateBottomPadding(),
                 )
+                /*
+                 * PRODUCT_SPEC SET-002 / 16.2 — the give at the ends, and the pull that leaves.
+                 *
+                 * Dragging back past the first tab leaves the screen entirely: Server is the leftmost tab,
+                 * there is nothing to its left inside this screen, and what is behind the screen is the
+                 * shelf. A pager has no page before its first, so the drag comes out of it unconsumed and
+                 * `rememberEdgeOverspill` is what catches it — both to move the page and to notice the
+                 * pull. On the parent rather than the pager so it sees the drag, not the drag's result.
+                 */
+                .nestedScroll(overspill.connection)
                 .hazeSource(state = headerHaze),
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                // PRODUCT_SPEC 4 / §51 — every row here is a label and a control, and on a tablet the
-                // two end up a hand-span apart with nothing between them. The column keeps a readable
-                // measure and the window keeps the rest; see `centredListPadding` for why this is padding
-                // rather than a width cap on each row.
-                contentPadding = centredListPadding(
-                    width = windowWidth(),
-                    // The header's measured height, so the first row starts below it rather than behind
-                    // it. Content padding, not layout padding — the list keeps its full viewport and
-                    // simply has further to scroll.
-                    top = innerPadding.calculateTopPadding(),
-                    // Plus whatever the floating mini player is covering, so the last row can be read.
-                    bottom = 24.dp + playerChromeClearance(),
-                ),
-            ) {
-                when (selected) {
-                    SettingsTab.Server -> serverTab(uiState, serverTab)
-                    SettingsTab.Sleep -> sleepTimerTab(
-                        settings = uiState.sleepTimer,
-                        history = uiState.sleepTimerHistory,
-                        actions = sleepTimerActions,
-                    )
-
-                    SettingsTab.Playback -> {
-                        playbackTab(
-                            settings = uiState.playback,
-                            libraries = uiState.libraries,
-                            actions = playbackActions,
-                            networkPolicy = uiState.networkPolicy,
-                            housekeeping = uiState.housekeeping,
+            /*
+             * The tab row is **not** here — it is in the `topBar` slot, above.
+             *
+             * That is the frosted-header arrangement: title and tabs are one glass surface, and the list
+             * passes under both. It costs nothing the pager needs. A `TabRow` drives its indicator from
+             * `pagerState` and its taps into `selected` from wherever it sits in the tree, so the two
+             * features compose rather than compete — see the `topBar` above for the indicator itself.
+             */
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(x = overspill.offsetPx.roundToInt(), y = 0) },
+                // The platform's stretch would consume the delta at the edges before `overspill` could see
+                // it — and the pull past the first tab is how this screen is left.
+                overscrollEffect = null,
+                // Both neighbours composed, so a drag reveals the real tab from its first pixel. Settings
+                // tabs are cheap — every one of them renders from state already in hand — which is why
+                // this is affordable here and deliberately narrower on Home.
+                beyondViewportPageCount = 1,
+                key = { page -> SettingsTab.entries[page].name },
+            ) { page ->
+                val tab = SettingsTab.entries[page]
+                LazyColumn(
+                    // A page that is not on screen stays out of the accessibility tree — see
+                    // `offscreenPage`, and the two tests that found this.
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offscreenPage(isCurrent = page == pagerState.currentPage),
+                    // PRODUCT_SPEC 4 / §51 — every row here is a label and a control, and on a tablet the
+                    // two end up a hand-span apart with nothing between them. The column keeps a readable
+                    // measure and the window keeps the rest; see `centredListPadding` for why this is
+                    // padding rather than a width cap on each row.
+                    contentPadding = centredListPadding(
+                        width = windowWidth(),
+                        // The header's measured height, so the first row starts below the tabs rather
+                        // than behind them. Content padding, not layout padding — the list keeps its
+                        // full viewport and simply has further to scroll. Every page takes it, not just
+                        // the visible one: a page revealed mid-drag must already be laid out the way it
+                        // will look when it lands.
+                        top = innerPadding.calculateTopPadding(),
+                        // Plus whatever the floating mini player is covering, so the last row can be read.
+                        bottom = 24.dp + playerChromeClearance(),
+                    ),
+                ) {
+                    when (tab) {
+                        SettingsTab.Server -> serverTab(uiState, serverTab)
+                        SettingsTab.Sleep -> sleepTimerTab(
+                            settings = uiState.sleepTimer,
+                            history = uiState.sleepTimerHistory,
+                            actions = sleepTimerActions,
                         )
-                        devicesSection(devices)
-                    }
 
-                    SettingsTab.About -> aboutTab(
-                        uiState = uiState,
-                        launcherIcon = launcherIcon,
-                        onLauncherIconChanged = onLauncherIconChanged,
-                        metrics = metrics,
-                        appearance = AppearanceInputs(appearance, appearanceActions),
-                        diagnostics = DiagnosticsInputs(
-                            onOpenEventLog = { isEventLogOpen = true },
-                            onOpenDebugConsole = { isDebugConsoleOpen = true },
-                        ),
-                        recovery = recovery,
-                    )
+                        SettingsTab.Playback -> {
+                            playbackTab(
+                                settings = uiState.playback,
+                                libraries = uiState.libraries,
+                                actions = playbackActions,
+                                networkPolicy = uiState.networkPolicy,
+                                housekeeping = uiState.housekeeping,
+                            )
+                            devicesSection(devices)
+                        }
+
+                        SettingsTab.About -> aboutTab(
+                            uiState = uiState,
+                            launcherIcon = launcherIcon,
+                            onLauncherIconChanged = onLauncherIconChanged,
+                            metrics = metrics,
+                            appearance = AppearanceInputs(appearance, appearanceActions),
+                            diagnostics = DiagnosticsInputs(
+                                onOpenEventLog = { isEventLogOpen = true },
+                                onOpenDebugConsole = { isDebugConsoleOpen = true },
+                            ),
+                            recovery = recovery,
+                        )
+                    }
                 }
             }
         }
@@ -303,6 +410,50 @@ fun SettingsScreen(
 
     if (isEventLogOpen) EventLogSheet(onDismiss = { isEventLogOpen = false })
     if (isDebugConsoleOpen) DebugConsoleSheet(onDismiss = { isDebugConsoleOpen = false })
+}
+
+/**
+ * Which two tabs a fractional position lies between, and how far along.
+ *
+ * Its own function because it is the only part of the indicator with a rule in it, and the rule has two
+ * edges that are easy to get wrong: a position at or past the **last** tab must not index one beyond the
+ * end, and a position outside the range at either side must clamp rather than wrap. Both are reachable —
+ * `currentPageOffsetFraction` is signed, so the position dips below zero on an over-drag at the first tab.
+ */
+internal fun tabBlend(count: Int, position: Float): TabBlend {
+    val clamped = position.coerceIn(0f, (count - 1).coerceAtLeast(0).toFloat())
+    val lower = floor(clamped).toInt()
+    return TabBlend(from = lower, to = ceil(clamped).toInt(), fraction = clamped - lower)
+}
+
+/** The two tabs an indicator is between, and the fraction of the way from [from] to [to]. */
+internal data class TabBlend(val from: Int, val to: Int, val fraction: Float)
+
+/**
+ * PRODUCT_SPEC SET-002 / 16.2 — the tab underline, placed at a **fractional** tab index.
+ *
+ * `TabRow`'s own indicator is positioned from an `Int`, so during a drag it either sits still until the
+ * page lands or snaps to it. This one is drawn between the two tabs the drag is between: at 1.4 it is
+ * 40% of the way from the second to the third, in both position and width, so a drag that springs back
+ * carries the underline back with it.
+ *
+ * `lerp` on the width as well as the offset because the tabs are not all the same width — *Playback* is
+ * wider than *Sleep* — and an indicator that kept one width while travelling would arrive too short or
+ * too long.
+ */
+@Composable
+private fun TabIndicator(positions: List<TabPosition>, position: Float) {
+    if (positions.isEmpty()) return
+    val blend = tabBlend(count = positions.size, position = position)
+    val from = positions[blend.from]
+    val to = positions[blend.to]
+    val fraction = blend.fraction
+    TabRowDefaults.SecondaryIndicator(
+        modifier = Modifier
+            .wrapContentSize(Alignment.BottomStart)
+            .offset(x = lerp(from.left, to.left, fraction))
+            .width(lerp(from.width, to.width, fraction)),
+    )
 }
 
 /** PRODUCT_SPEC SET-002 — which server, and which of its libraries. */
