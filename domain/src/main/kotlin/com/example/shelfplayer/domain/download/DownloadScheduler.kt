@@ -1,46 +1,37 @@
 package com.example.shelfplayer.domain.download
 
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.TrafficCategory
 
 /**
  * PRODUCT_SPEC DL-001 / §12 — persistent work that outlives the screen that started it.
  *
- * ### Why an interface in `:domain`
+ * WorkManager may execute long after the UI state that queued a job has changed. The scheduler therefore
+ * receives the profile that authorized the transfer as durable job input rather than asking the worker to
+ * reconstruct identity from whichever profile happens to be active later.
  *
- * The same split as [com.example.shelfplayer.domain.sync.BackgroundSync]: WorkManager needs a `Context` and
- * `:domain` has none, while *which* work exists and when it is cancelled is domain logic. Keeping the policy
- * here means it can be read in one place instead of inferred from a builder chain in `:app`.
- *
- * ### One job per book, named after the book
- *
- * DL-001 requires pause, resume, cancel, retry and remove, and every one of those is "find the job for this
- * book". A unique name per (server, item) is what makes that possible, and it also makes a second tap on
- * *Download* harmless rather than a second job racing the first over the same files.
+ * A unique work name remains per (server, item): downloaded bytes are intentionally shared between profile
+ * claims. [profileId] is authorization ownership for the transfer, not a second physical-copy identity.
  */
 interface DownloadScheduler {
 
     /**
      * Ensures work exists to fetch this book's files.
      *
-     * Idempotent: enqueueing a book that is already downloading keeps the running job rather than restarting
-     * it. Retrying a failed one is the same call — the job resumes from the parts on disk.
-     *
-     * @param category PRODUCT_SPEC DL-004 — **why** these bytes are moving, which decides whether the job
-     *   may run on a metered network. [TrafficCategory.SmartDownload] and [TrafficCategory.ManualDownload]
-     *   are separate settings with different defaults, and the whole point of the separation is that the
-     *   app deciding to spend somebody's data is not the same event as the user deciding to. An
-     *   implementation that assumed one category would honour a setting the user had not given it.
+     * @param profileId the profile that authorized this request. It must survive delayed execution, process
+     *   restart and profile switching unchanged.
+     * @param category PRODUCT_SPEC DL-004 — why these bytes are moving, which decides whether the job may run
+     *   on a metered network.
      */
-    suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId, category: TrafficCategory)
+    suspend fun enqueue(
+        profileId: ProfileId,
+        serverId: ServerId,
+        itemId: LibraryItemId,
+        category: TrafficCategory,
+    )
 
-    /**
-     * Stops the work for one book, leaving the parts on disk.
-     *
-     * *Cancel* and *remove* are different actions and this is only the first. The partial files are what a
-     * later retry resumes from; deleting them is a separate, deliberate step, because a user who cancelled a
-     * download on a train has not asked to throw away the eighty per cent they already have.
-     */
+    /** Stops the work for one shared book copy, leaving resumable parts on disk. */
     suspend fun cancel(serverId: ServerId, itemId: LibraryItemId)
 }
