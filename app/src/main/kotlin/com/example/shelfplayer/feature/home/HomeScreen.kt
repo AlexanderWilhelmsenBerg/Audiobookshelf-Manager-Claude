@@ -67,6 +67,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,6 +82,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
@@ -250,95 +252,113 @@ fun HomeScreen(
          */
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbars) },
+        // PRODUCT_SPEC LIB-002 — frosted, like the capsule at the other end of the screen, and sharing its
+        // blur source. Both are siblings of the body in the `Scaffold`, so both may read a state whose
+        // source is that body; an effect that is a descendant of its own source draws nothing.
         topBar = {
-            TopAppBar(
-                title = {
-                    BoxWithConstraints {
-                        // Five 48 dp actions can leave less than a logo's width on a compact phone. The
-                        // title and status are information; the adjacent, duplicate brand mark is not.
-                        val showBrandMark = maxWidth >= HOME_MARK_MIN_TITLE_WIDTH &&
-                            LocalDensity.current.fontScale <= HOME_MARK_MAX_FONT_SCALE
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            if (showBrandMark) {
-                                // Decorative: the adjacent title already names the app once for TalkBack.
-                                // A dedicated small WebP avoids decoding the launcher master.
-                                Image(
-                                    painter = painterResource(R.drawable.bookwave_logo_header),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier
-                                        .testTag(HOME_MARK_TEST_TAG)
-                                        .size(HOME_MARK_SIZE)
-                                        .padding(end = 8.dp),
+            Column(
+                modifier = Modifier.systemGlass(
+                    state = axisBarHaze,
+                    backgroundColor = MaterialTheme.colorScheme.surface,
+                    shape = RectangleShape,
+                ),
+            ) {
+                TopAppBar(
+                    // Transparent so the glass is what is seen. `TopAppBar` paints its own container over the
+                    // modifier's background otherwise, and the blur would be hidden beneath it.
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                    title = {
+                        BoxWithConstraints {
+                            // Five 48 dp actions can leave less than a logo's width on a compact phone. The
+                            // title and status are information; the adjacent, duplicate brand mark is not.
+                            val showBrandMark = maxWidth >= HOME_MARK_MIN_TITLE_WIDTH &&
+                                LocalDensity.current.fontScale <= HOME_MARK_MAX_FONT_SCALE
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (showBrandMark) {
+                                    // Decorative: the adjacent title already names the app once for TalkBack.
+                                    // A dedicated small WebP avoids decoding the launcher master.
+                                    Image(
+                                        painter = painterResource(R.drawable.bookwave_logo_header),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .testTag(HOME_MARK_TEST_TAG)
+                                            .size(HOME_MARK_SIZE)
+                                            .padding(end = 8.dp),
+                                    )
+                                }
+                                // PRODUCT_SPEC 6.1 step 9 — a shelf narrowed to one library is titled with it.
+                                // Showing "Library" over a subset of the profile's books reads as books having
+                                // gone missing, and the setting that caused it is two screens away.
+                                Text(
+                                    text = uiState.scopedTo?.name ?: stringResource(R.string.home_title),
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                ServerStatusDot(
+                                    status = uiState.serverStatus,
+                                    isOffline = uiState.isOffline,
+                                    modifier = Modifier.padding(start = 8.dp),
                                 )
                             }
-                            // PRODUCT_SPEC 6.1 step 9 — a shelf narrowed to one library is titled with it.
-                            // Showing "Library" over a subset of the profile's books reads as books having
-                            // gone missing, and the setting that caused it is two screens away.
-                            Text(
-                                text = uiState.scopedTo?.name ?: stringResource(R.string.home_title),
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            ServerStatusDot(
-                                status = uiState.serverStatus,
-                                isOffline = uiState.isOffline,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
                         }
-                    }
-                },
-                actions = {
-                    // PRODUCT_SPEC LIB-002 / 21 — search is a button. A permanent field costs a row of
-                    // vertical space on every screen to serve the one visit in ten that is a search, and
-                    // a device run asked for it back.
-                    if (uiState.profile != null) {
-                        IconButton(onClick = actions.onSearchToggled) {
+                    },
+                    actions = {
+                        // PRODUCT_SPEC LIB-002 / 21 — search is a button. A permanent field costs a row of
+                        // vertical space on every screen to serve the one visit in ten that is a search, and
+                        // a device run asked for it back.
+                        if (uiState.profile != null) {
+                            val searchLabel = if (uiState.isSearching) {
+                                R.string.home_search_close
+                            } else {
+                                R.string.home_search_open
+                            }
+                            IconButton(onClick = actions.onSearchToggled) {
+                                Icon(
+                                    imageVector = if (uiState.isSearching) Icons.Filled.Close else Icons.Filled.Search,
+                                    contentDescription = stringResource(searchLabel),
+                                )
+                            }
+                        }
+                        if (uiState.axis == HomeAxis.Books && uiState.profile != null) {
+                            HomeViewToggle(current = uiState.booksView, onChanged = actions.onBooksViewChanged)
+                        }
+                        // PRODUCT_SPEC LIB-001 — sync is "visible but non-blocking", and one indicator is
+                        // enough to say so. There used to be two: a bar across the top and the pull-to-refresh
+                        // spinner, for a single operation. The button that starts the sync is the honest place
+                        // to show it running.
+                        val syncing = uiState.syncStatus == SyncStatus.Syncing
+                        IconButton(onClick = actions.onRefresh, enabled = !syncing) {
                             Icon(
-                                imageVector = if (uiState.isSearching) Icons.Filled.Close else Icons.Filled.Search,
+                                imageVector = Icons.Filled.Refresh,
                                 contentDescription = stringResource(
-                                    if (uiState.isSearching) R.string.home_search_close else R.string.home_search_open,
+                                    if (syncing) R.string.home_sync_running else R.string.home_refresh,
                                 ),
+                                modifier = Modifier
+                                    .rotate(refreshSpin(syncing))
+                                    .semantics { if (syncing) liveRegion = LiveRegionMode.Polite },
                             )
                         }
-                    }
-                    if (uiState.axis == HomeAxis.Books && uiState.profile != null) {
-                        HomeViewToggle(current = uiState.booksView, onChanged = actions.onBooksViewChanged)
-                    }
-                    // PRODUCT_SPEC LIB-001 — sync is "visible but non-blocking", and one indicator is
-                    // enough to say so. There used to be two: a bar across the top and the pull-to-refresh
-                    // spinner, for a single operation. The button that starts the sync is the honest place
-                    // to show it running.
-                    val syncing = uiState.syncStatus == SyncStatus.Syncing
-                    IconButton(onClick = actions.onRefresh, enabled = !syncing) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = stringResource(
-                                if (syncing) R.string.home_sync_running else R.string.home_refresh,
-                            ),
-                            modifier = Modifier
-                                .rotate(refreshSpin(syncing))
-                                .semantics { if (syncing) liveRegion = LiveRegionMode.Polite },
-                        )
-                    }
-                    IconButton(onClick = actions.onProfilesSelected) {
-                        Icon(
-                            imageVector = Icons.Filled.AccountCircle,
-                            contentDescription = stringResource(R.string.home_profiles),
-                        )
-                    }
-                    IconButton(onClick = actions.onSettingsSelected) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = stringResource(R.string.home_settings),
-                        )
-                    }
-                },
-            )
+                        IconButton(onClick = actions.onProfilesSelected) {
+                            Icon(
+                                imageVector = Icons.Filled.AccountCircle,
+                                contentDescription = stringResource(R.string.home_profiles),
+                            )
+                        }
+                        IconButton(onClick = actions.onSettingsSelected) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = stringResource(R.string.home_settings),
+                            )
+                        }
+                    },
+                )
+                HomeFilters(uiState = uiState, actions = actions)
+            }
         },
         // PRODUCT_SPEC LIB-002 — the axes live in a bottom bar rather than in tabs on a second screen.
         // Hidden while there is no profile: four destinations over "No server connected" are four ways
@@ -363,7 +383,10 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = innerPadding.calculateTopPadding())
+                // No top padding: the shelf runs under the bar, which is what gives the glass something
+                // to refract. The bar's measured height reaches the list as content padding instead —
+                // `Scaffold` measures its top bar before the body, the same property the capsule relies
+                // on at the other end.
                 // Outside the offset below, so it reads the drag rather than the drag's result.
                 .nestedScroll(overspill.connection)
                 .hazeSource(state = axisBarHaze),
@@ -407,6 +430,9 @@ fun HomeScreen(
                     HomeContent(
                         uiState = uiState.forAxis(axis),
                         actions = actions,
+                        // Every page runs under the glass, not just the visible one — a page revealed
+                        // mid-drag has to already be laid out the way it will look when it lands.
+                        topInset = innerPadding.calculateTopPadding(),
                         bottomInset = innerPadding.calculateBottomPadding(),
                     )
                 }
@@ -941,8 +967,13 @@ private fun refreshSpin(syncing: Boolean): Float {
 }
 
 @Composable
-private fun HomeContent(uiState: HomeUiState, actions: HomeActions, bottomInset: Dp) {
-    val content = Modifier.fillMaxSize()
+private fun HomeContent(uiState: HomeUiState, actions: HomeActions, topInset: Dp, bottomInset: Dp) {
+    // The two states below centre their wording in whatever they are given, and what they are given is now
+    // the whole window — the body no longer stops below the bar. Without the inset a short screen centres
+    // "No server connected" behind the frosted header.
+    val content = Modifier
+        .fillMaxSize()
+        .padding(top = topInset)
 
     when {
         // The only blocking state, and it blocks on Room rather than on the network: without it a cold
@@ -964,7 +995,15 @@ private fun HomeContent(uiState: HomeUiState, actions: HomeActions, bottomInset:
                 modifier = content,
             )
 
-        else -> BookShelf(uiState = uiState, actions = actions, bottomInset = bottomInset, modifier = content)
+        // Not [content]: the shelf takes the inset as content padding instead, so its cards can scroll
+        // under the header rather than stopping below it.
+        else -> BookShelf(
+            uiState = uiState,
+            actions = actions,
+            topInset = topInset,
+            bottomInset = bottomInset,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
@@ -976,36 +1015,61 @@ private fun HomeContent(uiState: HomeUiState, actions: HomeActions, bottomInset:
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BookShelf(uiState: HomeUiState, actions: HomeActions, bottomInset: Dp, modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
-        if (uiState.isSearching) {
-            SearchField(query = uiState.query, onQueryChanged = actions.onQueryChanged)
-        }
+private fun BookShelf(
+    uiState: HomeUiState,
+    actions: HomeActions,
+    topInset: Dp,
+    bottomInset: Dp,
+    modifier: Modifier = Modifier,
+) {
+    // PRODUCT_SPEC LIB-001 — "pull-to-refresh refreshes the active library", in as many words. The
+    // toolbar button stays: pull is a gesture some users never discover, and TalkBack has no
+    // sensible way to perform one.
+    //
+    // The gesture without the spinner. `PullToRefreshBox` draws its own indicator whenever
+    // `isRefreshing` is true, which for an automatic sync meant a wheel appearing over the shelf
+    // the user never asked for — and a second one, since the refresh button already turns. An empty
+    // indicator slot keeps the pull working and leaves the button to say so.
+    PullToRefreshBox(
+        isRefreshing = uiState.isRefreshing,
+        onRefresh = actions.onRefresh,
+        indicator = {},
+        modifier = modifier.fillMaxSize(),
+    ) {
+        AxisContent(uiState = uiState, actions = actions, topInset = topInset, bottomInset = bottomInset)
+    }
+}
 
-        // The chip rows belong to the flat book list. A shelf of series, authors or genres is ordered
-        // by name and has nothing to filter, and the three horizontal shelves carry their own order.
-        if (uiState.axis == HomeAxis.Books && uiState.booksView == BooksView.List) {
-            uiState.focus?.let { focus -> FocusChip(label = focus.label, onCleared = actions.onFocusCleared) }
-            BookFilterRow(selected = uiState.filter, onFilterChanged = actions.onFilterChanged)
-            BookSortRow(selected = uiState.order, onOrderChanged = actions.onOrderChanged)
-        }
+/**
+ * PRODUCT_SPEC LIB-002 — the pinned half of the shelf: search, and the chips that narrow it.
+ *
+ * ### Why these are in the header rather than above the list
+ *
+ * They were the first children of the body's `Column`, under a `Spacer` the height of the bar — and a
+ * sibling `Spacer` in a `Column` does not let anything scroll underneath it. The list simply began below
+ * the bar, exactly as it had before the bar was frosted, and the blur sampled empty background: the
+ * feature drew a frosted surface over nothing. Measured, not guessed — the shelf's first card started
+ * 160dp down a 740dp window.
+ *
+ * In the header they are part of what `Scaffold` measures, so `innerPadding`'s top covers the whole
+ * assembly and the list can take it as *content* padding and keep the full window. Which is the same
+ * arrangement the settings screen uses for its tab row, and for the same reason.
+ *
+ * They stay pinned rather than scrolling away with the list: a filter that emptied the shelf would
+ * otherwise hide the only control that can clear it.
+ */
+@Composable
+private fun HomeFilters(uiState: HomeUiState, actions: HomeActions) {
+    if (uiState.isSearching) {
+        SearchField(query = uiState.query, onQueryChanged = actions.onQueryChanged)
+    }
 
-        // PRODUCT_SPEC LIB-001 — "pull-to-refresh refreshes the active library", in as many words. The
-        // toolbar button stays: pull is a gesture some users never discover, and TalkBack has no
-        // sensible way to perform one.
-        //
-        // The gesture without the spinner. `PullToRefreshBox` draws its own indicator whenever
-        // `isRefreshing` is true, which for an automatic sync meant a wheel appearing over the shelf
-        // the user never asked for — and a second one, since the refresh button already turns. An empty
-        // indicator slot keeps the pull working and leaves the button to say so.
-        PullToRefreshBox(
-            isRefreshing = uiState.isRefreshing,
-            onRefresh = actions.onRefresh,
-            indicator = {},
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            AxisContent(uiState = uiState, actions = actions, bottomInset = bottomInset)
-        }
+    // The chip rows belong to the flat book list. A shelf of series, authors or genres is ordered
+    // by name and has nothing to filter, and the three horizontal shelves carry their own order.
+    if (uiState.axis == HomeAxis.Books && uiState.booksView == BooksView.List) {
+        uiState.focus?.let { focus -> FocusChip(label = focus.label, onCleared = actions.onFocusCleared) }
+        BookFilterRow(selected = uiState.filter, onFilterChanged = actions.onFilterChanged)
+        BookSortRow(selected = uiState.order, onOrderChanged = actions.onOrderChanged)
     }
 }
 
@@ -1076,9 +1140,17 @@ private fun BookFilter.labelRes(): Int = when (this) {
 }
 
 @Composable
-private fun AxisContent(uiState: HomeUiState, actions: HomeActions, bottomInset: Dp, modifier: Modifier = Modifier) {
+private fun AxisContent(
+    uiState: HomeUiState,
+    actions: HomeActions,
+    topInset: Dp,
+    bottomInset: Dp,
+    modifier: Modifier = Modifier,
+) {
     if (uiState.isAxisEmpty) {
-        AxisEmptyState(uiState = uiState, actions = actions, modifier = modifier)
+        // Layout padding here, not content padding: there is nothing to scroll, so the only question is
+        // whether the wording sits under the frosted header. It must not.
+        AxisEmptyState(uiState = uiState, actions = actions, modifier = modifier.padding(top = topInset))
         return
     }
     // Each axis is a different list. Reusing one remembered LazyColumn position made a newly selected
@@ -1088,7 +1160,11 @@ private fun AxisContent(uiState: HomeUiState, actions: HomeActions, bottomInset:
             modifier = modifier
                 .fillMaxSize()
                 .testTag(HOME_AXIS_LIST_TEST_TAG),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp + bottomInset),
+            // **Content** padding at both ends, never layout padding. It lengthens the scroll range and
+            // leaves the list its whole window, which is what lets a card pass under the frosted header on
+            // its way out and under the capsule at the other end — and what gives the glass something to
+            // refract in the first place.
+            contentPadding = PaddingValues(top = 16.dp + topInset, bottom = 16.dp + bottomInset),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { ShelfHeader(uiState, modifier = Modifier.padding(horizontal = 16.dp)) }

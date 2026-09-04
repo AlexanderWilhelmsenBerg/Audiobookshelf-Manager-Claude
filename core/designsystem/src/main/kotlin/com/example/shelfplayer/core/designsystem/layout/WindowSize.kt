@@ -103,12 +103,12 @@ val READING_WIDTH = 640.dp
  * column.
  */
 @Composable
-fun centredListPadding(width: WindowWidthSizeClass, bottom: Dp = 0.dp): PaddingValues {
+fun centredListPadding(width: WindowWidthSizeClass, top: Dp = 0.dp, bottom: Dp = 0.dp): PaddingValues {
     val available = windowSize().width
     val horizontal = if (width == WindowWidthSizeClass.Compact) {
         0.dp
     } else {
         ((available - READING_WIDTH) / 2).coerceAtLeast(0.dp)
     }
-    return PaddingValues(start = horizontal, end = horizontal, bottom = bottom)
+    return PaddingValues(start = horizontal, top = top, end = horizontal, bottom = bottom)
 }
