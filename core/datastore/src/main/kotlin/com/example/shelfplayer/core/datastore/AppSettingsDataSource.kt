@@ -375,12 +375,22 @@ class AppSettingsDataSource @Inject constructor(
             // Inverted in the store so proto3's `false` means the default, which is *on*. See the proto's
             // own comment on `auto_advance_series_disabled` for why the field is named for the other state.
             autoAdvanceSeries = !stored.autoAdvanceSeriesDisabled,
+            // Not inverted, unlike the field above it: this one is off by default, so proto3's zero value
+            // already says what an install that has never heard of it should do. The proto says the same.
+            keepSoundInHeadset = stored.keepSoundInHeadset,
         )
     }
 
     suspend fun setAutoAdvanceSeries(enabled: Boolean) {
         dataStore.updateData { current ->
             current.toBuilder().setAutoAdvanceSeriesDisabled(!enabled).build()
+        }
+    }
+
+    /** PRODUCT_SPEC PLAY-002 — whether a car connecting leaves the book in the headset it is already in. */
+    suspend fun setKeepSoundInHeadset(enabled: Boolean) {
+        dataStore.updateData { current ->
+            current.toBuilder().setKeepSoundInHeadset(enabled).build()
         }
     }
 

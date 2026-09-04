@@ -117,7 +117,17 @@ data class SessionTools @Inject constructor(
  * The capability list is the one server fact under Testing rather than under Server. It is not
  * information about the server so much as a record of what this build asked it, and a device run was
  * explicit that it belonged with the test readings.
+ *
+ * ### `TooManyFunctions`
+ *
+ * Suppressed for the reason `PlayerViewModel` and `AppSettingsDataSource` suppress it, and the shape is the
+ * same: one public function per preference, each of them a single line forwarding a change to the
+ * repository that owns it. The rule protects against a class that does many *kinds* of thing; this one does
+ * one kind, once per setting, and the count is a measure of how many settings the screen has. Splitting it
+ * would give one screen two ViewModels with two subscriptions to the same profile, which is the arrangement
+ * the section above explains why this class exists to avoid.
  */
+@Suppress("TooManyFunctions")
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     observeLibraries: ObserveLibrariesUseCase,
@@ -331,6 +341,11 @@ class SettingsViewModel @Inject constructor(
     /** PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series. */
     fun onAutoAdvanceSeriesChanged(enabled: Boolean) {
         viewModelScope.launch { playbackSettings.setAutoAdvanceSeries(enabled) }
+    }
+
+    /** PRODUCT_SPEC PLAY-002 — whether a car connecting leaves the book in the headset it is already in. */
+    fun onKeepSoundInHeadsetChanged(enabled: Boolean) {
+        viewModelScope.launch { playbackSettings.setKeepSoundInHeadset(enabled) }
     }
 
     /**

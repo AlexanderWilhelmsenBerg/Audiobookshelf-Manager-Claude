@@ -501,6 +501,9 @@
     <string name="settings_network_streaming">Stream over mobile data</string>
     <string name="settings_network_downloads">Download over mobile data</string>
     <string name="settings_network_smart_downloads">Download next book over mobile data</string>
+    <string name="settings_section_headset">Headset</string>
+    <string name="settings_headset_hint">The car normally takes the sound with it when it connects. Turn this on to leave the book in whatever headset it is already playing in — a passenger keeps listening while the car does everything else. It never moves the sound into a headset that is merely connected, and the system can still overrule the app.</string>
+    <string name="settings_headset_keep_sound">Keep sound in the headset</string>
     <string name="settings_section_car">In the car</string>
     <string name="settings_car_hint">BookWave appears in Android Auto with three tabs: Continue, Chapters and History. It always opens on the book you were last listening to. What happens when a car connects is set with the other devices, below.</string>
     <string name="sleep_timer_settings">Timer defaults</string>

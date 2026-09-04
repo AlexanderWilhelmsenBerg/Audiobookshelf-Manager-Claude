@@ -1,8 +1,10 @@
 # ADR-0027 — The output chooser asks rather than commands
 
-**Status:** Accepted 2026-08-29; **amended twice the same day** after two device runs — see the two
-*Amendments* at the end. The first reverses decision 1 and the first consequence; the second reverses the
-claim that the Android Auto player can have no output button. Decisions 2, 3 and 4 stand unchanged.
+**Status:** Accepted 2026-08-29; **amended three times**, each after a device run — see the *Amendments* at
+the end. The first reverses decision 1 and the first consequence; the second reverses the claim that the
+Android Auto player can have no output button; the third (2026-09-04) replaces that button's whole-list
+cycle with two buttons that name a role, and adds *Keep sound in the headset*. Decisions 2, 3 and 4 stand
+unchanged.
 **Requirement:** PRODUCT_SPEC PLAY-002, and ROUTE-002 for the identity rule it borrows
 
 ## Context
@@ -205,3 +207,69 @@ the API list has no `addOnDevicesForAttributesChangedListener` to pair with the 
 introduced (checked against `android-36/data/api-versions.xml`). So after asking for an output the app
 re-reads the route once, a fraction of a second later, purely so the label stops reporting the old one. It
 is best-effort by construction and affects nothing but text.
+
+---
+
+## Third amendment, 2026-09-04 — the cycle offered the phone speaker, so the buttons name roles instead
+
+The owner ran the car with the button from the second amendment: *"In android auto, there is now a Bluetooth
+button. Pressing it cycles through headset, phone speaker and the car. Phone speaker should not be a
+choice."*
+
+The cycle was `[Automatic] + every connected output`, and a phone always reports its own speaker. So the
+control the second amendment added to help a driver could, in two presses, put a book into the phone's
+speaker at speed — and cycling means the driver cannot see that coming, which is the objection the second
+amendment accepted only because the alternative was no button at all.
+
+Filtering the speaker out of the cycle was the small fix and it was rejected. It answers one destination and
+leaves the reason: a cycle over a list nobody can see is a control whose next state is a guess, and the list
+grows whenever the platform reports something new.
+
+### The decision
+
+**Two buttons that name what a listener means, replacing the one that stepped through everything.**
+
+- **Car** — one destination, always the same one. It selects `DeviceKind.Car` where the platform reports an
+  audio bus, and otherwise selects *Automatic*, which while a car is connected **is** the car: clearing the
+  preferred device hands routing back to the platform, whose own answer in a car is the dashboard. That is
+  the honest mapping rather than a shrug, and it is the only one available on a projected head unit that
+  reports no bus of its own.
+- **Headset** — a short cycle over the things a person is wearing: wired, Bluetooth, hearing aid. It steps
+  and wraps when there are two, re-selects when there is one, and jumps to the first when the book is
+  somewhere else entirely. Its display name is the **active** headset's own advertised name, so a long press
+  and a screen reader both answer *"which earbuds"*; whether a head unit finds room to draw that text beside
+  the icon is the head unit's decision and not an app's.
+- **The phone speaker is not reachable from either.** Not by a filter — by construction. No button names it,
+  so no press selects it, and there is no filter for a later edit to drop. The browse tab still lists every
+  output including the speaker, for the listener who is parked and choosing; that is what the tab is for.
+- **A button with nothing to act on is absent, not disabled.** A head unit draws a disabled custom action as
+  a grey square with no explanation and a driver cannot ask it why. So the car button appears when a car is
+  bound to the session or a car bus is connected, and the headset button when something wearable is.
+- `AudioOutputCycle` is replaced by `AudioOutputRoles`, still a pure object and still tested without a car.
+
+### And a setting, because the car taking the sound is not always wanted
+
+The same report asked for it: *"have a setting in playback under headset, keep sound in headset. Which means
+when connecting to car, keep playing on the headset."*
+
+`PlaybackSettings.keepSoundInHeadset`, **off by default**, in the Playback tab immediately above *In the
+car* so the two read as one story. On, it pins the route to the headset the book was already coming out of
+when a car binds to the session.
+
+Two things it will not do, and both are in `HeadsetHold` rather than in a comment. It will not move audio
+**to** a headset — a headset that is connected but not playing is earbuds in a pocket, and starting to play
+into a pocket because a car door opened is a worse failure than the one this prevents. And it holds nothing
+at all when the remembered headset has disconnected.
+
+The mechanism has one subtlety worth writing down: the headset is remembered **continuously**, from every
+published output list, rather than read at the moment a car arrives. By then it is usually too late — the
+platform moves the route as soon as the car's audio link comes up, and the honest answer to *"which headset
+is the sound in"* has already become *"none"*. `HeadsetHoldTest` covers that ordering directly.
+
+### What a device pass still has to answer
+
+`docs/risks.md` R-103. A projected car whose audio arrives as `TYPE_BLUETOOTH_A2DP` rather than `TYPE_BUS`
+is, to every public API this app may call, a Bluetooth headset — so the headset button's cycle can include
+the dashboard. The fixes are a Bluetooth permission ROUTE-002 declines to ask for, or a per-device *this is
+my car* mark in the ROUTE-002 list. Neither is worth building against a guess about what a car reports,
+which is product priority 6, so the behaviour is recorded and the car is asked.

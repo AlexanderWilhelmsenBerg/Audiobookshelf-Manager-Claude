@@ -72,6 +72,24 @@ enum class DeviceKind {
 
     /** Anything else that can play audio. */
     Other,
+    ;
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — whether this kind of thing goes in or on one person's ears.
+     *
+     * The complement of [KnownDevice.isSpeaker] in intent but not in arithmetic: a car and a USB dock are
+     * neither, so *not a speaker* and *a headset* are two different questions and both are asked.
+     *
+     * It lives on the kind rather than on [AudioOutput] and [KnownDevice] separately, which is decision 4 of
+     * ADR-0027 applied to a second classification: two copies of this list would let the car's headset
+     * button and any future settings row disagree about what a headset is, and the only person who could
+     * tell would be the one whose hearing aid stopped appearing in one of them.
+     *
+     * A Bluetooth *speaker* that advertises itself over classic A2DP is reported by the platform as
+     * [Bluetooth] and is counted here. Nothing short of a Bluetooth permission can tell it from earbuds,
+     * which ROUTE-002 declines to ask for; only a BLE speaker announces itself as [Speaker].
+     */
+    val isHeadset: Boolean get() = this == Wired || this == Bluetooth || this == HearingAid
 }
 
 /**

@@ -223,6 +223,8 @@ internal class FakeSettingsRepository(
 
     override suspend fun setAutoAdvanceSeries(enabled: Boolean): AppResult<Unit> = notUsed()
 
+    override suspend fun setKeepSoundInHeadset(enabled: Boolean): AppResult<Unit> = notUsed()
+
     override fun observeNetworkPolicy(): Flow<NetworkPolicy> = flowOf(NetworkPolicy.Default)
 
     override suspend fun setNetworkPolicy(policy: NetworkPolicy): AppResult<Unit> = notUsed()

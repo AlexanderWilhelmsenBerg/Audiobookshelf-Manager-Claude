@@ -76,7 +76,9 @@
       icon and keeps the text for a long press and for a screen reader — where "where is this going"
       is the useful sentence. %1$s is the output's own name, or "Automatic".
     -->
-    <string name="player_output_action">Audio output: %1$s</string>
+    <string name="player_car_action">Play in the car</string>
+    <string name="player_headset_action">Play in %1$s</string>
+    <string name="player_headset_action_unknown">Play in the headset</string>
 
     <!-- The one row shown when no shelf has anything in it. Names the two causes a driver can act on. -->
     <string name="car_empty_title">No books yet</string>

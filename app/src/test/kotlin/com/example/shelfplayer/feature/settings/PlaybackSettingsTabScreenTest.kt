@@ -8,6 +8,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.ServerId
@@ -20,6 +21,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
+import kotlin.test.assertEquals
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -149,21 +151,77 @@ class PlaybackSettingsTabScreenTest {
         composeRule.onNodeWithText("Download next book over mobile data").assertIsOff()
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-002 — *Keep sound in the headset* is on the screen, above what the car does.
+     *
+     * Both halves asserted, because the defect this guards against is the one R-100 recorded: a setting
+     * that exists in the model, is wired through the ViewModel, and is never drawn. The order matters too —
+     * the switch is the answer to the section below it, and a listener who finds only the car section never
+     * learns the switch exists.
+     */
+    @Test
+    fun `the headset section offers keeping the sound in the headset`() {
+        render(libraries = listOf(library("Fiction", 10.seconds)))
+
+        scrollTo("Keep sound in the headset")
+        composeRule.onNodeWithText("Headset").assertIsDisplayed()
+        composeRule.onNodeWithText("Keep sound in the headset").assertIsDisplayed()
+        composeRule.onNodeWithText("leave the book in whatever headset", substring = true).assertIsDisplayed()
+    }
+
+    /**
+     * Off unless chosen, and the hint states the two limits rather than leaving them to be discovered.
+     *
+     * On means the app pins a route the platform may decline, and it will not move audio *into* a headset
+     * that is merely connected. A switch that promised either would be lying about what `HeadsetHold` does.
+     */
+    @Test
+    fun `keeping the sound in the headset is off by default and says what it will not do`() {
+        render(libraries = listOf(library("Fiction", 10.seconds)))
+
+        scrollTo("Keep sound in the headset")
+        composeRule.onNodeWithText("Keep sound in the headset").assertIsOff()
+        composeRule.onNodeWithText("merely connected", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("system can still overrule the app", substring = true).assertIsDisplayed()
+    }
+
+    /** Pressing the row reports the change, and a screen already showing it on renders it on. */
+    @Test
+    fun `the headset switch reports its change and reflects a stored value`() {
+        val changes = mutableListOf<Boolean>()
+        render(
+            libraries = listOf(library("Fiction", 10.seconds)),
+            settings = PlaybackSettings.Default.copy(keepSoundInHeadset = true),
+            onKeepSoundInHeadsetChanged = changes::add,
+        )
+
+        scrollTo("Keep sound in the headset")
+        composeRule.onNodeWithText("Keep sound in the headset").assertIsOn()
+        composeRule.onNodeWithText("Keep sound in the headset").performClick()
+
+        assertEquals(listOf(false), changes)
+    }
+
     /** The tab is a `LazyColumn`, so a row below the viewport does not exist to be asserted on yet. */
     private fun scrollTo(text: String) =
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(text, substring = true))
 
-    private fun render(libraries: List<Library>) {
+    private fun render(
+        libraries: List<Library>,
+        settings: PlaybackSettings = PlaybackSettings.Default,
+        onKeepSoundInHeadsetChanged: (Boolean) -> Unit = {},
+    ) {
         composeRule.setContent {
             LazyColumn {
                 playbackTab(
-                    settings = PlaybackSettings.Default,
+                    settings = settings,
                     libraries = libraries,
                     actions = PlaybackSettingsActions(
                         onSpeedChanged = {},
                         onSkipsChanged = {},
                         onAutoRewindChanged = {},
                         onBufferChanged = {},
+                        onKeepSoundInHeadsetChanged = onKeepSoundInHeadsetChanged,
                     ),
                 )
             }

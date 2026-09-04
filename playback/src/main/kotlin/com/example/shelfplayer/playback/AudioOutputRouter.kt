@@ -134,15 +134,6 @@ class AudioOutputRouter @Inject constructor(
     }
 
     /**
-     * PRODUCT_SPEC PLAY-002 — steps to the next output, for the car's player button.
-     *
-     * The Android Auto player can hold a button but not a list, so the button steps; [AudioOutputCycle] owns
-     * the order and the reasoning. Everything else — refusing a device that has gone, applying the
-     * preference, logging what the platform did with it — is [select]'s, unchanged.
-     */
-    fun selectNext() = select(AudioOutputCycle.next(_outputs.value, _selectedId.value))
-
-    /**
      * Chooses an output, or `null` for *Automatic*.
      *
      * Unknown ids are ignored rather than treated as *Automatic*: a stale row in a car's cached browse tree

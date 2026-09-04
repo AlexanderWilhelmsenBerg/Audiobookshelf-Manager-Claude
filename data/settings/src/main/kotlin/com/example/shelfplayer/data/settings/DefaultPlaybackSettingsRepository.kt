@@ -130,6 +130,15 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
         settings.setAutoAdvanceSeries(enabled)
     }
 
+    override suspend fun setKeepSoundInHeadset(enabled: Boolean): AppResult<Unit> = write {
+        settings.setKeepSoundInHeadset(enabled)
+        logger.info(
+            LogCategory.Playback,
+            "Whether a car takes the sound out of the headset was changed",
+            LogField.Public("keepSoundInHeadset", enabled),
+        )
+    }
+
     override suspend fun setStartupMode(mode: StartupMode): AppResult<Unit> = write {
         settings.setStartupMode(mode)
         logger.info(

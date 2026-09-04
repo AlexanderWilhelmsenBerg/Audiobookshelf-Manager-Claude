@@ -252,6 +252,20 @@ data class PlaybackSettings(
      * to that and exists (PLAY-008); this switch is the other one.
      */
     val autoAdvanceSeries: Boolean = true,
+    /**
+     * PRODUCT_SPEC PLAY-002 / ROUTE-002 — whether connecting to a car leaves the book in the headset.
+     *
+     * A car connecting normally takes the audio with it, because the platform's own routing policy prefers
+     * the newly connected car and this app does not fight it. That is right for the driver and wrong for the
+     * passenger, and for the listener who walks into their own car still wearing earbuds — PLAY-002's
+     * *"playback never unexpectedly moves"* read from the other direction.
+     *
+     * **Off by default**, and the default is the point: on means the app pins the route, which is a
+     * preference the platform may decline and which stays pinned until the headset disconnects. Nobody
+     * should get that without choosing it. What "the headset" means is the one the sound was already
+     * coming out of — see `HeadsetHold`, which will not move audio to a headset that was merely connected.
+     */
+    val keepSoundInHeadset: Boolean = false,
 ) {
     companion object {
         val Default = PlaybackSettings()

@@ -372,6 +372,9 @@
     <string name="settings_network_streaming">Strøm over mobildata</string>
     <string name="settings_network_downloads">Last ned over mobildata</string>
     <string name="settings_network_smart_downloads">Last ned neste bok over mobildata</string>
+    <string name="settings_section_headset">Hodetelefoner</string>
+    <string name="settings_headset_hint">Bilen tar vanligvis lyden med seg når den kobles til. Slå på dette for å la boka bli igjen i hodetelefonene den allerede spiller i — en passasjer kan høre videre mens bilen gjør alt annet. Lyden flyttes aldri til hodetelefoner som bare er tilkoblet, og systemet kan fortsatt overstyre appen.</string>
+    <string name="settings_headset_keep_sound">Behold lyden i hodetelefonene</string>
     <string name="settings_section_car">I bilen</string>
     <string name="settings_car_hint">BookWave vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på. Hva som skjer når en bil kobles til, settes sammen med de andre enhetene nedenfor.</string>
     <string name="sleep_timer_settings">Standardverdier</string>

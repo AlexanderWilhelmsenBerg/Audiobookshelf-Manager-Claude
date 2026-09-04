@@ -36,6 +36,15 @@ interface PlaybackSettingsRepository {
     suspend fun setAutoAdvanceSeries(enabled: Boolean): AppResult<Unit>
 
     /**
+     * PRODUCT_SPEC PLAY-002 / ROUTE-002 — whether a car connecting leaves the book in the headset.
+     *
+     * Read by the media service rather than by a screen, which is why it is on this repository and not on
+     * [PreferencesRepository]: the decision is taken in `PlaybackService` at the moment a car binds, with
+     * the app's own process quite possibly not running.
+     */
+    suspend fun setKeepSoundInHeadset(enabled: Boolean): AppResult<Unit>
+
+    /**
      * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — which categories may spend cellular data.
      *
      * On this repository rather than a new one because it is the same store and the same screen. A

@@ -36,4 +36,13 @@ data class AudioOutput(val id: String, val displayName: String, val kind: Device
      * this KDoc used to claim the chooser used it to decide what to remember, which was never true.
      */
     val isSpeaker: Boolean get() = kind == DeviceKind.Speaker
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — whether this is something a listener is wearing.
+     *
+     * What the car's headset button steps through, and what *Keep sound in the headset* holds on to. The
+     * list itself lives on [DeviceKind] so that this type and [KnownDevice] cannot come to disagree about
+     * it — the same reason [isSpeaker] is written the way it is (ADR-0027 decision 4).
+     */
+    val isHeadset: Boolean get() = kind.isHeadset
 }
