@@ -24,12 +24,7 @@ interface DownloadScheduler {
      * existing in-memory test doubles can remain tiny while this API gains ownership; production's
      * WorkManager implementation overrides this method and persists [profileId] into the work request.
      */
-    suspend fun enqueue(
-        profileId: ProfileId,
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        category: TrafficCategory,
-    ) {
+    suspend fun enqueue(profileId: ProfileId, serverId: ServerId, itemId: LibraryItemId, category: TrafficCategory) {
         enqueue(serverId, itemId, category)
     }
 
@@ -37,9 +32,8 @@ interface DownloadScheduler {
      * Compatibility seam for existing test doubles. Production code uses the profile-aware overload.
      * New real implementations should not expose an identity-less execution path.
      */
-    suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId, category: TrafficCategory) {
+    suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId, category: TrafficCategory): Unit =
         throw UnsupportedOperationException("A persistent download requires an owning profile")
-    }
 
     /** Stops the work for one shared book copy, leaving resumable parts on disk. */
     suspend fun cancel(serverId: ServerId, itemId: LibraryItemId)
