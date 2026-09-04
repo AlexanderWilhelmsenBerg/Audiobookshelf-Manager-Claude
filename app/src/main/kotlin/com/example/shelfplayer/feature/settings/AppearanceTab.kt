@@ -490,10 +490,17 @@ private fun GlassTint.labelRes(): Int = when (this) {
 @Composable
 private fun AppLanguage.label(): String = displayName ?: stringResource(R.string.settings_language_system)
 
-/** A 3:2 crop, large enough that the artwork is recognisable beside a name and small enough for a row. */
-private val THUMBNAIL_WIDTH = 42.dp
-private val THUMBNAIL_HEIGHT = 28.dp
-private val THUMBNAIL_CORNER = 6.dp
+/**
+ * A 3:2 crop, twice the size it first shipped at.
+ *
+ * 42×28 was sized to sit inside a 48dp row without changing its height, and on a device that turned out to
+ * be too small to tell one pack's artwork from another's — which is the entire job of the thumbnail. At
+ * 84×56 the row is taller than the other dropdowns and that is the trade being made deliberately: this is
+ * the one list whose entries cannot be told apart by their names.
+ */
+private val THUMBNAIL_WIDTH = 84.dp
+private val THUMBNAIL_HEIGHT = 56.dp
+private val THUMBNAIL_CORNER = 10.dp
 private val THUMBNAIL_EDGE = 1.dp
 
 /** White paper, the dark scheme's near-black, and AMOLED's true black. See [thumbnailGrounds]. */
