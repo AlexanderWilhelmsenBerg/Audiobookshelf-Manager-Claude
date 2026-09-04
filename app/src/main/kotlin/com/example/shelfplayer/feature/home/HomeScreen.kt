@@ -117,10 +117,12 @@ import com.example.shelfplayer.feature.browse.BookSortRow
 import com.example.shelfplayer.feature.browse.GroupCard
 import com.example.shelfplayer.feature.browse.GroupCardEditAction
 import com.example.shelfplayer.feature.browse.SeriesCard
+import com.example.shelfplayer.ui.gesture.PAGE_EDGE_INSET
 import com.example.shelfplayer.ui.gesture.offscreenPage
 import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import com.example.shelfplayer.ui.glass.glassContentColor
+import com.example.shelfplayer.ui.glass.reportsBackdropScroll
 import com.example.shelfplayer.ui.glass.systemGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -394,6 +396,10 @@ fun HomeScreen(
                 // on at the other end.
                 // Outside the offset below, so it reads the drag rather than the drag's result.
                 .nestedScroll(overspill.connection)
+                // PRODUCT_SPEC SET-002 — tells the backdrop how far this screen has scrolled, so a
+                // themed background can lag behind it. Reads what the content actually moved; see
+                // `BackdropScroll` for why that is a connection and not a list's own offset.
+                .reportsBackdropScroll()
                 .hazeSource(state = axisBarHaze),
         ) {
             /*
@@ -431,7 +437,12 @@ fun HomeScreen(
                 key = { page -> axisPages[page].name },
             ) { page ->
                 val axis = axisPages[page]
-                Box(modifier = Modifier.offscreenPage(isCurrent = page == pagerState.currentPage)) {
+                Box(
+                    modifier = Modifier
+                        // The margin the edge overspill opens into — see `PAGE_EDGE_INSET`.
+                        .padding(horizontal = PAGE_EDGE_INSET)
+                        .offscreenPage(isCurrent = page == pagerState.currentPage),
+                ) {
                     HomeContent(
                         uiState = uiState.forAxis(axis),
                         actions = actions,

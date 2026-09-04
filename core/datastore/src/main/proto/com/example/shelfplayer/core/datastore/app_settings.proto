@@ -270,15 +270,23 @@ message AppSettings {
   // indistinguishable from never having touched the slider.
   int32 glass_blur_dp = 46;
 
+  // PRODUCT_SPEC SET-002 (Appearance) — a bundled background theme's id, or empty for none.
+  //
+  // Empty is the default and proto3's zero value, so an install predating this field keeps the plain
+  // theme it had. An id no build recognises reads back as none — the same rule every key here follows,
+  // and the one that makes removing a theme pack in a later build harmless rather than a black screen.
+  //
+  // A chosen background theme **supersedes** `app_theme_key`: the two are one control in the Appearance
+  // tab, and a pack decides its own ground. It does **not** supersede `accent_color_key`. A pack's accent
+  // is adopted when the pack is chosen and can then be changed — see `AccentScheme`, which is also why a
+  // pack's own palette is one of the accents this field's neighbour can name.
+  string background_theme_id = 47;
+
   // PRODUCT_SPEC PLAY-002 / ROUTE-002 — whether a car connecting leaves the book in the headset.
   //
   // **Not** inverted, unlike `auto_advance_series_disabled` and the two glass fields above, because this
   // feature is off by default: proto3's `false` already means the default, and pinning the audio route is
   // not something an install that predates the field should start doing by itself.
-  //
-  // 47 is deliberately skipped. `background_theme_id` claims it on the background-themes branch, and a
-  // number used twice is a field that reads back as the wrong type; leaving the gap lets the two land in
-  // either order.
   bool keep_sound_in_headset = 48;
 }
 

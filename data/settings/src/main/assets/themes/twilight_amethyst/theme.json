@@ -1,0 +1,76 @@
+{
+  "id": "twilight_amethyst",
+  "name": "Twilight Amethyst",
+  "version": 1,
+  "background": {
+    "asset": "background.webp",
+    "base": "#090B1A",
+    "fallback": "#0D1023",
+    "scrim": "#B3090B1A",
+    "edgeFade": "#99060916"
+  },
+  "surface": {
+    "card": "#CC17172A",
+    "cardElevated": "#DD211F38",
+    "cardPressed": "#E62B2746",
+    "navigation": "#D9151627",
+    "dialog": "#F21B1A2F",
+    "divider": "#33D7D1F0"
+  },
+  "glass": {
+    "tint": "#2E8D78C8",
+    "highlight": "#40FFFFFF",
+    "border": "#52C9BDF4",
+    "shadow": "#73000000",
+    "blurRadiusDp": 24,
+    "surfaceAlpha": 0.72
+  },
+  "accent": {
+    "primary": "#B69CFF",
+    "primaryContainer": "#4C3D73",
+    "onPrimary": "#151022",
+    "secondary": "#F29AD8",
+    "secondaryContainer": "#5B304E",
+    "tertiary": "#8CA7FF"
+  },
+  "button": {
+    "primary": "#B69CFF",
+    "primaryPressed": "#C7B3FF",
+    "onPrimary": "#151022",
+    "secondary": "#592F4C66",
+    "secondaryPressed": "#73506C8A",
+    "onSecondary": "#F6EEFF",
+    "disabled": "#3A383F54",
+    "onDisabled": "#7AFFFFFF"
+  },
+  "text": {
+    "primary": "#FFF9FF",
+    "secondary": "#DCCFE8",
+    "muted": "#A9A0B7",
+    "disabled": "#6F687A",
+    "inverse": "#151022"
+  },
+  "navigation": {
+    "selected": "#C5B1FF",
+    "unselected": "#9A94A7",
+    "indicator": "#3DB69CFF",
+    "pill": "#B3151627"
+  },
+  "progress": {
+    "fill": "#B69CFF",
+    "buffered": "#758CA7FF",
+    "track": "#48575A6E",
+    "thumb": "#F8F3FF"
+  },
+  "state": {
+    "success": "#7DD9B2",
+    "warning": "#F2C879",
+    "error": "#FF8D9B",
+    "info": "#91B7FF"
+  },
+  "systemBars": {
+    "statusBar": "#7A090B1A",
+    "navigationBar": "#D9090B1A",
+    "lightIcons": true
+  }
+}

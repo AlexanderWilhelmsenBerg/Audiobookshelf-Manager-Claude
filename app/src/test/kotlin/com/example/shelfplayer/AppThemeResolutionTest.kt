@@ -1,9 +1,18 @@
 package com.example.shelfplayer
 
 import com.example.shelfplayer.core.datastore.ThemeMode
+import com.example.shelfplayer.core.model.settings.AccentColor
+import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.BackgroundTheme
+import com.example.shelfplayer.core.model.settings.ThemeAccents
+import com.example.shelfplayer.core.model.settings.ThemeGlass
+import com.example.shelfplayer.core.model.settings.ThemeGround
+import com.example.shelfplayer.core.model.settings.ThemeSurfaces
+import com.example.shelfplayer.core.model.settings.ThemeText
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * PRODUCT_SPEC SET-002 — the theme, read from two stored fields that can disagree.
@@ -70,4 +79,66 @@ class AppThemeResolutionTest {
         assertEquals(true, system.resolveDarkTheme(systemInDarkTheme = true))
         assertEquals(false, system.resolveDarkTheme(systemInDarkTheme = false))
     }
+
+    /**
+     * PRODUCT_SPEC SET-002 — *"it should be possible to change the colors"*, reaching the screen.
+     *
+     * A background pack hands `ShelfPlayerTheme` a complete authored scheme, and the whole point of an
+     * override is that it wins. If it also swallowed the accent, the colour dropdown would move nothing
+     * while a pack was drawn and the setting would look broken for the exact reader who chose a pack. So
+     * a differing accent is imposed on top, and `null` — leave the pack alone — is returned in one case
+     * only: the accent already **is** the pack's.
+     */
+    @Test
+    fun `a pack keeps its own accent, and any other accent is imposed over it`() {
+        val pack = pack()
+        val own = AppUiState(backgroundTheme = pack, accent = AccentScheme.of(pack))
+        val chosen = AppUiState(backgroundTheme = pack, accent = AccentScheme.of(AccentColor.Plum))
+
+        assertNull(own.accentArgbFor(isDark = true))
+        assertEquals(AccentColor.Plum.darkArgb, chosen.accentArgbFor(isDark = true))
+    }
+
+    /** With no pack there is nothing to defer to, so the chosen accent always applies. */
+    @Test
+    fun `without a pack the accent is always imposed`() {
+        val state = AppUiState(accent = AccentScheme.of(AccentColor.Moss))
+
+        assertEquals(AccentColor.Moss.lightArgb, state.accentArgbFor(isDark = false))
+        assertEquals(AccentColor.Moss.darkArgb, state.accentArgbFor(isDark = true))
+    }
+
+    /** A pack's accent chosen while a *different* pack is drawn is a choice, so it is imposed. */
+    @Test
+    fun `one pack's colours over another pack's picture are imposed`() {
+        val drawn = pack(id = "teal_horizon")
+        val borrowed = pack(id = "nebula_glow", primary = 0xFF9FCCFF)
+        val state = AppUiState(backgroundTheme = drawn, accent = AccentScheme.of(borrowed))
+
+        assertEquals(0xFF9FCCFF, state.accentArgbFor(isDark = true))
+    }
+
+    private fun pack(id: String = "teal_horizon", primary: Long = 0xFF57D6CF) = BackgroundTheme(
+        id = id,
+        name = id,
+        pack = "Test Pack",
+        isDark = true,
+        ground = ThemeGround(asset = "themes/$id/background.webp", base = 0xFF000000, scrim = 0x80000000),
+        surfaces = ThemeSurfaces(
+            card = 0xCC101010,
+            cardElevated = 0xDD181818,
+            navigation = 0xD9101010,
+            divider = 0x33FFFFFF,
+        ),
+        glass = ThemeGlass(tint = 0x33FFFFFF, border = 0x59FFFFFF, blurDp = 24),
+        accents = ThemeAccents(
+            primary = primary,
+            primaryContainer = 0xFF165D5D,
+            onPrimary = 0xFF002625,
+            secondary = 0xFF96E6CF,
+            tertiary = 0xFF7DBFD9,
+            error = 0xFFFF8B91,
+        ),
+        text = ThemeText(primary = 0xFFF0FFFD, secondary = 0xFFC8E9E5, muted = 0xFF90B7B4, inverse = 0xFF002625),
+    )
 }

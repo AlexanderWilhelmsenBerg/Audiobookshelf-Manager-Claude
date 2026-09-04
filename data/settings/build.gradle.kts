@@ -3,6 +3,9 @@ plugins {
     id("shelfplayer.hilt")
     // PRODUCT_SPEC 17.3 — this module contributes coverage data; the thresholds live in the root build.
     alias(libs.plugins.kover)
+    // SET-002 — the bundled background themes are JSON beside their artwork; this parses them. The DTOs
+    // are private to `BundledBackgroundThemeCatalog` and map to `BackgroundTheme` before they escape it.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -28,6 +31,7 @@ dependencies {
     implementation(projects.core.datastore)
     // PRODUCT_SPEC PLAY-001 — for the `PlaybackDeviceIdentity` seam, whose stored half lives here.
     implementation(projects.core.network)
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(projects.core.testing)
     // The sleep-timer repository test builds a real database and a real DataStore file, because the

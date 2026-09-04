@@ -1,11 +1,11 @@
 package com.example.shelfplayer.feature.settings
 
 import androidx.compose.runtime.Immutable
-import com.example.shelfplayer.core.model.settings.AccentColor
+import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppLanguage
-import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
+import com.example.shelfplayer.core.model.settings.ThemeChoice
 
 /**
  * PRODUCT_SPEC SET-002 — the writes the Appearance tab makes.
@@ -18,8 +18,9 @@ import com.example.shelfplayer.core.model.settings.TextContrast
  */
 @Immutable
 data class AppearanceActions(
-    val onThemeChanged: (AppTheme) -> Unit = {},
-    val onAccentChanged: (AccentColor) -> Unit = {},
+    /** PRODUCT_SPEC SET-002 — one of the app's own themes, or a bundled pack. See `ThemeChoice`. */
+    val onThemeChoiceChanged: (ThemeChoice) -> Unit = {},
+    val onAccentChanged: (AccentScheme) -> Unit = {},
     val onGlassTintChanged: (GlassTint) -> Unit = {},
     val onCardGlassTintChanged: (Boolean) -> Unit = {},
     val onSystemGlassTintChanged: (Boolean) -> Unit = {},

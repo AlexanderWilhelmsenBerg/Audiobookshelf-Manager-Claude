@@ -19,7 +19,7 @@ import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.StartupMode
-import com.example.shelfplayer.core.model.settings.AccentColor
+import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
@@ -197,8 +197,14 @@ class AppSettingsDataSource @Inject constructor(
         }
     }
 
-    /** PRODUCT_SPEC SET-002 (Appearance) — the accent, as a key. See `AccentColor` for why it is closed. */
-    suspend fun setAccentColor(accent: AccentColor) {
+    /**
+     * PRODUCT_SPEC SET-002 (Appearance) — the accent, as a key.
+     *
+     * An [AccentScheme] rather than an `AccentColor`, because since the background packs landed the answer
+     * may be a pack's own authored pair as well as one of the closed palette's. The key is the whole of
+     * what is stored either way; see `AccentScheme` for why one field holds both namespaces.
+     */
+    suspend fun setAccent(accent: AccentScheme) {
         dataStore.updateData { current -> current.toBuilder().setAccentColorKey(accent.key).build() }
     }
 
@@ -241,6 +247,17 @@ class AppSettingsDataSource @Inject constructor(
     suspend fun setGlassBlurDp(dp: Int) {
         val stored = GlassBlur.toStored(dp)
         dataStore.updateData { current -> current.toBuilder().setGlassBlurDp(stored).build() }
+    }
+
+    /**
+     * PRODUCT_SPEC SET-002 — the bundled background theme, or `null` for none.
+     *
+     * `null` writes the empty string, which is both "none" and proto3's zero value. There is no sentinel
+     * to invent here: unset and *no background theme* genuinely mean the same thing, unlike the blur
+     * radius where off and unchosen do not.
+     */
+    suspend fun setBackgroundThemeId(id: String?) {
+        dataStore.updateData { current -> current.toBuilder().setBackgroundThemeId(id.orEmpty()).build() }
     }
 
     /**

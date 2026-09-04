@@ -1,0 +1,76 @@
+{
+  "id": "sunrise_orchid",
+  "name": "Sunrise Orchid",
+  "version": 1,
+  "background": {
+    "asset": "background.webp",
+    "base": "#1B1740",
+    "fallback": "#241D52",
+    "scrim": "#A6191537",
+    "edgeFade": "#8A110F29"
+  },
+  "surface": {
+    "card": "#CC261F4F",
+    "cardElevated": "#DD31275F",
+    "cardPressed": "#E63A2F6D",
+    "navigation": "#D9211C44",
+    "dialog": "#F22A2256",
+    "divider": "#33FFE0F0"
+  },
+  "glass": {
+    "tint": "#3AF9B2D8",
+    "highlight": "#52FFFFFF",
+    "border": "#5EF8C7EB",
+    "shadow": "#66000000",
+    "blurRadiusDp": 24,
+    "surfaceAlpha": 0.68
+  },
+  "accent": {
+    "primary": "#FFB5D5",
+    "primaryContainer": "#5C3457",
+    "onPrimary": "#241631",
+    "secondary": "#FFC580",
+    "secondaryContainer": "#65472A",
+    "tertiary": "#C4B8FF"
+  },
+  "button": {
+    "primary": "#FFB5D5",
+    "primaryPressed": "#FFC4DE",
+    "onPrimary": "#241631",
+    "secondary": "#663A2A54",
+    "secondaryPressed": "#8A4B386B",
+    "onSecondary": "#FFF7FC",
+    "disabled": "#3AF2E9FF",
+    "onDisabled": "#7AFFFFFF"
+  },
+  "text": {
+    "primary": "#FFF8FF",
+    "secondary": "#F0E8F8",
+    "muted": "#C9C0D8",
+    "disabled": "#8D84A1",
+    "inverse": "#231936"
+  },
+  "navigation": {
+    "selected": "#FFD0E4",
+    "unselected": "#C0B3C9",
+    "indicator": "#40FFB5D5",
+    "pill": "#B3201B40"
+  },
+  "progress": {
+    "fill": "#FFB5D5",
+    "buffered": "#8CC4B8FF",
+    "track": "#4D766A94",
+    "thumb": "#FFF7FB"
+  },
+  "state": {
+    "success": "#85E4B3",
+    "warning": "#FFD37A",
+    "error": "#FF9AAF",
+    "info": "#A9C0FF"
+  },
+  "systemBars": {
+    "statusBar": "#781B1740",
+    "navigationBar": "#D91B1740",
+    "lightIcons": true
+  }
+}

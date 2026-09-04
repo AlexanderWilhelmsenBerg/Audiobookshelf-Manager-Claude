@@ -1,0 +1,76 @@
+{
+  "id": "teal_horizon",
+  "name": "Teal Horizon",
+  "version": 1,
+  "background": {
+    "asset": "background.webp",
+    "base": "#00191D",
+    "fallback": "#03262A",
+    "scrim": "#B3001418",
+    "edgeFade": "#99000F12"
+  },
+  "surface": {
+    "card": "#C90B3033",
+    "cardElevated": "#DD103C3F",
+    "cardPressed": "#E5174B4E",
+    "navigation": "#D608292C",
+    "dialog": "#F20C3134",
+    "divider": "#335FC9C4"
+  },
+  "glass": {
+    "tint": "#2E5EC9C4",
+    "highlight": "#36E8FFFC",
+    "border": "#4D8EE5DC",
+    "shadow": "#73000000",
+    "blurRadiusDp": 24,
+    "surfaceAlpha": 0.72
+  },
+  "accent": {
+    "primary": "#57D6CF",
+    "primaryContainer": "#165D5D",
+    "onPrimary": "#002625",
+    "secondary": "#96E6CF",
+    "secondaryContainer": "#285A4E",
+    "tertiary": "#7DBFD9"
+  },
+  "button": {
+    "primary": "#57D6CF",
+    "primaryPressed": "#72E8E0",
+    "onPrimary": "#002625",
+    "secondary": "#59245C5C",
+    "secondaryPressed": "#73427373",
+    "onSecondary": "#E9FFFC",
+    "disabled": "#3A33494A",
+    "onDisabled": "#7AFFFFFF"
+  },
+  "text": {
+    "primary": "#F0FFFD",
+    "secondary": "#C8E9E5",
+    "muted": "#90B7B4",
+    "disabled": "#607F7D",
+    "inverse": "#002625"
+  },
+  "navigation": {
+    "selected": "#6AE1DA",
+    "unselected": "#86A5A4",
+    "indicator": "#3D57D6CF",
+    "pill": "#B307292C"
+  },
+  "progress": {
+    "fill": "#57D6CF",
+    "buffered": "#777DBFD9",
+    "track": "#48436A6B",
+    "thumb": "#ECFFFC"
+  },
+  "state": {
+    "success": "#72DDAA",
+    "warning": "#F0C56A",
+    "error": "#FF8B91",
+    "info": "#72C8E8"
+  },
+  "systemBars": {
+    "statusBar": "#7A00191D",
+    "navigationBar": "#D900191D",
+    "lightIcons": true
+  }
+}

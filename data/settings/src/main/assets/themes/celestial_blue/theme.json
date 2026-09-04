@@ -1,0 +1,76 @@
+{
+  "id": "celestial_blue",
+  "name": "Celestial Blue",
+  "version": 1,
+  "background": {
+    "asset": "background.webp",
+    "base": "#020B18",
+    "fallback": "#06172A",
+    "scrim": "#AD020B18",
+    "edgeFade": "#99010812"
+  },
+  "surface": {
+    "card": "#C90B1B31",
+    "cardElevated": "#DD102744",
+    "cardPressed": "#E6163558",
+    "navigation": "#D907182B",
+    "dialog": "#F20B2038",
+    "divider": "#335DA8F7"
+  },
+  "glass": {
+    "tint": "#2E397FD1",
+    "highlight": "#38FFFFFF",
+    "border": "#4D7FC1FF",
+    "shadow": "#73000000",
+    "blurRadiusDp": 24,
+    "surfaceAlpha": 0.72
+  },
+  "accent": {
+    "primary": "#66AFFF",
+    "primaryContainer": "#244C7A",
+    "onPrimary": "#021427",
+    "secondary": "#F0AA6E",
+    "secondaryContainer": "#6A4125",
+    "tertiary": "#91D4FF"
+  },
+  "button": {
+    "primary": "#66AFFF",
+    "primaryPressed": "#83BEFF",
+    "onPrimary": "#021427",
+    "secondary": "#593B5D82",
+    "secondaryPressed": "#73516F99",
+    "onSecondary": "#EDF7FF",
+    "disabled": "#3A344354",
+    "onDisabled": "#7AFFFFFF"
+  },
+  "text": {
+    "primary": "#F5FAFF",
+    "secondary": "#CAD9EA",
+    "muted": "#92A4B9",
+    "disabled": "#617286",
+    "inverse": "#021427"
+  },
+  "navigation": {
+    "selected": "#72B6FF",
+    "unselected": "#8D9BAD",
+    "indicator": "#3D66AFFF",
+    "pill": "#B307182B"
+  },
+  "progress": {
+    "fill": "#66AFFF",
+    "buffered": "#77F0AA6E",
+    "track": "#48425873",
+    "thumb": "#F4F9FF"
+  },
+  "state": {
+    "success": "#78DAAE",
+    "warning": "#F0B66E",
+    "error": "#FF8C96",
+    "info": "#75C5FF"
+  },
+  "systemBars": {
+    "statusBar": "#7A020B18",
+    "navigationBar": "#D9020B18",
+    "lightIcons": true
+  }
+}

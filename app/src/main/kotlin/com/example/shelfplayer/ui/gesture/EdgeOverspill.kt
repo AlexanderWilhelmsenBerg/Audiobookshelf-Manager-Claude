@@ -163,6 +163,16 @@ internal class EdgeOverspill(
  */
 internal fun resisted(pulled: Float, limit: Float): Float = if (limit <= 0f) 0f else limit * tanh(pulled / limit)
 
+/**
+ * PRODUCT_SPEC SET-002 — the gap a page keeps from the window's edge.
+ *
+ * The overspill slides the page sideways and what it reveals is the app's backdrop — the themed artwork,
+ * or the accent gradient. That only reads as *revealing something behind* if there is already a margin
+ * there to widen: a page flush to the edge appears to tear away from the screen instead. So the pages sit
+ * inset by this much, the overspill opens the gap further, and the spring closes it again.
+ */
+val PAGE_EDGE_INSET: Dp = 12.dp
+
 /** How far the page may be pulled past its edge, however hard it is pulled. */
 private val MAX_OVERSPILL: Dp = 72.dp
 

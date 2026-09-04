@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "themes": [
+    {
+      "id": "twilight_amethyst",
+      "name": "Twilight Amethyst",
+      "pack": "BookWave Background Themes"
+    },
+    {
+      "id": "teal_horizon",
+      "name": "Teal Horizon",
+      "pack": "BookWave Background Themes"
+    },
+    {
+      "id": "celestial_blue",
+      "name": "Celestial Blue",
+      "pack": "BookWave Background Themes"
+    },
+    {
+      "id": "sunrise_orchid",
+      "name": "Sunrise Orchid",
+      "pack": "BookWave Light Pack"
+    },
+    {
+      "id": "aurora_teal",
+      "name": "Aurora Teal",
+      "pack": "BookWave Light Pack"
+    },
+    {
+      "id": "nebula_glow",
+      "name": "Nebula Glow",
+      "pack": "BookWave Light Pack"
+    }
+  ]
+}
