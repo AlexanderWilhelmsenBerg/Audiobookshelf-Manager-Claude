@@ -27,9 +27,10 @@ class BookChanges @Inject constructor(
      * A session has been opened for a book. Called before the player is handed the item.
      *
      * The outbox row is written first, deliberately: a session recorded only once playback succeeded would
-     * lose the listening of a book that started and then hit a network error (PLAY-005).
+     * lose the listening of a book that started and then hit a network error (PLAY-005). This is suspending
+     * because "written first" must be an ordering guarantee, not a coroutine scheduled for later.
      */
-    fun onBookOpened(session: PlaybackSession) {
+    suspend fun onBookOpened(session: PlaybackSession) {
         sessionSync.onSessionOpened(session)
         sleepTimer.onBookChanged(session.chapters)
         autoRewind.onBookChanged(session.chapters)
