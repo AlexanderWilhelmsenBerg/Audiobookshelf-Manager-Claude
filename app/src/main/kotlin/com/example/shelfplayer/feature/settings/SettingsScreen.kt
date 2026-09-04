@@ -81,10 +81,12 @@ import com.example.shelfplayer.feature.lock.ProfileLockActions
 import com.example.shelfplayer.feature.lock.ProfileLockViewModel
 import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
+import com.example.shelfplayer.ui.gesture.PAGE_EDGE_INSET
 import com.example.shelfplayer.ui.gesture.offscreenPage
 import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
 import com.example.shelfplayer.ui.glass.glassContentColor
 import com.example.shelfplayer.ui.glass.playerChromeClearance
+import com.example.shelfplayer.ui.glass.reportsBackdropScroll
 import com.example.shelfplayer.ui.glass.systemGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -151,7 +153,7 @@ fun SettingsRoute(
             onMessageShown = viewModel::onDebugMessageShown,
         ),
         appearanceActions = AppearanceActions(
-            onThemeChanged = appearanceViewModel::onThemeChanged,
+            onThemeChoiceChanged = appearanceViewModel::onThemeChoiceChanged,
             onAccentChanged = appearanceViewModel::onAccentChanged,
             onGlassTintChanged = appearanceViewModel::onGlassTintChanged,
             onCardGlassTintChanged = appearanceViewModel::onCardGlassTintChanged,
@@ -373,6 +375,10 @@ fun SettingsScreen(
                  * pull. On the parent rather than the pager so it sees the drag, not the drag's result.
                  */
                 .nestedScroll(overspill.connection)
+                // PRODUCT_SPEC SET-002 — tells the backdrop how far this screen has scrolled, so a
+                // themed background can lag behind it. Reads what the content actually moved; see
+                // `BackdropScroll` for why that is a connection and not a list's own offset.
+                .reportsBackdropScroll()
                 .hazeSource(state = headerHaze),
         ) {
             /*
@@ -403,6 +409,8 @@ fun SettingsScreen(
                     // `offscreenPage`, and the two tests that found this.
                     modifier = Modifier
                         .fillMaxSize()
+                        // The margin the edge overspill opens into — see `PAGE_EDGE_INSET`.
+                        .padding(horizontal = PAGE_EDGE_INSET)
                         .offscreenPage(isCurrent = page == pagerState.currentPage),
                     // PRODUCT_SPEC 4 / §51 — every row here is a label and a control, and on a tablet the
                     // two end up a hand-span apart with nothing between them. The column keeps a readable

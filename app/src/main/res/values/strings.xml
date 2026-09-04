@@ -1151,6 +1151,7 @@
     <string name="settings_section_colour">Colour</string>
     <string name="settings_accent_colour">Accent colour</string>
     <string name="settings_accent_colour_hint">Used for buttons, switches and anything selected. Each choice is a pair that has been checked for contrast on both a light and a dark background.</string>
+    <string name="settings_accent_theme">Theme colours</string>
     <string name="settings_accent_teal">Teal</string>
     <string name="settings_accent_indigo">Indigo</string>
     <string name="settings_accent_plum">Plum</string>
@@ -1179,4 +1180,5 @@
     <string name="settings_contrast_auto">Automatic</string>
     <string name="settings_contrast_high">High</string>
     <string name="settings_contrast_soft">Soft</string>
+    <string name="settings_background_hint">The themes below the app\'s own are a background and the palette drawn for it. Choosing one takes its colours as well, because they were picked against that picture \u2014 you can change them under Colour. The background scrolls with you, slower, as though it were further away.</string>
 </resources>

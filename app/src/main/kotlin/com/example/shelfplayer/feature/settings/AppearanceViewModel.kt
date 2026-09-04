@@ -4,15 +4,22 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.ThemeMode
-import com.example.shelfplayer.core.model.settings.AccentColor
+import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
+import com.example.shelfplayer.core.model.settings.ThemeChoice
+import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -42,10 +49,17 @@ import javax.inject.Inject
  * `AppViewModel` reads the store the same way for the same reason.
  */
 @HiltViewModel
-class AppearanceViewModel @Inject constructor(private val settings: AppSettingsDataSource) : ViewModel() {
+class AppearanceViewModel @Inject constructor(
+    private val settings: AppSettingsDataSource,
+    private val backgroundThemes: BackgroundThemeCatalog,
+) : ViewModel() {
+
+    /** The bundled packs. Read once — see `BackgroundThemeCatalog`; the catalog itself caches. */
+    private val catalog: Flow<List<BackgroundTheme>> = flow { emit(backgroundThemes.themes()) }
 
     val state: StateFlow<AppearanceUiState> = settings.settings
-        .map { stored ->
+        .combine(catalog) { stored, themes -> stored to themes }
+        .map { (stored, themes) ->
             AppearanceUiState(
                 // The key when there is one, and the older brightness when there is not — the same
                 // reconciliation `AppUiState.resolveTheme` makes, and for the same reason: a reader who
@@ -55,13 +69,17 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
                 } else {
                     stored.themeMode.asAppTheme()
                 },
-                accent = AccentColor.ofKey(stored.accentColorKey),
+                accent = AccentScheme.ofKey(stored.accentColorKey, themes),
                 glassTint = GlassTint.ofKey(stored.glassTintKey),
                 cardGlassTintEnabled = !stored.cardGlassTintDisabled,
                 systemGlassTintEnabled = !stored.systemGlassTintDisabled,
                 textContrast = TextContrast.ofKey(stored.textContrastKey),
                 // Through `GlassBlur.ofStored`, which is where *off* is told from *never chosen*.
                 glassBlurDp = GlassBlur.ofStored(stored.glassBlurDp),
+                backgroundThemes = themes,
+                // Held as the id rather than the theme so that an id naming a pack this build no longer
+                // ships shows as *None* instead of as a selected row the picker cannot draw.
+                backgroundThemeId = stored.backgroundThemeId.takeIf { id -> themes.any { it.id == id } },
                 dynamicColor = stored.dynamicColor,
                 language = AppLanguage.ofTag(stored.appLanguageTag),
             )
@@ -73,12 +91,8 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
             initialValue = AppearanceUiState(),
         )
 
-    fun onThemeChanged(theme: AppTheme) {
-        viewModelScope.launch { settings.setAppTheme(theme) }
-    }
-
-    fun onAccentChanged(accent: AccentColor) {
-        viewModelScope.launch { settings.setAccentColor(accent) }
+    fun onAccentChanged(accent: AccentScheme) {
+        viewModelScope.launch { settings.setAccent(accent) }
     }
 
     fun onGlassTintChanged(tint: GlassTint) {
@@ -99,6 +113,44 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
 
     fun onGlassBlurChanged(dp: Int) {
         viewModelScope.launch { settings.setGlassBlurDp(dp) }
+    }
+
+    /**
+     * PRODUCT_SPEC SET-002 — the app's look, whether that is one of its own themes or a bundled pack.
+     *
+     * ### Why one method for what used to be two settings
+     *
+     * Because it is one press. A pack supersedes the plain theme, so the two were never independent, and
+     * two handlers meant two writes a caller had to remember to pair — see `ThemeChoice` for why the
+     * *control* is now one thing while the stored fields stay two.
+     *
+     * ### The order of the writes, which is the part that shows
+     *
+     * The plain theme goes **first**. While a pack is still selected it supersedes whatever the theme says,
+     * so writing it then is invisible; clearing the pack afterwards reveals the new look in one transition.
+     * The other order publishes a frame of the *old* theme with no pack behind it, which reads as a flash.
+     *
+     * The accent follows the pack, and `AccentScheme.following` owns which — including the case it
+     * declines: a reader who deliberately chose *Plum* keeps it when they leave a pack, and only an accent
+     * that came from a pack is taken back to the default.
+     *
+     * ### Why the accent is read from the store and not from [state]
+     *
+     * Because [state] is `WhileSubscribed`, so `state.value` is the *initial* value — no pack list, and the
+     * default accent — whenever nothing is collecting. From the screen there always is, which is exactly
+     * what makes this the kind of coupling that holds until it does not. `docs/risks.md` R-104 records the
+     * version of this method that read it, and `AppearanceViewModelTest` is what found it.
+     */
+    fun onThemeChoiceChanged(choice: ThemeChoice) {
+        viewModelScope.launch {
+            if (choice is ThemeChoice.Plain) settings.setAppTheme(choice.theme)
+            val pack = (choice as? ThemeChoice.Pack)?.pack
+            // The catalog caches, so this is a map lookup after the first call rather than a second read
+            // of the assets. See `BackgroundThemeCatalog`.
+            val current = AccentScheme.ofKey(settings.settings.first().accentColorKey, backgroundThemes.themes())
+            AccentScheme.following(current, pack)?.let { next -> settings.setAccent(next) }
+            settings.setBackgroundThemeId(pack?.id)
+        }
     }
 
     fun onDynamicColorChanged(enabled: Boolean) {
@@ -131,12 +183,15 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
  */
 data class AppearanceUiState(
     val theme: AppTheme = AppTheme.Default,
-    val accent: AccentColor = AccentColor.Default,
+    val accent: AccentScheme = AccentScheme.Default,
     val glassTint: GlassTint = GlassTint.Default,
     val cardGlassTintEnabled: Boolean = true,
     val systemGlassTintEnabled: Boolean = true,
     val textContrast: TextContrast = TextContrast.Default,
     val glassBlurDp: Int = GlassBlur.DEFAULT_DP,
+    /** PRODUCT_SPEC SET-002 — every bundled pack, for the picker. Empty if the assets are unreadable. */
+    val backgroundThemes: List<BackgroundTheme> = emptyList(),
+    val backgroundThemeId: String? = null,
     val dynamicColor: Boolean = false,
     val language: AppLanguage = AppLanguage.System,
     val isDark: Boolean = false,

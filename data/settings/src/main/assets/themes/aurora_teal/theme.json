@@ -1,0 +1,76 @@
+{
+  "id": "aurora_teal",
+  "name": "Aurora Teal",
+  "version": 1,
+  "background": {
+    "asset": "background.webp",
+    "base": "#0C2F3B",
+    "fallback": "#123A49",
+    "scrim": "#A80A2934",
+    "edgeFade": "#88081F28"
+  },
+  "surface": {
+    "card": "#CC133A49",
+    "cardElevated": "#DD184B5E",
+    "cardPressed": "#E6205970",
+    "navigation": "#D9123340",
+    "dialog": "#F2164152",
+    "divider": "#33EFFFF4"
+  },
+  "glass": {
+    "tint": "#36B8FFF0",
+    "highlight": "#4CFFFFFF",
+    "border": "#59C9FFF7",
+    "shadow": "#66000000",
+    "blurRadiusDp": 24,
+    "surfaceAlpha": 0.66
+  },
+  "accent": {
+    "primary": "#9EF4EA",
+    "primaryContainer": "#24555E",
+    "onPrimary": "#0A2327",
+    "secondary": "#FFE1A6",
+    "secondaryContainer": "#625133",
+    "tertiary": "#A2DCFF"
+  },
+  "button": {
+    "primary": "#9EF4EA",
+    "primaryPressed": "#B5FFF5",
+    "onPrimary": "#0A2327",
+    "secondary": "#66324E58",
+    "secondaryPressed": "#8A40636F",
+    "onSecondary": "#F7FFFF",
+    "disabled": "#3ADAF7F3",
+    "onDisabled": "#78FFFFFF"
+  },
+  "text": {
+    "primary": "#F6FFFF",
+    "secondary": "#E0F2F1",
+    "muted": "#B7D0D0",
+    "disabled": "#78989A",
+    "inverse": "#0B232A"
+  },
+  "navigation": {
+    "selected": "#BFFFF8",
+    "unselected": "#A7BEC1",
+    "indicator": "#409EF4EA",
+    "pill": "#B0123340"
+  },
+  "progress": {
+    "fill": "#9EF4EA",
+    "buffered": "#80A2DCFF",
+    "track": "#4C6B8A90",
+    "thumb": "#F7FFFF"
+  },
+  "state": {
+    "success": "#7DE3B0",
+    "warning": "#FFD67D",
+    "error": "#FF9A9A",
+    "info": "#A0DFFF"
+  },
+  "systemBars": {
+    "statusBar": "#780C2F3B",
+    "navigationBar": "#D90C2F3B",
+    "lightIcons": true
+  }
+}

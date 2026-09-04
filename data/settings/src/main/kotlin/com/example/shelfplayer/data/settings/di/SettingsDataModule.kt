@@ -1,6 +1,7 @@
 package com.example.shelfplayer.data.settings.di
 
 import com.example.shelfplayer.core.network.gateway.PlaybackDeviceIdentity
+import com.example.shelfplayer.data.settings.BundledBackgroundThemeCatalog
 import com.example.shelfplayer.data.settings.DefaultDeviceRepository
 import com.example.shelfplayer.data.settings.DefaultDiagnosticsRepository
 import com.example.shelfplayer.data.settings.DefaultPlaybackDeviceIdentity
@@ -12,6 +13,7 @@ import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
+import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -25,6 +27,11 @@ interface SettingsDataModule {
     @Binds
     @Singleton
     fun bindsPlaybackSettingsRepository(impl: DefaultPlaybackSettingsRepository): PlaybackSettingsRepository
+
+    /** SET-002 — the bundled theme packs. `@Singleton` because it caches its one read of the assets. */
+    @Binds
+    @Singleton
+    fun bindsBackgroundThemeCatalog(impl: BundledBackgroundThemeCatalog): BackgroundThemeCatalog
 
     /**
      * PRODUCT_SPEC ROUTE-002 — the known-device list, which is a setting and so lives here.

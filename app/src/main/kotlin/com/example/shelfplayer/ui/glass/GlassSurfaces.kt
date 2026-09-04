@@ -1,21 +1,34 @@
 package com.example.shelfplayer.ui.glass
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import dev.chrisbanes.haze.HazeState
+import kotlin.math.roundToInt
 
 /**
  * PRODUCT_SPEC SET-002 — one card, frosted against the app's backdrop.
@@ -145,29 +158,34 @@ internal fun glassContentColor(): Color = MaterialTheme.colorScheme.onSurface
  * ### Why this exists at all
  *
  * Because frosted glass over a flat colour is a tinted rectangle. `GlassChrome`'s own KDoc says so about
- * the chrome, and it is more true of cards: blur a uniform surface and the result is that same uniform
- * surface. Making the cards glass without giving them something to refract would have been a change that
- * *appears to have done nothing*, which is the failure this app has hit before with `containerColor`.
+ * the chrome, and it is more true of cards, which tile the screen. Making them glass without giving them
+ * something to refract would have been a change that *appears to have done nothing*.
  *
- * So the backdrop is a gradient — a slow one, two stops, derived from the accent rather than picked. A
- * card blurring it picks up a different shade at the top of the screen than at the bottom, and that
- * difference is what reads as glass.
+ * ### The three grounds, in order of preference
  *
- * ### Except on AMOLED
+ * - **A bundled theme's artwork**, when one is chosen. Drawn over the pack's own `base` colour so a frame
+ *   that arrives before the picture has decoded arrives in the right colour rather than in white, and
+ *   under the pack's own `scrim` so text has a ground rather than a photograph.
+ * - **A gradient off the accent**, otherwise. Two slow stops, enough that a card picks up a different
+ *   shade at the top of the screen than at the bottom, which is what reads as glass.
+ * - **Flat**, on AMOLED. That theme exists so a black pixel is an unlit pixel, and a gradient lights every
+ *   one of them.
  *
- * [flat] suppresses the gradient entirely. The point of that theme is that a black pixel is an unlit
- * pixel, and a gradient lights every one of them. There the cards frost against true black, the wash is
- * the only thing separating them, and the outline in [cardGlass] is doing more work than usual — which
- * is exactly why the card wash is a switch the reader controls rather than a constant.
+ * ### The parallax
+ *
+ * The artwork is drawn [MAX_TRAVEL] taller than the window and slides up by a fraction of whatever the
+ * foreground scrolled — see [BackdropScroll] for why that quantity comes from a nested-scroll connection
+ * rather than from a list's own state. Because it is drawn taller, there is always picture under the
+ * viewport: the movement never exposes the edge it came from.
  */
 @Composable
-internal fun Modifier.appBackdrop(flat: Boolean): Modifier {
+internal fun Modifier.appBackdrop(flat: Boolean, theme: BackgroundTheme? = null): Modifier {
     val scheme = MaterialTheme.colorScheme
-    val base = scheme.surface
-    val brush = if (flat) {
-        Brush.verticalGradient(listOf(base, base))
-    } else {
-        Brush.verticalGradient(
+    val base = if (theme != null) Color(theme.ground.base) else scheme.surface
+    val brush = when {
+        theme != null -> null
+        flat -> Brush.verticalGradient(listOf(base, base))
+        else -> Brush.verticalGradient(
             listOf(
                 blend(scheme.primary, base, TOP_ACCENT_WEIGHT),
                 base,
@@ -177,8 +195,56 @@ internal fun Modifier.appBackdrop(flat: Boolean): Modifier {
     }
     return this
         .fillMaxSize()
-        .drawBehind { drawRect(brush = brush) }
+        .drawBehind { drawRect(color = base) }
+        .then(if (brush == null) Modifier else Modifier.drawBehind { drawRect(brush = brush) })
 }
+
+/**
+ * PRODUCT_SPEC SET-002 — a bundled theme's artwork, behind everything, moving slower than the content.
+ *
+ * Separate from [appBackdrop] because it draws a *composable* — an image has to be loaded, and a modifier
+ * cannot do that. The colour half stays a modifier so that a screen with no theme costs no extra node.
+ */
+@Composable
+internal fun BackdropArtwork(theme: BackgroundTheme, modifier: Modifier = Modifier) {
+    val backdrop = LocalBackdropScroll.current
+    val density = LocalDensity.current
+    val travelPx = with(density) { MAX_TRAVEL.toPx() }
+    LaunchedEffect(travelPx) { backdrop.allow(travelPx) }
+    BoxWithConstraints(modifier = modifier.fillMaxSize().clipToBounds()) {
+        AsyncImage(
+            model = "file:///android_asset/${theme.ground.asset}",
+            // Decorative: the artwork carries no information, and naming it would put "Aurora Teal" in
+            // front of every screen reader user on every screen.
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                /*
+                 * Taller than the window by exactly the travel the parallax spends.
+                 *
+                 * Without this the picture is the height of the window, and sliding it up by any amount
+                 * exposes its own bottom edge — a band of base colour that grows as you scroll, which is
+                 * the most conspicuous way a parallax can fail.
+                 */
+                .height(maxHeight + MAX_TRAVEL)
+                .offsetForParallax { -backdrop.scrolledPx * PARALLAX_FRACTION },
+        )
+        // The pack's own scrim, over the picture and under everything else. Without it the palettes'
+        // contrast promises are made against a photograph rather than against a ground.
+        Box(modifier = Modifier.fillMaxSize().drawBehind { drawRect(color = Color(theme.ground.scrim)) })
+    }
+}
+
+/**
+ * Moves a layer by a value read at **draw** time.
+ *
+ * `Modifier.offset { }` reads its lambda during layout, which is what we want here: the parallax changes
+ * on every scroll frame, and recomposing the artwork — an `AsyncImage` — that often would be absurd. The
+ * lambda form keeps the movement to a layout pass and never re-reads the image.
+ */
+private fun Modifier.offsetForParallax(offsetY: () -> Float): Modifier =
+    offset { IntOffset(x = 0, y = offsetY().roundToInt()) }
 
 /** [weight] of [of] over [onto], without pulling in a graphics `lerp` for two multiplications. */
 private fun blend(of: Color, onto: Color, weight: Float): Color = Color(
