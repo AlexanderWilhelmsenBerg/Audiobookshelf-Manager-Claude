@@ -100,3 +100,74 @@ enum class GlassTint(val key: String, private val argb: Long?) {
         fun ofKey(key: String): GlassTint = entries.firstOrNull { it.key == key } ?: Default
     }
 }
+
+/**
+ * PRODUCT_SPEC 2.10 (Appearance/accessibility) — how strongly the app's text stands off its ground.
+ *
+ * ### Why this is a contrast level and not a colour
+ *
+ * Because a colour is the bug. A transparent `Scaffold` container silently defaulted every word on the
+ * screen to black, which on the AMOLED theme is black on black, and a device reported it as *"I can't
+ * read"*. Offering *black* as a choice would put that exact state back within one tap, on purpose, with
+ * no way for the app to tell the difference between a mistake and a preference.
+ *
+ * A level cannot do that. [High] is whichever of black or white reads on the current ground, [Soft]
+ * moves towards the ground without reaching it, and [Automatic] is the scheme's own pairing. Every one
+ * of the three is legible on every theme, which is the property a colour picker cannot promise.
+ *
+ * @property contrast how far from the ground the text sits, or `null` to leave the scheme's own choice
+ *   alone. `1.0` is the furthest the ground allows — see `ShelfPlayerTheme`.
+ */
+enum class TextContrast(val key: String, val contrast: Float?) {
+    Automatic(key = "auto", contrast = null),
+    High(key = "high", contrast = 1.0f),
+
+    /**
+     * Softer than the scheme's own.
+     *
+     * For reading in the dark, where full contrast on a black ground is the thing that makes a page
+     * glare. Deliberately not far enough to be hard to read — see the note on the enum.
+     */
+    Soft(key = "soft", contrast = 0.72f),
+    ;
+
+    companion object {
+        val Default: TextContrast = Automatic
+
+        fun ofKey(key: String): TextContrast = entries.firstOrNull { it.key == key } ?: Default
+    }
+}
+
+/**
+ * PRODUCT_SPEC SET-002 (Appearance) — how far the app's frosted surfaces smear what is behind them.
+ *
+ * ### Why the stored form needs a sentinel
+ *
+ * Because zero is a legitimate choice here — *no blur, wash only* — and proto3 cannot tell a stored zero
+ * from a field nobody has written. So the same trick `sleep_timer_fade_seconds` documents: **-1 is off**
+ * and 0 means never chosen, which reads back as [DEFAULT_DP]. Without it, turning the blur off would be
+ * indistinguishable from never having touched the slider, and the next build's default would silently
+ * turn it back on.
+ *
+ * [DEFAULT_DP] is the app's long-standing global blur, kept as the default so nobody who never opens the
+ * slider sees any change at all.
+ */
+object GlassBlur {
+    /** `GlassDefaults.BlurRadius`, in dp. The one number every frosted surface used before the slider. */
+    const val DEFAULT_DP: Int = 28
+
+    /** Past this the blur costs more than it shows, and a card stops reading as being over anything. */
+    const val MAX_DP: Int = 48
+
+    private const val OFF_STORED = -1
+
+    /** The radius to draw, from what is on disk. */
+    fun ofStored(stored: Int): Int = when {
+        stored == OFF_STORED -> 0
+        stored <= 0 -> DEFAULT_DP
+        else -> stored.coerceAtMost(MAX_DP)
+    }
+
+    /** What to store for a chosen radius, so that *off* survives and *unset* stays distinguishable. */
+    fun toStored(dp: Int): Int = if (dp <= 0) OFF_STORED else dp.coerceAtMost(MAX_DP)
+}

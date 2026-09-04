@@ -1169,4 +1169,14 @@
     <string name="settings_system_tint">Tint the bars and the player</string>
     <string name="settings_system_tint_hint">The navigation bar, the top bars and the mini player. They float over your content, so a wash is what separates them from it.</string>
     <string name="settings_glass_no_blur_note">Android 12 and later blurs what is behind these surfaces. Below that there is no blur available, so the wash is drawn on its own and these switches have no effect.</string>
+    <string name="settings_section_theme">Theme</string>
+    <string name="settings_blur">Blur</string>
+    <string name="settings_blur_value">%1$d dp</string>
+    <string name="settings_blur_off">Off</string>
+    <string name="settings_blur_hint">How far the frosted surfaces smear what is behind them. One value for the whole app. At Off they keep their wash and stop blurring, which is also what Android 11 and earlier do whatever this says.</string>
+    <string name="settings_text_contrast">Text contrast</string>
+    <string name="settings_text_contrast_hint">How strongly text stands off its background. A level rather than a colour on purpose: every level stays readable on every theme, which a chosen colour cannot promise.</string>
+    <string name="settings_contrast_auto">Automatic</string>
+    <string name="settings_contrast_high">High</string>
+    <string name="settings_contrast_soft">Soft</string>
 </resources>

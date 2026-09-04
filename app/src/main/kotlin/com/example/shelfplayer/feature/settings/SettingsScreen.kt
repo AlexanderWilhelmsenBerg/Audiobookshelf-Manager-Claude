@@ -20,6 +20,9 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.pluralStringResource
@@ -79,6 +83,7 @@ import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
 import com.example.shelfplayer.ui.gesture.offscreenPage
 import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
+import com.example.shelfplayer.ui.glass.glassContentColor
 import com.example.shelfplayer.ui.glass.playerChromeClearance
 import com.example.shelfplayer.ui.glass.systemGlass
 import dev.chrisbanes.haze.HazeState
@@ -151,6 +156,8 @@ fun SettingsRoute(
             onGlassTintChanged = appearanceViewModel::onGlassTintChanged,
             onCardGlassTintChanged = appearanceViewModel::onCardGlassTintChanged,
             onSystemGlassTintChanged = appearanceViewModel::onSystemGlassTintChanged,
+            onTextContrastChanged = appearanceViewModel::onTextContrastChanged,
+            onGlassBlurChanged = appearanceViewModel::onGlassBlurChanged,
             onDynamicColorChanged = appearanceViewModel::onDynamicColorChanged,
             onLanguageChanged = appearanceViewModel::onLanguageChanged,
         ),
@@ -267,6 +274,10 @@ fun SettingsScreen(
          * with its own container, and the reason a frosted surface has to be told to stop painting.
          */
         containerColor = Color.Transparent,
+        // ...and the content colour said explicitly, because a transparent container has no
+        // pair in the scheme and Material's fallback for that is literally black. See
+        // `glassContentColor`, and the device report that found it.
+        contentColor = glassContentColor(),
         // PRODUCT_SPEC SET-002 — the title and the tabs are one frosted header, and the list runs beneath
         // it. They are in the same slot for that reason: `Scaffold` measures its top bar and reports the
         // height as `innerPadding`'s top, so the list can take exactly that as *content* padding and pass
@@ -403,6 +414,7 @@ fun SettingsScreen(
                         )
 
                         SettingsTab.Playback -> {
+                            item { TabHeading(text = stringResource(R.string.settings_tab_playback)) }
                             playbackTab(
                                 settings = uiState.playback,
                                 libraries = uiState.libraries,
@@ -419,7 +431,10 @@ fun SettingsScreen(
                             devicesSection(devices)
                         }
 
-                        SettingsTab.Server -> serverTab(uiState, serverTab)
+                        SettingsTab.Server -> {
+                            item { TabHeading(text = stringResource(R.string.settings_tab_server)) }
+                            serverTab(uiState, serverTab)
+                        }
 
                         SettingsTab.About -> aboutTab(
                             uiState = uiState,
@@ -775,11 +790,23 @@ private const val MILLIS_PER_SECOND = 1000.0
  * a whole tab for one feature, and the feature it belongs to is how playback behaves: a reader setting a
  * default speed and a reader setting a sleep timer are the same reader on the same errand.
  */
-private enum class SettingsTab(val labelRes: Int) {
-    Appearance(R.string.settings_tab_appearance),
-    Playback(R.string.settings_tab_playback),
-    Server(R.string.settings_tab_server),
-    About(R.string.settings_tab_about),
+private enum class SettingsTab(val labelRes: Int, val icon: ImageVector?) {
+    Appearance(R.string.settings_tab_appearance, Icons.Filled.Palette),
+    Playback(R.string.settings_tab_playback, Icons.Filled.Headphones),
+    Server(R.string.settings_tab_server, Icons.Filled.Dns),
+
+    /**
+     * The one tab that keeps its word.
+     *
+     * *About* is short, it is the only one of the four whose name is not also the name of a thing on the
+     * screen, and there is no icon that means "what this app is" without being guessed at. So the row is
+     * three icons and a word — deliberately, and on the owner's instruction to leave this one alone.
+     */
+    About(R.string.settings_tab_about, icon = null),
+    ;
+
+    /** Every icon still carries its name for TalkBack — see the `Tab` below. */
+    val hasIcon: Boolean get() = icon != null
 }
 
 /**

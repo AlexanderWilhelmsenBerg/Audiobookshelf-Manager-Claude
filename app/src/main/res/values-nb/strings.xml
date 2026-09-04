@@ -917,4 +917,14 @@
     <string name="settings_system_tint">Legg skj\u00e6r p\u00e5 linjene og spilleren</string>
     <string name="settings_system_tint_hint">Navigasjonslinjen, topplinjene og minispilleren. De flyter over innholdet ditt, s\u00e5 et sl\u00f8r er det som skiller dem fra det.</string>
     <string name="settings_glass_no_blur_note">Android 12 og nyere gj\u00f8r det bak disse flatene uskarpt. Under det finnes ingen uskarphet, s\u00e5 sl\u00f8ret tegnes alene og disse bryterne har ingen virkning.</string>
+    <string name="settings_section_theme">Tema</string>
+    <string name="settings_blur">Uskarphet</string>
+    <string name="settings_blur_value">%1$d dp</string>
+    <string name="settings_blur_off">Av</string>
+    <string name="settings_blur_hint">Hvor mye de frostede flatene sl\u00f8rer det som ligger bak. \u00c9n verdi for hele appen. P\u00e5 Av beholder de sl\u00f8ret og slutter \u00e5 gj\u00f8re uskarpt, som ogs\u00e5 er det Android 11 og eldre gj\u00f8r uansett hva dette st\u00e5r p\u00e5.</string>
+    <string name="settings_text_contrast">Tekstkontrast</string>
+    <string name="settings_text_contrast_hint">Hvor sterkt teksten skiller seg fra bakgrunnen. Et niv\u00e5 og ikke en farge med hensikt: hvert niv\u00e5 er lesbart p\u00e5 alle temaer, noe en valgt farge ikke kan love.</string>
+    <string name="settings_contrast_auto">Automatisk</string>
+    <string name="settings_contrast_high">H\u00f8y</string>
+    <string name="settings_contrast_soft">Myk</string>
 </resources>

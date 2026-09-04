@@ -84,6 +84,62 @@ class AppearanceTest {
         }
     }
 
+    /**
+     * **Off must survive a round trip, and must stay distinguishable from never-chosen.**
+     *
+     * The whole reason `GlassBlur` has a sentinel. A plain `0` on disk cannot be told from a field nobody
+     * wrote, so storing off as zero would read back as the default and turn the blur on again — silently,
+     * for the one reader who deliberately switched it off.
+     */
+    @Test
+    fun `blur off round-trips and is not the same as unset`() {
+        val storedOff = GlassBlur.toStored(0)
+
+        assertEquals(0, GlassBlur.ofStored(storedOff))
+        assertNotEquals(0, storedOff, "off must not be stored as a plain zero")
+        assertEquals(GlassBlur.DEFAULT_DP, GlassBlur.ofStored(0), "an unwritten field is the default")
+    }
+
+    @Test
+    fun `a chosen radius round-trips and is capped`() {
+        assertEquals(20, GlassBlur.ofStored(GlassBlur.toStored(20)))
+        assertEquals(GlassBlur.MAX_DP, GlassBlur.ofStored(GlassBlur.toStored(GlassBlur.MAX_DP + 40)))
+    }
+
+    /** A negative from a corrupt or newer write is not a radius; it must not become one. */
+    @Test
+    fun `a nonsensical stored radius reads as off or default, never negative`() {
+        listOf(-99, -2, -1).forEach { stored ->
+            assertTrue(GlassBlur.ofStored(stored) >= 0, "$stored produced a negative radius")
+        }
+    }
+
+    /**
+     * **Every contrast level is a level, and Automatic is the one that defers.**
+     *
+     * `Automatic` carries `null` because the scheme's own pairing is not a number this enum can name.
+     * Any other entry carrying null would silently mean "leave it alone" while claiming to change it.
+     */
+    @Test
+    fun `only Automatic defers to the scheme`() {
+        TextContrast.entries.forEach { level ->
+            if (level == TextContrast.Automatic) {
+                assertEquals(null, level.contrast)
+            } else {
+                val contrast = level.contrast
+                assertTrue(contrast != null, "${level.name} carries no contrast")
+                assertTrue(contrast > 0f && contrast <= 1f, "${level.name} is out of range: ${contrast.toDouble()}")
+            }
+        }
+    }
+
+    @Test
+    fun `contrast keys round-trip and an unknown one falls back`() {
+        TextContrast.entries.forEach { assertEquals(it, TextContrast.ofKey(it.key)) }
+        assertEquals(TextContrast.Default, TextContrast.ofKey("sepia"))
+        assertEquals(TextContrast.entries.size, TextContrast.entries.map { it.key }.toSet().size)
+    }
+
     /** Enough to order two tones of one hue; not a colour-science claim. */
     private fun Long.roughLuminance(): Int =
         ((this shr 16) and 0xFF).toInt() + ((this shr 8) and 0xFF).toInt() + (this and 0xFF).toInt()

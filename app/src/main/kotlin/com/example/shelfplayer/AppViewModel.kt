@@ -8,7 +8,9 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
+import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -41,6 +43,9 @@ class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileR
             glassTint = GlassTint.ofKey(stored.glassTintKey),
             cardGlassTintEnabled = !stored.cardGlassTintDisabled,
             systemGlassTintEnabled = !stored.systemGlassTintDisabled,
+            textContrast = TextContrast.ofKey(stored.textContrastKey),
+            // Through `GlassBlur.ofStored`, which is where *off* is told from *never chosen*.
+            glassBlurDp = GlassBlur.ofStored(stored.glassBlurDp),
             dynamicColor = stored.dynamicColor,
             // PRODUCT_SPEC SET-002 — read here rather than in a screen because `AppLocale` wraps the whole
             // app: the language has to be resolved before the first string is drawn, not when Settings is
@@ -84,6 +89,8 @@ data class AppUiState(
     val glassTint: GlassTint = GlassTint.Default,
     val cardGlassTintEnabled: Boolean = true,
     val systemGlassTintEnabled: Boolean = true,
+    val textContrast: TextContrast = TextContrast.Default,
+    val glassBlurDp: Int = GlassBlur.DEFAULT_DP,
     val dynamicColor: Boolean = false,
     /** PRODUCT_SPEC SET-002 — the chosen language, or [AppLanguage.System] to follow the device. */
     val language: AppLanguage = AppLanguage.System,

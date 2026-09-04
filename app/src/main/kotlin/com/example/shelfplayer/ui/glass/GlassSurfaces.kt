@@ -49,6 +49,7 @@ internal fun Modifier.cardGlass(shape: Shape = RoundedCornerShape(GlassDefaults.
             shape = shape,
             tintAlpha = if (tinted) GlassDefaults.CARD_TINT_ALPHA else 0f,
             fallbackTintAlpha = GlassDefaults.FALLBACK_TINT_ALPHA,
+            blurRadius = preferences.blurRadius,
             tintColor = preferences.tint,
         )
         .border(
@@ -113,9 +114,30 @@ internal fun Modifier.systemGlass(state: HazeState?, backgroundColor: Color, sha
         backgroundColor = backgroundColor,
         shape = shape,
         tintAlpha = if (tinted) GlassDefaults.TINT_ALPHA else 0f,
+        blurRadius = preferences.blurRadius,
         tintColor = preferences.tint,
     )
 }
+
+/**
+ * PRODUCT_SPEC 2.10 — the content colour a screen **must** pass alongside a transparent container.
+ *
+ * ### Why this exists rather than being left to default
+ *
+ * `Scaffold`'s `contentColor` defaults to `contentColorFor(containerColor)`, which looks the container up
+ * among the scheme's colour *pairs* and falls back to `LocalContentColor.current` when it finds no match.
+ * `Color.Transparent` is in no pair, and `LocalContentColor` is `compositionLocalOf { Color.Black }` —
+ * `MaterialTheme` does not provide it, only `Surface` does, and this app's root is a `Box`. So a
+ * transparent container makes **every word on the screen black**, on every theme, and black on black on
+ * AMOLED.
+ *
+ * Reported from a device: *"Now I can't read since the text is black, and on the black theme is black on
+ * black."* It is invisible from the code — the container is transparent for a good reason, the change
+ * reads as being about a background, and nothing in it mentions text. `GlassContentColorScreenTest` pins
+ * both halves: that this is `onSurface`, and that the default really is black.
+ */
+@Composable
+internal fun glassContentColor(): Color = MaterialTheme.colorScheme.onSurface
 
 /**
  * PRODUCT_SPEC SET-002 — the ground the whole app is drawn on, and the thing its glass refracts.

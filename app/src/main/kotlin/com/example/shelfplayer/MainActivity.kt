@@ -102,6 +102,7 @@ class MainActivity : ComponentActivity() {
                     dynamicColor = appState.dynamicColor,
                     pureBlack = theme.prefersFlatBackdrop,
                     accent = Color(appState.accent.argbFor(isDark)),
+                    textContrast = appState.textContrast.contrast,
                 ) {
                     // The graph is not composed until the start destination is known. Composing it early
                     // and correcting it would show a flash of the wrong screen on every cold start, and
@@ -127,6 +128,7 @@ class MainActivity : ComponentActivity() {
                                     tint = Color(appState.glassTint.argbOr(appState.accent.argbFor(isDark))),
                                     cardTintEnabled = appState.cardGlassTintEnabled,
                                     systemTintEnabled = appState.systemGlassTintEnabled,
+                                    blurRadius = appState.glassBlurDp.dp,
                                 ),
                                 flatBackdrop = theme.prefersFlatBackdrop,
                             )

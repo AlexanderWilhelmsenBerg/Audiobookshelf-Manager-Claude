@@ -67,6 +67,10 @@ private val ShelfDarkColors = darkColorScheme(
  *   the shipped one. A `Color` rather than a domain enum on purpose: this module knows how to draw a
  *   palette and deliberately does not know what a stored preference is, so `core:model` stays out of its
  *   dependencies and the theme can be previewed with any colour at all.
+ * @param textContrast how far the text sits from its ground — `1.0` for the furthest the ground allows,
+ *   less to soften it, `null` to leave the scheme's own pairing alone. A `Float` for the same reason
+ *   [accent] is a `Color`. Applied **last**, after [pureBlack], because it is measured against the
+ *   ground the theme finally settled on and not the one the palette started with.
  */
 @Composable
 fun ShelfPlayerTheme(
@@ -74,6 +78,7 @@ fun ShelfPlayerTheme(
     dynamicColor: Boolean = false,
     pureBlack: Boolean = false,
     accent: Color? = null,
+    textContrast: Float? = null,
     content: @Composable () -> Unit,
 ) {
     val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -89,10 +94,32 @@ fun ShelfPlayerTheme(
     // because it is the more specific request — "use my wallpaper" rather than "use this hue".
     val accented = if (accent != null && !(dynamicColor && supportsDynamicColor)) base.withAccent(accent) else base
 
+    val grounded = if (pureBlack) accented.asPureBlack() else accented
+
     MaterialTheme(
-        colorScheme = if (pureBlack) accented.asPureBlack() else accented,
+        colorScheme = if (textContrast == null) grounded else grounded.withTextContrast(textContrast),
         typography = ShelfPlayerTypography,
         content = content,
+    )
+}
+
+/**
+ * The text roles, moved a chosen distance from the ground they are read against.
+ *
+ * `contrastOn(surface)` is the far end — whichever of black or white the ground can carry — so a fraction
+ * of the way there is legible on every theme by construction. That is the property a colour choice could
+ * not have promised, and the reason `TextContrast` is a level.
+ *
+ * `onSurfaceVariant` keeps its subordinate role by taking a fraction of the same distance rather than a
+ * colour of its own: a hint that matched the body text would stop being a hint.
+ */
+private fun ColorScheme.withTextContrast(contrast: Float): ColorScheme {
+    val far = contrastOn(surface)
+    val body = lerp(surface, far, contrast.coerceIn(0f, 1f))
+    return copy(
+        onSurface = body,
+        onBackground = body,
+        onSurfaceVariant = lerp(surface, far, (contrast * VARIANT_CONTRAST).coerceIn(0f, 1f)),
     )
 }
 
@@ -171,3 +198,11 @@ private const val CONTAINER_BLEND = 0.78f
  * the surrounding surface is also light.
  */
 private const val LUMINANCE_MIDPOINT = 0.5f
+
+/**
+ * How much of the body text's contrast a hint keeps.
+ *
+ * Below the body text so the hierarchy survives, and not much below: these are the sentences explaining
+ * what a setting does, and a hint nobody can read is a hint that may as well not be written.
+ */
+private const val VARIANT_CONTRAST = 0.78f

@@ -22,8 +22,10 @@ import com.example.shelfplayer.core.model.playback.StartupMode
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.ProfilePreferences
+import com.example.shelfplayer.core.model.settings.TextContrast
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -222,6 +224,23 @@ class AppSettingsDataSource @Inject constructor(
 
     suspend fun setSystemGlassTintEnabled(enabled: Boolean) {
         dataStore.updateData { current -> current.toBuilder().setSystemGlassTintDisabled(!enabled).build() }
+    }
+
+    /** PRODUCT_SPEC 2.10 — how strongly text stands off its ground. See `TextContrast` for why it is a level. */
+    suspend fun setTextContrast(contrast: TextContrast) {
+        dataStore.updateData { current -> current.toBuilder().setTextContrastKey(contrast.key).build() }
+    }
+
+    /**
+     * PRODUCT_SPEC SET-002 — the app-wide blur radius, in dp.
+     *
+     * Written through `GlassBlur.toStored`, which is where the *off*-versus-unset sentinel lives. Passing
+     * the raw dp would store a plain `0` for off, and the next reader could not tell that from a device
+     * that has never opened the slider.
+     */
+    suspend fun setGlassBlurDp(dp: Int) {
+        val stored = GlassBlur.toStored(dp)
+        dataStore.updateData { current -> current.toBuilder().setGlassBlurDp(stored).build() }
     }
 
     /**

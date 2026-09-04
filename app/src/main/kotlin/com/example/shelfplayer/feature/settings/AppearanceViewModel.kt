@@ -7,7 +7,9 @@ import com.example.shelfplayer.core.datastore.ThemeMode
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
+import com.example.shelfplayer.core.model.settings.TextContrast
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -57,6 +59,9 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
                 glassTint = GlassTint.ofKey(stored.glassTintKey),
                 cardGlassTintEnabled = !stored.cardGlassTintDisabled,
                 systemGlassTintEnabled = !stored.systemGlassTintDisabled,
+                textContrast = TextContrast.ofKey(stored.textContrastKey),
+                // Through `GlassBlur.ofStored`, which is where *off* is told from *never chosen*.
+                glassBlurDp = GlassBlur.ofStored(stored.glassBlurDp),
                 dynamicColor = stored.dynamicColor,
                 language = AppLanguage.ofTag(stored.appLanguageTag),
             )
@@ -86,6 +91,14 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
 
     fun onSystemGlassTintChanged(enabled: Boolean) {
         viewModelScope.launch { settings.setSystemGlassTintEnabled(enabled) }
+    }
+
+    fun onTextContrastChanged(contrast: TextContrast) {
+        viewModelScope.launch { settings.setTextContrast(contrast) }
+    }
+
+    fun onGlassBlurChanged(dp: Int) {
+        viewModelScope.launch { settings.setGlassBlurDp(dp) }
     }
 
     fun onDynamicColorChanged(enabled: Boolean) {
@@ -122,6 +135,8 @@ data class AppearanceUiState(
     val glassTint: GlassTint = GlassTint.Default,
     val cardGlassTintEnabled: Boolean = true,
     val systemGlassTintEnabled: Boolean = true,
+    val textContrast: TextContrast = TextContrast.Default,
+    val glassBlurDp: Int = GlassBlur.DEFAULT_DP,
     val dynamicColor: Boolean = false,
     val language: AppLanguage = AppLanguage.System,
     val isDark: Boolean = false,

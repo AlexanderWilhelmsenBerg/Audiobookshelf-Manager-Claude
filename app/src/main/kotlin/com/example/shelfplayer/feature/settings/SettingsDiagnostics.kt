@@ -219,6 +219,27 @@ private fun ValueRow(labelRes: Int, value: Int, modifier: Modifier = Modifier, h
     }
 }
 
+/**
+ * A tab's own name, at the top of the tab.
+ *
+ * Exists because three of the four tabs are labelled by an icon in the row above — *Appearance* is a long
+ * word and four long words left no tab wide enough to read one. An icon is a fine target and a poor
+ * title, so the word moves here, where there is room for it. About keeps its text label and needs no
+ * heading, which is why this is a composable a tab opts into rather than something the screen draws for
+ * every page.
+ *
+ * `headlineSmall`, a step above [SectionHeader], so the page has one title and then its sections rather
+ * than two competing rows of the same weight.
+ */
+@Composable
+internal fun TabHeading(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.headlineSmall,
+        modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+    )
+}
+
 @Composable
 internal fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(

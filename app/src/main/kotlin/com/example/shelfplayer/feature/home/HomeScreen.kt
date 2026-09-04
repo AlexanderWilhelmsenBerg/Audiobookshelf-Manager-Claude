@@ -120,6 +120,7 @@ import com.example.shelfplayer.feature.browse.SeriesCard
 import com.example.shelfplayer.ui.gesture.offscreenPage
 import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
+import com.example.shelfplayer.ui.glass.glassContentColor
 import com.example.shelfplayer.ui.glass.systemGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -251,6 +252,10 @@ fun HomeScreen(
          * with its own container, and the reason a frosted surface has to be told to stop painting.
          */
         containerColor = Color.Transparent,
+        // ...and the content colour said explicitly, because a transparent container has no
+        // pair in the scheme and Material's fallback for that is literally black. See
+        // `glassContentColor`, and the device report that found it.
+        contentColor = glassContentColor(),
         snackbarHost = { SnackbarHost(snackbars) },
         // PRODUCT_SPEC LIB-002 — frosted, like the capsule at the other end of the screen, and sharing its
         // blur source. Both are siblings of the body in the `Scaffold`, so both may read a state whose

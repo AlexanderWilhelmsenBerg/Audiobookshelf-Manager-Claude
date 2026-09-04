@@ -1,6 +1,7 @@
 package com.example.shelfplayer.feature.settings
 
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasScrollAction
@@ -10,10 +11,13 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
+import com.example.shelfplayer.core.model.settings.TextContrast
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -142,6 +146,61 @@ class AppearanceSettingsScreenTest {
         scrollTo("Tint the bars and the player")
         composeRule.onNodeWithText("Tint the bars and the player").performClick()
         assertEquals(false, system)
+    }
+
+    /**
+     * The slider the owner asked for, and the sentinel underneath it.
+     *
+     * Zero dp is a real choice — *wash only* — which is why `GlassBlur` stores it as -1: proto3 cannot
+     * tell a stored zero from a field nobody wrote, so a plain zero would read back as the default and
+     * silently turn the blur on again. The label has to say *Off* rather than "0 dp" for the same reason
+     * it is a choice at all.
+     */
+    @Test
+    fun `the blur slider reports a radius and says when it is off`() {
+        var dp: Int? = null
+        render(
+            state = AppearanceUiState(glassBlurDp = 0),
+            actions = AppearanceActions(onGlassBlurChanged = { dp = it }),
+        )
+
+        scrollTo("Blur")
+        composeRule.onNodeWithText("Off").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Blur").performSemanticsAction(SemanticsActions.SetProgress) {
+            it(GlassBlur.MAX_DP.toFloat())
+        }
+        assertEquals(GlassBlur.MAX_DP, dp)
+    }
+
+    /** The radius, shown, so the slider is not a mystery gesture. */
+    @Test
+    fun `a chosen radius is shown in dp`() {
+        render(state = AppearanceUiState(glassBlurDp = GlassBlur.DEFAULT_DP))
+
+        scrollTo("Blur")
+        composeRule.onNodeWithText("${GlassBlur.DEFAULT_DP} dp").assertIsDisplayed()
+    }
+
+    /**
+     * **The text contrast, which exists because of a bug and is deliberately not a colour picker.**
+     *
+     * A transparent `Scaffold` container had defaulted every word on the screen to black, which on the
+     * AMOLED theme is black on black. Offering *black* as a choice would put that state back within one
+     * tap; a level cannot, because every level is measured from the ground it is read against. See
+     * `TextContrast` and `GlassContentColorScreenTest`.
+     */
+    @Test
+    fun `text contrast is offered as levels and reports the chosen one`() {
+        var chosen: TextContrast? = null
+        render(actions = AppearanceActions(onTextContrastChanged = { chosen = it }))
+
+        scrollTo("Text contrast")
+        composeRule.onNodeWithText("Automatic").assertIsDisplayed()
+        composeRule.onNodeWithText("Soft").assertIsDisplayed()
+        composeRule.onNodeWithText("High").performClick()
+
+        assertEquals(TextContrast.High, chosen)
     }
 
     @Test

@@ -38,12 +38,17 @@ internal val LocalPlayerChromeBottomInset = staticCompositionLocalOf { 0.dp }
  *   accent, which is why this carries a `Color` and not the enum.
  * @property cardTintEnabled whether cards get a wash at all. See `AppSettingsDataSource.setCardGlassTintEnabled`
  *   for why this is a separate answer from [systemTintEnabled].
+ * @property blurRadius how far the backdrop is smeared, app-wide. One value for every frosted surface
+ *   rather than one per surface: "the app's glass" stays one decision, which is the whole premise of
+ *   [GlassDefaults] — the slider moves that decision, it does not fragment it. Zero is a real choice and
+ *   means *wash only*.
  */
 @Immutable
 internal data class GlassPreferences(
     val tint: Color = Color.White,
     val cardTintEnabled: Boolean = true,
     val systemTintEnabled: Boolean = true,
+    val blurRadius: Dp = GlassDefaults.BlurRadius,
 )
 
 internal val LocalGlassPreferences = staticCompositionLocalOf { GlassPreferences() }

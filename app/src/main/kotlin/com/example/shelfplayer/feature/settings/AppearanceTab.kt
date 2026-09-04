@@ -27,8 +27,11 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
+import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.ui.glass.GlassCard
+import kotlin.math.roundToInt
 
 /**
  * PRODUCT_SPEC SET-002 (Appearance/accessibility) — the tab that owns how the app looks.
@@ -47,6 +50,10 @@ import com.example.shelfplayer.ui.glass.GlassCard
  * the two switches inside it.
  */
 internal fun LazyListScope.appearanceTab(state: AppearanceUiState, actions: AppearanceActions) {
+    // The tab's own name, on the tab. Its label in the row above is an icon now — *Appearance* is a long
+    // word and four of them left no tab wide enough to read — so without this the screen would be the
+    // only one in the app that never says what it is.
+    item { TabHeading(text = stringResource(R.string.settings_section_appearance)) }
     themeGroup(state, actions)
     colourGroup(state, actions)
     glassGroup(state, actions)
@@ -55,7 +62,7 @@ internal fun LazyListScope.appearanceTab(state: AppearanceUiState, actions: Appe
 
 /** The look itself, plus the note AMOLED carries because it does more than darken. */
 private fun LazyListScope.themeGroup(state: AppearanceUiState, actions: AppearanceActions) {
-    item { SectionHeader(text = stringResource(R.string.settings_section_appearance)) }
+    item { SectionHeader(text = stringResource(R.string.settings_section_theme)) }
     item {
         SettingsGroup {
             ChoiceRow(
@@ -99,6 +106,15 @@ private fun LazyListScope.colourGroup(state: AppearanceUiState, actions: Appeara
             )
             Hint(text = stringResource(R.string.settings_tint_colour_hint))
 
+            SubHeader(text = stringResource(R.string.settings_text_contrast))
+            ChoiceRow(
+                options = TextContrast.entries,
+                selected = state.textContrast,
+                label = { contrast -> stringResource(contrast.labelRes()) },
+                onSelected = actions.onTextContrastChanged,
+            )
+            Hint(text = stringResource(R.string.settings_text_contrast_hint))
+
             SwitchRow(
                 label = stringResource(R.string.settings_dynamic_color),
                 checked = state.dynamicColor,
@@ -114,6 +130,20 @@ private fun LazyListScope.glassGroup(state: AppearanceUiState, actions: Appearan
     item { SectionHeader(text = stringResource(R.string.settings_section_glass)) }
     item {
         SettingsGroup {
+            SliderRow(
+                label = stringResource(R.string.settings_blur),
+                valueLabel = if (state.glassBlurDp <= 0) {
+                    stringResource(R.string.settings_blur_off)
+                } else {
+                    stringResource(R.string.settings_blur_value, state.glassBlurDp)
+                },
+                value = state.glassBlurDp.toFloat(),
+                range = 0f..GlassBlur.MAX_DP.toFloat(),
+                // The count *between* the ends, so whole dp across 0..MAX is one less than the span.
+                steps = GlassBlur.MAX_DP - 1,
+                onValueChange = { dp -> actions.onGlassBlurChanged(dp.roundToInt()) },
+            )
+            Hint(text = stringResource(R.string.settings_blur_hint))
             SwitchRow(
                 label = stringResource(R.string.settings_card_tint),
                 checked = state.cardGlassTintEnabled,
@@ -234,6 +264,12 @@ private fun AccentColor.labelRes(): Int = when (this) {
     AccentColor.Ember -> R.string.settings_accent_ember
     AccentColor.Moss -> R.string.settings_accent_moss
     AccentColor.Slate -> R.string.settings_accent_slate
+}
+
+private fun TextContrast.labelRes(): Int = when (this) {
+    TextContrast.Automatic -> R.string.settings_contrast_auto
+    TextContrast.High -> R.string.settings_contrast_high
+    TextContrast.Soft -> R.string.settings_contrast_soft
 }
 
 private fun GlassTint.labelRes(): Int = when (this) {
