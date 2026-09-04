@@ -118,7 +118,7 @@ import com.example.shelfplayer.feature.browse.SeriesCard
 import com.example.shelfplayer.ui.gesture.offscreenPage
 import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
-import com.example.shelfplayer.ui.glass.frostedGlass
+import com.example.shelfplayer.ui.glass.systemGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.flow.filter
@@ -240,6 +240,15 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .captureHomeAxisBarMotion(axisBarMotion),
+        /*
+         * PRODUCT_SPEC SET-002 — transparent so the app's backdrop shows through.
+         *
+         * `Scaffold` paints its container over everything beneath it, so the gradient drawn behind the
+         * navigation graph would be covered here and the glass cards would be frosting an opaque surface
+         * — a blur of one flat colour, which is that same flat colour. The same trap `TopAppBar` sets
+         * with its own container, and the reason a frosted surface has to be told to stop painting.
+         */
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             TopAppBar(
@@ -707,7 +716,7 @@ private fun HomeAxisBar(
             // capsule that refused to grow would clip the label it just moved to make room for.
             .heightIn(min = AXIS_BAR_HEIGHT)
             .clip(CircleShape)
-            .frostedGlass(
+            .systemGlass(
                 state = haze,
                 backgroundColor = MaterialTheme.colorScheme.surface,
                 shape = CircleShape,

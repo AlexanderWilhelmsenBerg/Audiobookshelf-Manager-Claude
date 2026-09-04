@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.ThemeMode
+import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
+import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.GlassTint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +45,18 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
     val state: StateFlow<AppearanceUiState> = settings.settings
         .map { stored ->
             AppearanceUiState(
-                themeMode = stored.themeMode,
+                // The key when there is one, and the older brightness when there is not — the same
+                // reconciliation `AppUiState.resolveTheme` makes, and for the same reason: a reader who
+                // chose Dark before this tab existed must not be moved to *follow the system* by an update.
+                theme = if (stored.appThemeKey.isNotEmpty()) {
+                    AppTheme.ofKey(stored.appThemeKey)
+                } else {
+                    stored.themeMode.asAppTheme()
+                },
+                accent = AccentColor.ofKey(stored.accentColorKey),
+                glassTint = GlassTint.ofKey(stored.glassTintKey),
+                cardGlassTintEnabled = !stored.cardGlassTintDisabled,
+                systemGlassTintEnabled = !stored.systemGlassTintDisabled,
                 dynamicColor = stored.dynamicColor,
                 language = AppLanguage.ofTag(stored.appLanguageTag),
             )
@@ -54,8 +68,24 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
             initialValue = AppearanceUiState(),
         )
 
-    fun onThemeModeChanged(mode: ThemeMode) {
-        viewModelScope.launch { settings.setThemeMode(mode) }
+    fun onThemeChanged(theme: AppTheme) {
+        viewModelScope.launch { settings.setAppTheme(theme) }
+    }
+
+    fun onAccentChanged(accent: AccentColor) {
+        viewModelScope.launch { settings.setAccentColor(accent) }
+    }
+
+    fun onGlassTintChanged(tint: GlassTint) {
+        viewModelScope.launch { settings.setGlassTint(tint) }
+    }
+
+    fun onCardGlassTintChanged(enabled: Boolean) {
+        viewModelScope.launch { settings.setCardGlassTintEnabled(enabled) }
+    }
+
+    fun onSystemGlassTintChanged(enabled: Boolean) {
+        viewModelScope.launch { settings.setSystemGlassTintEnabled(enabled) }
     }
 
     fun onDynamicColorChanged(enabled: Boolean) {
@@ -80,12 +110,35 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
 }
 
 /**
- * @property themeMode `THEME_MODE_UNSPECIFIED` is proto3's zero value, which a device that has never
- *   written the setting reads. It means the same as [ThemeMode.THEME_MODE_SYSTEM] and is resolved by
- *   `AppUiState.resolveDarkTheme`, which is the one place that decision is made.
+ * PRODUCT_SPEC SET-002 — everything the Appearance tab draws and writes.
+ *
+ * @property isDark which ground the swatches should preview themselves against. [AppTheme.System] cannot
+ *   answer it — only the device can — so the screen supplies the answer and this carries the default that
+ *   matches the shipped palette. See `appearanceTab`.
  */
 data class AppearanceUiState(
-    val themeMode: ThemeMode = ThemeMode.THEME_MODE_SYSTEM,
+    val theme: AppTheme = AppTheme.Default,
+    val accent: AccentColor = AccentColor.Default,
+    val glassTint: GlassTint = GlassTint.Default,
+    val cardGlassTintEnabled: Boolean = true,
+    val systemGlassTintEnabled: Boolean = true,
     val dynamicColor: Boolean = false,
     val language: AppLanguage = AppLanguage.System,
+    val isDark: Boolean = false,
 )
+
+/**
+ * The older stored brightness, as a theme.
+ *
+ * Every value that is not explicitly light or dark means *follow the system*, and they are listed rather
+ * than collapsed into an `else` so that a value added to the proto has to be considered here.
+ * `UNRECOGNIZED` is what protobuf gives a value written by a newer build.
+ */
+private fun ThemeMode.asAppTheme(): AppTheme = when (this) {
+    ThemeMode.THEME_MODE_LIGHT -> AppTheme.Light
+    ThemeMode.THEME_MODE_DARK -> AppTheme.Dark
+    ThemeMode.THEME_MODE_SYSTEM,
+    ThemeMode.THEME_MODE_UNSPECIFIED,
+    ThemeMode.UNRECOGNIZED,
+    -> AppTheme.System
+}

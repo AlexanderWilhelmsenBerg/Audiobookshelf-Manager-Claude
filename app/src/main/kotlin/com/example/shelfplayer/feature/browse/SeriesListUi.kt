@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,6 +29,7 @@ import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.domain.library.BookGroup
 import com.example.shelfplayer.domain.library.BookGroupKind
 import com.example.shelfplayer.domain.library.SeriesShelf
+import com.example.shelfplayer.ui.glass.GlassCard
 
 /**
  * PRODUCT_SPEC LIB-003 / TC-16 — one row per series, opening into its ordered books.
@@ -53,7 +53,7 @@ internal fun SeriesCard(shelf: SeriesShelf, onClick: () -> Unit, modifier: Modif
 
         else -> count
     }
-    Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+    GlassCard(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.heightIn(min = SERIES_CARD_HEIGHT),
             verticalAlignment = Alignment.CenterVertically,
@@ -111,7 +111,7 @@ internal fun GroupCard(
     // A Card's own click target must not wrap the edit button. On physical hardware the parent Card
     // consumed taps in that nested target and opened the genre instead of editing it. These are sibling
     // actions now: the artwork/details region opens the group and the trailing button only edits it.
-    Card(modifier = modifier.fillMaxWidth()) {
+    GlassCard(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.heightIn(min = GROUP_CARD_HEIGHT),
             verticalAlignment = Alignment.CenterVertically,

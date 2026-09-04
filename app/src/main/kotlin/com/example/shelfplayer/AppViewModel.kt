@@ -5,7 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.ThemeMode
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
+import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +33,14 @@ class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileR
     ) { stored, profiles, servers ->
         AppUiState(
             themeMode = stored.themeMode,
+            // PRODUCT_SPEC SET-002 (Appearance) — the richer answer, read alongside the older one rather
+            // than instead of it: `appTheme` is empty for every install that predates the setting, and
+            // `themeMode` is what those devices have. `resolveTheme` is where the two are reconciled.
+            appThemeKey = stored.appThemeKey,
+            accent = AccentColor.ofKey(stored.accentColorKey),
+            glassTint = GlassTint.ofKey(stored.glassTintKey),
+            cardGlassTintEnabled = !stored.cardGlassTintDisabled,
+            systemGlassTintEnabled = !stored.systemGlassTintDisabled,
             dynamicColor = stored.dynamicColor,
             // PRODUCT_SPEC SET-002 — read here rather than in a screen because `AppLocale` wraps the whole
             // app: the language has to be resolved before the first string is drawn, not when Settings is
@@ -67,6 +78,12 @@ class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileR
  */
 data class AppUiState(
     val themeMode: ThemeMode = ThemeMode.THEME_MODE_SYSTEM,
+    /** PRODUCT_SPEC SET-002 — an `AppTheme.key`, or empty on a device that has never chosen one. */
+    val appThemeKey: String = "",
+    val accent: AccentColor = AccentColor.Default,
+    val glassTint: GlassTint = GlassTint.Default,
+    val cardGlassTintEnabled: Boolean = true,
+    val systemGlassTintEnabled: Boolean = true,
     val dynamicColor: Boolean = false,
     /** PRODUCT_SPEC SET-002 — the chosen language, or [AppLanguage.System] to follow the device. */
     val language: AppLanguage = AppLanguage.System,
@@ -79,12 +96,26 @@ data class AppUiState(
      * `THEME_MODE_UNSPECIFIED` is the protobuf zero value, which a device that has never written a
      * setting will read. It is treated as "follow the system", the product default.
      */
-    fun resolveDarkTheme(systemInDarkTheme: Boolean): Boolean = when (themeMode) {
-        ThemeMode.THEME_MODE_DARK -> true
-        ThemeMode.THEME_MODE_LIGHT -> false
-        ThemeMode.THEME_MODE_SYSTEM,
-        ThemeMode.THEME_MODE_UNSPECIFIED,
-        ThemeMode.UNRECOGNIZED,
-        -> systemInDarkTheme
+    fun resolveDarkTheme(systemInDarkTheme: Boolean): Boolean = resolveTheme().isDark ?: systemInDarkTheme
+
+    /**
+     * PRODUCT_SPEC SET-002 — the theme, from whichever of the two stored answers is present.
+     *
+     * [appThemeKey] wins when it is set, and it is empty exactly for installs that predate it — those fall
+     * back to [themeMode], which every build has always written. The fallback is not a nicety: without it
+     * a reader who had chosen Dark before this version would be silently moved to *follow the system* on
+     * the update, and would find the app light in the morning.
+     */
+    fun resolveTheme(): AppTheme = if (appThemeKey.isNotEmpty()) {
+        AppTheme.ofKey(appThemeKey)
+    } else {
+        when (themeMode) {
+            ThemeMode.THEME_MODE_DARK -> AppTheme.Dark
+            ThemeMode.THEME_MODE_LIGHT -> AppTheme.Light
+            ThemeMode.THEME_MODE_SYSTEM,
+            ThemeMode.THEME_MODE_UNSPECIFIED,
+            ThemeMode.UNRECOGNIZED,
+            -> AppTheme.System
+        }
     }
 }

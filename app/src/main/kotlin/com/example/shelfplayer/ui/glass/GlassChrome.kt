@@ -1,6 +1,7 @@
 package com.example.shelfplayer.ui.glass
 
 import androidx.compose.foundation.background
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,6 +28,40 @@ internal val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
 internal val LocalPlayerChromeBottomInset = staticCompositionLocalOf { 0.dp }
 
 /**
+ * PRODUCT_SPEC SET-002 (Appearance) — what the reader has chosen about the app's glass.
+ *
+ * Provided once, at the root, for the same reason the cover URLs are: every frosted surface in the app
+ * needs the same answer, and a surface that read it from its own screen's state would be a surface that
+ * could disagree with the one above it.
+ *
+ * @property tint the colour of the wash. Resolved from `GlassTint` — including the entry that follows the
+ *   accent, which is why this carries a `Color` and not the enum.
+ * @property cardTintEnabled whether cards get a wash at all. See `AppSettingsDataSource.setCardGlassTintEnabled`
+ *   for why this is a separate answer from [systemTintEnabled].
+ */
+@Immutable
+internal data class GlassPreferences(
+    val tint: Color = Color.White,
+    val cardTintEnabled: Boolean = true,
+    val systemTintEnabled: Boolean = true,
+)
+
+internal val LocalGlassPreferences = staticCompositionLocalOf { GlassPreferences() }
+
+/**
+ * The source a **card** blurs, which is the app's backdrop and never the list the card is in.
+ *
+ * A card is content. The haze state Home already owns has that content as its source, so a card using it
+ * would be an effect asked to blur itself — the trap `LocalGlassHazeState` documents, and the reason the
+ * capsule was once invisible. What is genuinely behind a card is the backdrop drawn beneath the whole
+ * screen, and that is what this carries.
+ *
+ * `null` on a screen that provides no backdrop, which is every screen this change did not touch. A card
+ * there falls back to a plain surface — see [cardGlass].
+ */
+internal val LocalCardHazeState = staticCompositionLocalOf<HazeState?> { null }
+
+/**
  * One recipe, one set of numbers, for every frosted surface in the app.
  *
  * These were the mini player's values; the navigation capsule carried its own near-copies until they
@@ -50,6 +85,23 @@ internal object GlassDefaults {
 
     /** A little grain, so a large flat blur does not band on a gradient. */
     const val NOISE_FACTOR: Float = 0.07f
+
+    /**
+     * The wash over a **card**, which is lighter than the chrome's on purpose.
+     *
+     * Chrome is one band floating over everything and has to separate itself from all of it. Cards are
+     * many, they tile most of the screen, and [TINT_ALPHA] applied to each of them stacks into a screen
+     * that is mostly wash — the shelf stops reading as content on a backdrop and starts reading as a
+     * frosted pane with text on it. Its own constant rather than a scaled [TINT_ALPHA] because the two
+     * are answering different questions and would drift apart the first time either was tuned.
+     */
+    const val CARD_TINT_ALPHA: Float = 0.10f
+
+    /** A card with no wash at all still needs an edge. See [cardGlass]. */
+    const val CARD_OUTLINE_ALPHA: Float = 0.22f
+
+    /** How round a glass card is. Matches Material 3's medium shape, which is what `Card` used before. */
+    val CardCornerRadius: Dp = 12.dp
 }
 
 /**
@@ -83,17 +135,22 @@ internal fun Modifier.frostedGlass(
     fallbackTintAlpha: Float = GlassDefaults.FALLBACK_TINT_ALPHA,
     blurRadius: Dp = GlassDefaults.BlurRadius,
     noiseFactor: Float = GlassDefaults.NOISE_FACTOR,
+    /**
+     * What the wash is made of. White is what every frosted surface used before the reader could choose,
+     * and is still the default — see `GlassTint`.
+     */
+    tintColor: Color = Color.White,
 ): Modifier = if (state == null) {
-    background(color = Color.White.copy(alpha = fallbackTintAlpha), shape = shape)
+    background(color = tintColor.copy(alpha = fallbackTintAlpha), shape = shape)
 } else {
     hazeEffect(
         state = state,
         style = HazeStyle(
             backgroundColor = backgroundColor,
-            tint = HazeTint(Color.White.copy(alpha = tintAlpha)),
+            tint = HazeTint(tintColor.copy(alpha = tintAlpha)),
             blurRadius = blurRadius,
             noiseFactor = noiseFactor,
-            fallbackTint = HazeTint(Color.White.copy(alpha = fallbackTintAlpha)),
+            fallbackTint = HazeTint(tintColor.copy(alpha = fallbackTintAlpha)),
         ),
     )
 }
