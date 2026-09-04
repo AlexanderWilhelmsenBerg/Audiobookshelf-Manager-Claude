@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -20,6 +21,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
@@ -41,6 +43,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * PRODUCT_SPEC 17.1 (UI tests: offline home, TalkBack semantics) — the shelf, rendered.
@@ -614,6 +617,53 @@ class HomeScreenTest {
         compose.onNodeWithContentDescription("Settings").assertExists()
         compose.onNodeWithContentDescription("Refresh").assertExists()
         compose.onNodeWithTag(HOME_MARK_TEST_TAG).assertDoesNotExist()
+    }
+
+    // ------------------------------------------- PRODUCT_SPEC LIB-002, the frosted header
+
+    /**
+     * **The shelf runs the full window, and the header's height reaches it as content padding.**
+     *
+     * Which is the whole of the frosted bar working. A blur samples what is drawn behind it, so if the
+     * list stops below the bar there is nothing there to refract and the feature draws a frosted surface
+     * over empty background. That is what a `Spacer` the height of the bar, as the first child of the
+     * body's `Column`, produced: the shelf began 160dp down a 740dp window, exactly where it had before
+     * the bar was frosted.
+     *
+     * Two assertions, and they are different things. The list's **bounds** reach the top of the window —
+     * so a card scrolling out has somewhere to go, under the glass. Its **first card** starts below the
+     * header — so nothing is hidden when the list is at rest. Content padding is what gives both at once;
+     * layout padding gives only the second.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h740dp")
+    fun `the shelf keeps the whole window and starts below the header`() {
+        compose.setContent { HomeScreen(uiState = state(), actions = noActions()) }
+
+        val list = compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).getBoundsInRoot()
+        val card = compose.onNodeWithText("The Salt Harbour", useUnmergedTree = true).getBoundsInRoot()
+
+        assertEquals(0.dp, list.top, "the list stops short of the top, so the glass has nothing to refract")
+        assertTrue(card.top > list.top, "the first card is at the very top and would sit under the header")
+    }
+
+    /**
+     * And the pinned controls are in the header, not in the list.
+     *
+     * They moved there so the list underneath could keep the window, and the move has to leave them
+     * *pinned*: a filter that emptied the shelf would otherwise hide the only control that clears it. The
+     * assertion is that they are above the list's first card rather than scrolling with it — a chip row
+     * inside the list would be an item like any other.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h740dp")
+    fun `the filter chips are part of the header rather than the list`() {
+        compose.setContent { HomeScreen(uiState = state(), actions = noActions()) }
+
+        val chips = compose.onNodeWithText("Last played").getBoundsInRoot()
+        val card = compose.onNodeWithText("The Salt Harbour", useUnmergedTree = true).getBoundsInRoot()
+
+        assertTrue(chips.bottom <= card.top, "the chips are ${chips.bottom} and the first card ${card.top}")
     }
 
     /**

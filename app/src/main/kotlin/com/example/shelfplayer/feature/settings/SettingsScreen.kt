@@ -3,6 +3,8 @@ package com.example.shelfplayer.feature.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -32,18 +34,22 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -71,7 +77,10 @@ import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
 import com.example.shelfplayer.ui.gesture.offscreenPage
 import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
+import com.example.shelfplayer.ui.glass.frostedGlass
 import com.example.shelfplayer.ui.glass.playerChromeClearance
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -230,26 +239,81 @@ fun SettingsScreen(
     // PRODUCT_SPEC 14.4 — the debug console, alongside the event log for the same reason it is on this tab:
     // both exist to be *reported*, and the console is the log plus everything around it.
     var isDebugConsoleOpen by rememberSaveable { mutableStateOf(false) }
+    // The header's own blur source, and it must be *this* one rather than the app-wide state the mini
+    // player uses. A haze effect that is a descendant of its own source draws nothing, and the header is
+    // inside the navigation graph the app-wide source covers — the trap that made the navigation capsule
+    // invisible when it was first built.
+    val headerHaze = remember { HazeState() }
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        // PRODUCT_SPEC SET-002 — the title and the tabs are one frosted header, and the list runs beneath
+        // it. They are in the same slot for that reason: `Scaffold` measures its top bar and reports the
+        // height as `innerPadding`'s top, so the list can take exactly that as *content* padding and pass
+        // under the whole header rather than stopping at the title. A tab row left in the body would sit
+        // between the two and there would be nothing behind the glass to refract.
         topBar = {
-            TopAppBar(
-                title = { Text(text = stringResource(R.string.settings_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateUp) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.navigate_back),
+            Column(
+                modifier = Modifier.frostedGlass(
+                    state = headerHaze,
+                    backgroundColor = MaterialTheme.colorScheme.surface,
+                ),
+            ) {
+                TopAppBar(
+                    title = { Text(text = stringResource(R.string.settings_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateUp) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.navigate_back),
+                            )
+                        }
+                    },
+                    // Transparent so the glass behind it is what is seen. `TopAppBar` paints its container
+                    // over the modifier's background otherwise, and the blur would be invisible under it.
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                )
+                /*
+                 * PRODUCT_SPEC 16.2 — the indicator follows the drag rather than jumping when it lands.
+                 *
+                 * `TabRow` positions its own indicator from `selectedTabIndex`, which is an `Int` — so
+                 * during a drag it either sits still or snaps. Its `indicator` slot takes the tab
+                 * positions, and interpolating between the two the drag is between is what makes the
+                 * underline travel with the page. `selectedTabIndex` still drives the *labels*, which
+                 * have nothing to interpolate.
+                 *
+                 * This sits in the `topBar` slot rather than in the body, so the title and the tabs are
+                 * one glass surface and the list runs under both. The pager does not mind where the row
+                 * lives: it reads `pagerState` for the indicator and writes `selected` on a tap, and
+                 * both work from here.
+                 */
+                TabRow(
+                    selectedTabIndex = pagerState.currentPage,
+                    containerColor = Color.Transparent,
+                    indicator = { positions -> TabIndicator(positions = positions, position = tabPosition) },
+                ) {
+                    SettingsTab.entries.forEach { tab ->
+                        Tab(
+                            selected = tab == selected,
+                            onClick = { selected = tab },
+                            text = { Text(text = stringResource(tab.labelRes)) },
                         )
                     }
-                },
-            )
+                }
+            }
         },
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                /*
+                 * No top padding: the list runs under the header, which is the whole point of frosting
+                 * it. The horizontal and bottom insets still apply.
+                 */
+                .padding(
+                    start = innerPadding.calculateStartPadding(LocalLayoutDirection.current),
+                    end = innerPadding.calculateEndPadding(LocalLayoutDirection.current),
+                    bottom = innerPadding.calculateBottomPadding(),
+                )
                 /*
                  * PRODUCT_SPEC SET-002 / 16.2 — the give at the ends, and the pull that leaves.
                  *
@@ -259,28 +323,17 @@ fun SettingsScreen(
                  * `rememberEdgeOverspill` is what catches it — both to move the page and to notice the
                  * pull. On the parent rather than the pager so it sees the drag, not the drag's result.
                  */
-                .nestedScroll(overspill.connection),
+                .nestedScroll(overspill.connection)
+                .hazeSource(state = headerHaze),
         ) {
             /*
-             * PRODUCT_SPEC 16.2 — the indicator follows the drag rather than jumping when it lands.
+             * The tab row is **not** here — it is in the `topBar` slot, above.
              *
-             * `TabRow` positions its own indicator from `selectedTabIndex`, which is an `Int` — so during
-             * a drag it either sits still or snaps. Its `indicator` slot takes the tab positions, and
-             * interpolating between the two the drag is between is what makes the underline travel with
-             * the page. `selectedTabIndex` still drives the *labels*, which have nothing to interpolate.
+             * That is the frosted-header arrangement: title and tabs are one glass surface, and the list
+             * passes under both. It costs nothing the pager needs. A `TabRow` drives its indicator from
+             * `pagerState` and its taps into `selected` from wherever it sits in the tree, so the two
+             * features compose rather than compete — see the `topBar` above for the indicator itself.
              */
-            TabRow(
-                selectedTabIndex = pagerState.currentPage,
-                indicator = { positions -> TabIndicator(positions = positions, position = tabPosition) },
-            ) {
-                SettingsTab.entries.forEach { tab ->
-                    Tab(
-                        selected = tab == selected,
-                        onClick = { selected = tab },
-                        text = { Text(text = stringResource(tab.labelRes)) },
-                    )
-                }
-            }
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
@@ -308,6 +361,12 @@ fun SettingsScreen(
                     // padding rather than a width cap on each row.
                     contentPadding = centredListPadding(
                         width = windowWidth(),
+                        // The header's measured height, so the first row starts below the tabs rather
+                        // than behind them. Content padding, not layout padding — the list keeps its
+                        // full viewport and simply has further to scroll. Every page takes it, not just
+                        // the visible one: a page revealed mid-drag must already be laid out the way it
+                        // will look when it lands.
+                        top = innerPadding.calculateTopPadding(),
                         // Plus whatever the floating mini player is covering, so the last row can be read.
                         bottom = 24.dp + playerChromeClearance(),
                     ),
