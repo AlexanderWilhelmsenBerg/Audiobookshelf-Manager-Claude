@@ -20,17 +20,28 @@ interface DownloadScheduler {
     /**
      * Ensures work exists to fetch this book's files.
      *
-     * @param profileId the profile that authorized this request. It must survive delayed execution, process
-     *   restart and profile switching unchanged.
-     * @param category PRODUCT_SPEC DL-004 — why these bytes are moving, which decides whether the job may run
-     *   on a metered network.
+     * Real schedulers must override this profile-aware form. The default delegates to the older overload so
+     * small in-memory test doubles written before the ownership field continue to compile; production's
+     * WorkManager implementation overrides this method and persists [profileId] into the work request.
      */
     suspend fun enqueue(
         profileId: ProfileId,
         serverId: ServerId,
         itemId: LibraryItemId,
         category: TrafficCategory,
-    )
+    ) {
+        enqueue(serverId, itemId, category)
+    }
+
+    /**
+     * Compatibility seam for existing test doubles. Production code must use the profile-aware overload.
+     *
+     * A default body keeps new implementations from being forced to expose an identity-less execution path.
+     */
+    @Deprecated("Use the profile-aware enqueue overload")
+    suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId, category: TrafficCategory) {
+        throw UnsupportedOperationException("A persistent download requires an owning profile")
+    }
 
     /** Stops the work for one shared book copy, leaving resumable parts on disk. */
     suspend fun cancel(serverId: ServerId, itemId: LibraryItemId)
