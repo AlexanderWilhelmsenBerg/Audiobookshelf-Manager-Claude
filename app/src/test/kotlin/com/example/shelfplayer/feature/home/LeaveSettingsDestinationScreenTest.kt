@@ -29,20 +29,23 @@ import kotlin.test.assertEquals
  *
  * ### Why this exists
  *
- * A device reported that pulling back from the leftmost settings tab arrived at the **Series** axis
- * specifically, rather than wherever the shelf had been. Series is `HomeAxis.entries[1]`, so an axis the
- * reader never chose can only come from the pager's page index disagreeing with the authoritative axis —
- * either the gesture reaching Home as well as Settings, or the page being restored over the axis.
+ * A device run read as a defect and was not one. Pulling back from the leftmost settings tab appeared to
+ * arrive at the **Series** axis specifically; the shelf had in fact been on Series when settings was
+ * opened, so the gesture had returned to exactly where it came from. The owner confirmed it: *"the app is
+ * working as intended — gesturing back from the settings page went back to the page in main view, the
+ * previous one."*
  *
- * These three cases exercise the whole path through a real `NavHost`: Home, a navigation to Settings, the
- * pull that leaves it, and the axis Home is showing afterwards. **They pass**, on Books, Authors and
- * Genres alike, which is worth stating plainly: this harness does not reproduce the report, so the case
- * that does is still unknown. What it does do is close the two mechanisms above, so neither can be the
- * cause silently, and pin the destination against a future regression.
+ * The test is kept because writing it is what settled the question, and because nothing else covers the
+ * behaviour it settles: the whole path through a real `NavHost` — Home, a navigation to Settings, the
+ * pull that leaves it, and the axis Home shows afterwards. Two mechanisms could have made a returning
+ * reader land somewhere they never chose, and both are now closed by assertion rather than by argument:
+ * the gesture reaching Home's pager as well as Settings', and a restored page index overriding the
+ * authoritative axis.
  *
- * Three starting axes rather than one because the failure modes differ by direction: a leaked swipe would
- * move the axis one step, and a restored page would pin it to whatever was saved, and only a set of
- * starting points can tell those apart.
+ * Three starting axes rather than one because those two failure modes differ by direction — a leaked
+ * swipe moves the axis one step, a restored page pins it to whatever was saved — and only a set of
+ * starting points can tell them apart. Series itself is deliberately absent: it is the one axis where a
+ * pinned page index and a correct return are indistinguishable, which is precisely how the report arose.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp")
