@@ -116,21 +116,54 @@ class AppearanceSettingsScreenTest {
         assertEquals(ThemeChoice.Plain(AppTheme.Dark), chosen)
     }
 
-    /** The theme the whole change was asked for, and the one that carries its own explanation. */
     @Test
-    fun `choosing AMOLED reports it and says what it does`() {
+    fun `choosing AMOLED reports it`() {
         var chosen: ThemeChoice? = null
         render(
             state = AppearanceUiState(theme = AppTheme.Amoled, isDark = true),
             actions = AppearanceActions(onThemeChoiceChanged = { chosen = it }),
         )
 
-        composeRule.onNodeWithText("Dark with true black surfaces.", substring = true).assertIsDisplayed()
-
         open("Theme, AMOLED")
         composeRule.onNodeWithText("AMOLED").performClick()
 
         assertEquals(ThemeChoice.Plain(AppTheme.Amoled), chosen)
+    }
+
+    /**
+     * **The tab explains nothing, and that is the requirement.**
+     *
+     * *"Remove all text in the appearance in settings. The options are self explanatory."* Every control
+     * keeps its own name — a heading, a switch label, a value on a collapsed row — and every sentence
+     * describing one is gone. Asserted as absence over a sample from each group, because the failure mode
+     * of a removal is a hint that survives in the one group nobody re-read.
+     *
+     * Absence tests are usually weak; this one is not, because it is the whole change. Reinstating any
+     * `Hint` in `appearanceTab` fails it.
+     */
+    @Test
+    fun `no group explains itself`() {
+        render(state = AppearanceUiState(backgroundThemes = themes()))
+
+        // Every one of these is a verbatim fragment of a hint this change deleted, checked against the
+        // strings themselves. Four of the first draft's seven were invented and passed for the reason an
+        // absence test always passes when it names text that never existed (R-100).
+        listOf(
+            "Dark with true black surfaces",
+            "The background scrolls with you",
+            "light or dark setting, including any schedule",
+            "The wash over the blurred surfaces",
+            "there is no blur available",
+            "Available on Android 12 and later",
+            "written in its own name",
+            "Used for buttons, switches and anything selected",
+            "How far the frosted surfaces smear",
+            "How strongly text stands off its background",
+            "shelves that sit directly on the background",
+            "The navigation bar, the top bars and the mini player",
+        ).forEach { sentence ->
+            composeRule.onNodeWithText(sentence, substring = true).assertDoesNotExist()
+        }
     }
 
     /** A pack in force is what the collapsed row names, because the pack is what the reader is looking at. */
