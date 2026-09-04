@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -57,7 +58,22 @@ internal fun rememberEdgeOverspill(onPulledPastStart: (() -> Unit)? = null): Edg
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    return remember(density, scope, isRtl, onPulledPastStart) {
+    /*
+     * The callback is deliberately **not** a `remember` key, and this is the whole reason it is read
+     * through a state rather than captured.
+     *
+     * It is only ever read at release, so keying on it buys nothing — and it costs everything, because
+     * the identity a caller passes is not stable. `SettingsScreen` is handed `navController::navigateUp`
+     * from the navigation graph; `NavHostController` is not a stable type, so the compiler cannot
+     * memoise the reference and hands over a new one on every recomposition. Keyed on that, the
+     * `remember` re-ran and built a *new* [EdgeOverspill] — with `pulled` back at zero and a fresh
+     * `Animatable` at rest — so the page snapped back mid-drag and the give was never visible.
+     *
+     * A device found it as an asymmetry that named the cause exactly: Home passes no callback, so its
+     * key was the constant `null` and its overspill worked; Settings passes one, and had none.
+     */
+    val latest = rememberUpdatedState(onPulledPastStart)
+    return remember(density, scope, isRtl) {
         EdgeOverspill(
             scope = scope,
             limitPx = with(density) { MAX_OVERSPILL.toPx() },
@@ -65,7 +81,7 @@ internal fun rememberEdgeOverspill(onPulledPastStart: (() -> Unit)? = null): Edg
             // "Back" is a drag to the right in a left-to-right layout, because it is the direction the
             // previous page would arrive from.
             backwards = if (isRtl) -1f else 1f,
-            onPulledPastStart = onPulledPastStart,
+            onPulledPastStart = { latest.value },
         )
     }
 }
@@ -76,7 +92,8 @@ internal class EdgeOverspill(
     private val limitPx: Float,
     private val leavePx: Float,
     private val backwards: Float,
-    private val onPulledPastStart: (() -> Unit)?,
+    /** Read at release rather than held, so a caller may hand over a new lambda every recomposition. */
+    private val onPulledPastStart: () -> (() -> Unit)?,
 ) {
     /** How far the pull has travelled, before resistance. The offset is [resisted] applied to this. */
     private var pulled = 0f
@@ -106,12 +123,13 @@ internal class EdgeOverspill(
         }
 
         override suspend fun onPreFling(available: Velocity): Velocity {
-            val leaving = onPulledPastStart != null && pulled * backwards >= leavePx
+            val leave = onPulledPastStart()
+            val leaving = leave != null && pulled * backwards >= leavePx
             pulled = 0f
             // Before the spring, not after it. Leaving is what the reader asked for by letting go, and
             // making them watch a page settle first would delay it by the length of an animation they are
             // no longer looking at.
-            if (leaving) onPulledPastStart.invoke()
+            if (leaving) leave?.invoke()
             animated.animateTo(
                 targetValue = 0f,
                 animationSpec = spring(
