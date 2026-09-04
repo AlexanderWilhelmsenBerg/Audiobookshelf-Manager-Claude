@@ -3,9 +3,9 @@ package com.example.shelfplayer.feature.settings
 import androidx.compose.runtime.Immutable
 import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppLanguage
-import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
+import com.example.shelfplayer.core.model.settings.ThemeChoice
 
 /**
  * PRODUCT_SPEC SET-002 — the writes the Appearance tab makes.
@@ -18,7 +18,8 @@ import com.example.shelfplayer.core.model.settings.TextContrast
  */
 @Immutable
 data class AppearanceActions(
-    val onThemeChanged: (AppTheme) -> Unit = {},
+    /** PRODUCT_SPEC SET-002 — one of the app's own themes, or a bundled pack. See `ThemeChoice`. */
+    val onThemeChoiceChanged: (ThemeChoice) -> Unit = {},
     val onAccentChanged: (AccentScheme) -> Unit = {},
     val onGlassTintChanged: (GlassTint) -> Unit = {},
     val onCardGlassTintChanged: (Boolean) -> Unit = {},
@@ -26,11 +27,6 @@ data class AppearanceActions(
     val onTextContrastChanged: (TextContrast) -> Unit = {},
     /** In dp. Zero is a real choice — see `GlassBlur` for why it cannot be stored as a plain zero. */
     val onGlassBlurChanged: (Int) -> Unit = {},
-    /**
-     * `null` for none. Choosing a pack also adopts its authored accent, and choosing *None* gives
-     * back the default only if the accent in force came from a pack — see `AccentScheme.following`.
-     */
-    val onBackgroundThemeChanged: (String?) -> Unit = {},
     val onDynamicColorChanged: (Boolean) -> Unit = {},
     val onLanguageChanged: (AppLanguage) -> Unit = {},
 )

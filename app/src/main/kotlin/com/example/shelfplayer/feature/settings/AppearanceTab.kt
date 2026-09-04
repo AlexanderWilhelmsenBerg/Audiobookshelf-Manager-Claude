@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.FormatColorReset
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -51,6 +50,7 @@ import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
+import com.example.shelfplayer.core.model.settings.ThemeChoice
 import com.example.shelfplayer.ui.glass.GlassCard
 import kotlin.math.roundToInt
 
@@ -75,7 +75,6 @@ internal fun LazyListScope.appearanceTab(state: AppearanceUiState, actions: Appe
     // word and four of them left no tab wide enough to read — so without this the screen would be the
     // only one in the app that never says what it is.
     item { TabHeading(text = stringResource(R.string.settings_section_appearance)) }
-    backgroundThemeGroup(state, actions)
     themeGroup(state, actions)
     colourGroup(state, actions)
     glassGroup(state, actions)
@@ -83,98 +82,118 @@ internal fun LazyListScope.appearanceTab(state: AppearanceUiState, actions: Appe
 }
 
 /**
- * PRODUCT_SPEC SET-002 — the bundled packs, as a list you open.
+ * PRODUCT_SPEC SET-002 — every look the app has, in one list.
  *
- * ### Why a dropdown and not the row of thumbnails this used to be
+ * ### Why the plain themes and the packs are one control
  *
- * The row was six 104dp cells and it could only ever be scrolled sideways to reach the sixth — a
- * horizontal scroller nested in a vertical one, which is awkward with a thumb and worse with a switch or
- * a screen reader. A dropdown names every pack in one list that opens where the setting is, and it takes
- * one row of the tab instead of a fifth of it. The owner asked for the change; this is why it is also the
- * better control.
+ * They were two — a four-way *Theme* and a separate *Background theme* — and they answer the same
+ * question. A pack supersedes the plain theme, including which ground it is on, so a reader could set
+ * *Light*, then set a dark pack, and watch the first control go on claiming *Light*. One list cannot
+ * express that contradiction, which is the point. `ThemeChoice` holds the reconciliation.
  *
- * **The picture is not lost.** Each row still carries its own artwork as a leading thumbnail, loaded from
- * the same asset the backdrop uses rather than an approximation that could drift from it, because
- * *Nebula Glow* on its own still tells a reader nothing.
+ * ### Why it is a dropdown, and why every row has a picture
  *
- * ### Why *None* is first
+ * The packs were six 104dp cells that had to be scrolled sideways inside a vertically scrolling tab, which
+ * is awkward with a thumb and worse with a switch or a screen reader. A dropdown is one row however long
+ * the list gets. Each row still carries a thumbnail: the pack's real artwork, loaded from the same asset
+ * the backdrop uses, and for the app's own themes the ground each one actually paints — white, near-black,
+ * true black, and a split for the one that follows the device. A colour swatch is the honest preview of a
+ * theme whose whole content is a colour.
  *
- * It is the default and it is the way back. A picker whose only exits are six pictures is a picker you
- * cannot leave.
+ * The row draws no label of its own. The section header above it already says *Theme*, and a control that
+ * repeats its own heading a line later is one the eye has to read twice to learn nothing.
  */
-private fun LazyListScope.backgroundThemeGroup(state: AppearanceUiState, actions: AppearanceActions) {
-    if (state.backgroundThemes.isEmpty()) return
-    item { SectionHeader(text = stringResource(R.string.settings_section_background)) }
+private fun LazyListScope.themeGroup(state: AppearanceUiState, actions: AppearanceActions) {
+    item { SectionHeader(text = stringResource(R.string.settings_section_theme)) }
     item {
         SettingsGroup {
-            // `null` is a real option rather than a way of clearing the choice, so it is in the list.
-            val options: List<BackgroundTheme?> = listOf(null) + state.backgroundThemes
-            val none = stringResource(R.string.settings_background_none)
+            val selected = ThemeChoice.of(state.theme, state.backgroundThemeId, state.backgroundThemes)
             DropdownRow(
-                label = stringResource(R.string.settings_section_background),
-                options = options,
-                selected = options.firstOrNull { it?.id == state.backgroundThemeId },
-                labelOf = { theme -> theme?.name ?: none },
-                leadingOf = { theme -> ThemeThumbnail(assetPath = theme?.ground?.asset) },
-                onSelected = { theme -> actions.onBackgroundThemeChanged(theme?.id) },
+                label = stringResource(R.string.settings_section_theme),
+                showLabel = false,
+                options = ThemeChoice.all(state.backgroundThemes),
+                selected = selected,
+                labelOf = { choice -> choice.label() },
+                leadingOf = { choice -> ThemeThumbnail(choice) },
+                onSelected = actions.onThemeChoiceChanged,
             )
-            Hint(text = stringResource(R.string.settings_background_hint))
+            Hint(text = stringResource(R.string.settings_theme_hint))
+            // Only where there is something for it to describe. The catalog returns an empty list when the
+            // assets are unreadable — a build fault — and a hint about pictures nobody can choose is worse
+            // than no hint at all.
+            if (state.backgroundThemes.isNotEmpty()) {
+                Hint(text = stringResource(R.string.settings_background_hint))
+            }
+            if (selected == ThemeChoice.Plain(AppTheme.Amoled)) {
+                Hint(text = stringResource(R.string.settings_theme_amoled_hint))
+            }
         }
     }
 }
 
 /**
- * One pack's artwork, small.
+ * One look, as the ground it actually paints.
  *
- * Never named: it sits inside a row the dropdown has already labelled with the pack's name, and a picture
- * that announced itself as well would have a screen reader say the name twice.
+ * Never named: it sits in a row the dropdown has already labelled, and a picture that announced itself as
+ * well would have a screen reader say the name twice.
+ *
+ * The border matters more here than it did when every thumbnail was a photograph — white on a light theme
+ * and true black on a dark one are both invisible without one, and those are exactly the two entries a
+ * reader is most likely to be looking for.
  */
 @Composable
-private fun ThemeThumbnail(assetPath: String?) {
+private fun ThemeThumbnail(choice: ThemeChoice) {
     val shape = RoundedCornerShape(THUMBNAIL_CORNER)
     Box(
         modifier = Modifier
             .size(width = THUMBNAIL_WIDTH, height = THUMBNAIL_HEIGHT)
             .clip(shape)
-            .background(color = MaterialTheme.colorScheme.surfaceVariant, shape = shape)
             .border(width = THUMBNAIL_EDGE, color = MaterialTheme.colorScheme.outlineVariant, shape = shape),
-        contentAlignment = Alignment.Center,
     ) {
-        if (assetPath == null) {
-            Icon(
-                imageVector = Icons.Filled.FormatColorReset,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(THUMBNAIL_GLYPH),
-            )
-        } else {
-            AsyncImage(
-                model = "file:///android_asset/$assetPath",
+        when (choice) {
+            is ThemeChoice.Pack -> AsyncImage(
+                model = "file:///android_asset/${choice.pack.ground.asset}",
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+
+            is ThemeChoice.Plain -> Row(modifier = Modifier.fillMaxSize()) {
+                choice.theme.thumbnailGrounds().forEach { ground ->
+                    Box(modifier = Modifier.weight(WEIGHT_FILL).fillMaxSize().background(ground))
+                }
+            }
         }
     }
 }
 
-/** The look itself, plus the note AMOLED carries because it does more than darken. */
-private fun LazyListScope.themeGroup(state: AppearanceUiState, actions: AppearanceActions) {
-    item { SectionHeader(text = stringResource(R.string.settings_section_theme)) }
-    item {
-        SettingsGroup {
-            ChoiceRow(
-                options = AppTheme.entries,
-                selected = state.theme,
-                label = { theme -> stringResource(theme.labelRes()) },
-                onSelected = actions.onThemeChanged,
-            )
-            Hint(text = stringResource(R.string.settings_theme_hint))
-            if (state.theme == AppTheme.Amoled) {
-                Hint(text = stringResource(R.string.settings_theme_amoled_hint))
-            }
-        }
-    }
+/**
+ * The ground a theme actually paints, as the swatch that previews it.
+ *
+ * Not `MaterialTheme.colorScheme.surface`: that is the ground of whichever theme is *currently* on, so
+ * every row would preview the same colour as every other. These are the values the themes themselves
+ * resolve to — and AMOLED's has to be `#000000` rather than merely dark, because an unlit pixel is the
+ * whole point of that theme and a near-black preview would make it indistinguishable from *Dark*.
+ *
+ * **Two** grounds for [AppTheme.System], drawn as halves. System is not a ground; it is whichever of the
+ * other two the device is on, and a single swatch would have to pick one and be wrong half the time.
+ *
+ * `internal` rather than private so `ThemeThumbnailTest` can pin the mapping. What that test cannot see is
+ * the drawing — a decorative thumbnail carries no semantics by design — so *which* colour goes with which
+ * theme is guarded here and *that it appears* is a device check.
+ */
+internal fun AppTheme.thumbnailGrounds(): List<Color> = when (this) {
+    AppTheme.System -> listOf(ThumbnailLight, ThumbnailDark)
+    AppTheme.Light -> listOf(ThumbnailLight)
+    AppTheme.Dark -> listOf(ThumbnailDark)
+    AppTheme.Amoled -> listOf(ThumbnailAmoled)
+}
+
+/** A look's name: the theme's, or the pack's own. */
+@Composable
+private fun ThemeChoice.label(): String = when (this) {
+    is ThemeChoice.Plain -> stringResource(theme.labelRes())
+    is ThemeChoice.Pack -> pack.name
 }
 
 /** The accent, the tint it can lend the glass, and the wallpaper colours that override both. */
@@ -269,6 +288,8 @@ private fun LazyListScope.languageGroup(state: AppearanceUiState, actions: Appea
         SettingsGroup {
             DropdownRow(
                 label = stringResource(R.string.settings_language),
+                // Same reason as the theme row: the section header above already says *Language*.
+                showLabel = false,
                 options = AppLanguage.entries,
                 selected = state.language,
                 labelOf = { language -> language.label() },
@@ -323,6 +344,7 @@ private fun <T> DropdownRow(
     labelOf: @Composable (T) -> String,
     onSelected: (T) -> Unit,
     leadingOf: (@Composable (T) -> Unit)? = null,
+    showLabel: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val current = labelOf(selected)
@@ -337,19 +359,39 @@ private fun <T> DropdownRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(WEIGHT_FILL).clearAndSetSemantics { },
-            )
+            // Dropped where the section header above already carries the name: a control that repeats its
+            // own heading a line later is one the eye reads twice to learn nothing. The row still
+            // *announces* the pair, because a screen reader has no heading in view to pair it with.
+            if (showLabel) {
+                // Semantics deliberately **not** cleared here, where the value's are. Two reasons, and the
+                // second is why they differ. A label is the same word as the heading above it, so it
+                // collides with nothing a test needs to reach — where the *value* is the same word as the
+                // list entry the row opens, and leaving that visible would make "Plum" match two nodes.
+                // And a drawn label a test cannot see is a label whose removal a test cannot guard: this
+                // exists so `the theme row does not repeat its own heading` fails when the row draws one.
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(WEIGHT_FILL),
+                )
+            }
             leadingOf?.invoke(selected)
             Text(
                 text = current,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = if (showLabel) {
+                    MaterialTheme.typography.bodyMedium
+                } else {
+                    MaterialTheme.typography.bodyLarge
+                },
+                color = if (showLabel) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clearAndSetSemantics { },
+                modifier = (if (showLabel) Modifier else Modifier.weight(WEIGHT_FILL))
+                    .clearAndSetSemantics { },
             )
             Icon(
                 imageVector = Icons.Filled.ArrowDropDown,
@@ -453,7 +495,11 @@ private val THUMBNAIL_WIDTH = 42.dp
 private val THUMBNAIL_HEIGHT = 28.dp
 private val THUMBNAIL_CORNER = 6.dp
 private val THUMBNAIL_EDGE = 1.dp
-private val THUMBNAIL_GLYPH = 18.dp
+
+/** White paper, the dark scheme's near-black, and AMOLED's true black. See [thumbnailGrounds]. */
+private val ThumbnailLight = Color.White
+private val ThumbnailDark = Color(0xFF1C1B1F)
+private val ThumbnailAmoled = Color.Black
 
 private val SWATCH_SIZE = 24.dp
 private val SWATCH_EDGE_WIDTH = 1.dp

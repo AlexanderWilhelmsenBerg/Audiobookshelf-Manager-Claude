@@ -928,7 +928,5 @@
     <string name="settings_contrast_auto">Automatisk</string>
     <string name="settings_contrast_high">H\u00f8y</string>
     <string name="settings_contrast_soft">Myk</string>
-    <string name="settings_section_background">Bakgrunnstema</string>
-    <string name="settings_background_none">Ingen</string>
-    <string name="settings_background_hint">Hvert tema er en bakgrunn og fargene som er laget for den. Velger du ett, erstatter det temaet og aksenten over, fordi de fargene ble valgt mot akkurat det bildet. Bakgrunnen ruller med deg, saktere, som om den l\u00e5 lenger unna.</string>
+    <string name="settings_background_hint">Temaene under appens egne er en bakgrunn og fargene som er laget for den. Velger du ett, f\u00f8lger fargene med, fordi de ble valgt mot akkurat det bildet \u2014 du kan endre dem under Farge. Bakgrunnen ruller med deg, saktere, som om den l\u00e5 lenger unna.</string>
 </resources>

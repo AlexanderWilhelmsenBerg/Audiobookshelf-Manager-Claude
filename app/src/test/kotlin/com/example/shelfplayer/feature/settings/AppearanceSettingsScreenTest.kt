@@ -4,11 +4,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -23,6 +24,7 @@ import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.core.model.settings.ThemeAccents
+import com.example.shelfplayer.core.model.settings.ThemeChoice
 import com.example.shelfplayer.core.model.settings.ThemeGlass
 import com.example.shelfplayer.core.model.settings.ThemeGround
 import com.example.shelfplayer.core.model.settings.ThemeSurfaces
@@ -49,53 +51,94 @@ class AppearanceSettingsScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    /**
+     * **The app's own looks and the bundled packs are one list.**
+     *
+     * They were two controls answering the same question, and a pack supersedes the plain theme — so a
+     * reader could set *Light*, set a dark pack, and watch the first control go on claiming *Light*. One
+     * list cannot express that. Both halves are asserted in one place because the merge is the change.
+     */
     @Test
-    fun `the four theme choices are offered`() {
-        render()
+    fun `every look is in one list, the app's own and the packs alike`() {
+        render(state = AppearanceUiState(backgroundThemes = themes()))
+
+        open("Theme, System")
 
         composeRule.onNodeWithText("System").assertIsDisplayed()
         composeRule.onNodeWithText("Light").assertIsDisplayed()
         composeRule.onNodeWithText("Dark").assertIsDisplayed()
         composeRule.onNodeWithText("AMOLED").assertIsDisplayed()
+        themes().forEach { theme ->
+            composeRule.onNodeWithText(theme.name).assertIsDisplayed()
+        }
     }
 
     /**
-     * A device that has never chosen shows *System* selected, so the row is never blank.
+     * A device that has never chosen shows *System* on the collapsed row, so it is never blank.
      *
      * `AppTheme.Default` is that answer, and it is the state's default — the reconciliation of the two
      * stored fields happens in the view model, which is where `AppearanceViewModelTest` asserts it.
      */
     @Test
-    fun `an unwritten setting shows System selected`() {
+    fun `an unwritten setting shows System`() {
         render()
 
-        composeRule.onNodeWithText("System").assertIsSelected()
+        composeRule.onNodeWithContentDescription("Theme, System").assertIsDisplayed()
+    }
+
+    /**
+     * The row draws no label of its own — the section header above it already says *Theme*.
+     *
+     * One node, and it is the heading; a second would be the row repeating it a line later. This is
+     * assertable only because a `DropdownRow`'s label keeps its semantics where its *value* does not, which
+     * `DropdownRow` explains: a drawn label a test cannot see is a label whose removal a test cannot guard.
+     */
+    @Test
+    fun `the theme row does not repeat its own heading`() {
+        render()
+
+        composeRule.onAllNodesWithText("Theme").assertCountEquals(1)
+
+        // The language group is below the fold in a `LazyColumn`, so its heading is not composed until it
+        // is scrolled to — and asserting it before scrolling would pass by finding nothing.
+        scrollToDescription("Language, System default")
+        composeRule.onAllNodesWithText("Language").assertCountEquals(1)
     }
 
     @Test
     fun `choosing dark reports it`() {
-        var chosen: AppTheme? = null
-        render(actions = AppearanceActions(onThemeChanged = { chosen = it }))
+        var chosen: ThemeChoice? = null
+        render(actions = AppearanceActions(onThemeChoiceChanged = { chosen = it }))
 
+        open("Theme, System")
         composeRule.onNodeWithText("Dark").performClick()
 
-        assertEquals(AppTheme.Dark, chosen)
+        assertEquals(ThemeChoice.Plain(AppTheme.Dark), chosen)
     }
 
     /** The theme the whole change was asked for, and the one that carries its own explanation. */
     @Test
     fun `choosing AMOLED reports it and says what it does`() {
-        var chosen: AppTheme? = null
+        var chosen: ThemeChoice? = null
         render(
             state = AppearanceUiState(theme = AppTheme.Amoled, isDark = true),
-            actions = AppearanceActions(onThemeChanged = { chosen = it }),
+            actions = AppearanceActions(onThemeChoiceChanged = { chosen = it }),
         )
 
-        composeRule.onNodeWithText("AMOLED").assertIsSelected()
         composeRule.onNodeWithText("Dark with true black surfaces.", substring = true).assertIsDisplayed()
 
+        open("Theme, AMOLED")
         composeRule.onNodeWithText("AMOLED").performClick()
-        assertEquals(AppTheme.Amoled, chosen)
+
+        assertEquals(ThemeChoice.Plain(AppTheme.Amoled), chosen)
+    }
+
+    /** A pack in force is what the collapsed row names, because the pack is what the reader is looking at. */
+    @Test
+    fun `a chosen pack is what the theme row shows`() {
+        render(state = AppearanceUiState(backgroundThemes = themes(), backgroundThemeId = "teal_horizon"))
+
+        composeRule.onNodeWithContentDescription("Theme, Teal Horizon").assertIsDisplayed()
     }
 
     /**
@@ -124,6 +167,7 @@ class AppearanceSettingsScreenTest {
     fun `the collapsed row announces the setting and its value together`() {
         render()
 
+        composeRule.onNodeWithContentDescription("Theme, System").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Accent colour, Teal").assertIsDisplayed()
 
         scrollToDescription("Language, System default")
@@ -264,52 +308,38 @@ class AppearanceSettingsScreenTest {
         assertEquals(TextContrast.High, chosen)
     }
 
-    /**
-     * **The list names every pack, and offers the way back.**
-     *
-     * The artwork cannot be described, so the name is the only thing that distinguishes one row from
-     * another — the thumbnail beside it is decorative. *None* is asserted alongside them because a picker
-     * whose only exits are pictures is one you cannot leave.
-     */
     @Test
-    fun `the background themes are offered by name, with a way back to none`() {
-        render(state = AppearanceUiState(backgroundThemes = themes()))
-
-        open("Background theme, None")
-
-        composeRule.onNodeWithText("None").assertIsDisplayed()
-        themes().forEach { theme ->
-            composeRule.onNodeWithText(theme.name).assertIsDisplayed()
-        }
-    }
-
-    @Test
-    fun `choosing a background theme reports its id`() {
-        var chosen: String? = "unset"
+    fun `choosing a background pack reports the pack`() {
+        var chosen: ThemeChoice? = null
         render(
             state = AppearanceUiState(backgroundThemes = themes(), backgroundThemeId = null),
-            actions = AppearanceActions(onBackgroundThemeChanged = { chosen = it }),
+            actions = AppearanceActions(onThemeChoiceChanged = { chosen = it }),
         )
 
-        open("Background theme, None")
+        open("Theme, System")
         composeRule.onNodeWithText("Teal Horizon").performClick()
 
-        assertEquals("teal_horizon", chosen)
+        assertEquals(ThemeChoice.Pack(themes().first()), chosen)
     }
 
-    /** And the way back reports `null`, which is what returns the app to its own palette. */
+    /**
+     * **The way back is one of the app's own looks**, which is the job *None* used to do in the pack list.
+     *
+     * Doing it with the entries a reader would be returning to anyway is the point of the merge: there is
+     * no separate "off" to find, and no state in which the theme control and the pack control disagree.
+     */
     @Test
-    fun `choosing none reports null`() {
-        var chosen: String? = "unset"
+    fun `choosing one of the app's own looks is the way back from a pack`() {
+        var chosen: ThemeChoice? = null
         render(
             state = AppearanceUiState(backgroundThemes = themes(), backgroundThemeId = "teal_horizon"),
-            actions = AppearanceActions(onBackgroundThemeChanged = { chosen = it }),
+            actions = AppearanceActions(onThemeChoiceChanged = { chosen = it }),
         )
 
-        open("Background theme, Teal Horizon")
-        composeRule.onNodeWithText("None").performClick()
+        open("Theme, Teal Horizon")
+        composeRule.onNodeWithText("Light").performClick()
 
-        assertEquals(null, chosen)
+        assertEquals(ThemeChoice.Plain(AppTheme.Light), chosen)
     }
 
     /**
@@ -319,12 +349,22 @@ class AppearanceSettingsScreenTest {
      * empty list when the assets are unreadable — a build fault — and the honest thing on that path is to
      * show the rest of the tab, not a hole.
      */
+    /**
+     * With no packs on disk the list is the app's own looks and nothing else, and the hint about pictures
+     * is absent.
+     *
+     * The catalog returns an empty list when the assets are unreadable — a build fault — and the honest
+     * thing on that path is a working theme picker, not a hole where one used to be. Before the merge the
+     * whole group vanished; now only the half that has nothing to show does.
+     */
     @Test
-    fun `no bundled themes means no picker at all`() {
+    fun `no bundled themes leaves the app's own looks and no talk of pictures`() {
         render(state = AppearanceUiState(backgroundThemes = emptyList()))
 
-        composeRule.onNodeWithText("Background theme").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Background theme, None").assertDoesNotExist()
+        composeRule.onNodeWithText("scrolls with you", substring = true).assertDoesNotExist()
+
+        open("Theme, System")
+        composeRule.onNodeWithText("AMOLED").assertIsDisplayed()
     }
 
     @Test

@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
+import com.example.shelfplayer.core.model.settings.ThemeChoice
 import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
@@ -90,10 +91,6 @@ class AppearanceViewModel @Inject constructor(
             initialValue = AppearanceUiState(),
         )
 
-    fun onThemeChanged(theme: AppTheme) {
-        viewModelScope.launch { settings.setAppTheme(theme) }
-    }
-
     fun onAccentChanged(accent: AccentScheme) {
         viewModelScope.launch { settings.setAccent(accent) }
     }
@@ -119,35 +116,40 @@ class AppearanceViewModel @Inject constructor(
     }
 
     /**
-     * PRODUCT_SPEC SET-002 — the pack, and the accent that comes with it.
+     * PRODUCT_SPEC SET-002 — the app's look, whether that is one of its own themes or a bundled pack.
      *
-     * Two writes rather than one, because *"picking a theme chooses the right scheme"* is a second fact
-     * about the same press. `AccentScheme.following` owns which — including the case it declines: a reader
-     * who deliberately chose *Plum* keeps it when they turn a pack off, and only an accent that came from
-     * a pack is taken back to the default. The decision is a pure function so that rule is testable
-     * without a screen.
+     * ### Why one method for what used to be two settings
      *
-     * The accent is written **first**. Both land on the same `DataStore`, and writing the pack first would
-     * publish one frame in which the new artwork is drawn under the old pack's colours.
+     * Because it is one press. A pack supersedes the plain theme, so the two were never independent, and
+     * two handlers meant two writes a caller had to remember to pair — see `ThemeChoice` for why the
+     * *control* is now one thing while the stored fields stay two.
      *
-     * ### Why the current accent is read from the store and not from [state]
+     * ### The order of the writes, which is the part that shows
+     *
+     * The plain theme goes **first**. While a pack is still selected it supersedes whatever the theme says,
+     * so writing it then is invisible; clearing the pack afterwards reveals the new look in one transition.
+     * The other order publishes a frame of the *old* theme with no pack behind it, which reads as a flash.
+     *
+     * The accent follows the pack, and `AccentScheme.following` owns which — including the case it
+     * declines: a reader who deliberately chose *Plum* keeps it when they leave a pack, and only an accent
+     * that came from a pack is taken back to the default.
+     *
+     * ### Why the accent is read from the store and not from [state]
      *
      * Because [state] is `WhileSubscribed`, so `state.value` is the *initial* value — no pack list, and the
      * default accent — whenever nothing is collecting. From the screen there always is, which is exactly
-     * what makes this the kind of coupling that holds until it does not: a press routed from anywhere else,
-     * or a collector that had timed out, would silently deselect the pack and write nothing else.
-     * `AppearanceViewModelTest` found it by driving the view model without a collector, which is the shape
-     * the bug has. Reading the store answers the question the write is actually about.
+     * what makes this the kind of coupling that holds until it does not. `docs/risks.md` R-104 records the
+     * version of this method that read it, and `AppearanceViewModelTest` is what found it.
      */
-    fun onBackgroundThemeChanged(id: String?) {
+    fun onThemeChoiceChanged(choice: ThemeChoice) {
         viewModelScope.launch {
+            if (choice is ThemeChoice.Plain) settings.setAppTheme(choice.theme)
+            val pack = (choice as? ThemeChoice.Pack)?.pack
             // The catalog caches, so this is a map lookup after the first call rather than a second read
             // of the assets. See `BackgroundThemeCatalog`.
-            val themes = backgroundThemes.themes()
-            val theme = id?.let { chosen -> themes.firstOrNull { it.id == chosen } }
-            val current = AccentScheme.ofKey(settings.settings.first().accentColorKey, themes)
-            AccentScheme.following(current, theme)?.let { next -> settings.setAccent(next) }
-            settings.setBackgroundThemeId(theme?.id)
+            val current = AccentScheme.ofKey(settings.settings.first().accentColorKey, backgroundThemes.themes())
+            AccentScheme.following(current, pack)?.let { next -> settings.setAccent(next) }
+            settings.setBackgroundThemeId(pack?.id)
         }
     }
 

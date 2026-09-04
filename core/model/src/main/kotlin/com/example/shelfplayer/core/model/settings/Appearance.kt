@@ -77,6 +77,50 @@ enum class AccentColor(val key: String, val lightArgb: Long, val darkArgb: Long)
 }
 
 /**
+ * PRODUCT_SPEC SET-002 — what the app's look is set to: one of the plain themes, or a bundled pack.
+ *
+ * ### Why the two are one choice
+ *
+ * They were two controls — a four-way *Theme* and a separate *Background theme* — and they answer the same
+ * question. A pack supersedes the plain theme, including which ground it is on, so a reader could set
+ * *Light* and then set a dark pack and watch the first control keep claiming *Light*. One list of every
+ * look the app has cannot express that contradiction, which is the point of merging them.
+ *
+ * The plain themes stay first: they are the app's own, one of them is the default, and they are the way
+ * back from a pack. That is the job *None* used to do in the pack list, done by the entries a reader would
+ * be returning to anyway.
+ *
+ * ### The stored fields stay two
+ *
+ * `app_theme_key` and `background_theme_id` are unchanged, and choosing a pack does **not** overwrite the
+ * plain theme. A reader who had chosen AMOLED, tried a pack for a week and went back should land on AMOLED
+ * rather than on the default — so the pack is a layer over the theme in storage, and only the *control*
+ * is one thing. [of] is where the two fields become the one answer.
+ */
+sealed interface ThemeChoice {
+
+    /** One of the app's own looks. */
+    data class Plain(val theme: AppTheme) : ThemeChoice
+
+    /** A bundled pack: a picture, and the palette drawn for it. */
+    data class Pack(val pack: BackgroundTheme) : ThemeChoice
+
+    companion object {
+        /** Every look a reader may choose: the app's own first, then one per bundled pack. */
+        fun all(themes: List<BackgroundTheme>): List<ThemeChoice> = AppTheme.entries.map(::Plain) + themes.map(::Pack)
+
+        /**
+         * The two stored fields, as the one answer.
+         *
+         * A pack wins when one is selected **and** this build still ships it; an id naming a pack that has
+         * gone falls back to the plain theme, which is the same rule every other stored key here follows.
+         */
+        fun of(theme: AppTheme, packId: String?, themes: List<BackgroundTheme>): ThemeChoice =
+            themes.firstOrNull { it.id == packId }?.let(::Pack) ?: Plain(theme)
+    }
+}
+
+/**
  * PRODUCT_SPEC SET-002 — the accent actually in force: a built-in pair, or a bundled pack's own.
  *
  * ### Why a value type over the enum rather than more enum entries

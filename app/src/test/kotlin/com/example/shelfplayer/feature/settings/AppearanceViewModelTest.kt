@@ -7,8 +7,10 @@ import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.AppSettingsSerializer
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.ThemeAccents
+import com.example.shelfplayer.core.model.settings.ThemeChoice
 import com.example.shelfplayer.core.model.settings.ThemeGlass
 import com.example.shelfplayer.core.model.settings.ThemeGround
 import com.example.shelfplayer.core.model.settings.ThemeSurfaces
@@ -63,7 +65,7 @@ class AppearanceViewModelTest {
         val settings = settings()
         val viewModel = viewModel(settings)
 
-        viewModel.onBackgroundThemeChanged(TEAL.id)
+        viewModel.onThemeChoiceChanged(ThemeChoice.Pack(TEAL))
         runCurrent()
 
         val stored = settings.settings.first()
@@ -82,14 +84,14 @@ class AppearanceViewModelTest {
         val settings = settings()
         val viewModel = viewModel(settings)
 
-        viewModel.onBackgroundThemeChanged(TEAL.id)
+        viewModel.onThemeChoiceChanged(ThemeChoice.Pack(TEAL))
         runCurrent()
         viewModel.onAccentChanged(AccentScheme.of(AccentColor.Plum))
         runCurrent()
 
         assertEquals(AccentColor.Plum.key, settings.settings.first().accentColorKey)
 
-        viewModel.onBackgroundThemeChanged(null)
+        viewModel.onThemeChoiceChanged(ThemeChoice.Plain(AppTheme.Dark))
         runCurrent()
 
         val stored = settings.settings.first()
@@ -103,9 +105,9 @@ class AppearanceViewModelTest {
         val settings = settings()
         val viewModel = viewModel(settings)
 
-        viewModel.onBackgroundThemeChanged(TEAL.id)
+        viewModel.onThemeChoiceChanged(ThemeChoice.Pack(TEAL))
         runCurrent()
-        viewModel.onBackgroundThemeChanged(null)
+        viewModel.onThemeChoiceChanged(ThemeChoice.Plain(AppTheme.Dark))
         runCurrent()
 
         assertEquals(AccentScheme.Default.key, settings.settings.first().accentColorKey)
@@ -117,9 +119,9 @@ class AppearanceViewModelTest {
         val settings = settings()
         val viewModel = viewModel(settings)
 
-        viewModel.onBackgroundThemeChanged(TEAL.id)
+        viewModel.onThemeChoiceChanged(ThemeChoice.Pack(TEAL))
         runCurrent()
-        viewModel.onBackgroundThemeChanged(NEBULA.id)
+        viewModel.onThemeChoiceChanged(ThemeChoice.Pack(NEBULA))
         runCurrent()
 
         val stored = settings.settings.first()
@@ -127,18 +129,49 @@ class AppearanceViewModelTest {
         assertEquals(AccentScheme.of(NEBULA).key, stored.accentColorKey)
     }
 
-    /** An id naming a pack this build does not ship changes nothing but the (empty) selection. */
+    /**
+     * **Leaving a pack for one of the app's own looks writes the theme as well as clearing the pack.**
+     *
+     * The plain theme first, deliberately: while the pack is still selected it supersedes whatever the
+     * theme says, so writing it then is invisible, and clearing the pack afterwards reveals the new look in
+     * one transition. The other order publishes a frame of the *old* theme with no pack behind it, which a
+     * reader sees as a flash. Only the end state is asserted here — the order is a rendering property no
+     * unit test can observe, and the reasoning is on the method.
+     */
     @Test
-    fun `an unknown pack id selects nothing and leaves the accent alone`() = runTest(dispatcher) {
+    fun `choosing one of the app's own looks writes the theme and clears the pack`() = runTest(dispatcher) {
         val settings = settings()
         val viewModel = viewModel(settings)
 
-        viewModel.onBackgroundThemeChanged("solarized")
+        viewModel.onThemeChoiceChanged(ThemeChoice.Pack(TEAL))
+        runCurrent()
+        viewModel.onThemeChoiceChanged(ThemeChoice.Plain(AppTheme.Amoled))
         runCurrent()
 
         val stored = settings.settings.first()
         assertEquals("", stored.backgroundThemeId)
-        assertEquals("", stored.accentColorKey)
+        assertEquals(AppTheme.Amoled.key, stored.appThemeKey)
+    }
+
+    /**
+     * Choosing a pack leaves the plain theme where it was, so going back lands on it.
+     *
+     * A pack is a layer over the theme in storage rather than a replacement for it — see `ThemeChoice`.
+     * Without this a reader who had chosen AMOLED, tried a pack and went back would find the default.
+     */
+    @Test
+    fun `a pack does not overwrite the plain theme underneath it`() = runTest(dispatcher) {
+        val settings = settings()
+        val viewModel = viewModel(settings)
+
+        viewModel.onThemeChoiceChanged(ThemeChoice.Plain(AppTheme.Amoled))
+        runCurrent()
+        viewModel.onThemeChoiceChanged(ThemeChoice.Pack(TEAL))
+        runCurrent()
+
+        val stored = settings.settings.first()
+        assertEquals(TEAL.id, stored.backgroundThemeId)
+        assertEquals(AppTheme.Amoled.key, stored.appThemeKey)
     }
 
     private fun settings() = AppSettingsDataSource(
