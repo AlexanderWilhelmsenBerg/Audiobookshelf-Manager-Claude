@@ -325,10 +325,26 @@ fun SettingsScreen(
                     indicator = { positions -> TabIndicator(positions = positions, position = tabPosition) },
                 ) {
                     SettingsTab.entries.forEach { tab ->
+                        val label = stringResource(tab.labelRes)
+                        val icon = tab.icon
                         Tab(
                             selected = tab == selected,
                             onClick = { selected = tab },
-                            text = { Text(text = stringResource(tab.labelRes)) },
+                            /*
+                             * An icon where the tab has one, and the label becomes its **description**
+                             * rather than its text.
+                             *
+                             * A tab whose only content is a glyph is an unnamed control to a screen
+                             * reader, and *Appearance* has to stay findable by name even when it is a
+                             * palette. `Tab` merges its content's semantics, so the description lands on
+                             * the tab itself — which is what `SettingsScreenTest` matches on.
+                             */
+                            icon = icon?.let { vector ->
+                                { Icon(imageVector = vector, contentDescription = label) }
+                            },
+                            // Null for the three that carry an icon, or the tab would show both and be
+                            // back to being too narrow to read — which is the whole reason for the icons.
+                            text = if (icon == null) ({ Text(text = label) }) else null,
                         )
                     }
                 }
