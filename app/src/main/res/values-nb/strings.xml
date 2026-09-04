@@ -41,6 +41,7 @@
 
     <string name="shelf_continue_listening">Fortsett å lytte</string>
     <string name="shelf_continue_series">Fortsett en serie</string>
+    <string name="shelf_progress_percent">%1$d%%</string>
     <string name="shelf_recently_added">Nylig lagt til</string>
     <string name="shelf_listen_again">Hør på nytt</string>
     <string name="shelf_discover">Oppdag</string>
