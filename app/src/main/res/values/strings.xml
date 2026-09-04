@@ -43,6 +43,7 @@
     <!-- PRODUCT_SPEC LIB-002 — the three shelves the app opens on. -->
     <string name="shelf_continue_listening">Continue listening</string>
     <string name="shelf_continue_series">Continue a series</string>
+    <string name="shelf_progress_percent">%1$d%%</string>
     <string name="shelf_recently_added">Recently added</string>
     <string name="shelf_listen_again">Listen again</string>
     <string name="shelf_discover">Discover</string>
