@@ -43,7 +43,7 @@ import com.example.shelfplayer.feature.player.BookmarkSheet
 import com.example.shelfplayer.feature.player.ChapterSheet
 import com.example.shelfplayer.feature.player.FullPlayer
 import com.example.shelfplayer.feature.player.HistorySheet
-import com.example.shelfplayer.feature.player.MINI_PLAYER_HEIGHT
+import com.example.shelfplayer.feature.player.MINI_PLAYER_MIN_HEIGHT
 import com.example.shelfplayer.feature.player.MiniPlayer
 import com.example.shelfplayer.feature.player.OutputControls
 import com.example.shelfplayer.feature.player.PlayerActions
@@ -176,8 +176,19 @@ private fun ShelfPlayerContent(
     var isHistorySheetOpen by remember { mutableStateOf(false) }
     var isBookmarkSheetOpen by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
+    /*
+     * What the mini player is actually covering, as the bar itself measured it.
+     *
+     * It was `MINI_PLAYER_HEIGHT`, a constant — which is correct until the bar grows, and at a large font
+     * scale it does. Nothing measures an overlay the way `Scaffold` measures a bottom bar, so the bar
+     * reports its own height and this holds the last answer.
+     *
+     * Seeded with the floor rather than zero. The alternative is one frame of nothing at all, and every
+     * screen's scroll range snapping outwards a frame later.
+     */
+    var playerHeight by remember { mutableStateOf(MINI_PLAYER_MIN_HEIGHT) }
     val playerChromeInset by animateDpAsState(
-        targetValue = if (playback.bookId != null) MINI_PLAYER_HEIGHT else 0.dp,
+        targetValue = if (playback.bookId != null) playerHeight else 0.dp,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMediumLow,
@@ -209,6 +220,7 @@ private fun ShelfPlayerContent(
                 onOpenSleepTimer = { isTimerSheetOpen = true },
                 onExpand = playerViewModel::onExpand,
                 skips = skipControls,
+                onHeightMeasured = { measured -> playerHeight = measured },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
