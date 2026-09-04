@@ -423,6 +423,10 @@ class AppearanceSettingsScreenTest {
 
         open("Language, System default")
 
+        // Scrolled to, where the popup this replaced needed no scrolling. That is the trade an inline list
+        // makes: it pushes the rows below it down instead of covering them, so the last group's options
+        // start below the fold. See `DropdownRow`.
+        scrollTo("Norsk bokmål")
         composeRule.onNodeWithText("Norsk bokmål").assertIsDisplayed()
         composeRule.onNodeWithText("English").assertIsDisplayed()
     }
@@ -433,9 +437,46 @@ class AppearanceSettingsScreenTest {
         render(actions = AppearanceActions(onLanguageChanged = { chosen = it }))
 
         open("Language, System default")
+        scrollTo("Norsk bokmål")
         composeRule.onNodeWithText("Norsk bokmål").performClick()
 
         assertEquals(AppLanguage.NorwegianBokmal, chosen)
+    }
+
+    /**
+     * **The list opens in place and closes again**, which is the whole change.
+     *
+     * A `DropdownMenu` is a `Popup` — a window over the screen — so its options existed whether or not the
+     * rows around them did. An inline list is part of the tab: absent until the row is opened, gone when a
+     * choice is made. Both halves are asserted because only the pair distinguishes an expanding row from a
+     * list that was always drawn.
+     */
+    @Test
+    fun `a row opens its list in place and closes it on a choice`() {
+        render()
+
+        composeRule.onNodeWithText("Plum").assertDoesNotExist()
+
+        open("Accent colour, Teal")
+        composeRule.onNodeWithText("Plum").assertIsDisplayed()
+
+        composeRule.onNodeWithText("Plum").performClick()
+        composeRule.onNodeWithText("Plum").assertDoesNotExist()
+    }
+
+    /** Opening a shut row and shutting an open one are the same tap. */
+    @Test
+    fun `tapping an open row closes it without choosing`() {
+        var chosen: AccentScheme? = null
+        render(actions = AppearanceActions(onAccentChanged = { chosen = it }))
+
+        open("Accent colour, Teal")
+        composeRule.onNodeWithText("Plum").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Accent colour, Teal").performClick()
+
+        composeRule.onNodeWithText("Plum").assertDoesNotExist()
+        assertEquals(null, chosen)
     }
 
     /**
