@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Card
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -36,6 +35,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.library.SeriesProgress
 import com.example.shelfplayer.feature.browse.BookCover
+import com.example.shelfplayer.ui.glass.GlassCard
 
 /**
  * PRODUCT_SPEC LIB-002 — the three horizontal shelves the app opens on.
@@ -204,7 +204,7 @@ private fun ShelfCard(
     onPlay: (() -> Unit)? = null,
     cover: @Composable () -> Unit = {},
 ) {
-    Card(
+    GlassCard(
         onClick = onClick,
         modifier = modifier.width(SHELF_CARD_WIDTH),
         shape = RoundedCornerShape(SHELF_CARD_CORNER_RADIUS),

@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -57,7 +58,7 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
 import com.example.shelfplayer.ui.glass.LocalGlassHazeState
-import com.example.shelfplayer.ui.glass.frostedGlass
+import com.example.shelfplayer.ui.glass.systemGlass
 import kotlin.time.Duration
 
 /**
@@ -148,9 +149,10 @@ fun MiniPlayer(
                     onHeightMeasured(playerClearanceOf(with(density) { size.height.toDp() }, systemBarInset))
                 }
                 .testTag(MINI_PLAYER_TEST_TAG)
-                .frostedGlass(
+                .systemGlass(
                     state = hazeState,
                     backgroundColor = MaterialTheme.colorScheme.surface,
+                    shape = RectangleShape,
                 ),
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,

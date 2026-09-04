@@ -233,6 +233,42 @@ message AppSettings {
   // makes the zero value mean "the default", which is the same trick `startup_mode` gets from having its
   // safe answer at zero.
   bool auto_advance_series_disabled = 39;
+
+  // PRODUCT_SPEC SET-002 (Appearance) — the look, as an `AppTheme.key`.
+  //
+  // A key rather than an enum value, for the reason `library_sort_order` and `buffer_preset` give: the set
+  // of themes grows in the design system, and an enum here would have to be edited in step or the new
+  // theme would be unreachable. A key no build recognises reads back as "follow the system".
+  //
+  // `theme_mode` above is **not** replaced and is still written alongside this, because `ThemeMode` is what
+  // an older build reads. A device that downgrades keeps light/dark; it loses only the theme this field
+  // added. See `AppSettingsDataSource.setAppTheme`.
+  string app_theme_key = 40;
+
+  // PRODUCT_SPEC SET-002 (Appearance) — `AccentColor.key` and `GlassTint.key`. Empty is the default in
+  // both cases, which is proto3's zero value, so an install predating these fields looks exactly as it did.
+  string accent_color_key = 41;
+  string glass_tint_key = 42;
+
+  // PRODUCT_SPEC SET-002 (Appearance) — whether the wash over the frosted surfaces is drawn.
+  //
+  // Stored **inverted**, as `auto_advance_series_disabled` is and for the same reason: the wash is on by
+  // default and proto3's zero value for a bool is false, so a field named for the *enabled* state would
+  // read back as off for every install that predates it and silently strip the frosting from the whole app.
+  bool card_glass_tint_disabled = 43;
+  bool system_glass_tint_disabled = 44;
+
+  // PRODUCT_SPEC 2.10 (Appearance/accessibility) — a `TextContrast.key`. Empty is "the scheme's own",
+  // which is the default and proto3's zero value.
+  string text_contrast_key = 45;
+
+  // PRODUCT_SPEC SET-002 (Appearance) — the blur radius in dp, app-wide.
+  //
+  // Zero means "never chosen" and reads back as `GlassBlur.DEFAULT_DP`; **-1 is off**, which zero cannot
+  // express because zero is already taken and *no blur* is a real choice. The same sentinel
+  // `sleep_timer_fade_seconds` uses, for the same reason: without it, turning the blur off would be
+  // indistinguishable from never having touched the slider.
+  int32 glass_blur_dp = 46;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.
@@ -302,6 +338,9 @@ enum StartupMode {
   STARTUP_MODE_RESUME_ON_OPEN = 2;
 }
 
+// Answers one question — light or dark — and `app_theme_key` answers the richer one. Kept because it is
+// what an older build reads, and because `AppUiState.resolveDarkTheme` still resolves brightness from it
+// when no theme key has been written.
 enum ThemeMode {
   THEME_MODE_UNSPECIFIED = 0;
   THEME_MODE_SYSTEM = 1;

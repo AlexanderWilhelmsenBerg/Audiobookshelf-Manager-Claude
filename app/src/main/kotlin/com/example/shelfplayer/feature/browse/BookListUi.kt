@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +27,7 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.library.BookSortOrder
+import com.example.shelfplayer.ui.glass.GlassCard
 import kotlin.math.roundToInt
 import kotlin.time.Duration
 
@@ -72,7 +72,7 @@ internal fun BookCard(
      */
     onPlay: (() -> Unit)? = null,
 ) {
-    Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+    GlassCard(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Row(
             // A **fixed** height rather than `IntrinsicSize.Min`.
             //

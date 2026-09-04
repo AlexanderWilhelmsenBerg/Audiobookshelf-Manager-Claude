@@ -19,8 +19,13 @@ import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.StartupMode
+import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
+import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.GlassBlur
+import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.ProfilePreferences
+import com.example.shelfplayer.core.model.settings.TextContrast
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -168,6 +173,74 @@ class AppSettingsDataSource @Inject constructor(
 
     suspend fun setDynamicColor(enabled: Boolean) {
         dataStore.updateData { current -> current.toBuilder().setDynamicColor(enabled).build() }
+    }
+
+    /**
+     * PRODUCT_SPEC SET-002 (Appearance) — the look, written to **both** fields on purpose.
+     *
+     * `app_theme_key` is the real answer and `theme_mode` is the older, coarser one. Writing only the key
+     * would leave a downgraded build reading a `theme_mode` from whenever the user last touched the old
+     * control — so a reader who picks AMOLED here and then rolls the app back would find themselves in
+     * light mode. Writing the brightness alongside costs one line and keeps the two from disagreeing.
+     *
+     * [AppTheme.System] resolves to `THEME_MODE_SYSTEM` because that is the same instruction in the older
+     * vocabulary; [AppTheme.Amoled] resolves to dark, which is the nearest true thing it can say.
+     */
+    suspend fun setAppTheme(theme: AppTheme) {
+        val brightness = when (theme.isDark) {
+            null -> ThemeMode.THEME_MODE_SYSTEM
+            true -> ThemeMode.THEME_MODE_DARK
+            false -> ThemeMode.THEME_MODE_LIGHT
+        }
+        dataStore.updateData { current ->
+            current.toBuilder().setAppThemeKey(theme.key).setThemeMode(brightness).build()
+        }
+    }
+
+    /** PRODUCT_SPEC SET-002 (Appearance) — the accent, as a key. See `AccentColor` for why it is closed. */
+    suspend fun setAccentColor(accent: AccentColor) {
+        dataStore.updateData { current -> current.toBuilder().setAccentColorKey(accent.key).build() }
+    }
+
+    /** PRODUCT_SPEC SET-002 (Appearance) — the colour of the wash over every frosted surface. */
+    suspend fun setGlassTint(tint: GlassTint) {
+        dataStore.updateData { current -> current.toBuilder().setGlassTintKey(tint.key).build() }
+    }
+
+    /**
+     * PRODUCT_SPEC SET-002 (Appearance) — whether the wash is drawn over cards, and over the app's chrome.
+     *
+     * Two switches rather than one because they answer different questions. The chrome floats over content
+     * and needs separating from it; a card *is* content, and on a black theme a white wash over it is the
+     * difference between a shelf that looks like glass and one that looks grey. A reader who wants true
+     * black wants the card wash off and may well still want the chrome to read as a bar.
+     *
+     * Stored inverted — see the fields in `app_settings.proto` for why the enabled state cannot be the one
+     * with the number.
+     */
+    suspend fun setCardGlassTintEnabled(enabled: Boolean) {
+        dataStore.updateData { current -> current.toBuilder().setCardGlassTintDisabled(!enabled).build() }
+    }
+
+    suspend fun setSystemGlassTintEnabled(enabled: Boolean) {
+        dataStore.updateData { current -> current.toBuilder().setSystemGlassTintDisabled(!enabled).build() }
+    }
+
+    /** PRODUCT_SPEC 2.10 — how strongly text stands off its ground. See `TextContrast` for why it is a level. */
+    suspend fun setTextContrast(contrast: TextContrast) {
+        dataStore.updateData { current -> current.toBuilder().setTextContrastKey(contrast.key).build() }
+    }
+
+    /**
+     * PRODUCT_SPEC SET-002 — the app-wide blur radius, in dp.
+     *
+     * Written through `GlassBlur.toStored`, which is where the *off*-versus-unset sentinel lives. Passing
+     * the raw dp would store a plain `0` for off, and the next reader could not tell that from a device
+     * that has never opened the slider.
+     */
+    suspend fun setGlassBlurDp(dp: Int) {
+        val stored = GlassBlur.toStored(dp)
+        dataStore.updateData { current -> current.toBuilder().setGlassBlurDp(stored).build() }
     }
 
     /**

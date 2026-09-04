@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.settings
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,9 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +52,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.pluralStringResource
@@ -77,8 +83,9 @@ import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
 import com.example.shelfplayer.ui.gesture.offscreenPage
 import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
-import com.example.shelfplayer.ui.glass.frostedGlass
+import com.example.shelfplayer.ui.glass.glassContentColor
 import com.example.shelfplayer.ui.glass.playerChromeClearance
+import com.example.shelfplayer.ui.glass.systemGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
@@ -144,7 +151,13 @@ fun SettingsRoute(
             onMessageShown = viewModel::onDebugMessageShown,
         ),
         appearanceActions = AppearanceActions(
-            onThemeModeChanged = appearanceViewModel::onThemeModeChanged,
+            onThemeChanged = appearanceViewModel::onThemeChanged,
+            onAccentChanged = appearanceViewModel::onAccentChanged,
+            onGlassTintChanged = appearanceViewModel::onGlassTintChanged,
+            onCardGlassTintChanged = appearanceViewModel::onCardGlassTintChanged,
+            onSystemGlassTintChanged = appearanceViewModel::onSystemGlassTintChanged,
+            onTextContrastChanged = appearanceViewModel::onTextContrastChanged,
+            onGlassBlurChanged = appearanceViewModel::onGlassBlurChanged,
             onDynamicColorChanged = appearanceViewModel::onDynamicColorChanged,
             onLanguageChanged = appearanceViewModel::onLanguageChanged,
         ),
@@ -201,7 +214,10 @@ fun SettingsScreen(
     // render without a ViewModel (PRODUCT_SPEC 16.4).
     recovery: RecoveryTestInputs = RecoveryTestInputs(),
 ) {
-    var selected by rememberSaveable { mutableStateOf(SettingsTab.Server) }
+    // The first tab, whichever that is. Named through `entries` rather than by hand so that reordering
+    // the enum cannot leave the screen opening on a tab that is no longer the one the pager starts on —
+    // which is exactly what happened when Appearance was put in front of Server.
+    var selected by rememberSaveable { mutableStateOf(SettingsTab.entries.first()) }
     /*
      * PRODUCT_SPEC SET-002 / 16.2 — the tabs are pages, and the drag is the transition.
      *
@@ -223,6 +239,9 @@ fun SettingsScreen(
     }
     /** Where the underline is, as a fractional tab index. See [TabIndicator]. */
     val tabPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction
+    // Read here rather than in the tab: a `LazyListScope` builder is not a composable, and the swatches
+    // need to know which ground they are previewing themselves against.
+    val systemIsDark = isSystemInDarkTheme()
     /*
      * PRODUCT_SPEC SET-002 / 16.2 — the give at both ends, and the pull that leaves the screen.
      *
@@ -246,6 +265,19 @@ fun SettingsScreen(
     val headerHaze = remember { HazeState() }
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        /*
+         * PRODUCT_SPEC SET-002 — transparent so the app's backdrop shows through.
+         *
+         * `Scaffold` paints its container over everything beneath it, so the gradient drawn behind the
+         * navigation graph would be covered here and the glass cards would be frosting an opaque surface
+         * — a blur of one flat colour, which is that same flat colour. The same trap `TopAppBar` sets
+         * with its own container, and the reason a frosted surface has to be told to stop painting.
+         */
+        containerColor = Color.Transparent,
+        // ...and the content colour said explicitly, because a transparent container has no
+        // pair in the scheme and Material's fallback for that is literally black. See
+        // `glassContentColor`, and the device report that found it.
+        contentColor = glassContentColor(),
         // PRODUCT_SPEC SET-002 — the title and the tabs are one frosted header, and the list runs beneath
         // it. They are in the same slot for that reason: `Scaffold` measures its top bar and reports the
         // height as `innerPadding`'s top, so the list can take exactly that as *content* padding and pass
@@ -253,9 +285,10 @@ fun SettingsScreen(
         // between the two and there would be nothing behind the glass to refract.
         topBar = {
             Column(
-                modifier = Modifier.frostedGlass(
+                modifier = Modifier.systemGlass(
                     state = headerHaze,
                     backgroundColor = MaterialTheme.colorScheme.surface,
+                    shape = RectangleShape,
                 ),
             ) {
                 TopAppBar(
@@ -292,10 +325,26 @@ fun SettingsScreen(
                     indicator = { positions -> TabIndicator(positions = positions, position = tabPosition) },
                 ) {
                     SettingsTab.entries.forEach { tab ->
+                        val label = stringResource(tab.labelRes)
+                        val icon = tab.icon
                         Tab(
                             selected = tab == selected,
                             onClick = { selected = tab },
-                            text = { Text(text = stringResource(tab.labelRes)) },
+                            /*
+                             * An icon where the tab has one, and the label becomes its **description**
+                             * rather than its text.
+                             *
+                             * A tab whose only content is a glyph is an unnamed control to a screen
+                             * reader, and *Appearance* has to stay findable by name even when it is a
+                             * palette. `Tab` merges its content's semantics, so the description lands on
+                             * the tab itself — which is what `SettingsScreenTest` matches on.
+                             */
+                            icon = icon?.let { vector ->
+                                { Icon(imageVector = vector, contentDescription = label) }
+                            },
+                            // Null for the three that carry an icon, or the tab would show both and be
+                            // back to being too narrow to read — which is the whole reason for the icons.
+                            text = if (icon == null) ({ Text(text = label) }) else null,
                         )
                     }
                 }
@@ -372,14 +421,16 @@ fun SettingsScreen(
                     ),
                 ) {
                     when (tab) {
-                        SettingsTab.Server -> serverTab(uiState, serverTab)
-                        SettingsTab.Sleep -> sleepTimerTab(
-                            settings = uiState.sleepTimer,
-                            history = uiState.sleepTimerHistory,
-                            actions = sleepTimerActions,
+                        SettingsTab.Appearance -> appearanceTab(
+                            // The theme's own answer where it has one, and the device's where it does
+                            // not. The swatches preview themselves against the ground the reader is
+                            // actually on, and `AppTheme.System` cannot say which that is.
+                            state = appearance.copy(isDark = appearance.theme.isDark ?: systemIsDark),
+                            actions = appearanceActions,
                         )
 
                         SettingsTab.Playback -> {
+                            item { TabHeading(text = stringResource(R.string.settings_tab_playback)) }
                             playbackTab(
                                 settings = uiState.playback,
                                 libraries = uiState.libraries,
@@ -387,7 +438,18 @@ fun SettingsScreen(
                                 networkPolicy = uiState.networkPolicy,
                                 housekeeping = uiState.housekeeping,
                             )
+                            // PRODUCT_SPEC PLAY-008 — the sleep timer's own tab is gone; this is it.
+                            sleepTimerTab(
+                                settings = uiState.sleepTimer,
+                                history = uiState.sleepTimerHistory,
+                                actions = sleepTimerActions,
+                            )
                             devicesSection(devices)
+                        }
+
+                        SettingsTab.Server -> {
+                            item { TabHeading(text = stringResource(R.string.settings_tab_server)) }
+                            serverTab(uiState, serverTab)
                         }
 
                         SettingsTab.About -> aboutTab(
@@ -395,7 +457,6 @@ fun SettingsScreen(
                             launcherIcon = launcherIcon,
                             onLauncherIconChanged = onLauncherIconChanged,
                             metrics = metrics,
-                            appearance = AppearanceInputs(appearance, appearanceActions),
                             diagnostics = DiagnosticsInputs(
                                 onOpenEventLog = { isEventLogOpen = true },
                                 onOpenDebugConsole = { isDebugConsoleOpen = true },
@@ -495,7 +556,6 @@ private fun LazyListScope.aboutTab(
     launcherIcon: LauncherIcon,
     onLauncherIconChanged: (LauncherIcon) -> Unit,
     metrics: PlaybackMetrics,
-    appearance: AppearanceInputs,
     diagnostics: DiagnosticsInputs,
     recovery: RecoveryTestInputs,
 ) {
@@ -508,10 +568,6 @@ private fun LazyListScope.aboutTab(
     // build counter now, so a tester holding two APKs reads the branch here rather than decoding a number.
     item { TextRow(labelRes = R.string.about_source, value = uiState.sourceLabel) }
     item { Hint(text = stringResource(R.string.about_phase)) }
-
-    // PRODUCT_SPEC SET-002 — theme, colours and language, above the icon because they are the same kind of
-    // question and this is the half somebody came here to change.
-    appearanceSection(appearance.state, appearance.actions)
 
     // PRODUCT_SPEC SET-003 — on the About tab because it is about the app's own identity rather than
     // about a server, a book or how playback behaves.
@@ -742,11 +798,31 @@ private fun Duration.asSeconds(): String = stringResource(
 
 private const val MILLIS_PER_SECOND = 1000.0
 
-private enum class SettingsTab(val labelRes: Int) {
-    Server(R.string.settings_tab_server),
-    Playback(R.string.settings_tab_playback),
-    Sleep(R.string.settings_tab_sleep),
-    About(R.string.settings_tab_about),
+/**
+ * PRODUCT_SPEC SET-002 — the tabs, in the order the owner asked for.
+ *
+ * Appearance first because it is what somebody opens Settings to change; About last because it is the one
+ * nobody opens twice. **Sleep is gone** — its controls are the second half of the Playback tab now. It was
+ * a whole tab for one feature, and the feature it belongs to is how playback behaves: a reader setting a
+ * default speed and a reader setting a sleep timer are the same reader on the same errand.
+ */
+private enum class SettingsTab(val labelRes: Int, val icon: ImageVector?) {
+    Appearance(R.string.settings_tab_appearance, Icons.Filled.Palette),
+    Playback(R.string.settings_tab_playback, Icons.Filled.Headphones),
+    Server(R.string.settings_tab_server, Icons.Filled.Dns),
+
+    /**
+     * The one tab that keeps its word.
+     *
+     * *About* is short, it is the only one of the four whose name is not also the name of a thing on the
+     * screen, and there is no icon that means "what this app is" without being guessed at. So the row is
+     * three icons and a word — deliberately, and on the owner's instruction to leave this one alone.
+     */
+    About(R.string.settings_tab_about, icon = null),
+    ;
+
+    /** Every icon still carries its name for TalkBack — see the `Tab` below. */
+    val hasIcon: Boolean get() = icon != null
 }
 
 /**
@@ -782,16 +858,4 @@ data class ServerTabInputs(
     val lockActions: ProfileLockActions = ProfileLockActions(),
     /** PRODUCT_SPEC 21 — what the last passcode write did, so a refusal is visible. */
     val lockMessage: LockSettingsMessage? = null,
-)
-
-/**
- * PRODUCT_SPEC SET-002 — the appearance state and its three writes, travelling together.
- *
- * A bundle so that `aboutTab` keeps a readable parameter list: it is at detekt's function limit with the
- * two it already has, and a state and its actions are never useful apart.
- */
-@Immutable
-data class AppearanceInputs(
-    val state: AppearanceUiState = AppearanceUiState(),
-    val actions: AppearanceActions = AppearanceActions(),
 )

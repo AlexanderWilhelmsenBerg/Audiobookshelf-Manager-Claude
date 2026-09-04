@@ -529,7 +529,6 @@
         <item quantity="one">Restarted once</item>
         <item quantity="other">Restarted %1$d times</item>
     </plurals>
-    <string name="settings_tab_sleep">Sleep</string>
     <!-- PRODUCT_SPEC LIB-004 — the synopsis is three lines until asked. -->
     <!-- PRODUCT_SPEC PLAY-004 — the explicit finished flag, which the user can set and clear. -->
     <string name="book_synopsis_more">Show more</string>
@@ -1146,4 +1145,38 @@
     <string name="lock_forgot_submit">Sign in and clear the passcode</string>
     <string name="lock_forgot_failed">That did not work. Check the password, and that your server is reachable.</string>
     <string name="profiles_locked">Passcode required</string>
+    <string name="settings_tab_appearance">Appearance</string>
+    <string name="settings_theme_amoled">AMOLED</string>
+    <string name="settings_theme_amoled_hint">Dark with true black surfaces. On an OLED screen a black pixel is switched off, so large dark areas use no power. The backdrop gradient is turned off under this theme for the same reason.</string>
+    <string name="settings_section_colour">Colour</string>
+    <string name="settings_accent_colour">Accent colour</string>
+    <string name="settings_accent_colour_hint">Used for buttons, switches and anything selected. Each choice is a pair that has been checked for contrast on both a light and a dark background.</string>
+    <string name="settings_accent_teal">Teal</string>
+    <string name="settings_accent_indigo">Indigo</string>
+    <string name="settings_accent_plum">Plum</string>
+    <string name="settings_accent_ember">Ember</string>
+    <string name="settings_accent_moss">Moss</string>
+    <string name="settings_accent_slate">Slate</string>
+    <string name="settings_section_glass">Glass</string>
+    <string name="settings_tint_colour">Tint colour</string>
+    <string name="settings_tint_colour_hint">The wash over the blurred surfaces. It is what makes them read as frosted rather than merely out of focus.</string>
+    <string name="settings_tint_white">White</string>
+    <string name="settings_tint_warm">Warm</string>
+    <string name="settings_tint_cool">Cool</string>
+    <string name="settings_tint_accent">Accent</string>
+    <string name="settings_card_tint">Tint the cards</string>
+    <string name="settings_card_tint_hint">Turn this off for shelves that sit directly on the background. On the AMOLED theme it is the difference between black cards and grey ones.</string>
+    <string name="settings_system_tint">Tint the bars and the player</string>
+    <string name="settings_system_tint_hint">The navigation bar, the top bars and the mini player. They float over your content, so a wash is what separates them from it.</string>
+    <string name="settings_glass_no_blur_note">Android 12 and later blurs what is behind these surfaces. Below that there is no blur available, so the wash is drawn on its own and these switches have no effect.</string>
+    <string name="settings_section_theme">Theme</string>
+    <string name="settings_blur">Blur</string>
+    <string name="settings_blur_value">%1$d dp</string>
+    <string name="settings_blur_off">Off</string>
+    <string name="settings_blur_hint">How far the frosted surfaces smear what is behind them. One value for the whole app. At Off they keep their wash and stop blurring, which is also what Android 11 and earlier do whatever this says.</string>
+    <string name="settings_text_contrast">Text contrast</string>
+    <string name="settings_text_contrast_hint">How strongly text stands off its background. A level rather than a colour on purpose: every level stays readable on every theme, which a chosen colour cannot promise.</string>
+    <string name="settings_contrast_auto">Automatic</string>
+    <string name="settings_contrast_high">High</string>
+    <string name="settings_contrast_soft">Soft</string>
 </resources>

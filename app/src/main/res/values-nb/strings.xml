@@ -396,7 +396,6 @@
         <item quantity="one">Startet på nytt én gang</item>
         <item quantity="other">Startet på nytt %1$d ganger</item>
     </plurals>
-    <string name="settings_tab_sleep">Sovetid</string>
     <string name="book_synopsis_more">Vis mer</string>
     <string name="book_synopsis_less">Vis mindre</string>
     <string name="book_section_about">Om boken</string>
@@ -894,4 +893,38 @@
     <string name="lock_forgot_submit">Logg inn og fjern koden</string>
     <string name="lock_forgot_failed">Det fungerte ikke. Sjekk passordet, og at serveren er tilgjengelig.</string>
     <string name="profiles_locked">Krever kode</string>
+    <string name="settings_tab_appearance">Utseende</string>
+    <string name="settings_theme_amoled">AMOLED</string>
+    <string name="settings_theme_amoled_hint">M\u00f8rkt med helt svarte flater. P\u00e5 en OLED-skjerm er en svart piksel avsl\u00e5tt, s\u00e5 store m\u00f8rke omr\u00e5der bruker ingen str\u00f8m. Bakgrunnsovergangen sl\u00e5s av under dette temaet av samme grunn.</string>
+    <string name="settings_section_colour">Farge</string>
+    <string name="settings_accent_colour">Aksentfarge</string>
+    <string name="settings_accent_colour_hint">Brukt p\u00e5 knapper, brytere og alt som er valgt. Hvert valg er et par som er kontrollert for kontrast mot b\u00e5de lys og m\u00f8rk bakgrunn.</string>
+    <string name="settings_accent_teal">Bl\u00e5gr\u00f8nn</string>
+    <string name="settings_accent_indigo">Indigo</string>
+    <string name="settings_accent_plum">Plomme</string>
+    <string name="settings_accent_ember">Glo</string>
+    <string name="settings_accent_moss">Mose</string>
+    <string name="settings_accent_slate">Skifer</string>
+    <string name="settings_section_glass">Glass</string>
+    <string name="settings_tint_colour">Skj\u00e6rfarge</string>
+    <string name="settings_tint_colour_hint">Sl\u00f8ret over de uskarpe flatene. Det er dette som gj\u00f8r at de leses som frostet og ikke bare ute av fokus.</string>
+    <string name="settings_tint_white">Hvit</string>
+    <string name="settings_tint_warm">Varm</string>
+    <string name="settings_tint_cool">Kald</string>
+    <string name="settings_tint_accent">Aksent</string>
+    <string name="settings_card_tint">Legg skj\u00e6r p\u00e5 kortene</string>
+    <string name="settings_card_tint_hint">Sl\u00e5 av dette for hyller som ligger rett p\u00e5 bakgrunnen. Med AMOLED-temaet er det forskjellen p\u00e5 svarte og gr\u00e5 kort.</string>
+    <string name="settings_system_tint">Legg skj\u00e6r p\u00e5 linjene og spilleren</string>
+    <string name="settings_system_tint_hint">Navigasjonslinjen, topplinjene og minispilleren. De flyter over innholdet ditt, s\u00e5 et sl\u00f8r er det som skiller dem fra det.</string>
+    <string name="settings_glass_no_blur_note">Android 12 og nyere gj\u00f8r det bak disse flatene uskarpt. Under det finnes ingen uskarphet, s\u00e5 sl\u00f8ret tegnes alene og disse bryterne har ingen virkning.</string>
+    <string name="settings_section_theme">Tema</string>
+    <string name="settings_blur">Uskarphet</string>
+    <string name="settings_blur_value">%1$d dp</string>
+    <string name="settings_blur_off">Av</string>
+    <string name="settings_blur_hint">Hvor mye de frostede flatene sl\u00f8rer det som ligger bak. \u00c9n verdi for hele appen. P\u00e5 Av beholder de sl\u00f8ret og slutter \u00e5 gj\u00f8re uskarpt, som ogs\u00e5 er det Android 11 og eldre gj\u00f8r uansett hva dette st\u00e5r p\u00e5.</string>
+    <string name="settings_text_contrast">Tekstkontrast</string>
+    <string name="settings_text_contrast_hint">Hvor sterkt teksten skiller seg fra bakgrunnen. Et niv\u00e5 og ikke en farge med hensikt: hvert niv\u00e5 er lesbart p\u00e5 alle temaer, noe en valgt farge ikke kan love.</string>
+    <string name="settings_contrast_auto">Automatisk</string>
+    <string name="settings_contrast_high">H\u00f8y</string>
+    <string name="settings_contrast_soft">Myk</string>
 </resources>

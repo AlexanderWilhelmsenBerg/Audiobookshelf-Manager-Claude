@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -54,8 +55,12 @@ import com.example.shelfplayer.feature.player.SleepTimerSheet
 import com.example.shelfplayer.feature.player.SpeedSheet
 import com.example.shelfplayer.navigation.ShelfDestinations
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
+import com.example.shelfplayer.ui.glass.GlassPreferences
+import com.example.shelfplayer.ui.glass.LocalCardHazeState
 import com.example.shelfplayer.ui.glass.LocalGlassHazeState
+import com.example.shelfplayer.ui.glass.LocalGlassPreferences
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
+import com.example.shelfplayer.ui.glass.appBackdrop
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -90,9 +95,14 @@ class MainActivity : ComponentActivity() {
             // PRODUCT_SPEC SET-002 — outside the theme, because it decides what every string below says
             // and the theme only decides what colour it is drawn in.
             AppLocale(language = appState.language) {
+                val theme = appState.resolveTheme()
+                val isDark = appState.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme())
                 ShelfPlayerTheme(
-                    darkTheme = appState.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme()),
+                    darkTheme = isDark,
                     dynamicColor = appState.dynamicColor,
+                    pureBlack = theme.prefersFlatBackdrop,
+                    accent = Color(appState.accent.argbFor(isDark)),
+                    textContrast = appState.textContrast.contrast,
                 ) {
                     // The graph is not composed until the start destination is known. Composing it early
                     // and correcting it would show a flash of the wrong screen on every cold start, and
@@ -111,6 +121,16 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     ShelfDestinations.SIGN_IN
                                 },
+                                // PRODUCT_SPEC SET-002 — resolved once, here, because every frosted
+                                // surface in the app has to agree and the accent is only knowable
+                                // after the theme has decided which ground it is on.
+                                glass = GlassPreferences(
+                                    tint = Color(appState.glassTint.argbOr(appState.accent.argbFor(isDark))),
+                                    cardTintEnabled = appState.cardGlassTintEnabled,
+                                    systemTintEnabled = appState.systemGlassTintEnabled,
+                                    blurRadius = appState.glassBlurDp.dp,
+                                ),
+                                flatBackdrop = theme.prefersFlatBackdrop,
                             )
                         }
                     }
@@ -130,6 +150,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun ShelfPlayerContent(
     startDestination: String,
+    /** PRODUCT_SPEC SET-002 — the reader's glass choices, resolved once for every frosted surface. */
+    glass: GlassPreferences,
+    /** Whether the backdrop is a flat ground rather than a gradient. True on AMOLED — see `appBackdrop`. */
+    flatBackdrop: Boolean,
     playerViewModel: PlayerViewModel = hiltViewModel(),
     lockViewModel: LockViewModel = hiltViewModel(),
 ) {
@@ -198,11 +222,24 @@ private fun ShelfPlayerContent(
     NotificationPermission(hasPlayback = playback.bookId != null)
     SyncOnBackground(onBackgrounded = playerViewModel::onAppBackgrounded)
 
+    /*
+     * PRODUCT_SPEC SET-002 — what a **card** blurs, and why it is a second state.
+     *
+     * `hazeState` below has the navigation graph as its source, which is where the cards are. A card
+     * blurring it would be an effect asked to blur itself. This one's source is the backdrop drawn
+     * beneath the graph, which is genuinely behind every card on every screen.
+     */
+    val backdropHaze = remember { HazeState() }
+
     CompositionLocalProvider(
         LocalGlassHazeState provides hazeState,
+        LocalCardHazeState provides backdropHaze,
+        LocalGlassPreferences provides glass,
         LocalPlayerChromeBottomInset provides playerChromeInset,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // Drawn first and measured to the window, so it is behind the graph rather than inside it.
+            Box(modifier = Modifier.appBackdrop(flat = flatBackdrop).hazeSource(state = backdropHaze))
             ShelfPlayerNavHost(
                 startDestination = startDestination,
                 onBookPlaySelected = playerViewModel::onPlayFromShelf,

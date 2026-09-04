@@ -82,6 +82,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
@@ -119,7 +120,8 @@ import com.example.shelfplayer.feature.browse.SeriesCard
 import com.example.shelfplayer.ui.gesture.offscreenPage
 import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
-import com.example.shelfplayer.ui.glass.frostedGlass
+import com.example.shelfplayer.ui.glass.glassContentColor
+import com.example.shelfplayer.ui.glass.systemGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.flow.filter
@@ -241,15 +243,29 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .captureHomeAxisBarMotion(axisBarMotion),
+        /*
+         * PRODUCT_SPEC SET-002 — transparent so the app's backdrop shows through.
+         *
+         * `Scaffold` paints its container over everything beneath it, so the gradient drawn behind the
+         * navigation graph would be covered here and the glass cards would be frosting an opaque surface
+         * — a blur of one flat colour, which is that same flat colour. The same trap `TopAppBar` sets
+         * with its own container, and the reason a frosted surface has to be told to stop painting.
+         */
+        containerColor = Color.Transparent,
+        // ...and the content colour said explicitly, because a transparent container has no
+        // pair in the scheme and Material's fallback for that is literally black. See
+        // `glassContentColor`, and the device report that found it.
+        contentColor = glassContentColor(),
         snackbarHost = { SnackbarHost(snackbars) },
         // PRODUCT_SPEC LIB-002 — frosted, like the capsule at the other end of the screen, and sharing its
         // blur source. Both are siblings of the body in the `Scaffold`, so both may read a state whose
         // source is that body; an effect that is a descendant of its own source draws nothing.
         topBar = {
             Column(
-                modifier = Modifier.frostedGlass(
+                modifier = Modifier.systemGlass(
                     state = axisBarHaze,
                     backgroundColor = MaterialTheme.colorScheme.surface,
+                    shape = RectangleShape,
                 ),
             ) {
                 TopAppBar(
@@ -731,7 +747,7 @@ private fun HomeAxisBar(
             // capsule that refused to grow would clip the label it just moved to make room for.
             .heightIn(min = AXIS_BAR_HEIGHT)
             .clip(CircleShape)
-            .frostedGlass(
+            .systemGlass(
                 state = haze,
                 backgroundColor = MaterialTheme.colorScheme.surface,
                 shape = CircleShape,
