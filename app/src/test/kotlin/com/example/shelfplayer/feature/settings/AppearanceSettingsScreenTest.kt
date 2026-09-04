@@ -2,9 +2,10 @@ package com.example.shelfplayer.feature.settings
 
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -15,9 +16,15 @@ import androidx.compose.ui.test.performSemanticsAction
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
+import com.example.shelfplayer.core.model.settings.ThemeAccents
+import com.example.shelfplayer.core.model.settings.ThemeGlass
+import com.example.shelfplayer.core.model.settings.ThemeGround
+import com.example.shelfplayer.core.model.settings.ThemeSurfaces
+import com.example.shelfplayer.core.model.settings.ThemeText
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -203,6 +210,53 @@ class AppearanceSettingsScreenTest {
         assertEquals(TextContrast.High, chosen)
     }
 
+    /**
+     * **The picker shows the themes, and every cell is named.**
+     *
+     * A row of pictures with no `contentDescription` is six unlabelled controls to a screen reader, and
+     * the label is the only thing that distinguishes them — the artwork cannot be described. *None* is
+     * asserted alongside them because a picker whose only exits are pictures is one you cannot leave.
+     */
+    @Test
+    fun `the background themes are offered as named thumbnails, with a way back to none`() {
+        render(state = AppearanceUiState(backgroundThemes = themes()))
+
+        composeRule.onNodeWithContentDescription("None").assertIsDisplayed()
+        themes().forEach { theme ->
+            composeRule.onNodeWithContentDescription(theme.name).assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun `choosing a background theme reports its id, and none reports null`() {
+        var chosen: String? = "unset"
+        render(
+            state = AppearanceUiState(backgroundThemes = themes(), backgroundThemeId = null),
+            actions = AppearanceActions(onBackgroundThemeChanged = { chosen = it }),
+        )
+
+        composeRule.onNodeWithContentDescription("Teal Horizon").performClick()
+        assertEquals("teal_horizon", chosen)
+
+        composeRule.onNodeWithContentDescription("None").performClick()
+        assertEquals(null, chosen)
+    }
+
+    /**
+     * With no packs on disk the group is absent rather than empty.
+     *
+     * An empty picker is a heading over nothing, which reads as a broken screen. The catalog returns an
+     * empty list when the assets are unreadable — a build fault — and the honest thing on that path is to
+     * show the rest of the tab, not a hole.
+     */
+    @Test
+    fun `no bundled themes means no picker at all`() {
+        render(state = AppearanceUiState(backgroundThemes = emptyList()))
+
+        composeRule.onNodeWithText("Background theme").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("None").assertDoesNotExist()
+    }
+
     @Test
     fun `the wallpaper colours are a switch, off by default`() {
         var enabled: Boolean? = null
@@ -255,8 +309,46 @@ class AppearanceSettingsScreenTest {
         composeRule.onNodeWithText("System default").assertIsSelected()
     }
 
-    private fun scrollTo(text: String) =
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(text, substring = true))
+    /** Two packs' worth of shape, which is all the picker reads. Colours are irrelevant to these cases. */
+    private fun themes() = listOf(
+        backgroundTheme(id = "teal_horizon", name = "Teal Horizon"),
+        backgroundTheme(id = "nebula_glow", name = "Nebula Glow"),
+    )
+
+    private fun backgroundTheme(id: String, name: String) = BackgroundTheme(
+        id = id,
+        name = name,
+        pack = "Test Pack",
+        isDark = true,
+        ground = ThemeGround(asset = "themes/$id/background.webp", base = 0xFF000000, scrim = 0x80000000),
+        surfaces = ThemeSurfaces(
+            card = 0xCC101010,
+            cardElevated = 0xDD181818,
+            navigation = 0xD9101010,
+            divider = 0x33FFFFFF,
+        ),
+        glass = ThemeGlass(tint = 0x33FFFFFF, border = 0x59FFFFFF, blurDp = 24),
+        accents = ThemeAccents(
+            primary = 0xFF9EF4EA,
+            primaryContainer = 0xFF24555E,
+            onPrimary = 0xFF0A2327,
+            secondary = 0xFFFFE1A6,
+            tertiary = 0xFFA2DCFF,
+            error = 0xFFFF9A9A,
+        ),
+        text = ThemeText(primary = 0xFFF6FFFF, secondary = 0xFFE0F2F1, muted = 0xFFB7D0D0, inverse = 0xFF0B232A),
+    )
+
+    /**
+     * Scrolls the tab, and only the tab.
+     *
+     * `hasScrollAction()` alone stopped being unique the moment the tab gained horizontal rows — the
+     * accent swatches and the theme thumbnails both scroll, so the matcher found three nodes and refused.
+     * Keying on the **vertical** axis range names the one that is the page.
+     */
+    private fun scrollTo(text: String) = composeRule
+        .onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+        .performScrollToNode(hasText(text, substring = true))
 
     private fun render(
         state: AppearanceUiState = AppearanceUiState(),

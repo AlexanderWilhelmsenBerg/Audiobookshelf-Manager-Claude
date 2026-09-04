@@ -5,24 +5,39 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FormatColorReset
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
@@ -54,10 +69,122 @@ internal fun LazyListScope.appearanceTab(state: AppearanceUiState, actions: Appe
     // word and four of them left no tab wide enough to read — so without this the screen would be the
     // only one in the app that never says what it is.
     item { TabHeading(text = stringResource(R.string.settings_section_appearance)) }
+    backgroundThemeGroup(state, actions)
     themeGroup(state, actions)
     colourGroup(state, actions)
     glassGroup(state, actions)
     languageGroup(state, actions)
+}
+
+/**
+ * PRODUCT_SPEC SET-002 — the bundled packs, shown as what they actually look like.
+ *
+ * ### Why thumbnails and not a list of names
+ *
+ * Because *Nebula Glow* tells a reader nothing. These themes are a picture and a palette chosen against
+ * it, so the only honest control is the picture — and the thumbnail is the real artwork, loaded from the
+ * same asset the backdrop uses, not an approximation that could drift from it.
+ *
+ * ### Why *None* is first
+ *
+ * It is the default and it is the way back. A picker whose only exits are six pictures is a picker you
+ * cannot leave.
+ */
+private fun LazyListScope.backgroundThemeGroup(state: AppearanceUiState, actions: AppearanceActions) {
+    if (state.backgroundThemes.isEmpty()) return
+    item { SectionHeader(text = stringResource(R.string.settings_section_background)) }
+    item {
+        SettingsGroup {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+                    .selectableGroup(),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item {
+                    ThemeThumbnail(
+                        label = stringResource(R.string.settings_background_none),
+                        assetPath = null,
+                        isSelected = state.backgroundThemeId == null,
+                        onClick = { actions.onBackgroundThemeChanged(null) },
+                    )
+                }
+                items(items = state.backgroundThemes, key = { it.id }) { theme ->
+                    ThemeThumbnail(
+                        label = theme.name,
+                        assetPath = theme.ground.asset,
+                        isSelected = state.backgroundThemeId == theme.id,
+                        onClick = { actions.onBackgroundThemeChanged(theme.id) },
+                    )
+                }
+            }
+            Hint(text = stringResource(R.string.settings_background_hint))
+        }
+    }
+}
+
+/**
+ * One theme, as its own artwork.
+ *
+ * The name is drawn under the picture *and* set as the cell's description, so the control is usable by
+ * eye and by screen reader without the reader hearing the name twice — `clearAndSetSemantics` on the
+ * label is what stops the text and the description both being announced.
+ */
+@Composable
+private fun ThemeThumbnail(label: String, assetPath: String?, isSelected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(THUMBNAIL_CORNER)
+    Column(
+        modifier = Modifier
+            .width(THUMBNAIL_WIDTH)
+            .selectable(selected = isSelected, role = Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = label },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(THUMBNAIL_HEIGHT)
+                .clip(shape)
+                .background(color = MaterialTheme.colorScheme.surfaceVariant, shape = shape)
+                .border(
+                    width = if (isSelected) THUMBNAIL_RING else THUMBNAIL_EDGE,
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
+                    },
+                    shape = shape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (assetPath == null) {
+                Icon(
+                    imageVector = Icons.Filled.FormatColorReset,
+                    // The cell is already named; naming the glyph too would announce it twice.
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                AsyncImage(
+                    model = "file:///android_asset/$assetPath",
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .clearAndSetSemantics { },
+        )
+    }
 }
 
 /** The look itself, plus the note AMOLED carries because it does more than darken. */
@@ -210,14 +337,24 @@ private fun <T> SwatchRow(
     labelOf: @Composable (T) -> String,
     onSelected: (T) -> Unit,
 ) {
-    Row(
+    /*
+     * A `LazyRow`, not a `Row`, and the accessibility suite is why.
+     *
+     * Six 48dp targets with their gaps need 348dp, and the tab is narrower than that on a compact phone
+     * once the page inset, the card inset and the row's own padding are taken off. A `Row` answers that
+     * by *compressing its children* — `assertEveryControlIsBigEnough` caught them at 31dp, under the
+     * 40dp floor — where a lazy row lets them keep their size and scroll. A control that silently shrinks
+     * to fit is the failure mode worth designing out, because it looks fine until somebody measures it.
+     */
+    LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(vertical = 8.dp)
             .selectableGroup(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        options.forEach { option ->
+        items(items = options) { option ->
             val isSelected = option == selected
             val label = labelOf(option)
             Box(
@@ -289,6 +426,13 @@ private fun GlassTint.labelRes(): Int = when (this) {
 private fun AppLanguage.label(): String = displayName ?: stringResource(R.string.settings_language_system)
 
 /** 48dp, because a colour the size of the colour would be a target below the accessibility floor. */
+/** Wide enough that a 16:9 crop of the artwork is recognisable, narrow enough that three fit on a phone. */
+private val THUMBNAIL_WIDTH = 104.dp
+private val THUMBNAIL_HEIGHT = 68.dp
+private val THUMBNAIL_CORNER = 10.dp
+private val THUMBNAIL_RING = 3.dp
+private val THUMBNAIL_EDGE = 1.dp
+
 private val SWATCH_TOUCH_TARGET = 48.dp
 private val SWATCH_SIZE = 32.dp
 private val SWATCH_RING_WIDTH = 3.dp

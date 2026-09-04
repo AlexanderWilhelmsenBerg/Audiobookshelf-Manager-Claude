@@ -8,14 +8,18 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -26,13 +30,27 @@ import javax.inject.Inject
  * configuration changes without re-reading DataStore on every recomposition.
  */
 @HiltViewModel
-class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileRepository: ProfileRepository) :
-    ViewModel() {
+class AppViewModel @Inject constructor(
+    settings: AppSettingsDataSource,
+    profileRepository: ProfileRepository,
+    backgroundThemes: BackgroundThemeCatalog,
+) : ViewModel() {
+    /**
+     * PRODUCT_SPEC SET-002 — the bundled packs, read once.
+     *
+     * A `flow { }` rather than a value because the catalog reads assets and so is `suspend`, and this is
+     * the only place in the app that needs the whole list before a screen exists. `combine` restarts it
+     * only if the upstream restarts, which for a `WhileSubscribed` state flow is a screen rotation at
+     * worst — and the catalog itself caches, so the second read costs nothing.
+     */
+    private val catalog: Flow<List<BackgroundTheme>> = flow { emit(backgroundThemes.themes()) }
+
     val state: StateFlow<AppUiState> = combine(
         settings.settings,
         profileRepository.observeProfiles(),
         profileRepository.observeServers(),
-    ) { stored, profiles, servers ->
+        catalog,
+    ) { stored, profiles, servers, themes ->
         AppUiState(
             themeMode = stored.themeMode,
             // PRODUCT_SPEC SET-002 (Appearance) — the richer answer, read alongside the older one rather
@@ -46,6 +64,8 @@ class AppViewModel @Inject constructor(settings: AppSettingsDataSource, profileR
             textContrast = TextContrast.ofKey(stored.textContrastKey),
             // Through `GlassBlur.ofStored`, which is where *off* is told from *never chosen*.
             glassBlurDp = GlassBlur.ofStored(stored.glassBlurDp),
+            // An id no build recognises resolves to none, the same rule every stored key follows.
+            backgroundTheme = themes.firstOrNull { it.id == stored.backgroundThemeId },
             dynamicColor = stored.dynamicColor,
             // PRODUCT_SPEC SET-002 — read here rather than in a screen because `AppLocale` wraps the whole
             // app: the language has to be resolved before the first string is drawn, not when Settings is
@@ -91,6 +111,8 @@ data class AppUiState(
     val systemGlassTintEnabled: Boolean = true,
     val textContrast: TextContrast = TextContrast.Default,
     val glassBlurDp: Int = GlassBlur.DEFAULT_DP,
+    /** PRODUCT_SPEC SET-002 — the chosen bundled theme, or `null` for none. Supersedes the plain theme. */
+    val backgroundTheme: BackgroundTheme? = null,
     val dynamicColor: Boolean = false,
     /** PRODUCT_SPEC SET-002 — the chosen language, or [AppLanguage.System] to follow the device. */
     val language: AppLanguage = AppLanguage.System,

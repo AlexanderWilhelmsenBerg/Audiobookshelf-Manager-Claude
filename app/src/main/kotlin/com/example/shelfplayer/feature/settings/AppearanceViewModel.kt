@@ -7,12 +7,17 @@ import com.example.shelfplayer.core.datastore.ThemeMode
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
+import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
+import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -42,10 +47,17 @@ import javax.inject.Inject
  * `AppViewModel` reads the store the same way for the same reason.
  */
 @HiltViewModel
-class AppearanceViewModel @Inject constructor(private val settings: AppSettingsDataSource) : ViewModel() {
+class AppearanceViewModel @Inject constructor(
+    private val settings: AppSettingsDataSource,
+    backgroundThemes: BackgroundThemeCatalog,
+) : ViewModel() {
+
+    /** The bundled packs. Read once — see `BackgroundThemeCatalog`; the catalog itself caches. */
+    private val catalog: Flow<List<BackgroundTheme>> = flow { emit(backgroundThemes.themes()) }
 
     val state: StateFlow<AppearanceUiState> = settings.settings
-        .map { stored ->
+        .combine(catalog) { stored, themes -> stored to themes }
+        .map { (stored, themes) ->
             AppearanceUiState(
                 // The key when there is one, and the older brightness when there is not — the same
                 // reconciliation `AppUiState.resolveTheme` makes, and for the same reason: a reader who
@@ -62,6 +74,10 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
                 textContrast = TextContrast.ofKey(stored.textContrastKey),
                 // Through `GlassBlur.ofStored`, which is where *off* is told from *never chosen*.
                 glassBlurDp = GlassBlur.ofStored(stored.glassBlurDp),
+                backgroundThemes = themes,
+                // Held as the id rather than the theme so that an id naming a pack this build no longer
+                // ships shows as *None* instead of as a selected row the picker cannot draw.
+                backgroundThemeId = stored.backgroundThemeId.takeIf { id -> themes.any { it.id == id } },
                 dynamicColor = stored.dynamicColor,
                 language = AppLanguage.ofTag(stored.appLanguageTag),
             )
@@ -101,6 +117,10 @@ class AppearanceViewModel @Inject constructor(private val settings: AppSettingsD
         viewModelScope.launch { settings.setGlassBlurDp(dp) }
     }
 
+    fun onBackgroundThemeChanged(id: String?) {
+        viewModelScope.launch { settings.setBackgroundThemeId(id) }
+    }
+
     fun onDynamicColorChanged(enabled: Boolean) {
         viewModelScope.launch { settings.setDynamicColor(enabled) }
     }
@@ -137,6 +157,9 @@ data class AppearanceUiState(
     val systemGlassTintEnabled: Boolean = true,
     val textContrast: TextContrast = TextContrast.Default,
     val glassBlurDp: Int = GlassBlur.DEFAULT_DP,
+    /** PRODUCT_SPEC SET-002 — every bundled pack, for the picker. Empty if the assets are unreadable. */
+    val backgroundThemes: List<BackgroundTheme> = emptyList(),
+    val backgroundThemeId: String? = null,
     val dynamicColor: Boolean = false,
     val language: AppLanguage = AppLanguage.System,
     val isDark: Boolean = false,

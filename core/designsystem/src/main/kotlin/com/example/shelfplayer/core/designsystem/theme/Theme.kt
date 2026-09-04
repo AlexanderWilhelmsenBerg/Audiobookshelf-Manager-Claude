@@ -67,6 +67,11 @@ private val ShelfDarkColors = darkColorScheme(
  *   the shipped one. A `Color` rather than a domain enum on purpose: this module knows how to draw a
  *   palette and deliberately does not know what a stored preference is, so `core:model` stays out of its
  *   dependencies and the theme can be previewed with any colour at all.
+ * @param override a whole palette to use instead of building one, for a theme that arrives as data rather
+ *   than as a choice among the shipped looks — a bundled background pack. It replaces [darkTheme],
+ *   [dynamicColor] and [accent] entirely, because a pack's colours were authored as a set against its own
+ *   artwork and taking half of them would break the contrast the pack promises. [textContrast] still
+ *   applies on top, since that is the reader's accessibility choice rather than the pack's.
  * @param textContrast how far the text sits from its ground — `1.0` for the furthest the ground allows,
  *   less to soften it, `null` to leave the scheme's own pairing alone. A `Float` for the same reason
  *   [accent] is a `Color`. Applied **last**, after [pureBlack], because it is measured against the
@@ -79,6 +84,7 @@ fun ShelfPlayerTheme(
     pureBlack: Boolean = false,
     accent: Color? = null,
     textContrast: Float? = null,
+    override: ColorScheme? = null,
     content: @Composable () -> Unit,
 ) {
     val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -94,7 +100,7 @@ fun ShelfPlayerTheme(
     // because it is the more specific request — "use my wallpaper" rather than "use this hue".
     val accented = if (accent != null && !(dynamicColor && supportsDynamicColor)) base.withAccent(accent) else base
 
-    val grounded = if (pureBlack) accented.asPureBlack() else accented
+    val grounded = override ?: if (pureBlack) accented.asPureBlack() else accented
 
     MaterialTheme(
         colorScheme = if (textContrast == null) grounded else grounded.withTextContrast(textContrast),

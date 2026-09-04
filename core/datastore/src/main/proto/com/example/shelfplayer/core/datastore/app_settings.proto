@@ -269,6 +269,17 @@ message AppSettings {
   // `sleep_timer_fade_seconds` uses, for the same reason: without it, turning the blur off would be
   // indistinguishable from never having touched the slider.
   int32 glass_blur_dp = 46;
+
+  // PRODUCT_SPEC SET-002 (Appearance) — a bundled background theme's id, or empty for none.
+  //
+  // Empty is the default and proto3's zero value, so an install predating this field keeps the plain
+  // theme it had. An id no build recognises reads back as none — the same rule every key here follows,
+  // and the one that makes removing a theme pack in a later build harmless rather than a black screen.
+  //
+  // A chosen background theme **supersedes** `app_theme_key` and `accent_color_key`: the pack's palette
+  // was authored against its own artwork, so mixing half of it with a different accent would break the
+  // contrast the pack promises. The Appearance tab says so where the choice is made.
+  string background_theme_id = 47;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

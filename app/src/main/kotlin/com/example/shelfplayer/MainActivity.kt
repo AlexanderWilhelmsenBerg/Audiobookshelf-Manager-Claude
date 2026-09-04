@@ -32,6 +32,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
+import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.feature.browse.LocalAuthorUrls
 import com.example.shelfplayer.feature.browse.LocalCoverUrls
 import com.example.shelfplayer.feature.browse.authorUrlsFor
@@ -55,12 +56,16 @@ import com.example.shelfplayer.feature.player.SleepTimerSheet
 import com.example.shelfplayer.feature.player.SpeedSheet
 import com.example.shelfplayer.navigation.ShelfDestinations
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
+import com.example.shelfplayer.ui.glass.BackdropArtwork
+import com.example.shelfplayer.ui.glass.BackdropScroll
 import com.example.shelfplayer.ui.glass.GlassPreferences
+import com.example.shelfplayer.ui.glass.LocalBackdropScroll
 import com.example.shelfplayer.ui.glass.LocalCardHazeState
 import com.example.shelfplayer.ui.glass.LocalGlassHazeState
 import com.example.shelfplayer.ui.glass.LocalGlassPreferences
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import com.example.shelfplayer.ui.glass.appBackdrop
+import com.example.shelfplayer.ui.glass.toColorScheme
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -96,13 +101,18 @@ class MainActivity : ComponentActivity() {
             // and the theme only decides what colour it is drawn in.
             AppLocale(language = appState.language) {
                 val theme = appState.resolveTheme()
-                val isDark = appState.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme())
+                val background = appState.backgroundTheme
+                // A pack supersedes the plain theme, including which ground it is on: its palette was
+                // authored as a set against its own artwork. See `BackgroundTheme`.
+                val isDark = background?.isDark
+                    ?: appState.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme())
                 ShelfPlayerTheme(
                     darkTheme = isDark,
                     dynamicColor = appState.dynamicColor,
-                    pureBlack = theme.prefersFlatBackdrop,
+                    pureBlack = background == null && theme.prefersFlatBackdrop,
                     accent = Color(appState.accent.argbFor(isDark)),
                     textContrast = appState.textContrast.contrast,
+                    override = background?.toColorScheme(),
                 ) {
                     // The graph is not composed until the start destination is known. Composing it early
                     // and correcting it would show a flash of the wrong screen on every cold start, and
@@ -131,6 +141,7 @@ class MainActivity : ComponentActivity() {
                                     blurRadius = appState.glassBlurDp.dp,
                                 ),
                                 flatBackdrop = theme.prefersFlatBackdrop,
+                                backgroundTheme = background,
                             )
                         }
                     }
@@ -154,6 +165,8 @@ private fun ShelfPlayerContent(
     glass: GlassPreferences,
     /** Whether the backdrop is a flat ground rather than a gradient. True on AMOLED — see `appBackdrop`. */
     flatBackdrop: Boolean,
+    /** PRODUCT_SPEC SET-002 — the chosen bundled pack, whose artwork becomes the backdrop. */
+    backgroundTheme: BackgroundTheme?,
     playerViewModel: PlayerViewModel = hiltViewModel(),
     lockViewModel: LockViewModel = hiltViewModel(),
 ) {
@@ -230,16 +243,32 @@ private fun ShelfPlayerContent(
      * beneath the graph, which is genuinely behind every card on every screen.
      */
     val backdropHaze = remember { HazeState() }
+    // PRODUCT_SPEC SET-002 — how far the foreground has scrolled, so the artwork can lag behind it.
+    // Owned here because the backdrop is drawn here and the scrolling happens inside the graph.
+    val backdropScroll = remember { BackdropScroll() }
 
     CompositionLocalProvider(
         LocalGlassHazeState provides hazeState,
         LocalCardHazeState provides backdropHaze,
         LocalGlassPreferences provides glass,
+        LocalBackdropScroll provides backdropScroll,
         LocalPlayerChromeBottomInset provides playerChromeInset,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Drawn first and measured to the window, so it is behind the graph rather than inside it.
-            Box(modifier = Modifier.appBackdrop(flat = flatBackdrop).hazeSource(state = backdropHaze))
+            /*
+             * Drawn first and measured to the window, so it is behind the graph rather than inside it.
+             *
+             * The haze source is on the **outer** box so that whichever ground is in use — a pack's
+             * artwork or the accent gradient — is what the glass refracts. Putting it on the artwork
+             * alone would leave the gradient case with nothing behind the cards again.
+             */
+            Box(
+                modifier = Modifier
+                    .appBackdrop(flat = flatBackdrop, theme = backgroundTheme)
+                    .hazeSource(state = backdropHaze),
+            ) {
+                if (backgroundTheme != null) BackdropArtwork(theme = backgroundTheme)
+            }
             ShelfPlayerNavHost(
                 startDestination = startDestination,
                 onBookPlaySelected = playerViewModel::onPlayFromShelf,

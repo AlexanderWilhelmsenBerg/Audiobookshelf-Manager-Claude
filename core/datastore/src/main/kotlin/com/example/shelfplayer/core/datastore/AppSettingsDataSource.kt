@@ -244,6 +244,17 @@ class AppSettingsDataSource @Inject constructor(
     }
 
     /**
+     * PRODUCT_SPEC SET-002 — the bundled background theme, or `null` for none.
+     *
+     * `null` writes the empty string, which is both "none" and proto3's zero value. There is no sentinel
+     * to invent here: unset and *no background theme* genuinely mean the same thing, unlike the blur
+     * radius where off and unchosen do not.
+     */
+    suspend fun setBackgroundThemeId(id: String?) {
+        dataStore.updateData { current -> current.toBuilder().setBackgroundThemeId(id.orEmpty()).build() }
+    }
+
+    /**
      * PRODUCT_SPEC SET-002 (Appearance/accessibility) — the language the app draws itself in.
      *
      * The tag is stored, not the enum's name. `AppLanguage.ofTag` documents why: the set of languages is a

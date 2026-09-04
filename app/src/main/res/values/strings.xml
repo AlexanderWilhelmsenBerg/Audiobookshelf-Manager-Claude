@@ -1179,4 +1179,7 @@
     <string name="settings_contrast_auto">Automatic</string>
     <string name="settings_contrast_high">High</string>
     <string name="settings_contrast_soft">Soft</string>
+    <string name="settings_section_background">Background theme</string>
+    <string name="settings_background_none">None</string>
+    <string name="settings_background_hint">Each theme is a background and the palette drawn for it. Choosing one replaces the theme and accent above, because those colours were picked against that picture. The background scrolls with you, slower, as though it were further away.</string>
 </resources>

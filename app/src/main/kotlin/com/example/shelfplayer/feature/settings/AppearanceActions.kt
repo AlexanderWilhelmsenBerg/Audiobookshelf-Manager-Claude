@@ -26,6 +26,8 @@ data class AppearanceActions(
     val onTextContrastChanged: (TextContrast) -> Unit = {},
     /** In dp. Zero is a real choice — see `GlassBlur` for why it cannot be stored as a plain zero. */
     val onGlassBlurChanged: (Int) -> Unit = {},
+    /** `null` for none. A pack supersedes the theme and accent above — see `BackgroundTheme`. */
+    val onBackgroundThemeChanged: (String?) -> Unit = {},
     val onDynamicColorChanged: (Boolean) -> Unit = {},
     val onLanguageChanged: (AppLanguage) -> Unit = {},
 )
