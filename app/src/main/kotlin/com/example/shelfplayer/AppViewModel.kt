@@ -2,8 +2,6 @@ package com.example.shelfplayer
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.shelfplayer.core.datastore.AppSettingsDataSource
-import com.example.shelfplayer.core.datastore.ThemeMode
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.settings.AccentScheme
 import com.example.shelfplayer.core.model.settings.AppLanguage
@@ -12,84 +10,51 @@ import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
+import com.example.shelfplayer.domain.repository.AppearanceRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
-import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
 /**
  * PRODUCT_SPEC SET-002 (Appearance) — the app-wide appearance state.
  *
- * Held in a ViewModel rather than read inline in the Activity so that the theme survives
- * configuration changes without re-reading DataStore on every recomposition.
+ * Storage compatibility is resolved by [AppearanceRepository]. This shell sees only domain values, so a
+ * protobuf field can change without presentation learning a second interpretation of it.
  */
 @HiltViewModel
 class AppViewModel @Inject constructor(
-    settings: AppSettingsDataSource,
+    appearance: AppearanceRepository,
     profileRepository: ProfileRepository,
-    backgroundThemes: BackgroundThemeCatalog,
 ) : ViewModel() {
-    /**
-     * PRODUCT_SPEC SET-002 — the bundled packs, read once.
-     *
-     * A `flow { }` rather than a value because the catalog reads assets and so is `suspend`, and this is
-     * the only place in the app that needs the whole list before a screen exists. `combine` restarts it
-     * only if the upstream restarts, which for a `WhileSubscribed` state flow is a screen rotation at
-     * worst — and the catalog itself caches, so the second read costs nothing.
-     */
-    private val catalog: Flow<List<BackgroundTheme>> = flow { emit(backgroundThemes.themes()) }
-
     val state: StateFlow<AppUiState> = combine(
-        settings.settings,
+        appearance.observeAppearance(),
         profileRepository.observeProfiles(),
         profileRepository.observeServers(),
-        catalog,
-    ) { stored, profiles, servers, themes ->
+    ) { look, profiles, servers ->
         AppUiState(
-            themeMode = stored.themeMode,
-            // PRODUCT_SPEC SET-002 (Appearance) — the richer answer, read alongside the older one rather
-            // than instead of it: `appTheme` is empty for every install that predates the setting, and
-            // `themeMode` is what those devices have. `resolveTheme` is where the two are reconciled.
-            appThemeKey = stored.appThemeKey,
-            // Resolved against the packs, because since they landed an accent may be a pack's own
-            // authored pair as well as one of the closed palette's. See `AccentScheme`.
-            accent = AccentScheme.ofKey(stored.accentColorKey, themes),
-            glassTint = GlassTint.ofKey(stored.glassTintKey),
-            cardGlassTintEnabled = !stored.cardGlassTintDisabled,
-            systemGlassTintEnabled = !stored.systemGlassTintDisabled,
-            textContrast = TextContrast.ofKey(stored.textContrastKey),
-            // Through `GlassBlur.ofStored`, which is where *off* is told from *never chosen*.
-            glassBlurDp = GlassBlur.ofStored(stored.glassBlurDp),
-            // An id no build recognises resolves to none, the same rule every stored key follows.
-            backgroundTheme = themes.firstOrNull { it.id == stored.backgroundThemeId },
-            dynamicColor = stored.dynamicColor,
-            // PRODUCT_SPEC SET-002 — read here rather than in a screen because `AppLocale` wraps the whole
-            // app: the language has to be resolved before the first string is drawn, not when Settings is
-            // opened.
-            language = AppLanguage.ofTag(stored.appLanguageTag),
-            // PRODUCT_SPEC LIB-004 — the addresses cover URLs are built from. Held app-wide because a
-            // cover is rendered on every shelf and the address belongs to the server row, not the book.
+            theme = look.theme,
+            accent = look.accent,
+            glassTint = look.glassTint,
+            cardGlassTintEnabled = look.cardGlassTintEnabled,
+            systemGlassTintEnabled = look.systemGlassTintEnabled,
+            textContrast = look.textContrast,
+            glassBlurDp = look.glassBlurDp,
+            backgroundTheme = look.backgroundTheme,
+            dynamicColor = look.dynamicColor,
+            language = look.language,
             serverBaseUrls = servers.associate { it.id to it.baseUrl },
-            // PRODUCT_SPEC 6.1 / AUTH-002 — observed rather than read once, so that removing the last
-            // profile sends the user back to onboarding instead of leaving them on an unusable home.
             hasAnyProfile = profiles.isNotEmpty(),
             isResolved = true,
         )
-    }
-        .stateIn(
-            scope = viewModelScope,
-            // PRODUCT_SPEC 16.3: no unbounded collection in a lifecycle owner. The upstream is
-            // dropped five seconds after the last collector goes away, which survives a rotation
-            // without keeping a DataStore read alive for a backgrounded process.
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = AppUiState(),
-        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = AppUiState(),
+    )
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
@@ -98,69 +63,30 @@ class AppViewModel @Inject constructor(
 
 /**
  * @property hasAnyProfile whether the app has a saved profile to show. Decides the start destination.
- * @property isResolved whether [hasAnyProfile] has been read from storage yet. The default is `false`
- *   because the two answers lead to different screens: composing the navigation graph before the answer is
- *   known would start it at sign-in and then have to correct itself, which a user sees as a flash of the
- *   wrong screen on every cold start.
+ * @property isResolved whether profile/storage state has been resolved yet.
  */
 data class AppUiState(
-    val themeMode: ThemeMode = ThemeMode.THEME_MODE_SYSTEM,
-    /** PRODUCT_SPEC SET-002 — an `AppTheme.key`, or empty on a device that has never chosen one. */
-    val appThemeKey: String = "",
+    val theme: AppTheme = AppTheme.Default,
     val accent: AccentScheme = AccentScheme.Default,
     val glassTint: GlassTint = GlassTint.Default,
     val cardGlassTintEnabled: Boolean = true,
     val systemGlassTintEnabled: Boolean = true,
     val textContrast: TextContrast = TextContrast.Default,
     val glassBlurDp: Int = GlassBlur.DEFAULT_DP,
-    /** PRODUCT_SPEC SET-002 — the chosen bundled theme, or `null` for none. Supersedes the plain theme. */
     val backgroundTheme: BackgroundTheme? = null,
     val dynamicColor: Boolean = false,
-    /** PRODUCT_SPEC SET-002 — the chosen language, or [AppLanguage.System] to follow the device. */
     val language: AppLanguage = AppLanguage.System,
-    /** PRODUCT_SPEC LIB-004 — server id to base address, for resolving cover URLs. */
     val serverBaseUrls: Map<ServerId, String> = emptyMap(),
     val hasAnyProfile: Boolean = false,
     val isResolved: Boolean = false,
 ) {
-    /**
-     * `THEME_MODE_UNSPECIFIED` is the protobuf zero value, which a device that has never written a
-     * setting will read. It is treated as "follow the system", the product default.
-     */
-    fun resolveDarkTheme(systemInDarkTheme: Boolean): Boolean = resolveTheme().isDark ?: systemInDarkTheme
+    fun resolveDarkTheme(systemInDarkTheme: Boolean): Boolean = theme.isDark ?: systemInDarkTheme
+
+    fun resolveTheme(): AppTheme = theme
 
     /**
-     * PRODUCT_SPEC SET-002 — the theme, from whichever of the two stored answers is present.
-     *
-     * [appThemeKey] wins when it is set, and it is empty exactly for installs that predate it — those fall
-     * back to [themeMode], which every build has always written. The fallback is not a nicety: without it
-     * a reader who had chosen Dark before this version would be silently moved to *follow the system* on
-     * the update, and would find the app light in the morning.
-     */
-    fun resolveTheme(): AppTheme = if (appThemeKey.isNotEmpty()) {
-        AppTheme.ofKey(appThemeKey)
-    } else {
-        when (themeMode) {
-            ThemeMode.THEME_MODE_DARK -> AppTheme.Dark
-            ThemeMode.THEME_MODE_LIGHT -> AppTheme.Light
-            ThemeMode.THEME_MODE_SYSTEM,
-            ThemeMode.THEME_MODE_UNSPECIFIED,
-            ThemeMode.UNRECOGNIZED,
-            -> AppTheme.System
-        }
-    }
-
-    /**
-     * PRODUCT_SPEC SET-002 — the accent to impose, or `null` to leave the scheme's own alone.
-     *
-     * `null` in exactly one case: a pack is drawn and the chosen accent **is** that pack's. Its author
-     * wrote `primary`, `onPrimary` and `primaryContainer` as a set against their own artwork, and
-     * recomputing two of the three from the first — which is what imposing an accent does — would replace
-     * a considered pairing with a derived one for no gain, since the colour is already the same.
-     *
-     * Every other case imposes. That includes a pack with a *different* accent chosen, which is the half of
-     * *"it should be possible to change the colors"* that has to reach the screen: without it the pack's
-     * override would silently win and the accent dropdown would move nothing.
+     * The accent to impose, or `null` when the selected pack already carries the authored pair currently in
+     * force. This remains presentation logic because it answers how the resolved domain values are drawn.
      */
     fun accentArgbFor(isDark: Boolean): Long? {
         val pack = backgroundTheme
