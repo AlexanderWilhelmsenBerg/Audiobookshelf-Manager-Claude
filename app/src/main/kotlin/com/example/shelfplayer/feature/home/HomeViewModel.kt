@@ -45,7 +45,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -155,10 +154,64 @@ class HomeViewModel @Inject constructor(
      * book list is not paying to group 490 books into series, authors and genres — and a user on the
      * shelves is not paying to sort the flat list either.
      */
-    private val content: Flow<HomeContent> = combine(axis, booksView) { current, mode -> current to mode }
-        .flatMapLatest { (current, mode) -> contentFor(current, mode) }
+    /**
+     * PRODUCT_SPEC LIB-002 / 16.2 — whether the other three axes are worth keeping loaded.
+     *
+     * A swipe reveals the next axis *while the finger is still down*, so it has to be composed with real
+     * rows rather than an empty state — that is the difference between a page that follows the finger and
+     * one that appears when it lifts. But collecting all four unconditionally would make every reader pay
+     * the grouping, including the many who never swipe.
+     *
+     * So it latches on the first swipe and stays on. A reader who never swipes pays nothing, exactly as
+     * before. A reader who swipes once pays it once, and only that first drag can catch an axis loading.
+     * Following the drag instead was the other option and is worse: the same cost on every gesture, and a
+     * flash on each one.
+     */
+    private val hasSwiped = MutableStateFlow(false)
 
-    /** One axis's content, as a flow. Shared by the visible axis and by the swipe preview. */
+    /** PRODUCT_SPEC 16.2 — a swipe has begun, so the neighbours are worth loading. One way, idempotent. */
+    fun onSwipeStarted() {
+        hasSwiped.value = true
+    }
+
+    /**
+     * PRODUCT_SPEC LIB-002 / 16.2 — every axis whose rows are worth holding, keyed by axis.
+     *
+     * ### Why one map rather than "the current axis" plus "the neighbours"
+     *
+     * It was two flows, and the split had a hole a device found. The axis the user swipes to changes in
+     * `controls` **immediately**, while its rows arrive one emission later — so for that gap the state said
+     * *Series* while still carrying the book shelves, and the page rendered "No series here" for a fraction
+     * of a second before the real rows landed. Reported from a device in exactly those words.
+     *
+     * One map closes it, because `flatMapLatest` **retains its previous value while the new one is being
+     * assembled**. Once the neighbours are loaded that retained map already contains the axis being swiped
+     * to, so the gap reads the right rows rather than an empty list. There is no moment at which an axis is
+     * current and its rows are somebody else's.
+     *
+     * ### What is collected, and when
+     *
+     * Before the first swipe: the visible axis alone, which is what [content]'s `flatMapLatest` always did
+     * and for the reason it documented — a reader on the book list is not paying to group 490 books into
+     * series, authors and genres.
+     *
+     * After it: all four, so a drag reveals real rows from its first pixel and every axis change after that
+     * is instant. See [hasSwiped] for why that latches rather than following the gesture.
+     *
+     * An axis **absent** from the map has not answered yet, which is how the screen tells "still loading"
+     * from "loaded and empty" — the distinction that stops a reveal opening with "no series" about an axis
+     * nobody has asked the database about.
+     */
+    private val axisRows: Flow<Map<HomeAxis, HomeAxisRows>> =
+        combine(axis, booksView, hasSwiped) { current, mode, swiped -> Triple(current, mode, swiped) }
+            .flatMapLatest { (current, mode, swiped) ->
+                val wanted = if (swiped) HomeAxis.entries else listOf(current)
+                combine(wanted.map { each -> contentFor(each, mode).map { each to it.asAxisRows() } }) { rows ->
+                    rows.toMap()
+                }
+            }
+
+    /** One axis's content, as a flow. */
     private fun contentFor(axis: HomeAxis, mode: BooksView): Flow<HomeContent> = when (axis) {
         HomeAxis.Books -> when (mode) {
             BooksView.Shelves -> shelves.map { HomeContent.OfShelves(it) }
@@ -168,56 +221,6 @@ class HomeViewModel @Inject constructor(
         HomeAxis.Series -> groupedSeries().map { HomeContent.OfSeries(it) }
         HomeAxis.Authors -> groups(BookGroupKind.Author).map { HomeContent.OfGroups(it) }
         HomeAxis.Genres -> groups(BookGroupKind.Genre).map { HomeContent.OfGroups(it) }
-    }
-
-    /**
-     * PRODUCT_SPEC LIB-002 / 16.2 — whether the other three axes are worth keeping loaded.
-     *
-     * ### Why this latches instead of following the drag
-     *
-     * A swipe between axes reveals the next one *while the finger is still down*, so the incoming axis
-     * has to be composed with real content rather than with an empty state — that is the whole point of
-     * a page that follows the finger rather than a page that appears when it lifts.
-     *
-     * But [content]'s `flatMapLatest` exists for a documented reason: a reader on the book list is not
-     * paying to group 490 books into series, authors and genres. Collecting all four unconditionally
-     * would reverse that for every user, including the many who never swipe.
-     *
-     * So it latches on the *first* swipe and stays on. A reader who never swipes pays nothing, exactly as
-     * before. A reader who swipes once pays the grouping once and every reveal after that is instant —
-     * only their first drag can show the incoming axis still loading. Tying it to the drag itself was the
-     * other option and is worse: it would pay the same cost on every gesture and still flash on each one.
-     */
-    private val hasSwiped = MutableStateFlow(false)
-
-    /**
-     * PRODUCT_SPEC 16.2 — the axes either side of the visible one, for the page a drag is revealing.
-     *
-     * Keyed by axis and **absent until loaded**, which is the distinction the screen needs: an axis that
-     * has not answered yet renders as loading, and an axis that answered with nothing renders as empty.
-     * Collapsing those two would make the first frame of every reveal say "no series".
-     */
-    val swipePreview: StateFlow<Map<HomeAxis, HomeAxisRows>> =
-        combine(axis, booksView, hasSwiped) { current, mode, swiped -> Triple(current, mode, swiped) }
-            .flatMapLatest { (current, mode, swiped) ->
-                val others = HomeAxis.entries.filter { it != current }
-                if (!swiped || others.isEmpty()) {
-                    flowOf(emptyMap())
-                } else {
-                    combine(others.map { other -> contentFor(other, mode).map { other to it.asAxisRows() } }) { pairs ->
-                        pairs.toMap()
-                    }
-                }
-            }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyMap())
-
-    /**
-     * PRODUCT_SPEC 16.2 — a swipe between axes has begun, so the neighbours are worth loading.
-     *
-     * Idempotent and one-way. See [hasSwiped].
-     */
-    fun onSwipeStarted() {
-        hasSwiped.value = true
     }
 
     private fun groupedSeries(): Flow<List<SeriesShelf>> =
@@ -247,18 +250,22 @@ class HomeViewModel @Inject constructor(
 
     val uiState: StateFlow<HomeUiState> = combine(
         profileRepository.observeActiveProfile(),
-        content,
+        axisRows,
         observeSyncState(),
         attempt,
         view,
-    ) { profile, loaded, syncState, (refresh, isOnline, genreEdit), current ->
+    ) { profile, rows, syncState, (refresh, isOnline, genreEdit), current ->
+        val loaded = rows[current.controls.axis]
         HomeUiState(
             isOffline = !isOnline,
             profile = profile,
-            books = (loaded as? HomeContent.OfBooks)?.books.orEmpty(),
-            shelves = (loaded as? HomeContent.OfShelves)?.shelves ?: HomeShelves.Empty,
-            series = (loaded as? HomeContent.OfSeries)?.series.orEmpty(),
-            groups = (loaded as? HomeContent.OfGroups)?.groups.orEmpty(),
+            // The visible axis's rows come out of the same map the pages read, so the state cannot be
+            // describing one axis and carrying another's — see `axisRows`.
+            books = loaded?.books.orEmpty(),
+            shelves = loaded?.shelves ?: HomeShelves.Empty,
+            series = loaded?.series.orEmpty(),
+            groups = loaded?.groups.orEmpty(),
+            axisRows = rows,
             query = current.controls.query,
             isSearching = current.controls.isSearching,
             axis = current.controls.axis,
@@ -283,7 +290,7 @@ class HomeViewModel @Inject constructor(
                 // Labelling a populated library "not synchronized yet" would be the app contradicting
                 // what the user is looking at.
                 syncState != null && syncState.status != SyncStatus.NeverSynced -> syncState.status
-                loaded.hasRows -> SyncStatus.Succeeded
+                loaded?.hasRows == true -> SyncStatus.Succeeded
                 else -> SyncStatus.NeverSynced
             },
             // A live error from the user's own refresh wins: it is the newer fact, and it is the one they
@@ -746,14 +753,25 @@ private fun GenreEditUiState.requestOrNull(): GenreEditRequest? = when (this) {
  * fields rather than a sealed type here, because that is the shape the state already has and the copy is
  * the point.
  *
- * Absence, not emptiness, is how "still loading" is said: see `HomeViewModel.swipePreview`.
+ * Absence, not emptiness, is how "still loading" is said: see `HomeViewModel.axisRows`.
  */
 data class HomeAxisRows(
     val books: List<Book> = emptyList(),
     val shelves: HomeShelves = HomeShelves.Empty,
     val series: List<SeriesShelf> = emptyList(),
     val groups: List<BookGroup> = emptyList(),
-)
+) {
+    /**
+     * Whether this axis produced anything.
+     *
+     * Read by the sync-status branch, which treats rows on screen as proof that a sync ran — the
+     * repository reports `NeverSynced` both for "no sync has run" and for "there is no row". Exactly one
+     * of the four fields is ever populated, since each is built from one axis's answer, so asking all four
+     * asks the only one that could say yes.
+     */
+    val hasRows: Boolean
+        get() = books.isNotEmpty() || !shelves.isEmpty || series.isNotEmpty() || groups.isNotEmpty()
+}
 
 /** PRODUCT_SPEC 21 — loading, empty, error and content are separate, observable states. */
 data class HomeUiState(
@@ -763,6 +781,13 @@ data class HomeUiState(
     val shelves: HomeShelves = HomeShelves.Empty,
     val series: List<SeriesShelf> = emptyList(),
     val groups: List<BookGroup> = emptyList(),
+    /**
+     * PRODUCT_SPEC 16.2 — every axis whose rows are loaded, for the pages a swipe reveals.
+     *
+     * The visible axis's rows above are this map's entry for [axis], so the two cannot disagree. An axis
+     * absent from it has not answered yet and its page renders as loading; see `HomeViewModel.axisRows`.
+     */
+    val axisRows: Map<HomeAxis, HomeAxisRows> = emptyMap(),
     val query: String = "",
     val isSearching: Boolean = false,
     val axis: HomeAxis = HomeAxis.Books,

@@ -47,6 +47,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -69,11 +70,12 @@ import com.example.shelfplayer.feature.lock.ProfileLockViewModel
 import com.example.shelfplayer.feature.lock.profileLockSection
 import com.example.shelfplayer.launcher.LauncherIcon
 import com.example.shelfplayer.ui.gesture.offscreenPage
-import com.example.shelfplayer.ui.gesture.rememberSwipeToLeave
+import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
 import com.example.shelfplayer.ui.glass.playerChromeClearance
 import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.roundToInt
 import kotlin.time.Duration
 
 @Composable
@@ -212,7 +214,15 @@ fun SettingsScreen(
     }
     /** Where the underline is, as a fractional tab index. See [TabIndicator]. */
     val tabPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction
-    val swipeToLeave = rememberSwipeToLeave(onLeave = onNavigateUp)
+    /*
+     * PRODUCT_SPEC SET-002 / 16.2 — the give at both ends, and the pull that leaves the screen.
+     *
+     * One component for both because they are one gesture: at the first tab there is no page to the left,
+     * so a drag back is overspill, and letting go past the threshold is what leaves for the shelf. Two
+     * nested-scroll connections reading the same delta would each count it and the screen would leave at
+     * half the distance it looks like.
+     */
+    val overspill = rememberEdgeOverspill(onPulledPastStart = onNavigateUp)
     // PRODUCT_SPEC 14.4 — the event log's open/closed state is this screen's, not the caller's. Lifting it
     // would add a parameter and a callback to a signature that is already at detekt's limit, to describe a
     // sheet nothing outside this screen can open.
@@ -241,15 +251,15 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 /*
-                 * PRODUCT_SPEC SET-002 / 16.2 — the one thing the pager cannot express.
+                 * PRODUCT_SPEC SET-002 / 16.2 — the give at the ends, and the pull that leaves.
                  *
                  * Dragging back past the first tab leaves the screen entirely: Server is the leftmost tab,
                  * there is nothing to its left inside this screen, and what is behind the screen is the
                  * shelf. A pager has no page before its first, so the drag comes out of it unconsumed and
-                 * `rememberSwipeToLeave` is what catches it. See there for why this is nested scroll and
-                 * not a drag handler.
+                 * `rememberEdgeOverspill` is what catches it — both to move the page and to notice the
+                 * pull. On the parent rather than the pager so it sees the drag, not the drag's result.
                  */
-                .nestedScroll(swipeToLeave),
+                .nestedScroll(overspill.connection),
         ) {
             /*
              * PRODUCT_SPEC 16.2 — the indicator follows the drag rather than jumping when it lands.
@@ -273,7 +283,12 @@ fun SettingsScreen(
             }
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(x = overspill.offsetPx.roundToInt(), y = 0) },
+                // The platform's stretch would consume the delta at the edges before `overspill` could see
+                // it — and the pull past the first tab is how this screen is left.
+                overscrollEffect = null,
                 // Both neighbours composed, so a drag reveals the real tab from its first pixel. Settings
                 // tabs are cheap — every one of them renders from state already in hand — which is why
                 // this is affordable here and deliberately narrower on Home.

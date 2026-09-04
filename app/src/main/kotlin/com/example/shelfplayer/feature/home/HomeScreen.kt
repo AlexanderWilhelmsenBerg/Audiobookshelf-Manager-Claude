@@ -82,6 +82,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -115,12 +116,14 @@ import com.example.shelfplayer.feature.browse.GroupCard
 import com.example.shelfplayer.feature.browse.GroupCardEditAction
 import com.example.shelfplayer.feature.browse.SeriesCard
 import com.example.shelfplayer.ui.gesture.offscreenPage
+import com.example.shelfplayer.ui.gesture.rememberEdgeOverspill
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import com.example.shelfplayer.ui.glass.frostedGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+import kotlin.math.roundToInt
 
 /**
  * PRODUCT_SPEC 16.4 — `*Route` wires navigation and state; `*Screen` is a pure function of its
@@ -141,8 +144,6 @@ fun HomeRoute(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    // PRODUCT_SPEC 16.2 — the rows of the axes either side, so a swipe reveals them rather than a gap.
-    val swipePreview by viewModel.swipePreview.collectAsStateWithLifecycle()
 
     // PRODUCT_SPEC LIB-001 — a profile that has never synced gets one attempt without being asked. Keyed
     // on the profile so switching accounts gives the new one its chance too.
@@ -171,7 +172,6 @@ fun HomeRoute(
             onSettingsSelected = onSettingsSelected,
             onSignInSelected = onSignInSelected,
         ),
-        swipePreview = swipePreview,
         onSwipeStarted = viewModel::onSwipeStarted,
         playbackMessage = playbackMessage,
         onPlaybackMessageShown = onPlaybackMessageShown,
@@ -185,14 +185,6 @@ fun HomeScreen(
     uiState: HomeUiState,
     actions: HomeActions,
     modifier: Modifier = Modifier,
-    /**
-     * PRODUCT_SPEC 16.2 — the rows of axes other than [HomeUiState.axis], for the page a swipe reveals.
-     *
-     * Defaulted to empty so a preview and every existing screen test render exactly one axis, as before.
-     * An axis absent from the map has not loaded yet and its page shows the loading state; see
-     * `HomeViewModel.swipePreview` for why absence and emptiness are kept apart.
-     */
-    swipePreview: Map<HomeAxis, HomeAxisRows> = emptyMap(),
     /** Told the moment a swipe begins, so the neighbouring axes are worth collecting. */
     onSwipeStarted: () -> Unit = {},
     playbackMessage: String? = null,
@@ -221,6 +213,8 @@ fun HomeScreen(
         onAxisChanged = actions.onAxisChanged,
         onSwipeStarted = onSwipeStarted,
     )
+    // PRODUCT_SPEC 16.2 — a little give at Books and at Genres, with resistance and a spring back.
+    val overspill = rememberEdgeOverspill()
     val axisBarMotion = rememberHomeAxisBarMotion()
     /*
      * The capsule's own blur source, and the reason it is not `LocalGlassHazeState`.
@@ -361,6 +355,8 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
+                // Outside the offset below, so it reads the drag rather than the drag's result.
+                .nestedScroll(overspill.connection)
                 .hazeSource(state = axisBarHaze),
         ) {
             /*
@@ -386,7 +382,12 @@ fun HomeScreen(
              */
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(x = overspill.offsetPx.roundToInt(), y = 0) },
+                // The platform's stretch would consume the delta at the edges before `overspill` could see
+                // it, and it distorts pixels rather than moving the page. This owns both ends instead.
+                overscrollEffect = null,
                 // One page composed either side, so the reveal has something in it from the first
                 // pixel of the drag rather than after a recomposition the finger has already outrun.
                 beyondViewportPageCount = 1,
@@ -395,7 +396,7 @@ fun HomeScreen(
                 val axis = axisPages[page]
                 Box(modifier = Modifier.offscreenPage(isCurrent = page == pagerState.currentPage)) {
                     HomeContent(
-                        uiState = uiState.forAxis(axis, swipePreview),
+                        uiState = uiState.forAxis(axis),
                         actions = actions,
                         bottomInset = innerPadding.calculateBottomPadding(),
                     )
@@ -795,9 +796,9 @@ private fun HomeAxisBar(
  * is the distinction the map's *absence* carries: without it the first frame of a reveal would say "no
  * series" about an axis nobody had asked the database about.
  */
-private fun HomeUiState.forAxis(axis: HomeAxis, preview: Map<HomeAxis, HomeAxisRows>): HomeUiState {
+private fun HomeUiState.forAxis(axis: HomeAxis): HomeUiState {
     if (axis == this.axis) return this
-    val rows = preview[axis] ?: return copy(axis = axis, isLoaded = false)
+    val rows = axisRows[axis] ?: return copy(axis = axis, isLoaded = false)
     return copy(
         axis = axis,
         isLoaded = true,
