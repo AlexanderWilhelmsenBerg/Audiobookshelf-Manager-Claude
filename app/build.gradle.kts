@@ -71,6 +71,7 @@ dependencies {
     implementation(libs.haze)
     implementation(libs.kotlinx.coroutines.android)
 
+    testImplementation(projects.core.datastore)
     testImplementation(projects.core.testing)
     testImplementation(libs.turbine)
     // PRODUCT_SPEC 17.1 — the UI tier, on the JVM.
