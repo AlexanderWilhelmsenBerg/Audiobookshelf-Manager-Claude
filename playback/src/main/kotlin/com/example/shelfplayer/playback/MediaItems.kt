@@ -80,19 +80,7 @@ object MediaItems {
      */
     fun queueFor(session: PlaybackSession): Queue {
         val tracks = session.playableTracks
-        /*
-         * PRODUCT_SPEC 22.4, `docs/risks.md` R-61 — repair a single missing track length before anything
-         * downstream has to cope with it.
-         *
-         * A track reporting zero is what makes `BookMediaSourceFactory` fall back to playing one file, and
-         * the fallback is where the coordinate spaces diverged. The server's own total closes the common
-         * case exactly; [TrackDurations.recovered] states which cases it refuses and why.
-         */
-        val durations = TrackDurations.recovered(
-            durations = tracks.map { it.duration },
-            bookTotal = session.duration,
-            anyExcluded = session.tracks.size != tracks.size,
-        ) ?: tracks.map { it.duration }
+        val durations = recoveredDurations(session)
         val extras = Bundle().apply {
             putStringArray(KEY_TRACK_URLS, tracks.map { it.url }.toTypedArray())
             putLongArray(KEY_TRACK_DURATIONS_MS, durations.map { it.inWholeMilliseconds }.toLongArray())
@@ -129,8 +117,43 @@ object MediaItems {
          * degradation; writing a file offset into a book's stored progress is data loss (product
          * priority 2).
          */
-        val startAt = if (isSingleFileFallback(durations)) 0L else session.startAt.inWholeMilliseconds
-        return Queue(item, startAt.coerceAtLeast(0))
+        val startAt = serverStartPositionFor(session)?.inWholeMilliseconds ?: 0L
+        return Queue(item, startAt)
+    }
+
+    /**
+     * The server position this exact queue can safely represent on the player's timeline.
+     *
+     * `/play` is the strongest possible freshness evidence when a session opens: the server itself chose
+     * [PlaybackSession.startAt]. A restored paused book needs to retain that agreement so the *next* Play can
+     * detect a move made elsewhere while realtime was reconnecting. But the evidence is only usable when the
+     * player and server speak the same coordinate system.
+     *
+     * R-61's single-file fallback does not. In that mode Media3's position is an offset inside one file while
+     * `startAt` is an offset inside the whole book, so returning it as a resume baseline would be worse than
+     * having none. This method deliberately shares [recoveredDurations] with [queueFor] so the baseline and
+     * the actual player cannot disagree about whether the book-global timeline exists.
+     */
+    internal fun serverStartPositionFor(session: PlaybackSession): Duration? {
+        val durations = recoveredDurations(session)
+        if (isSingleFileFallback(durations)) return null
+        return session.startAt.inWholeMilliseconds.coerceAtLeast(0).milliseconds
+    }
+
+    /**
+     * The durations the queue and every decision about its coordinate space use.
+     *
+     * PRODUCT_SPEC 22.4, `docs/risks.md` R-61 — repair one missing track length from the server's total when
+     * that is unambiguous. Keeping this calculation in one helper is important: a resume baseline must never
+     * claim a book-global position while the actual queue has fallen back to a file-global one.
+     */
+    private fun recoveredDurations(session: PlaybackSession): List<Duration> {
+        val tracks = session.playableTracks
+        return TrackDurations.recovered(
+            durations = tracks.map { it.duration },
+            bookTotal = session.duration,
+            anyExcluded = session.tracks.size != tracks.size,
+        ) ?: tracks.map { it.duration }
     }
 
     /** The book this item belongs to. */

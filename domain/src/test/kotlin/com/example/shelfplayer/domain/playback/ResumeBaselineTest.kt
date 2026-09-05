@@ -16,13 +16,13 @@ import kotlin.time.Duration.Companion.seconds
  *
  * ### Why the tests are worth more here than anywhere else on this path
  *
- * Five device runs on one symptom, and the reason each fix failed was the same: the app was deciding "has
- * another device moved this book" from evidence that could not answer it. This class is the fourth attempt
- * at the *evidence*, not the fifth attempt at a comparison — so what has to be pinned is not an outcome but
- * the exact set of circumstances under which the app is willing to claim an agreement with the server.
+ * Several device runs on one symptom, and the reason each failed fix failed was the same: the app was
+ * deciding "has another device moved this book" from evidence that could not answer it. What has to be
+ * pinned is therefore not merely the comparison outcome but the exact circumstances under which the app is
+ * willing to claim an agreement with the server.
  *
  * The cases below are that set. Everything not in it answers `null`, which means *resume locally*, which
- * is the direction that cannot lose a position.
+ * is the direction that cannot discard a local move.
  */
 class ResumeBaselineTest {
 
@@ -58,10 +58,87 @@ class ResumeBaselineTest {
         assertNull(baseline.acknowledged(BOOK))
     }
 
-    /** Nothing has paused at all — every resume after a cold start, and every one from a car or a headset. */
+    /** Nothing has paused or opened at all, so there is no agreement to compare against. */
     @Test
     fun `nothing paused is not a baseline`() {
         assertNull(ResumeBaseline().acknowledged(BOOK))
+    }
+
+    // ------------------------------------------- server-opened paused playback
+
+    /**
+     * `/play` saying where a session starts is only server evidence until the player accepts that item.
+     *
+     * This separation prevents a failed/abandoned open from installing a baseline for a player that still
+     * holds the previous book.
+     */
+    @Test
+    fun `a staged server position is not acknowledged before the player transition`() {
+        val baseline = ResumeBaseline()
+
+        baseline.stageServerPosition(BOOK, PAUSED_AT)
+
+        assertNull(baseline.acknowledged(BOOK))
+    }
+
+    /**
+     * The device regression: a profile switch restores a book paused, so there is no play -> pause event to
+     * manufacture a baseline. `/play` and the subsequent Media3 item transition are nevertheless a real
+     * agreement and must make the next Play eligible for a freshness check.
+     */
+    @Test
+    fun `a server-opened position becomes acknowledged when that book reaches the player`() {
+        val baseline = ResumeBaseline()
+
+        baseline.stageServerPosition(BOOK, PAUSED_AT)
+        baseline.onBookClosed()
+
+        val acknowledged = assertNotNull(baseline.acknowledged(BOOK))
+        assertEquals(BOOK, acknowledged.bookId)
+        assertEquals(PAUSED_AT, acknowledged.position)
+    }
+
+    /**
+     * Staging belongs to one incoming transition only. Reusing it later could make an unrelated item appear
+     * to agree with a server answer that was opened for an earlier book.
+     */
+    @Test
+    fun `a staged server position is consumed by exactly one player transition`() {
+        val baseline = ResumeBaseline()
+
+        baseline.stageServerPosition(BOOK, PAUSED_AT)
+        baseline.onBookClosed()
+        assertNotNull(baseline.acknowledged(BOOK))
+
+        baseline.onBookClosed()
+
+        assertNull(baseline.acknowledged(BOOK))
+    }
+
+    /** A seek/play before the staged item arrives invalidates the staging just as it invalidates a pause. */
+    @Test
+    fun `a local move prevents a staged server position becoming a later baseline`() {
+        val baseline = ResumeBaseline()
+
+        baseline.stageServerPosition(BOOK, PAUSED_AT)
+        baseline.onLocalMove()
+        baseline.onBookClosed()
+
+        assertNull(baseline.acknowledged(BOOK))
+    }
+
+    /**
+     * A caller that cannot represent the book-global server position clears staging instead of inventing an
+     * agreement. This is how the single-file fallback keeps its coordinate-space safety.
+     */
+    @Test
+    fun `an unavailable server start produces no restored baseline`() {
+        val baseline = ResumeBaseline()
+
+        baseline.stageServerPosition(BOOK, null)
+        baseline.onBookClosed()
+
+        assertNull(baseline.acknowledged(BOOK))
     }
 
     // ------------------------------------------- what revokes an acknowledgement
@@ -83,7 +160,7 @@ class ResumeBaselineTest {
         assertNull(baseline.acknowledged(BOOK))
     }
 
-    /** And a track or book boundary, which is the same reasoning one scope wider. */
+    /** And a track or book boundary with nothing staged drops the old agreement. */
     @Test
     fun `closing the book drops an acknowledged baseline`() {
         val baseline = ResumeBaseline()
@@ -153,9 +230,6 @@ class ResumeBaselineTest {
      * interchangeable: the seek in between uploaded a different position, so the server is no longer
      * holding 6:14:21 at all. Promoting on the stale answer would record an agreement that had been broken
      * and then compare the next Play against it.
-     *
-     * This is the case that was checked by removing the generation condition and watching this test go
-     * red; the two above stay green on the position tolerance alone.
      */
     @Test
     fun `a late acknowledgement cannot promote a second pause at the same position`() {

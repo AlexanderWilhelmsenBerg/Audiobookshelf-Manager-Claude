@@ -9,7 +9,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * PRODUCT_SPEC SYNC-002 — the last pause the server confirmed, and the moves that revoke it.
+ * PRODUCT_SPEC SYNC-002 — the last position the server and this player are known to agree on.
  *
  * ### What this replaced, and why the replacement is a different kind of thing
  *
@@ -23,8 +23,12 @@ import kotlin.time.Duration.Companion.milliseconds
  * The evidence that *can* answer it is an agreement: a moment at which this device and the server were
  * demonstrably holding the same position. This class is the record of the most recent one.
  *
- * ### The four transitions
+ * ### The five transitions
  *
+ *  - [stageServerPosition] — `/play` has returned the position the incoming session should start at. It is
+ *    only staged here: the player has not transitioned to that item yet, so claiming an agreement already
+ *    would put server truth in front of player truth. [onBookClosed] consumes the staged value at the actual
+ *    item transition and only then turns it into an acknowledged baseline.
  *  - [onPaused] — the player stopped at an exact position. That position becomes *pending*: a claim, not
  *    yet a fact, and it is deliberately not usable for anything until the server answers.
  *  - [onPositionAccepted] — a sync came back successful for a position. If it is the pending one, the
@@ -34,7 +38,18 @@ import kotlin.time.Duration.Companion.milliseconds
  *  - [onLocalMove] — the listener seeked, skipped, crossed a track or started playing. Whatever was
  *    pending or acknowledged no longer describes where this device is at rest, so it is dropped and the
  *    generation moves on.
- *  - [onBookClosed] — a different book, or none. The baseline is per book and never crosses one.
+ *  - [onBookClosed] — a different item is loaded, or none. The old baseline is closed; when a `/play`
+ *    position was staged for the incoming item, that server-confirmed position becomes the new baseline at
+ *    this same transition.
+ *
+ * ### Why a server-opened paused book needs a baseline
+ *
+ * A profile switch restores the incoming account's last book paused. The old implementation cleared the
+ * previous baseline during the switch and never established another one because the restored player never
+ * went through a play -> pause transition. If the realtime socket was reconnecting while another device
+ * moved that book, the next Play therefore skipped the freshness check and started uploading the older
+ * restored position. Staging the `/play` start and promoting it at the item transition closes that gap
+ * without treating a merely cached Room row as proof.
  *
  * ### Why the generation is not decoration
  *
@@ -52,9 +67,9 @@ import kotlin.time.Duration.Companion.milliseconds
  * therefore inside [lock]; each is a handful of field comparisons, so contention is not a consideration.
  *
  * A singleton for the same reason `SessionSyncCoordinator` is one: `PlaybackService` declares no
- * `android:process`, so the service that writes this and the ViewModel that reads it are the same object
- * graph, and a baseline established by a pause from the notification is available to a Play from the
- * screen.
+ * `android:process`, so the service that promotes/invalidates this and the ViewModel that reads it are the
+ * same object graph. `BookChanges` only stages the position `/play` returned; the player transition remains
+ * the point at which it becomes an agreement.
  */
 @Singleton
 class ResumeBaseline @Inject constructor() {
@@ -62,7 +77,22 @@ class ResumeBaseline @Inject constructor() {
     private val lock = Any()
 
     private var record: Record? = null
+    private var stagedServerPosition: StagedServerPosition? = null
     private var generation: Long = 0
+
+    /**
+     * Stages the position `/play` returned for the item that is about to be handed to the player.
+     *
+     * [position] is nullable deliberately. A single-file fallback cannot represent a book-global server
+     * position on the player's timeline; passing `null` clears any older staging rather than allowing a
+     * previous open to leak into this transition.
+     *
+     * This is not yet an [AcknowledgedPause]. The player has not transitioned, so the only fact here is
+     * what the server said. [onBookClosed] is the player-side half of the handshake.
+     */
+    fun stageServerPosition(bookId: LibraryItemId, position: Duration?) = synchronized(lock) {
+        stagedServerPosition = position?.let { StagedServerPosition(bookId = bookId, position = it) }
+    }
 
     /**
      * The player came to rest for [bookId] at exactly [position].
@@ -72,6 +102,7 @@ class ResumeBaseline @Inject constructor() {
      */
     fun onPaused(bookId: LibraryItemId, position: Duration): Long = synchronized(lock) {
         generation += 1
+        stagedServerPosition = null
         record = Record(bookId = bookId, position = position, generation = generation, acknowledged = false)
         generation
     }
@@ -119,25 +150,47 @@ class ResumeBaseline @Inject constructor() {
      */
     fun onLocalMove() = synchronized(lock) {
         generation += 1
+        stagedServerPosition = null
         record = null
     }
 
-    /** A different book is loaded, or none. Same reasoning as [onLocalMove], one scope wider. */
-    fun onBookClosed() = onLocalMove()
+    /**
+     * Closes the old book at the actual player transition and consumes the server position staged for the
+     * incoming item, if there is one.
+     *
+     * This method is also used when the player becomes empty or a book ends. In those cases nothing was
+     * staged, so the result is simply no baseline. The staged value is consumed exactly once, which keeps a
+     * failed/abandoned open from becoming evidence for a later transition.
+     */
+    fun onBookClosed() = synchronized(lock) {
+        generation += 1
+        val incoming = stagedServerPosition
+        stagedServerPosition = null
+        record = incoming?.let {
+            Record(
+                bookId = it.bookId,
+                position = it.position,
+                generation = generation,
+                acknowledged = true,
+            )
+        }
+    }
 
     /**
      * The acknowledged baseline for [bookId], or `null` when there is not one.
      *
-     * `null` is every case in which the server's freshness cannot be judged: nothing has paused yet (a
-     * cold start — where the position came from the server's own `/play` response anyway), the pause's
-     * sync failed or has not answered, the listener has moved the book since, or the loaded book is not
-     * this one. Each of them resumes locally, which is the direction that cannot lose a position.
+     * `null` means the server's freshness cannot safely be judged: a pause has not been acknowledged, the
+     * listener moved the book locally, the loaded item cannot represent the server's book-global position,
+     * or the baseline belongs to another book. Each case resumes locally, which is the direction that cannot
+     * throw away the listener's own unsynced move.
      */
     fun acknowledged(bookId: LibraryItemId): AcknowledgedPause? = synchronized(lock) {
         val held = record ?: return null
         if (!held.acknowledged || held.bookId != bookId) return null
         AcknowledgedPause(bookId = held.bookId, position = held.position, generation = held.generation)
     }
+
+    private data class StagedServerPosition(val bookId: LibraryItemId, val position: Duration)
 
     private data class Record(
         val bookId: LibraryItemId,
