@@ -179,7 +179,6 @@ fun SettingsRoute(
             onFocusBehaviourChanged = viewModel::onFocusBehaviourChanged,
             onStartupModeChanged = viewModel::onStartupModeChanged,
             onAutoAdvanceSeriesChanged = viewModel::onAutoAdvanceSeriesChanged,
-            onKeepSoundInHeadsetChanged = viewModel::onKeepSoundInHeadsetChanged,
             onManageDownloads = onManageDownloads,
         ),
         onNavigateUp = onNavigateUp,

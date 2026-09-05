@@ -559,11 +559,6 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
         return AppResult.Success(Unit)
     }
 
-    override suspend fun setKeepSoundInHeadset(enabled: Boolean): AppResult<Unit> {
-        controls.value = controls.value.copy(keepSoundInHeadset = enabled)
-        return AppResult.Success(Unit)
-    }
-
     override suspend fun setAutoAdvanceSeries(enabled: Boolean): AppResult<Unit> {
         controls.value = controls.value.copy(autoAdvanceSeries = enabled)
         return AppResult.Success(Unit)

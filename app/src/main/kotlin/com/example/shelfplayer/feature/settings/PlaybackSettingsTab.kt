@@ -354,30 +354,6 @@ private fun LazyListScope.networkSection(policy: NetworkPolicy, onChanged: (Netw
  * The section stays because the rest of it is still true and still worth reading — what the tabs are, and
  * that the car opens on the last book.
  */
-/**
- * PRODUCT_SPEC PLAY-002 — *Keep sound in the headset*, immediately above what the car does.
- *
- * The two sections are one story read downwards: this is what happens to the headset when the car in the
- * next section arrives, and putting them apart would leave a listener setting the second and never finding
- * the first.
- *
- * Off by default, so the hint describes what turning it **on** does rather than what the app already does.
- * It also states the limit plainly: the app can express a preference and the platform can decline it, which
- * is the same honesty `AudioOutputRouter` shows the chooser and the reason a car with no headset in it is
- * not a bug report.
- */
-private fun LazyListScope.headsetSection(enabled: Boolean, onChanged: (Boolean) -> Unit) {
-    item { SectionHeader(text = stringResource(R.string.settings_section_headset)) }
-    item { Hint(text = stringResource(R.string.settings_headset_hint)) }
-    item {
-        SwitchRow(
-            labelRes = R.string.settings_headset_keep_sound,
-            checked = enabled,
-            onCheckedChange = onChanged,
-        )
-    }
-}
-
 private fun LazyListScope.carSection() {
     item { SectionHeader(text = stringResource(R.string.settings_section_car)) }
     item { Hint(text = stringResource(R.string.settings_car_hint)) }
@@ -396,10 +372,9 @@ data class PlaybackSettingsActions(
     val onSkipsChanged: (SkipIntervals) -> Unit,
     val onAutoRewindChanged: (AutoRewind) -> Unit,
     val onBufferChanged: (BufferPreset) -> Unit,
+    /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. */
     /** PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series. */
     val onAutoAdvanceSeriesChanged: (Boolean) -> Unit = {},
-    /** PRODUCT_SPEC PLAY-002 — whether a car connecting leaves the book in the headset. */
-    val onKeepSoundInHeadsetChanged: (Boolean) -> Unit = {},
     val onFocusBehaviourChanged: (FocusBehaviour) -> Unit = {},
     val onStartupModeChanged: (StartupMode) -> Unit = {},
     /** PRODUCT_SPEC DL-004 — which categories may spend cellular data. */
@@ -545,7 +520,6 @@ private fun <T> ChipRow(
  * that order at the mercy of the next person to insert a section in the middle of a sixty-line function.
  */
 private fun LazyListScope.behaviourSections(settings: PlaybackSettings, actions: PlaybackSettingsActions) {
-    headsetSection(settings.keepSoundInHeadset, actions.onKeepSoundInHeadsetChanged)
     carSection()
     seriesSection(settings.autoAdvanceSeries, actions.onAutoAdvanceSeriesChanged)
     interruptionSection(settings.focusBehaviour, actions.onFocusBehaviourChanged)
