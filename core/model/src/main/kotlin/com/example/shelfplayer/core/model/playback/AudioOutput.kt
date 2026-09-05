@@ -1,39 +1,59 @@
 package com.example.shelfplayer.core.model.playback
 
 /**
- * PRODUCT_SPEC PLAY-002 / ROUTE-002 — one output a listener can send this book to, right now.
+ * PRODUCT_SPEC PLAY-002 — one output the platform currently reports for media.
  *
- * ### Not a [KnownDevice], and the difference matters
- *
- * A [KnownDevice] is a device this app has *ever seen* and holds a policy for: it exists whether or not the
- * thing is plugged in, and its whole subject is what should happen when it connects. An [AudioOutput] is a
- * device that is **connected at this moment** and can be played to now. The settings list is the first; the
- * chooser on the player card is the second.
- *
- * They deliberately share [id]. `OutputDevices` derives both from the same kind-and-name rule, so the pair
- * of earbuds a listener picks here is the same row whose policy they set in Settings. Two identity schemes
- * would have let one feature call a device "Pixel Buds Pro" and the other call it something else, and the
- * only person who could tell would be the one whose policy silently stopped applying.
- *
- * @property id the stable key, shared with [KnownDevice.id]. Never a hardware address (ROUTE-002, 14.5).
- * @property displayName what the device calls itself. Shown as-is; also not an address.
- * @property isActive whether media is **actually** coming out here right now, as the platform reports it —
- *   not what the app asked for. `AudioOutputRouter` reads it from `AudioManager.getAudioDevicesForAttributes`
- *   on API 33+, and below that has nothing to read and falls back to the request. The two can disagree: a
- *   preferred device is a request the platform may decline silently, so a chooser that showed only the
- *   request would tick a device the sound is not coming from. Which output was *chosen* is a separate value
- *   the router publishes beside the list.
+ * [kind] is the transport/classification Android exposes. [role] is the thing BookWave may safely mean by
+ * an action such as *Headset* or *Car*. Those are deliberately separate: classic Bluetooth A2DP can be
+ * earbuds, a speaker, or a dashboard, so transport alone cannot honestly decide the product role.
  */
-data class AudioOutput(val id: String, val displayName: String, val kind: DeviceKind, val isActive: Boolean = false) {
+data class AudioOutput(
+    val id: String,
+    val displayName: String,
+    val kind: DeviceKind,
+    val isActive: Boolean = false,
+    val role: AudioOutputRole = kind.defaultOutputRole,
+) {
+    /** The built-in/known speaker class. Observed for safety, never offered as a BookWave destination. */
+    val isSpeaker: Boolean get() = role == AudioOutputRole.Speaker
+
+    /** A definite wearable output. Ambiguous classic A2DP is intentionally not called a headset here. */
+    val isHeadset: Boolean get() = role == AudioOutputRole.Headset
 
     /**
-     * Whether choosing this output would move audio into a room rather than into someone's ears.
+     * A destination the headset action may consider when Android cannot tell us more.
      *
-     * The same question [KnownDevice.isSpeaker] asks, kept here so the pair of types agree about a kind
-     * rather than each deciding for itself; `AudioOutputIdentityTest` compares them. It has **no production
-     * reader on this type** — the chooser deliberately remembers nothing (ADR-0027 decision 2), and the
-     * asking-before-a-room rule lives on [KnownDevice] where the persisted policy is. Said plainly because
-     * this KDoc used to claim the chooser used it to decide what to remember, which was never true.
+     * [AudioOutputRole.Ambiguous] remains a candidate so ordinary classic-Bluetooth earbuds keep working
+     * without a Nearby Devices permission. It is never *classified* as a headset; hardware testing or a
+     * future persisted role override can narrow it. Speakers and cars are excluded structurally.
      */
-    val isSpeaker: Boolean get() = kind == DeviceKind.Speaker
+    val isHeadsetCandidate: Boolean
+        get() = role == AudioOutputRole.Headset || role == AudioOutputRole.Ambiguous
 }
+
+/**
+ * What an output means to BookWave, independent of how Android transports audio to it.
+ *
+ * Classic A2DP is [Ambiguous] because the public audio-device type cannot distinguish headphones from a
+ * Bluetooth speaker or many projected-car audio links without additional Bluetooth information.
+ */
+enum class AudioOutputRole {
+    Headset,
+    Car,
+    Speaker,
+    Ambiguous,
+    Other,
+}
+
+/** Default semantic role when only the older [DeviceKind] is available. */
+private val DeviceKind.defaultOutputRole: AudioOutputRole
+    get() = when (this) {
+        DeviceKind.Wired,
+        DeviceKind.HearingAid,
+        -> AudioOutputRole.Headset
+
+        DeviceKind.Car -> AudioOutputRole.Car
+        DeviceKind.Speaker -> AudioOutputRole.Speaker
+        DeviceKind.Bluetooth -> AudioOutputRole.Ambiguous
+        DeviceKind.Other -> AudioOutputRole.Other
+    }

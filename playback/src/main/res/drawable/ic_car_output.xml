@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PRODUCT_SPEC PLAY-002 — deliberately simple side-profile car for tiny Android Auto action slots. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3,14.5V12.2c0,-0.7 0.4,-1.3 1.1,-1.6L6.5,9.5l1.8,-3c0.4,-0.7 1.1,-1.1 1.9,-1.1h4.4c0.9,0 1.7,0.4 2.2,1.2l2,2.9 1.4,0.5c0.8,0.3 1.3,1 1.3,1.8v2.7c0,0.8 -0.7,1.5 -1.5,1.5h-0.8c-0.4,1.5 -1.7,2.6 -3.3,2.6s-3,-1.1 -3.3,-2.6H9.3c-0.4,1.5 -1.7,2.6 -3.3,2.6S3,17.5 2.7,16H2.5C2.2,16 2,15.8 2,15.5c0,-0.6 0.4,-1 1,-1zM8.8,9.3h7.5l-1.2,-1.8c-0.2,-0.3 -0.4,-0.4 -0.8,-0.4h-3.9c-0.3,0 -0.6,0.2 -0.8,0.5L8.8,9.3zM6,16.9c0.9,0 1.6,-0.7 1.6,-1.6S6.9,13.7 6,13.7s-1.6,0.7 -1.6,1.6S5.1,16.9 6,16.9zM16,16.9c0.9,0 1.6,-0.7 1.6,-1.6s-0.7,-1.6 -1.6,-1.6 -1.6,0.7 -1.6,1.6 0.7,1.6 1.6,1.6z" />
+</vector>
