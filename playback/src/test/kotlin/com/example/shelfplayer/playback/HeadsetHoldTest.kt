@@ -15,12 +15,42 @@ class HeadsetHoldTest {
     private val car = output("car", "Car audio", DeviceKind.Car, AudioOutputRole.Car)
     private val speaker = output("speaker:phone", "Phone speaker", DeviceKind.Speaker, AudioOutputRole.Speaker)
 
+    /**
+     * The case the class exists to prevent, reached from the other direction.
+     *
+     * On API 33+ an idle BookWave still sees the platform's media route, so connected earbuds look active
+     * with no book loaded. Remembering them means a car arriving pins the player to a headset in a pocket,
+     * and Android Auto then auto-plays into it.
+     */
+    @Test
+    fun `earbuds connected to an idle app are not remembered`() {
+        val hold = HeadsetHold()
+
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = false)
+
+        assertNull(hold.remembered)
+        assertNull(hold.holdOnCarArrival(listOf(buds, car)))
+    }
+
+    /** Emptying the queue ends the hold: there is no longer a book that was coming out of anything. */
+    @Test
+    fun `a remembered headset is dropped when the book is unloaded`() {
+        val hold = HeadsetHold()
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
+        assertEquals(buds.id, hold.remembered)
+
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = false)
+
+        assertNull(hold.remembered)
+        assertNull(hold.holdOnCarArrival(listOf(buds, car)))
+    }
+
     @Test
     fun `an a2dp headset in use survives a projected car taking the route`() {
         val hold = HeadsetHold()
 
-        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null)
-        hold.observe(listOf(buds, dashboard.copy(isActive = true)), selectedId = null)
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
+        hold.observe(listOf(buds, dashboard.copy(isActive = true)), selectedId = null, hasMedia = true)
 
         assertEquals(buds.id, hold.remembered)
         assertEquals(buds.id, hold.holdOnCarArrival(listOf(buds, dashboard)))
@@ -29,7 +59,7 @@ class HeadsetHoldTest {
     @Test
     fun `legacy setting value no longer disables preservation`() {
         val hold = HeadsetHold()
-        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null)
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
 
         assertEquals(buds.id, hold.holdOnCarArrival(listOf(buds, car), enabled = false))
     }
@@ -37,7 +67,7 @@ class HeadsetHoldTest {
     @Test
     fun `a headset that was never in use is not held`() {
         val hold = HeadsetHold()
-        hold.observe(listOf(buds, speaker.copy(isActive = true)), selectedId = null)
+        hold.observe(listOf(buds, speaker.copy(isActive = true)), selectedId = null, hasMedia = true)
 
         assertNull(hold.remembered)
         assertNull(hold.holdOnCarArrival(listOf(buds, car)))
@@ -46,9 +76,9 @@ class HeadsetHoldTest {
     @Test
     fun `a headset that disconnects is forgotten`() {
         val hold = HeadsetHold()
-        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null)
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
 
-        hold.observe(listOf(speaker.copy(isActive = true)), selectedId = null)
+        hold.observe(listOf(speaker.copy(isActive = true)), selectedId = null, hasMedia = true)
 
         assertNull(hold.remembered)
         assertNull(hold.holdOnCarArrival(listOf(buds, car)))
@@ -57,7 +87,7 @@ class HeadsetHoldTest {
     @Test
     fun `a headset missing at car time is not pinned`() {
         val hold = HeadsetHold()
-        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null)
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
 
         assertNull(hold.holdOnCarArrival(listOf(car)))
     }
@@ -65,7 +95,7 @@ class HeadsetHoldTest {
     @Test
     fun `without a readable route an explicit a2dp choice is remembered`() {
         val hold = HeadsetHold()
-        hold.observe(listOf(buds, speaker), selectedId = buds.id)
+        hold.observe(listOf(buds, speaker), selectedId = buds.id, hasMedia = true)
 
         assertEquals(buds.id, hold.remembered)
     }
@@ -74,9 +104,9 @@ class HeadsetHoldTest {
     fun `a definite headset can replace an ambiguous remembered route`() {
         val wired = output("wired", "Wired", DeviceKind.Wired, AudioOutputRole.Headset)
         val hold = HeadsetHold()
-        hold.observe(listOf(buds.copy(isActive = true)), null)
+        hold.observe(listOf(buds.copy(isActive = true)), null, hasMedia = true)
 
-        hold.observe(listOf(buds, wired.copy(isActive = true)), null)
+        hold.observe(listOf(buds, wired.copy(isActive = true)), null, hasMedia = true)
 
         assertEquals(wired.id, hold.remembered)
     }

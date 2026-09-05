@@ -932,7 +932,8 @@ class PlaybackService : MediaLibraryService() {
     private fun observeAudioOutputs() {
         outputWatch = scope.launch {
             combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, selected) ->
-                headsetHold.observe(outputs, selected)
+                // `scope` is the main dispatcher, so reading the player here is the read Media3 requires.
+                headsetHold.observe(outputs, selected, hasMedia = (player?.mediaItemCount ?: 0) > 0)
                 // Republishing on every emission would rewrite the notification for a device change that
                 // does not touch either button, and Media3 pushes each set to every controller.
                 republishOutputButtons()
