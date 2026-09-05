@@ -43,6 +43,7 @@
     <!-- PRODUCT_SPEC LIB-002 — the three shelves the app opens on. -->
     <string name="shelf_continue_listening">Continue listening</string>
     <string name="shelf_continue_series">Continue a series</string>
+    <string name="shelf_progress_percent">%1$d%%</string>
     <string name="shelf_recently_added">Recently added</string>
     <string name="shelf_listen_again">Listen again</string>
     <string name="shelf_discover">Discover</string>
@@ -501,9 +502,6 @@
     <string name="settings_network_streaming">Stream over mobile data</string>
     <string name="settings_network_downloads">Download over mobile data</string>
     <string name="settings_network_smart_downloads">Download next book over mobile data</string>
-    <string name="settings_section_headset">Headset</string>
-    <string name="settings_headset_hint">The car normally takes the sound with it when it connects. Turn this on to leave the book in whatever headset it is already playing in — a passenger keeps listening while the car does everything else. It never moves the sound into a headset that is merely connected, and the system can still overrule the app.</string>
-    <string name="settings_headset_keep_sound">Keep sound in the headset</string>
     <string name="settings_section_car">In the car</string>
     <string name="settings_car_hint">BookWave appears in Android Auto with three tabs: Continue, Chapters and History. It always opens on the book you were last listening to. What happens when a car connects is set with the other devices, below.</string>
     <string name="sleep_timer_settings">Timer defaults</string>
@@ -1067,12 +1065,9 @@
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
-    <string name="settings_theme_hint">System uses your device\'s light or dark setting, including any schedule it is on. Changing this never interrupts anything that is playing.</string>
     <string name="settings_dynamic_color">Use the colours from my wallpaper</string>
-    <string name="settings_dynamic_color_hint">Available on Android 12 and later. Off by default, so the app looks the same on every device until you ask for this.</string>
     <string name="settings_language">Language</string>
     <string name="settings_language_system">System default</string>
-    <string name="settings_language_hint">Each language is written in its own name, so it is findable whichever one the app is currently in. On Android 13 and later this is the same setting Android shows under Apps, and changing it there changes it here.</string>
     <!-- PRODUCT_SPEC MGR-007 — embedding metadata into the server's own audio files. -->
     <string name="book_menu_embed_metadata">Embed metadata in the audio files</string>
     <string name="book_embed_title">Write metadata into the audio files?</string>
@@ -1150,10 +1145,8 @@
     <string name="profiles_locked">Passcode required</string>
     <string name="settings_tab_appearance">Appearance</string>
     <string name="settings_theme_amoled">AMOLED</string>
-    <string name="settings_theme_amoled_hint">Dark with true black surfaces. On an OLED screen a black pixel is switched off, so large dark areas use no power. The backdrop gradient is turned off under this theme for the same reason.</string>
     <string name="settings_section_colour">Colour</string>
     <string name="settings_accent_colour">Accent colour</string>
-    <string name="settings_accent_colour_hint">Used for buttons, switches and anything selected. Each choice is a pair that has been checked for contrast on both a light and a dark background.</string>
     <string name="settings_accent_theme">Theme colours</string>
     <string name="settings_accent_teal">Teal</string>
     <string name="settings_accent_indigo">Indigo</string>
@@ -1163,25 +1156,18 @@
     <string name="settings_accent_slate">Slate</string>
     <string name="settings_section_glass">Glass</string>
     <string name="settings_tint_colour">Tint colour</string>
-    <string name="settings_tint_colour_hint">The wash over the blurred surfaces. It is what makes them read as frosted rather than merely out of focus.</string>
     <string name="settings_tint_white">White</string>
     <string name="settings_tint_warm">Warm</string>
     <string name="settings_tint_cool">Cool</string>
     <string name="settings_tint_accent">Accent</string>
     <string name="settings_card_tint">Tint the cards</string>
-    <string name="settings_card_tint_hint">Turn this off for shelves that sit directly on the background. On the AMOLED theme it is the difference between black cards and grey ones.</string>
     <string name="settings_system_tint">Tint the bars and the player</string>
-    <string name="settings_system_tint_hint">The navigation bar, the top bars and the mini player. They float over your content, so a wash is what separates them from it.</string>
-    <string name="settings_glass_no_blur_note">Android 12 and later blurs what is behind these surfaces. Below that there is no blur available, so the wash is drawn on its own and these switches have no effect.</string>
     <string name="settings_section_theme">Theme</string>
     <string name="settings_blur">Blur</string>
     <string name="settings_blur_value">%1$d dp</string>
     <string name="settings_blur_off">Off</string>
-    <string name="settings_blur_hint">How far the frosted surfaces smear what is behind them. One value for the whole app. At Off they keep their wash and stop blurring, which is also what Android 11 and earlier do whatever this says.</string>
     <string name="settings_text_contrast">Text contrast</string>
-    <string name="settings_text_contrast_hint">How strongly text stands off its background. A level rather than a colour on purpose: every level stays readable on every theme, which a chosen colour cannot promise.</string>
     <string name="settings_contrast_auto">Automatic</string>
     <string name="settings_contrast_high">High</string>
     <string name="settings_contrast_soft">Soft</string>
-    <string name="settings_background_hint">The themes below the app\'s own are a background and the palette drawn for it. Choosing one takes its colours as well, because they were picked against that picture \u2014 you can change them under Colour. The background scrolls with you, slower, as though it were further away.</string>
 </resources>

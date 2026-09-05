@@ -117,16 +117,6 @@ private fun LazyListScope.themeGroup(state: AppearanceUiState, actions: Appearan
                 leadingOf = { choice -> ThemeThumbnail(choice) },
                 onSelected = actions.onThemeChoiceChanged,
             )
-            Hint(text = stringResource(R.string.settings_theme_hint))
-            // Only where there is something for it to describe. The catalog returns an empty list when the
-            // assets are unreadable — a build fault — and a hint about pictures nobody can choose is worse
-            // than no hint at all.
-            if (state.backgroundThemes.isNotEmpty()) {
-                Hint(text = stringResource(R.string.settings_background_hint))
-            }
-            if (selected == ThemeChoice.Plain(AppTheme.Amoled)) {
-                Hint(text = stringResource(R.string.settings_theme_amoled_hint))
-            }
         }
     }
 }
@@ -213,7 +203,6 @@ private fun LazyListScope.colourGroup(state: AppearanceUiState, actions: Appeara
                 leadingOf = { accent -> Swatch(color = Color(accent.argbFor(state.isDark))) },
                 onSelected = actions.onAccentChanged,
             )
-            Hint(text = stringResource(R.string.settings_accent_colour_hint))
 
             DropdownRow(
                 label = stringResource(R.string.settings_tint_colour),
@@ -225,7 +214,6 @@ private fun LazyListScope.colourGroup(state: AppearanceUiState, actions: Appeara
                 },
                 onSelected = actions.onGlassTintChanged,
             )
-            Hint(text = stringResource(R.string.settings_tint_colour_hint))
 
             SubHeader(text = stringResource(R.string.settings_text_contrast))
             ChoiceRow(
@@ -234,19 +222,17 @@ private fun LazyListScope.colourGroup(state: AppearanceUiState, actions: Appeara
                 label = { contrast -> stringResource(contrast.labelRes()) },
                 onSelected = actions.onTextContrastChanged,
             )
-            Hint(text = stringResource(R.string.settings_text_contrast_hint))
 
             SwitchRow(
                 label = stringResource(R.string.settings_dynamic_color),
                 checked = state.dynamicColor,
                 onCheckedChange = actions.onDynamicColorChanged,
             )
-            Hint(text = stringResource(R.string.settings_dynamic_color_hint))
         }
     }
 }
 
-/** The two wash switches, and the note that they do nothing where there is no blur to wash over. */
+/** The blur, and the two washes it is drawn under. */
 private fun LazyListScope.glassGroup(state: AppearanceUiState, actions: AppearanceActions) {
     item { SectionHeader(text = stringResource(R.string.settings_section_glass)) }
     item {
@@ -264,20 +250,16 @@ private fun LazyListScope.glassGroup(state: AppearanceUiState, actions: Appearan
                 steps = GlassBlur.MAX_DP - 1,
                 onValueChange = { dp -> actions.onGlassBlurChanged(dp.roundToInt()) },
             )
-            Hint(text = stringResource(R.string.settings_blur_hint))
             SwitchRow(
                 label = stringResource(R.string.settings_card_tint),
                 checked = state.cardGlassTintEnabled,
                 onCheckedChange = actions.onCardGlassTintChanged,
             )
-            Hint(text = stringResource(R.string.settings_card_tint_hint))
             SwitchRow(
                 label = stringResource(R.string.settings_system_tint),
                 checked = state.systemGlassTintEnabled,
                 onCheckedChange = actions.onSystemGlassTintChanged,
             )
-            Hint(text = stringResource(R.string.settings_system_tint_hint))
-            Hint(text = stringResource(R.string.settings_glass_no_blur_note))
         }
     }
 }
@@ -295,7 +277,6 @@ private fun LazyListScope.languageGroup(state: AppearanceUiState, actions: Appea
                 labelOf = { language -> language.label() },
                 onSelected = actions.onLanguageChanged,
             )
-            Hint(text = stringResource(R.string.settings_language_hint))
         }
     }
 }

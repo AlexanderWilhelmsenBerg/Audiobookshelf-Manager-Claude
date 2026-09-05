@@ -41,6 +41,7 @@
 
     <string name="shelf_continue_listening">Fortsett å lytte</string>
     <string name="shelf_continue_series">Fortsett en serie</string>
+    <string name="shelf_progress_percent">%1$d%%</string>
     <string name="shelf_recently_added">Nylig lagt til</string>
     <string name="shelf_listen_again">Hør på nytt</string>
     <string name="shelf_discover">Oppdag</string>
@@ -372,9 +373,6 @@
     <string name="settings_network_streaming">Strøm over mobildata</string>
     <string name="settings_network_downloads">Last ned over mobildata</string>
     <string name="settings_network_smart_downloads">Last ned neste bok over mobildata</string>
-    <string name="settings_section_headset">Hodetelefoner</string>
-    <string name="settings_headset_hint">Bilen tar vanligvis lyden med seg når den kobles til. Slå på dette for å la boka bli igjen i hodetelefonene den allerede spiller i — en passasjer kan høre videre mens bilen gjør alt annet. Lyden flyttes aldri til hodetelefoner som bare er tilkoblet, og systemet kan fortsatt overstyre appen.</string>
-    <string name="settings_headset_keep_sound">Behold lyden i hodetelefonene</string>
     <string name="settings_section_car">I bilen</string>
     <string name="settings_car_hint">BookWave vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på. Hva som skjer når en bil kobles til, settes sammen med de andre enhetene nedenfor.</string>
     <string name="sleep_timer_settings">Standardverdier</string>
@@ -818,12 +816,9 @@
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Lyst</string>
     <string name="settings_theme_dark">M\u00f8rkt</string>
-    <string name="settings_theme_hint">System bruker enhetens lyse eller m\u00f8rke innstilling, inkludert eventuell tidsplan. \u00c5 endre dette avbryter aldri noe som spilles.</string>
     <string name="settings_dynamic_color">Bruk fargene fra bakgrunnsbildet mitt</string>
-    <string name="settings_dynamic_color_hint">Tilgjengelig p\u00e5 Android 12 og nyere. Av som standard, slik at appen ser like ut p\u00e5 hver enhet til du ber om dette.</string>
     <string name="settings_language">Spr\u00e5k</string>
     <string name="settings_language_system">Systemstandard</string>
-    <string name="settings_language_hint">Hvert spr\u00e5k er skrevet p\u00e5 sitt eget spr\u00e5k, slik at det er mulig \u00e5 finne uansett hvilket spr\u00e5k appen st\u00e5r p\u00e5 n\u00e5. P\u00e5 Android 13 og nyere er dette den samme innstillingen Android viser under Apper, og endrer du den der, endres den her.</string>
     <!-- PRODUCT_SPEC MGR-007 -->
     <string name="book_menu_embed_metadata">Bygg metadata inn i lydfilene</string>
     <string name="book_embed_title">Skrive metadata inn i lydfilene?</string>
@@ -898,10 +893,8 @@
     <string name="profiles_locked">Krever kode</string>
     <string name="settings_tab_appearance">Utseende</string>
     <string name="settings_theme_amoled">AMOLED</string>
-    <string name="settings_theme_amoled_hint">M\u00f8rkt med helt svarte flater. P\u00e5 en OLED-skjerm er en svart piksel avsl\u00e5tt, s\u00e5 store m\u00f8rke omr\u00e5der bruker ingen str\u00f8m. Bakgrunnsovergangen sl\u00e5s av under dette temaet av samme grunn.</string>
     <string name="settings_section_colour">Farge</string>
     <string name="settings_accent_colour">Aksentfarge</string>
-    <string name="settings_accent_colour_hint">Brukt p\u00e5 knapper, brytere og alt som er valgt. Hvert valg er et par som er kontrollert for kontrast mot b\u00e5de lys og m\u00f8rk bakgrunn.</string>
     <string name="settings_accent_theme">Temafarger</string>
     <string name="settings_accent_teal">Bl\u00e5gr\u00f8nn</string>
     <string name="settings_accent_indigo">Indigo</string>
@@ -911,25 +904,18 @@
     <string name="settings_accent_slate">Skifer</string>
     <string name="settings_section_glass">Glass</string>
     <string name="settings_tint_colour">Skj\u00e6rfarge</string>
-    <string name="settings_tint_colour_hint">Sl\u00f8ret over de uskarpe flatene. Det er dette som gj\u00f8r at de leses som frostet og ikke bare ute av fokus.</string>
     <string name="settings_tint_white">Hvit</string>
     <string name="settings_tint_warm">Varm</string>
     <string name="settings_tint_cool">Kald</string>
     <string name="settings_tint_accent">Aksent</string>
     <string name="settings_card_tint">Legg skj\u00e6r p\u00e5 kortene</string>
-    <string name="settings_card_tint_hint">Sl\u00e5 av dette for hyller som ligger rett p\u00e5 bakgrunnen. Med AMOLED-temaet er det forskjellen p\u00e5 svarte og gr\u00e5 kort.</string>
     <string name="settings_system_tint">Legg skj\u00e6r p\u00e5 linjene og spilleren</string>
-    <string name="settings_system_tint_hint">Navigasjonslinjen, topplinjene og minispilleren. De flyter over innholdet ditt, s\u00e5 et sl\u00f8r er det som skiller dem fra det.</string>
-    <string name="settings_glass_no_blur_note">Android 12 og nyere gj\u00f8r det bak disse flatene uskarpt. Under det finnes ingen uskarphet, s\u00e5 sl\u00f8ret tegnes alene og disse bryterne har ingen virkning.</string>
     <string name="settings_section_theme">Tema</string>
     <string name="settings_blur">Uskarphet</string>
     <string name="settings_blur_value">%1$d dp</string>
     <string name="settings_blur_off">Av</string>
-    <string name="settings_blur_hint">Hvor mye de frostede flatene sl\u00f8rer det som ligger bak. \u00c9n verdi for hele appen. P\u00e5 Av beholder de sl\u00f8ret og slutter \u00e5 gj\u00f8re uskarpt, som ogs\u00e5 er det Android 11 og eldre gj\u00f8r uansett hva dette st\u00e5r p\u00e5.</string>
     <string name="settings_text_contrast">Tekstkontrast</string>
-    <string name="settings_text_contrast_hint">Hvor sterkt teksten skiller seg fra bakgrunnen. Et niv\u00e5 og ikke en farge med hensikt: hvert niv\u00e5 er lesbart p\u00e5 alle temaer, noe en valgt farge ikke kan love.</string>
     <string name="settings_contrast_auto">Automatisk</string>
     <string name="settings_contrast_high">H\u00f8y</string>
     <string name="settings_contrast_soft">Myk</string>
-    <string name="settings_background_hint">Temaene under appens egne er en bakgrunn og fargene som er laget for den. Velger du ett, f\u00f8lger fargene med, fordi de ble valgt mot akkurat det bildet \u2014 du kan endre dem under Farge. Bakgrunnen ruller med deg, saktere, som om den l\u00e5 lenger unna.</string>
 </resources>
