@@ -41,10 +41,47 @@ class HeadsetHoldTest {
         hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
         assertEquals(buds.id, hold.remembered)
 
-        hold.forget()
+        hold.releaseToCar(listOf(buds.copy(isActive = true)), selectedId = null)
         hold.observe(listOf(buds, dashboard.copy(isActive = true)), selectedId = null, hasMedia = true)
 
         assertNotEquals(buds.id, hold.holdOnCarArrival(listOf(buds, dashboard)))
+    }
+
+    /**
+     * The press has to outlive the emission it causes.
+     *
+     * `select(null)` publishes a selection change while the platform still reports the headset as the active
+     * route, so the very next observation sees exactly the state that was just given up. Clearing the memory
+     * is not enough — it is re-remembered before Automatic routing settles.
+     */
+    @Test
+    fun `the released headset is refused while it is still the active route`() {
+        val hold = HeadsetHold()
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = buds.id, hasMedia = true)
+
+        hold.releaseToCar(listOf(buds.copy(isActive = true)), selectedId = buds.id)
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
+
+        assertNull(hold.remembered)
+        assertNull(hold.holdOnCarArrival(listOf(buds, car)))
+    }
+
+    /**
+     * The refusal is not permanent — it lasts only while the given-up headset is still there.
+     *
+     * Disconnecting is the unambiguous end of the release. (The other lift, the route moving to a *different*
+     * headset, is deliberately not asserted here: the A2DP guard then keeps that second headset, so the
+     * observable answer is about the guard rather than about the release.)
+     */
+    @Test
+    fun `a released headset can be held again once it has disconnected and returned`() {
+        val hold = HeadsetHold()
+        hold.releaseToCar(listOf(buds.copy(isActive = true)), selectedId = buds.id)
+
+        hold.observe(listOf(car.copy(isActive = true)), selectedId = null, hasMedia = true)
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
+
+        assertEquals(buds.id, hold.remembered)
     }
 
     @Test

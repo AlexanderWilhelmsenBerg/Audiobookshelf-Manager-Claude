@@ -27,6 +27,15 @@ internal class HeadsetHold {
      * it. That is the race projected Android Auto creates: AirPods were active, then the dashboard becomes
      * active before `onConnect`. Definite wired/BLE/hearing-aid headsets can always replace the memory.
      */
+    /**
+     * The headset an explicit *Car* press gave up, refused until the route has actually left it.
+     *
+     * Clearing alone is not enough: `select(null)` publishes a selection change while the platform still
+     * reports the headset as the active route, so the very next observation re-remembers it and the press is
+     * undone. The refusal lifts the moment the observed route moves elsewhere or that device disconnects.
+     */
+    private var releasedToCar: String? = null
+
     fun observe(outputs: List<AudioOutput>, selectedId: String?, hasMedia: Boolean) {
         // On API 33+ the "active" route is the platform's media route for BookWave's attributes, which is
         // populated whether or not BookWave is holding a book. Without this gate, earbuds connected to an
@@ -40,7 +49,13 @@ internal class HeadsetHold {
         val held = remembered
         if (held != null && outputs.none { it.id == held }) remembered = null
 
+        releasedToCar?.let { released ->
+            if (outputs.none { it.id == released }) releasedToCar = null
+        }
+
         val active = AudioOutputRoles.activeHeadset(outputs, selectedId) ?: return
+        if (active.id == releasedToCar) return
+        releasedToCar = null
         if (active.role != AudioOutputRole.Ambiguous) {
             remembered = active.id
             return
@@ -66,6 +81,18 @@ internal class HeadsetHold {
      * produces without touching either output flow.
      */
     fun forget() {
+        remembered = null
+        releasedToCar = null
+    }
+
+    /**
+     * An explicit *Car* press: give up the held headset and refuse to re-adopt it until the route moves.
+     *
+     * The headset given up is whichever this was holding, or the active one if the press arrived before
+     * anything was remembered.
+     */
+    fun releaseToCar(outputs: List<AudioOutput>, selectedId: String?) {
+        releasedToCar = remembered ?: AudioOutputRoles.activeHeadset(outputs, selectedId)?.id
         remembered = null
     }
 }

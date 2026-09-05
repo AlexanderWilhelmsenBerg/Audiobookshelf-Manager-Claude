@@ -431,9 +431,13 @@ class AutoLibrary @Inject constructor(
         val book = bookFor(currentBookId) ?: return emptyList()
         val profileId = profiles.activeProfileId() ?: return emptyList()
         val chapters = library.observeChapters(profileId, book.id).first()
-        return history.observe(book.id, limit = CAR_HISTORY_LIMIT).first()
+        // Read deeper than the row budget and cap afterwards. The DAO's limit is SQL, so it applies before
+        // this filter, and the events the car drops — Play, the sleep-timer set, the server checks — are the
+        // frequent ones. Fifteen rows of those left History empty while navigable seeks sat just below them.
+        return history.observe(book.id, limit = CAR_HISTORY_READ).first()
             .filter { it.event.isUsefulInCarHistory }
             .distinctBy { it.event to it.returnTo.inWholeSeconds }
+            .take(CAR_HISTORY_LIMIT)
             .map { entry ->
                 val chapterIndex = chapters.indexOfLast { chapter -> entry.returnTo >= chapter.start }
                 val chapter = chapters.getOrNull(chapterIndex)
@@ -622,6 +626,9 @@ class AutoLibrary @Inject constructor(
         private const val AT_PREFIX = "at/"
 
         private const val CAR_HISTORY_LIMIT = 15
+
+        /** Rows read so that [CAR_HISTORY_LIMIT] survivable ones can exist below the frequent noise. */
+        private const val CAR_HISTORY_READ = CAR_HISTORY_LIMIT * 8
         private const val SECONDS_PER_HOUR = 3600L
         private const val SECONDS_PER_MINUTE = 60L
         private const val PART_SEPARATOR = " · "

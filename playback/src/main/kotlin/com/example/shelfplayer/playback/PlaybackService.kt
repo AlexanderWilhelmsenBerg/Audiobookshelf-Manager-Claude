@@ -211,14 +211,10 @@ class PlaybackService : MediaLibraryService() {
     private var outputButtons: OutputButtons = OutputButtons.None
 
     /**
-     * PRODUCT_SPEC PLAY-002 — whether a car connecting leaves the book in the headset it is already in.
+     * PRODUCT_SPEC PLAY-002 — which headset the book was last heard in.
      *
-     * Kept beside [skips] because it has the same shape: a setting the service reads and the app writes,
-     * cached here so the moment a car binds does not have to wait on a flow.
-     */
-
-    /**
-     * PRODUCT_SPEC PLAY-002 — which headset the book was last heard in, for the setting above.
+     * ADR-0029: preservation is routing behaviour with no user-facing preference, so there is no setting
+     * behind this — only the observed route.
      *
      * Stateful because the fact it holds outlives the moment it is needed; `HeadsetHold` explains why asking
      * at car-connect time is too late.
@@ -2233,7 +2229,7 @@ class PlaybackService : MediaLibraryService() {
                     // The press retires the hold. Without this the memory survives, the ambiguous-route
                     // guard keeps it across the dashboard becoming active, and the next car binding
                     // reasserts the headset — silently undoing the choice just made.
-                    headsetHold.forget()
+                    headsetHold.releaseToCar(audioOutputs.outputs.value, audioOutputs.selectedId.value)
                     audioOutputs.select(AudioOutputRoles.carTarget(audioOutputs.outputs.value))
                 }
 
