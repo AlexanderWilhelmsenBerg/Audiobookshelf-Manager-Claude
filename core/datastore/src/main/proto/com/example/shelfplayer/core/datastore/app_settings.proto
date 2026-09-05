@@ -276,10 +276,16 @@ message AppSettings {
   // theme it had. An id no build recognises reads back as none — the same rule every key here follows,
   // and the one that makes removing a theme pack in a later build harmless rather than a black screen.
   //
-  // A chosen background theme **supersedes** `app_theme_key` and `accent_color_key`: the pack's palette
-  // was authored against its own artwork, so mixing half of it with a different accent would break the
-  // contrast the pack promises. The Appearance tab says so where the choice is made.
+  // A chosen background theme **supersedes** `app_theme_key`: the two are one control in the Appearance
+  // tab, and a pack decides its own ground. It does **not** supersede `accent_color_key`. A pack's accent
+  // is adopted when the pack is chosen and can then be changed — see `AccentScheme`, which is also why a
+  // pack's own palette is one of the accents this field's neighbour can name.
   string background_theme_id = 47;
+
+  // Reserved, not reused. The debug APK built from this branch wrote `keep_sound_in_headset` as a bool on
+  // any device it was installed on, and a new field numbered 48 would read those bytes as its own.
+  reserved 48;
+  reserved "keep_sound_in_headset";
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.
