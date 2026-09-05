@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
+import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.SleepTimerDao
@@ -20,6 +21,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
+import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -38,14 +40,8 @@ import kotlin.time.Duration.Companion.milliseconds
 /**
  * PRODUCT_SPEC PLAY-008 / SET-002 — the sleep timer's settings and history.
  *
- * The settings live in the preferences store and the history in Room, which is why this class names
- * both. They are one repository because they are one screen's worth of state; the split underneath is
- * an implementation detail neither the domain nor the UI can see (PRODUCT_SPEC 9.3).
- *
- * ### Every write resolves the profile
- *
- * A timer belongs to whoever set it. Resolving the profile per call rather than caching it is what
- * makes a profile switch mid-timer land the closing record on the right account (PRODUCT_SPEC 5.2).
+ * The settings live in DataStore and history lives in Room. Both are storage boundaries, so methods that
+ * promise [AppResult] translate their storage exceptions here instead of leaking platform failures upward.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
@@ -99,82 +95,102 @@ class DefaultSleepTimerRepository @Inject constructor(
 
     override suspend fun recordStarted(bookId: LibraryItemId, mode: SleepTimerMode): AppResult<String> =
         withContext(ioDispatcher) {
-            val profileId = settings.current().activeProfileId.takeIf(String::isNotBlank)
+            val stored = resultOf(onError = ::storeFailure) { settings.current() }
+            if (stored is AppResult.Failure) return@withContext stored
+            val profileId = (stored as AppResult.Success).value.activeProfileId.takeIf(String::isNotBlank)
                 ?: return@withContext AppResult.Failure(AppError.Authentication())
-            val profile = profileDao.findProfile(profileId)
+
+            val found = resultOf(onError = ::storeFailure) { profileDao.findProfile(profileId) }
+            if (found is AppResult.Failure) return@withContext found
+            val profile = (found as AppResult.Success).value
                 ?: return@withContext AppResult.Failure(AppError.Authentication())
-            val sessionId = UUID.randomUUID().toString()
-            sleepTimerDao.upsert(
-                SleepTimerSessionEntity(
-                    sessionId = sessionId,
-                    profileId = profileId,
-                    bookKey = EntityKey.of(profile.serverId, bookId.value),
-                    mode = mode.wireName(),
-                    modeLength = when (mode) {
-                        is SleepTimerMode.Fixed -> mode.length.inWholeMilliseconds
-                        SleepTimerMode.EndOfChapter -> 0L
-                    },
-                    startedAt = clock.now().toEpochMilli(),
-                    endedAt = null,
-                    outcome = null,
-                    restarts = 0,
-                ),
-            )
-            sleepTimerDao.prune(profileId, SleepTimerRepository.RETAINED_HISTORY)
-            // PRODUCT_SPEC 14.5 — the mode and the length are safe; the book is not named.
-            logger.info(
-                LogCategory.Playback,
-                "A sleep timer started",
-                LogField.Public("mode", mode.wireName()),
-            )
-            AppResult.Success(sessionId)
+
+            resultOf(onError = ::storeFailure) {
+                val sessionId = UUID.randomUUID().toString()
+                sleepTimerDao.upsert(
+                    SleepTimerSessionEntity(
+                        sessionId = sessionId,
+                        profileId = profileId,
+                        bookKey = EntityKey.of(profile.serverId, bookId.value),
+                        mode = mode.wireName(),
+                        modeLength = when (mode) {
+                            is SleepTimerMode.Fixed -> mode.length.inWholeMilliseconds
+                            SleepTimerMode.EndOfChapter -> 0L
+                        },
+                        startedAt = clock.now().toEpochMilli(),
+                        endedAt = null,
+                        outcome = null,
+                        restarts = 0,
+                    ),
+                )
+                sleepTimerDao.prune(profileId, SleepTimerRepository.RETAINED_HISTORY)
+                logger.info(
+                    LogCategory.Playback,
+                    "A sleep timer started",
+                    LogField.Public("mode", mode.wireName()),
+                )
+                sessionId
+            }
         }
 
     override suspend fun recordRestarted(sessionId: String): AppResult<Unit> = withContext(ioDispatcher) {
-        val existing = sleepTimerDao.find(sessionId)
-            ?: return@withContext AppResult.Failure(missingSession())
-        sleepTimerDao.upsert(existing.copy(restarts = existing.restarts + 1))
-        AppResult.Success(Unit)
+        when (val found = resultOf(onError = ::storeFailure) { sleepTimerDao.find(sessionId) }) {
+            is AppResult.Failure -> found
+            is AppResult.Success -> {
+                val existing = found.value ?: return@withContext AppResult.Failure(missingSession())
+                resultOf(onError = ::storeFailure) {
+                    sleepTimerDao.upsert(existing.copy(restarts = existing.restarts + 1))
+                }
+            }
+        }
     }
 
     override suspend fun recordEnded(sessionId: String, outcome: SleepTimerOutcome): AppResult<Unit> =
         withContext(ioDispatcher) {
-            val existing = sleepTimerDao.find(sessionId)
-                ?: return@withContext AppResult.Failure(missingSession())
-            // A session that already ended is not re-ended. Expiry and teardown can both fire for one
-            // timer — the fade completes and the service then stops — and the first answer is the true
-            // one: "it expired" says more than "the service went away afterwards".
-            if (existing.endedAt != null) return@withContext AppResult.Success(Unit)
-            sleepTimerDao.upsert(
-                existing.copy(endedAt = clock.now().toEpochMilli(), outcome = outcome.name),
-            )
-            logger.info(
-                LogCategory.Playback,
-                "A sleep timer ended",
-                LogField.Public("outcome", outcome.name),
-                LogField.Count("restarts", existing.restarts),
-            )
-            AppResult.Success(Unit)
+            when (val found = resultOf(onError = ::storeFailure) { sleepTimerDao.find(sessionId) }) {
+                is AppResult.Failure -> found
+                is AppResult.Success -> {
+                    val existing = found.value ?: return@withContext AppResult.Failure(missingSession())
+                    if (existing.endedAt != null) return@withContext AppResult.Success(Unit)
+                    resultOf(onError = ::storeFailure) {
+                        sleepTimerDao.upsert(
+                            existing.copy(endedAt = clock.now().toEpochMilli(), outcome = outcome.name),
+                        )
+                        logger.info(
+                            LogCategory.Playback,
+                            "A sleep timer ended",
+                            LogField.Public("outcome", outcome.name),
+                            LogField.Count("restarts", existing.restarts),
+                        )
+                    }
+                }
+            }
         }
 
     override suspend fun closeOrphanedSessions(): AppResult<Int> = withContext(ioDispatcher) {
-        val closed = sleepTimerDao.closeOrphaned(
-            endedAt = clock.now().toEpochMilli(),
-            outcome = SleepTimerOutcome.Abandoned.name,
-        )
-        if (closed > 0) {
-            logger.info(
-                LogCategory.Playback,
-                "Closed sleep timers left running by a previous process",
-                LogField.Count("closed", closed),
+        resultOf(onError = ::storeFailure) {
+            val closed = sleepTimerDao.closeOrphaned(
+                endedAt = clock.now().toEpochMilli(),
+                outcome = SleepTimerOutcome.Abandoned.name,
             )
+            if (closed > 0) {
+                logger.info(
+                    LogCategory.Playback,
+                    "Closed sleep timers left running by a previous process",
+                    LogField.Count("closed", closed),
+                )
+            }
+            closed
         }
-        AppResult.Success(closed)
     }
 
     private suspend fun write(block: suspend () -> Unit): AppResult<Unit> = withContext(ioDispatcher) {
-        block()
-        AppResult.Success(Unit)
+        resultOf(onError = ::storeFailure) { block() }
+    }
+
+    private fun storeFailure(throwable: Throwable): AppError {
+        logger.warn(LogCategory.Settings, "Sleep timer state could not be written", throwable = throwable)
+        return AppError.Storage(summary = "Sleep timer state could not be saved.")
     }
 
     private fun missingSession(): AppError = AppError.Conflict(
@@ -186,13 +202,6 @@ class DefaultSleepTimerRepository @Inject constructor(
         SleepTimerMode.EndOfChapter -> END_OF_CHAPTER
     }
 
-    /**
-     * An unrecognized stored value degrades to a fixed timer rather than throwing.
-     *
-     * PRODUCT_SPEC SYNC-001's rule applied to the app's own storage: a row written by a future build
-     * with a mode this one does not know should render as a plain entry in the history, not crash the
-     * settings screen.
-     */
     private fun SleepTimerSessionEntity.toDomain(profileId: ProfileId) = SleepTimerSession(
         id = sessionId,
         profileId = profileId,

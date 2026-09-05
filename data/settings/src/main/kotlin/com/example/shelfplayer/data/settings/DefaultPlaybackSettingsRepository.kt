@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
+import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.database.dao.BookPlaybackSettingsDao
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.entity.BookPlaybackSettingsEntity
@@ -23,6 +24,7 @@ import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.StartupMode
+import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -38,15 +40,9 @@ import javax.inject.Singleton
 /**
  * PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls, across two stores.
  *
- * The device-wide settings live in the preferences store and the per-book speed in Room, which is why this
- * class names both. They are one repository because the question a caller asks is "how should this book
- * play", and answering it needs both halves; the split underneath is invisible to the domain
- * (PRODUCT_SPEC 9.3).
- *
- * ### Why the per-book speed is in Room
- *
- * A preferences store is one document rewritten on every write, and a map keyed by book in it would grow for
- * the life of the install and be rewritten whole every time anybody changed anything. Room has an index.
+ * The device-wide settings live in the preferences store and the per-book speed in Room. Repository writes
+ * cross that storage boundary as [AppResult]: DataStore/Room failures are translated here rather than being
+ * allowed to escape a method whose return type already promises a typed failure.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
@@ -144,8 +140,6 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
             if (profileId == null) {
                 flowOf(null)
             } else {
-                // The book key needs the profile's server, and that is a suspending read — so the flow is
-                // built from the profile row rather than from the id alone.
                 profileDao.observeProfile(profileId.value).flatMapLatest { profile ->
                     if (profile == null) {
                         flowOf(null)
@@ -169,30 +163,33 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
 
     override suspend fun setSpeedFor(bookId: LibraryItemId, speed: PlaybackSpeed?): AppResult<Unit> =
         withContext(ioDispatcher) {
-            val profile = activeProfile()
-                ?: return@withContext AppResult.Failure(AppError.Authentication())
-            val bookKey = EntityKey.of(profile.serverId, bookId.value)
-            if (speed == null) {
-                // Cleared rather than stored as the default: "no override" follows a changed profile default
-                // and "deliberately 1.0×" does not, and only a missing row can express the first.
-                bookSettings.clear(profile.profileId, bookKey)
-            } else {
-                bookSettings.upsert(
-                    BookPlaybackSettingsEntity(
-                        settingsKey = EntityKey.scoped(profile.profileId, bookKey),
-                        profileId = profile.profileId,
-                        bookKey = bookKey,
-                        speedHundredths = (speed.value * HUNDREDTHS).toInt(),
-                    ),
-                )
+            when (val resolved = resultOf(onError = ::storeFailure) { activeProfile() }) {
+                is AppResult.Failure -> resolved
+                is AppResult.Success -> {
+                    val profile = resolved.value
+                        ?: return@withContext AppResult.Failure(AppError.Authentication())
+                    resultOf(onError = ::storeFailure) {
+                        val bookKey = EntityKey.of(profile.serverId, bookId.value)
+                        if (speed == null) {
+                            bookSettings.clear(profile.profileId, bookKey)
+                        } else {
+                            bookSettings.upsert(
+                                BookPlaybackSettingsEntity(
+                                    settingsKey = EntityKey.scoped(profile.profileId, bookKey),
+                                    profileId = profile.profileId,
+                                    bookKey = bookKey,
+                                    speedHundredths = (speed.value * HUNDREDTHS).toInt(),
+                                ),
+                            )
+                        }
+                        logger.info(
+                            LogCategory.Settings,
+                            "A book's playback speed was set",
+                            LogField.Public("speed", speed?.label() ?: "default"),
+                        )
+                    }
+                }
             }
-            // The speed is safe to log and the book is not (PRODUCT_SPEC 14.5).
-            logger.info(
-                LogCategory.Settings,
-                "A book's playback speed was set",
-                LogField.Public("speed", speed?.label() ?: "default"),
-            )
-            AppResult.Success(Unit)
         }
 
     private suspend fun activeProfile() = settings.current().activeProfileId
@@ -200,12 +197,16 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
         ?.let { profileDao.findProfile(it) }
 
     private suspend fun write(block: suspend () -> Unit): AppResult<Unit> = withContext(ioDispatcher) {
-        block()
-        AppResult.Success(Unit)
+        resultOf(onError = ::storeFailure) { block() }
+    }
+
+    /** ADR-0003 — one repository boundary turns storage exceptions into a redaction-safe typed failure. */
+    private fun storeFailure(throwable: Throwable): AppError {
+        logger.warn(LogCategory.Settings, "A playback setting could not be written", throwable = throwable)
+        return AppError.Storage(summary = "That playback setting could not be saved.")
     }
 
     private companion object {
-        /** The speed's storage unit, matching `AppSettingsDataSource`'s. */
         const val HUNDREDTHS = 100f
     }
 }

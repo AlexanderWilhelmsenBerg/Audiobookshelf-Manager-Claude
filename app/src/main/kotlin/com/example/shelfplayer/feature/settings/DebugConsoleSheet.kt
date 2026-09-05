@@ -2,7 +2,9 @@ package com.example.shelfplayer.feature.settings
 
 import android.content.ClipData
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -30,11 +33,17 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.R
+import com.example.shelfplayer.sync.cancelBackgroundSyncTest
+import com.example.shelfplayer.sync.enqueueBackgroundSyncTest
 import kotlinx.coroutines.launch
 import java.time.Instant
 
 /** So a test can find the copy control without depending on its label. */
 internal const val DEBUG_CONSOLE_COPY = "debug-console-copy"
+
+/** Debug-only worker controls; release diagnostics never expose them. */
+internal const val DEBUG_BACKGROUND_SYNC_RUN = "debug-background-sync-run"
+internal const val DEBUG_BACKGROUND_SYNC_CANCEL = "debug-background-sync-cancel"
 
 /**
  * PRODUCT_SPEC 14.4 — everything this build knows about itself, as one copyable block.
@@ -69,7 +78,9 @@ fun DebugConsoleSheet(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     val events by logs.events.collectAsStateWithLifecycle()
+    val account by viewModel.account.collectAsStateWithLifecycle()
     val clipboard = LocalClipboard.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     // Rebuilt when the inputs change rather than on every recomposition: this walks the whole event buffer,
@@ -104,6 +115,34 @@ fun DebugConsoleSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 4.dp),
             )
+            if (BuildConfig.DEBUG) {
+                Text(
+                    text = stringResource(R.string.debug_background_sync_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = { account?.id?.let { enqueueBackgroundSyncTest(context, it) } },
+                        enabled = account != null,
+                        modifier = Modifier.testTag(DEBUG_BACKGROUND_SYNC_RUN),
+                    ) {
+                        Text(text = stringResource(R.string.debug_background_sync_run))
+                    }
+                    TextButton(
+                        onClick = { account?.id?.let { cancelBackgroundSyncTest(context, it) } },
+                        enabled = account != null,
+                        modifier = Modifier.testTag(DEBUG_BACKGROUND_SYNC_CANCEL),
+                    ) {
+                        Text(text = stringResource(R.string.debug_background_sync_cancel))
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.debug_background_sync_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             TextButton(
                 onClick = {
                     scope.launch {
