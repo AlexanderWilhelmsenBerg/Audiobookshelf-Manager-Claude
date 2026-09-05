@@ -56,7 +56,9 @@ class CrashSnapshotStore @Inject constructor(
             current.stackTrace
                 .take(MAX_FRAMES_PER_CAUSE)
                 .forEachIndexed { index, frame ->
-                    lines += "frame[$cause,$index]=${frame.className}.${frame.methodName}(${frame.fileName}:${frame.lineNumber})"
+                    lines +=
+                        "frame[$cause,$index]=${frame.className}.${frame.methodName}" +
+                        "(${frame.fileName}:${frame.lineNumber})"
                 }
             current = current.cause
             cause += 1
