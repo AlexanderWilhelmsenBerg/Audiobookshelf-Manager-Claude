@@ -141,24 +141,27 @@ internal class CrashReportFile(private val directory: File) {
     }
 
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
-    private fun atomicWrite(target: File, text: String): Boolean = try {
+    private fun atomicWrite(target: File, text: String): Boolean {
         if (!directory.exists() && !directory.mkdirs()) return false
-        val temporary = File(directory, "${target.name}.tmp")
-        temporary.writeText(text)
-        if (target.exists() && !target.delete()) {
-            target.writeText(text)
-            temporary.delete()
-            return true
+        return try {
+            val temporary = File(directory, "${target.name}.tmp")
+            temporary.writeText(text)
+            if (target.exists() && !target.delete()) {
+                target.writeText(text)
+                temporary.delete()
+                true
+            } else {
+                if (!temporary.renameTo(target)) {
+                    target.writeText(text)
+                    temporary.delete()
+                }
+                true
+            }
+        } catch (_: IOException) {
+            false
+        } catch (_: SecurityException) {
+            false
         }
-        if (!temporary.renameTo(target)) {
-            target.writeText(text)
-            temporary.delete()
-        }
-        true
-    } catch (_: IOException) {
-        false
-    } catch (_: SecurityException) {
-        false
     }
 
     private fun headerValue(text: String, key: String): String? = text
