@@ -14,8 +14,6 @@ import com.example.shelfplayer.core.model.lock.RelockDelay
 import com.example.shelfplayer.core.model.lock.UnlockFailure
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.lock.LockedProfileRecovery
-import com.example.shelfplayer.domain.repository.AuthRepository
-import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.ProfileLockPreferences
 import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
