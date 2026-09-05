@@ -46,11 +46,7 @@ class MediaItemsServerStartTest {
         assertEquals(0L, MediaItems.queueFor(session).startPositionMs)
     }
 
-    private fun session(
-        startAt: Duration,
-        tracks: List<PlayableTrack>,
-        duration: Duration,
-    ) = PlaybackSession(
+    private fun session(startAt: Duration, tracks: List<PlayableTrack>, duration: Duration) = PlaybackSession(
         id = "session-restored",
         profileId = ProfileId("profile-a"),
         bookId = BOOK,
