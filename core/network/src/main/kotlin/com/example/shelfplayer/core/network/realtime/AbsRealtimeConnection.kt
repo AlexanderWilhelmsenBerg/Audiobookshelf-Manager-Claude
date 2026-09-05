@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.network.realtime
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.ProfileId
@@ -27,6 +28,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.min
@@ -63,6 +65,7 @@ internal class AbsRealtimeConnection @Inject constructor(
 
                 state.value = RealtimeStatus.Connecting
                 val closed = CompletableDeferred<Unit>()
+                val cancelledByOwner = AtomicBoolean(false)
                 val request = Request.Builder()
                     .url(socketUrlFor(connection.serverUrl))
                     .build()
@@ -70,6 +73,7 @@ internal class AbsRealtimeConnection @Inject constructor(
                     request,
                     listener(
                         token = connection.accessToken.value,
+                        cancelledByOwner = cancelledByOwner,
                         onEvent = { event -> trySend(event) },
                         onClosed = { if (!closed.isCompleted) closed.complete(Unit) },
                     ),
@@ -79,7 +83,9 @@ internal class AbsRealtimeConnection @Inject constructor(
                     closed.await()
                 } finally {
                     // Cancellation while `closed.await()` is suspended used to skip this call completely.
-                    // Keeping it in `finally` makes the Flow collector the authoritative socket lifetime.
+                    // Mark it before cancelling so OkHttp's resulting onFailure is diagnosed as lifecycle
+                    // teardown rather than as a network fault.
+                    cancelledByOwner.set(true)
                     socket.cancel()
                 }
 
@@ -97,34 +103,43 @@ internal class AbsRealtimeConnection @Inject constructor(
         }
     }
 
-    private fun listener(token: String, onEvent: (RealtimeEvent) -> Unit, onClosed: () -> Unit) =
-        object : WebSocketListener() {
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                when (val frame = EngineIoFrames.parse(text)) {
-                    is IncomingFrame.Handshake -> {
-                        webSocket.send(EngineIoFrames.NAMESPACE_CONNECT)
-                        webSocket.send(EngineIoFrames.authFrame(token))
-                    }
-
-                    IncomingFrame.Ping -> webSocket.send(EngineIoFrames.PONG_FRAME)
-                    IncomingFrame.NamespaceConnected -> Unit
-                    IncomingFrame.Closed -> onClosed()
-                    is IncomingFrame.Event -> handle(frame)?.let(onEvent)
-                    null -> Unit
+    private fun listener(
+        token: String,
+        cancelledByOwner: AtomicBoolean,
+        onEvent: (RealtimeEvent) -> Unit,
+        onClosed: () -> Unit,
+    ) = object : WebSocketListener() {
+        override fun onMessage(webSocket: WebSocket, text: String) {
+            when (val frame = EngineIoFrames.parse(text)) {
+                is IncomingFrame.Handshake -> {
+                    webSocket.send(EngineIoFrames.NAMESPACE_CONNECT)
+                    webSocket.send(EngineIoFrames.authFrame(token))
                 }
-            }
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                IncomingFrame.Ping -> webSocket.send(EngineIoFrames.PONG_FRAME)
+                IncomingFrame.NamespaceConnected -> Unit
+                IncomingFrame.Closed -> onClosed()
+                is IncomingFrame.Event -> handle(frame)?.let(onEvent)
+                null -> Unit
+            }
+        }
+
+        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            if (cancelledByOwner.get()) {
+                logger.debug(LogCategory.Sync, "Realtime connection closed after observation stopped")
+            } else {
                 logger.warn(
                     LogCategory.Sync,
                     "The realtime connection failed",
                     LogField.Public("httpStatus", response?.code ?: 0),
+                    throwable = t,
                 )
-                onClosed()
             }
-
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = onClosed()
+            onClosed()
         }
+
+        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = onClosed()
+    }
 
     private fun handle(frame: IncomingFrame.Event): RealtimeEvent? = when (frame.name) {
         INIT_EVENT -> {
