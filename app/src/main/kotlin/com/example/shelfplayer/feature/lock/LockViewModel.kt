@@ -23,12 +23,34 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** AUTH-005 — the curtain's state, and the two ways through it. */
+/**
+ * AUTH-005 — the curtain's state, and the two ways through it.
+ *
+ * ### Why the passcode is a `CharArray` all the way down
+ *
+ * So it can be wiped. A `String` cannot be, and would sit in the heap — and in any heap dump taken in
+ * between — until the collector chose to move it. The field hands this class an array, this class hands it
+ * to the repository, and it is cleared on the way out whatever the outcome was. It is a small mitigation
+ * and it is the only one available above the KDF.
+ */
 @HiltViewModel
 class LockViewModel @Inject constructor(
     private val locks: ProfileLockRepository,
     private val profiles: ProfileRepository,
     private val biometrics: BiometricGateway,
+    /**
+     * AUTH-005 — the route out of a lockout, and the reason the curtain is not a dead end.
+     *
+     * Signing in to the account again clears its passcode: `SignInUseCase` calls
+     * `LockedProfileRecovery.clearIfLocked` on success. That is a feature rather than a bypass — AUTH-003
+     * says this lock is not about server authentication, and somebody holding the account password has
+     * cleared a strictly higher bar than a six-digit local code.
+     *
+     * It is done **inline on the curtain** rather than by navigating to the sign-in screen, because the
+     * curtain is composed outside the navigation host: there is nowhere to navigate to from here. The first
+     * version shipped the sentence without the field, which left ten wrong attempts or an unreadable record
+     * with no exit but Android's "clear storage" — losing every profile's downloads and sign-ins.
+     */
     private val signIn: SignInUseCase,
 ) : ViewModel() {
 
@@ -111,16 +133,20 @@ class LockViewModel @Inject constructor(
      *
      * Resolve the locked account and its server from repositories at action time. Those sources continue to
      * represent the current profile context even when the public `WhileSubscribed` UI state is not collected.
+     * The password is never stored and is wiped on every exit, including a disappearing profile/server.
      */
     fun onReauthenticate(password: CharArray) {
         viewModelScope.launch {
-            _recovery.value = RecoveryState.Working
             try {
+                // Do not enter Working until every prerequisite exists. Working disables the recovery field;
+                // stranding it on an early return would turn the curtain's escape route into a dead end.
                 val profileId = lockedProfileId() ?: return@launch
                 val account = profiles.observeProfiles().first().firstOrNull { it.id == profileId }
                     ?: return@launch
                 val address = profiles.observeServers().first().firstOrNull { it.id == account.serverId }?.baseUrl
                     ?: return@launch
+
+                _recovery.value = RecoveryState.Working
                 val result = signIn(
                     serverUrl = address,
                     username = account.username,
