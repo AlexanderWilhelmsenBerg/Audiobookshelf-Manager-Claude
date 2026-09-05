@@ -141,8 +141,7 @@ class LockViewModel @Inject constructor(
         _recovery.value = RecoveryState.Idle
     }
 
-    private suspend fun lockedProfileId() =
-        (locks.observeLockState().first() as? ProfileLockState.Locked)?.profileId
+    private suspend fun lockedProfileId() = (locks.observeLockState().first() as? ProfileLockState.Locked)?.profileId
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
