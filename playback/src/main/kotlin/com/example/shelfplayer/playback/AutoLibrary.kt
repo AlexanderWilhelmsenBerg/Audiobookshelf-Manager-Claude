@@ -117,7 +117,9 @@ class AutoLibrary @Inject constructor(
         parentId == TAB_LIBRARY -> librarySections()
         parentId == TAB_SERIES -> seriesNodes()
         parentId == TAB_AUTHORS -> authorNodes()
-        parentId == TAB_DOWNLOADS -> books().filter { it.localAvailability == LocalAvailability.Complete }.map(::bookItem)
+        parentId == TAB_DOWNLOADS -> books().filter {
+            it.localAvailability == LocalAvailability.Complete
+        }.map(::bookItem)
         parentId == TAB_RECENT -> shelves().recentlyAdded.map(::bookItem)
         parentId == TAB_DISCOVER -> shelves().discover.map(::bookItem)
         parentId == TAB_AGAIN -> shelves().listenAgain.map(::bookItem)
@@ -278,11 +280,10 @@ class AutoLibrary @Inject constructor(
             .map(::bookItem)
     }
 
-    private fun Book.matches(needle: String): Boolean =
-        title.lowercase().contains(needle) ||
-            authors.any { it.name.lowercase().contains(needle) } ||
-            narrators.any { it.lowercase().contains(needle) } ||
-            seriesMemberships.any { it.series.name.lowercase().contains(needle) }
+    private fun Book.matches(needle: String): Boolean = title.lowercase().contains(needle) ||
+        authors.any { it.name.lowercase().contains(needle) } ||
+        narrators.any { it.lowercase().contains(needle) } ||
+        seriesMemberships.any { it.series.name.lowercase().contains(needle) }
 
     suspend fun lastPlayed(): Book? = lastPlayedBook(books())
 
@@ -465,8 +466,11 @@ class AutoLibrary @Inject constructor(
         val hours = total / SECONDS_PER_HOUR
         val minutes = (total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE
         val seconds = total % SECONDS_PER_MINUTE
-        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
-        else "%d:%02d".format(minutes, seconds)
+        return if (hours > 0) {
+            "%d:%02d:%02d".format(hours, minutes, seconds)
+        } else {
+            "%d:%02d".format(minutes, seconds)
+        }
     }
 
     @Suppress("CyclomaticComplexMethod")
