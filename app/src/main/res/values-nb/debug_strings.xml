@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="debug_background_sync_title">Test av bakgrunnssynkronisering</string>
+    <string name="debug_background_sync_run">Kjør nå</string>
+    <string name="debug_background_sync_cancel">Avbryt test</string>
+    <string name="debug_background_sync_body">Kjører den ekte bakgrunnssynkroniseringen umiddelbart som en egen testjobb. Forsøk på nytt skjer raskere under testing, og seks-timersplanen blir ikke erstattet.</string>
+</resources>

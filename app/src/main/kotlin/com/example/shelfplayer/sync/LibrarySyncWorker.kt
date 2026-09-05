@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -18,23 +19,10 @@ import dagger.assisted.AssistedInject
 /**
  * PRODUCT_SPEC SYNC-003 — the periodic refresh, for the days the app is not opened.
  *
- * ### What it does, and the order it does it in
- *
- * The account first, then the library. The account sync is one request and brings back positions,
- * permissions and whether the account still works; the library sweep is an N+1 over every item. If the
- * run is cut short — and a periodic worker frequently is — the cheap, high-value half has already
- * happened.
- *
- * ### Failure is `retry`, not `failure`
- *
- * A refresh that could not reach the server is the ordinary state of a phone, not a defect in the work.
- * `Result.retry()` hands it back to WorkManager's own backoff, which already respects the battery and
- * network policy PRODUCT_SPEC SYNC-003 asks for — reimplementing that here would mean holding a wake
- * lock through our own delay.
- *
- * A profile that no longer exists is `success`, because the work has nothing left to do and retrying
- * would never change that. Its schedule is cancelled on removal, so this is only reachable in the race
- * between a removal and a run already in flight.
+ * A failed run retries immediately through WorkManager only when the application's own error taxonomy says
+ * the same operation can plausibly succeed unchanged. Authentication, authorization, validation and API
+ * compatibility failures need external intervention; putting those into exponential backoff just repeats a
+ * request whose answer cannot change.
  */
 @HiltWorker
 class LibrarySyncWorker @AssistedInject constructor(
@@ -54,27 +42,39 @@ class LibrarySyncWorker @AssistedInject constructor(
             LogField.Identifier("profile", profileId.value),
         )
 
-        val account = syncAccount(profileId)
-        if (account is AppResult.Failure) return Result.retry()
-
-        // PRODUCT_SPEC SYNC-003 — "background work never wakes the device solely to refresh cover art".
-        // It does not, because nothing here fetches one: covers are loaded by the image pipeline when a
-        // screen asks for them, and this worker draws no images.
-        return when (libraryRepository.refresh(profileId)) {
-            is AppResult.Success -> Result.success()
-            is AppResult.Failure -> Result.retry()
+        when (val account = syncAccount(profileId)) {
+            is AppResult.Failure -> return resultFor(account.error)
+            is AppResult.Success -> Unit
         }
+
+        return when (val library = libraryRepository.refresh(profileId)) {
+            is AppResult.Success -> Result.success()
+            is AppResult.Failure -> resultFor(library.error)
+        }
+    }
+
+    private fun resultFor(error: AppError): Result {
+        val retry = shouldRetryBackgroundSync(error)
+        logger.info(
+            LogCategory.Sync,
+            "Background refresh stopped after a typed failure",
+            LogField.Public("error", error.code),
+            LogField.Public("retry", retry),
+        )
+        return if (retry) Result.retry() else Result.success()
     }
 
     companion object {
         const val KEY_PROFILE_ID = "profileId"
 
-        /**
-         * The unique work name PRODUCT_SPEC SYNC-003 requires per profile.
-         *
-         * The profile id is already a hash of the server and account, so this name reveals nothing
-         * about either — which matters because WorkManager's own diagnostics print it.
-         */
         fun nameFor(profileId: ProfileId): String = "library-sync-${profileId.value}"
     }
 }
+
+/**
+ * PRODUCT_SPEC 14.3 — WorkManager does not invent a second retry taxonomy.
+ *
+ * Kept as a pure internal function so the complete policy matrix can be tested without constructing an
+ * Android Worker. `AppError.isRetryable` remains the source of truth.
+ */
+internal fun shouldRetryBackgroundSync(error: AppError): Boolean = error.isRetryable
