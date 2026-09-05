@@ -83,9 +83,13 @@ internal class AbsRealtimeConnection @Inject constructor(
                     closed.await()
                 } finally {
                     // Cancellation while `closed.await()` is suspended used to skip this call completely.
-                    // Mark it before cancelling so OkHttp's resulting onFailure is diagnosed as lifecycle
-                    // teardown rather than as a network fault.
-                    cancelledByOwner.set(true)
+                    // The Flow that owns the socket also diagnoses its deliberate teardown. OkHttp may report
+                    // `cancel()` through `onFailure`, but that callback no longer has to manufacture a normal
+                    // lifecycle event after the collector that requested it has already gone away.
+                    if (!isActive) {
+                        cancelledByOwner.set(true)
+                        logger.debug(LogCategory.Sync, OWNER_CLOSED_MESSAGE)
+                    }
                     socket.cancel()
                 }
 
@@ -125,14 +129,14 @@ internal class AbsRealtimeConnection @Inject constructor(
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            if (cancelledByOwner.get()) {
-                logger.debug(LogCategory.Sync, "Realtime connection closed after observation stopped")
-            } else {
+            // `WebSocket.cancel()` is the mechanism the owning Flow uses to stop I/O. OkHttp reports that
+            // deliberate cancellation here as a failure with no response, but it is not a transport fault.
+            // The owner already logged its normal teardown before calling `cancel()`.
+            if (!cancelledByOwner.get()) {
                 logger.warn(
                     LogCategory.Sync,
                     "The realtime connection failed",
                     LogField.Public("httpStatus", response?.code ?: 0),
-                    throwable = t,
                 )
             }
             onClosed()
@@ -169,6 +173,7 @@ internal class AbsRealtimeConnection @Inject constructor(
         const val USER_UPDATED_EVENT = "user_updated"
         const val TASK_STARTED_EVENT = "task_started"
         const val TASK_FINISHED_EVENT = "task_finished"
+        const val OWNER_CLOSED_MESSAGE = "Realtime connection closed after observation stopped"
         const val BASE_BACKOFF_MILLIS = 1_000L
         const val MAX_BACKOFF_MILLIS = 60_000L
         const val MAX_BACKOFF_STEP = 6
