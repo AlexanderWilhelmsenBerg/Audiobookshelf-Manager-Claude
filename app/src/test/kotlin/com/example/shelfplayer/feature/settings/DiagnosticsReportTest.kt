@@ -94,7 +94,9 @@ class DiagnosticsReportTest {
 
     @Test
     fun `a sanitized previous crash is carried through`() {
-        val previousCrash = "BookWave crash report\nsource: uncaught_exception\nexception: java.lang.IllegalStateException\n"
+        val previousCrash = "BookWave crash report\n" +
+            "source: uncaught_exception\n" +
+            "exception: java.lang.IllegalStateException\n"
         val report = DiagnosticsReport.of(
             appVersion = "0.9.9",
             state = state(),
