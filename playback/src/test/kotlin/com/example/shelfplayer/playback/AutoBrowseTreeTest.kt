@@ -203,6 +203,49 @@ class AutoBrowseTreeTest {
         assertEquals("Marisol Holt · Tidewatch #2", item?.mediaMetadata?.subtitle?.toString())
     }
 
+    /**
+     * The nodes a car reaches by drilling in are parents too, and Media3 does not invalidate descendants.
+     *
+     * Notifying only the fixed tabs left a head unit that had opened a series or an author still showing
+     * the **previous profile's** books after a switch — a profile boundary, not stale UI. Asserted from the
+     * ids the tree actually emitted rather than a literal, so a node kind added to `seriesNodes`/
+     * `authorNodes` without being remembered fails here.
+     */
+    @Test
+    fun `series and author nodes handed to the car are invalidated too`() = runTest {
+        books.value = listOf(
+            book("book-1", "The Salt Harbour", series = membership("series-1", "Tidewatch", "2")),
+        )
+        val auto = auto()
+
+        assertFalse(
+            auto.browsableParents().any { it.startsWith("series/") || it.startsWith("author/") },
+            "nothing has been handed out yet",
+        )
+
+        val emitted = (auto.children(AutoLibrary.TAB_SERIES, null) + auto.children(AutoLibrary.TAB_AUTHORS, null))
+            .map { it.mediaId }
+        val parents = auto.browsableParents()
+
+        assertTrue("series/series-1" in emitted && "author/author-1" in emitted, "the tree offered both nodes")
+        emitted.forEach { id -> assertTrue(id in parents, "$id was handed to the car and must be invalidated") }
+        assertEquals(parents.size, parents.distinct().size, "a parent must not be notified twice")
+    }
+
+    /** `SeriesSequence.Absent.raw` is empty, and a bare "#" reads as missing data rather than no sequence. */
+    @Test
+    fun `a series with no sequence is named without a dangling marker`() = runTest {
+        books.value = listOf(
+            book("book-1", "The Salt Harbour", series = membership("series-1", "Tidewatch", "")),
+        )
+
+        val subtitle = auto().children(AutoLibrary.TAB_AUTHORS, null)
+            .let { auto().children("author/author-1", null) }
+            .first().mediaMetadata.subtitle?.toString()
+
+        assertEquals("Marisol Holt · Tidewatch", subtitle)
+    }
+
     private fun List<androidx.media3.common.MediaItem>.titles(): List<String> =
         mapNotNull { it.mediaMetadata.title?.toString() }
 

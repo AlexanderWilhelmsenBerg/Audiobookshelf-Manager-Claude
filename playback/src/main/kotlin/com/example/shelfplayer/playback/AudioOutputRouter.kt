@@ -89,26 +89,22 @@ class AudioOutputRouter @Inject constructor(
     /**
      * Chooses an output, or `null` for Automatic.
      *
-     * A stale id is ignored rather than converted to Automatic. The speaker is additionally rejected here
-     * even if an old cached car browse row sends its id: removing the row from today's UI must not leave a
-     * stale route into the destination the product explicitly forbids.
+     * A stale id is ignored rather than converted to Automatic.
+     *
+     * The phone speaker is **not** refused here. It is not a car destination, and the car cannot reach it:
+     * `AutoLibrary.outputRows` never lists it and `chooseOutput` refuses it by id, so a stale cached browse
+     * row is already answered where that row is handled. Refusing it in the shared router instead reached
+     * the phone's own chooser, which lists every connected output — including the speaker — and left that
+     * row silently doing nothing.
      */
     override fun select(id: String?) {
-        if (id != null) {
-            val info = live[id]
-            val output = info?.let { OutputDevices.outputOf(it.type, it.productName) }
-            if (info == null || output?.isSpeaker == true) {
-                logger.info(
-                    LogCategory.Playback,
-                    if (output?.isSpeaker == true) {
-                        "A phone-speaker output choice was refused"
-                    } else {
-                        "An output was chosen that is no longer connected"
-                    },
-                    LogField.Public("kind", kindOf(id)),
-                )
-                return
-            }
+        if (id != null && id !in live) {
+            logger.info(
+                LogCategory.Playback,
+                "An output was chosen that is no longer connected",
+                LogField.Public("kind", kindOf(id)),
+            )
+            return
         }
         _selectedId.value = id
         publish()

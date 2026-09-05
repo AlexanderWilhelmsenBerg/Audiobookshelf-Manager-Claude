@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -86,13 +87,35 @@ class AutoLibrary @Inject constructor(
         },
     )
 
+    /**
+     * The `series/` and `author/` ids handed to a head unit, so a profile switch can invalidate them.
+     *
+     * Never cleared: an id dropped here is a car still showing another account's books, while a stale entry
+     * only costs one no-op `notifyChildrenChanged`. Concurrent because the browse tree is built off the
+     * service's scope while the invalidation loop reads it.
+     */
+    private val emittedNodes = ConcurrentHashMap.newKeySet<String>()
+
+    private fun remember(id: String): String = id.also(emittedNodes::add)
+
     fun invalidations(): Flow<Unit> = profiles.observeActiveProfile()
         .map { profile -> profile?.id }
         .distinctUntilChanged()
         .drop(1)
         .map { }
 
-    fun browsableParents(): List<String> = listOf(
+    /**
+     * Every parent a head unit may be subscribed to, static rows plus the `series/` and `author/` nodes
+     * this process has actually handed out.
+     *
+     * Media3 does not invalidate descendants when a parent changes, so notifying only the fixed tabs left a
+     * car that had drilled into a series or an author still showing the **previous profile's** books
+     * (product priority 4). The dynamic ids are remembered as they are emitted because there is no API to
+     * ask the session what it is subscribed to.
+     */
+    fun browsableParents(): List<String> = staticParents() + emittedNodes.toList()
+
+    private fun staticParents(): List<String> = listOf(
         ROOT,
         RECENT_ROOT,
         TAB_CONTINUE,
@@ -194,7 +217,7 @@ class AutoLibrary @Inject constructor(
         .distinctBy { it.series.id }
         .sortedBy { it.series.name.lowercase() }
         .map { membership ->
-            browsableNode("$SERIES_PREFIX${membership.series.id.value}", membership.series.name)
+            browsableNode(remember("$SERIES_PREFIX${membership.series.id.value}"), membership.series.name)
         }
 
     private suspend fun booksForSeries(seriesId: String): List<MediaItem> {
@@ -210,7 +233,7 @@ class AutoLibrary @Inject constructor(
         .flatMap(Book::authors)
         .distinctBy { it.id }
         .sortedBy { it.name.lowercase() }
-        .map { author -> browsableNode("$AUTHOR_PREFIX${author.id.value}", author.name) }
+        .map { author -> browsableNode(remember("$AUTHOR_PREFIX${author.id.value}"), author.name) }
 
     private suspend fun booksForAuthor(authorId: String): List<MediaItem> = books()
         .filter { book -> book.authors.any { it.id.value == authorId } }
@@ -476,7 +499,11 @@ class AutoLibrary @Inject constructor(
         book.seriesMemberships
             .firstOrNull(SeriesMembership::isPrimary)
             .let { it ?: book.seriesMemberships.firstOrNull() }
-            ?.let { membership -> add("${membership.series.name} #${membership.sequence.raw}") }
+            ?.let { membership ->
+                // `SeriesSequence.Absent.raw` is empty, and "Foundation #" is worse than "Foundation".
+                val sequence = membership.sequence.raw.takeIf(String::isNotBlank)
+                add(if (sequence == null) membership.series.name else "${membership.series.name} #$sequence")
+            }
     }.joinToString(PART_SEPARATOR).takeIf(String::isNotBlank)
 
     private fun playable(

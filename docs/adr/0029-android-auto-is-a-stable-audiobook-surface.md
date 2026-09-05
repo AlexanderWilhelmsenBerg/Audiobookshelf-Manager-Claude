@@ -65,7 +65,9 @@ Sleep-timer bookkeeping, ordinary Play entries and server-freshness diagnostics 
 
 ### 6. Android Auto receives audiobook metadata, but Android draws it
 
-BookWave supplies the platform with the information it can truthfully provide from cached library/session data: cover artwork, title, author, series and sequence in browse/resume rows, chapter rows, chapter-relative progress and whole-book progress.
+BookWave supplies the platform with the information it can truthfully provide from cached library/session data: title, author, series and sequence in browse/resume rows, chapter rows, chapter-relative progress and whole-book progress.
+
+Browse and resume rows carry **no** cover artwork today. `AutoLibrary.playable` accepts an `artworkUri` and no caller passes one, so `MediaMetadata.artworkUri` is null on every browse row and the head unit draws its own placeholder. Supplying it means resolving a cached cover to a URI the car's process may read, which is a content-provider question this ADR does not answer. The Now Playing screen is unaffected — its cover comes from the playback session, not from these rows.
 
 The live playback session currently carries title, author, cover and chapters but not series membership. BookWave therefore does not invent a live Now Playing series value. Adding that would require extending the playback-session model as a separate data-contract change.
 
