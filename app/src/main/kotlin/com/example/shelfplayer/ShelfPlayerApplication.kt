@@ -14,7 +14,6 @@ import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ApplyStartupModeUseCase
 import com.example.shelfplayer.domain.usecase.CleanUpDownloadsUseCase
 import com.example.shelfplayer.lock.ProcessLockWatcher
-import com.example.shelfplayer.log.CrashSnapshotStore
 import com.example.shelfplayer.playback.AutoLibrary
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -114,16 +113,8 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var logger: Logger
 
-    /** Temporary PR #83 crash capture; removed again before the PR is merged. */
-    @Inject
-    lateinit var crashSnapshots: CrashSnapshotStore
-
     override fun onCreate() {
         super.onCreate()
-        // Install before any application coroutine starts. If the process dies, the previous redacted Event
-        // Log and the exception's code-only stack are replayed under the `Crash` tag on the next launch.
-        crashSnapshots.install()
-        crashSnapshots.restore()
         logger.info(LogCategory.App, "Application started")
         lockWatcher.attach(this)
         applicationScope.launch {
