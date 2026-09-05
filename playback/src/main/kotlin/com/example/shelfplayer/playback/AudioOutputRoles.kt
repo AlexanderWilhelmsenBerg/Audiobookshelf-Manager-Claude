@@ -1,134 +1,97 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import com.example.shelfplayer.core.model.playback.DeviceKind
 
 /**
- * PRODUCT_SPEC PLAY-002 — which output the car's two buttons mean, and what each press does.
+ * PRODUCT_SPEC PLAY-002 — what the car's two routing buttons mean.
  *
- * ### Why two role buttons rather than one cycle
- *
- * The player screen in Android Auto can hold an app's buttons but cannot open a list — a custom action
- * sends a session command and nothing more, no API pushes the car to a browse node, and the player template
- * has no submenu. ADR-0027's second amendment recorded that, and answered it with **one** button that
- * stepped through `[Automatic] + every connected output`.
- *
- * A device run found the cost of *every*: the phone's own speaker is an output, so a driver reaching for
- * their earbuds could land the book in the phone's speaker, in a car, at speed. Filtering the speaker out
- * of the cycle would have fixed that one case and left the underlying problem — a driver cannot see what
- * the next press selects, which ADR-0027 admitted when it accepted cycling.
- *
- * So the buttons name **roles** instead. *Car* is one destination and always the same one; *Headset* is a
- * short cycle over things a person is wearing, which is the only place a cycle earns its ambiguity because
- * every stop on it is somewhere the listener chose to put a device. The phone speaker is not reachable from
- * either button — not by a filter that a later edit could drop, but because no button names it. The browse
- * tab still lists every output including the speaker, for the listener who is parked and choosing.
- *
- * ### Everything here is a decision about a list
- *
- * Which is why it is a pure object with no `AudioManager` and no `Player`. What needs a car is that Android
- * Auto draws the buttons at all, and §2.11 covers that on hardware.
+ * The actions name intent rather than Android transport types. *Car* releases BookWave's per-track
+ * preference and lets Android Auto own media routing. *Headset* targets only wearable outputs plus classic
+ * A2DP devices Android cannot classify more precisely. The built-in phone speaker is never a target.
  */
 internal object AudioOutputRoles {
 
-    /**
-     * Where the audio **is**, falling back to what was asked for.
-     *
-     * The route first, because that is the fact a listener wants from a control that names a destination,
-     * and since ADR-0027's amendment the app can read it on API 33+. Below that — or when the platform
-     * reports a route this app does not recognise — the choice stands in, and `null` means nothing chosen
-     * and nothing readable, which is the honest answer rather than a guessed device.
-     */
+    /** Framework-reported media route first; explicit choice is the best fallback below API 33. */
     fun current(outputs: List<AudioOutput>, selectedId: String?): AudioOutput? =
         outputs.firstOrNull(AudioOutput::isActive) ?: outputs.firstOrNull { it.id == selectedId }
 
-    /** Everything a person could be wearing, in the order the platform reports it. */
-    fun headsets(outputs: List<AudioOutput>): List<AudioOutput> = outputs.filter(AudioOutput::isHeadset)
-
     /**
-     * The headset the book is coming out of, or was pointed at. Never one that is merely plugged in.
+     * Everything the headset action may consider.
      *
-     * The distinction is the whole of *Keep sound in the headset*: holding a route means keeping the sound
-     * where it already is, and a headset sitting in a pocket is not where it already is.
+     * [AudioOutputRole.Ambiguous] is deliberately a candidate rather than a headset classification: classic
+     * A2DP is the transport AirPods use, but it is also used by speakers and some cars. Keeping the ambiguity
+     * in the model lets a later role override narrow it without changing routing policy again.
      */
+    fun headsets(outputs: List<AudioOutput>): List<AudioOutput> = outputs.filter(AudioOutput::isHeadsetCandidate)
+
+    /** The wearable/candidate route the book is actually using or was explicitly pointed at. */
     fun activeHeadset(outputs: List<AudioOutput>, selectedId: String?): AudioOutput? =
-        current(outputs, selectedId)?.takeIf(AudioOutput::isHeadset)
+        current(outputs, selectedId)?.takeIf(AudioOutput::isHeadsetCandidate)
 
-    /**
-     * The car's audio bus, if the platform reports one.
-     *
-     * [DeviceKind.Car] is `AudioDeviceInfo.TYPE_BUS`, and a great many cars never produce it: projected
-     * Android Auto reaches this app as a media *controller*, and its audio link may arrive as ordinary
-     * Bluetooth A2DP that nothing in the public API distinguishes from a headset. That is why [carTarget]
-     * exists and why this returns `null` rather than guessing which Bluetooth device is the dashboard.
-     */
+    /** A platform audio bus is useful evidence and diagnostics, even though the Car action does not force it. */
     fun car(outputs: List<AudioOutput>): AudioOutput? = outputs.firstOrNull { it.kind == DeviceKind.Car }
 
     /**
-     * What the car button selects: the car's own bus where there is one, otherwise *Automatic*.
+     * Car always means *release BookWave's preferred output*.
      *
-     * *Automatic* is not a shrug here. Clearing the preferred device hands routing back to the platform,
-     * and while a car is connected the platform's own answer **is** the car — that is exactly the behaviour
-     * *Keep sound in the headset* exists to override. So the button does what it says on every car this app
-     * can be run in, and on the ones that report a bus it says it with a specific device.
-     *
-     * `null` is therefore a legitimate return and means *Automatic*, the same as everywhere else in this
-     * feature. It is never the string "car" invented from nothing.
+     * `null` is ExoPlayer's Automatic route. Android Auto/AAOS already owns normal car routing, so clearing
+     * the app-specific preference is more robust than guessing which A2DP device is the dashboard.
      */
-    fun carTarget(outputs: List<AudioOutput>): String? = car(outputs)?.id
+    @Suppress("UNUSED_PARAMETER")
+    fun carTarget(outputs: List<AudioOutput>): String? = null
 
     /**
-     * The next headset to select, or `null` when there is not one to select.
+     * The next headset candidate, or `null` when there is nothing useful to target.
      *
-     * Three cases, and the middle one is the one worth reading. If the book is already in a headset, this
-     * steps to the next one and wraps — which with a single pair of earbuds re-selects the same pair, a
-     * harmless no-op that keeps the button from being dead. If the book is somewhere else — the car, a
-     * speaker, nothing chosen — the **first** headset is the answer, because the press means *put it in my
-     * ears* and stepping from a position that is not on the list would be a guess.
-     *
-     * Never *Automatic*. Unlike the old cycle this button is not the only way back to letting the system
-     * route: the car button is, and the browse tab is.
+     * When Android Auto is active and the framework has moved media onto an ambiguous A2DP route, that
+     * active ambiguous route is skipped if another candidate exists. This is the common projected-car case:
+     * the active A2DP endpoint is the dashboard, while the inactive one is the headset the listener can
+     * return to. A single ambiguous endpoint remains a harmless re-selection for stale controls.
      */
     fun nextHeadset(outputs: List<AudioOutput>, selectedId: String?): String? {
-        val wearable = headsets(outputs)
-        if (wearable.isEmpty()) return null
-        val here = activeHeadset(outputs, selectedId) ?: return wearable.first().id
-        val index = wearable.indexOfFirst { it.id == here.id }
-        if (index == -1) return wearable.first().id
-        return wearable[(index + 1) % wearable.size].id
+        val candidates = headsets(outputs)
+        if (candidates.isEmpty()) return null
+
+        val here = activeHeadset(outputs, selectedId)
+        if (here != null && here.role == AudioOutputRole.Ambiguous && here.isActive && selectedId != here.id) {
+            val alternatives = candidates.filterNot { it.id == here.id }
+            if (alternatives.isNotEmpty()) return alternatives.first().id
+        }
+        if (here == null) return candidates.first().id
+        val index = candidates.indexOfFirst { it.id == here.id }
+        if (index == -1) return candidates.first().id
+        return candidates[(index + 1) % candidates.size].id
     }
 
-    /**
-     * What the two buttons should look like right now.
-     *
-     * One value rather than three reads, so `PlaybackService` can compare it against the last one it
-     * published and rewrite the notification only when something a listener would see has moved. Media3
-     * pushes every button set to every controller, and a device change that does not touch either button is
-     * not a reason to redraw the car's player screen.
-     *
-     * @param carConnected whether a car is bound to the media session right now. Passed in because it is a
-     *   fact about controllers rather than about audio devices, and this object is deliberately about lists.
-     */
-    fun buttons(outputs: List<AudioOutput>, selectedId: String?, carConnected: Boolean): OutputButtons = OutputButtons(
-        // A car button with no car is a control that would hand routing back to the system for no
-        // stated reason, so it is absent rather than inert.
-        showCar = carConnected || car(outputs) != null,
-        showHeadset = headsets(outputs).isNotEmpty(),
-        headsetName = activeHeadset(outputs, selectedId)?.displayName,
-    )
+    /** What Android Auto/notification should publish right now. */
+    fun buttons(outputs: List<AudioOutput>, selectedId: String?, carConnected: Boolean): OutputButtons {
+        val candidates = headsets(outputs)
+        val current = current(outputs, selectedId)
+        val activeLooksLikeCar = carConnected &&
+            current?.role == AudioOutputRole.Ambiguous &&
+            current.id != selectedId
+        val availableHeadsets = if (activeLooksLikeCar) {
+            candidates.filterNot { it.id == current?.id }
+        } else {
+            candidates
+        }
+        val headsetRoute = current?.takeIf { output ->
+            output.isHeadset ||
+                (output.role == AudioOutputRole.Ambiguous && (!carConnected || output.id == selectedId))
+        }
+        return OutputButtons(
+            showCar = carConnected || car(outputs) != null,
+            showHeadset = availableHeadsets.isNotEmpty(),
+            headsetName = headsetRoute?.displayName,
+        )
+    }
 }
 
-/**
- * PRODUCT_SPEC PLAY-002 — the state of the car's two output buttons.
- *
- * @property showCar whether the car button is published at all.
- * @property showHeadset whether the headset button is published at all.
- * @property headsetName the headset the book is actually in, for the button's own label, or `null` when the
- *   sound is somewhere else. The name a device advertises is shown to the listener and never logged (14.5).
- */
+/** Visible state of the two output actions. */
 internal data class OutputButtons(val showCar: Boolean, val showHeadset: Boolean, val headsetName: String?) {
     companion object {
-        /** Nothing connected and no car bound: neither button is published. */
         val None = OutputButtons(showCar = false, showHeadset = false, headsetName = null)
     }
 }
