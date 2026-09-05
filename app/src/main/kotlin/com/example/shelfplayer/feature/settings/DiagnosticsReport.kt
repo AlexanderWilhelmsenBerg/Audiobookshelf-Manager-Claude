@@ -28,13 +28,15 @@ import java.time.format.DateTimeFormatter
  * appears as a shape rather than a value: the server is described by its version and its capabilities, and
  * never by its address.
  *
- * The one apparent exception is the event log's own lines, which are included verbatim — and they are
- * already redacted, by the layer that wrote them.
+ * The two apparent exceptions are already-sanitized inputs: event-log lines have passed through
+ * `RedactingLogger`, and the optional previous crash report was built by `CrashReportFormatter` without
+ * throwable messages or private domain strings. They are therefore carried verbatim.
  */
 internal object DiagnosticsReport {
 
     /**
      * @param events the event log's lines, already redacted. Newest last, as the buffer holds them.
+     * @param previousCrash the previous process' local sanitized crash envelope, if one exists.
      */
     fun of(
         appVersion: String,
@@ -42,6 +44,7 @@ internal object DiagnosticsReport {
         metrics: com.example.shelfplayer.core.model.playback.PlaybackMetrics,
         events: List<LoggedEvent>,
         at: Instant,
+        previousCrash: String? = null,
     ): String = buildString {
         appendLine("BookWave diagnostics")
         appendLine("generated: ${TIMESTAMPS.format(at)}")
@@ -108,10 +111,18 @@ internal object DiagnosticsReport {
 
         appendLine("[events] ${events.size}")
         // Verbatim, and safe: nothing reaches the log except through a `LogField`, and `Redactor` has
-        // already decided what each one may say. This is the only place in the report where a string the
-        // app did not choose appears at all.
+        // already decided what each one may say. This is the only live-run text copied into the report.
         events.takeLast(EVENT_LINES).forEach { event ->
             appendLine("${TIMESTAMPS.format(event.at)} ${event.level.name.first()} ${event.tag} ${event.line}")
+        }
+        appendLine()
+
+        appendLine("[previous crash]")
+        if (previousCrash == null) {
+            appendLine(NONE)
+        } else {
+            append(previousCrash.trimEnd())
+            appendLine()
         }
     }
 
