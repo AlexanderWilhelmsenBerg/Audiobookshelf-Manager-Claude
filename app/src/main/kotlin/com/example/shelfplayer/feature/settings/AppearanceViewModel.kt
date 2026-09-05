@@ -26,9 +26,7 @@ import javax.inject.Inject
  * when one theme choice changes both the plain theme layer and its following accent.
  */
 @HiltViewModel
-class AppearanceViewModel @Inject constructor(
-    private val appearance: AppearanceRepository,
-) : ViewModel() {
+class AppearanceViewModel @Inject constructor(private val appearance: AppearanceRepository) : ViewModel() {
 
     val state: StateFlow<AppearanceUiState> = appearance.observeAppearance()
         .map { look ->
