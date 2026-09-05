@@ -83,10 +83,11 @@ internal class AbsRealtimeConnection @Inject constructor(
                     socket.cancel()
                 }
 
-                if (!isActive) break
-                state.value = RealtimeStatus.Disconnected
-                delay(backoffFor(attempt))
-                attempt = min(attempt + 1, MAX_BACKOFF_STEP)
+                if (isActive) {
+                    state.value = RealtimeStatus.Disconnected
+                    delay(backoffFor(attempt))
+                    attempt = min(attempt + 1, MAX_BACKOFF_STEP)
+                }
             }
 
             // A profile with no usable credential remains an idle flow until its collector is replaced.
