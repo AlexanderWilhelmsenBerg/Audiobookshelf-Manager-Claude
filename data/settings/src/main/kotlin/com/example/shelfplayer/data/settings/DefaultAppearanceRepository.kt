@@ -35,29 +35,28 @@ class DefaultAppearanceRepository @Inject constructor(
 
     private val catalog = flow { emit(backgroundThemes.themes()) }
 
-    override fun observeAppearance(): Flow<AppearanceSettings> =
-        combine(
-            settings.settings,
-            catalog,
-        ) { stored, themes ->
-            AppearanceSettings(
-                theme = if (stored.appThemeKey.isNotEmpty()) {
-                    AppTheme.ofKey(stored.appThemeKey)
-                } else {
-                    stored.themeMode.asAppTheme()
-                },
-                accent = AccentScheme.ofKey(stored.accentColorKey, themes),
-                glassTint = GlassTint.ofKey(stored.glassTintKey),
-                cardGlassTintEnabled = !stored.cardGlassTintDisabled,
-                systemGlassTintEnabled = !stored.systemGlassTintDisabled,
-                textContrast = TextContrast.ofKey(stored.textContrastKey),
-                glassBlurDp = GlassBlur.ofStored(stored.glassBlurDp),
-                backgroundThemes = themes,
-                backgroundThemeId = stored.backgroundThemeId.takeIf { id -> themes.any { it.id == id } },
-                dynamicColor = stored.dynamicColor,
-                language = AppLanguage.ofTag(stored.appLanguageTag),
-            )
-        }
+    override fun observeAppearance(): Flow<AppearanceSettings> = combine(
+        settings.settings,
+        catalog,
+    ) { stored, themes ->
+        AppearanceSettings(
+            theme = if (stored.appThemeKey.isNotEmpty()) {
+                AppTheme.ofKey(stored.appThemeKey)
+            } else {
+                stored.themeMode.asAppTheme()
+            },
+            accent = AccentScheme.ofKey(stored.accentColorKey, themes),
+            glassTint = GlassTint.ofKey(stored.glassTintKey),
+            cardGlassTintEnabled = !stored.cardGlassTintDisabled,
+            systemGlassTintEnabled = !stored.systemGlassTintDisabled,
+            textContrast = TextContrast.ofKey(stored.textContrastKey),
+            glassBlurDp = GlassBlur.ofStored(stored.glassBlurDp),
+            backgroundThemes = themes,
+            backgroundThemeId = stored.backgroundThemeId.takeIf { id -> themes.any { it.id == id } },
+            dynamicColor = stored.dynamicColor,
+            language = AppLanguage.ofTag(stored.appLanguageTag),
+        )
+    }
 
     override suspend fun setThemeChoice(choice: ThemeChoice): AppResult<Unit> = write {
         // Plain theme first: while a pack is still selected it hides this write, so clearing the pack on the
@@ -70,11 +69,13 @@ class DefaultAppearanceRepository @Inject constructor(
         settings.setBackgroundThemeId(pack?.id)
     }
 
-    override suspend fun setAccent(accent: AccentScheme): AppResult<Unit> =
-        write { settings.setAccent(accent) }
+    override suspend fun setAccent(accent: AccentScheme): AppResult<Unit> = write {
+        settings.setAccent(accent)
+    }
 
-    override suspend fun setGlassTint(tint: GlassTint): AppResult<Unit> =
-        write { settings.setGlassTint(tint) }
+    override suspend fun setGlassTint(tint: GlassTint): AppResult<Unit> = write {
+        settings.setGlassTint(tint)
+    }
 
     override suspend fun setCardGlassTintEnabled(enabled: Boolean): AppResult<Unit> =
         write { settings.setCardGlassTintEnabled(enabled) }
@@ -85,8 +86,9 @@ class DefaultAppearanceRepository @Inject constructor(
     override suspend fun setTextContrast(contrast: TextContrast): AppResult<Unit> =
         write { settings.setTextContrast(contrast) }
 
-    override suspend fun setGlassBlurDp(dp: Int): AppResult<Unit> =
-        write { settings.setGlassBlurDp(dp) }
+    override suspend fun setGlassBlurDp(dp: Int): AppResult<Unit> = write {
+        settings.setGlassBlurDp(dp)
+    }
 
     override suspend fun setDynamicColor(enabled: Boolean): AppResult<Unit> =
         write { settings.setDynamicColor(enabled) }
