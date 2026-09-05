@@ -26,10 +26,8 @@ import javax.inject.Inject
  * protobuf field can change without presentation learning a second interpretation of it.
  */
 @HiltViewModel
-class AppViewModel @Inject constructor(
-    appearance: AppearanceRepository,
-    profileRepository: ProfileRepository,
-) : ViewModel() {
+class AppViewModel @Inject constructor(appearance: AppearanceRepository, profileRepository: ProfileRepository) :
+    ViewModel() {
     val state: StateFlow<AppUiState> = combine(
         appearance.observeAppearance(),
         profileRepository.observeProfiles(),
