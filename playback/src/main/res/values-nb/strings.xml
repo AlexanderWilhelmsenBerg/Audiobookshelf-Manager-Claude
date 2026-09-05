@@ -17,6 +17,9 @@
     <string name="car_tab_chapters">Kapitler</string>
     <string name="car_tab_history">Historikk</string>
     <string name="car_tab_library">Bibliotek</string>
+    <string name="car_tab_series">Serier</string>
+    <string name="car_tab_authors">Forfattere</string>
+    <string name="car_tab_downloads">Nedlastinger</string>
     <string name="car_tab_recent">Nylig lagt til</string>
     <string name="car_tab_again">Hør på nytt</string>
     <string name="car_tab_discover">Oppdag</string>
