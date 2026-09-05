@@ -46,5 +46,4 @@ internal fun cancelBackgroundSyncTest(context: Context, profileId: ProfileId) {
     WorkManager.getInstance(context.applicationContext).cancelUniqueWork(debugBackgroundSyncNameFor(profileId))
 }
 
-internal fun debugBackgroundSyncNameFor(profileId: ProfileId): String =
-    "debug-library-sync-${profileId.value}"
+internal fun debugBackgroundSyncNameFor(profileId: ProfileId): String = "debug-library-sync-${profileId.value}"
