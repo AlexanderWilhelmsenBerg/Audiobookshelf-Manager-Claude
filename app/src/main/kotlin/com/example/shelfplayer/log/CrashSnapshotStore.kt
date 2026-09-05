@@ -20,7 +20,7 @@ import javax.inject.Singleton
  * already redacted plus exception/stack-frame class names. It is replayed into Event Log on the next launch
  * and immediately deleted. Remove this helper before #83 is merged once the crash has been diagnosed.
  *
- * Android 11+ also records why the previous process exited. That survives exits which never reach an
+ * Android 11+ also records why previous processes exited. That survives exits which never reach an
  * uncaught-exception handler, such as native crashes, ANRs and system kills. Only numeric/process-state
  * metadata is copied into Event Log; the platform description and trace are deliberately not read because
  * they can contain application or server data.
@@ -36,6 +36,7 @@ class CrashSnapshotStore @Inject constructor(
 
     /** Install before application coroutines start so their uncaught failures are captured too. */
     fun install() {
+        eventLog.write(LogLevel.Info, CRASH_TAG, "Temporary PR #83 crash diagnostics armed")
         val delegate = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             runCatching { capture(throwable) }
@@ -45,7 +46,7 @@ class CrashSnapshotStore @Inject constructor(
 
     /** Restore any diagnostic evidence Android or the previous process left for this launch. */
     fun restore() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) reportPreviousProcessExit()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) reportPreviousProcessExits()
 
         val lines = runCatching {
             if (snapshotFile.isFile) snapshotFile.readLines().take(MAX_RESTORED_LINES) else emptyList()
@@ -58,12 +59,34 @@ class CrashSnapshotStore @Inject constructor(
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
-    private fun reportPreviousProcessExit() {
-        val activityManager = context.getSystemService(ActivityManager::class.java) ?: return
-        val exit = runCatching {
-            activityManager.getHistoricalProcessExitReasons(null, 0, 1).firstOrNull()
-        }.getOrNull() ?: return
+    private fun reportPreviousProcessExits() {
+        val activityManager = context.getSystemService(ActivityManager::class.java)
+        if (activityManager == null) {
+            eventLog.write(LogLevel.Info, CRASH_TAG, "Android process-exit service is unavailable")
+            return
+        }
 
+        val exits = runCatching {
+            activityManager.getHistoricalProcessExitReasons(null, 0, MAX_EXIT_RECORDS)
+        }.getOrElse { failure ->
+            eventLog.write(
+                LogLevel.Error,
+                CRASH_TAG,
+                "Android process-exit lookup failed type=${failure.javaClass.name}",
+            )
+            return
+        }
+
+        if (exits.isEmpty()) {
+            eventLog.write(LogLevel.Info, CRASH_TAG, "Android returned no historical process exit record")
+            return
+        }
+
+        exits.forEachIndexed(::reportExit)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun reportExit(index: Int, exit: ApplicationExitInfo) {
         val level = when (exit.reason) {
             ApplicationExitInfo.REASON_CRASH,
             ApplicationExitInfo.REASON_CRASH_NATIVE,
@@ -77,9 +100,11 @@ class CrashSnapshotStore @Inject constructor(
             level,
             CRASH_TAG,
             buildString {
-                append("Android recorded the previous process exit")
+                append("Android recorded a recent process exit")
+                append(" index=")
+                append(index)
                 append(" reason=")
-                append(exitReasonName(exit.reason))
+                append(EXIT_REASON_NAMES[exit.reason] ?: "unknown")
                 append(" reasonCode=")
                 append(exit.reason)
                 append(" status=")
@@ -120,26 +145,6 @@ class CrashSnapshotStore @Inject constructor(
         snapshotFile.writeText(lines.joinToString(separator = "\n"))
     }
 
-    private fun exitReasonName(reason: Int): String = when (reason) {
-        ApplicationExitInfo.REASON_EXIT_SELF -> "exit-self"
-        ApplicationExitInfo.REASON_SIGNALED -> "signaled"
-        ApplicationExitInfo.REASON_LOW_MEMORY -> "low-memory"
-        ApplicationExitInfo.REASON_CRASH -> "crash"
-        ApplicationExitInfo.REASON_CRASH_NATIVE -> "native-crash"
-        ApplicationExitInfo.REASON_ANR -> "anr"
-        ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "initialization-failure"
-        ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "permission-change"
-        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "excessive-resource-usage"
-        ApplicationExitInfo.REASON_USER_REQUESTED -> "user-requested"
-        ApplicationExitInfo.REASON_USER_STOPPED -> "user-stopped"
-        ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "dependency-died"
-        ApplicationExitInfo.REASON_OTHER -> "other"
-        ApplicationExitInfo.REASON_FREEZER -> "freezer"
-        ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE -> "package-state-change"
-        ApplicationExitInfo.REASON_PACKAGE_UPDATED -> "package-updated"
-        else -> "unknown"
-    }
-
     private companion object {
         const val FILE_NAME = "pr83-crash-snapshot.txt"
         const val CRASH_TAG = "Crash"
@@ -147,5 +152,25 @@ class CrashSnapshotStore @Inject constructor(
         const val MAX_FRAMES_PER_CAUSE = 20
         const val MAX_EVENT_LINES = 80
         const val MAX_RESTORED_LINES = 200
+        const val MAX_EXIT_RECORDS = 5
+
+        val EXIT_REASON_NAMES = mapOf(
+            ApplicationExitInfo.REASON_EXIT_SELF to "exit-self",
+            ApplicationExitInfo.REASON_SIGNALED to "signaled",
+            ApplicationExitInfo.REASON_LOW_MEMORY to "low-memory",
+            ApplicationExitInfo.REASON_CRASH to "crash",
+            ApplicationExitInfo.REASON_CRASH_NATIVE to "native-crash",
+            ApplicationExitInfo.REASON_ANR to "anr",
+            ApplicationExitInfo.REASON_INITIALIZATION_FAILURE to "initialization-failure",
+            ApplicationExitInfo.REASON_PERMISSION_CHANGE to "permission-change",
+            ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE to "excessive-resource-usage",
+            ApplicationExitInfo.REASON_USER_REQUESTED to "user-requested",
+            ApplicationExitInfo.REASON_USER_STOPPED to "user-stopped",
+            ApplicationExitInfo.REASON_DEPENDENCY_DIED to "dependency-died",
+            ApplicationExitInfo.REASON_OTHER to "other",
+            ApplicationExitInfo.REASON_FREEZER to "freezer",
+            ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE to "package-state-change",
+            ApplicationExitInfo.REASON_PACKAGE_UPDATED to "package-updated",
+        )
     }
 }
