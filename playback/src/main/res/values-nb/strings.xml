@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- %1$s er gjenstående tid, for eksempel "12 min". -->
     <string name="player_sleep_remaining">Sovetid %1$s</string>
     <string name="player_sleep_minutes">%1$d min</string>
     <string name="player_sleep_seconds">%1$d s</string>
@@ -15,33 +14,32 @@
     </plurals>
 
     <string name="car_tab_continue">Fortsett</string>
+    <string name="car_tab_chapters">Kapitler</string>
+    <string name="car_tab_history">Historikk</string>
+    <string name="car_tab_library">Bibliotek</string>
     <string name="car_tab_recent">Nylig lagt til</string>
     <string name="car_tab_again">Hør på nytt</string>
     <string name="car_tab_discover">Oppdag</string>
-    <string name="car_tab_chapters">Kapitler</string>
-    <string name="car_tab_history">Historikk</string>
     <string name="car_tab_output">Lydutgang</string>
+
     <string name="car_output_automatic">Automatisk</string>
     <string name="car_output_automatic_now">Spilles der systemet velger</string>
     <string name="car_output_playing_here">%1$s \u2014 spilles her</string>
     <string name="car_output_chosen_unused">%1$s \u2014 valgt, men ikke i bruk</string>
     <string name="car_output_chosen">Valgte %1$s</string>
-    <string name="car_output_none">Fant ingen lydutganger</string>
+    <string name="car_output_none">Fant ingen valgbare lydutganger</string>
+
     <string name="player_car_action">Spill i bilen</string>
-    <string name="player_headset_action">Spill i %1$s</string>
-    <string name="player_headset_action_unknown">Spill i hodetelefonene</string>
+    <string name="player_headset_action">Spilles på %1$s</string>
+    <string name="player_headset_action_unknown">Hodetelefoner</string>
 
     <string name="car_empty_title">Ingen bøker ennå</string>
-    <!-- %1$s er appnavnet. -->
     <string name="car_empty_subtitle">Åpne %1$s på telefonen for å logge inn eller synkronisere biblioteket.</string>
 
     <string name="car_chapter_untitled">Kapittel %1$d</string>
-
-    <!-- %1$d er en hel prosentandel av boka. -->
     <string name="car_progress_fraction">%1$d %% av boka</string>
     <string name="car_progress_position">%1$s av %2$s</string>
     <string name="car_progress_chapter">kapittel %1$d av %2$d</string>
-
     <string name="car_chapter_elapsed">%1$s av %2$s</string>
 
     <string name="car_event_seek">Spoling</string>
