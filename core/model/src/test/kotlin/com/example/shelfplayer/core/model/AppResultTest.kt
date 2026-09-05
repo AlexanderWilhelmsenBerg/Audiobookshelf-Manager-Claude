@@ -1,6 +1,8 @@
 package com.example.shelfplayer.core.model
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -57,11 +59,20 @@ class AppResultTest {
     }
 
     /**
-     * PRODUCT_SPEC 14.2 / 22 — cancellation must propagate.
-     *
-     * Swallowing it here would break structured concurrency everywhere: a cancelled screen would
-     * keep its repository work running and report a "failure" nobody asked about.
+     * Kotlin permits suspension inside the inline lambda when `resultOf` is called from a suspend function.
+     * This keeps ADR-0003's one sanctioned exception boundary instead of adding a parallel suspend helper.
      */
+    @Test
+    fun `resultOf wraps a suspending operation when called from a coroutine`() = runTest {
+        val result = resultOf(onError = { AppError.Storage(summary = "disk") }) {
+            yield()
+            error("boom after suspension")
+        }
+
+        assertEquals(AppResult.Failure(AppError.Storage(summary = "disk")), result)
+    }
+
+    /** PRODUCT_SPEC 14.2 / 22 — cancellation must propagate. */
     @Test
     fun `resultOf rethrows cancellation instead of mapping it`() {
         assertFailsWith<CancellationException> {
