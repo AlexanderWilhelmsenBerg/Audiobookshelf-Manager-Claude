@@ -108,22 +108,51 @@ class AutoLibrary @Inject constructor(
         TAB_OUTPUT,
     )
 
-    suspend fun children(parentId: String, now: NowPlaying?): List<MediaItem> = when {
-        parentId == ROOT -> rootTabs()
-        parentId == RECENT_ROOT -> resumeRow()
-        parentId == TAB_CONTINUE -> shelves().continueListening.map(::bookItem)
-        parentId == TAB_CHAPTERS -> chaptersOf(now)
-        parentId == TAB_HISTORY -> historyOf(now?.bookId)
-        parentId == TAB_LIBRARY -> librarySections()
-        parentId == TAB_SERIES -> seriesNodes()
-        parentId == TAB_AUTHORS -> authorNodes()
-        parentId == TAB_DOWNLOADS -> books().filter {
-            it.localAvailability == LocalAvailability.Complete
+    /**
+     * A fixed destination first, then the three id families, then nothing.
+     *
+     * Split in two because the whole tree in one `when` exceeds detekt's branch budget. The exact-id half
+     * returns `null` for "not mine" rather than the two halves being reordered: a tab id and a prefixed id
+     * are disjoint today, and a split that relied on that would break quietly the day one of them is not.
+     */
+    suspend fun children(parentId: String, now: NowPlaying?): List<MediaItem> =
+        fixedDestination(parentId, now) ?: idFamily(parentId)
+
+    private suspend fun fixedDestination(parentId: String, now: NowPlaying?): List<MediaItem>? = when (parentId) {
+        ROOT -> rootTabs()
+        RECENT_ROOT -> resumeRow()
+        TAB_CONTINUE, TAB_RECENT, TAB_DISCOVER, TAB_AGAIN -> shelfBooks(parentId)
+        TAB_CHAPTERS -> chaptersOf(now)
+        TAB_HISTORY -> historyOf(now?.bookId)
+        TAB_LIBRARY -> librarySections()
+        TAB_SERIES -> seriesNodes()
+        TAB_AUTHORS -> authorNodes()
+        TAB_DOWNLOADS -> downloadedBooks()
+        TAB_OUTPUT -> outputRows()
+        else -> null
+    }
+
+    /**
+     * The four rows that are a home shelf shown as a list.
+     *
+     * One branch in [fixedDestination] rather than four, because four identical shapes are what pushed it
+     * over detekt's complexity budget, and because this reads the shelves once instead of once per tab.
+     */
+    private suspend fun shelfBooks(tabId: String): List<MediaItem> {
+        val shelves = shelves()
+        return when (tabId) {
+            TAB_RECENT -> shelves.recentlyAdded
+            TAB_DISCOVER -> shelves.discover
+            TAB_AGAIN -> shelves.listenAgain
+            else -> shelves.continueListening
         }.map(::bookItem)
-        parentId == TAB_RECENT -> shelves().recentlyAdded.map(::bookItem)
-        parentId == TAB_DISCOVER -> shelves().discover.map(::bookItem)
-        parentId == TAB_AGAIN -> shelves().listenAgain.map(::bookItem)
-        parentId == TAB_OUTPUT -> outputRows()
+    }
+
+    /** Only what is playable with no network. Its own function to keep [fixedDestination] one call per row. */
+    private suspend fun downloadedBooks(): List<MediaItem> =
+        books().filter { it.localAvailability == LocalAvailability.Complete }.map(::bookItem)
+
+    private suspend fun idFamily(parentId: String): List<MediaItem> = when {
         parentId.startsWith(SERIES_PREFIX) -> booksForSeries(parentId.removePrefix(SERIES_PREFIX))
         parentId.startsWith(AUTHOR_PREFIX) -> booksForAuthor(parentId.removePrefix(AUTHOR_PREFIX))
         parentId.startsWith(OUT_PREFIX) -> chooseOutput(parentId)
@@ -412,7 +441,18 @@ class AutoLibrary @Inject constructor(
             PlaybackEvent.ServerCheckUnavailable,
             -> false
 
-            else -> true
+            // Listed rather than an `else`, so an event added to the enum has to be classified here
+            // instead of silently appearing in the car's history.
+            PlaybackEvent.Seek,
+            PlaybackEvent.Skip,
+            PlaybackEvent.Chapter,
+            PlaybackEvent.AutoRewind,
+            PlaybackEvent.Resume,
+            PlaybackEvent.Pause,
+            PlaybackEvent.RemoteProgress,
+            PlaybackEvent.RemoteFinished,
+            PlaybackEvent.ServerSession,
+            -> true
         }
 
     private fun bookItem(book: Book): MediaItem {

@@ -39,7 +39,9 @@ internal object AudioOutputRoles {
      * `null` is ExoPlayer's Automatic route. Android Auto/AAOS already owns normal car routing, so clearing
      * the app-specific preference is more robust than guessing which A2DP device is the dashboard.
      */
-    @Suppress("UNUSED_PARAMETER")
+    // Constant by design, and a function so the decision has a name, a call site and a test. Inlining the
+    // `null` would leave `audioOutputs.select(null)` in PlaybackService with nothing saying why.
+    @Suppress("UNUSED_PARAMETER", "FunctionOnlyReturningConstant")
     fun carTarget(outputs: List<AudioOutput>): String? = null
 
     /**
@@ -55,12 +57,18 @@ internal object AudioOutputRoles {
         if (candidates.isEmpty()) return null
 
         val here = activeHeadset(outputs, selectedId)
-        if (here != null && here.role == AudioOutputRole.Ambiguous && here.isActive && selectedId != here.id) {
-            val alternatives = candidates.filterNot { it.id == here.id }
+        // The framework moved us onto an ambiguous A2DP route we did not ask for: on a projected car that
+        // is the dashboard, so step past it rather than re-selecting it.
+        val hereLooksLikeTheDashboard = here != null &&
+            here.role == AudioOutputRole.Ambiguous &&
+            here.isActive &&
+            selectedId != here.id
+        if (hereLooksLikeTheDashboard) {
+            val alternatives = candidates.filterNot { it.id == here?.id }
             if (alternatives.isNotEmpty()) return alternatives.first().id
         }
-        if (here == null) return candidates.first().id
-        val index = candidates.indexOfFirst { it.id == here.id }
+        // -1 covers both "the book is not on a headset" and "it is on one that has since gone".
+        val index = here?.let { active -> candidates.indexOfFirst { it.id == active.id } } ?: -1
         if (index == -1) return candidates.first().id
         return candidates[(index + 1) % candidates.size].id
     }
