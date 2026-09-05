@@ -1,25 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  PRODUCT_SPEC PLAY-008 — the strings the media notification shows.
-
-  In this module rather than in `:app` because the service renders them: a `Service` in a library module
-  resolves `R` against its own package, and reaching for `:app`'s resources would invert the dependency.
-  The player screen's own labels stay in `:app`.
--->
 <resources>
-    <!-- %1$s is a formatted remaining time such as "12 min". -->
     <string name="player_sleep_remaining">Sleep %1$s</string>
-    <!-- %1$d is a whole number of minutes. -->
     <string name="player_sleep_minutes">%1$d min</string>
-    <!-- %1$d is a whole number of seconds, shown only in the final minute. -->
     <string name="player_sleep_seconds">%1$d s</string>
 
-    <!--
-      PRODUCT_SPEC PLAY-001 / PLAY-007 — the notification's two side buttons.
-
-      A screen reader announces these, and on a numberless glyph they are the only place the amount is
-      stated at all. Plurals so a one-second skip does not read "1 seconds".
-    -->
     <plurals name="player_notification_skip_back">
         <item quantity="one">Back %1$d second</item>
         <item quantity="other">Back %1$d seconds</item>
@@ -29,86 +13,37 @@
         <item quantity="other">Forward %1$d seconds</item>
     </plurals>
 
-    <!--
-      PRODUCT_SPEC PLAY-001 / 11.1 — every word Android Auto shows.
-
-      These were hardcoded English until 2026-08-20, and two of them said "ShelfPlayer" — the app has been
-      called BookWave for three phases, so a car was showing a name that appears nowhere else. Hardcoding is
-      how that survived a rename: a literal in Kotlin is invisible to the checks that keep the two
-      `strings.xml` files in step, and `MissingTranslation` cannot report a string that is not a resource.
-
-      The car's tab titles are deliberately the same words as the phone's shelf headings. A driver who knows
-      the app should recognise the tabs, and the phone's own copies live in `:app`.
-    -->
     <string name="car_app_name" translatable="false">BookWave</string>
     <string name="car_tab_continue">Continue</string>
+    <string name="car_tab_chapters">Chapters</string>
+    <string name="car_tab_history">History</string>
+    <string name="car_tab_library">Library</string>
     <string name="car_tab_recent">Recently added</string>
     <string name="car_tab_again">Listen again</string>
     <string name="car_tab_discover">Discover</string>
-    <string name="car_tab_chapters">Chapters</string>
-    <string name="car_tab_history">History</string>
     <string name="car_tab_output">Audio output</string>
 
-    <!--
-      PRODUCT_SPEC PLAY-002 — the output rows.
-
-      Opening a row chooses it, so the words have to read as a destination rather than as a folder: a
-      driver glancing at "Pixel Buds Pro" should understand that tapping sends the book there.
-    -->
     <string name="car_output_automatic">Automatic</string>
     <string name="car_output_automatic_now">Playing wherever the system chooses</string>
-    <!--
-      Two different facts, because they can disagree (ADR-0027's amendment). "playing here" is where the
-      platform says the sound actually is; "chosen, but not in use" is a request the platform declined, which
-      it is allowed to do and which the driver would otherwise never learn.
-
-      %1$s is the output's own name, as the device advertises it. Never a hardware address.
-    -->
     <string name="car_output_playing_here">%1$s \u2014 playing here</string>
     <string name="car_output_chosen_unused">%1$s \u2014 chosen, but not in use</string>
-    <!-- The confirmation after a tap. It names what was asked for; the rows above name what happened. -->
     <string name="car_output_chosen">Chose %1$s</string>
-    <string name="car_output_none">No audio outputs found</string>
+    <string name="car_output_none">No selectable audio outputs found</string>
 
-    <!--
-      The audio-output button on the Android Auto player screen (and, unavoidably, in the media
-      notification). It names the current destination rather than the action, because a car shows the
-      icon and keeps the text for a long press and for a screen reader — where "where is this going"
-      is the useful sentence. %1$s is the output's own name, or "Automatic".
-    -->
-    <string name="player_car_action">Play in the car</string>
-    <string name="player_headset_action">Play in %1$s</string>
-    <string name="player_headset_action_unknown">Play in the headset</string>
+    <!-- Car is an action. The headset text is state when the route is confirmed. -->
+    <string name="player_car_action">Play in car</string>
+    <string name="player_headset_action">Playing on %1$s</string>
+    <string name="player_headset_action_unknown">Headset</string>
 
-    <!-- The one row shown when no shelf has anything in it. Names the two causes a driver can act on. -->
     <string name="car_empty_title">No books yet</string>
-    <!-- %1$s is the app name. -->
     <string name="car_empty_subtitle">Open %1$s on your phone to sign in or sync your library.</string>
 
-    <!-- A chapter the server gave no title. %1$d is its position in the book, counting from one. -->
     <string name="car_chapter_untitled">Chapter %1$d</string>
-
-    <!--
-      The three parts of the header row above a chapter list, joined by the separator below.
-
-      Separate strings rather than one, because the row omits any part it cannot compute — a book with no
-      duration has no percentage — and a single format string cannot leave a hole.
-    -->
-    <!-- %1$d is a whole percentage of the book. -->
     <string name="car_progress_fraction">%1$d%% of the book</string>
-    <!-- %1$s is the current position, %2$s the total duration, both as clock times. -->
     <string name="car_progress_position">%1$s of %2$s</string>
-    <!-- %1$d is the current chapter counting from one, %2$d the number of chapters. -->
     <string name="car_progress_chapter">chapter %1$d of %2$d</string>
-
-    <!-- The subtitle of the chapter the listener is inside. %1$s elapsed, %2$s the chapter's length. -->
     <string name="car_chapter_elapsed">%1$s of %2$s</string>
 
-    <!--
-      PRODUCT_SPEC PLAY-003 — what each history row says happened.
-
-      Read at a glance, possibly at speed, so each is a short noun phrase rather than a sentence.
-    -->
     <string name="car_event_seek">Seek</string>
     <string name="car_event_skip">Skip</string>
     <string name="car_event_chapter">Chapter</string>
@@ -123,11 +58,6 @@
     <string name="car_event_remote_progress">Moved on another device</string>
     <string name="car_event_remote_finished">Finished on another device</string>
     <string name="car_event_server_session">Listened on another device</string>
-    <!--
-      PRODUCT_SPEC SYNC-002 — the freshness check before a Play. The car's history list filters these out;
-      these exist because the label lookup is an exhaustive `when` over every event, which is what makes a
-      new event a compile error rather than a blank row in a car.
-    -->
     <string name="car_event_check_ahead">Server had newer activity</string>
     <string name="car_event_check_current">Position confirmed</string>
     <string name="car_event_check_unavailable">Server not reached</string>
