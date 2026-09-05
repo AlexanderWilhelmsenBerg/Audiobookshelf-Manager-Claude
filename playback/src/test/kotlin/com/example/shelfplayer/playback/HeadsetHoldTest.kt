@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 /** PRODUCT_SPEC PLAY-002 — preserve what was already in the listener's ears when a car arrives. */
@@ -22,6 +23,30 @@ class HeadsetHoldTest {
      * with no book loaded. Remembering them means a car arriving pins the player to a headset in a pocket,
      * and Android Auto then auto-plays into it.
      */
+    /**
+     * An explicit *Car* press has to outlive the memory.
+     *
+     * Without [HeadsetHold.forget] the ambiguous-route guard keeps the earbuds across the dashboard becoming
+     * active — that guard is the whole point of the class — and the next car binding reasserts them, undoing
+     * the press.
+     *
+     * What is asserted is that the **earbuds** are not reasserted, not that nothing is. The dashboard is
+     * classic A2DP and therefore a headset candidate this app cannot tell from earbuds (`docs/risks.md`
+     * R-103), so it is re-adopted on the next observation — and re-pinning the route to the dashboard is
+     * where the listener just asked to be, which makes it harmless rather than a second defect.
+     */
+    @Test
+    fun `an explicit car choice is not undone by the remembered headset`() {
+        val hold = HeadsetHold()
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
+        assertEquals(buds.id, hold.remembered)
+
+        hold.forget()
+        hold.observe(listOf(buds, dashboard.copy(isActive = true)), selectedId = null, hasMedia = true)
+
+        assertNotEquals(buds.id, hold.holdOnCarArrival(listOf(buds, dashboard)))
+    }
+
     @Test
     fun `earbuds connected to an idle app are not remembered`() {
         val hold = HeadsetHold()
@@ -61,7 +86,7 @@ class HeadsetHoldTest {
         val hold = HeadsetHold()
         hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
 
-        assertEquals(buds.id, hold.holdOnCarArrival(listOf(buds, car), enabled = false))
+        assertEquals(buds.id, hold.holdOnCarArrival(listOf(buds, car)))
     }
 
     @Test

@@ -59,10 +59,13 @@ internal class HeadsetHold {
     }
 
     /**
-     * Compatibility with #78's first implementation while PlaybackService is being simplified.
-     * The old setting argument is intentionally ignored: preserving an already-active headset is now the
-     * product default and requires no opt-in.
+     * Drops the memory outright.
+     *
+     * Two callers, and both are cases the continuous observation cannot see: an explicit *Car* press, which
+     * is a choice that must outlive the hold, and an emptied queue, which `PlaybackController.stop()`
+     * produces without touching either output flow.
      */
-    @Suppress("UNUSED_PARAMETER")
-    fun holdOnCarArrival(outputs: List<AudioOutput>, enabled: Boolean): String? = holdOnCarArrival(outputs)
+    fun forget() {
+        remembered = null
+    }
 }

@@ -216,7 +216,6 @@ class PlaybackService : MediaLibraryService() {
      * Kept beside [skips] because it has the same shape: a setting the service reads and the app writes,
      * cached here so the moment a car binds does not have to wait on a flow.
      */
-    private var keepSoundInHeadset: Boolean = false
 
     /**
      * PRODUCT_SPEC PLAY-002 — which headset the book was last heard in, for the setting above.
@@ -913,7 +912,6 @@ class PlaybackService : MediaLibraryService() {
                 // PRODUCT_SPEC PLAY-002 — read here rather than in its own collector: it comes off the same
                 // flow, and a second `observeSettings()` would be a second cold DataStore read of the same
                 // bytes on every write to any playback setting.
-                keepSoundInHeadset = settings.keepSoundInHeadset
                 publishMediaButtons()
             }
         }
@@ -961,12 +959,20 @@ class PlaybackService : MediaLibraryService() {
     /**
      * PRODUCT_SPEC PLAY-002 — *Keep sound in the headset*, applied at the one moment it means anything.
      *
-     * A no-op unless the listener turned the setting on **and** the book was already coming out of a headset
-     * that is still connected. `HeadsetHold` owns both of those conditions; this owns only the routing call
-     * and the log line, and the log line names the *kind* rather than the headset's advertised name (14.5).
+     * A no-op unless the book was already coming out of a headset that is still connected. The log line
+     * names the *kind* rather than the headset's advertised name (14.5).
+     *
+     * The queue is re-checked **here** rather than trusted from the memory. The collector that maintains it
+     * runs on output changes, and `PlaybackController.stop()` empties the queue without touching either
+     * output flow — so a memory set while a book was playing can outlive the book, and a car arriving would
+     * pin the route to earbuds nobody is listening to.
      */
     private fun holdHeadsetAgainstCar() {
-        val hold = headsetHold.holdOnCarArrival(audioOutputs.outputs.value, keepSoundInHeadset) ?: return
+        if ((player?.mediaItemCount ?: 0) == 0) {
+            headsetHold.forget()
+            return
+        }
+        val hold = headsetHold.holdOnCarArrival(audioOutputs.outputs.value) ?: return
         logger.info(
             LogCategory.Playback,
             "A car connected and the book was held in the headset",
@@ -2223,8 +2229,13 @@ class PlaybackService : MediaLibraryService() {
                 // `null` means *Automatic*: routing goes back to the platform, whose answer while a car is
                 // connected is the car. `AudioOutputRoles.carTarget` says why that is the honest mapping
                 // rather than a shrug.
-                NotificationButtons.ACTION_SELECT_CAR_OUTPUT ->
+                NotificationButtons.ACTION_SELECT_CAR_OUTPUT -> {
+                    // The press retires the hold. Without this the memory survives, the ambiguous-route
+                    // guard keeps it across the dashboard becoming active, and the next car binding
+                    // reasserts the headset — silently undoing the choice just made.
+                    headsetHold.forget()
                     audioOutputs.select(AudioOutputRoles.carTarget(audioOutputs.outputs.value))
+                }
 
                 // `null` here means there is no headset to step to, and the button would not have been
                 // published — but a stale custom action from a car's cached layout can still arrive, and
