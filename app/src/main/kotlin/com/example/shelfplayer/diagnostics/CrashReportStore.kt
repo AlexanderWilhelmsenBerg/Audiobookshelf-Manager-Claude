@@ -17,20 +17,11 @@ internal enum class CrashReportSource(val wireName: String) {
     ProcessExit("process_exit"),
 }
 
-internal data class CrashReportMeta(
-    val source: CrashReportSource,
-    val occurredAtEpochMs: Long,
-)
+internal data class CrashReportMeta(val source: CrashReportSource, val occurredAtEpochMs: Long)
 
-internal data class FormattedCrashReport(
-    val meta: CrashReportMeta,
-    val text: String,
-)
+internal data class FormattedCrashReport(val meta: CrashReportMeta, val text: String)
 
-internal data class StoredCrashReport(
-    val meta: CrashReportMeta,
-    val text: String,
-)
+internal data class StoredCrashReport(val meta: CrashReportMeta, val text: String)
 
 /**
  * PRODUCT_SPEC 14.4 / 14.5 — the one small piece of diagnostics allowed to survive process death.
