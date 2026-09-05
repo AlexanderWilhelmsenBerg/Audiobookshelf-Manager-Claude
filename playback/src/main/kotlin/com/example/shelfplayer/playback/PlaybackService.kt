@@ -35,6 +35,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Bookmark
+import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerState
@@ -765,6 +766,10 @@ class PlaybackService : MediaLibraryService() {
             // this fires for every book including one started from a car or by a media button, and the wait
             // to hear a book is the wait for *that* book.
             if (mediaItem != null) metrics.onItemPrepared()
+            // PRODUCT_SPEC PLAY-002 — a book arriving is the other half of what the headset hold watches;
+            // already-connected earbuds raise no device event, so without this the common order never
+            // registers a headset to preserve.
+            feedHeadsetHold()
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
@@ -926,13 +931,30 @@ class PlaybackService : MediaLibraryService() {
     private fun observeAudioOutputs() {
         outputWatch = scope.launch {
             combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, selected) ->
-                // `scope` is the main dispatcher, so reading the player here is the read Media3 requires.
-                headsetHold.observe(outputs, selected, hasMedia = (player?.mediaItemCount ?: 0) > 0)
+                feedHeadsetHold(outputs, selected)
                 // Republishing on every emission would rewrite the notification for a device change that
                 // does not touch either button, and Media3 pushes each set to every controller.
                 republishOutputButtons()
             }
         }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — the one place [headsetHold] is fed, from **two** triggers.
+     *
+     * Output changes alone are not enough. Earbuds that are already connected when a book is started produce
+     * no device event, so a collector watching only the output flows would never see the book arrive: the
+     * common order — connect earbuds, then press play — left nothing remembered and the car took the audio
+     * anyway. Loading a book is therefore the second trigger, and it is why this is a function rather than
+     * two lines inside the collector.
+     *
+     * Called on [mainDispatcher] from both, which is where Media3 requires the player read.
+     */
+    private fun feedHeadsetHold(
+        outputs: List<AudioOutput> = audioOutputs.outputs.value,
+        selectedId: String? = audioOutputs.selectedId.value,
+    ) {
+        headsetHold.observe(outputs, selectedId, hasMedia = (player?.mediaItemCount ?: 0) > 0)
     }
 
     /**

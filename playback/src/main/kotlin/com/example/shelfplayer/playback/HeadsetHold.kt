@@ -49,13 +49,15 @@ internal class HeadsetHold {
         val held = remembered
         if (held != null && outputs.none { it.id == held }) remembered = null
 
+        // Lifted as soon as the route is no longer the released headset — measured against the *route*, not
+        // against the active headset. A definite car is not a headset candidate, so narrowing first meant a
+        // TYPE_BUS car never lifted the release and the listener's next Headset press was refused forever.
         releasedToCar?.let { released ->
-            if (outputs.none { it.id == released }) releasedToCar = null
+            if (AudioOutputRoles.current(outputs, selectedId)?.id != released) releasedToCar = null
         }
 
         val active = AudioOutputRoles.activeHeadset(outputs, selectedId) ?: return
         if (active.id == releasedToCar) return
-        releasedToCar = null
         if (active.role != AudioOutputRole.Ambiguous) {
             remembered = active.id
             return

@@ -35,6 +35,23 @@ class HeadsetHoldTest {
      * R-103), so it is re-adopted on the next observation — and re-pinning the route to the dashboard is
      * where the listener just asked to be, which makes it harmless rather than a second defect.
      */
+    /**
+     * A definite `TYPE_BUS` car is not a headset candidate, so narrowing to the active *headset* before
+     * lifting the release meant the route reaching such a car never lifted it. The listener's next Headset
+     * press was then refused for the rest of the session and nothing could be preserved on a reconnect.
+     */
+    @Test
+    fun `the release lifts once a definite car has taken the route`() {
+        val hold = HeadsetHold()
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
+        hold.releaseToCar(listOf(buds.copy(isActive = true)), selectedId = buds.id)
+
+        hold.observe(listOf(buds, car.copy(isActive = true)), selectedId = null, hasMedia = true)
+        hold.observe(listOf(buds.copy(isActive = true), car), selectedId = buds.id, hasMedia = true)
+
+        assertEquals(buds.id, hold.remembered)
+    }
+
     @Test
     fun `an explicit car choice is not undone by the remembered headset`() {
         val hold = HeadsetHold()
