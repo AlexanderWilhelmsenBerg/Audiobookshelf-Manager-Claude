@@ -16,19 +16,8 @@ import javax.inject.Inject
 /**
  * PRODUCT_SPEC DL-001 — what happens when somebody presses *Download*.
  *
- * Four steps, in this order, and the order is the design:
- *
- * 1. **May this account download at all?** The server's grant, persisted in slice 1. Checked first because
- *    it is the only one whose answer cannot change by trying again.
- * 2. **Is there room?** *"Before queuing, app checks estimated size and free space."* Before, not during: a
- *    download that fills the disk and then fails has already made the device unusable for a while, and the
- *    check costs one `statfs`.
- * 3. **Record the claim.** The manifest and this profile's reference, which is also what makes a second tap
- *    harmless and what lets a second profile share a copy without fetching it again.
- * 4. **Enqueue the work**, which outlives the screen.
- *
- * Nothing here transfers anything. That is the worker's job, and keeping the decision separate from the
- * transfer is what lets every one of these refusals be tested without a server.
+ * The active profile is resolved once at the start and that same identity owns the claim, asset lookup and
+ * persistent WorkManager request. A later profile switch must not change who authorized already queued work.
  */
 class DownloadBookUseCase @Inject constructor(
     private val profiles: ProfileRepository,
@@ -36,24 +25,11 @@ class DownloadBookUseCase @Inject constructor(
     private val downloads: DownloadRepository,
     private val scheduler: DownloadScheduler,
 ) {
-
-    /**
-     * @return the reason it will not happen, or success once the work is queued. Success means *queued*,
-     *   not *downloaded* — the manifest is the thing to observe afterwards.
-     */
-    /**
-     * @param isAutomatic whether nothing was pressed — smart download, or a sweep. **A paused book is
-     *   skipped when this is true**, and only then. A listener who stopped a download on a metered train
-     *   must not have it restarted by the app noticing Wi-Fi; the same listener pressing *Resume* is
-     *   asking for exactly that, so the manual path clears the pause instead.
-     */
     @Suppress("ReturnCount")
     suspend operator fun invoke(bookId: LibraryItemId, isAutomatic: Boolean = false): AppResult<Unit> {
         val profile = profiles.observeActiveProfile().first()
             ?: return AppResult.Failure(AppError.Authentication(summary = "Sign in to a server before downloading."))
 
-        // PRODUCT_SPEC DL-001 criterion 1. The button is already hidden for an account without the grant, so
-        // reaching here means a deep link, a stale screen, or a permission revoked since the screen loaded.
         if (!profile.canDownload) {
             return AppResult.Failure(
                 AppError.Authorization(summary = "Your server does not allow this account to download."),
@@ -77,47 +53,26 @@ class DownloadBookUseCase @Inject constructor(
             )
         }
 
-        // PRODUCT_SPEC DL-001 — an unattended caller leaves a paused book alone.
-        //
-        // Checked here rather than in the scheduler because it is a *policy* about who asked, and the
-        // scheduler cannot tell a listener's tap from a sweep. Success rather than a failure: nothing went
-        // wrong, and a smart-download pass that reported an error for every book the user had paused would
-        // be noise about the app working correctly.
         val existing = downloads.observe(profile.serverId, bookId).first()
         if (isAutomatic && existing?.state == DownloadState.Paused) return AppResult.Success(Unit)
 
         val requested = downloads.request(profile.serverId, bookId, profile.id, book.files)
         if (requested.isFailure()) return AppResult.Failure(requested.error)
 
-        // `request` deliberately leaves an existing manifest untouched — it is the shared-copy path — so
-        // resuming has to lift the pause itself. A no-op for anything that is not paused.
         downloads.markQueued(profile.serverId, bookId)
-        // PRODUCT_SPEC DL-004 — the same flag that decided whether to step over a paused book decides which
-        // cellular setting applies. It is passed rather than inferred because this is the only layer that
-        // knows who asked: the scheduler sees a book id and cannot tell a listener's tap from a sweep.
-        scheduler.enqueue(profile.serverId, bookId, categoryFor(isAutomatic))
+        scheduler.enqueue(
+            profileId = profile.id,
+            serverId = profile.serverId,
+            itemId = bookId,
+            category = categoryFor(isAutomatic),
+        )
         return AppResult.Success(Unit)
     }
 
-    /**
-     * PRODUCT_SPEC DL-004 — one flag, two names for it, mapped in one place.
-     *
-     * `isAutomatic` is this use case's vocabulary and [TrafficCategory] is the network policy's. Translating
-     * here rather than pushing the boolean down means the scheduler receives the value
-     * `NetworkPolicy.allowsCellular` actually takes, so there is no second mapping to get out of step — and
-     * a fourth traffic category would make the compiler ask about this line.
-     */
     private fun categoryFor(isAutomatic: Boolean): TrafficCategory =
         if (isAutomatic) TrafficCategory.SmartDownload else TrafficCategory.ManualDownload
 
     private companion object {
-        /**
-         * Ten per cent on top of the estimate, because the estimate is the *scan's* view of the files.
-         *
-         * A server that has re-encoded or re-tagged since its last scan sends something else, and a download
-         * that stops at ninety-nine per cent for want of a few megabytes is the worst possible outcome — it
-         * has already spent the whole transfer. Refusing slightly too eagerly costs a user one message.
-         */
         const val HEADROOM_DIVISOR = 10
     }
 }
