@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="debug_background_sync_title">Background sync test</string>
+    <string name="debug_background_sync_run">Run now</string>
+    <string name="debug_background_sync_cancel">Cancel test</string>
+    <string name="debug_background_sync_body">Runs the real background sync worker immediately as separate debug work. Its retries are shortened for testing and it does not replace the six-hour schedule.</string>
+</resources>
