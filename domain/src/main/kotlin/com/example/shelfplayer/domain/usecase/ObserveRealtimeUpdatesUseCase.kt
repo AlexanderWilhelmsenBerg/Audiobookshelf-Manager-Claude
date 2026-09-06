@@ -15,13 +15,14 @@ import javax.inject.Inject
  *
  * ### Why this writes nothing of its own
  *
- * `user_updated` carries the whole user object, which is the same thing `POST /api/authorize` returns
- * and `SyncAccountUseCase` already knows how to store. Giving the socket its own write path would mean
- * two implementations of "what does a changed account mean", and they would drift — the REST one being
- * the one with the careful rules about not overwriting an unsynced local position.
+ * `user_updated` carries the whole user object, while current playback-session writes emit
+ * `user_item_progress_updated` with one media-progress row. Both are handed to [LibraryRepository.writeProgress]
+ * instead of giving the socket a second persistence path. That repository already owns the careful rules
+ * around unsynced local progress, stale timestamps and profile visibility.
  *
- * So the event is applied by handing its payload to the same repository call. The socket's contribution
- * is *latency*: the same update, seconds after it happened rather than at the next resume.
+ * The socket's contribution is *latency*: the same server state arrives seconds after it happened rather
+ * than at the next REST refresh. A pushed progress row is not permission to seek the live player. Issue #91
+ * owns the shared resume/freshness decision and may consume the same event as evidence for a later Play.
  *
  * ### Suspends for as long as it is collected
  *
@@ -44,6 +45,13 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
                     // this use case has no business duplicating. The next SyncAccountUseCase picks it
                     // up, and until then the stored grant is merely a few minutes old rather than wrong.
                     libraryRepository.writeProgress(profileId, event.account.progress)
+                }
+
+                is RealtimeEvent.ProgressChanged -> {
+                    logger.info(LogCategory.Sync, "Applying a realtime progress update")
+                    // One row through the exact same conflict boundary as REST. In particular, an
+                    // unsynced local position cannot be overwritten by a socket echo or another device.
+                    libraryRepository.writeProgress(profileId, listOf(event.progress))
                 }
 
                 // PRODUCT_SPEC MGR-007 — not this use case's business. A task's outcome belongs to whoever
