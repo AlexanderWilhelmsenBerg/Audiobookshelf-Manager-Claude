@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.settings.ThemeGround
 import com.example.shelfplayer.core.model.settings.ThemeSurfaces
 import com.example.shelfplayer.core.model.settings.ThemeText
 import com.example.shelfplayer.core.testing.MainDispatcherRule
+import com.example.shelfplayer.data.settings.DefaultAppearanceRepository
 import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,38 +29,18 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import kotlin.test.assertEquals
 
-/**
- * PRODUCT_SPEC SET-002 (Appearance) — the two writes one press makes, and the one it declines to make.
- *
- * ### Why this exists, and why against the real store
- *
- * `AccentScheme.following` is a complete truth table with its own passing tests, and none of them can say
- * that anything **calls** it. That is `docs/risks.md` R-43 and R-100 in one sentence: correct logic behind
- * a caller that never reaches it, which this project has shipped twice. So these drive the view model and
- * read back what actually landed in the store.
- *
- * The store is a real `DataStore` over a temporary file rather than a fake, because the fake would be the
- * thing under test — the property being checked is that *two* writes to *one* store leave it consistent,
- * and a double that recorded calls could not tell a reader whether the second overwrote the first.
- */
+/** PRODUCT_SPEC SET-002 — appearance writes still reach one real DataStore through the repository boundary. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppearanceViewModelTest {
 
     @get:Rule
     val folder = TemporaryFolder()
 
-    /**
-     * A `TestDispatcher` as `Dispatchers.Main`, which is what makes `viewModelScope` run on the test's own
-     * clock rather than on a main looper that does not exist here. `StandardTestDispatcher` rather than
-     * the rule's unconfined default on purpose: the ordering of the two writes one press makes is part of
-     * what is being checked, and an unconfined dispatcher would run them eagerly and hide it.
-     */
     private val dispatcher = StandardTestDispatcher()
 
     @get:Rule
     val mainDispatcher = MainDispatcherRule(dispatcher)
 
-    /** **"Picking a theme chooses the right scheme."** Both writes land, and the pack's accent is one. */
     @Test
     fun `choosing a pack stores the pack and adopts its accent`() = runTest(dispatcher) {
         val settings = settings()
@@ -73,12 +54,6 @@ class AppearanceViewModelTest {
         assertEquals(AccentScheme.of(TEAL).key, stored.accentColorKey)
     }
 
-    /**
-     * **"But it should be possible to change the colors."**
-     *
-     * A colour chosen after the pack survives the pack still being on, and turning the pack off does not
-     * reach back and undo it — only an accent that came from a pack is taken back to the default.
-     */
     @Test
     fun `a deliberate colour survives the pack, and turning the pack off`() = runTest(dispatcher) {
         val settings = settings()
@@ -88,7 +63,6 @@ class AppearanceViewModelTest {
         runCurrent()
         viewModel.onAccentChanged(AccentScheme.of(AccentColor.Plum))
         runCurrent()
-
         assertEquals(AccentColor.Plum.key, settings.settings.first().accentColorKey)
 
         viewModel.onThemeChoiceChanged(ThemeChoice.Plain(AppTheme.Dark))
@@ -99,7 +73,6 @@ class AppearanceViewModelTest {
         assertEquals(AccentColor.Plum.key, stored.accentColorKey)
     }
 
-    /** Leaving a pack whose colours were never overridden gives the app its own palette back. */
     @Test
     fun `turning off a pack takes its borrowed accent with it`() = runTest(dispatcher) {
         val settings = settings()
@@ -113,7 +86,6 @@ class AppearanceViewModelTest {
         assertEquals(AccentScheme.Default.key, settings.settings.first().accentColorKey)
     }
 
-    /** Swapping one pack for another swaps the accent with it, rather than keeping the first pack's. */
     @Test
     fun `swapping packs swaps the accent`() = runTest(dispatcher) {
         val settings = settings()
@@ -129,15 +101,6 @@ class AppearanceViewModelTest {
         assertEquals(AccentScheme.of(NEBULA).key, stored.accentColorKey)
     }
 
-    /**
-     * **Leaving a pack for one of the app's own looks writes the theme as well as clearing the pack.**
-     *
-     * The plain theme first, deliberately: while the pack is still selected it supersedes whatever the
-     * theme says, so writing it then is invisible, and clearing the pack afterwards reveals the new look in
-     * one transition. The other order publishes a frame of the *old* theme with no pack behind it, which a
-     * reader sees as a flash. Only the end state is asserted here — the order is a rendering property no
-     * unit test can observe, and the reasoning is on the method.
-     */
     @Test
     fun `choosing one of the app's own looks writes the theme and clears the pack`() = runTest(dispatcher) {
         val settings = settings()
@@ -153,12 +116,6 @@ class AppearanceViewModelTest {
         assertEquals(AppTheme.Amoled.key, stored.appThemeKey)
     }
 
-    /**
-     * Choosing a pack leaves the plain theme where it was, so going back lands on it.
-     *
-     * A pack is a layer over the theme in storage rather than a replacement for it — see `ThemeChoice`.
-     * Without this a reader who had chosen AMOLED, tried a pack and went back would find the default.
-     */
     @Test
     fun `a pack does not overwrite the plain theme underneath it`() = runTest(dispatcher) {
         val settings = settings()
@@ -183,17 +140,16 @@ class AppearanceViewModelTest {
         logger = SilentLogger,
     )
 
-    private fun viewModel(settings: AppSettingsDataSource) = AppearanceViewModel(
-        settings = settings,
-        backgroundThemes = object : BackgroundThemeCatalog {
+    private fun viewModel(settings: AppSettingsDataSource): AppearanceViewModel {
+        val catalog = object : BackgroundThemeCatalog {
             override suspend fun themes(): List<BackgroundTheme> = listOf(TEAL, NEBULA)
             override suspend fun theme(id: String): BackgroundTheme? = themes().firstOrNull { it.id == id }
-        },
-    )
+        }
+        return AppearanceViewModel(DefaultAppearanceRepository(settings, catalog, SilentLogger))
+    }
 
     private var counter = 0
 
-    /** Nothing here asserts on logging, and a settings write logs on every path. */
     private object SilentLogger : Logger {
         override fun log(event: LogEvent) = Unit
     }
