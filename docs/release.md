@@ -211,9 +211,34 @@ R-31.
 
 ## Getting an APK without building one
 
-GitHub → **Actions** → **Build APK** → *Run workflow*. Choose the branch and `debug` or `release`; the APK
-lands on the run's summary page under **Artifacts**, which a phone can download directly. `run_checks`
-adds `verifyDebug` first, off by default so a quick device build stays quick.
+GitHub → **Actions** → **Build APK** → *Run workflow*. Leave GitHub's **Use workflow from** selector on
+`main`, then choose the pull request from **Pull request**. The dropdown displays both the PR number and
+branch, for example `#86 — feature/appearance-inline-expand`. Pick `debug` or `release`; `run_checks` adds
+`verifyDebug` first and is off by default so a quick device build stays quick. The APK lands on the run's
+summary page under **Artifacts**, which a phone can download directly.
+
+The visible branch name is informational. The workflow extracts the PR number, asks GitHub for that PR
+again, and checks out its exact current head SHA. Fork PRs are not offered because this manual workflow can
+access signing secrets. **Use selected branch/ref** remains at the bottom for a deliberate non-PR build.
+
+### Keeping the PR dropdown current
+
+`workflow_dispatch` choice values are static YAML, so `.github/workflows/sync-apk-pr-options.yml` refreshes
+the list when PRs are opened, closed or reopened. The built-in `GITHUB_TOKEN` cannot be granted the
+**Workflows: write** repository permission needed to commit a change under `.github/workflows`, so the
+synchronizer uses a dedicated repository secret named `BOOKWAVE_WORKFLOW_SYNC_TOKEN` only for its final
+push.
+
+Create a **fine-grained personal access token** limited to this repository with:
+
+- **Contents: Read and write**
+- **Workflows: Read and write**
+
+Store that token as the repository secret `BOOKWAVE_WORKFLOW_SYNC_TOKEN`. PR discovery still uses the
+short-lived read-only `GITHUB_TOKEN`; the long-lived token is exposed only to the final commit/push step.
+If the secret is missing, the synchronizer exits successfully with a warning and leaves the last generated
+list in place. After adding the secret, run **Actions → Sync APK PR picker → Run workflow** once to refresh
+it immediately.
 
 `workflow_dispatch` only. Every pull request already runs `verifyDebug` and `main` runs the full release
 gate, so an APK built for a commit nobody asked about is storage and runner time for an artefact that
