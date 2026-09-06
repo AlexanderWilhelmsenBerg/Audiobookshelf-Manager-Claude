@@ -52,15 +52,24 @@ class DeviceConnectionsTest {
      */
     @Test
     fun `a device already present when observation starts is not acted on`() {
-        connections.onPresentAtStart("bluetooth:earbuds", AT)
+        connections.onPresentAtStart("bluetooth:earbuds")
 
-        assertFalse(connections.shouldAct("bluetooth:earbuds", AT.plusMillis(50)))
+        assertFalse(connections.shouldAct("bluetooth:earbuds", AT.plusSeconds(30)))
+    }
+
+    /** The startup marker is one callback, not a permanent ban on that device id. */
+    @Test
+    fun `only the first added callback for a startup device is consumed`() {
+        connections.onPresentAtStart("bluetooth:earbuds")
+        connections.shouldAct("bluetooth:earbuds", AT)
+
+        assertTrue(connections.shouldAct("bluetooth:earbuds", AT.plusMillis(1)))
     }
 
     /** A real unplug/replug after startup is an event even if it occurs inside the debounce window. */
     @Test
     fun `a startup device may act immediately after an explicit disconnect`() {
-        connections.onPresentAtStart("bluetooth:earbuds", AT)
+        connections.onPresentAtStart("bluetooth:earbuds")
         connections.onDisconnected("bluetooth:earbuds")
 
         assertTrue(connections.shouldAct("bluetooth:earbuds", AT.plusSeconds(1)))
