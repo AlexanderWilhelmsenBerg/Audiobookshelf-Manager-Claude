@@ -1,26 +1,43 @@
 package com.example.shelfplayer.core.model.realtime
 
+import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.AccountState
 
 /**
  * PRODUCT_SPEC SYNC-002 — something the server told us without being asked.
  *
- * Two events. [AccountChanged] was captured — `contracts/socket-event-after-progress.json` recorded it.
- * [TaskChanged] is **source-derived** rather than captured: MGR-007's outcome arrives nowhere else, and no
- * account this project can reach is allowed to start the task that produces it. `docs/gaps.md` says so.
+ * [AccountChanged] was captured historically as `user_updated`. [ProgressChanged] is the current
+ * playback-progress event emitted by Audiobookshelf's playback-session manager. [TaskChanged] is
+ * source-derived rather than captured: MGR-007's outcome arrives nowhere else, and no account this
+ * project can reach is allowed to start the task that produces it. `docs/gaps.md` says so.
  *
- * Item changes, library scans and session events have still never been seen and are therefore not modelled
- * (PRODUCT_SPEC 22.4).
+ * Unknown events remain deliberately unmodelled (PRODUCT_SPEC 22.4). A newer server adding an event
+ * must be inert rather than fatal.
  */
 sealed interface RealtimeEvent {
     /**
      * The account changed, and the frame carries **all** of it.
      *
-     * Not a progress delta — the capture showed a REST progress write coming back as the entire user
-     * object, permissions and account state included. That is why one event serves three purposes:
-     * a position played elsewhere, a grant changed on the server, and an account disabled.
+     * Historical Audiobookshelf builds used this for progress too. Current playback-session writes use
+     * [ProgressChanged], but keeping this path preserves compatibility with servers that still emit the
+     * whole user object and with non-progress account changes.
      */
     data class AccountChanged(val account: AccountState) : RealtimeEvent
+
+    /**
+     * Audiobookshelf `user_item_progress_updated` — one changed media-progress row.
+     *
+     * [sessionId] is the server playback-session id that caused the update when Audiobookshelf supplied
+     * one. Keeping it lets the resume coordinator distinguish this device's own socket echo from evidence
+     * that another session moved the book. The server also sends a human-readable `deviceDescription`;
+     * BookWave deliberately does not model it because it is private display data and is not needed to
+     * decide freshness.
+     *
+     * This event is **evidence**, never an instruction to seek the live player. The repository may apply
+     * [progress] to its conflict-safe cache immediately; playback adoption belongs to the shared resume
+     * policy tracked by issue #91.
+     */
+    data class ProgressChanged(val progress: AccountProgress, val sessionId: String?) : RealtimeEvent
 
     /**
      * PRODUCT_SPEC MGR-007 — a long-running server task started, or ended.
