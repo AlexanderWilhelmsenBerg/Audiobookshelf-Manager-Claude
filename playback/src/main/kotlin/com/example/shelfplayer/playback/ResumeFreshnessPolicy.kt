@@ -55,8 +55,12 @@ internal object ResumeFreshnessPolicy {
         candidate: RealtimeResumeCandidate?,
     ): ResumeFreshnessDecision? {
         val evidence = candidate?.evidence ?: return null
-        if (baseline.bookId != loadedBook || candidate.baselineGeneration != baseline.generation) return null
-        if (evidence.profileId != loadedProfile || evidence.progress.bookId != loadedBook) return null
+        val matchesCurrentPause =
+            baseline.bookId == loadedBook &&
+                candidate.baselineGeneration == baseline.generation &&
+                evidence.profileId == loadedProfile &&
+                evidence.progress.bookId == loadedBook
+        if (!matchesCurrentPause) return null
         // The server echoes BookWave's own /session/{id}/sync through the same event. That is confirmation
         // of our write, not evidence that another session moved the book.
         if (loadedSessionId != null && evidence.sessionId == loadedSessionId) return null
