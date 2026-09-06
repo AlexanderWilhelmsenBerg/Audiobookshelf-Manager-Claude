@@ -1,26 +1,39 @@
 package com.example.shelfplayer.core.model.realtime
 
+import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.auth.AccountState
 
 /**
  * PRODUCT_SPEC SYNC-002 — something the server told us without being asked.
  *
- * Two events. [AccountChanged] was captured — `contracts/socket-event-after-progress.json` recorded it.
- * [TaskChanged] is **source-derived** rather than captured: MGR-007's outcome arrives nowhere else, and no
- * account this project can reach is allowed to start the task that produces it. `docs/gaps.md` says so.
+ * [AccountChanged] is the historical whole-account `user_updated` event. [ProgressChanged] is the
+ * current playback-specific `user_item_progress_updated` event emitted by Audiobookshelf when a
+ * playback session sync changes one media item's progress. [TaskChanged] is source-derived for the
+ * management flow described below.
  *
- * Item changes, library scans and session events have still never been seen and are therefore not modelled
- * (PRODUCT_SPEC 22.4).
+ * Unknown events remain deliberately unmodelled and inert (PRODUCT_SPEC 22.4).
  */
 sealed interface RealtimeEvent {
     /**
      * The account changed, and the frame carries **all** of it.
      *
-     * Not a progress delta — the capture showed a REST progress write coming back as the entire user
-     * object, permissions and account state included. That is why one event serves three purposes:
-     * a position played elsewhere, a grant changed on the server, and an account disabled.
+     * This remains supported for servers that still emit `user_updated`. Current Audiobookshelf playback
+     * session syncs use [ProgressChanged] instead, so both shapes are accepted without pretending one is
+     * an alias for the other.
      */
     data class AccountChanged(val account: AccountState) : RealtimeEvent
+
+    /**
+     * Audiobookshelf `user_item_progress_updated` — exactly one media item's server progress changed.
+     *
+     * The server envelope also contains `deviceDescription`; it is intentionally discarded before this
+     * type exists because a device name is private deployment data and the domain layer does not need it.
+     * [sessionId] is retained only as a correlation key for later resume/multi-session policy (#91).
+     *
+     * Receiving this event never means "seek the live player". The domain applies [progress] through the
+     * same conflict-safe repository path as REST; the shared paused->play decision belongs to #91.
+     */
+    data class ProgressChanged(val progress: AccountProgress, val sessionId: String?) : RealtimeEvent
 
     /**
      * PRODUCT_SPEC MGR-007 — a long-running server task started, or ended.
