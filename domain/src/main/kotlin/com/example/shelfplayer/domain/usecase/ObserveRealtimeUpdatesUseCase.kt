@@ -3,8 +3,10 @@ package com.example.shelfplayer.domain.usecase
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
+import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
+import com.example.shelfplayer.domain.realtime.RealtimeProgressEvidenceStore
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import kotlinx.coroutines.flow.collect
@@ -22,7 +24,7 @@ import javax.inject.Inject
  *
  * The socket's contribution is *latency*: the same server state arrives seconds after it happened rather
  * than at the next REST refresh. A pushed progress row is not permission to seek the live player. Issue #91
- * owns the shared resume/freshness decision and may consume the same event as evidence for a later Play.
+ * owns the shared resume/freshness decision and may consume an accepted row as evidence for a later Play.
  *
  * ### Suspends for as long as it is collected
  *
@@ -34,6 +36,7 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
     private val realtime: RealtimeUpdates,
     private val libraryRepository: LibraryRepository,
     private val logger: Logger,
+    private val progressEvidence: RealtimeProgressEvidenceStore = RealtimeProgressEvidenceStore(),
 ) {
     suspend operator fun invoke(profileId: ProfileId) {
         realtime.events(profileId).collect { event ->
@@ -51,7 +54,13 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
                     logger.info(LogCategory.Sync, "Applying a realtime progress update")
                     // One row through the exact same conflict boundary as REST. In particular, an
                     // unsynced local position cannot be overwritten by a socket echo or another device.
-                    libraryRepository.writeProgress(profileId, listOf(event.progress))
+                    val result = libraryRepository.writeProgress(profileId, listOf(event.progress))
+                    // Only a row the conflict boundary actually accepted may become resume evidence.
+                    // A stale push or one blocked by unsynced local listening is not allowed to bypass
+                    // that protection merely because it arrived over a low-latency transport.
+                    if (result is AppResult.Success && result.value > 0) {
+                        progressEvidence.record(profileId, event.progress, event.sessionId)
+                    }
                 }
 
                 // PRODUCT_SPEC MGR-007 — not this use case's business. A task's outcome belongs to whoever
