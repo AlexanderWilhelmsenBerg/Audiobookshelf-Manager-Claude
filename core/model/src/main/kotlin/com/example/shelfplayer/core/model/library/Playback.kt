@@ -104,6 +104,10 @@ data class PlayableTrack(
  *
  * @property chapters on the global book timeline, so a chapter that begins mid-file reports the time in
  *   the book rather than the time in the file.
+ * @property seriesLabel optional cached display metadata, such as `The Long Voyage #3`. Audiobookshelf's
+ *   `/play` response does not carry series membership, so the session-opening use case may enrich this from
+ *   the same profile's cached library row before Media3 publishes the item. It is display context only and
+ *   is never used as session identity or server truth.
  */
 data class PlaybackSession(
     val id: String,
@@ -128,6 +132,7 @@ data class PlaybackSession(
     val duration: Duration,
     val tracks: List<PlayableTrack>,
     val chapters: List<Chapter>,
+    val seriesLabel: String? = null,
 ) {
     /**
      * The tracks that are actually played, in order.
