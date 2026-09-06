@@ -1,12 +1,25 @@
 name: Build APK
 
+run-name: "${{ inputs.pull_request != 'Use selected branch/ref' && format('Build {0} APK · {1}', inputs.variant, inputs.pull_request) || format('Build {0} APK · {1}', inputs.variant, github.ref_name) }}"
+
 # An APK on demand, so a device test never waits for somebody to run a build by hand.
 #
 # ## How to get one
 #
-# GitHub → Actions → **Build APK** → *Run workflow*. Pick the branch, pick debug or release, run it. When
-# it finishes, the APK is on the run's summary page under **Artifacts**. Phones can download it directly
-# from that page.
+# GitHub → Actions → **Build APK** → *Run workflow*. Leave **Use workflow from** on `main`, choose an open
+# pull request from the generated **Pull request** dropdown, pick debug or release, and run it. Each option
+# shows both identities used during testing, for example `#86 — feature/appearance-inline-expand`.
+#
+# The workflow extracts only the PR number from that label and resolves the PR again through GitHub before
+# checkout. The displayed branch is therefore context for the tester, not trusted input. The exact current
+# head SHA is what gets compiled. Choose **Use selected branch/ref** only for a deliberate non-PR build.
+#
+# The companion `sync-apk-pr-options.yml` workflow regenerates this static choice list whenever PRs are
+# opened, closed or reopened. Fork PRs are intentionally omitted because this workflow can access signing
+# secrets and refuses cross-repository source.
+#
+# When the build finishes, the APK is on the run's summary page under **Artifacts**. Phones can download it
+# directly from that page.
 #
 # ## Why `workflow_dispatch` only
 #
@@ -58,6 +71,19 @@ name: Build APK
 on:
   workflow_dispatch:
     inputs:
+      pull_request:
+        description: 'Open pull request to build'
+        type: choice
+        required: true
+        default: 'Use selected branch/ref'
+        options:
+          # BEGIN GENERATED OPEN PR OPTIONS
+          - "#93 — refactor/unified-resume-freshness"
+          - "#88 — refactor/appearance-settings-boundary"
+          - "#86 — feature/appearance-inline-expand"
+          - "#78 — claude/shelfplayer-android-auth-lk77fv"
+          - "Use selected branch/ref"
+          # END GENERATED OPEN PR OPTIONS
       variant:
         description: 'Which build to produce'
         type: choice
@@ -71,13 +97,14 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.variant }}
+  group: ${{ github.workflow }}-${{ inputs.pull_request == 'Use selected branch/ref' && github.ref || inputs.pull_request }}-${{ inputs.variant }}
   cancel-in-progress: true
 
 permissions:
   contents: read
-  # Read-only, and only so the build can learn which pull request this ref belongs to. That number
-  # becomes the APK's versionName and versionCode — see `BuildIdentity`.
+  # Read-only. A requested PR is resolved to its exact head SHA and branch name before checkout; the
+  # selected-ref fallback also preserves the convenience of discovering whether that branch belongs to an
+  # open PR.
   pull-requests: read
 
 env:
@@ -89,7 +116,53 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Resolve build source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_PR: ${{ inputs.pull_request }}
+        run: |
+          set -euo pipefail
+
+          if [ "${REQUESTED_PR:-Use selected branch/ref}" != "Use selected branch/ref" ]; then
+            NUMBER_PART="${REQUESTED_PR%% *}"
+            REQUESTED_PR_NUMBER="${NUMBER_PART#\#}"
+            if ! [[ "$REQUESTED_PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Invalid pull request selection: $REQUESTED_PR"
+              exit 1
+            fi
+
+            IFS=$'\t' read -r NUMBER BRANCH SHA CROSS_REPO <<< "$(
+              gh pr view "$REQUESTED_PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+                --json number,headRefName,headRefOid,isCrossRepository \
+                --jq '[.number, .headRefName, .headRefOid, .isCrossRepository] | @tsv'
+            )"
+
+            # This workflow has access to repository signing secrets. Never run arbitrary code from a fork
+            # under that trust merely because somebody selected its PR in a privileged manual action.
+            if [ "$CROSS_REPO" = "true" ]; then
+              echo "::error::PR #$NUMBER comes from a fork. Build it without signing secrets instead."
+              exit 1
+            fi
+
+            echo "pr=$NUMBER" >> "$GITHUB_OUTPUT"
+            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            echo "Resolved PR #$NUMBER -> $BRANCH @ ${SHA:0:8}"
+          else
+            NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" \
+              --state open --limit 1 --json number --jq '.[0].number // empty')
+            echo "pr=${NUMBER:-}" >> "$GITHUB_OUTPUT"
+            echo "branch=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "Using selected ref $GITHUB_REF_NAME @ ${GITHUB_SHA:0:8}; PR ${NUMBER:-none}."
+          fi
+
       - uses: actions/checkout@v7
+        with:
+          # A PR build checks out the immutable head SHA resolved above. The workflow definition still comes
+          # from `main`, but the source being compiled is exactly the PR revision named in the run.
+          ref: ${{ steps.source.outputs.sha }}
 
       - uses: gradle/actions/wrapper-validation@v6
 
@@ -110,9 +183,6 @@ jobs:
         if: ${{ inputs.run_checks }}
         run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true
 
-      # Decoded outside the checkout, and removed by the runner with the rest of RUNNER_TEMP. Skipped
-      # entirely when the secret is absent, which leaves the build with no signing inputs at all.
-      # **Release only** — the debug key is staged above and is deliberately independent of this one.
       # Restored to the fixed path `DebugSigning.kt` reads, so a debug APK from this workflow carries the
       # same signature as the last one. Skipped when the secret is absent, which leaves the build to
       # generate a fresh key — installable, but not *upgradable* over the previous run's APK.
@@ -157,26 +227,11 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           echo "path=$RUNNER_TEMP/upload.jks" >> "$GITHUB_OUTPUT"
 
-      # The pull request this ref belongs to, which the APK then names itself after. A branch with no open
-      # pull request yields nothing and the build falls back to an unnumbered name, which is the honest
-      # answer: there is no number to report.
-      - name: Find the pull request for this ref
-        id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" \
-            --state open --limit 1 --json number --jq '.[0].number // empty')
-          echo "number=${NUMBER:-}" >> "$GITHUB_OUTPUT"
-          echo "Pull request for $GITHUB_REF_NAME: ${NUMBER:-none}"
-
       - name: Assemble
         env:
-          # Empty when the ref has no open pull request; `BuildIdentity` treats that as unnumbered.
-          BOOKWAVE_PR: ${{ steps.pr.outputs.number }}
-          BOOKWAVE_COMMIT: ${{ github.sha }}
-          BOOKWAVE_BRANCH: ${{ github.ref_name }}
+          BOOKWAVE_PR: ${{ steps.source.outputs.pr }}
+          BOOKWAVE_COMMIT: ${{ steps.source.outputs.sha }}
+          BOOKWAVE_BRANCH: ${{ steps.source.outputs.branch }}
           # The monotonic half of the version code. Per-workflow, so it counts every run of *this* file
           # and nothing else; renaming this file restarts it, which is why `BASE_VERSION_CODE` exists.
           BOOKWAVE_RUN_NUMBER: ${{ github.run_number }}
@@ -201,7 +256,9 @@ jobs:
       - name: Read the built version
         id: version
         env:
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_NUMBER: ${{ steps.source.outputs.pr }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SOURCE_BRANCH: ${{ steps.source.outputs.branch }}
         run: |
           set -euo pipefail
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -1)
@@ -221,8 +278,8 @@ jobs:
             echo "| --- | --- |"
             echo "| Package | \`$PKG\` |"
             echo "| Version | \`$NAME\` (code \`$CODE\`) |"
-            echo "| Commit | \`${GITHUB_SHA:0:8}\` on \`${GITHUB_REF_NAME}\` |"
-            echo "| Source | ${PR_NUMBER:+PR $PR_NUMBER · }\`${GITHUB_REF_NAME}\`, as the About tab reports it |"
+            echo "| Commit | \`${SOURCE_SHA:0:8}\` on \`$SOURCE_BRANCH\` |"
+            echo "| Source | ${PR_NUMBER:+PR $PR_NUMBER · }\`$SOURCE_BRANCH\`, as the About tab reports it |"
             echo "| Checks | ${{ inputs.run_checks && 'verifyDebug passed' || 'not run — assembled only' }} |"
             echo
             # Asked of the artefact rather than inferred from whether a secret was set: the point is to
