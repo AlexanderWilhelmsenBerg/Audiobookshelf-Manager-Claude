@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -28,13 +29,10 @@ internal fun LazyListScope.playbackTab(
     networkPolicy: NetworkPolicy = NetworkPolicy.Default,
     housekeeping: DownloadHousekeeping = DownloadHousekeeping.Default,
 ) {
-    // Kept in the signature until the server-owned finished threshold is moved into the Server tab.
-    @Suppress("UNUSED_VARIABLE")
-    val serverLibraries = libraries
-
     listeningCard(settings, actions)
     behaviourCard(settings, actions)
     downloadsAndDataCard(housekeeping, networkPolicy, actions)
+    finishedCard(libraries)
 }
 
 private fun LazyListScope.listeningCard(settings: PlaybackSettings, actions: PlaybackSettingsActions) {
@@ -220,6 +218,23 @@ private fun LazyListScope.downloadsAndDataCard(
                     actions.onNetworkPolicyChanged(networkPolicy.copy(smartDownloadsOnCellular = enabled))
                 },
             )
+        }
+    }
+}
+
+/** Server-owned reading kept compact rather than explained as if it were a local preference. */
+private fun LazyListScope.finishedCard(libraries: List<Library>) {
+    if (libraries.isEmpty()) return
+    item { SectionHeader(text = stringResource(R.string.settings_section_finished)) }
+    item {
+        SettingsCard {
+            libraries.forEach { library ->
+                val seconds = (library.finishedWhenRemaining ?: FinishedThreshold.Default).inWholeSeconds.toInt()
+                ReadOnlyValueRow(
+                    label = library.name,
+                    value = secondsLabel(seconds),
+                )
+            }
         }
     }
 }
