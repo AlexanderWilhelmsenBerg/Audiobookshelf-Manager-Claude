@@ -3,8 +3,10 @@ package com.example.shelfplayer.domain.usecase
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
+import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.realtime.RealtimeEvent
+import com.example.shelfplayer.domain.realtime.RealtimeProgressEvidenceStore
 import com.example.shelfplayer.domain.realtime.RealtimeUpdates
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import kotlinx.coroutines.flow.collect
@@ -15,13 +17,14 @@ import javax.inject.Inject
  *
  * ### Why this writes nothing of its own
  *
- * `user_updated` carries the whole user object, which is the same thing `POST /api/authorize` returns
- * and `SyncAccountUseCase` already knows how to store. Giving the socket its own write path would mean
- * two implementations of "what does a changed account mean", and they would drift — the REST one being
- * the one with the careful rules about not overwriting an unsynced local position.
+ * `user_updated` carries the whole user object, while current playback-session writes emit
+ * `user_item_progress_updated` with one media-progress row. Both are handed to [LibraryRepository.writeProgress]
+ * instead of giving the socket a second persistence path. That repository already owns the careful rules
+ * around unsynced local progress, stale timestamps and profile visibility.
  *
- * So the event is applied by handing its payload to the same repository call. The socket's contribution
- * is *latency*: the same update, seconds after it happened rather than at the next resume.
+ * The socket's contribution is *latency*: the same server state arrives seconds after it happened rather
+ * than at the next REST refresh. A pushed progress row is not permission to seek the live player. Issue #91
+ * owns the shared resume/freshness decision and may consume an accepted row as evidence for a later Play.
  *
  * ### Suspends for as long as it is collected
  *
@@ -33,6 +36,7 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
     private val realtime: RealtimeUpdates,
     private val libraryRepository: LibraryRepository,
     private val logger: Logger,
+    private val progressEvidence: RealtimeProgressEvidenceStore = RealtimeProgressEvidenceStore(),
 ) {
     suspend operator fun invoke(profileId: ProfileId) {
         realtime.events(profileId).collect { event ->
@@ -44,6 +48,19 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
                     // this use case has no business duplicating. The next SyncAccountUseCase picks it
                     // up, and until then the stored grant is merely a few minutes old rather than wrong.
                     libraryRepository.writeProgress(profileId, event.account.progress)
+                }
+
+                is RealtimeEvent.ProgressChanged -> {
+                    logger.info(LogCategory.Sync, "Applying a realtime progress update")
+                    // One row through the exact same conflict boundary as REST. In particular, an
+                    // unsynced local position cannot be overwritten by a socket echo or another device.
+                    val result = libraryRepository.writeProgress(profileId, listOf(event.progress))
+                    // Only a row the conflict boundary actually accepted may become resume evidence.
+                    // A stale push or one blocked by unsynced local listening is not allowed to bypass
+                    // that protection merely because it arrived over a low-latency transport.
+                    if (result is AppResult.Success && result.value > 0) {
+                        progressEvidence.record(profileId, event.progress, event.sessionId)
+                    }
                 }
 
                 // PRODUCT_SPEC MGR-007 — not this use case's business. A task's outcome belongs to whoever

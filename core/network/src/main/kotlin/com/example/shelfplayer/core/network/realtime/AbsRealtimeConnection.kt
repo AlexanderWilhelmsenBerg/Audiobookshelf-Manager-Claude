@@ -153,12 +153,15 @@ internal class AbsRealtimeConnection @Inject constructor(
         }
 
         USER_UPDATED_EVENT -> frame.body?.let(::accountChanged)
+        USER_ITEM_PROGRESS_UPDATED_EVENT -> frame.body?.let(::progressChanged)
         TASK_STARTED_EVENT, TASK_FINISHED_EVENT -> frame.body?.let(::taskChanged)
         else -> null
     }
 
     private fun accountChanged(body: JsonObject): RealtimeEvent? =
         AuthMapper.toAccountState(json, body)?.let(RealtimeEvent::AccountChanged)
+
+    private fun progressChanged(body: JsonObject): RealtimeEvent? = RealtimeProgressFrames.parse(json, body)
 
     private fun taskChanged(body: JsonObject): RealtimeEvent? = TaskFrames.parse(body)?.let(RealtimeEvent::TaskChanged)
 
@@ -171,6 +174,7 @@ internal class AbsRealtimeConnection @Inject constructor(
     private companion object {
         const val INIT_EVENT = "init"
         const val USER_UPDATED_EVENT = "user_updated"
+        const val USER_ITEM_PROGRESS_UPDATED_EVENT = "user_item_progress_updated"
         const val TASK_STARTED_EVENT = "task_started"
         const val TASK_FINISHED_EVENT = "task_finished"
         const val OWNER_CLOSED_MESSAGE = "Realtime connection closed after observation stopped"
