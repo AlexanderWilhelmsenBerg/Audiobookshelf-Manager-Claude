@@ -126,6 +126,20 @@ internal object AuthMapper {
     }
 
     /**
+     * PRODUCT_SPEC SYNC-002 — maps one `user_item_progress_updated.data` object with the exact same rules
+     * as progress nested in `/api/authorize` and `/api/me`.
+     *
+     * Current Audiobookshelf emits the old media-progress shape in this socket event. Keeping the decoding
+     * here means seconds/milliseconds conversion and required book identity cannot drift between REST and
+     * realtime. Unknown fields such as ebook progress remain harmless because the shared JSON instance uses
+     * `ignoreUnknownKeys`.
+     */
+    fun toProgress(json: Json, body: JsonObject): AccountProgress? {
+        val dto = runCatching { json.decodeFromJsonElement(MediaProgressDto.serializer(), body) }.getOrNull()
+        return dto?.let(::toProgress)
+    }
+
+    /**
      * `null` for an entry with no item id: a position that names no book cannot be stored against one,
      * and inventing a key for it would attach somebody's listening position to an arbitrary row.
      *
