@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_group_listening">Listening</string>
+    <string name="settings_group_playback_behavior">Playback behavior</string>
+    <string name="settings_group_sleep_timer">Sleep timer</string>
+    <string name="settings_group_downloads_data">Downloads &amp; data</string>
+    <string name="settings_value_on">On</string>
+    <string name="settings_value_off">Off</string>
+    <plurals name="settings_sleep_history_count">
+        <item quantity="one">%d session</item>
+        <item quantity="other">%d sessions</item>
+    </plurals>
+</resources>
