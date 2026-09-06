@@ -15,10 +15,7 @@ import kotlin.time.Duration.Companion.minutes
  * proves it arrived while this exact paused agreement was still current. A seek/profile/book change bumps
  * or removes that baseline and makes the candidate unusable automatically.
  */
-internal data class RealtimeResumeCandidate(
-    val evidence: RealtimeProgressEvidence,
-    val baselineGeneration: Long,
-)
+internal data class RealtimeResumeCandidate(val evidence: RealtimeProgressEvidence, val baselineGeneration: Long)
 
 internal enum class FreshnessEvidenceSource {
     Realtime,
