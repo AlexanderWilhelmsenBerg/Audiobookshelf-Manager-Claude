@@ -69,7 +69,9 @@ BookWave supplies the platform with the information it can truthfully provide fr
 
 Browse and resume rows carry **no** cover artwork today. `AutoLibrary.playable` accepts an `artworkUri` and no caller passes one, so `MediaMetadata.artworkUri` is null on every browse row and the head unit draws its own placeholder. Supplying it means resolving a cached cover to a URI the car's process may read, which is a content-provider question this ADR does not answer. The Now Playing screen is unaffected — its cover comes from the playback session, not from these rows.
 
-The live playback session currently carries title, author, cover and chapters but not series membership. BookWave therefore does not invent a live Now Playing series value. Adding that would require extending the playback-session model as a separate data-contract change.
+A real-car test showed that this head unit renders only the live Media3 title and artist lines even when richer metadata is available. Audiobookshelf's `/play` response carries title and author but no series membership, so BookWave enriches a successful playback session from the **same profile's cached Room book row**. The primary series is preferred, otherwise the first membership, and its server-provided sequence is retained when present. No extra network request is made and no series value is guessed.
+
+The live Media3 item keeps the title unchanged. Its visible artist/byline becomes `Author • Series #N` when series context exists, while `subtitle` and `albumTitle` also carry the series label for hosts that render those fields. A book outside a series keeps the existing title + author presentation. The session's `author` remains the actual author; the combined byline exists only at the Media3 presentation boundary so session sync/history are not polluted with display formatting.
 
 Android Auto decides how that metadata is laid out. BookWave cannot make the car player inherit the phone's background theme, place a custom shadow behind the cover, or draw a bespoke metadata panel beside it. Those are host-rendered surfaces.
 
@@ -87,11 +89,12 @@ The Android Auto browse/navigation design therefore excludes sleep and bookmark 
 - Pressing Car has one meaning on every supported car: hand routing back to Android.
 - Pressing Headset has one meaning: choose among headset candidates, never the phone speaker.
 - Series/author/download discovery remains available without crowding the root.
+- A series book's live player can expose author + series/sequence without changing the server session's author field.
 - Android Auto styling stays consistent with the host instead of being a partially reimplemented phone theme.
 - Classic A2DP remains semantically ambiguous where Android itself supplies no stronger fact; that limitation is explicit and bounded.
 
 ## Verification
 
-The PR's unit/Robolectric coverage includes the four-root browse contract, series ordering, voice-series matching, speaker exclusion including stale cached rows, Car-to-Automatic routing, ambiguous-A2DP handling, headset cycling and the car-arrival preservation race.
+The PR's unit/Robolectric coverage includes the four-root browse contract, series ordering, voice-series matching, speaker exclusion including stale cached rows, Car-to-Automatic routing, ambiguous-A2DP handling, headset cycling, the car-arrival preservation race, profile-scoped series enrichment and the live Media3 series byline.
 
-GitHub Actions workflow run #504 passed on head `61db9071b310efadff8694e960d6f8a1b264a5f3` before this documentation-only closeout commit.
+The owner device-tested the Car/Headset routing on 2026-09-06: Headset appeared when connected and switched audio to the headset; Car returned audio to the car. That run also supplied the two presentation findings addressed by the final slice: live Now Playing showed only title + author, and the custom car glyph's front wheel sat too far forward.
