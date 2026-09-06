@@ -1,5 +1,166 @@
 # Dependency upgrade plan
 
+> **Re-measured 2026-09-06.** Waves 1, 2 (partially) and 3 of the original plan have shipped, so the
+> measurement below replaces the one from 2026-08-29 rather than sitting beside it. The historical wave
+> records are kept further down, because what they found while running is the useful part.
+>
+> **The headline changed.** The old plan said AGP 9 unlocks one half of the table and detekt 2.x the other,
+> as two independent moves. That is wrong: **AGP 9 is downstream of detekt too.** There is one chain and one
+> keystone. See *The chain* below.
+
+## Method
+
+Read each artifact's `maven-metadata.xml` from Google Maven, Maven Central or the Gradle Plugin Portal and
+take the highest version with a plain numeric form, so pre-releases are excluded by construction. Version
+compatibility ranges come from the Kotlin and Android Gradle plugin compatibility tables, not from
+inference. 38 coordinates measured.
+
+This is a **plan, not a change.** Nothing in `gradle/libs.versions.toml` moves as a result of this file.
+
+## Where the project stands
+
+| | |
+| --- | --- |
+| Gradle wrapper | 8.14.3 (latest 9.7.1) |
+| JDK | 21 |
+| compileSdk / targetSdk / minSdk | 36 / 36 / 26 |
+| Pinned lines already current | **14 of 37** |
+| Behind latest stable | **23** |
+
+Current: `ksp` 2.3.11, `detekt` 1.23.8, `kover` 0.9.9, `androidxAnnotation` 1.10.0, `androidxTestCore` 1.7.0,
+`androidxTestExt` 1.3.0, `androidxTestRunner` 1.7.0, `androidxUiAutomator` 2.4.0, `androidxWork` 2.11.2,
+`media3` 1.11.0, `retrofitKotlinxSerialization` 1.0.0, `coil` 2.7.0, `junit4` 4.13.2, `turbine` 1.2.1.
+
+## "Latest stable everywhere" is not satisfiable today
+
+Two measured constraints rule it out, and they point in opposite directions:
+
+- **AGP 9.4.0 requires Gradle ≥ 9.6.0.**
+- **Kotlin Gradle plugin 2.4.0–2.4.10 supports Gradle 7.6.3 – 9.5.0.**
+
+No Gradle version satisfies both, so *latest AGP* and *latest Kotlin* are mutually exclusive. Any plan that
+lists both as targets is describing a state that cannot exist.
+
+**The achievable frontier** is one AGP minor back:
+
+| | Target | Why this one |
+| --- | --- | --- |
+| detekt | `dev.detekt` 2.0.0-alpha.x | the only build of detekt that tolerates Kotlin 2.4 |
+| Kotlin / KSP | 2.4.10 / 2.3.11 | KSP is already current and decoupled |
+| Gradle | 9.3.1 – 9.5.0 | ≥ AGP 9.1's minimum, ≤ KGP 2.4.10's maximum |
+| AGP | 9.1.x | minimum Gradle 9.3.1, and satisfies the AndroidX `>= 9.1.0` requirement exactly |
+
+AGP 9.2 and 9.3 may also fit; their minimum Gradle versions were not measured. AGP 9.4 does not fit.
+
+## The chain
+
+Everything still pinned behind latest, except the never-measured group below, is one dependency chain:
+
+```
+detekt tolerates Kotlin 2.4
+  └─> kotlin 2.4.10  (+ kotlinxCoroutines 1.11.0, kotlinxSerialization 1.11.0)
+        └─> KGP 2.4 supports Gradle 9
+              └─> Gradle 9.3.1+
+                    └─> AGP 9.1
+                          └─> androidxCore 1.19.0, androidxLifecycle 2.11.0,
+                              androidxNavigation 2.10.0, androidxActivity 1.13.0,
+                              androidxHiltNavigationCompose 1.4.0, hiltExt 1.4.0,
+                              hilt 2.60.1
+```
+
+Nine lines wait on the head of that chain, six of them only because AGP 9 is unreachable without moving
+Kotlin first. **That is the correction to R-83**: the two halves were never independent.
+
+### The keystone: detekt
+
+`io.gitlab.arturbosch.detekt` has published nothing since 1.23.8, which is what the old plan recorded. But
+detekt 2 exists under a **new group id** — `dev.detekt:detekt-gradle-plugin`, currently **2.0.0-alpha.6**,
+built against Kotlin 2.4.10. Checking only the old coordinate is how this was missed.
+
+So the chain is not blocked on a release that does not exist. It is blocked on a **decision about a
+pre-release**, which is a different problem:
+
+| Option | Cost |
+| --- | --- |
+| **A. Wait for detekt 2.0 stable.** | The whole chain stays frozen, including the security-relevant AndroidX lines. No work. |
+| **B. Adopt `dev.detekt` 2.0.0-alpha.x.** | Unlocks the entire chain. A pre-release static analyser gates CI, its rule set and config schema moved between 1.x and 2.x, and an alpha can regress. Needs its own PR and a `docs/risks.md` row. |
+| **C. Keep detekt 1.23.8 and disable the two rules that misfire.** | The recorded false positives were `RedundantSuspendModifier` and `UnreachableCode` only. Disabling those two in `detekt.yml` may let Kotlin move while keeping every other rule. **Unmeasured against 2.4.10** — the old measurement was against 2.2.21 and 2.3.21, and a further two minors may misfire elsewhere. Loses `UnreachableCode`, which is worth having. |
+
+**Recommendation: measure C before choosing between A and B.** It is an afternoon — set Kotlin to 2.4.10,
+disable those two rules, run the gate, and count what breaks. If the answer is "nothing else misfires", C
+buys the entire chain for the price of two rules and no pre-release in CI. If more rules misfire, the
+measurement itself is the argument for B, and it will be a concrete one.
+
+## Wave A — the never-measured lines, and the only work available today
+
+Ten lines are behind latest with **no recorded blocker**, because the original plan never assigned them to a
+wave. This is the near-term work, and it needs measuring rather than assuming — the old plan's own
+correction says it best: *"they are estimates made before contact."*
+
+| Version key | Pinned | Latest | Expectation |
+| --- | --- | --- | --- |
+| `composeBom` | 2025.06.01 | **2026.08.00** | 14 months, the largest single gap. **Most likely to be blocked** — a current Compose runtime may require a newer compiler than Kotlin 2.2.0's. Measure first; if blocked, it joins the chain. |
+| `androidxRoom` | 2.7.2 | 2.8.4 | plausible; Room ships a Gradle plugin and a KSP processor, so check both |
+| `androidxDatastore` | 1.1.7 | 1.2.1 | plausible |
+| `androidxBenchmark` | 1.3.4 | 1.4.1 | plausible; only affects the device-only tier |
+| `protobuf` / `protobufPlugin` | 4.31.1 / 0.9.5 | 4.36.1 / 0.10.0 | move together |
+| `robolectric` | 4.15.1 | 4.16.1 | plausible |
+| `haze` | 1.6.10 | 1.7.3 | plausible; visual, so worth a glance on a device |
+| `ktlint` / `ktlintGradle` | 1.5.0 / 12.3.0 | 1.8.0 / 14.2.0 | move together; expect reformatting churn, so land it alone |
+| `androidxActivity` | 1.12.4 | 1.13.0 | **expect AGP 9** — wave 1 chose 1.12.4 precisely as the highest AGP-8-compatible version |
+
+**Every one of these needs the verification step**, which the original plan omitted and its correction
+added: `org.gradle.dependency.verification` is `strict`, so a bumped version fails on a missing checksum
+before anything compiles.
+
+```bash
+./gradlew --write-verification-metadata sha256 verifyDebug   # then review the diff
+./gradlew ktlintFormat
+./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true --rerun-tasks
+```
+
+`--rerun-tasks` is not optional in any wave: every one changes a classpath, which is the case
+`docs/risks.md` R-31 records Gradle getting wrong.
+
+**Do `ktlint` last within this wave and alone** — a formatter version bump touches every file it reformats,
+and mixing that into a bisect is how a real failure gets lost.
+
+## Wave B — OkHttp 5 and Retrofit 3, still a decision rather than a task
+
+`okhttp` 4.12.0 → **5.5.0**, `retrofit` 2.11.0 → **3.0.0**. Unchanged from the original plan, including its
+open question: **`retrofitKotlinxSerialization` is pinned at 1.0.0 and that is still the latest**, so
+whether the converter supports Retrofit 3 remains unanswered. Answer that before starting, or the branch
+discovers it.
+
+Independent of the chain — nothing here waits on detekt — but there is no defect driving it and the
+converter question makes it the weakest candidate for effort.
+
+## Deliberately not here
+
+- **Coil 3** (`io.coil-kt.coil3:coil-compose` 3.6.2). The pinned `io.coil-kt:coil-compose` 2.7.0 **is** the
+  latest of that coordinate; Coil 3 is a different group and package, so it is a migration with its own
+  decision, not a bump. Unchanged from the original assessment.
+- **`javax.inject` 1** is a finished specification.
+- **compileSdk 37** is a platform decision and belongs with AGP 9.
+
+## Order, and why
+
+1. **Measure option C** (Kotlin 2.4.10 with two detekt rules disabled). It is cheap and it decides the
+   shape of everything else. Whatever it returns is worth writing down.
+2. **Wave A**, `composeBom` measured first because it is the largest gap and the most likely to be blocked,
+   `ktlint` last and alone.
+3. **The chain**, once the keystone decision is made — Kotlin, then Gradle, then AGP 9.1, then the six
+   AndroidX/Hilt lines. One PR per step, in that order, because each one's failure mode is different.
+4. **Wave B**, only after the converter question has an answer.
+
+---
+
+# Historical record
+
+Everything below is the original plan of 2026-08-29 and the corrections written while executing it. The
+version numbers in it are pre-wave and no longer describe the catalog; it is kept because *what running it
+found* is not re-derivable.
+
 **Measured 2026-08-29** against Google Maven, Maven Central and the Gradle Plugin Portal, by reading each
 artifact's `maven-metadata.xml` and taking the highest version with a plain numeric form. Pre-releases are
 excluded by construction, so every "latest" below is a stable release that existed on that date.
