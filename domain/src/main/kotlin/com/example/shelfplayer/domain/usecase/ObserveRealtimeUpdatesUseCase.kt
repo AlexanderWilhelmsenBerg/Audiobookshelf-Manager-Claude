@@ -16,12 +16,13 @@ import javax.inject.Inject
  * ### Why this writes nothing of its own
  *
  * `user_updated` carries the whole user object, which is the same thing `POST /api/authorize` returns
- * and `SyncAccountUseCase` already knows how to store. Giving the socket its own write path would mean
- * two implementations of "what does a changed account mean", and they would drift — the REST one being
- * the one with the careful rules about not overwriting an unsynced local position.
+ * and `SyncAccountUseCase` already knows how to store. Current Audiobookshelf playback syncs instead emit
+ * `user_item_progress_updated`, carrying one progress object. Both shapes enter the same repository
+ * boundary so the socket never gets a second implementation of conflict resolution.
  *
- * So the event is applied by handing its payload to the same repository call. The socket's contribution
- * is *latency*: the same update, seconds after it happened rather than at the next resume.
+ * The repository is where unsynced local progress and timestamp ordering are protected. A realtime item
+ * progress event therefore improves latency without gaining permission to overwrite a local pending write,
+ * and it never seeks the live player. The shared paused->play decision is #91's responsibility.
  *
  * ### Suspends for as long as it is collected
  *
@@ -44,6 +45,13 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
                     // this use case has no business duplicating. The next SyncAccountUseCase picks it
                     // up, and until then the stored grant is merely a few minutes old rather than wrong.
                     libraryRepository.writeProgress(profileId, event.account.progress)
+                }
+
+                is RealtimeEvent.ProgressChanged -> {
+                    logger.info(LogCategory.Sync, "Applying a realtime item progress update")
+                    // Exactly one row, but through the same path as REST. `writeProgress` refuses an older
+                    // server value and refuses to overwrite a local row still awaiting upload.
+                    libraryRepository.writeProgress(profileId, listOf(event.progress))
                 }
 
                 // PRODUCT_SPEC MGR-007 — not this use case's business. A task's outcome belongs to whoever
