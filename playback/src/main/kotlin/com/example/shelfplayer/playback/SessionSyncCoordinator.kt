@@ -293,7 +293,19 @@ class SessionSyncCoordinator @Inject constructor(
         val thrown = when (error) {
             is AppError.Network -> error.cause
             is AppError.Unknown -> error.cause
-            else -> null
+            is AppError.ApiCompatibility,
+            is AppError.Authentication,
+            is AppError.Authorization,
+            is AppError.Canceled,
+            is AppError.Conflict,
+            is AppError.Download,
+            is AppError.Playback,
+            is AppError.Security,
+            is AppError.Server,
+            is AppError.Storage,
+            is AppError.Timeout,
+            is AppError.Validation,
+            -> null
         }
         debug(
             LogCategory.Playback,
