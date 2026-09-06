@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_group_listening">Lytting</string>
+    <string name="settings_group_playback_behavior">Avspillingsatferd</string>
+    <string name="settings_group_sleep_timer">Innsovningstimer</string>
+    <string name="settings_group_downloads_data">Nedlastinger og data</string>
+    <string name="settings_value_on">På</string>
+    <string name="settings_value_off">Av</string>
+    <plurals name="settings_sleep_history_count">
+        <item quantity="one">%d økt</item>
+        <item quantity="other">%d økter</item>
+    </plurals>
+</resources>
