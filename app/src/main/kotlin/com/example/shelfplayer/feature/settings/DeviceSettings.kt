@@ -1,6 +1,7 @@
 package com.example.shelfplayer.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -30,47 +31,49 @@ fun DeviceRow(
     onForget: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ExpandableSettingsRow(
-        label = device.displayName,
-        valueLabel = stringResource(device.policy.label()),
-        modifier = modifier,
-    ) {
-        androidx.compose.foundation.layout.Column(
-            modifier = Modifier.fillMaxWidth().selectableGroup(),
+    SettingsCard {
+        ExpandableSettingsRow(
+            label = device.displayName,
+            valueLabel = stringResource(device.policy.label()),
+            modifier = modifier,
         ) {
-            DevicePolicy.entries.forEach { policy ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .selectable(
-                            selected = policy == device.policy,
-                            role = Role.RadioButton,
-                            onClick = { onPolicyChanged(policy) },
+            Column(
+                modifier = Modifier.fillMaxWidth().selectableGroup(),
+            ) {
+                DevicePolicy.entries.forEach { policy ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .selectable(
+                                selected = policy == device.policy,
+                                role = Role.RadioButton,
+                                onClick = { onPolicyChanged(policy) },
+                            )
+                            .padding(start = 32.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(policy.label()),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
                         )
-                        .padding(start = 32.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(policy.label()),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (policy == device.policy) {
-                        Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
+                        if (policy == device.policy) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                 }
+                ActionRow(
+                    label = stringResource(R.string.settings_device_forget),
+                    onClick = onForget,
+                    modifier = Modifier.padding(start = 16.dp),
+                )
             }
-            ActionRow(
-                label = stringResource(R.string.settings_device_forget),
-                onClick = onForget,
-                modifier = Modifier.padding(start = 16.dp),
-            )
         }
     }
 }
