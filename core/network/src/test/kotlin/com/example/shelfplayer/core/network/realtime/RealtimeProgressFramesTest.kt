@@ -56,7 +56,17 @@ class RealtimeProgressFramesTest {
     @Test
     fun `blank session id stays optional but valid progress is retained`() {
         val body = json.parseToJsonElement(
-            """{"sessionId":"","data":{"libraryItemId":"book-id","currentTime":42.5,"duration":100.0,"lastUpdate":10}}""",
+            """
+            {
+              "sessionId":"",
+              "data":{
+                "libraryItemId":"book-id",
+                "currentTime":42.5,
+                "duration":100.0,
+                "lastUpdate":10
+              }
+            }
+            """.trimIndent(),
         ).jsonObject
 
         val event = requireNotNull(RealtimeProgressFrames.parse(json, body))
