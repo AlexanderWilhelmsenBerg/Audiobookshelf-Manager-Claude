@@ -99,11 +99,11 @@ class OutputDeviceWatcher @Inject constructor(
         val observedAt = clock.now()
         val present = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             .asSequence()
-            .filter(AudioDeviceInfo::isSink)
+            .filter { info -> info.isSink }
             .mapNotNull { info -> OutputDevices.of(info.type, info.productName, observedAt) }
             .distinctBy(KnownDevice::id)
             .toList()
-        present.forEach { device -> connections.onPresentAtStart(device.id, observedAt) }
+        present.forEach { device -> connections.onPresentAtStart(device.id) }
         logger.debug(
             LogCategory.Playback,
             "Playback output observation started with existing routes",
@@ -138,14 +138,18 @@ class OutputDeviceWatcher @Inject constructor(
         // settling down with a book, and acting on it would double every wired connection.
         if (!info.isSink) return
         val device = OutputDevices.of(info.type, info.productName, clock.now()) ?: return
-        if (!connections.shouldAct(device.id, clock.now())) return
-
-        devices.remember(device)
-        // Read *after* the debounce and the remember, so a first-ever connection has been stored and gets
-        // the default rather than falling through a gap between the two.
-        val policy = devices.policyFor(device.id)
 
         actionGate.withLock {
+            // The startup-replay and duplicate checks belong inside the same lock as the action. The callback
+            // itself is delivered serially, but each callback is launched into a coroutine and may suspend;
+            // without one lock two callbacks can both pass the gate before either records/loads anything.
+            if (!connections.shouldAct(device.id, clock.now())) return@withLock
+
+            devices.remember(device)
+            // Read *after* the debounce and the remember, so a first-ever connection has been stored and gets
+            // the default rather than falling through a gap between the two.
+            val policy = devices.policyFor(device.id)
+
             // Re-check only after acquiring the action gate. Another output callback may have spent several
             // hundred milliseconds opening a session while this one waited. Checking before the wait is the
             // race this gate exists to close.
