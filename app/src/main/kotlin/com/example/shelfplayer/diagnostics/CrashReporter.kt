@@ -15,7 +15,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
-import kotlin.system.exitProcess
 
 /**
  * Installs BookWave's local crash capture without replacing Android's fatal handler.
@@ -51,7 +50,6 @@ class CrashReporter @Inject constructor(
                     previous.uncaughtException(thread, throwable)
                 } else {
                     Process.killProcess(Process.myPid())
-                    exitProcess(FALLBACK_EXIT_CODE)
                 }
             }
         }
@@ -124,6 +122,5 @@ class CrashReporter @Inject constructor(
     private companion object {
         const val MAX_EXIT_RECORDS = 8
         const val SAME_EXIT_WINDOW_MS = 120_000L
-        const val FALLBACK_EXIT_CODE = 10
     }
 }
