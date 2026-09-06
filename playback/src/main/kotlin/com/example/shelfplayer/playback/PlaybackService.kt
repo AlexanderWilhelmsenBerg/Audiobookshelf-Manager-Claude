@@ -212,6 +212,20 @@ class PlaybackService : MediaLibraryService() {
     private var outputButtons: OutputButtons = OutputButtons.None
 
     /**
+     * PRODUCT_SPEC PLAY-002 / ROUTE-002 — whether this book has actually made sound in this process.
+     *
+     * `mediaItemCount > 0` was standing in for "the book was being heard here", and arming breaks that
+     * proxy: `DevicePolicy.ArmOnly` is the **default**, and it deliberately loads the last book paused so a
+     * headset button starts it instantly. Under the old predicate, connecting earbuds armed a book, the
+     * platform's media route reported those earbuds as active, and a car arriving was then refused in favour
+     * of a headset that had never played — the *merely connected* case `HeadsetHold` exists to exclude.
+     *
+     * Set when audio starts and kept across a pause, because a book paused in a headset on the walk to the
+     * car is the case worth preserving. Cleared when the book changes or the queue empties.
+     */
+    private var heardAudio: Boolean = false
+
+    /**
      * PRODUCT_SPEC PLAY-002 — which headset the book was last heard in.
      *
      * ADR-0029: preservation is routing behaviour with no user-facing preference, so there is no setting
@@ -683,6 +697,11 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) {
                 // Audio is coming out, so whatever went wrong is over and the next failure starts from one.
                 recovery.onPlaying()
+                // ROUTE-002 — the first proof this book is being heard, which is what the headset hold needs.
+                if (!heardAudio) {
+                    heardAudio = true
+                    feedHeadsetHold()
+                }
                 // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
                 // longer a description of where this device is. See `ResumeBaseline.onLocalMove`.
                 resumeBaseline.onLocalMove()
@@ -768,7 +787,8 @@ class PlaybackService : MediaLibraryService() {
             if (mediaItem != null) metrics.onItemPrepared()
             // PRODUCT_SPEC PLAY-002 — a book arriving is the other half of what the headset hold watches;
             // already-connected earbuds raise no device event, so without this the common order never
-            // registers a headset to preserve.
+            // registers a headset to preserve. A *new* book has been heard nowhere yet.
+            heardAudio = false
             feedHeadsetHold()
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
@@ -954,7 +974,8 @@ class PlaybackService : MediaLibraryService() {
         outputs: List<AudioOutput> = audioOutputs.outputs.value,
         selectedId: String? = audioOutputs.selectedId.value,
     ) {
-        headsetHold.observe(outputs, selectedId, hasMedia = (player?.mediaItemCount ?: 0) > 0)
+        val loaded = (player?.mediaItemCount ?: 0) > 0
+        headsetHold.observe(outputs, selectedId, hasMedia = loaded && heardAudio)
     }
 
     /**
