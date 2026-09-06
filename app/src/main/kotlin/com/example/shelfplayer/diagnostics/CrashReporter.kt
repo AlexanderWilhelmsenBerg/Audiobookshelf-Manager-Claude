@@ -27,7 +27,7 @@ import kotlin.system.exitProcess
  */
 @Singleton
 class CrashReporter @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val reports: CrashReportStore,
     private val events: EventLog,
 ) {
