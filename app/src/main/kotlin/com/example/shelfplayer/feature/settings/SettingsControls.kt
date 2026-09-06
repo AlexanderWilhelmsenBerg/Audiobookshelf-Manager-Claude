@@ -178,6 +178,26 @@ internal fun ExpandableSettingsRow(
     }
 }
 
+/** One value that comes from elsewhere and is intentionally not editable on this screen. */
+@Composable
+internal fun ReadOnlyValueRow(label: String, value: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = ROW_MIN_HEIGHT)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 /** An action that belongs beside settings but has no stored value of its own. */
 @Composable
 internal fun ActionRow(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
