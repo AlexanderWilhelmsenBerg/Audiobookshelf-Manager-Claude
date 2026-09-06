@@ -46,6 +46,36 @@ class DeviceConnectionsTest {
     }
 
     /**
+     * Registering an AudioDeviceCallback can replay outputs which were present before observation began.
+     * Service creation is not a physical connection and must never arm a remembered book beside the book
+     * the listener just selected.
+     */
+    @Test
+    fun `a device already present when observation starts is not acted on`() {
+        connections.onPresentAtStart("bluetooth:earbuds")
+
+        assertFalse(connections.shouldAct("bluetooth:earbuds", AT.plusSeconds(30)))
+    }
+
+    /** The startup marker is one callback, not a permanent ban on that device id. */
+    @Test
+    fun `only the first added callback for a startup device is consumed`() {
+        connections.onPresentAtStart("bluetooth:earbuds")
+        connections.shouldAct("bluetooth:earbuds", AT)
+
+        assertTrue(connections.shouldAct("bluetooth:earbuds", AT.plusMillis(1)))
+    }
+
+    /** A real unplug/replug after startup is an event even if it occurs inside the debounce window. */
+    @Test
+    fun `a startup device may act immediately after an explicit disconnect`() {
+        connections.onPresentAtStart("bluetooth:earbuds")
+        connections.onDisconnected("bluetooth:earbuds")
+
+        assertTrue(connections.shouldAct("bluetooth:earbuds", AT.plusSeconds(1)))
+    }
+
+    /**
      * Plugging in headphones and switching on a speaker within a few seconds is something people do, and
      * the second must not be swallowed by the first.
      */

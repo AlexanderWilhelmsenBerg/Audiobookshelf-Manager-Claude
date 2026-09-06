@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.time.AppClock
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.PlaybackSession
@@ -97,6 +98,12 @@ class SessionSyncCoordinator @Inject constructor(
                     current = Active(sessionId = opened.value, bookId = session.bookId)
                     listened.reset(clock.elapsed())
                 }
+            } else if (opened is AppResult.Failure) {
+                logger.debugFailure(
+                    message = "The opened server session could not be recorded locally",
+                    trigger = SyncTrigger.BookChanged,
+                    error = opened.error,
+                )
             }
         }
     }
@@ -169,11 +176,10 @@ class SessionSyncCoordinator @Inject constructor(
             trigger = trigger,
         )
         if (result is AppResult.Failure) {
-            logger.debug(
-                LogCategory.Playback,
-                "A position stayed queued after a sync attempt",
-                LogField.Public("trigger", trigger.name),
-                LogField.Public("error", result.error.code),
+            logger.debugFailure(
+                message = "A position stayed queued after a sync attempt",
+                trigger = trigger,
+                error = result.error,
             )
             return false
         }
@@ -226,7 +232,7 @@ class SessionSyncCoordinator @Inject constructor(
             )
         } ?: return
 
-        repository.closeSession(
+        val result = repository.closeSession(
             sessionId = prepared.active.sessionId,
             progress = SessionProgress(
                 position = prepared.snapshot.position,
@@ -236,6 +242,13 @@ class SessionSyncCoordinator @Inject constructor(
             updatedAt = clock.now(),
             trigger = trigger,
         )
+        if (result is AppResult.Failure) {
+            logger.debugFailure(
+                message = "A session close stayed queued after the server call failed",
+                trigger = trigger,
+                error = result.error,
+            )
+        }
     }
 
     /** PRODUCT_SPEC PLAY-004 — approximately every 30 seconds while the player exists. */
@@ -265,6 +278,43 @@ class SessionSyncCoordinator @Inject constructor(
             bookId = MediaItems.bookIdOf(item),
             position = media.bookPosition(),
             duration = media.bookDuration(),
+        )
+    }
+
+    /**
+     * One redaction-safe failure shape for session open/sync/close.
+     *
+     * `error=server` used to force a reader to correlate a separate HTTP line by timestamp. Keep the typed
+     * error code but also expose the status when the error owns one, whether retry is expected, and only the
+     * exception *class* for transport/unknown failures. Exception messages are deliberately excluded because
+     * network exception messages routinely contain the private server host (PRODUCT_SPEC 14.5).
+     */
+    private fun Logger.debugFailure(message: String, trigger: SyncTrigger, error: AppError) {
+        val thrown = when (error) {
+            is AppError.Network -> error.cause
+            is AppError.Unknown -> error.cause
+            is AppError.ApiCompatibility,
+            is AppError.Authentication,
+            is AppError.Authorization,
+            is AppError.Canceled,
+            is AppError.Conflict,
+            is AppError.Download,
+            is AppError.Playback,
+            is AppError.Security,
+            is AppError.Server,
+            is AppError.Storage,
+            is AppError.Timeout,
+            is AppError.Validation,
+            -> null
+        }
+        debug(
+            LogCategory.Playback,
+            message,
+            LogField.Public("trigger", trigger.name),
+            LogField.Public("error", error.code),
+            LogField.Public("httpStatus", (error as? AppError.Server)?.statusCode?.toString() ?: "none"),
+            LogField.Public("retryable", error.isRetryable.toString()),
+            LogField.Public("thrown", thrown?.let { it::class.java.simpleName } ?: "none"),
         )
     }
 

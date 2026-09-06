@@ -95,7 +95,14 @@ internal class AbsRealtimeConnection @Inject constructor(
 
                 if (isActive) {
                     state.value = RealtimeStatus.Disconnected
-                    delay(backoffFor(attempt))
+                    val reconnectDelay = backoffFor(attempt)
+                    logger.debug(
+                        LogCategory.Sync,
+                        "The realtime connection will retry",
+                        LogField.Count("attempt", attempt + 1),
+                        LogField.Millis("delay", reconnectDelay),
+                    )
+                    delay(reconnectDelay)
                     attempt = min(attempt + 1, MAX_BACKOFF_STEP)
                 }
             }
@@ -113,6 +120,8 @@ internal class AbsRealtimeConnection @Inject constructor(
         onEvent: (RealtimeEvent) -> Unit,
         onClosed: () -> Unit,
     ) = object : WebSocketListener() {
+        private var authenticated = false
+
         override fun onMessage(webSocket: WebSocket, text: String) {
             when (val frame = EngineIoFrames.parse(text)) {
                 is IncomingFrame.Handshake -> {
@@ -123,7 +132,10 @@ internal class AbsRealtimeConnection @Inject constructor(
                 IncomingFrame.Ping -> webSocket.send(EngineIoFrames.PONG_FRAME)
                 IncomingFrame.NamespaceConnected -> Unit
                 IncomingFrame.Closed -> onClosed()
-                is IncomingFrame.Event -> handle(frame)?.let(onEvent)
+                is IncomingFrame.Event -> {
+                    if (frame.name == INIT_EVENT) authenticated = true
+                    handle(frame)?.let(onEvent)
+                }
                 null -> Unit
             }
         }
@@ -136,13 +148,27 @@ internal class AbsRealtimeConnection @Inject constructor(
                 logger.warn(
                     LogCategory.Sync,
                     "The realtime connection failed",
-                    LogField.Public("httpStatus", response?.code ?: 0),
+                    LogField.Public("phase", if (authenticated) "authenticated" else "connecting"),
+                    LogField.Public("httpStatus", response?.code?.toString() ?: "none"),
+                    // Exception *class* only. IOException messages commonly contain the private host.
+                    LogField.Public("thrown", t::class.java.simpleName),
                 )
             }
             onClosed()
         }
 
-        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = onClosed()
+        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            // The peer's reason string is deliberately not logged: it is server-controlled and may carry
+            // private deployment detail. The close code and lifecycle phase are enough to distinguish an
+            // ordinary peer close from a connection that died after authentication.
+            logger.debug(
+                LogCategory.Sync,
+                "The realtime peer closed the connection",
+                LogField.Public("phase", if (authenticated) "authenticated" else "connecting"),
+                LogField.Count("code", code),
+            )
+            onClosed()
+        }
     }
 
     private fun handle(frame: IncomingFrame.Event): RealtimeEvent? = when (frame.name) {

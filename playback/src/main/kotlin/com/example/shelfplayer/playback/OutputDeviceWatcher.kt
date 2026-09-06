@@ -7,6 +7,7 @@ import android.media.AudioManager
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.playback.DevicePolicy
@@ -16,6 +17,8 @@ import com.example.shelfplayer.domain.repository.DeviceRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,6 +37,11 @@ import javax.inject.Singleton
  * Start audio unless the device's own policy is [DevicePolicy.AutoPlay], which is never a default and can
  * only be set per device. And never when something is already loaded: a connection arriving mid-book is a
  * route change, not a request to start something.
+ *
+ * Starting observation is also not a connection. Android can replay the speaker, Bluetooth headset and
+ * other outputs that already existed when the callback is registered. Those are snapshotted before
+ * registration and seeded into [connections], otherwise starting the playback service beside an explicit
+ * book selection can race an automatic "arm the last book" request against that selection.
  */
 @Singleton
 class OutputDeviceWatcher @Inject constructor(
@@ -69,11 +77,39 @@ class OutputDeviceWatcher @Inject constructor(
     }
 
     private val connections = DeviceConnections()
+
+    /**
+     * Device callbacks are launched as coroutines and can therefore overlap once one suspends for I/O.
+     *
+     * Serialize the policy/action half so two physical outputs announced together cannot both observe an
+     * empty player and open two sessions. The second callback re-checks [Actions.isBusy] after the first
+     * action has completed and becomes a route change once a book is loaded.
+     */
+    private val actionGate = Mutex()
+
     private var callback: AudioDeviceCallback? = null
 
     fun start(scope: CoroutineScope, actions: Actions) {
         if (callback != null) return
         val manager = context.getSystemService(AudioManager::class.java) ?: return
+
+        // `registerAudioDeviceCallback` may immediately report devices that were already present. Capture
+        // them first so that replay is diagnosed as startup state rather than interpreted as a new physical
+        // connection. No device names are logged: a product name can identify a person (PRODUCT_SPEC 14.5).
+        val observedAt = clock.now()
+        val present = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .asSequence()
+            .filter { info -> info.isSink }
+            .mapNotNull { info -> OutputDevices.of(info.type, info.productName, observedAt) }
+            .distinctBy(KnownDevice::id)
+            .toList()
+        present.forEach { device -> connections.onPresentAtStart(device.id) }
+        logger.debug(
+            LogCategory.Playback,
+            "Playback output observation started with existing routes",
+            LogField.Count("outputs", present.size),
+        )
+
         val registered = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
                 addedDevices.orEmpty().forEach { info -> scope.launch { onConnected(info, actions) } }
@@ -102,39 +138,52 @@ class OutputDeviceWatcher @Inject constructor(
         // settling down with a book, and acting on it would double every wired connection.
         if (!info.isSink) return
         val device = OutputDevices.of(info.type, info.productName, clock.now()) ?: return
-        if (!connections.shouldAct(device.id, clock.now())) return
 
-        devices.remember(device)
-        // Read *after* the debounce and the remember, so a first-ever connection has been stored and gets
-        // the default rather than falling through a gap between the two.
-        val policy = devices.policyFor(device.id)
-        // A connection arriving mid-book is a route change, not a request to start something.
-        //
-        // Checked before the lock deliberately: a profile that is already playing is never touched by any
-        // of this, which keeps product priority 1 structural rather than a matter of comment.
-        if (actions.isBusy()) return
+        actionGate.withLock {
+            // The startup-replay and duplicate checks belong inside the same lock as the action. The callback
+            // itself is delivered serially, but each callback is launched into a coroutine and may suspend;
+            // without one lock two callbacks can both pass the gate before either records/loads anything.
+            if (!connections.shouldAct(device.id, clock.now())) return@withLock
 
-        // PRODUCT_SPEC ROUTE-002 — asked after the debounce, so a connect while locked does not start
-        // playing later when the profile is unlocked. ROUTE-002 licenses that: it calls auto-play
-        // "best-effort", and a book beginning minutes after a headset was plugged in is worse than one
-        // that never began.
-        when (AutoStartDecision.decide(policy, isProfileLocked = lock.isActiveProfileLocked())) {
-            AutoStartAction.ArmAndPlay -> {
-                logger.log(device, "A device connected and its policy is to start playing")
-                actions.armAndPlay()
-            }
-            // `Ask` arms as well, and the paused media session is what puts a resume control in the shade —
-            // which is the notification action ROUTE-002 asks for, using the session the app already has
-            // rather than a second notification competing with it.
-            AutoStartAction.Arm -> {
-                logger.log(device, "A device connected and the last book was made ready")
-                actions.arm()
+            devices.remember(device)
+            // Read *after* the debounce and the remember, so a first-ever connection has been stored and gets
+            // the default rather than falling through a gap between the two.
+            val policy = devices.policyFor(device.id)
+
+            // Re-check only after acquiring the action gate. Another output callback may have spent several
+            // hundred milliseconds opening a session while this one waited. Checking before the wait is the
+            // race this gate exists to close.
+            if (actions.isBusy()) {
+                logger.debug(
+                    LogCategory.Playback,
+                    "A device connection became a route change because a book is already loaded",
+                    LogField.Public("kind", device.kind.name),
+                )
+                return@withLock
             }
 
-            AutoStartAction.Suppressed ->
-                logger.log(device, "A device connected while the active account was locked; nothing started")
+            // PRODUCT_SPEC ROUTE-002 — asked after the debounce, so a connect while locked does not start
+            // playing later when the profile is unlocked. ROUTE-002 licenses that: it calls auto-play
+            // "best-effort", and a book beginning minutes after a headset was plugged in is worse than one
+            // that never began.
+            when (AutoStartDecision.decide(policy, isProfileLocked = lock.isActiveProfileLocked())) {
+                AutoStartAction.ArmAndPlay -> {
+                    logger.log(device, "A device connected and its policy is to start playing")
+                    actions.armAndPlay()
+                }
+                // `Ask` arms as well, and the paused media session is what puts a resume control in the shade —
+                // which is the notification action ROUTE-002 asks for, using the session the app already has
+                // rather than a second notification competing with it.
+                AutoStartAction.Arm -> {
+                    logger.log(device, "A device connected and the last book was made ready")
+                    actions.arm()
+                }
 
-            AutoStartAction.None -> Unit
+                AutoStartAction.Suppressed ->
+                    logger.log(device, "A device connected while the active account was locked; nothing started")
+
+                AutoStartAction.None -> Unit
+            }
         }
     }
 
