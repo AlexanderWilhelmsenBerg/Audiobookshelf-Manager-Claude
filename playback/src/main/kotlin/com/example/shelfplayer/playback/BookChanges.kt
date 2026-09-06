@@ -30,7 +30,8 @@ class BookChanges @Inject constructor(
      * A session has been opened for a book. Called before the player is handed the item.
      *
      * The outbox row is written first, deliberately: a session recorded only once playback succeeded would
-     * lose the listening of a book that started and then hit a network error (PLAY-005).
+     * lose the listening of a book that started and then hit a network error (PLAY-005). This is suspending
+     * because "written first" must be an ordering guarantee, not a coroutine scheduled for later.
      *
      * The `/play` start position is staged **after** that durable-session request and **before** Media3 sees
      * the item. `PlaybackService.onMediaItemTransition` is what promotes it into an acknowledged baseline,
@@ -41,7 +42,7 @@ class BookChanges @Inject constructor(
      * A single-file fallback stages `null`. Its player position is file-relative while the server position is
      * book-relative, so claiming they agree would create exactly the kind of false evidence SYNC-002 avoids.
      */
-    fun onBookOpened(session: PlaybackSession) {
+    suspend fun onBookOpened(session: PlaybackSession) {
         sessionSync.onSessionOpened(session)
         resumeBaseline.stageServerPosition(
             bookId = session.bookId,

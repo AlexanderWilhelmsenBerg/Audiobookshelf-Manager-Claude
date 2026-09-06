@@ -92,6 +92,25 @@ class DiagnosticsReportTest {
         assertTrue(report.contains("[events] 1"))
     }
 
+    @Test
+    fun `a sanitized previous crash is carried through`() {
+        val previousCrash = "BookWave crash report\n" +
+            "source: uncaught_exception\n" +
+            "exception: java.lang.IllegalStateException\n"
+        val report = DiagnosticsReport.of(
+            appVersion = "0.9.9",
+            state = state(),
+            metrics = PlaybackMetrics.Empty,
+            events = emptyList(),
+            at = Instant.EPOCH,
+            previousCrash = previousCrash,
+        )
+
+        assertTrue(report.contains("[previous crash]"))
+        assertTrue(report.contains("source: uncaught_exception"))
+        assertTrue(report.contains("exception: java.lang.IllegalStateException"))
+    }
+
     /** The counts a supporter actually asks for, present and labelled. */
     @Test
     fun `the storage and session counters are reported`() {

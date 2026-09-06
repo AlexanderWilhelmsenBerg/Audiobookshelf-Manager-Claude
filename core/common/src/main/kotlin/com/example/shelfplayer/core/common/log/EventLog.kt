@@ -33,10 +33,10 @@ data class LoggedEvent(val at: Instant, val level: LogLevel, val tag: String, va
  *
  * ### In memory, deliberately
  *
- * Nothing is written to disk. A crash therefore loses the buffer, which is a real cost — but a log file is a
- * file full of somebody's private-server activity that outlives the problem it was kept for, and PRODUCT_SPEC
- * 14.5's whole posture is that this data should exist in as few places as possible. A ring that dies with the
- * process is the version that cannot be forgotten about.
+ * The full ring is never written to disk. A fatal-process reporter in `:app` may copy only a bounded tail of
+ * these already-redacted lines into one private `noBackupFilesDir` crash envelope before Android terminates
+ * the process. Ordinary runs still persist no event log, and the crash envelope has its own explicit clear
+ * action. This keeps the persistent exception narrow instead of turning the event log into a forgotten file.
  */
 @Singleton
 class EventLog @Inject constructor(private val clock: AppClock) : LogSink {

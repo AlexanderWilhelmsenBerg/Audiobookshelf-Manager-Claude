@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.data.auth.SessionRestorer
+import com.example.shelfplayer.diagnostics.CrashReporter
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
@@ -110,13 +111,23 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var lockWatcher: ProcessLockWatcher
 
+    /** PRODUCT_SPEC 14.4 — persists one sanitized fatal-process envelope before Android terminates us. */
+    @Inject
+    lateinit var crashReporter: CrashReporter
+
     @Inject
     lateinit var logger: Logger
 
     override fun onCreate() {
         super.onCreate()
+        crashReporter.install()
         logger.info(LogCategory.App, "Application started")
         lockWatcher.attach(this)
+        // ApplicationExitInfo is a system-service read, so it does not belong on Application.onCreate's
+        // main thread. The uncaught-exception handler above is already active while this runs.
+        applicationScope.launch {
+            crashReporter.capturePreviousExit()
+        }
         applicationScope.launch {
             sessionRestorer.restoreActiveSession()
             // PRODUCT_SPEC ROUTE-003 — after the session is restored, because arming a book needs a signed-in

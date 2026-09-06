@@ -52,7 +52,7 @@ internal const val DEBUG_BACKGROUND_SYNC_CANCEL = "debug-background-sync-cancel"
  *
  * The owner tests on a device and reports back. Without this, "it did not work" arrives with no version, no
  * capability set, no counts and no log — and the next question is always the same three. This answers them
- * in one paste.
+ * in one paste. If the previous process ended fatally, its bounded local crash envelope is included too.
  *
  * ### Copy, not share, and not a file
  *
@@ -74,10 +74,12 @@ fun DebugConsoleSheet(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
     logs: EventLogViewModel = hiltViewModel(),
+    crashes: CrashReportViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     val events by logs.events.collectAsStateWithLifecycle()
+    val previousCrash by crashes.report.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
@@ -85,7 +87,7 @@ fun DebugConsoleSheet(
 
     // Rebuilt when the inputs change rather than on every recomposition: this walks the whole event buffer,
     // and the sheet recomposes on every scroll.
-    val report = remember(state, metrics, events) {
+    val report = remember(state, metrics, events, previousCrash) {
         DiagnosticsReport.of(
             // Everything needed to identify the build a pasted report came from, in one line: the
             // product version, the code that says which build it is, the type, and the branch and pull
@@ -96,6 +98,7 @@ fun DebugConsoleSheet(
             metrics = metrics,
             events = events,
             at = Instant.now(),
+            previousCrash = previousCrash,
         )
     }
 
@@ -143,17 +146,24 @@ fun DebugConsoleSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(
-                onClick = {
-                    scope.launch {
-                        clipboard.setClipEntry(
-                            ClipEntry(ClipData.newPlainText(LABEL, AnnotatedString(report))),
-                        )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            clipboard.setClipEntry(
+                                ClipEntry(ClipData.newPlainText(LABEL, AnnotatedString(report))),
+                            )
+                        }
+                    },
+                    modifier = Modifier.testTag(DEBUG_CONSOLE_COPY),
+                ) {
+                    Text(text = stringResource(R.string.debug_console_copy))
+                }
+                if (previousCrash != null) {
+                    TextButton(onClick = crashes::onClear) {
+                        Text(text = stringResource(R.string.event_log_clear))
                     }
-                },
-                modifier = Modifier.testTag(DEBUG_CONSOLE_COPY),
-            ) {
-                Text(text = stringResource(R.string.debug_console_copy))
+                }
             }
             Text(
                 text = report,
