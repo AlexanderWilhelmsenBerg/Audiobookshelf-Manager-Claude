@@ -13,7 +13,6 @@ import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.domain.FakeLibraryRepository
-import com.example.shelfplayer.domain.book as cachedBook
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
@@ -25,6 +24,7 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.time.Duration
+import com.example.shelfplayer.domain.book as cachedBook
 
 class OpenPlaybackSessionUseCaseTest {
     private val profile = ProfileId("profile-a")
