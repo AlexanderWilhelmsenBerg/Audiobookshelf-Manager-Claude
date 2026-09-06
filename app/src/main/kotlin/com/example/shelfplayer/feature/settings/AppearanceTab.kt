@@ -1,5 +1,7 @@
 package com.example.shelfplayer.feature.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,24 +15,26 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -295,27 +299,31 @@ private fun SettingsGroup(content: @Composable () -> Unit) {
 }
 
 /**
- * PRODUCT_SPEC SET-002 — one setting, chosen from a list that opens where the setting is.
+ * PRODUCT_SPEC SET-002 — one setting, chosen from a list that opens **in place**.
  *
- * ### Why this replaced a row of swatches and three radio rows
+ * ### Why the list is inline and no longer a floating menu
  *
- * The swatch rows were six 48dp circles that had to scroll sideways inside a vertically scrolling tab, and
- * the radio rows spent a full line on every option whether or not anyone would ever pick it. Neither
- * scales: the accent list grew by one entry per bundled background pack the moment those landed. A
- * dropdown is one row per setting however long the list gets, and it puts the current value on screen —
- * which a row of unlabelled circles never did.
+ * A `DropdownMenu` is a `Popup`: a separate window drawn over the screen, which covers the rows around it
+ * and — on this tab in particular — floats above the very glass the reader is configuring, so choosing a
+ * theme meant watching the preview through a panel sitting on top of it. Expanding in place pushes the
+ * rows below down and leaves everything else visible, which is what the owner's example shows and is the
+ * behaviour every settings list on the platform has.
+ *
+ * A choice applies the moment it is made and closes the row. There is no *Apply*: this tab's whole subject
+ * is what the screen looks like, and the cards behind the list are made of the glass being configured, so
+ * an applied change **is** the preview. A staged one would hide the answer behind a second tap.
  *
  * ### The semantics, which are the whole reason this is hand-rolled
  *
  * The collapsed row announces itself as **"<setting>, <value>"** and nothing else: [label] and the value
- * are drawn as two `Text`s for the eye and both are silenced with `clearAndSetSemantics`, because a screen
- * reader hearing "Accent colour" and then "Teal" as two separate nodes has to assemble the sentence
+ * are drawn as two `Text`s for the eye and the value is silenced with `clearAndSetSemantics`, because a
+ * screen reader hearing "Accent colour" and then "Teal" as two separate nodes has to assemble the sentence
  * itself. `Role.DropdownList` is what tells it the row opens something.
  *
  * A colour is not a label, so [leadingOf] is decorative by construction — every swatch and thumbnail this
- * draws passes `contentDescription = null`, and the name beside it is the label. That is the same rule the
- * thumbnails followed before, and it is why this control is usable by someone who cannot tell the colours
- * apart, which is a group with an unusually strong reason to be on an appearance screen.
+ * draws passes `contentDescription = null`, and the name beside it is the label. That is why the control is
+ * usable by someone who cannot tell the colours apart, which is a group with an unusually strong reason to
+ * be on an appearance screen.
  */
 @Composable
 private fun <T> DropdownRow(
@@ -327,14 +335,20 @@ private fun <T> DropdownRow(
     leadingOf: (@Composable (T) -> Unit)? = null,
     showLabel: Boolean = true,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    // `rememberSaveable`, not `remember`. The tab is a `LazyColumn`, so a row scrolled off the screen is
+    // disposed and a plain `remember` would silently close a list the reader had opened and scrolled past.
+    var expanded by rememberSaveable { mutableStateOf(false) }
     val current = labelOf(selected)
-    Box(modifier = Modifier.fillMaxWidth()) {
+    val turn by animateFloatAsState(
+        targetValue = if (expanded) CHEVRON_OPEN else 0f,
+        label = "chevron",
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = ROW_MIN_HEIGHT)
-                .clickable(role = Role.DropdownList) { expanded = true }
+                .clickable(role = Role.DropdownList) { expanded = !expanded }
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .semantics { contentDescription = "$label, $current" },
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -375,32 +389,72 @@ private fun <T> DropdownRow(
                     .clearAndSetSemantics { },
             )
             Icon(
-                imageVector = Icons.Filled.ArrowDropDown,
-                // The row is already named and already says it is a dropdown; naming the arrow as well
-                // would have a screen reader announce the same fact twice.
+                imageVector = Icons.Filled.KeyboardArrowDown,
+                // The row is already named and already says it opens something; naming the arrow as well
+                // would have a screen reader announce the same fact twice. It turns rather than being
+                // swapped for an up-arrow, so the two states read as one control in two positions.
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.rotate(turn),
             )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { option ->
-                val optionLabel = labelOf(option)
-                DropdownMenuItem(
-                    text = { Text(text = optionLabel) },
-                    leadingIcon = leadingOf?.let { draw -> { draw(option) } },
-                    // A tick rather than a highlight: the menu is drawn over the app's own glass, and a
-                    // selected-row background would have to contrast with whatever artwork is behind it.
-                    trailingIcon = if (option == selected) {
-                        { Icon(imageVector = Icons.Filled.Check, contentDescription = null) }
-                    } else {
-                        null
-                    },
-                    onClick = {
-                        expanded = false
-                        onSelected(option)
-                    },
-                )
+        AnimatedVisibility(visible = expanded) {
+            Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
+                HorizontalDivider(modifier = Modifier.padding(start = 16.dp))
+                options.forEach { option ->
+                    OptionRow(
+                        label = labelOf(option),
+                        isSelected = option == selected,
+                        leading = leadingOf?.let { draw -> { draw(option) } },
+                        onClick = {
+                            expanded = false
+                            onSelected(option)
+                        },
+                    )
+                }
             }
+        }
+    }
+}
+
+/**
+ * One choice inside an opened row.
+ *
+ * ### Why a tick and not a highlighted background
+ *
+ * The list is drawn on the app's own glass, over whatever artwork a background pack is showing, so a
+ * selected-row fill would have to contrast with a picture nobody chose for it. A tick sits on top of
+ * anything.
+ *
+ * `Role.RadioButton` and `selected` come from `selectable`, so a screen reader is told which one is on
+ * without a word being drawn for it — which matters more since the tab stopped explaining itself.
+ */
+@Composable
+private fun OptionRow(label: String, isSelected: Boolean, leading: (@Composable () -> Unit)?, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = ROW_MIN_HEIGHT)
+            .selectable(selected = isSelected, role = Role.RadioButton, onClick = onClick)
+            .padding(start = OPTION_INSET, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        leading?.invoke()
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(WEIGHT_FILL),
+        )
+        if (isSelected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                // The row already announces that it is the selected one; a named tick says it twice.
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -500,6 +554,12 @@ private val SWATCH_EDGE_WIDTH = 1.dp
  * would land under the line as soon as somebody shortened the text.
  */
 private val ROW_MIN_HEIGHT = 48.dp
+
+/** How far a choice is indented from the row that opened it, so the list reads as *inside* it. */
+private val OPTION_INSET = 32.dp
+
+/** A quarter turn: the chevron points down when the row is shut and up when it is open. */
+private const val CHEVRON_OPEN = 180f
 
 /** The label takes the row and the value sits at its end, as every other settings row is laid out. */
 private const val WEIGHT_FILL = 1f
