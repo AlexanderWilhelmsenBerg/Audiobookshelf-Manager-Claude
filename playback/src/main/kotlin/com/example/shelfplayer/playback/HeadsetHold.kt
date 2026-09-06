@@ -42,18 +42,30 @@ internal class HeadsetHold {
         // idle app are remembered, and a car arriving then pins the player to a headset in somebody's
         // pocket — the failure this class exists to prevent, arrived at from the other direction.
         if (!hasMedia) {
-            remembered = null
+            // `forget()` rather than clearing the memory alone: a Car press that happened while a headset was
+            // still active leaves a release behind it, and a release that outlives the book it belonged to
+            // refuses the *next* book's headset — so the car steals playback that was never released to it.
+            forget()
             return
         }
 
         val held = remembered
         if (held != null && outputs.none { it.id == held }) remembered = null
 
-        // Lifted as soon as the route is no longer the released headset — measured against the *route*, not
-        // against the active headset. A definite car is not a headset candidate, so narrowing first meant a
-        // TYPE_BUS car never lifted the release and the listener's next Headset press was refused forever.
+        // The release lifts on either of two things, and both are needed.
+        //
+        // **The route moved off it** — measured against the *route* rather than the active headset, because a
+        // definite car is not a headset candidate and narrowing first meant a `TYPE_BUS` car never lifted the
+        // release at all.
+        //
+        // **The listener chose it again.** A Headset press right after a Car press selects the very headset
+        // just released, and an explicit selection is newer intent than the press before it. This case cannot
+        // wait for the route to move: the route is already on that headset, so nothing else will call this
+        // again, and the release would sit there refusing the device the listener just asked for.
         releasedToCar?.let { released ->
-            if (AudioOutputRoles.current(outputs, selectedId)?.id != released) releasedToCar = null
+            val routeMoved = AudioOutputRoles.current(outputs, selectedId)?.id != released
+            val chosenAgain = selectedId == released
+            if (routeMoved || chosenAgain) releasedToCar = null
         }
 
         val active = AudioOutputRoles.activeHeadset(outputs, selectedId) ?: return

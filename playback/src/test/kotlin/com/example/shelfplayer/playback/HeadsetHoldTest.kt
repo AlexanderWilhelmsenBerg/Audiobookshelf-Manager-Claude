@@ -40,6 +40,43 @@ class HeadsetHoldTest {
      * lifting the release meant the route reaching such a car never lifted it. The listener's next Headset
      * press was then refused for the rest of the session and nothing could be preserved on a reconnect.
      */
+    /**
+     * A release must not outlive the book it belonged to.
+     *
+     * Car pressed while earbuds were active leaves a release behind it. Emptying the queue then cleared the
+     * memory but not the release, so the *next* book loaded on those same earbuds was refused and a car
+     * arriving afterwards took playback that had never been released to it.
+     */
+    @Test
+    fun `an emptied queue retires a car release as well as the memory`() {
+        val hold = HeadsetHold()
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
+        hold.releaseToCar(listOf(buds.copy(isActive = true)), selectedId = buds.id)
+
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = false)
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
+
+        assertEquals(buds.id, hold.remembered)
+    }
+
+    /**
+     * Headset pressed straight after Car is newer intent than the Car press.
+     *
+     * The route is still on that headset at this point, so no later output change will call `observe` again —
+     * if the release is not lifted here it never is, and the explicitly chosen headset is never preserved.
+     */
+    @Test
+    fun `choosing the released headset again cancels the release`() {
+        val hold = HeadsetHold()
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = null, hasMedia = true)
+        hold.releaseToCar(listOf(buds.copy(isActive = true)), selectedId = buds.id)
+
+        hold.observe(listOf(buds.copy(isActive = true)), selectedId = buds.id, hasMedia = true)
+
+        assertEquals(buds.id, hold.remembered)
+        assertEquals(buds.id, hold.holdOnCarArrival(listOf(buds, car)))
+    }
+
     @Test
     fun `the release lifts once a definite car has taken the route`() {
         val hold = HeadsetHold()
