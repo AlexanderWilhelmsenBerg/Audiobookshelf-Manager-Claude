@@ -38,6 +38,7 @@ internal object DiagnosticsReport {
      * @param events the event log's lines, already redacted. Newest last, as the buffer holds them.
      * @param previousCrash the previous process' local sanitized crash envelope, if one exists.
      */
+    @Suppress("LongMethod") // Keep the privacy allow-list contiguous so the copyable report is easy to audit.
     fun of(
         appVersion: String,
         state: SettingsUiState,
