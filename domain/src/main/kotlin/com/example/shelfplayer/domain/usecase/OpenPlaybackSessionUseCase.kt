@@ -50,17 +50,21 @@ class OpenPlaybackSessionUseCase @Inject constructor(
     }
 
     private suspend fun enrichDisplayMetadata(result: AppResult<PlaybackSession>): AppResult<PlaybackSession> {
-        if (result !is AppResult.Success) return result
-        val session = result.value
-        if (!session.seriesLabel.isNullOrBlank()) return result
-        val cached = library.observeBook(session.profileId, session.bookId).first() ?: return result
-        val membership = cached.seriesMemberships
-            .firstOrNull(SeriesMembership::isPrimary)
-            ?: cached.seriesMemberships.firstOrNull()
-        val label = membership?.let { series ->
-            val sequence = series.sequence.raw.takeIf(String::isNotBlank)
-            if (sequence == null) series.series.name else "${series.series.name} #$sequence"
-        } ?: return result
+        // Only a successful session that has no label of its own is worth a cache read. Folded into one
+        // expression because the three separate guards took this over detekt's return budget.
+        val session = (result as? AppResult.Success)?.value?.takeIf { it.seriesLabel.isNullOrBlank() }
+            ?: return result
+        val label = cachedSeriesLabel(session) ?: return result
         return AppResult.Success(session.copy(seriesLabel = label))
+    }
+
+    /** The primary series and its sequence from the cached book, or `null` when there is nothing to add. */
+    private suspend fun cachedSeriesLabel(session: PlaybackSession): String? {
+        val cached = library.observeBook(session.profileId, session.bookId).first() ?: return null
+        val membership = cached.seriesMemberships.firstOrNull(SeriesMembership::isPrimary)
+            ?: cached.seriesMemberships.firstOrNull()
+            ?: return null
+        val sequence = membership.sequence.raw.takeIf(String::isNotBlank)
+        return if (sequence == null) membership.series.name else "${membership.series.name} #$sequence"
     }
 }
