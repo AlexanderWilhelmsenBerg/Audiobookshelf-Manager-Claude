@@ -143,8 +143,10 @@ private fun LazyListScope.colourGroup(state: AppearanceUiState, actions: Appeara
             ColorGridRow(
                 label = stringResource(R.string.settings_tint_colour),
                 options = GlassTint.all(state.backgroundThemes),
-                currentLabel = state.glassTint.label(state.backgroundThemes),
-                currentColor = state.glassTint.resolvedColor(activeAccent, storedAccentArgb),
+                presentation = ColorGridPresentation(
+                    currentLabel = state.glassTint.label(state.backgroundThemes),
+                    currentColor = state.glassTint.resolvedColor(activeAccent, storedAccentArgb),
+                ),
                 labelOf = { tint -> tint.label(state.backgroundThemes) },
                 argbOf = { tint ->
                     tint.resolvedColor(activeAccent, storedAccentArgb).toArgb().toUInt().toLong()
@@ -182,20 +184,28 @@ private fun AccentColorGridRow(state: AppearanceUiState, actions: AppearanceActi
     ColorGridRow(
         label = stringResource(R.string.settings_accent_colour),
         options = AccentScheme.all(state.backgroundThemes),
-        currentLabel = if (wallpaperSelected) {
-            wallpaperLabel ?: state.accent.label(state.backgroundThemes)
-        } else {
-            state.accent.label(state.backgroundThemes)
-        },
-        currentColor = currentColor,
+        presentation = ColorGridPresentation(
+            currentLabel = if (wallpaperSelected) {
+                wallpaperLabel ?: state.accent.label(state.backgroundThemes)
+            } else {
+                state.accent.label(state.backgroundThemes)
+            },
+            currentColor = currentColor,
+            bottomOption = if (wallpaperLabel != null && wallpaperColor != null) {
+                BottomColorOptionState(
+                    label = wallpaperLabel,
+                    color = wallpaperColor,
+                    selected = wallpaperSelected,
+                    onSelected = { actions.onDynamicColorChanged(true) },
+                )
+            } else {
+                null
+            },
+        ),
         labelOf = { accent -> accent.label(state.backgroundThemes) },
         argbOf = { accent -> accent.argbFor(state.isDark) },
         isSelected = { accent -> !wallpaperSelected && accent == state.accent },
         onSelected = actions.onAccentChanged,
-        bottomOptionLabel = wallpaperLabel,
-        bottomOptionColor = wallpaperColor,
-        bottomOptionSelected = wallpaperSelected,
-        onBottomOptionSelected = wallpaperColor?.let { { actions.onDynamicColorChanged(true) } },
     )
 }
 
@@ -328,6 +338,21 @@ private fun <T> DropdownRow(
     }
 }
 
+/** The currently rendered colour plus the optional non-hue source shown below the grid. */
+private class ColorGridPresentation(
+    val currentLabel: String,
+    val currentColor: Color,
+    val bottomOption: BottomColorOptionState? = null,
+)
+
+/** A named colour source that follows the regular hue-sorted swatches. */
+private class BottomColorOptionState(
+    val label: String,
+    val color: Color,
+    val selected: Boolean,
+    val onSelected: () -> Unit,
+)
+
 /**
  * A colour choice whose regular options are dots, followed by an optional full-width special colour row.
  *
@@ -339,16 +364,11 @@ private fun <T> DropdownRow(
 private fun <T> ColorGridRow(
     label: String,
     options: List<T>,
-    currentLabel: String,
-    currentColor: Color,
+    presentation: ColorGridPresentation,
     labelOf: @Composable (T) -> String,
     argbOf: (T) -> Long,
     isSelected: (T) -> Boolean,
     onSelected: (T) -> Unit,
-    bottomOptionLabel: String? = null,
-    bottomOptionColor: Color? = null,
-    bottomOptionSelected: Boolean = false,
-    onBottomOptionSelected: (() -> Unit)? = null,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val turn by animateFloatAsState(
@@ -362,12 +382,12 @@ private fun <T> ColorGridRow(
                 .heightIn(min = ROW_MIN_HEIGHT)
                 .clickable(role = Role.DropdownList) { expanded = !expanded }
                 .padding(horizontal = 16.dp, vertical = 8.dp)
-                .semantics { contentDescription = "$label, $currentLabel" },
+                .semantics { contentDescription = "$label, ${presentation.currentLabel}" },
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(WEIGHT_FILL))
-            Swatch(color = currentColor, selected = false, size = COLLAPSED_SWATCH_SIZE)
+            Swatch(color = presentation.currentColor, selected = false, size = COLLAPSED_SWATCH_SIZE)
             Chevron(turn)
         }
         AnimatedVisibility(visible = expanded) {
@@ -393,15 +413,15 @@ private fun <T> ColorGridRow(
                         )
                     }
                 }
-                if (bottomOptionLabel != null && bottomOptionColor != null && onBottomOptionSelected != null) {
+                presentation.bottomOption?.let { bottomOption ->
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     BottomColorOption(
-                        label = bottomOptionLabel,
-                        color = bottomOptionColor,
-                        selected = bottomOptionSelected,
+                        label = bottomOption.label,
+                        color = bottomOption.color,
+                        selected = bottomOption.selected,
                         onClick = {
                             expanded = false
-                            onBottomOptionSelected()
+                            bottomOption.onSelected()
                         },
                     )
                 }
