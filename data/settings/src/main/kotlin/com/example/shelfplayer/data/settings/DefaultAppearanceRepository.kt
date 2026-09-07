@@ -46,7 +46,7 @@ class DefaultAppearanceRepository @Inject constructor(
                 stored.themeMode.asAppTheme()
             },
             accent = AccentScheme.ofKey(stored.accentColorKey, themes),
-            glassTint = GlassTint.ofKey(stored.glassTintKey),
+            glassTint = GlassTint.ofKey(stored.glassTintKey, themes),
             cardGlassTintEnabled = !stored.cardGlassTintDisabled,
             systemGlassTintEnabled = !stored.systemGlassTintDisabled,
             textContrast = TextContrast.ofKey(stored.textContrastKey),

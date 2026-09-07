@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -36,14 +37,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 
-/**
- * PRODUCT_SPEC SET-002 (Appearance/accessibility) — the tab that owns how the app looks.
- *
- * `theme_mode` and `dynamic_color` were written into the settings proto in the first build and applied by
- * `MainActivity` ever since, and nothing had ever written them: a preference that worked and could not be
- * chosen. These tests are what says it can be chosen — and now that the section has become a tab, that the
- * theme, the accent, the glass tint and its two switches can be too.
- */
+/** PRODUCT_SPEC SET-002 — the Appearance tab's visible and accessibility behavior. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp")
 class AppearanceSettingsScreenTest {
@@ -51,13 +45,6 @@ class AppearanceSettingsScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    /**
-     * **The app's own looks and the bundled packs are one list.**
-     *
-     * They were two controls answering the same question, and a pack supersedes the plain theme — so a
-     * reader could set *Light*, set a dark pack, and watch the first control go on claiming *Light*. One
-     * list cannot express that. Both halves are asserted in one place because the merge is the change.
-     */
     @Test
     fun `every look is in one list, the app's own and the packs alike`() {
         render(state = AppearanceUiState(backgroundThemes = themes()))
@@ -73,12 +60,6 @@ class AppearanceSettingsScreenTest {
         }
     }
 
-    /**
-     * A device that has never chosen shows *System* on the collapsed row, so it is never blank.
-     *
-     * `AppTheme.Default` is that answer, and it is the state's default — the reconciliation of the two
-     * stored fields happens in the view model, which is where `AppearanceViewModelTest` asserts it.
-     */
     @Test
     fun `an unwritten setting shows System`() {
         render()
@@ -86,21 +67,12 @@ class AppearanceSettingsScreenTest {
         composeRule.onNodeWithContentDescription("Theme, System").assertIsDisplayed()
     }
 
-    /**
-     * The row draws no label of its own — the section header above it already says *Theme*.
-     *
-     * One node, and it is the heading; a second would be the row repeating it a line later. This is
-     * assertable only because a `DropdownRow`'s label keeps its semantics where its *value* does not, which
-     * `DropdownRow` explains: a drawn label a test cannot see is a label whose removal a test cannot guard.
-     */
     @Test
     fun `the theme row does not repeat its own heading`() {
         render()
 
         composeRule.onAllNodesWithText("Theme").assertCountEquals(1)
 
-        // The language group is below the fold in a `LazyColumn`, so its heading is not composed until it
-        // is scrolled to — and asserting it before scrolling would pass by finding nothing.
         scrollToDescription("Language, System default")
         composeRule.onAllNodesWithText("Language").assertCountEquals(1)
     }
@@ -130,24 +102,11 @@ class AppearanceSettingsScreenTest {
         assertEquals(ThemeChoice.Plain(AppTheme.Amoled), chosen)
     }
 
-    /**
-     * **The tab explains nothing, and that is the requirement.**
-     *
-     * *"Remove all text in the appearance in settings. The options are self explanatory."* Every control
-     * keeps its own name — a heading, a switch label, a value on a collapsed row — and every sentence
-     * describing one is gone. Asserted as absence over a sample from each group, because the failure mode
-     * of a removal is a hint that survives in the one group nobody re-read.
-     *
-     * Absence tests are usually weak; this one is not, because it is the whole change. Reinstating any
-     * `Hint` in `appearanceTab` fails it.
-     */
+    /** Appearance keeps labels and values, but no explanatory paragraphs. */
     @Test
     fun `no group explains itself`() {
         render(state = AppearanceUiState(backgroundThemes = themes()))
 
-        // Every one of these is a verbatim fragment of a hint this change deleted, checked against the
-        // strings themselves. Four of the first draft's seven were invented and passed for the reason an
-        // absence test always passes when it names text that never existed (R-100).
         listOf(
             "Dark with true black surfaces",
             "The background scrolls with you",
@@ -166,7 +125,6 @@ class AppearanceSettingsScreenTest {
         }
     }
 
-    /** A pack in force is what the collapsed row names, because the pack is what the reader is looking at. */
     @Test
     fun `a chosen pack is what the theme row shows`() {
         render(state = AppearanceUiState(backgroundThemes = themes(), backgroundThemeId = "teal_horizon"))
@@ -174,28 +132,19 @@ class AppearanceSettingsScreenTest {
         composeRule.onNodeWithContentDescription("Theme, Teal Horizon").assertIsDisplayed()
     }
 
-    /**
-     * **Every colour is named.** A list of coloured circles with no words is unusable to a screen reader
-     * and to anyone who cannot tell the colours apart — which is a group with an unusually strong reason
-     * to be on an appearance screen in the first place. The swatch is decorative; the name is the control.
-     */
+    /** The palette is visual, but every dot remains named for TalkBack. */
     @Test
-    fun `every accent in the closed palette is named in the list`() {
+    fun `accent names are semantic only inside the swatch grid`() {
         render()
 
         open("Accent colour, Teal")
 
         AccentColor.entries.forEach { accent ->
-            composeRule.onNodeWithText(accent.name).assertIsDisplayed()
+            composeRule.onNodeWithContentDescription(accent.name).assertIsDisplayed()
+            composeRule.onNodeWithText(accent.name).assertDoesNotExist()
         }
     }
 
-    /**
-     * The collapsed row says which colour is in force, as one sentence a screen reader can read.
-     *
-     * Two `Text`s would be announced as two unrelated nodes — "Accent colour", then "Teal" — leaving the
-     * listener to assemble the sentence. Both are silenced and the row carries the pair.
-     */
     @Test
     fun `the collapsed row announces the setting and its value together`() {
         render()
@@ -208,25 +157,18 @@ class AppearanceSettingsScreenTest {
     }
 
     @Test
-    fun `choosing an accent reports it`() {
+    fun `choosing an accent swatch reports it`() {
         var chosen: AccentScheme? = null
         render(actions = AppearanceActions(onAccentChanged = { chosen = it }))
 
         open("Accent colour, Teal")
-        composeRule.onNodeWithText("Plum").performClick()
+        composeRule.onNodeWithContentDescription("Plum").performClick()
 
         assertEquals(AccentScheme.of(AccentColor.Plum), chosen)
     }
 
-    /**
-     * **Every pack's own scheme is choosable as a colour, and its name is the pack's.**
-     *
-     * *"The color scheme from the themes, add them to colors."* The list is the closed palette **and** one
-     * entry per bundled pack, so a reader can take *Teal Horizon*'s colours without its picture — and can
-     * take its picture and then change the colour, which is the other half of the same request.
-     */
     @Test
-    fun `a background pack's own scheme is offered among the accents`() {
+    fun `a background pack's own scheme is offered among the accent swatches`() {
         var chosen: AccentScheme? = null
         render(
             state = AppearanceUiState(backgroundThemes = themes()),
@@ -234,15 +176,14 @@ class AppearanceSettingsScreenTest {
         )
 
         open("Accent colour, Teal")
-        composeRule.onNodeWithText("Nebula Glow").assertIsDisplayed()
-        composeRule.onNodeWithText("Teal Horizon").performClick()
+        composeRule.onNodeWithContentDescription("Nebula Glow").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Teal Horizon").performClick()
 
         assertEquals(AccentScheme.of(themes().first()), chosen)
     }
 
-    /** A pack accent already in force is named after its pack in the collapsed row, not after a hue. */
     @Test
-    fun `a chosen pack accent shows the pack's name`() {
+    fun `a chosen pack accent shows the pack's name in semantics`() {
         render(
             state = AppearanceUiState(
                 backgroundThemes = themes(),
@@ -254,17 +195,66 @@ class AppearanceSettingsScreenTest {
     }
 
     @Test
-    fun `choosing a tint colour reports it`() {
+    fun `wallpaper colour is the bottom accent choice and enables it`() {
+        var enabled: Boolean? = null
+        render(actions = AppearanceActions(onDynamicColorChanged = { enabled = it }))
+
+        open("Accent colour, Teal")
+        scrollTo("Use the colours from my wallpaper")
+        composeRule.onNodeWithText("Use the colours from my wallpaper").assertIsDisplayed()
+        composeRule.onNodeWithText("Use the colours from my wallpaper").performClick()
+
+        assertEquals(true, enabled)
+    }
+
+    @Test
+    fun `wallpaper mode is announced as the selected accent`() {
+        render(state = AppearanceUiState(dynamicColor = true))
+
+        composeRule
+            .onNodeWithContentDescription("Accent colour, Use the colours from my wallpaper")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun `choosing a fixed tint swatch reports it`() {
         var chosen: GlassTint? = null
         render(actions = AppearanceActions(onGlassTintChanged = { chosen = it }))
 
         open("Tint colour, White")
-        composeRule.onNodeWithText("Warm").performClick()
+        composeRule.onNodeWithContentDescription("Warm").performClick()
 
         assertEquals(GlassTint.Warm, chosen)
     }
 
-    /** The two switches the owner asked for by name, and they are genuinely two. */
+    /** Tint offers the fixed washes and every accent, including bundled-theme accent colours. */
+    @Test
+    fun `tint grid includes every accent without drawing their names`() {
+        render(state = AppearanceUiState(backgroundThemes = themes()))
+
+        open("Tint colour, White")
+
+        AccentColor.entries.forEach { accent ->
+            composeRule.onNodeWithContentDescription(accent.name).assertIsDisplayed()
+            composeRule.onNodeWithText(accent.name).assertDoesNotExist()
+        }
+        themes().forEach { theme ->
+            composeRule.onNodeWithContentDescription(theme.name).assertIsDisplayed()
+            composeRule.onNodeWithText(theme.name).assertDoesNotExist()
+        }
+    }
+
+    @Test
+    fun `choosing an accent as tint pins that colour`() {
+        var chosen: GlassTint? = null
+        render(actions = AppearanceActions(onGlassTintChanged = { chosen = it }))
+
+        open("Tint colour, White")
+        composeRule.onNodeWithContentDescription("Plum").performClick()
+
+        assertEquals(GlassTint.of(AccentScheme.of(AccentColor.Plum)), chosen)
+    }
+
     @Test
     fun `the card and system tints are separate switches`() {
         var card: Boolean? = null
@@ -286,24 +276,19 @@ class AppearanceSettingsScreenTest {
         assertEquals(false, system)
     }
 
-    /**
-     * The slider the owner asked for, and the sentinel underneath it.
-     *
-     * Zero dp is a real choice — *wash only* — which is why `GlassBlur` stores it as -1: proto3 cannot
-     * tell a stored zero from a field nobody wrote, so a plain zero would read back as the default and
-     * silently turn the blur on again. The label has to say *Off* rather than "0 dp" for the same reason
-     * it is a choice at all.
-     */
     @Test
-    fun `the blur slider reports a radius and says when it is off`() {
+    fun `the blur slider is hidden until its summary row is expanded`() {
         var dp: Int? = null
         render(
             state = AppearanceUiState(glassBlurDp = 0),
             actions = AppearanceActions(onGlassBlurChanged = { dp = it }),
         )
 
-        scrollTo("Blur")
-        composeRule.onNodeWithText("Off").assertIsDisplayed()
+        scrollToDescription("Blur, Off")
+        composeRule.onNodeWithContentDescription("Blur").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Blur, Off").performClick()
+        scrollToDescription("Blur")
+        composeRule.onNodeWithContentDescription("Blur").assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("Blur").performSemanticsAction(SemanticsActions.SetProgress) {
             it(GlassBlur.MAX_DP.toFloat())
@@ -311,34 +296,27 @@ class AppearanceSettingsScreenTest {
         assertEquals(GlassBlur.MAX_DP, dp)
     }
 
-    /** The radius, shown, so the slider is not a mystery gesture. */
     @Test
-    fun `a chosen radius is shown in dp`() {
+    fun `a chosen blur radius is shown in the collapsed summary`() {
         render(state = AppearanceUiState(glassBlurDp = GlassBlur.DEFAULT_DP))
 
-        scrollTo("Blur")
-        composeRule.onNodeWithText("${GlassBlur.DEFAULT_DP} dp").assertIsDisplayed()
+        scrollToDescription("Blur, ${GlassBlur.DEFAULT_DP} dp")
+        composeRule.onNodeWithContentDescription("Blur, ${GlassBlur.DEFAULT_DP} dp").assertIsDisplayed()
     }
 
-    /**
-     * **The text contrast, which exists because of a bug and is deliberately not a colour picker.**
-     *
-     * A transparent `Scaffold` container had defaulted every word on the screen to black, which on the
-     * AMOLED theme is black on black. Offering *black* as a choice would put that state back within one
-     * tap; a level cannot, because every level is measured from the ground it is read against. See
-     * `TextContrast` and `GlassContentColorScreenTest`.
-     */
     @Test
-    fun `text contrast is offered as levels and reports the chosen one`() {
+    fun `text contrast expands inline and reports the chosen level`() {
         var chosen: TextContrast? = null
         render(actions = AppearanceActions(onTextContrastChanged = { chosen = it }))
 
-        scrollTo("Text contrast")
-        composeRule.onNodeWithText("Automatic").assertIsDisplayed()
+        scrollToDescription("Text contrast, Automatic")
+        composeRule.onNodeWithText("Soft").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Text contrast, Automatic").performClick()
         composeRule.onNodeWithText("Soft").assertIsDisplayed()
         composeRule.onNodeWithText("High").performClick()
 
         assertEquals(TextContrast.High, chosen)
+        composeRule.onNodeWithText("Soft").assertDoesNotExist()
     }
 
     @Test
@@ -355,12 +333,6 @@ class AppearanceSettingsScreenTest {
         assertEquals(ThemeChoice.Pack(themes().first()), chosen)
     }
 
-    /**
-     * **The way back is one of the app's own looks**, which is the job *None* used to do in the pack list.
-     *
-     * Doing it with the entries a reader would be returning to anyway is the point of the merge: there is
-     * no separate "off" to find, and no state in which the theme control and the pack control disagree.
-     */
     @Test
     fun `choosing one of the app's own looks is the way back from a pack`() {
         var chosen: ThemeChoice? = null
@@ -375,21 +347,6 @@ class AppearanceSettingsScreenTest {
         assertEquals(ThemeChoice.Plain(AppTheme.Light), chosen)
     }
 
-    /**
-     * With no packs on disk the group is absent rather than empty.
-     *
-     * An empty picker is a heading over nothing, which reads as a broken screen. The catalog returns an
-     * empty list when the assets are unreadable — a build fault — and the honest thing on that path is to
-     * show the rest of the tab, not a hole.
-     */
-    /**
-     * With no packs on disk the list is the app's own looks and nothing else, and the hint about pictures
-     * is absent.
-     *
-     * The catalog returns an empty list when the assets are unreadable — a build fault — and the honest
-     * thing on that path is a working theme picker, not a hole where one used to be. Before the merge the
-     * whole group vanished; now only the half that has nothing to show does.
-     */
     @Test
     fun `no bundled themes leaves the app's own looks and no talk of pictures`() {
         render(state = AppearanceUiState(backgroundThemes = emptyList()))
@@ -401,28 +358,11 @@ class AppearanceSettingsScreenTest {
     }
 
     @Test
-    fun `the wallpaper colours are a switch, off by default`() {
-        var enabled: Boolean? = null
-        render(actions = AppearanceActions(onDynamicColorChanged = { enabled = it }))
-
-        composeRule.onNodeWithText("Use the colours from my wallpaper").performClick()
-
-        assertEquals(true, enabled)
-    }
-
-    /**
-     * Each language in its own name — the property `AppLanguage.displayName` exists to hold.
-     *
-     * Asserted on screen and not only on the model, because the failure mode is a `stringResource` call
-     * added later "for consistency": the list would then be translated, and a Norwegian speaker looking at
-     * an English app would be hunting for a word they cannot read.
-     */
-    @Test
     fun `languages are listed in their own names`() {
         render()
 
         open("Language, System default")
-
+        scrollTo("Norsk bokmål")
         composeRule.onNodeWithText("Norsk bokmål").assertIsDisplayed()
         composeRule.onNodeWithText("English").assertIsDisplayed()
     }
@@ -433,18 +373,46 @@ class AppearanceSettingsScreenTest {
         render(actions = AppearanceActions(onLanguageChanged = { chosen = it }))
 
         open("Language, System default")
+        scrollTo("Norsk bokmål")
         composeRule.onNodeWithText("Norsk bokmål").performClick()
 
         assertEquals(AppLanguage.NorwegianBokmal, chosen)
     }
 
-    /**
-     * The default, on the collapsed row — so it is never blank on a device that has chosen nothing.
-     *
-     * The two "system" answers on this tab are deliberately worded differently: the theme's says *System*
-     * and the language's *System default*, which is what Android's own per-app language picker calls it.
-     * They used to share a label, and a test that could not tell them apart is what said so.
-     */
+    @Test
+    fun `a text row opens its list in place and closes it on a choice`() {
+        render()
+
+        composeRule.onNodeWithText("AMOLED").assertDoesNotExist()
+
+        open("Theme, System")
+        composeRule.onNodeWithText("AMOLED").assertIsDisplayed()
+        composeRule.onNodeWithText("Dark").performClick()
+        composeRule.onNodeWithText("AMOLED").assertDoesNotExist()
+    }
+
+    @Test
+    fun `tapping an open text row closes it without choosing`() {
+        var chosen: ThemeChoice? = null
+        render(actions = AppearanceActions(onThemeChoiceChanged = { chosen = it }))
+
+        open("Theme, System")
+        composeRule.onNodeWithText("AMOLED").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Theme, System").performClick()
+        composeRule.onNodeWithText("AMOLED").assertDoesNotExist()
+        assertEquals(null, chosen)
+    }
+
+    @Test
+    fun `a colour grid closes after a swatch is chosen`() {
+        render()
+
+        open("Accent colour, Teal")
+        composeRule.onNodeWithContentDescription("Plum").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Plum").performClick()
+        composeRule.onNodeWithContentDescription("Plum").assertDoesNotExist()
+    }
+
     @Test
     fun `the system default is the language shown until one is chosen`() {
         render()
@@ -453,13 +421,6 @@ class AppearanceSettingsScreenTest {
         composeRule.onNodeWithContentDescription("Language, System default").assertIsDisplayed()
     }
 
-    /**
-     * Scrolls to a dropdown and opens it, by the sentence its collapsed row announces.
-     *
-     * By description rather than by text on purpose, and the distinction is the control's own design: the
-     * row's two words are silenced so a screen reader hears one sentence, which also means neither can be
-     * confused with the identical word in the list it opens. See `DropdownRow`.
-     */
     private fun open(description: String) {
         composeRule
             .onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
@@ -467,7 +428,6 @@ class AppearanceSettingsScreenTest {
         composeRule.onNodeWithContentDescription(description).performClick()
     }
 
-    /** Two packs' worth of shape, which is all the picker reads. Colours are irrelevant to these cases. */
     private fun themes() = listOf(
         backgroundTheme(id = "teal_horizon", name = "Teal Horizon"),
         backgroundTheme(id = "nebula_glow", name = "Nebula Glow"),
@@ -497,18 +457,10 @@ class AppearanceSettingsScreenTest {
         text = ThemeText(primary = 0xFFF6FFFF, secondary = 0xFFE0F2F1, muted = 0xFFB7D0D0, inverse = 0xFF0B232A),
     )
 
-    /**
-     * Scrolls the tab, and only the tab.
-     *
-     * `hasScrollAction()` alone stopped being unique the moment the tab gained horizontal rows — the
-     * accent swatches and the theme thumbnails both scroll, so the matcher found three nodes and refused.
-     * Keying on the **vertical** axis range names the one that is the page.
-     */
     private fun scrollTo(text: String) = composeRule
         .onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
         .performScrollToNode(hasText(text, substring = true))
 
-    /** The same, for a dropdown row — whose words are a description rather than text. */
     private fun scrollToDescription(description: String) = composeRule
         .onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
         .performScrollToNode(hasContentDescription(description))

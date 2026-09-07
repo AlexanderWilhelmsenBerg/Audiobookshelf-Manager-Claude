@@ -74,6 +74,23 @@ class AppearanceViewModelTest {
     }
 
     @Test
+    fun `choosing an explicit accent leaves wallpaper colour mode`() = runTest(dispatcher) {
+        val settings = settings()
+        val viewModel = viewModel(settings)
+
+        viewModel.onDynamicColorChanged(true)
+        runCurrent()
+        assertEquals(true, settings.settings.first().dynamicColor)
+
+        viewModel.onAccentChanged(AccentScheme.of(AccentColor.Plum))
+        runCurrent()
+
+        val stored = settings.settings.first()
+        assertEquals(AccentColor.Plum.key, stored.accentColorKey)
+        assertEquals(false, stored.dynamicColor)
+    }
+
+    @Test
     fun `turning off a pack takes its borrowed accent with it`() = runTest(dispatcher) {
         val settings = settings()
         val viewModel = viewModel(settings)

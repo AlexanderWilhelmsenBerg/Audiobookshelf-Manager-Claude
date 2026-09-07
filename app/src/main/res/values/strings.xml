@@ -557,7 +557,6 @@
     <string name="navigate_back">Back</string>
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->
-    <string name="settings_title">Settings</string>
     <!--
       PRODUCT_SPEC SET-002 — two tabs, split by kind rather than by topic.
 

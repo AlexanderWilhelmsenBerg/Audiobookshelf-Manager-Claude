@@ -14,6 +14,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -54,6 +55,7 @@ import com.example.shelfplayer.feature.player.RewindNotice
 import com.example.shelfplayer.feature.player.SkipControls
 import com.example.shelfplayer.feature.player.SleepTimerSheet
 import com.example.shelfplayer.feature.player.SpeedSheet
+import com.example.shelfplayer.feature.settings.resolvedColor
 import com.example.shelfplayer.navigation.ShelfDestinations
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
 import com.example.shelfplayer.ui.glass.BackdropArtwork
@@ -135,7 +137,10 @@ class MainActivity : ComponentActivity() {
                                 // surface in the app has to agree and the accent is only knowable
                                 // after the theme has decided which ground it is on.
                                 glass = GlassPreferences(
-                                    tint = Color(appState.glassTint.argbOr(appState.accent.argbFor(isDark))),
+                                    tint = appState.glassTint.resolvedColor(
+                                        activeAccent = MaterialTheme.colorScheme.primary,
+                                        storedAccentArgb = appState.accent.argbFor(isDark),
+                                    ),
                                     cardTintEnabled = appState.cardGlassTintEnabled,
                                     systemTintEnabled = appState.systemGlassTintEnabled,
                                     blurRadius = appState.glassBlurDp.dp,

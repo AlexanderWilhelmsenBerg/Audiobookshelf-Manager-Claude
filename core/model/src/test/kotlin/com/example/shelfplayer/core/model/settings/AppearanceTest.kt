@@ -67,13 +67,28 @@ class AppearanceTest {
         }
     }
 
-    /** Only the accent-following entry has no colour of its own, and it is the one that borrows. */
+    /** Only the accent-following fixed entry has no colour of its own. */
     @Test
-    fun `the accent tint borrows and the rest do not`() {
+    fun `the accent tint borrows and the other fixed tints do not`() {
         val accentArgb = 0xFF123456
         assertEquals(accentArgb, GlassTint.FollowAccent.argbOr(accentArgb))
         GlassTint.entries.filter { it != GlassTint.FollowAccent }.forEach { tint ->
             assertNotEquals(accentArgb, tint.argbOr(accentArgb), "${tint.name} should carry its own colour")
+        }
+    }
+
+    /** Any built-in accent can also be pinned as the glass tint without changing the stored schema. */
+    @Test
+    fun `accent-derived tint keys round-trip and keep their own colour`() {
+        val unrelatedAccent = 0xFF010203
+
+        AccentColor.entries.forEach { colour ->
+            val accent = AccentScheme.of(colour)
+            val tint = GlassTint.of(accent)
+
+            assertEquals("${GlassTint.ACCENT_PREFIX}${accent.key}", tint.key)
+            assertEquals(tint, GlassTint.ofKey(tint.key))
+            assertEquals(accent.darkArgb, tint.argbOr(unrelatedAccent))
         }
     }
 

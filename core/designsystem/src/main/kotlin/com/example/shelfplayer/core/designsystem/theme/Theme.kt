@@ -56,6 +56,14 @@ private val ShelfDarkColors = darkColorScheme(
     onError = Color(0xFF690005),
 )
 
+/** The exact Material You primary colour the current wallpaper supplies, or null before Android 12. */
+@Composable
+fun dynamicAccentColor(darkTheme: Boolean): Color? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+    val context = LocalContext.current
+    return if (darkTheme) dynamicDarkColorScheme(context).primary else dynamicLightColorScheme(context).primary
+}
+
 /**
  * @param darkTheme resolved by the caller from the user's stored preference, so that "follow the
  *   system" is one branch of a decision made in one place instead of being re-derived per screen.
@@ -68,10 +76,10 @@ private val ShelfDarkColors = darkColorScheme(
  *   palette and deliberately does not know what a stored preference is, so `core:model` stays out of its
  *   dependencies and the theme can be previewed with any colour at all.
  * @param override a whole palette to use instead of building one, for a theme that arrives as data rather
- *   than as a choice among the shipped looks — a bundled background pack. It replaces [darkTheme],
- *   [dynamicColor] and [accent] entirely, because a pack's colours were authored as a set against its own
- *   artwork and taking half of them would break the contrast the pack promises. [textContrast] still
- *   applies on top, since that is the reader's accessibility choice rather than the pack's.
+ *   than as a choice among the shipped looks — a bundled background pack. Its authored surfaces remain the
+ *   ground, while an explicitly selected accent (including Material You) may still replace its primary
+ *   family. [textContrast] still applies on top, since that is the reader's accessibility choice rather
+ *   than the pack's.
  * @param textContrast how far the text sits from its ground — `1.0` for the furthest the ground allows,
  *   less to soften it, `null` to leave the scheme's own pairing alone. A `Float` for the same reason
  *   [accent] is a `Color`. Applied **last**, after [pureBlack], because it is measured against the
@@ -89,16 +97,19 @@ fun ShelfPlayerTheme(
 ) {
     val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val context = LocalContext.current
-    val base = when {
-        dynamicColor && supportsDynamicColor && darkTheme -> dynamicDarkColorScheme(context)
-        dynamicColor && supportsDynamicColor -> dynamicLightColorScheme(context)
-        darkTheme -> ShelfDarkColors
-        else -> ShelfLightColors
+    val dynamicScheme = when {
+        !dynamicColor || !supportsDynamicColor -> null
+        darkTheme -> dynamicDarkColorScheme(context)
+        else -> dynamicLightColorScheme(context)
     }
-    // Dynamic colour is the device's own accent, so a chosen one would be overriding the thing the
-    // reader turned on to see. Whichever they enabled last is not knowable here; Material You wins,
-    // because it is the more specific request — "use my wallpaper" rather than "use this hue".
-    val chosenAccent = accent?.takeUnless { dynamicColor && supportsDynamicColor }
+    val base = dynamicScheme ?: if (darkTheme) ShelfDarkColors else ShelfLightColors
+    // Without a pack, Material You already is the whole base scheme and must not be re-toned. A bundled
+    // pack keeps its authored surfaces, but the wallpaper primary is still the explicitly selected accent.
+    val chosenAccent = when {
+        dynamicScheme != null && override != null -> dynamicScheme.primary
+        dynamicScheme != null -> null
+        else -> accent
+    }
     val grounded = base.grounded(chosenAccent, pureBlack, override)
 
     MaterialTheme(
