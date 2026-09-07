@@ -94,15 +94,15 @@ jobs:
           fi
 
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::warning::BOOKWAVE_WORKFLOW_SYNC_TOKEN is not configured; the APK PR dropdown was not refreshed."
+            echo "::error::BOOKWAVE_WORKFLOW_SYNC_TOKEN is not configured; the APK PR dropdown cannot be refreshed automatically."
             {
-              echo "### APK PR picker not refreshed"
+              echo "### APK PR picker update blocked"
               echo
               echo "The generated choices changed, but \`BOOKWAVE_WORKFLOW_SYNC_TOKEN\` is not configured."
               echo "Add a fine-grained token with **Contents: read/write** and **Workflows: read/write**,"
               echo "then rerun **Sync APK PR picker**. See \`docs/release.md\`."
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            exit 1
           fi
 
           git config user.name 'github-actions[bot]'
