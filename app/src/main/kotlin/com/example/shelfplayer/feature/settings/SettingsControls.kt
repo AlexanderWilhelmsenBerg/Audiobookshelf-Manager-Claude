@@ -131,8 +131,8 @@ internal fun <T> InlineChoiceRow(
 @Composable
 internal fun ExpandableSettingsRow(
     label: String,
-    valueLabel: String? = null,
     modifier: Modifier = Modifier,
+    valueLabel: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
