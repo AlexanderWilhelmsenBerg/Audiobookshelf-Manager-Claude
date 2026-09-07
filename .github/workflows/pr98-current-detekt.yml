@@ -1,0 +1,39 @@
+name: PR 98 current detekt diagnostic
+
+on:
+  push:
+    branches:
+      - diagnostic/pr98-current-detekt
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Capture detekt
+        shell: bash
+        run: |
+          set +e
+          ./gradlew :app:detektDebug :app:detektDebugUnitTest --stacktrace > diagnostic-full.log 2>&1
+          status=$?
+          {
+            echo "exit_status=$status"
+            echo "--- last 800 lines ---"
+            tail -n 800 diagnostic-full.log
+          } > pr98-detekt-result.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pr98-detekt-result.txt
+          git commit -m "Capture PR98 detekt result" || true
+          git push
+          exit 0
