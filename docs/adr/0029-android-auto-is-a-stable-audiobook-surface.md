@@ -55,7 +55,7 @@ This replaces the earlier `keepSoundInHeadset` opt-in concept. There is no user-
 
 Definite roles remain definite where Android exposes enough information: wired/BLE headset and hearing-aid routes can be headset candidates, `TYPE_BUS` can be a car, and speakers remain speakers.
 
-This narrows R-103 rather than pretending to eliminate it. Without requesting additional Bluetooth identity permission or asking the user to classify a device, an arbitrary classic-A2DP endpoint cannot always be named semantically. The important safety properties do not depend on that guess: phone speaker is excluded, Car releases the preference, and the car-arrival race preserves a previously known headset.
+This narrows the ambiguity rather than pretending to eliminate it. An earlier draft referred to that residual as `R-103`, but no R-103 row was ever registered in `docs/risks.md`; this ADR is the canonical record of the limitation rather than leaving a dangling risk reference. Without requesting additional Bluetooth identity permission or asking the user to classify a device, an arbitrary classic-A2DP endpoint cannot always be named semantically. The important safety properties do not depend on that guess: phone speaker is excluded, Car releases the preference, and the car-arrival race preserves a previously known headset.
 
 ### 5. History is navigation, not an audit log
 
@@ -87,13 +87,13 @@ A second device run reported that the car's player never says where the audio is
 
 Two surfaces already carry it and neither reaches a driver. The headset action's display name is `Playing on AirPods Pro 3`, and §2.11 records that this head unit does not draw custom-action labels. The `Audio output` browse list marks the live route *Playing here*, which is correct and four taps away from the player.
 
-What the host draws on the player is the title, the byline and these two icons. Only the icons are BookWave's, so that is where the state goes: each output action has a lit variant carrying an indicator bar, and the pair reads as off/on because they are always drawn together. `OutputButtons.onHeadset` is the state; `onCar` is its complement, and means only *the book is somewhere BookWave cannot call a headset* — §4 is precisely the admission that a dashboard cannot be proven.
+What the host draws on the player is the title, the byline and these two icons. Only the icons are BookWave's, so that is where the state goes: each output action has a lit variant carrying an indicator bar. `OutputButtons.onHeadset` and `onCar` are deliberately **not complements**. A confirmed headset route lights Headset; a current non-speaker route that BookWave cannot call a headset can light Car; and a phone-speaker or unknown/no-route state can leave **both** actions unlit. That last state matters because lighting Car merely because Headset is false would falsely describe phone-speaker playback as car playback.
 
 **The byline is deliberately not used.** It is built once in `MediaItems.queueFor` from the session, so making it name the live route would mean replacing the `MediaItem` on every route change — rebuilding the media source of a playing book for a cosmetic gain, against product priority 1. A lit icon costs a republish of the button preferences, which the service already does when the route moves.
 
-**The minimised player shows neither action, and that is a defect rather than a limit.** The device run reported it, and this section first recorded it as unavoidable: the compact card draws the transport controls and the two slot buttons but not the overflow ones, so an output action could only get there by taking `SLOT_BACK` or `SLOT_FORWARD` from PLAY-007's skips — a worse trade, since Media3's default *previous* seeks to zero and a device run caught it restarting a thirty-four-hour book.
+The first version of this section also recorded the missing actions in the minimised player as an unavoidable layout limit. That conclusion was drawn from the three slots this code already used rather than from Media3's API, and it was wrong. `CommandButton` declares **six**: alongside `SLOT_CENTRAL`, `SLOT_BACK`, `SLOT_FORWARD` and `SLOT_OVERFLOW` there are `SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY`, which are the further primary-bar positions taking it to the five controls the design guidance documents.
 
-That reasoning was drawn from the three slots this code already used rather than from Media3's API, and it is wrong. `CommandButton` declares **six**: alongside `SLOT_CENTRAL`, `SLOT_BACK`, `SLOT_FORWARD` and `SLOT_OVERFLOW` there are `SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY`, which are the further primary-bar positions taking it to the five controls the design guidance documents. Nothing has to be traded: the skips keep their slots and the output actions move out of overflow. `docs/android-auto-player-opportunities.md` item 1 carries it, with the caveat that whether a given head unit draws those positions in its *minimised* bar is still the host's to confirm — the same class of unknown as R-107, and not a reason to leave the actions in overflow, which is strictly worse.
+The current PR head now requests `SLOT_BACK_SECONDARY` for Car and `SLOT_FORWARD_SECONDARY` for Headset, with `SLOT_OVERFLOW` as the fallback. The skips keep their existing slots, so PLAY-007 is not traded away. Whether a particular head unit draws those secondary positions in its *minimised* bar is still a host contract and remains part of the R-107/R-10 device check; the implementation no longer claims overflow-only placement.
 
 ### 9. A car arriving still leaves the book paused, and that is recorded rather than fixed here
 
@@ -105,14 +105,14 @@ Nothing in this app pauses on car arrival. The platform does, by one of two rout
 
 The judgement is therefore that this cannot be finished without a car. Two facts it depends on are unmeasured and unmeasurable here: whether a real host's controller binds close enough to the pause to be paired with it, and how long the held-headset preference takes to become the live route on a platform that announces neither. The implementation is preserved at commit `26f65f0` on this branch's history and returns as its own PR once one drive has answered R-106.
 
-What ships here is the part that needs no inference: §8's lit icons, and the car glyph. Both were green from their first push and no review round has questioned either.
+For this **car-arrival pause problem**, #78 deliberately ships no inferred auto-resume. The routing actions, lit-state presentation and other settled Android Auto improvements remain independent of that deferred continuity experiment.
 
 ## Consequences
 
 - The root remains predictable even as the library changes.
 - A car arriving still stops the book; the fix is deferred to its own PR rather than merged unverified (R-106).
-- The player says which output the book is on, as far as a head unit that draws no labels permits.
-- The minimised car player shows neither output action; the primary-bar slots that would fix it are identified and unimplemented (`docs/android-auto-player-opportunities.md` item 1).
+- The player says which output the book is on when the observed route is strong enough to say so; speaker/unknown can leave both output actions unlit rather than lying.
+- Car and Headset request the two secondary primary-bar slots and retain overflow as fallback; whether a specific host shows those positions in its minimised bar is still device-only evidence.
 - The phone speaker is not a BookWave Android Auto destination.
 - Connecting a car does not silently steal an audiobook from an already-active headset when BookWave has enough state to preserve it.
 - Pressing Car has one meaning on every supported car: hand routing back to Android.
@@ -124,6 +124,6 @@ What ships here is the part that needs no inference: §8's lit icons, and the ca
 
 ## Verification
 
-The PR's unit/Robolectric coverage includes the four-root browse contract, series ordering, voice-series matching, speaker exclusion including stale cached rows, Car-to-Automatic routing, ambiguous-A2DP handling, headset cycling, the car-arrival preservation race, profile-scoped series enrichment and the live Media3 series byline.
+The PR's unit/Robolectric coverage includes the four-root browse contract, series ordering, voice-series matching, speaker exclusion including stale cached rows, Car-to-Automatic routing, ambiguous-A2DP handling, headset cycling, the car-arrival preservation race, profile-scoped series enrichment and the live Media3 series byline. The final implementation also publishes active/inactive output glyphs through a tested `OutputActionIcons` mapping, requests the secondary primary-bar slots with overflow fallback, explicitly releases the seek-slot reservations, and reports credential/network playback failures through the media session.
 
-The owner device-tested the Car/Headset routing on 2026-09-06: Headset appeared when connected and switched audio to the headset; Car returned audio to the car. That run also supplied the two presentation findings addressed by the final slice: live Now Playing showed only title + author, and the custom car glyph's front wheel sat too far forward.
+The owner device-tested the Car/Headset routing on 2026-09-06: Headset appeared when connected and switched audio to the headset; Car returned audio to the car. That run also supplied the two presentation findings addressed by the final slice: live Now Playing showed only title + author, and the custom car glyph's front wheel sat too far forward. The new secondary-slot placement, lit glyphs and failure message remain host/device acceptance items rather than being called verified by JVM coverage.
