@@ -78,8 +78,8 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
+          - "#98 — feature/playback-settings-refresh"
           - "#93 — refactor/unified-resume-freshness"
-          - "#88 — refactor/appearance-settings-boundary"
           - "#86 — feature/appearance-inline-expand"
           - "#78 — claude/shelfplayer-android-auth-lk77fv"
           - "Use selected branch/ref"
