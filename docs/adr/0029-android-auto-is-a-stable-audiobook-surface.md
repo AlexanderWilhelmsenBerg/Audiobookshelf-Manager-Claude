@@ -93,34 +93,22 @@ What the host draws on the player is the title, the byline and these two icons. 
 
 **And the minimised player still shows neither action.** Android Auto's compact card renders the transport controls and the two slot buttons, not the overflow ones, which is the same host-layout limit as §7 — an app publishes preferences, not a layout. The only way to put an output action there is to claim `SLOT_BACK` or `SLOT_FORWARD`, and those hold PLAY-007's skips because Media3's default *previous* seeks to zero and a device run found it restarting a thirty-four-hour book. A driver losing a skip is a worse trade than a driver opening the full player, so the compact card keeps the skips.
 
-### 9. A car arriving must not leave the book paused
+### 9. A car arriving still leaves the book paused, and that is recorded rather than fixed here
 
-The same run: *"when listening to something when android auto is connecting, it pauses the audio. If listening on a headset, it should not stop."*
+The same run reported it: *"when listening to something when android auto is connecting, it pauses the audio. If listening on a headset, it should not stop."*
 
 Nothing in this app pauses on car arrival. The platform does, by one of two routes — `ACTION_AUDIO_BECOMING_NOISY`, which Android broadcasts when an A2DP sink is deactivated and a car taking the active A2DP slot does exactly that, or a permanent audio-focus loss while the projection host starts. Media3 pauses for both and offers a resume for neither, which is why the book stays stopped rather than dipping.
 
-BookWave **reacts rather than predicts**. `setHandleAudioBecomingNoisy(true)` is all or nothing, so suppressing the pause would mean deciding, at the instant of a broadcast that says only that the route is *about* to change, whether the book is headed for another output or for the phone speaker — and being wrong puts a book on the phone speaker, which PLAY-002 forbids. So the platform's pause stands, the route settles, and `CarArrivalContinuity` starts the book again when the car binds. The cost is a gap under a second in place of a book that stays stopped.
+**A resume was implemented and then lifted back out of this PR at the owner's decision.** Five review rounds found seven defects in it, and their shape is what makes this a decision rather than a setback: the mechanism has to infer *"a car took the audio"* from proxies — a pause reason, a binding count, an `isActive` flag, a route the platform reports late or not at all — and each round removed one inference that had looked sound in a comment. Four of the seven were resumes that should not have happened, including one that could have started an audiobook aloud on the phone speaker.
 
-It refuses to resume a pause a person asked for, a pause older than its window, a route with nowhere to play, and any pause not paired with a car **arriving**. That last word is load-bearing: *a car is connected* stays true for a whole drive, so pairing against it would have restarted the book after an incoming call took audio focus. The pause and the 0-to-1 binding must instead fall close together, in either order, since which of the two the app hears first is not fixed. One resume per arrival, which also stops a resume the platform immediately undoes from being re-recorded and retried without end.
+The judgement is therefore that this cannot be finished without a car. Two facts it depends on are unmeasured and unmeasurable here: whether a real host's controller binds close enough to the pause to be paired with it, and how long the held-headset preference takes to become the live route on a platform that announces neither. The implementation is preserved at commit `26f65f0` on this branch's history and returns as its own PR once one drive has answered R-106.
 
-"Somewhere to play" is **route evidence, and nothing weaker** — which took two reviews to arrive at, in both directions.
-
-Below API 33 `AudioOutputRouter` cannot ask which route is live, and under Automatic routing has no selection to fall back on either, so it reports every output inactive: an `isActive` test can never pass and the resume does nothing from API 26 to 32. The obvious remedy is to accept a connected non-speaker output instead, reasoning that Android would not choose the built-in speaker while another output is connected.
-
-**It would.** `getDevices(GET_DEVICES_OUTPUTS)` reports every connected *sink*, and a sink is not a route: a Bluetooth device connected for hands-free only, an A2DP device the system output switcher has been pointed away from, and an unselected USB sink all appear in that list while media plays out of the phone. Connection evidence could therefore start an audiobook aloud on the speaker — the outcome PLAY-002 exists to forbid, and a worse one than the paused book it was avoiding.
-
-So the limitation stands rather than being papered over, and this is the one place the two priorities are ranked explicitly: **where the platform will not say where audio is going, PLAY-002 outranks continuity and the book stays paused.** Below API 33 a listener who has explicitly chosen an output in BookWave still gets the resume, because that choice *is* the evidence — `publish` marks the chosen id active with no framework route to read. Everyone else keeps a paused book, which is where it already was. R-106 records it, along with `isBluetoothA2dpOn` as the one documented pre-33 call that reports media *routing* rather than connection, if the case is ever judged worth recovering on hardware.
-
-And **a route that has been asked for is the only one that will do**. `AudioOutputRouter.select` sets the selection and publishes synchronously but applies `setPreferredAudioDevice` on another coroutine, so the publication the headset hold itself produces still carries the framework's old route — the dashboard, which is ambiguous A2DP and therefore not a speaker. Accepting any active non-speaker started the book *in the car* while the hold was still in flight, and permanently so where the platform declines the preference, since it is a request rather than a promise. With a request outstanding the resume now waits for it; if it is never honoured the book stays paused, which is the same ranking as above — the listener asked for a headset, and starting the book somewhere they did not choose is not a smaller failure than leaving it where it was.
-
-Finally, the decision is **polled rather than driven by events**, because the state it waits on changes with no notification. Android has no route-change callback: `AudioDeviceCallback` reports devices arriving and leaving, and `AudioOutputRouter` re-reads the route once, 400 ms after applying a preference. So a hand-off that lands later is never published, and a car that binds before the pause leaves the pause as the last event with nothing following it. Two reviews found those as separate defects; they are one shape, and a bounded poll — every 500 ms until a resume happens or the continuity window closes — is the honest answer to it rather than a third event to hope for.
-
-This is diagnosable rather than assumed: `PlaybackService` already logs the `PLAY_WHEN_READY_CHANGE_REASON_*` word for every pause, so `becomingNoisy` against `audioFocusLoss` is a matter of reading one log line on the next drive. The resume covers both, which is why it did not wait for that reading.
+What ships here is the part that needs no inference: §8's lit icons, and the car glyph. Both were green from their first push and no review round has questioned either.
 
 ## Consequences
 
 - The root remains predictable even as the library changes.
-- A car arriving interrupts an audiobook for under a second instead of ending it.
+- A car arriving still stops the book; the fix is deferred to its own PR rather than merged unverified (R-106).
 - The player says which output the book is on, as far as a head unit that draws no labels permits.
 - The minimised car player shows the skips rather than the output actions, and that is a chosen trade.
 - The phone speaker is not a BookWave Android Auto destination.

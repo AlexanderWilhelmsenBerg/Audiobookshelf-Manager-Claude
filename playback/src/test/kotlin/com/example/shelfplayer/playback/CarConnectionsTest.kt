@@ -48,28 +48,6 @@ class CarConnectionsTest {
     }
 
     /**
-     * Product priority 1 — only the first of a car's bindings is a car *arriving*.
-     *
-     * `CarArrivalContinuity` pairs its resume to an arrival rather than to a car being connected, because
-     * the latter stays true for a whole drive; a review found that resuming any recent system pause while
-     * it held would undo an incoming call's.
-     */
-    @Test
-    fun `only the first binding reports an arrival`() {
-        assertTrue(connections.onConnected())
-        assertFalse(connections.onConnected())
-    }
-
-    /** A car that left and came back has arrived again. */
-    @Test
-    fun `a car reconnecting reports a new arrival`() {
-        connections.onConnected()
-        connections.onDisconnected()
-
-        assertTrue(connections.onConnected())
-    }
-
-    /**
      * A disconnect with nothing connected cannot push the count negative.
      *
      * Media3 does not promise a disconnect for every connect, and the reverse happens too: a service
