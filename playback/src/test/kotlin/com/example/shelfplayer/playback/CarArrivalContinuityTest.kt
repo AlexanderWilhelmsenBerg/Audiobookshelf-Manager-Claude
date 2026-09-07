@@ -89,7 +89,7 @@ class CarArrivalContinuityTest {
 
     /**
      * Two car controllers bind for one car — `CarConnections` counts them for exactly that reason — so the
-     * question is asked twice. A driver who paused between the two must stay paused.
+     * question is asked twice. The resume consumed the pause, so the second finds nothing.
      */
     @Test
     fun `the second car controller does not resume again`() {
@@ -97,6 +97,47 @@ class CarArrivalContinuityTest {
         assertTrue(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds)))
 
         assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds)))
+    }
+
+    /**
+     * **The ordering a review caught.** The car's controller binds *before* the platform pauses, so the
+     * first ask happens while the book is still playing and there is no pause to act on. The pause then
+     * arrives, and the route publication that follows is what has to resume it.
+     *
+     * The first ask is the service's `playWhenReady` check rather than this class, so what is asserted here
+     * is the half this class owns: a pause recorded after an ask still resumes on the next one.
+     */
+    @Test
+    fun `a pause recorded after the car bound is still resumed by a later route publication`() {
+        assertFalse(continuity.shouldResume(AT, listOf(activeBuds)))
+
+        continuity.onSystemPause(AT.plusSeconds(1))
+
+        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds)))
+    }
+
+    /**
+     * The third ordering: both the pause and the binding have happened, and the route is still moving.
+     *
+     * Answering `false` must not spend the pause — the settle publication that follows is the one that can
+     * say yes. The first version of this consumed the candidacy on every ask, which left the book stopped
+     * exactly here.
+     */
+    @Test
+    fun `an unsettled route keeps the pause for the next ask`() {
+        continuity.onSystemPause(AT)
+
+        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(inactiveBuds)))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds)))
+    }
+
+    /** A pause held across an unsettled route still expires; waiting is not a way around the window. */
+    @Test
+    fun `a pause held through an unsettled route still expires`() {
+        continuity.onSystemPause(AT)
+        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(inactiveBuds)))
+
+        assertFalse(continuity.shouldResume(AT.plus(Duration.ofMinutes(30)), listOf(activeBuds)))
     }
 
     /**

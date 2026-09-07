@@ -969,6 +969,12 @@ class PlaybackService : MediaLibraryService() {
         outputWatch = scope.launch {
             combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, selected) ->
                 feedHeadsetHold(outputs, selected)
+                // Product priority 1 — the route settling is the other half of the car-arrival resume, and
+                // a review found it was the missing half. `AudioOutputRouter` publishes on every route
+                // change and again after its own settle delay, so this is where "there is somewhere to play
+                // again" actually becomes true; asking only when the controller bound left the book stopped
+                // whenever the binding beat the pause.
+                resumeIfTheCarTookTheAudio()
                 // Republishing on every emission would rewrite the notification for a device change that
                 // does not touch either button, and Media3 pushes each set to every controller.
                 republishOutputButtons()
@@ -1046,11 +1052,25 @@ class PlaybackService : MediaLibraryService() {
      *
      * `player.play()` rather than a controller call, because this is the service's own player and the point
      * is to undo a `playWhenReady` the platform set — the same level the pause happened at.
+     *
+     * **Called from two places, because one was not enough.** A review found the car binding alone missed
+     * the ordering where the controller binds *before* the platform's pause: this returned at the
+     * `playWhenReady` check, and nothing asked again. The output collector is the second caller and the
+     * route-settle one; [CarArrivalContinuity.shouldResume] explains why being asked twice is safe.
+     *
+     * The car gate is here rather than in the policy because it is a fact about the session, not about the
+     * pause — and it is what keeps this from resuming an ordinary unplug. Without a car, a headset coming
+     * out is somebody stopping listening, and the remaining route is not an invitation to carry on.
      */
     private fun resumeIfTheCarTookTheAudio() {
         val current = player ?: return
-        if (current.mediaItemCount == 0) return
-        if (current.playWhenReady) return
+        // The three cheap facts as one condition rather than three guards, because detekt's `ReturnCount`
+        // is four and the policy call below has to be the last of them: it *consumes* the pause when it
+        // says yes, so it may only be reached once everything else already holds.
+        val worthResuming = current.mediaItemCount > 0 &&
+            !current.playWhenReady &&
+            carConnections.isConnected()
+        if (!worthResuming) return
         if (!carContinuity.shouldResume(clock.now(), audioOutputs.outputs.value)) return
         logger.info(
             LogCategory.Playback,

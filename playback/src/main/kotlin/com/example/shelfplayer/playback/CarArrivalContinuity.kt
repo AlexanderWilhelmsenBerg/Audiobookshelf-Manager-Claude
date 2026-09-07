@@ -82,15 +82,28 @@ internal class CarArrivalContinuity(private val window: Duration = DEFAULT_WINDO
     /**
      * Whether the book the platform paused should be started again, now that a car is here.
      *
-     * Consumes the candidacy whatever the answer: a car binding is a single event, two controllers can
-     * report it (`CarConnections` counts them for that reason), and the second must not resume a book the
-     * driver paused in the seconds after the first.
+     * **Asked more than once on purpose, and that is why an unsettled route keeps the candidacy.** A review
+     * found the first version of this asked only when the car's controller bound, which is one of three
+     * orderings: the pause can arrive after the binding, and the route can still be moving when both have
+     * happened. So the caller asks on the binding *and* on every route publication, and this answers `false`
+     * without spending the pause while there is nowhere yet to play — the settle publication that follows is
+     * the one that says yes.
+     *
+     * Only a resume and a stale pause consume it. Nothing else needs to: [onUserPause] is what stops a
+     * driver's own pause being undone, including by a second car controller, and [onPlaying] retires a book
+     * that is already playing again.
      */
     fun shouldResume(at: Instant, outputs: List<AudioOutput>): Boolean {
         val paused = systemPausedAt ?: return false
+        if (Duration.between(paused, at) > window) {
+            systemPausedAt = null
+            return false
+        }
+        // No active non-speaker route *yet*. Keep the pause: this is the hand-off still in flight, and
+        // dropping it here is what left the book stopped in the ordering the review found.
+        if (outputs.none { output -> output.isActive && !output.isSpeaker }) return false
         systemPausedAt = null
-        if (Duration.between(paused, at) > window) return false
-        return outputs.any { output -> output.isActive && !output.isSpeaker }
+        return true
     }
 
     private companion object {
