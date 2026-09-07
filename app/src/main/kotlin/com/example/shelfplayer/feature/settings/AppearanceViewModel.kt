@@ -51,7 +51,12 @@ class AppearanceViewModel @Inject constructor(private val appearance: Appearance
         )
 
     fun onAccentChanged(accent: AccentScheme) {
-        viewModelScope.launch { appearance.setAccent(accent) }
+        viewModelScope.launch {
+            // Store the new explicit colour first while Material You is still covering it, then reveal it.
+            // Reversing the order would briefly flash the previously stored accent between the two writes.
+            appearance.setAccent(accent)
+            appearance.setDynamicColor(false)
+        }
     }
 
     fun onGlassTintChanged(tint: GlassTint) {

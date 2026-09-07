@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,16 +20,13 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -37,8 +35,6 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
@@ -197,7 +193,6 @@ fun SettingsRoute(
  * The selection is `rememberSaveable`, so a rotation or a trip through the background comes back to the
  * tab the user was on. Losing it would be a small thing that reads as the screen restarting.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     uiState: SettingsUiState,
@@ -272,41 +267,25 @@ fun SettingsScreen(
          *
          * `Scaffold` paints its container over everything beneath it, so the gradient drawn behind the
          * navigation graph would be covered here and the glass cards would be frosting an opaque surface
-         * — a blur of one flat colour, which is that same flat colour. The same trap `TopAppBar` sets
-         * with its own container, and the reason a frosted surface has to be told to stop painting.
+         * — a blur of one flat colour, which is that same flat colour.
          */
         containerColor = Color.Transparent,
         // ...and the content colour said explicitly, because a transparent container has no
         // pair in the scheme and Material's fallback for that is literally black. See
         // `glassContentColor`, and the device report that found it.
         contentColor = glassContentColor(),
-        // PRODUCT_SPEC SET-002 — the title and the tabs are one frosted header, and the list runs beneath
-        // it. They are in the same slot for that reason: `Scaffold` measures its top bar and reports the
-        // height as `innerPadding`'s top, so the list can take exactly that as *content* padding and pass
-        // under the whole header rather than stopping at the title. A tab row left in the body would sit
-        // between the two and there would be nothing behind the glass to refract.
+        // The tab strip is the complete header. Navigation out of Settings is a gesture: Android back or
+        // the existing pull past the first page, both of which still call `onNavigateUp`.
         topBar = {
             Column(
-                modifier = Modifier.systemGlass(
-                    state = headerHaze,
-                    backgroundColor = MaterialTheme.colorScheme.surface,
-                    shape = RectangleShape,
-                ),
+                modifier = Modifier
+                    .systemGlass(
+                        state = headerHaze,
+                        backgroundColor = MaterialTheme.colorScheme.surface,
+                        shape = RectangleShape,
+                    )
+                    .statusBarsPadding(),
             ) {
-                TopAppBar(
-                    title = { Text(text = stringResource(R.string.settings_title)) },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateUp) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.navigate_back),
-                            )
-                        }
-                    },
-                    // Transparent so the glass behind it is what is seen. `TopAppBar` paints its container
-                    // over the modifier's background otherwise, and the blur would be invisible under it.
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                )
                 /*
                  * PRODUCT_SPEC 16.2 — the indicator follows the drag rather than jumping when it lands.
                  *
@@ -315,11 +294,6 @@ fun SettingsScreen(
                  * positions, and interpolating between the two the drag is between is what makes the
                  * underline travel with the page. `selectedTabIndex` still drives the *labels*, which
                  * have nothing to interpolate.
-                 *
-                 * This sits in the `topBar` slot rather than in the body, so the title and the tabs are
-                 * one glass surface and the list runs under both. The pager does not mind where the row
-                 * lives: it reads `pagerState` for the indicator and writes `selected` on a tap, and
-                 * both work from here.
                  */
                 TabRow(
                     selectedTabIndex = pagerState.currentPage,
@@ -384,10 +358,8 @@ fun SettingsScreen(
             /*
              * The tab row is **not** here — it is in the `topBar` slot, above.
              *
-             * That is the frosted-header arrangement: title and tabs are one glass surface, and the list
-             * passes under both. It costs nothing the pager needs. A `TabRow` drives its indicator from
-             * `pagerState` and its taps into `selected` from wherever it sits in the tree, so the two
-             * features compose rather than compete — see the `topBar` above for the indicator itself.
+             * That is the frosted-header arrangement: the list passes beneath the tab strip while the
+             * pager reads `pagerState` and its taps write `selected` from the header.
              */
             HorizontalPager(
                 state = pagerState,

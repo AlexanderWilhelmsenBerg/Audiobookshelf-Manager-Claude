@@ -219,25 +219,71 @@ data class AccentScheme(val key: String, val lightArgb: Long, val darkArgb: Long
 /**
  * PRODUCT_SPEC SET-002 — the colour of the wash over the app's frosted surfaces.
  *
- * The wash is what makes a blur read as *frosted* rather than merely out of focus. It has always been
- * white; this is the choice of what else it may be. [FollowAccent] carries no colour of its own because
- * the accent is a runtime value — see [argbOr].
+ * The fixed washes remain exactly the keys older builds stored. Accent-derived washes use [ACCENT_PREFIX]
+ * followed by an [AccentScheme.key], so the existing string field can also name any built-in or bundled
+ * accent without a proto migration. A bundled accent that no longer exists falls back to [Default].
+ *
+ * Accent-derived tints intentionally use the accent's pale/dark-theme tone. A glass tint is a translucent
+ * wash rather than foreground content, and the existing White/Warm/Cool choices are all pale washes too;
+ * using the pale tone keeps that character and avoids a dark muddy overlay on a light theme.
  */
-enum class GlassTint(val key: String, private val argb: Long?) {
-    /** What every frosted surface in the app used before this setting existed. */
-    White(key = "white", argb = 0xFFFFFFFF),
-    Warm(key = "warm", argb = 0xFFFFEBCB),
-    Cool(key = "cool", argb = 0xFFCBE6FF),
-    FollowAccent(key = "accent", argb = null),
-    ;
+// `copy()` is made private alongside the constructor rather than the constructor being widened. The
+// `key`/`argb` pairing is the invariant this type exists to hold — `accentKey`, `name` and `ofKey` all read
+// the key expecting `of`/`ofKey` to have set it — so a `copy(key = …)` from outside would produce a tint
+// that reads back as something it is not. Nothing outside the companion constructs or copies one.
+@ConsistentCopyVisibility
+data class GlassTint private constructor(val key: String, private val argb: Long?) {
 
-    /** This tint's colour, or [accentArgb] for the entry that has none of its own. */
+    /** This tint's colour, or [accentArgb] for [FollowAccent]. */
     fun argbOr(accentArgb: Long): Long = argb ?: accentArgb
 
+    /** The accent key carried by an explicit accent tint, or `null` for the fixed/following choices. */
+    val accentKey: String?
+        get() = key.takeIf { it.startsWith(ACCENT_PREFIX) }?.removePrefix(ACCENT_PREFIX)
+
+    /** Compatibility/debug name for code that used enum `name` before this became an open value type. */
+    val name: String
+        get() = when (this) {
+            White -> "White"
+            Warm -> "Warm"
+            Cool -> "Cool"
+            FollowAccent -> "FollowAccent"
+            else -> "AccentTint"
+        }
+
     companion object {
+        /** Prefix for a tint pinned to one selectable accent rather than following the active accent. */
+        const val ACCENT_PREFIX: String = "accent:"
+
+        /** What every frosted surface in the app used before this setting existed. */
+        val White: GlassTint = GlassTint(key = "white", argb = 0xFFFFFFFF)
+        val Warm: GlassTint = GlassTint(key = "warm", argb = 0xFFFFEBCB)
+        val Cool: GlassTint = GlassTint(key = "cool", argb = 0xFFCBE6FF)
+        val FollowAccent: GlassTint = GlassTint(key = "accent", argb = null)
+
+        /** The fixed choices kept for source compatibility with the old enum's `entries`. */
+        val entries: List<GlassTint> = listOf(White, Warm, Cool, FollowAccent)
+
         val Default: GlassTint = White
 
-        fun ofKey(key: String): GlassTint = entries.firstOrNull { it.key == key } ?: Default
+        /** Pin the glass wash to one accent, independently of the accent currently used by controls. */
+        fun of(accent: AccentScheme): GlassTint = GlassTint(key = ACCENT_PREFIX + accent.key, argb = accent.darkArgb)
+
+        /** Every tint the UI may offer: the fixed washes plus every accent currently available. */
+        fun all(themes: List<BackgroundTheme>): List<GlassTint> = entries + AccentScheme.all(themes).map(::of)
+
+        /**
+         * Resolve an old fixed key or a new accent-derived key.
+         *
+         * [themes] defaults to empty so old callers and tests that only deal in built-in colours keep the
+         * same simple API. A theme-derived key is only valid while that theme is present in the catalogue.
+         */
+        fun ofKey(key: String, themes: List<BackgroundTheme> = emptyList()): GlassTint {
+            entries.firstOrNull { it.key == key }?.let { return it }
+            val accentKey = key.takeIf { it.startsWith(ACCENT_PREFIX) }?.removePrefix(ACCENT_PREFIX) ?: return Default
+            val accent = AccentScheme.all(themes).firstOrNull { it.key == accentKey } ?: return Default
+            return of(accent)
+        }
     }
 }
 
