@@ -22,70 +22,69 @@ Android Auto's playback view is host-drawn from four things the app supplies:
 | Subtitle (one optional line) | rendered from the legacy artist/subtitle fields | `Author • Series #N` (§6) |
 | Elapsed time + progress bar | `PlaybackStateCompat` position and `METADATA_KEY_DURATION` | Correct; the book is one timeline (ADR-0016) |
 | Explicit-content indicator | metadata | n/a |
-| Primary control bar, left to right: **queue · previous · play/pause · next · custom** | media button preferences | play/pause, and the two skips |
-| Overflow menu, up to **4** secondary actions | custom actions beyond the bar | Car and Headset live here |
+| Primary control bar, left to right: **queue · previous · play/pause · next · custom** | media button preferences | play/pause, the two skips, and Car/Headset requesting the two secondary primary-bar slots |
+| Overflow menu, up to **4** secondary actions | custom actions beyond/falling back from the bar | Car and Headset also declare overflow as fallback |
 
-Two documented capacity numbers matter, because both are larger than what BookWave uses:
+Two documented capacity numbers matter:
 
 - the **minimised** control bar holds **up to five** controls, and expands to five more in a second row;
 - an app may publish **up to six** custom actions, or **up to eight** if it does not use Next/Previous.
 
-BookWave publishes four buttons into three slots and puts the two the driver most needs into overflow.
+BookWave now asks the host to place Car and Headset in the two secondary primary-bar slots while retaining
+overflow as a fallback. Whether a particular head unit actually shows those secondary positions in its
+*minimised* player remains a host/device question rather than an app-side guarantee.
 
 ## 1. Move the output actions into the primary bar — the device finding, and it has an answer
 
 **The finding.** *"The headset and car icon is gone from the smaller window."* Correct, and ADR-0029 §8
-recorded it as a host-layout limit that could not be worked around. **That conclusion was wrong**, and the
-reason is worth stating plainly: it was reasoned from `CommandButton`'s three slots the code already used
-rather than from the class's actual API. Media3 1.11 declares **six**:
+initially recorded it as a host-layout limit that could not be worked around. **That conclusion was wrong**,
+and the reason is worth stating plainly: it was reasoned from `CommandButton`'s three slots the code already
+used rather than from the class's actual API. Media3 1.11 declares **six**:
 
 ```
 SLOT_CENTRAL   SLOT_BACK   SLOT_FORWARD   SLOT_BACK_SECONDARY   SLOT_FORWARD_SECONDARY   SLOT_OVERFLOW
 ```
 
 `SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY` are the two further positions in the primary bar — the
-ones that take it from three controls to the documented five. BookWave uses `SLOT_BACK`, `SLOT_FORWARD` and
-`SLOT_OVERFLOW`, and nothing else.
+ones that take it from three controls to the documented five.
 
-**Recommendation.** Publish Car and Headset in `SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY` instead
-of `SLOT_OVERFLOW`. Small, local, and it needs no new state — the buttons and their labels already exist.
-The skips keep their slots, so PLAY-007 is untouched and nothing is traded away.
+**Implemented in #78.** Car requests `SLOT_BACK_SECONDARY` and Headset requests
+`SLOT_FORWARD_SECONDARY`, each with `SLOT_OVERFLOW` second in its slot chain. The skips keep their slots,
+so PLAY-007 is untouched and nothing is traded away.
 
 **What still needs a car.** Whether a given head unit draws the secondary slots in its *minimised* bar is a
-host decision, exactly like R-107's indicator bar. The change cannot make things worse — overflow is where
-they are now — but the claim "they appear in the small window" is not proven until a head unit does it.
-Worth photographing both bars in the same run as R-107.
+host decision, exactly like R-107's indicator bar. The implementation no longer relies on overflow-only
+placement, but the claim "they appear in the small window" is not proven until a head unit does it. Worth
+photographing both bars in the same run as R-107.
 
 ## 2. Reserve, or deliberately release, the seek slots
 
 `MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_NEXT` / `..._SEEK_TO_PREV`, set through
 `MediaSession.setSessionExtras`, tell the host whether to keep the prev/next positions blank when the app
-does not support them or to fill them with custom actions. **BookWave never calls `setSessionExtras` at
-all**, so it takes the default and has never made this choice.
+does not support them or to fill them with custom actions.
 
-It matters here because a book is one timeline window (ADR-0016), so Media3 reports no skip-to-next or
-skip-to-previous command — which is exactly the condition the reservation keys govern. Leaving them unset
-means the host may already be free to place custom actions there; declaring them explicitly makes the
-layout intentional rather than incidental. Cheap either way, and it should be decided alongside item 1
-rather than separately, since the two compete for the same positions.
+**Implemented in #78.** BookWave now calls `setSessionExtras` and explicitly sets both reservation keys to
+`false`. That is intentionally the same answer as the default: a book is one timeline window (ADR-0016),
+PLAY-007's skip buttons already own the meaningful backward/forward controls, and reserving empty seek
+positions would work against the output-action placement in item 1. The value of the change is making the
+layout decision explicit rather than inherited.
 
 ## 3. Say something when the server will not answer
 
-`PlaybackStateCompat.STATE_ERROR` with `setErrorMessage(code, message)` puts **a localised sentence in front
-of the driver** on the player screen. BookWave has a real use for it that it does not currently serve: a
-self-hosted server whose credentials have expired, or which is unreachable from the car's network. Today
-that presents in the car as a book that does not start.
+A self-hosted server whose credentials have expired, or which is unreachable from the car's network, can
+otherwise present as a book that simply does not start. Media3's compatibility error path gives the player
+a way to explain that failure.
 
-**Corrected 2026-09-07 — this section first said the documentation offered no way to attach a resolution
-action, so the message had to be a bare "unlock this on your phone". That was a reading of the guide
-rather than of the API.** Media3 1.11 carries `ERROR_CODE_AUTHENTICATION_EXPIRED_COMPAT` together with
+**Corrected and implemented 2026-09-07.** This section first said the documentation offered no way to attach
+a resolution action, so the message had to be a bare "unlock this on your phone". That was a reading of the
+guide rather than of the API. Media3 1.11 carries `ERROR_CODE_AUTHENTICATION_EXPIRED_COMPAT` together with
 `EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT` and `..._INTENT_COMPAT`, and `MediaSession.sendError`
-delivers them. So the credential message can carry a **labelled button**. It still opens the app rather
-than hosting a sign-in on the head unit, which is a real limit — but "with an action" and "with no way
-out" are not the same message, and the first draft understated it.
+delivers them. `PlaybackFailureReport` now classifies the credential/network cases; an expired-credential
+message carries a labelled button that opens the app, while an unreachable-server case is explained without
+pretending the head unit can fix connectivity.
 
-This is the highest-value item after #1, because it converts a silent failure into an explained one, and it
-touches no routing or playback state at all.
+This remains device-host behaviour: the mapping and session call exist in the implementation, while the
+exact way a particular Android Auto host renders the sentence/action must be checked in the car.
 
 ## 4. Metadata the player can draw and BookWave does not send
 
@@ -134,9 +133,9 @@ Items 1, 2 and 3 were applied on 2026-09-07 at the owner's request.
 
 - **1 — output actions in the primary bar.** They declare `SLOT_BACK_SECONDARY` / `SLOT_FORWARD_SECONDARY`
   before `SLOT_OVERFLOW`. `setSlots` takes a chain, so a host that will not place them in the bar still
-  shows them where it did before: the change cannot regress, only improve.
+  has overflow available as the fallback requested by BookWave.
 - **2 — the seek-slot reservation.** Now stated as `false` rather than inherited. `setSessionExtras` had
-  never been called at all.
+  never been called before this slice.
 - **3 — failure reporting.** `MediaSession.sendError` with `PlaybackFailureReport` deciding between an
   expired credential and an unreachable server, and **this document was wrong about the ceiling**: it said
   the documentation offered no way to attach a resolution action. Media3 1.11 has
@@ -150,12 +149,12 @@ Two answers to the owner's follow-up questions, both checked against the API rat
   interrupting playback**, position preserved — so the byline can change at each chapter boundary.
   [androidx/media#2993](https://github.com/androidx/media/issues/2993) reported a `MediaItem` leak on
   repeated calls; once per chapter is infrequent enough to accept, but the fixed version should be checked.
-- **Chapter-relative *progress* is not**, for the same reason item 3 below is not: the progress bar is the
-  timeline, and the timeline is the book (ADR-0016).
+- **Chapter-relative *progress* is not.** The progress bar is the timeline, and the timeline is the book
+  (ADR-0016).
 - **History cannot go in the queue slot.** Not a trade-off — `MediaSession` has no queue API at all in
   Media3, and the legacy queue is derived from the player's timeline, so nothing that is not a timeline
-  window can be put there. The reachable lever is `KEY_SUBTITLE_LINK_MEDIA_ID` pointing the byline at the
-  History node, which is item 5's open question rather than a separate one.
+  window can be put there. The reachable lever is `KEY_SUBTITLE_LINK_MEDIA_ID` pointing a metadata line at
+  a browse node, which belongs to item 4's open metadata-extras question rather than item 5's queue model.
 
 ## Still open
 
@@ -166,11 +165,12 @@ queue button, and reopening ADR-0016 deliberately if they do.
 
 ## What this survey does not claim
 
-Every item above is a documentation reading plus a look at Media3 1.11's compiled API. **None of it has
-been seen on a head unit**, and this project's own record is that the car keeps finding what the documents
-do not say — R-10 covers exactly that gap, and ADR-0029 §8's "nothing else on the player can show it" was
-itself a wrong conclusion drawn from a partial reading of an API. Treat the capacity numbers and slot
-behaviour as the host's to confirm.
+The API readings above do not prove a particular head unit's rendering. Items 1, 2 and 3 are now implemented,
+but the new secondary-slot placement, error presentation and other host-facing details have not been accepted
+on a head unit yet. This project's own record is that the car keeps finding what the documents do not say —
+R-10 covers exactly that gap, and ADR-0029 §8's original "nothing else on the player can show it" conclusion
+was itself drawn from a partial reading of an API. Treat capacity numbers and slot rendering as the host's to
+confirm.
 
 ## Sources
 
