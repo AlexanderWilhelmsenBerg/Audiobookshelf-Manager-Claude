@@ -81,9 +81,36 @@ Media3's legacy compatibility state is shared by hosts that include the media no
 
 The Android Auto browse/navigation design therefore excludes sleep and bookmark as destinations and prioritises the Car/Headset actions. Existing phone-notification behaviour is not removed merely to make a particular head unit hide an action it may source from the shared legacy state.
 
+### 8. The current output is shown by lighting an action, because nothing else on the player can show it
+
+A second device run reported that the car's player never says where the audio is going: *"the current audio output is not seen."*
+
+Two surfaces already carry it and neither reaches a driver. The headset action's display name is `Playing on AirPods Pro 3`, and §2.11 records that this head unit does not draw custom-action labels. The `Audio output` browse list marks the live route *Playing here*, which is correct and four taps away from the player.
+
+What the host draws on the player is the title, the byline and these two icons. Only the icons are BookWave's, so that is where the state goes: each output action has a lit variant carrying an indicator bar, and the pair reads as off/on because they are always drawn together. `OutputButtons.onHeadset` is the state; `onCar` is its complement, and means only *the book is somewhere BookWave cannot call a headset* — §4 is precisely the admission that a dashboard cannot be proven.
+
+**The byline is deliberately not used.** It is built once in `MediaItems.queueFor` from the session, so making it name the live route would mean replacing the `MediaItem` on every route change — rebuilding the media source of a playing book for a cosmetic gain, against product priority 1. A lit icon costs a republish of the button preferences, which the service already does when the route moves.
+
+**And the minimised player still shows neither action.** Android Auto's compact card renders the transport controls and the two slot buttons, not the overflow ones, which is the same host-layout limit as §7 — an app publishes preferences, not a layout. The only way to put an output action there is to claim `SLOT_BACK` or `SLOT_FORWARD`, and those hold PLAY-007's skips because Media3's default *previous* seeks to zero and a device run found it restarting a thirty-four-hour book. A driver losing a skip is a worse trade than a driver opening the full player, so the compact card keeps the skips.
+
+### 9. A car arriving must not leave the book paused
+
+The same run: *"when listening to something when android auto is connecting, it pauses the audio. If listening on a headset, it should not stop."*
+
+Nothing in this app pauses on car arrival. The platform does, by one of two routes — `ACTION_AUDIO_BECOMING_NOISY`, which Android broadcasts when an A2DP sink is deactivated and a car taking the active A2DP slot does exactly that, or a permanent audio-focus loss while the projection host starts. Media3 pauses for both and offers a resume for neither, which is why the book stays stopped rather than dipping.
+
+BookWave **reacts rather than predicts**. `setHandleAudioBecomingNoisy(true)` is all or nothing, so suppressing the pause would mean deciding, at the instant of a broadcast that says only that the route is *about* to change, whether the book is headed for another output or for the phone speaker — and being wrong puts a book on the phone speaker, which PLAY-002 forbids. So the platform's pause stands, the route settles, and `CarArrivalContinuity` starts the book again when the car binds. The cost is a gap under a second in place of a book that stays stopped.
+
+It refuses to resume a pause a person asked for, a pause older than its window, a route that settled on nothing but speakers, and any pause at all without a car — and it consumes the pause, because two controllers report one car.
+
+This is diagnosable rather than assumed: `PlaybackService` already logs the `PLAY_WHEN_READY_CHANGE_REASON_*` word for every pause, so `becomingNoisy` against `audioFocusLoss` is a matter of reading one log line on the next drive. The resume covers both, which is why it did not wait for that reading.
+
 ## Consequences
 
 - The root remains predictable even as the library changes.
+- A car arriving interrupts an audiobook for under a second instead of ending it.
+- The player says which output the book is on, as far as a head unit that draws no labels permits.
+- The minimised car player shows the skips rather than the output actions, and that is a chosen trade.
 - The phone speaker is not a BookWave Android Auto destination.
 - Connecting a car does not silently steal an audiobook from an already-active headset when BookWave has enough state to preserve it.
 - Pressing Car has one meaning on every supported car: hand routing back to Android.
