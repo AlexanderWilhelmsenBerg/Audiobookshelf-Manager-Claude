@@ -78,9 +78,9 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
+          - "#113 — docs/bw-doc-01-canonical-roadmap"
           - "#98 — feature/playback-settings-refresh"
           - "#93 — refactor/unified-resume-freshness"
-          - "#86 — feature/appearance-inline-expand"
           - "#78 — claude/shelfplayer-android-auth-lk77fv"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
