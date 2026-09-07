@@ -1084,7 +1084,7 @@ class PlaybackService : MediaLibraryService() {
         if (state.showCar) {
             add(
                 outputButton(
-                    icon = R.drawable.ic_car_output,
+                    icon = OutputActionIcons.car(state),
                     action = NotificationButtons.ACTION_SELECT_CAR_OUTPUT,
                     label = getString(R.string.player_car_action),
                 ),
@@ -1093,7 +1093,7 @@ class PlaybackService : MediaLibraryService() {
         if (state.showHeadset) {
             add(
                 outputButton(
-                    icon = R.drawable.ic_headset_output,
+                    icon = OutputActionIcons.headset(state),
                     action = NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT,
                     // The headset's own advertised name when the book is in one, so a long press and a
                     // screen reader both answer "which earbuds". Whether a head unit finds room to draw the
