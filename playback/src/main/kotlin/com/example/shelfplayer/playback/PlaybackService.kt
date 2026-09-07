@@ -90,9 +90,10 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Android Auto and Wear reach a [MediaLibraryService] through `onGetLibraryRoot`, which the default
  * implementation rejects. Wave 5 answers it: [AutoLibrary] builds four stable root destinations —
- * Continue, Chapters, History, Library — and [LibraryCallback] serves them. A car also needs the app to *declare* itself, which is a
- * manifest `meta-data` entry pointing at `automotive_app_desc.xml`; without it the app is invisible in the
- * dashboard no matter how good its tree is, which is exactly what a device run found.
+ * Continue, Chapters, History, Library — and [LibraryCallback] serves them. A car also needs the app to
+ * *declare* itself, which is a manifest `meta-data` entry pointing at `automotive_app_desc.xml`; without
+ * it the app is invisible in the dashboard no matter how good its tree is, which is exactly what a device
+ * run found.
  */
 @OptIn(UnstableApi::class)
 @AndroidEntryPoint
