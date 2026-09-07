@@ -60,7 +60,7 @@ private fun LazyListScope.listeningCard(settings: PlaybackSettings, actions: Pla
                 labelOf = { seconds -> secondsLabel(seconds.inWholeSeconds.toInt()) },
                 onSelected = { chosen -> actions.onSkipsChanged(settings.skips.copy(forward = chosen)) },
             )
-            autoRewindRow(settings.autoRewind, actions.onAutoRewindChanged)
+            AutoRewindRow(settings.autoRewind, actions.onAutoRewindChanged)
             InlineChoiceRow(
                 label = stringResource(R.string.settings_section_buffer),
                 options = BufferPreset.entries,
@@ -73,7 +73,7 @@ private fun LazyListScope.listeningCard(settings: PlaybackSettings, actions: Pla
 }
 
 @Composable
-private fun autoRewindRow(rewind: AutoRewind, onChanged: (AutoRewind) -> Unit) {
+private fun AutoRewindRow(rewind: AutoRewind, onChanged: (AutoRewind) -> Unit) {
     ExpandableSettingsRow(
         label = stringResource(R.string.settings_section_rewind),
         valueLabel = onOffLabel(rewind.isEnabled),
