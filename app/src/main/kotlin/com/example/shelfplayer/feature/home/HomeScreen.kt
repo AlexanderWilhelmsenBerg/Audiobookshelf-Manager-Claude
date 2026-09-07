@@ -43,13 +43,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -141,6 +139,8 @@ fun HomeRoute(
     onBookPlaySelected: (LibraryItemId) -> Unit,
     onSeriesSelected: (SeriesId) -> Unit,
     onProfilesSelected: () -> Unit,
+    onDownloadsSelected: () -> Unit,
+    onLoopboundSelected: () -> Unit,
     onSettingsSelected: () -> Unit,
     onSignInSelected: () -> Unit,
     playbackMessage: String?,
@@ -174,6 +174,8 @@ fun HomeRoute(
             onFocusCleared = viewModel::onFocusCleared,
             onRefresh = viewModel::refresh,
             onProfilesSelected = onProfilesSelected,
+            onDownloadsSelected = onDownloadsSelected,
+            onLoopboundSelected = onLoopboundSelected,
             onSettingsSelected = onSettingsSelected,
             onSignInSelected = onSignInSelected,
         ),
@@ -276,7 +278,7 @@ fun HomeScreen(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                     title = {
                         BoxWithConstraints {
-                            // Five 48 dp actions can leave less than a logo's width on a compact phone. The
+                            // Four 48 dp actions can leave less than a logo's width on a compact phone. The
                             // title and status are information; the adjacent, duplicate brand mark is not.
                             val showBrandMark = maxWidth >= HOME_MARK_MIN_TITLE_WIDTH &&
                                 LocalDensity.current.fontScale <= HOME_MARK_MAX_FONT_SCALE
@@ -350,18 +352,7 @@ fun HomeScreen(
                                     .semantics { if (syncing) liveRegion = LiveRegionMode.Polite },
                             )
                         }
-                        IconButton(onClick = actions.onProfilesSelected) {
-                            Icon(
-                                imageVector = Icons.Filled.AccountCircle,
-                                contentDescription = stringResource(R.string.home_profiles),
-                            )
-                        }
-                        IconButton(onClick = actions.onSettingsSelected) {
-                            Icon(
-                                imageVector = Icons.Filled.Settings,
-                                contentDescription = stringResource(R.string.home_settings),
-                            )
-                        }
+                        HomeOverflowMenu(actions = actions)
                     },
                 )
                 HomeFilters(uiState = uiState, actions = actions)
