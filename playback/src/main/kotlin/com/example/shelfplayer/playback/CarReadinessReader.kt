@@ -42,10 +42,17 @@ class CarConnections @Inject constructor(private val clock: AppClock) {
 
     private val bound = AtomicInteger()
 
-    /** Called from the media session's connect callback, which is any thread Media3 chooses. */
-    fun onConnected() {
+    /**
+     * Called from the media session's connect callback, which is any thread Media3 chooses.
+     *
+     * @return whether this was a car *arriving* — the 0-to-1 transition — rather than a second controller
+     *   joining one that is already bound. Both of a car's controllers call this, and `CarArrivalContinuity`
+     *   needs the arrival specifically: *"a car is connected"* stays true for a whole drive, and a review
+     *   found that resuming any recent system pause while it holds would fight an incoming call.
+     */
+    fun onConnected(): Boolean {
         last = clock.now()
-        bound.incrementAndGet()
+        return bound.getAndIncrement() == 0
     }
 
     /**

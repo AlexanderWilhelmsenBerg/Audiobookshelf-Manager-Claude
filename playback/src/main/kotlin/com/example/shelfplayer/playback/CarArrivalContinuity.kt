@@ -53,6 +53,19 @@ internal class CarArrivalContinuity(private val window: Duration = DEFAULT_WINDO
 
     private var systemPausedAt: Instant? = null
 
+    private var carArrivedAt: Instant? = null
+
+    /**
+     * A car *arrived* — the 0-to-1 binding, not a second controller joining one already bound.
+     *
+     * A review found the difference matters more than it looks. "A car is connected" stays true for a whole
+     * drive, so resuming any recent system pause while it held would have restarted the book after an
+     * incoming call took audio focus. The resume is therefore paired to an arrival, and consumed by one.
+     */
+    fun onCarArrived(at: Instant) {
+        carArrivedAt = at
+    }
+
     /**
      * A pause nobody asked for — an audio-focus loss, or the route going noisy.
      *
@@ -99,11 +112,52 @@ internal class CarArrivalContinuity(private val window: Duration = DEFAULT_WINDO
             systemPausedAt = null
             return false
         }
-        // No active non-speaker route *yet*. Keep the pause: this is the hand-off still in flight, and
-        // dropping it here is what left the book stopped in the ordering the review found.
-        if (outputs.none { output -> output.isActive && !output.isSpeaker }) return false
+        // Both clauses keep the pause rather than spending it. The first is a pause that has nothing to do
+        // with a car and may yet be paired with one; the second is the hand-off still in flight, and
+        // dropping it there is what left the book stopped in the ordering the first review found.
+        if (!pairsWithACarArrival(paused) || !somewhereToPlay(outputs)) return false
         systemPausedAt = null
+        // One resume per arrival. Without this, a resume the platform immediately undoes — audio focus is
+        // still held elsewhere — would be re-recorded as a system pause and resumed again on the next route
+        // publication, indefinitely.
+        carArrivedAt = null
         return true
+    }
+
+    /**
+     * Whether a car arriving is a plausible cause of this pause, in either order.
+     *
+     * The two events are the same happening seen twice, and which one the app hears first is not fixed:
+     * the platform can move the route before the controller binds or after it. So they are paired by being
+     * close together rather than by an order, within a window tighter than [window] — the point is to
+     * exclude a pause that merely *happened during a drive*, which is what a phone call is.
+     */
+    private fun pairsWithACarArrival(paused: Instant): Boolean {
+        val arrived = carArrivedAt ?: return false
+        return Duration.between(paused, arrived).abs() <= PAIRING_WINDOW
+    }
+
+    /**
+     * Whether there is anywhere BookWave is willing to play, which PLAY-002 makes a real question: the
+     * phone speaker is never an answer.
+     *
+     * **Route evidence when there is any, connection evidence when there is none**, and a review is why.
+     * Below API 33 `AudioOutputRouter` cannot ask the platform which route is live, and with Automatic
+     * routing it has no selection to fall back on either — so it marks *every* output inactive and an
+     * `isActive` test can never pass. minSdk is 26, so that silently killed the resume across six API
+     * levels.
+     *
+     * The fallback is weaker on purpose, and the weakness is the platform's rather than a shortcut: with no
+     * route to read, a connected non-speaker output is the whole of what is knowable. It is still enough
+     * for the guarantee that matters, because Android does not choose the built-in speaker while another
+     * output is connected — so "a non-speaker is connected" is also "the book will not come out of the
+     * phone". What it cannot promise is *which* non-speaker, which is R-106's business and a car's to
+     * settle.
+     */
+    private fun somewhereToPlay(outputs: List<AudioOutput>): Boolean {
+        val active = outputs.filter(AudioOutput::isActive)
+        if (active.isEmpty()) return outputs.any { output -> !output.isSpeaker }
+        return active.any { output -> !output.isSpeaker }
     }
 
     private companion object {
@@ -112,5 +166,14 @@ internal class CarArrivalContinuity(private val window: Duration = DEFAULT_WINDO
          * being resumed is recognisably the one the car caused.
          */
         val DEFAULT_WINDOW: Duration = Duration.ofSeconds(12)
+
+        /**
+         * How far apart the pause and the arrival may be and still be one event.
+         *
+         * Tighter than [DEFAULT_WINDOW], which measures how long afterwards the resume may still be
+         * attempted while the route settles. This one decides whether there is anything to attempt at all,
+         * and every second of it is a second in which an unrelated pause can be mistaken for the car's.
+         */
+        val PAIRING_WINDOW: Duration = Duration.ofSeconds(6)
     }
 }

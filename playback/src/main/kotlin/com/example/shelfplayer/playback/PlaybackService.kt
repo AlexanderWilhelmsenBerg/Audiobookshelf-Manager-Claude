@@ -2018,7 +2018,11 @@ class PlaybackService : MediaLibraryService() {
             // `gearhead` never appears here, Android Auto never reached the app at all and nothing in the
             // tree can be at fault. See `CarReadiness`.
             if (controller.isCar()) {
-                carConnections.onConnected()
+                // Product priority 1 — the *arrival* rather than the connection. Both of a car's
+                // controllers reach this, and only the first is a car turning up; see
+                // `CarArrivalContinuity.onCarArrived` for why the difference decides whether an incoming
+                // call's pause gets undone.
+                if (carConnections.onConnected()) carContinuity.onCarArrived(clock.now())
                 logger.info(
                     LogCategory.Playback,
                     "A car connected to the media session",
