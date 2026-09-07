@@ -11,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.CommandButton
+import androidx.media3.session.MediaConstants
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
@@ -267,6 +268,7 @@ class PlaybackService : MediaLibraryService() {
             // the notification to see where they are gets no response and no explanation.
             .apply { launchIntent()?.let(::setSessionActivity) }
             .build()
+        publishSlotReservations()
         // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
         // singleton in this process, so it is the same object the app's UI drives.
         sleepTimer.attach(exoPlayer)
@@ -1020,6 +1022,31 @@ class PlaybackService : MediaLibraryService() {
         audioOutputs.select(hold)
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-002 — telling the car **not** to hold the seek slots empty.
+     *
+     * A car reserves space for seek-to-previous and seek-to-next. An app that does not support them can
+     * either have that space left blank or have its own custom actions placed there, and
+     * `EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_*` is the switch. A book is one timeline window (ADR-0016), so
+     * Media3 reports neither command and this app is squarely in that case.
+     *
+     * **`false` is the answer, and it is the same as the default — which is the point.** This app had never
+     * called `setSessionExtras` at all, so the layout it got in a car was inherited rather than chosen, and
+     * PLAY-007's skip buttons occupy those two positions precisely because Media3's own *previous* seeks to
+     * zero and a device run caught it restarting a thirty-four-hour book. Reserving them would invite a
+     * host to blank the positions those buttons live in. Written down explicitly so the next reader finds a
+     * decision instead of an absence.
+     */
+    private fun publishSlotReservations() {
+        val current = session ?: return
+        current.setSessionExtras(
+            Bundle().apply {
+                putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_PREV, false)
+                putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_NEXT, false)
+            },
+        )
+    }
+
     private fun publishMediaButtons() {
         val current = session ?: return
         current.setMediaButtonPreferences(mediaButtons())
@@ -1071,9 +1098,13 @@ class PlaybackService : MediaLibraryService() {
     /**
      * PRODUCT_SPEC PLAY-002 — the car button and the headset button, or as many of them as apply.
      *
-     * `SLOT_OVERFLOW` is not a preference here but the requirement:
-     * `CommandButton.getCustomLayoutFromMediaButtonPreferences` keeps the back and forward slot buttons and
-     * then only buttons declaring that slot, and the legacy layout is what Android Auto renders.
+     * **They ask for a primary-bar slot first and overflow second.** This used to declare `SLOT_OVERFLOW`
+     * alone, on the belief that the legacy layout Android Auto renders keeps nothing else — and a device
+     * run showed the cost: neither action appeared in the minimised control bar, which draws the transport
+     * row and not the overflow menu. Media3 has six slots, and `SLOT_BACK_SECONDARY` /
+     * `SLOT_FORWARD_SECONDARY` are the further primary-bar positions that take the bar to the five
+     * controls the car design guidance documents. `setSlots` takes a chain, so naming overflow second
+     * means a host that will not place them there still shows them where it did before.
      *
      * Absent rather than disabled when there is nothing to act on. A head unit draws a disabled custom
      * action as a grey square with no explanation, and a driver cannot ask it why; one fewer button is a
@@ -1087,6 +1118,7 @@ class PlaybackService : MediaLibraryService() {
                     icon = OutputActionIcons.car(state),
                     action = NotificationButtons.ACTION_SELECT_CAR_OUTPUT,
                     label = getString(R.string.player_car_action),
+                    slot = CommandButton.SLOT_BACK_SECONDARY,
                 ),
             )
         }
@@ -1102,6 +1134,7 @@ class PlaybackService : MediaLibraryService() {
                     label = state.headsetName
                         ?.let { name -> getString(R.string.player_headset_action, name) }
                         ?: getString(R.string.player_headset_action_unknown),
+                    slot = CommandButton.SLOT_FORWARD_SECONDARY,
                 ),
             )
         }
@@ -1115,12 +1148,16 @@ class PlaybackService : MediaLibraryService() {
      * invite a head unit to draw something else entirely. `setCustomIconResId` is what actually reaches the
      * car — Media3 builds the legacy `PlaybackStateCompat.CustomAction` from that resource.
      */
-    private fun outputButton(icon: Int, action: String, label: String): CommandButton =
+    private fun outputButton(icon: Int, action: String, label: String, slot: Int): CommandButton =
         CommandButton.Builder(CommandButton.ICON_UNDEFINED)
             .setCustomIconResId(icon)
             .setDisplayName(label)
             .setSessionCommand(SessionCommand(action, Bundle.EMPTY))
-            .setSlots(CommandButton.SLOT_OVERFLOW)
+            // Two slots, in preference order, and the second is why this is safe. `setSlots` is a *chain*:
+            // the host takes the first it can honour. So a head unit that gives these a primary-bar
+            // position draws them beside the transport controls — where the minimised bar can reach them —
+            // and one that cannot falls back to the overflow menu, which is exactly where they were.
+            .setSlots(slot, CommandButton.SLOT_OVERFLOW)
             .setEnabled(true)
             .build()
 
