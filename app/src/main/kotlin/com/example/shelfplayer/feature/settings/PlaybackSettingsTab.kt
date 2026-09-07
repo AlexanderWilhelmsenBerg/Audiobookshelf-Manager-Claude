@@ -73,7 +73,7 @@ private fun LazyListScope.listeningCard(settings: PlaybackSettings, actions: Pla
 }
 
 @Composable
-private fun autoRewindRow(rewind: AutoRewind, onChanged: (AutoRewind) -> Unit) {
+private fun AutoRewindRow(rewind: AutoRewind, onChanged: (AutoRewind) -> Unit) {
     ExpandableSettingsRow(
         label = stringResource(R.string.settings_section_rewind),
         valueLabel = onOffLabel(rewind.isEnabled),
