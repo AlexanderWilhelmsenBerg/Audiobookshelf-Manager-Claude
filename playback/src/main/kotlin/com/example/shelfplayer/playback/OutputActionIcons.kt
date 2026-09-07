@@ -18,7 +18,7 @@ package com.example.shelfplayer.playback
  */
 internal object OutputActionIcons {
 
-    /** Lit when the book is not on a headset, which on a connected car is the car. See [OutputButtons]. */
+    /** Lit only when [OutputButtons] has enough route evidence to call the current output Car. */
     fun car(state: OutputButtons): Int = if (state.onCar) R.drawable.ic_car_output_active else R.drawable.ic_car_output
 
     /** Lit when the book is coming out of a headset, held or chosen. */
