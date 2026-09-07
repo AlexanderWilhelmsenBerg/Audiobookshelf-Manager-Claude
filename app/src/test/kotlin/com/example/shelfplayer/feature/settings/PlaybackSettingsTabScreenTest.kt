@@ -4,7 +4,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
-import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -35,7 +34,7 @@ class PlaybackSettingsTabScreenTest {
     fun `default speed is collapsed to its current value`() {
         render()
 
-        composeRule.onNodeWithContentDescription("Default speed, 1.0×").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Default speed, 1×").assertIsDisplayed()
         composeRule.onNodeWithText("1.25×").assertDoesNotExist()
     }
 
@@ -46,7 +45,7 @@ class PlaybackSettingsTabScreenTest {
             actions = actions(onSpeedChanged = { chosen = it }),
         )
 
-        composeRule.onNodeWithContentDescription("Default speed, 1.0×").performClick()
+        composeRule.onNodeWithContentDescription("Default speed, 1×").performClick()
         composeRule.onNodeWithText("1.25×").assertIsDisplayed()
         composeRule.onNodeWithText("1.25×").performClick()
 
@@ -59,7 +58,7 @@ class PlaybackSettingsTabScreenTest {
         render()
 
         composeRule.onNodeWithText("Very high").assertDoesNotExist()
-        scrollToDescription("Buffer, Automatic")
+        scrollTo("Buffer")
         composeRule.onNodeWithContentDescription("Buffer, Automatic").performClick()
         composeRule.onNodeWithText("Very high").assertIsDisplayed()
     }
@@ -93,7 +92,7 @@ class PlaybackSettingsTabScreenTest {
         var chosen: BufferPreset? = null
         render(actions = actions(onBufferChanged = { chosen = it }))
 
-        scrollToDescription("Buffer, Automatic")
+        scrollTo("Buffer")
         composeRule.onNodeWithContentDescription("Buffer, Automatic").performClick()
         composeRule.onNodeWithText("High").performClick()
 
@@ -102,9 +101,6 @@ class PlaybackSettingsTabScreenTest {
 
     private fun scrollTo(text: String) =
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(text, substring = true))
-
-    private fun scrollToDescription(description: String) =
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription(description))
 
     private fun render(
         actions: PlaybackSettingsActions = actions(),
