@@ -195,6 +195,40 @@ class AudioOutputRolesTest {
         assertTrue(state.onCar)
     }
 
+    /** The other half of the evidence: a `TYPE_BUS` route is the car's own bus and needs no controller. */
+    @Test
+    fun `a car audio bus lights the car`() {
+        val bus = car.copy(isActive = true)
+        val state = AudioOutputRoles.buttons(listOf(bus), selectedId = bus.id, carConnected = false)
+
+        assertFalse(state.onHeadset)
+        assertTrue(state.onCar)
+    }
+
+    /**
+     * The second narrowing of the same mistake. Excluding speakers and unknown routes was not enough:
+     * `OutputDevices.roleOf` sends USB devices, USB accessories, docks and HDMI to `Other` through its
+     * `else`, and every one of them was lighting a confident car glyph over something that was not the car.
+     */
+    @Test
+    fun `a dock carrying the audio lights neither action`() {
+        val active = dock.copy(isActive = true)
+        val state = AudioOutputRoles.buttons(listOf(active, buds), selectedId = active.id, carConnected = true)
+
+        assertFalse(state.onHeadset)
+        assertFalse(state.onCar)
+    }
+
+    /** And a dock is still not a car when a head unit is bound and has its own bus alongside it. */
+    @Test
+    fun `a dock does not borrow the car glyph from a connected car`() {
+        val active = dock.copy(isActive = true)
+        val state = AudioOutputRoles.buttons(listOf(active, car), selectedId = active.id, carConnected = true)
+
+        assertFalse(state.onCar)
+        assertTrue(state.showCar)
+    }
+
     private fun output(
         id: String,
         name: String,

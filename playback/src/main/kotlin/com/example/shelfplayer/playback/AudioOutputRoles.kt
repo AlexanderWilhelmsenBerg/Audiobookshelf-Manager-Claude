@@ -94,11 +94,19 @@ internal object AudioOutputRoles {
             showHeadset = availableHeadsets.isNotEmpty(),
             headsetName = headsetRoute?.displayName,
             onHeadset = headsetRoute != null,
-            // Evidence rather than "not the headset". A review found the complement lighting the car while
-            // the *speaker* carried the audio — reachable, because `AudioOutputRouter.select` deliberately
-            // accepts the speaker so the phone's own chooser works. Three conditions, and the first two are
-            // the ones the complement skipped: the route has to be known, and it has to not be a speaker.
-            onCar = current != null && !current.isSpeaker && headsetRoute == null,
+            // **Positive evidence for a car**, not the absence of everything else. This predicate has now
+            // been narrowed twice from the same mistake: it began as `!onHeadset`, which lit the car for the
+            // phone speaker, and the speaker guard that replaced it still lit the car for every *known
+            // non-car* route — `OutputDevices.roleOf` sends USB devices, USB accessories, docks and HDMI to
+            // `Other` through its `else`, so a DAC or a dock carrying the book drew a confident car glyph.
+            //
+            // Only two things are evidence. A `TYPE_BUS` route **is** the car's own audio bus, whether or
+            // not a controller is bound. And the dashboard case: an ambiguous A2DP route nobody selected
+            // while a car is bound, which ADR-0029 §4 already refuses to call a headset.
+            //
+            // Everything else leaves both glyphs dark, which the [OutputButtons] KDoc explains is a
+            // legitimate state — an indicator that is sometimes silent beats one that is sometimes wrong.
+            onCar = current?.role == AudioOutputRole.Car || activeLooksLikeCar,
         )
     }
 }
@@ -111,10 +119,13 @@ internal object AudioOutputRoles {
  * `onHeadset` could be read as `headsetName != null`, and the two happen to agree today only because a
  * route BookWave is confident about always has an advertised name — too thin a coincidence for a light.
  *
- * **They are not complements, and a review is why.** `onCar` began as `!onHeadset`, which lit the car
+ * **They are not complements, and two reviews are why.** `onCar` began as `!onHeadset`, which lit the car
  * whenever the book was anywhere BookWave could not call a headset — including the phone speaker, which
  * `AudioOutputRouter.select` accepts so the phone's own chooser works, and including a route the platform
- * had not reported at all. Both cases drew a confident car glyph over something that was not the car.
+ * had not reported at all. Excluding those two still left every *known non-car* route lighting the car: a
+ * USB DAC, a dock and an HDMI sink all reach `AudioOutputRole.Other` through `roleOf`'s `else`. Each round
+ * drew a confident car glyph over something that was not the car, so [onCar] now asks for evidence *of a
+ * car* — the `TYPE_BUS` bus, or the ambiguous dashboard — rather than for the failure of other tests.
  *
  * So **neither being lit is a legitimate state**: the speaker carries the audio, or the route is unknown.
  * An indicator that is sometimes silent is worth more than one that is always sure and sometimes wrong.
