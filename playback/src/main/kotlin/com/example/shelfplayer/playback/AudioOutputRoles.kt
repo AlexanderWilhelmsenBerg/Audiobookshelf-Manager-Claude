@@ -94,6 +94,11 @@ internal object AudioOutputRoles {
             showHeadset = availableHeadsets.isNotEmpty(),
             headsetName = headsetRoute?.displayName,
             onHeadset = headsetRoute != null,
+            // Evidence rather than "not the headset". A review found the complement lighting the car while
+            // the *speaker* carried the audio — reachable, because `AudioOutputRouter.select` deliberately
+            // accepts the speaker so the phone's own chooser works. Three conditions, and the first two are
+            // the ones the complement skipped: the route has to be known, and it has to not be a speaker.
+            onCar = current != null && !current.isSpeaker && headsetRoute == null,
         )
     }
 }
@@ -101,26 +106,33 @@ internal object AudioOutputRoles {
 /**
  * Visible state of the two output actions.
  *
- * [onHeadset] is *which one is lit*, and it is the answer to the device report that the current output
- * could not be seen. It is deliberately a field of its own rather than `headsetName != null` read at the
- * call site: the two happen to agree today because a route BookWave is confident about always has an
- * advertised name, and a button lighting up is too important to rest on that coincidence.
+ * [onHeadset] and [onCar] are *which one is lit*, and they answer the device report that the current output
+ * could not be seen anywhere on the car's player. Both are fields rather than derived at the call site:
+ * `onHeadset` could be read as `headsetName != null`, and the two happen to agree today only because a
+ * route BookWave is confident about always has an advertised name — too thin a coincidence for a light.
  *
- * There is no `onCar` beside it. "Not on a headset" is the only thing this can honestly say about the car,
- * because ADR-0029 §4 is exactly the admission that an ambiguous A2DP endpoint cannot be proven to be a
- * dashboard — so the car button lights when the book is somewhere BookWave cannot call a headset, which is
- * what [OutputButtons.onCar] means and all it means.
+ * **They are not complements, and a review is why.** `onCar` began as `!onHeadset`, which lit the car
+ * whenever the book was anywhere BookWave could not call a headset — including the phone speaker, which
+ * `AudioOutputRouter.select` accepts so the phone's own chooser works, and including a route the platform
+ * had not reported at all. Both cases drew a confident car glyph over something that was not the car.
+ *
+ * So **neither being lit is a legitimate state**: the speaker carries the audio, or the route is unknown.
+ * An indicator that is sometimes silent is worth more than one that is always sure and sometimes wrong.
  */
 internal data class OutputButtons(
     val showCar: Boolean,
     val showHeadset: Boolean,
     val headsetName: String?,
     val onHeadset: Boolean = false,
+    val onCar: Boolean = false,
 ) {
-    /** Lit when the book is not on a headset, which on a connected car is the car. See the class KDoc. */
-    val onCar: Boolean get() = !onHeadset
-
     companion object {
-        val None = OutputButtons(showCar = false, showHeadset = false, headsetName = null, onHeadset = false)
+        val None = OutputButtons(
+            showCar = false,
+            showHeadset = false,
+            headsetName = null,
+            onHeadset = false,
+            onCar = false,
+        )
     }
 }

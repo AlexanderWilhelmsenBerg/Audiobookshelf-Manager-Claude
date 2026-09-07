@@ -160,8 +160,31 @@ class AudioOutputRolesTest {
     }
 
     /**
+     * The defect a review found in the complement: `onCar` was `!onHeadset`, so the phone speaker carrying
+     * the audio lit the car. `AudioOutputRouter.select` accepts the speaker so the phone's own chooser
+     * works, which is what makes this reachable rather than theoretical.
+     */
+    @Test
+    fun `a speaker carrying the audio lights neither action`() {
+        val active = speaker.copy(isActive = true)
+        val state = AudioOutputRoles.buttons(listOf(active, buds), selectedId = active.id, carConnected = true)
+
+        assertFalse(state.onHeadset)
+        assertFalse(state.onCar)
+    }
+
+    /** A route the platform has not reported is not evidence for either glyph. */
+    @Test
+    fun `an unknown route lights neither action`() {
+        val state = AudioOutputRoles.buttons(listOf(buds, car), selectedId = null, carConnected = true)
+
+        assertFalse(state.onHeadset)
+        assertFalse(state.onCar)
+    }
+
+    /**
      * The dashboard case. An ambiguous A2DP route nobody selected, with a car bound, is not a headset —
-     * ADR-0029 §4 — so the car is what lights up, which is all "on the car" can honestly mean.
+     * ADR-0029 §4 — and it is not a speaker either, so the car is what lights up.
      */
     @Test
     fun `an unselected ambiguous route with a car bound lights the car`() {

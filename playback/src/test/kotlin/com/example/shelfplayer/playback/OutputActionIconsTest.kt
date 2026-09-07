@@ -32,6 +32,7 @@ class OutputActionIconsTest {
             showHeadset = true,
             headsetName = "Earbuds",
             onHeadset = true,
+            onCar = false,
         )
 
         assertEquals(R.drawable.ic_headset_output_active, OutputActionIcons.headset(onHeadset))
@@ -45,28 +46,29 @@ class OutputActionIconsTest {
             showHeadset = true,
             headsetName = null,
             onHeadset = false,
+            onCar = true,
         )
 
         assertEquals(R.drawable.ic_car_output_active, OutputActionIcons.car(onCar))
         assertEquals(R.drawable.ic_headset_output, OutputActionIcons.headset(onCar))
     }
 
-    /** Exactly one of the two is ever lit, because `onCar` is `onHeadset`'s complement by construction. */
+    /**
+     * **Neither lit is a legitimate state**, and a review is why: `onCar` used to be `!onHeadset`, which
+     * drew a confident car glyph while the phone speaker carried the audio. Both flags false is what the
+     * indicator now says when it does not know, and the icons must render that rather than guess.
+     */
     @Test
-    fun `never both lit and never neither`() {
-        listOf(true, false).forEach { onHeadset ->
-            val state = OutputButtons(
-                showCar = true,
-                showHeadset = true,
-                headsetName = null,
-                onHeadset = onHeadset,
-            )
-            val litCount = listOf(
-                OutputActionIcons.car(state) == R.drawable.ic_car_output_active,
-                OutputActionIcons.headset(state) == R.drawable.ic_headset_output_active,
-            ).count { it }
+    fun `neither glyph is lit when neither route is known to have the audio`() {
+        val unknown = OutputButtons(
+            showCar = true,
+            showHeadset = true,
+            headsetName = null,
+            onHeadset = false,
+            onCar = false,
+        )
 
-            assertEquals(1, litCount, "onHeadset=$onHeadset lit $litCount actions")
-        }
+        assertEquals(R.drawable.ic_car_output, OutputActionIcons.car(unknown))
+        assertEquals(R.drawable.ic_headset_output, OutputActionIcons.headset(unknown))
     }
 }
