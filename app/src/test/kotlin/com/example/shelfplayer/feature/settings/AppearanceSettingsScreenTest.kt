@@ -5,7 +5,6 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -121,7 +120,7 @@ class AppearanceSettingsScreenTest {
             "shelves that sit directly on the background",
             "The navigation bar, the top bars and the mini player",
         ).forEach { sentence ->
-            composeRule.onNodeWithText(sentence, substring = true).assertDoesNotExist()
+            composeRule.onAllNodesWithText(sentence, substring = true).assertCountEquals(0)
         }
     }
 
@@ -141,7 +140,7 @@ class AppearanceSettingsScreenTest {
 
         AccentColor.entries.forEach { accent ->
             composeRule.onNodeWithContentDescription(accent.name).assertIsDisplayed()
-            composeRule.onNodeWithText(accent.name).assertDoesNotExist()
+            composeRule.onAllNodesWithText(accent.name).assertCountEquals(0)
         }
     }
 
@@ -236,11 +235,11 @@ class AppearanceSettingsScreenTest {
 
         AccentColor.entries.forEach { accent ->
             composeRule.onNodeWithContentDescription(accent.name).assertIsDisplayed()
-            composeRule.onNodeWithText(accent.name).assertDoesNotExist()
+            composeRule.onAllNodesWithText(accent.name).assertCountEquals(0)
         }
         themes().forEach { theme ->
             composeRule.onNodeWithContentDescription(theme.name).assertIsDisplayed()
-            composeRule.onNodeWithText(theme.name).assertDoesNotExist()
+            composeRule.onAllNodesWithText(theme.name).assertCountEquals(0)
         }
     }
 
@@ -285,7 +284,7 @@ class AppearanceSettingsScreenTest {
         )
 
         scrollToDescription("Blur, Off")
-        composeRule.onNodeWithContentDescription("Blur").assertDoesNotExist()
+        composeRule.onAllNodes(hasContentDescription("Blur")).assertCountEquals(0)
         composeRule.onNodeWithContentDescription("Blur, Off").performClick()
         scrollToDescription("Blur")
         composeRule.onNodeWithContentDescription("Blur").assertIsDisplayed()
@@ -310,13 +309,13 @@ class AppearanceSettingsScreenTest {
         render(actions = AppearanceActions(onTextContrastChanged = { chosen = it }))
 
         scrollToDescription("Text contrast, Automatic")
-        composeRule.onNodeWithText("Soft").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Soft").assertCountEquals(0)
         composeRule.onNodeWithContentDescription("Text contrast, Automatic").performClick()
         composeRule.onNodeWithText("Soft").assertIsDisplayed()
         composeRule.onNodeWithText("High").performClick()
 
         assertEquals(TextContrast.High, chosen)
-        composeRule.onNodeWithText("Soft").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Soft").assertCountEquals(0)
     }
 
     @Test
@@ -351,7 +350,7 @@ class AppearanceSettingsScreenTest {
     fun `no bundled themes leaves the app's own looks and no talk of pictures`() {
         render(state = AppearanceUiState(backgroundThemes = emptyList()))
 
-        composeRule.onNodeWithText("scrolls with you", substring = true).assertDoesNotExist()
+        composeRule.onAllNodesWithText("scrolls with you", substring = true).assertCountEquals(0)
 
         open("Theme, System")
         composeRule.onNodeWithText("AMOLED").assertIsDisplayed()
@@ -383,12 +382,12 @@ class AppearanceSettingsScreenTest {
     fun `a text row opens its list in place and closes it on a choice`() {
         render()
 
-        composeRule.onNodeWithText("AMOLED").assertDoesNotExist()
+        composeRule.onAllNodesWithText("AMOLED").assertCountEquals(0)
 
         open("Theme, System")
         composeRule.onNodeWithText("AMOLED").assertIsDisplayed()
         composeRule.onNodeWithText("Dark").performClick()
-        composeRule.onNodeWithText("AMOLED").assertDoesNotExist()
+        composeRule.onAllNodesWithText("AMOLED").assertCountEquals(0)
     }
 
     @Test
@@ -399,7 +398,7 @@ class AppearanceSettingsScreenTest {
         open("Theme, System")
         composeRule.onNodeWithText("AMOLED").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Theme, System").performClick()
-        composeRule.onNodeWithText("AMOLED").assertDoesNotExist()
+        composeRule.onAllNodesWithText("AMOLED").assertCountEquals(0)
         assertEquals(null, chosen)
     }
 
@@ -410,7 +409,7 @@ class AppearanceSettingsScreenTest {
         open("Accent colour, Teal")
         composeRule.onNodeWithContentDescription("Plum").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Plum").performClick()
-        composeRule.onNodeWithContentDescription("Plum").assertDoesNotExist()
+        composeRule.onAllNodes(hasContentDescription("Plum")).assertCountEquals(0)
     }
 
     @Test
