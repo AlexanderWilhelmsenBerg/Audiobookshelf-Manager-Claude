@@ -1,0 +1,106 @@
+name: PR 98 resource cleanup runner
+
+on:
+  push:
+    branches:
+      - diagnostic/pr98-resource-cleanup-runner
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/playback-settings-refresh
+          fetch-depth: 0
+      - name: Remove resources made obsolete by the Playback refresh
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          string_names = {
+              "settings_section_downloads",
+              "settings_downloads_hint",
+              "settings_downloads_smart_hint",
+              "settings_downloads_delete_previous_hint",
+              "settings_downloads_retention_hint",
+              "settings_section_network",
+              "settings_network_hint",
+              "settings_section_car",
+              "settings_car_hint",
+              "sleep_timer_settings",
+              "sleep_timer_rewind_hint",
+              "sleep_timer_shake_hint",
+              "sleep_timer_history_empty",
+              "sleep_timer_history_hint",
+              "settings_focus_hint",
+              "settings_startup_hint",
+              "settings_device_kind_wired",
+              "settings_device_kind_bluetooth",
+              "settings_device_kind_car",
+              "settings_device_kind_hearing_aid",
+              "settings_device_kind_speaker",
+              "settings_device_kind_other",
+              "settings_device_speaker_warning",
+              "settings_section_speed",
+              "settings_speed_hint",
+              "settings_section_skip",
+              "settings_skip_hint",
+              "settings_rewind_hint",
+              "settings_section_series",
+              "settings_series_hint",
+              "settings_buffer_hint",
+              "settings_buffer_automatic_range",
+              "settings_finished_hint",
+              "settings_finished_inherited",
+              "settings_finished_inherited_none",
+              "settings_finished_no_libraries",
+          }
+          plural_names = {"settings_buffer_range"}
+
+          changed = []
+          for path in sorted(Path("app/src/main/res").glob("values*/*.xml")):
+              text = path.read_text(encoding="utf-8")
+              original = text
+              for name in string_names:
+                  text = re.sub(
+                      rf'^[ \t]*<string name="{re.escape(name)}">.*?</string>[ \t]*\n?',
+                      "",
+                      text,
+                      flags=re.MULTILINE,
+                  )
+              for name in plural_names:
+                  text = re.sub(
+                      rf'^[ \t]*<plurals name="{re.escape(name)}">.*?^[ \t]*</plurals>[ \t]*\n?',
+                      "",
+                      text,
+                      flags=re.MULTILINE | re.DOTALL,
+                  )
+              if text != original:
+                  path.write_text(text, encoding="utf-8")
+                  changed.append(str(path))
+
+          leftovers = []
+          for path in sorted(Path("app/src/main/res").glob("values*/*.xml")):
+              text = path.read_text(encoding="utf-8")
+              for name in string_names | plural_names:
+                  if f'name="{name}"' in text:
+                      leftovers.append(f"{path}: {name}")
+          if leftovers:
+              raise SystemExit("Targeted resource definitions remain:\n" + "\n".join(leftovers))
+          if not changed:
+              raise SystemExit("No targeted resource definitions were removed")
+          print("Changed resource files:")
+          print("\n".join(changed))
+          PY
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/res
+          git commit -m "Remove obsolete Playback settings resources"
+          git push origin HEAD:feature/playback-settings-refresh
