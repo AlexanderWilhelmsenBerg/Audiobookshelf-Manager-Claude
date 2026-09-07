@@ -2,9 +2,14 @@
 
 Written 2026-09-07, after the device run that produced ADR-0029 §8 and R-106/R-107.
 
-This is a **survey and a set of recommendations**, not a decision. Nothing here is implemented. Each item
-says what the platform documents, what BookWave does today, and what it would cost — and, where the
-documentation stops short, it says that instead of guessing (product priority 6).
+This began as a **survey and a set of recommendations**, not a decision. Items 1, 2 and 3 have since been
+built at the owner's request — see *What has since been built* — and the rest stand as recommendations.
+Each item says what the platform documents, what BookWave does today, and what it would cost; where the
+documentation stops short it says so instead of guessing (product priority 6).
+
+**The numbering here is the recommended order**, which the sections now follow. An earlier draft numbered
+them in the order they were written and then gave a different priority order at the end, which meant two
+schemes for the same five items.
 
 ## What the player screen actually consists of
 
@@ -51,7 +56,7 @@ host decision, exactly like R-107's indicator bar. The change cannot make things
 they are now — but the claim "they appear in the small window" is not proven until a head unit does it.
 Worth photographing both bars in the same run as R-107.
 
-## 2. Reserve, or deliberately release, the skip slots
+## 2. Reserve, or deliberately release, the seek slots
 
 `MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_NEXT` / `..._SEEK_TO_PREV`, set through
 `MediaSession.setSessionExtras`, tell the host whether to keep the prev/next positions blank when the app
@@ -64,7 +69,44 @@ means the host may already be free to place custom actions there; declaring them
 layout intentional rather than incidental. Cheap either way, and it should be decided alongside item 1
 rather than separately, since the two compete for the same positions.
 
-## 3. Chapters as the media session queue — the one real restructuring
+## 3. Say something when the server will not answer
+
+`PlaybackStateCompat.STATE_ERROR` with `setErrorMessage(code, message)` puts **a localised sentence in front
+of the driver** on the player screen. BookWave has a real use for it that it does not currently serve: a
+self-hosted server whose credentials have expired, or which is unreachable from the car's network. Today
+that presents in the car as a book that does not start.
+
+**Corrected 2026-09-07 — this section first said the documentation offered no way to attach a resolution
+action, so the message had to be a bare "unlock this on your phone". That was a reading of the guide
+rather than of the API.** Media3 1.11 carries `ERROR_CODE_AUTHENTICATION_EXPIRED_COMPAT` together with
+`EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT` and `..._INTENT_COMPAT`, and `MediaSession.sendError`
+delivers them. So the credential message can carry a **labelled button**. It still opens the app rather
+than hosting a sign-in on the head unit, which is a real limit — but "with an action" and "with no way
+out" are not the same message, and the first draft understated it.
+
+This is the highest-value item after #1, because it converts a silent failure into an explained one, and it
+touches no routing or playback state at all.
+
+## 4. Metadata the player can draw and BookWave does not send
+
+`androidx.car.app.mediaextensions.MetadataExtras` carries several keys the player screen honours:
+
+- **`KEY_SUBTITLE_LINK_MEDIA_ID` / `KEY_DESCRIPTION_LINK_MEDIA_ID`** — the subtitle or description becomes
+  **tappable**, opening a browse node. AOSP's customisation guide says OEMs *must* render these as
+  tappable and open the linked item. For BookWave this is the obvious one: the subtitle is already
+  `Author • Series #N`, and linking it to the series node turns the byline into navigation.
+- **`KEY_CONTENT_FORMAT_TINTABLE_LARGE_ICON_URI` / `..._SMALL_...`** — a format badge beside the title.
+- **`KEY_IMMERSIVE_AUDIO`** — an indicator; not applicable to Audiobookshelf content.
+
+**Do not schedule any of these before testing one.** Whether `MediaMetadata.extras` set through Media3
+reaches the legacy `MediaMetadataCompat` that Android Auto reads is an **open, unresolved question
+upstream** — androidx/media#2127, still open, with no maintainer answer and the note that the
+documentation for it "still uses legacy code". BookWave already has one bet in this family:
+`EXTRAS_KEY_COMPLETION_PERCENTAGE` on browse rows, which R-10 records as unverified for the same reason.
+The honest sequencing is to verify the mechanism once, on a head unit, with the completion percentage that
+is already there — and only then decide whether to add more.
+
+## 5. Chapters as the media session queue — the one real restructuring
 
 The primary bar's **far-left position is queue access**, and BookWave leaves it empty. Filling it gives the
 driver a native chapter list *on the player screen*, plus a "Now playing" marker via
@@ -86,50 +128,41 @@ Two ways to have most of it without paying that:
 My recommendation is to **leave ADR-0016 alone** unless a device run shows drivers reaching for the queue
 button. The prize is one tap; the risk is the seek model of the whole app.
 
-## 4. Say something when the server will not answer
+## What has since been built
 
-`PlaybackStateCompat.STATE_ERROR` with `setErrorMessage(code, message)` puts **a localised sentence in front
-of the driver** on the player screen. BookWave has a real use for it that it does not currently serve: a
-self-hosted server whose credentials have expired, or which is unreachable from the car's network. Today
-that presents in the car as a book that does not start.
+Items 1, 2 and 3 were applied on 2026-09-07 at the owner's request.
 
-The documentation is explicit that the message must be localised and must say what the person has to do —
-and it stops short of describing any way to attach a resolution action or intent, so **a sign-in cannot be
-completed from the car** and the message has to be "unlock this on your phone". That is a documentation
-limit, not a design choice; it should be written as such rather than assumed to be richer.
+- **1 — output actions in the primary bar.** They declare `SLOT_BACK_SECONDARY` / `SLOT_FORWARD_SECONDARY`
+  before `SLOT_OVERFLOW`. `setSlots` takes a chain, so a host that will not place them in the bar still
+  shows them where it did before: the change cannot regress, only improve.
+- **2 — the seek-slot reservation.** Now stated as `false` rather than inherited. `setSessionExtras` had
+  never been called at all.
+- **3 — failure reporting.** `MediaSession.sendError` with `PlaybackFailureReport` deciding between an
+  expired credential and an unreachable server, and **this document was wrong about the ceiling**: it said
+  the documentation offered no way to attach a resolution action. Media3 1.11 has
+  `ERROR_CODE_AUTHENTICATION_EXPIRED_COMPAT` plus `EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT` and
+  `..._INTENT_COMPAT`, so the credential message carries a labelled button that opens the app.
 
-This is the highest-value item after #1, because it converts a silent failure into an explained one, and it
-touches no routing or playback state at all.
+Two answers to the owner's follow-up questions, both checked against the API rather than assumed:
 
-## 5. Metadata the player can draw and BookWave does not send
+- **Chapter *n* of *m* is available.** `MediaMetadata` carries `trackNumber` and `totalTrackCount`, and
+  `Player.replaceMediaItem` is the documented way to update a playing item's metadata **without
+  interrupting playback**, position preserved — so the byline can change at each chapter boundary.
+  [androidx/media#2993](https://github.com/androidx/media/issues/2993) reported a `MediaItem` leak on
+  repeated calls; once per chapter is infrequent enough to accept, but the fixed version should be checked.
+- **Chapter-relative *progress* is not**, for the same reason item 3 below is not: the progress bar is the
+  timeline, and the timeline is the book (ADR-0016).
+- **History cannot go in the queue slot.** Not a trade-off — `MediaSession` has no queue API at all in
+  Media3, and the legacy queue is derived from the player's timeline, so nothing that is not a timeline
+  window can be put there. The reachable lever is `KEY_SUBTITLE_LINK_MEDIA_ID` pointing the byline at the
+  History node, which is item 5's open question rather than a separate one.
 
-`androidx.car.app.mediaextensions.MetadataExtras` carries several keys the player screen honours:
+## Still open
 
-- **`KEY_SUBTITLE_LINK_MEDIA_ID` / `KEY_DESCRIPTION_LINK_MEDIA_ID`** — the subtitle or description becomes
-  **tappable**, opening a browse node. AOSP's customisation guide says OEMs *must* render these as
-  tappable and open the linked item. For BookWave this is the obvious one: the subtitle is already
-  `Author • Series #N`, and linking it to the series node turns the byline into navigation.
-- **`KEY_CONTENT_FORMAT_TINTABLE_LARGE_ICON_URI` / `..._SMALL_...`** — a format badge beside the title.
-- **`KEY_IMMERSIVE_AUDIO`** — an indicator; not applicable to Audiobookshelf content.
-
-**Do not schedule any of these before testing one.** Whether `MediaMetadata.extras` set through Media3
-reaches the legacy `MediaMetadataCompat` that Android Auto reads is an **open, unresolved question
-upstream** — androidx/media#2127, still open, with no maintainer answer and the note that the
-documentation for it "still uses legacy code". BookWave already has one bet in this family:
-`EXTRAS_KEY_COMPLETION_PERCENTAGE` on browse rows, which R-10 records as unverified for the same reason.
-The honest sequencing is to verify the mechanism once, on a head unit, with the completion percentage that
-is already there — and only then decide whether to add more.
-
-## Recommended order
-
-1. **Output actions into the secondary primary-bar slots** (item 1) — answers a device finding, small, no
-   new state, no trade.
-2. **Decide the slot reservation explicitly** (item 2) — same area, same review, one line.
-3. **Error messaging for an unreachable or expired server** (item 4) — turns silence into a sentence,
-   touches nothing risky.
-4. **One metadata-extras experiment** (item 5) — but as a *measurement* on the existing completion
-   percentage first, not as a feature.
-5. **Chapters as a queue** (item 3) — only with evidence, and only with ADR-0016 reopened deliberately.
+Items 4 and 5 stand. Item 4 is a **measurement before it is a feature**: verify that Media3 forwards
+metadata extras to Android Auto at all, using the `EXTRAS_KEY_COMPLETION_PERCENTAGE` already on browse
+rows, before adding more that depend on the same path. Item 5 needs evidence that drivers reach for the
+queue button, and reopening ADR-0016 deliberately if they do.
 
 ## What this survey does not claim
 

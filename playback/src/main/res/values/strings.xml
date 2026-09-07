@@ -64,4 +64,16 @@
     <string name="car_event_check_ahead">Server had newer activity</string>
     <string name="car_event_check_current">Position confirmed</string>
     <string name="car_event_check_unavailable">Server not reached</string>
+
+    <!--
+      PRODUCT_SPEC PLAY-001 — what the car's player screen says when a book will not start.
+
+      Written for someone driving: what happened, and the one thing they can do about it. The credential
+      sentence names the phone deliberately, because signing in to a self-hosted server cannot be done from
+      a head unit and telling a driver to try again here would be a lie.
+    -->
+    <string name="car_error_credentials_expired">Sign in again on your phone to keep listening</string>
+    <string name="car_error_server_unreachable">Can\'t reach your server from here</string>
+    <!-- The label on the action beside the credential message. A verb, because it is a button. -->
+    <string name="car_error_sign_in_action">Open BookWave</string>
 </resources>

@@ -891,6 +891,7 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Count("attempt", recovery.attemptCount),
             )
             scope.launch { recordPosition() }
+            reportFailureToControllers(error, willRetry = retryIn != null)
             if (retryIn == null) return
             scope.launch {
                 delay(retryIn)
@@ -1020,6 +1021,49 @@ class PlaybackService : MediaLibraryService() {
             LogField.Public("kind", hold.substringBefore(':')),
         )
         audioOutputs.select(hold)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — say why the book stopped, to whoever is listening.
+     *
+     * A device run found the car's player silent about everything; §8 answered the routing half and this is
+     * the other. A driver whose self-hosted server has expired its credentials, or which is simply not
+     * reachable from the car's network, otherwise sees a book that does not start and no explanation.
+     *
+     * `sendError` reaches every connected controller, which is right: the phone notification benefits from
+     * the same sentence, and there is no per-controller version of this that a head unit reads.
+     *
+     * The credential case carries a **labelled action**, because Media3 has the two legacy extras for it
+     * and a message with a way out is worth more than a message. It opens the app rather than pretending
+     * a head unit can host a sign-in — see the string's own comment.
+     *
+     * [PlaybackFailureReport] holds the decision and the reason a retry stays quiet.
+     */
+    private fun reportFailureToControllers(error: PlaybackException, willRetry: Boolean) {
+        val current = session ?: return
+        val report = PlaybackFailureReport.of(error.httpResponseCode(), willRetry) ?: return
+        val message = when (report.message) {
+            PlaybackFailureReport.Message.CredentialsExpired -> R.string.car_error_credentials_expired
+            PlaybackFailureReport.Message.ServerUnreachable -> R.string.car_error_server_unreachable
+        }
+        val extras = Bundle().apply {
+            if (report.isCredentialFailure) {
+                launchIntent()?.let { intent ->
+                    putString(
+                        MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT,
+                        getString(R.string.car_error_sign_in_action),
+                    )
+                    putParcelable(MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_INTENT_COMPAT, intent)
+                }
+            }
+        }
+        logger.warn(
+            LogCategory.Playback,
+            "The car was told why the book stopped",
+            LogField.Public("kind", report.message.name),
+            LogField.Public("hasAction", extras.isEmpty.not().toString()),
+        )
+        current.sendError(SessionError(report.code, getString(message), extras))
     }
 
     /**
