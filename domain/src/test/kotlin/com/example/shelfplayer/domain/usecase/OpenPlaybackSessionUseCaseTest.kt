@@ -12,7 +12,9 @@ import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
+import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +24,7 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.time.Duration
+import com.example.shelfplayer.domain.book as cachedBook
 
 class OpenPlaybackSessionUseCaseTest {
     private val profile = ProfileId("profile-a")
@@ -86,11 +89,29 @@ class OpenPlaybackSessionUseCaseTest {
         assertEquals(0, auth.renewCalls)
     }
 
-    private fun opener(playback: PlaybackRepository, auth: FakeAuthRepository): OpenPlaybackSessionUseCase {
+    @Test
+    fun `cached primary series enriches the playback session for external metadata`() = runTest {
+        val playback = FakePlaybackRepository(AppResult.Success(session()))
+        val auth = FakeAuthRepository(SessionStatus.Active)
+        val library = FakeLibraryRepository(listOf(cachedBook(id = book.value, sequence = "3")))
+
+        val result = opener(playback, auth, library)(book)
+
+        val opened = assertIs<AppResult.Success<PlaybackSession>>(result)
+        assertEquals("The Long Voyage #3", opened.value.seriesLabel)
+        assertEquals(null, opened.value.author)
+    }
+
+    private fun opener(
+        playback: PlaybackRepository,
+        auth: FakeAuthRepository,
+        library: LibraryRepository = FakeLibraryRepository(),
+    ): OpenPlaybackSessionUseCase {
         val profiles = FakeProfileRepository(profile)
         return OpenPlaybackSessionUseCase(
             profiles = profiles,
             playback = playback,
+            library = library,
             renewSession = RenewProfileSessionUseCase(auth),
             requireReauthentication = RequireProfileReauthenticationUseCase(auth),
         )
