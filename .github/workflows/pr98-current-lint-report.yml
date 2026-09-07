@@ -1,0 +1,44 @@
+name: PR 98 current lint report
+
+on:
+  push:
+    branches:
+      - diagnostic/pr98-current-lint-report
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Capture lint report
+        shell: bash
+        run: |
+          set +e
+          ./gradlew :app:lintDebug --stacktrace > pr98-lint-console.log 2>&1
+          status=$?
+          report=app/build/reports/lint-results-debug.txt
+          {
+            echo "exit_status=$status"
+            if [ -f "$report" ]; then
+              cat "$report"
+            else
+              echo "--- lint text report missing; console tail follows ---"
+              tail -n 1000 pr98-lint-console.log
+            fi
+          } > pr98-lint-report.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pr98-lint-report.txt
+          git commit -m "Capture PR98 Android lint report" || true
+          git push
+          exit 0
