@@ -154,7 +154,7 @@ room-gradlePlugin = { group = "androidx.room", name = "room-gradle-plugin", vers
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
-android-library = { id = "com.android.library", name = "android-library", version.ref = "androidGradlePlugin" }
+android-library = { id = "com.android.library", version.ref = "androidGradlePlugin" }
 android-test = { id = "com.android.test", version.ref = "androidGradlePlugin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
