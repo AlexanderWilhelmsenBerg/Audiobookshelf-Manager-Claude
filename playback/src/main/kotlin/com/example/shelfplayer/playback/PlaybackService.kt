@@ -236,6 +236,14 @@ class PlaybackService : MediaLibraryService() {
      */
     private val headsetHold = HeadsetHold()
 
+    /**
+     * Product priority 1 — whether a platform pause is still a candidate for a car-arrival resume.
+     *
+     * Stateful for the same reason [headsetHold] is: the pause happens before the car binds, so the fact
+     * has to survive until there is something to ask it about. See [CarArrivalContinuity].
+     */
+    private val carContinuity = CarArrivalContinuity()
+
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
 
@@ -764,14 +772,23 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("playWhenReady", playWhenReady.toString()),
                 LogField.Public("reason", playWhenReadyReason(reason)),
             )
-            if (playWhenReady) return
+            if (playWhenReady) {
+                // Product priority 1 — a book playing again retires any pause a car arriving could have
+                // resumed, including one Media3 recovered from a transient focus loss by itself.
+                carContinuity.onPlaying()
+                return
+            }
             // `REMOTE` cannot occur while this listener is on the local ExoPlayer (R-76); it stays in the
             // condition so the *intent* — a person asked, from wherever — survives if the player is ever
             // wrapped or replaced by a remote one, which is when the reason would start appearing.
-            autoRewind.onPaused(
-                wasUserInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
-                    reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE,
-            )
+            val userInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
+                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
+            autoRewind.onPaused(wasUserInitiated = userInitiated)
+            // Product priority 1 — the same line PLAY-009 draws, used for the other thing it decides: a
+            // pause nobody asked for, moments before a car binds, is the car taking the audio away rather
+            // than the end of listening. `CarArrivalContinuity` explains why this is answered by resuming
+            // afterwards rather than by refusing the pause.
+            if (userInitiated) carContinuity.onUserPause() else carContinuity.onSystemPause(clock.now())
         }
 
         /**
@@ -1020,6 +1037,28 @@ class PlaybackService : MediaLibraryService() {
         audioOutputs.select(hold)
     }
 
+    /**
+     * Product priority 1 — start the book again if a car arriving is what stopped it.
+     *
+     * Every condition worth arguing about is in [CarArrivalContinuity]; this is the player half. The queue
+     * is re-checked for the same reason [holdHeadsetAgainstCar] re-checks it: a memory can outlive the book
+     * it belonged to, and `play()` on an empty queue is not a resume of anything.
+     *
+     * `player.play()` rather than a controller call, because this is the service's own player and the point
+     * is to undo a `playWhenReady` the platform set — the same level the pause happened at.
+     */
+    private fun resumeIfTheCarTookTheAudio() {
+        val current = player ?: return
+        if (current.mediaItemCount == 0) return
+        if (current.playWhenReady) return
+        if (!carContinuity.shouldResume(clock.now(), audioOutputs.outputs.value)) return
+        logger.info(
+            LogCategory.Playback,
+            "A car arriving had stopped the book, so it was started again",
+        )
+        current.play()
+    }
+
     private fun publishMediaButtons() {
         val current = session ?: return
         current.setMediaButtonPreferences(mediaButtons())
@@ -1084,7 +1123,10 @@ class PlaybackService : MediaLibraryService() {
         if (state.showCar) {
             add(
                 outputButton(
-                    icon = R.drawable.ic_car_output,
+                    // PRODUCT_SPEC PLAY-002 — the lit variant when the book is coming out of the car. The
+                    // device report was that the current output could not be seen anywhere on the car's
+                    // player, and the icon is the only thing the host draws that this app supplies.
+                    icon = if (state.onCar) R.drawable.ic_car_output_active else R.drawable.ic_car_output,
                     action = NotificationButtons.ACTION_SELECT_CAR_OUTPUT,
                     label = getString(R.string.player_car_action),
                 ),
@@ -1093,7 +1135,11 @@ class PlaybackService : MediaLibraryService() {
         if (state.showHeadset) {
             add(
                 outputButton(
-                    icon = R.drawable.ic_headset_output,
+                    icon = if (state.onHeadset) {
+                        R.drawable.ic_headset_output_active
+                    } else {
+                        R.drawable.ic_headset_output
+                    },
                     action = NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT,
                     // The headset's own advertised name when the book is in one, so a long press and a
                     // screen reader both answer "which earbuds". Whether a head unit finds room to draw the
@@ -1965,6 +2011,9 @@ class PlaybackService : MediaLibraryService() {
                 // run here.
                 scope.launch {
                     holdHeadsetAgainstCar()
+                    // Product priority 1 — after the hold, so the route this asks about is the one the hold
+                    // just reasserted rather than the one the platform moved to.
+                    resumeIfTheCarTookTheAudio()
                     republishOutputButtons()
                 }
             }
