@@ -27,6 +27,9 @@ object ShelfDestinations {
     const val PROFILES = "profiles"
     const val SETTINGS = "settings"
 
+    /** The locally bundled Loopbound web game. It has no external deep link or profile argument. */
+    const val LOOPBOUND = "loopbound"
+
     /** PRODUCT_SPEC DL-003 / ADR-0018 decision 6 — every download on this device, in one list. */
     const val DOWNLOADS = "downloads"
 
