@@ -1,131 +1,153 @@
 # Module boundaries
 
-`PRODUCT_SPEC 9.3` states the dependency rules. This records how each one is *enforced*, because a
-rule a build cannot check is a rule that erodes.
+**Classification:** Current contract.  
+**Current as reviewed:** 2026-09-07.
 
-## The dependency graph
+`PRODUCT_SPEC 9.3` defines the dependency direction. This document records how the current repository
+implements it. Older phase documents may describe modules as prospective that are now real; `main` is the
+implementation authority.
+
+## Current module families
 
 ```text
-:app ─┬────────► :data:library ──► :domain ──► :core:model
-      │              │  │  │                       ▲
-      ├────────► :data:auth ──┐                    │
-      │              │  │  │  └──► :core:network ──┤
-      │              │  │  └─────► :core:database  │
-      │              │  └────────► :core:datastore │
-      ├────────► :data:settings ──► :core:datastore
-      ├──► :core:designsystem                      │
-      └──► :core:common ────────────────────────────┘
+:app
+ ├─ UI/navigation/feature packages
+ ├─ final Android wiring and WorkManager entry points
+ ├─ depends on domain/repository contracts and Android-facing feature modules
+ │
+ ├─► :playback
+ │    Media3/ExoPlayer, MediaLibraryService, Android Auto, sleep timer, audio routing
+ │
+ ├─► :data:auth
+ ├─► :data:library
+ ├─► :data:downloads
+ └─► :data:settings
+       repository implementations/adapters
+
+:data:* ─► :domain ─► :core:model
+   │          │            ▲
+   │          └────► :core:common
+   ├─► :core:network       │
+   ├─► :core:database      │
+   └─► :core:datastore ────┘
+
+:core:designsystem   shared Android UI primitives/theme
+:core:testing        test-only shared doubles/helpers
 ```
 
-`:data:auth` and `:data:library` have the same shape and the same dependencies. They are separate
-modules because their contents are separate concerns, not because their graphs differ.
+This is a dependency-direction sketch, not a promise that every data module uses every core module.
+Individual `build.gradle.kts` files remain the exact graph.
 
-`:data:settings` is narrower: `:domain` and `:core:datastore`, nothing else. It exists so a screen does
-not have to name `AppSettingsDataSource`. Two reasons. A screen that reaches the store directly cannot be
-tested without a DataStore on disk; and the *meaning* of a setting — its default, its place in
-`SET-001`'s five-level precedence chain — then belongs to whichever screen happened to need it first
-instead of to one owner.
+## The boundaries that matter most
 
-**One call site has not moved yet.** `AppViewModel` still injects `AppSettingsDataSource` for the
-appearance settings, and its `AppUiState` exposes the generated `ThemeMode` enum. Routing it through
-`SettingsRepository` needs a `:core:model` theme type first, which is `SET-002` (Appearance) work rather
-than part of the setting that prompted this module.
+### `:core:model` is portable by construction
 
-`:core:testing` is a `testImplementation` dependency only.
+`:core:model` uses the plain Kotlin/JVM plugin and has no project dependencies. Domain/value types do not
+acquire Android framework dependencies accidentally; an `import android.*` is a compile failure rather than
+a review convention.
 
-## How each rule is enforced
+This is also the strongest existing seam for future portability work. It is not a reason to convert every
+module to multiplatform today.
 
-| Rule (PRODUCT_SPEC 9.3) | Enforcement |
+### `:domain` owns policy and repository contracts
+
+`:domain` is a Kotlin/JVM module. It depends on `:core:model` and `:core:common`, not Android storage,
+networking, Room, Compose or Media3.
+
+Cross-platform or system-surface work should reuse policy from here where the policy is genuinely portable
+rather than teaching each UI/controller its own rule.
+
+### Data modules own implementations, not UI
+
+`:data:auth`, `:data:library`, `:data:downloads` and `:data:settings` adapt persistent/network/platform data
+to domain-facing contracts.
+
+Room entities, Proto messages and network DTOs are implementation details of their owning core/data seams;
+they do not become UI state merely because a screen needs one field.
+
+### Appearance no longer bypasses the settings repository
+
+An older version of this document recorded `AppViewModel -> AppSettingsDataSource` and generated
+`ThemeMode` as a deliberate temporary exception. That exception is **closed**: merged PR #88 moved
+appearance ownership behind the repository/model boundary.
+
+Do not preserve the old direct-DataStore path in new work merely because historical documentation described
+it.
+
+### Playback is a real architecture boundary
+
+`:playback` now owns the Media3/ExoPlayer/service surface, including Android Auto and playback-system
+integration. It is not a future `:playback:service` placeholder.
+
+The domain/repository contracts around playback/session/progress are deliberately kept separate from the
+Android media engine. See [`playback.md`](playback.md).
+
+### Downloads are a real data module
+
+`:data:downloads` owns the offline manifest, file transfer/storage verification and storage-volume adapter
+work. WorkManager scheduling/worker entry points are Android application wiring, while the durable download
+state and repository semantics remain below the UI.
+
+A future recovery UX must not collapse WorkManager execution state and durable file/manifest state into one
+enum merely for display convenience.
+
+## How important rules are enforced
+
+| Rule | Enforcement |
 | --- | --- |
-| Domain depends only on core model/common | `:domain` uses the Kotlin/JVM plugin. An Android import does not compile. |
-| Network DTOs stay inside data/network | The gateway signature uses `:core:model` types. `:core:network` exposes no wire type, so nothing else can name one. |
-| Room entities stay inside database/data | `:core:database` is an `implementation` dependency of `:data:library` and `:data:auth` only. `*Entity` is off the classpath of `:domain` and `:app`. |
-| Proto settings types stay inside datastore/data | `:core:datastore` is an `implementation` dependency of `:data:settings`, so the generated `AppSettings` message stops there. Not yet total: `:app` still has `:core:datastore` on its classpath for `AppViewModel` (see above). |
-| Room itself stays inside `:core:database` | `DatabaseTransactionRunner` names no Room type, so a data module can be transactional with `androidx.room` off its compile classpath. See below. |
-| Data modules implement domain interfaces | `LibraryDataModule`, `AuthDataModule` and `SettingsDataModule` bind `Default*Repository` to the `:domain` interface. `:app` injects the interface. |
-| No cyclic module dependencies | The graph above is acyclic; Gradle rejects a cycle. |
-| `:app` performs final wiring | `AppModule` in `:app` binds the gateway and the log sink — the two seams a later phase replaces. |
+| Domain policy cannot depend on Android | `:domain` is JVM-only. |
+| Core model cannot depend on platform/data modules | `:core:model` is JVM-only with zero project dependencies. |
+| Network DTOs do not define domain/API surface | `:core:network` maps through core model/domain-facing gateway contracts. |
+| Room details stay behind database/data seams | Room lives in `:core:database`; data repositories map entities to model types. |
+| Proto settings types stay behind datastore/settings seams | UI consumes settings/domain models/repositories rather than generated Proto messages. |
+| Data implementations fulfill domain contracts | Hilt modules bind `Default*Repository` implementations to domain interfaces. |
+| Module graph remains acyclic | Gradle dependency graph rejects cycles. |
+| Android/system wiring stays at Android boundaries | Activities, services, WorkManager and platform adapters stay out of JVM policy modules. |
 
-## Why the token provider is *not* final wiring
+## Authentication/network client boundary
 
-`TokenProvider` is declared in `:core:network` and implemented by `SessionTokenProvider` in
-`:data:auth`, which binds it in its own `AuthDataModule`. It lived in `:app` first, on the reasoning
-that `:app` was the only module seeing both `:core:network` and `:core:datastore`. That reasoning was
-incomplete: `:data:auth` sees both as well, and it owns the sign-out that has to invalidate the
-credential.
+BookWave intentionally distinguishes authenticated and unauthenticated network work. Sign-in/status requests
+must not inherit the active profile's credential simply because another account is active in the process.
 
-The distinction is not bookkeeping. `SessionTokenProvider` caches a **decrypted token** in memory,
-because `TokenProvider.currentToken()` is synchronous (an OkHttp interceptor is) while the store
-suspends and does a Keystore decryption. That cache has to be cleared at the same moment the stored
-copy is, or the process keeps authenticating after the user believes it stopped. Keeping the class in
-`:app` put the cache and the code responsible for clearing it in different modules, and made the
-credential holder nameable from the UI layer. It is now `:data:auth`-local, and no module outside it
-can reach the object holding a token.
+`TokenProvider` is declared at the network seam and its credential-holding implementation is owned by auth,
+where sign-out/credential invalidation can clear both durable and in-memory state together. UI code must not
+hold decrypted tokens.
 
-`NoTokenProvider` in `:core:network` remains for a graph with no credential store at all.
+## Database transaction seam
 
-## Two clients, not one
+Library synchronization needs atomic Room transactions without making `:data:library` compile against Room
+internals. `DatabaseTransactionRunner` is the narrow interface that permits transactional policy without
+leaking `RoomDatabase` across the boundary.
 
-`PRODUCT_SPEC 9.4` asks for "qualifiers for authenticated vs unauthenticated clients", and the reason
-is concrete. `GET /status` and `POST /login` are addressed at a server the user is **not** signed in to
-— often one they have just typed the address of. The ambient token belongs to whichever profile is
-active, possibly on a different host, so a single client would hand one server's credential to
-another. `@UnauthenticatedClient` has no `AuthorizationInterceptor`; the auth endpoints use it and pass
-their credential explicitly.
+This remains a useful pattern: if a data/domain module needs one platform capability, expose the capability
+it needs instead of importing the entire platform implementation type.
 
-`AuthorizationInterceptor` also leaves an existing `Authorization` header alone. That is what lets a
-call name the profile it is acting for instead of inheriting the active one — a library sync for
-profile B must not be signed with profile A's token because A is on screen.
+## Why feature packages remain inside `:app`
 
-## The transaction seam
+Feature UIs such as home/library/book/settings remain packages inside `:app` rather than one Gradle module
+per screen. That is currently intentional, not unfinished Phase 0 scaffolding.
 
-`PRODUCT_SPEC LIB-001` needs a sync to apply completely or not at all, so `:data:library` needs
-transactions — but `PRODUCT_SPEC 9.3` keeps Room inside `:core:database`.
+The repository already has strong boundaries where correctness and dependency direction require them:
+model/domain, data, playback, storage/network and UI. Split a UI feature into another Gradle module only when
+there is concrete coupling/build/ownership value, not because a historical diagram reserved a module name.
 
-The first attempt was an extension function on `ShelfPlayerDatabase`. That does not hold the
-boundary: calling any member of `ShelfPlayerDatabase` makes the caller resolve its supertype, and
-`:data:library` failed to compile with *"Cannot access 'RoomDatabase' which is a supertype of
-'ShelfPlayerDatabase'"*. The boundary was right; the seam was in the wrong place.
+Package naming still makes a future extraction possible if evidence justifies it.
 
-`DatabaseTransactionRunner` fixes that by naming no Room type in its signature:
+## No reserved module list
 
-```kotlin
-interface DatabaseTransactionRunner {
-    suspend operator fun <R> invoke(block: suspend () -> R): R
-}
-```
+The old document reserved names such as `:playback:service`, `:data:playback`, `:data:downloads`, `:auto` and
+`:data:management` for later phases. That list is retired:
 
-`:data:library` gets Room on its **test** classpath only, where a real in-memory database backs the
-repository tests. It is a plain `interface`, not a `fun interface`: SAM conversion cannot carry a
-generic method.
+- some concerns landed under different, better boundaries (`:playback`, `:data:downloads`);
+- some management behavior remains in existing data/app seams rather than deserving a module solely because
+  a phase document predicted one;
+- Android Auto belongs to the playback/media-session boundary rather than an `:auto` island.
 
-## Why `feature:*` are packages, not modules
-
-`PRODUCT_SPEC 9.2` sanctions combining feature code in `:app` for the first milestone while keeping
-core, data and playback separate. Phase 0 takes that option, because those are the boundaries the
-dependency rules actually constrain: a feature module cannot reach a Room entity today either, since
-`:app` cannot.
-
-Package names match `PRODUCT_SPEC 16.4` exactly (`com.example.shelfplayer.feature.home`,
-`.feature.library`, `.feature.book`), so promoting one to a Gradle module is a directory move plus a
-`build.gradle.kts`. See [ADR-0002](../adr/0002-module-structure.md).
-
-## Modules reserved for later phases
-
-Named here so nobody invents a parallel abstraction for them:
-
-| Module | Phase | Requirements |
-| --- | --- | --- |
-| `:core:security` | — | **Not created.** AUTH-003 landed in `:core:datastore` instead: `KeystoreTokenCipher` and `SessionTokenStore` are twenty lines of platform API next to the store they encrypt for, and a module whose only content is one cipher buys a boundary nothing was crossing. |
-| `:playback:service` | 2 | PLAY-001…PLAY-008, ROUTE-001 |
-| `:data:playback` | 2 | PLAY-004, PLAY-005 |
-| `:data:downloads` | 3 | DL-001…DL-006 |
-| `:data:management` | 5 | MGR-001…MGR-007, USER-001…USER-003 |
-| `:auto` | 6 | Android Auto |
+Do not create a module to satisfy a retired reservation. Create one when present dependencies need the
+boundary.
 
 ## Naming
 
-`PRODUCT_SPEC 16.4`, applied throughout: `*Screen` for route-level composables, `*Route` for the
-navigation/wiring composable, `*ViewModel`, `*UiState`, `*Repository` interface with
-`Default*Repository` implementation, `*Entity`, `*Dao`, `*UseCase` only where the logic is
-non-trivial. `Manager`, `Helper` and `Utils` do not appear.
+The repository continues to prefer meaningful role names (`*Screen`, `*Route`, `*ViewModel`, `*Repository`,
+`Default*Repository`, `*Entity`, `*Dao`, `*UseCase` for real use-case policy) over generic `Manager`, `Helper`
+or `Utils` buckets.

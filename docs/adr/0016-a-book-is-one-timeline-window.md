@@ -1,8 +1,13 @@
 # ADR-0016 — A book is one timeline window, not a playlist
 
-- **Status:** Accepted, scheduled for Phase 2 wave 5
+- **Status:** Accepted and implemented (2026-08-13); current playback contract
 - **Date:** 2026-08-13
 - **Requirements:** PLAY-001, PLAY-003, PLAY-004
+
+> **Current-state note (2026-09-07):** the sequencing language below is preserved as the reasoning at the
+> time this decision was made. The one-window design was built in Phase 2 and is now a foundational playback
+> invariant used by phone/system/Android Auto behavior. It is not pending future work. See
+> [`../architecture/playback.md`](../architecture/playback.md) for the current compact contract.
 
 ## Context
 

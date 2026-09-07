@@ -1,131 +1,137 @@
 # Build and quality gates
 
+**Classification:** Current contract.  
+**Current as reviewed:** 2026-09-07.
+
+This document describes the build as it exists on `main`. Historical bootstrap decisions remain in the
+ADRs; they are not current setup instructions.
+
 ## Toolchain
 
-| Piece | Version | Where it is pinned |
-| --- | --- | --- |
-| Gradle | 8.14.3 | `gradle/wrapper/gradle-wrapper.properties` |
-| Android Gradle Plugin | 8.12.0 | `gradle/libs.versions.toml` |
-| Kotlin | 2.2.0 | `gradle/libs.versions.toml` |
-| KSP | 2.2.0-2.0.2 | `gradle/libs.versions.toml` |
-| compileSdk / targetSdk | 36 | `gradle/libs.versions.toml` |
-| minSdk | 26 | `gradle/libs.versions.toml` |
-| Java bytecode | 17 | convention plugins |
-| ktlint | 1.5.0 (plugin 12.3.0) | `gradle/libs.versions.toml` |
-| detekt | 1.23.8 | `gradle/libs.versions.toml` |
+`gradle/libs.versions.toml` is the source of truth for library/plugin versions. The important current
+build values are:
 
-Every version is a fixed string. There is no dynamic version, no `+` and no Git dependency
-(`PRODUCT_SPEC 16.1`). Repositories are restricted: Google's Maven is content-filtered to
-`com.android.*`, `com.google.*`, `androidx.*` and `android.*`, so a typo cannot silently pull an
-unrelated group from it, and `RepositoriesMode.FAIL_ON_PROJECT_REPOS` stops a module from adding its
-own.
+| Piece | Current value |
+| --- | --- |
+| Gradle | wrapper-controlled (`gradle/wrapper/gradle-wrapper.properties`) |
+| Android Gradle Plugin | 8.12.0 |
+| Kotlin | 2.2.0 |
+| KSP | 2.3.11 |
+| compileSdk / targetSdk | 36 |
+| minSdk | 26 |
+| Java bytecode | 17 |
+| ktlint | 1.5.0 (Gradle plugin 12.3.0) |
+| detekt | 1.23.8 |
+| Kover | 0.9.9 |
+| Media3 | 1.11.0 |
+| WorkManager | 2.11.2 |
+
+Every dependency version is fixed; dynamic `+` versions and Git dependencies are not part of the build.
+Repositories are centrally controlled so individual modules cannot quietly introduce a new repository.
 
 ## Convention plugins
 
-`build-logic/` is an included build. Its plugins are the only place SDK levels, Java version, lint
-configuration and the quality gate are expressed:
+`build-logic/` is an included build. Its convention plugins own SDK levels, Java/Kotlin build behavior,
+quality configuration and build identity/signing rules. Module build files should express what a module
+needs, not duplicate global policy.
 
-| Plugin | Applies to |
+The important families are:
+
+| Plugin family | Purpose |
 | --- | --- |
-| `shelfplayer.android.application` / `.compose` | `:app` |
-| `shelfplayer.android.library` / `.compose` | `:core:*`, `:data:*` Android modules |
-| `shelfplayer.jvm.library` | `:core:model`, `:core:common`, `:core:testing`, `:domain` |
-| `shelfplayer.android.room` | `:core:database` |
-| `shelfplayer.hilt` | every module that injects |
-| `shelfplayer.quality` | every project, including the root |
+| `shelfplayer.android.application` / Compose variants | application Android configuration |
+| `shelfplayer.android.library` / Compose variants | Android library modules |
+| `shelfplayer.jvm.library` | pure JVM modules such as model/domain/common/testing |
+| `shelfplayer.android.room` | Room schema/export behavior |
+| `shelfplayer.hilt` | dependency injection where needed |
+| `shelfplayer.quality` | repository quality tasks and common checks |
 
 ## `verifyDebug`
 
-`PRODUCT_SPEC 16.5` requires one command. The root task fans out to a per-module `verifyDebug`
-registered by `shelfplayer.quality`, which depends on whichever of these the module actually has:
+`PRODUCT_SPEC 16.5` asks for one verification command. The repository-level `verifyDebug` fans out to
+the checks each module actually supports rather than pretending every module is Android.
 
-| Gate | Android module | JVM module |
-| --- | --- | --- |
-| Formatter | `ktlintCheck` | `ktlintCheck` |
-| Static analysis with type resolution | `detektDebug`, `detektDebugUnitTest` | `detektMain`, `detektTest` |
-| Android Lint | `lintDebug` | — |
-| Unit tests | `testDebugUnitTest` | `test` |
-| Assembly | `assembleDebug` | — |
-| Room schema | `:core:database:verifyRoomSchemas` | — |
+Typical coverage includes:
 
-The wiring resolves task names lazily and **fails loudly** if a module has Kotlin sources but no
-detekt task carrying a classpath. A gate that silently stops running is worse than one that fails,
-because the check still reports green.
+- ktlint;
+- detekt with type resolution;
+- Android Lint for Android modules;
+- JVM/Robolectric unit tests;
+- Kover coverage gates;
+- Room schema verification;
+- debug assembly.
 
-### Type resolution
+CI enables warnings-as-errors with `-Pshelfplayer.warningsAsErrors=true`; local work-in-progress builds
+remain warning-tolerant unless the flag is supplied.
 
-detekt's variant tasks (`detektDebug`) and compilation tasks (`detektMain`) carry the compile
-classpath; the bare `detekt` task does not. Only the former can evaluate `ForbiddenMethodCall`, which
-is what enforces "no direct `System.currentTimeMillis()`" and "no `println`" from
-`PRODUCT_SPEC 16.3`. `verifyDebug` therefore depends on the type-resolving tasks, never on `detekt`.
+### Do not trust stale Gradle task outputs after a classpath change
 
-Two consequences for anyone running detekt outside Gradle: the standalone CLI cannot report the
-type-resolution-only rules at all, and it must be given `--build-upon-default-config`. Without that
-flag it drops the default per-rule exemptions and reports every backtick test name as
-`FunctionNaming` and every HTTP status code as `MagicNumber`.
+Use `--rerun-tasks` when a branch changes a classpath before treating a green local result as evidence.
+`docs/risks.md` R-31 records the incident where Gradle considered stale test compilation up to date and
+local tests disagreed with CI.
 
-### Reading a failed run
+## Android Lint and static analysis
 
-`verifyDebug` runs with `--continue` in CI. The gate is unchanged — the build still fails — but every
-independent failure is reported in one run, instead of a reviewer discovering the next lint error
-only after fixing the previous one.
+Warnings/errors that describe this code are fixed or deliberately suppressed at the declaration with a
+reason. Project-wide disabling is reserved for checks that measure external freshness/environment rather
+than the correctness of this repository.
 
-Gradle prints only lint's *first* finding on the console, so `applyShelfPlayerLintRules` enables the
-text report and the workflow prints `build/reports/lint-results-*.txt` when the build fails. A lint
-failure is then diagnosable from the log alone, with no artifact download.
+Detekt must run with type resolution where a rule depends on resolved calls. A bare detekt invocation is
+not equivalent to the repository gate.
 
-### Warnings as errors
+## Dependency verification is strict; dependency locking is deliberately disabled
 
-`allWarningsAsErrors` is bound to `-Pshelfplayer.warningsAsErrors`, which CI passes and local builds
-do not. A work-in-progress slice stays runnable; nothing merges with a warning.
+This is the section that had drifted furthest from `main`.
 
-## Android Lint
+### Verification — current and enforced
 
-`abortOnError`, `warningsAsErrors`, `checkDependencies` and `checkTestSources` are all on, and there
-is deliberately **no baseline** — `PRODUCT_SPEC 16.3` forbids one for new code, and a baseline written
-today would silently absorb everything Phase 1 introduces.
+`gradle.properties` sets:
 
-Checks are disabled only when they report on the *environment* rather than on this code:
+```properties
+org.gradle.dependency.verification=strict
+```
 
-- `GradleDependency`, `NewerVersionAvailable`, `AndroidGradlePluginVersion` — dependency freshness is
-  governed by the version catalog and dependency locking (`PRODUCT_SPEC 16.1`).
-- `OldTargetApi` — fires whenever a newer API level exists than the pinned `targetSdk`, so a Google
-  release turns the build red with no change on our side. SDK levels move deliberately, with the
-  compatibility testing a `targetSdk` bump requires.
-- `IconMissingDensityFolder`, `IconLauncherShape` — minSdk 26 means the adaptive icon is the only
-  icon that can be used.
+`gradle/verification-metadata.xml` contains the recorded SHA-256 metadata. A dependency whose artifact is
+not represented correctly fails resolution rather than merely producing a report. For a small dependency
+addition/upgrade, use Gradle's `--write-verification-metadata sha256` flow and review the metadata diff.
 
-Everything else is fixed at the source. Where a finding is intentional, it is suppressed at the
-declaration with the reason next to it — `ServerUrlNormalizerTest` suppresses `AuthLeak` on the
-credential-bearing URL that the test exists to reject — never disabled project-wide.
+The component/checksum counts written in comments are snapshots. Trust the generated metadata/SBOM over a
+number copied into prose.
 
-## Dependency locking and verification
+### Locking — intentionally not active
 
-Both are configured; both need one bootstrap run in an environment with full repository access.
+ADR-0006 originally planned verification and Gradle dependency locking together. ADR-0010 records the
+later measured result: locking was disabled after it interacted badly with the repository's Android/variant
+resolution, while dependency verification could be made strict successfully.
 
-- **Locking** is activated for every configuration by `shelfplayer.quality`. Gradle's default lock
-  mode resolves normally when no lock state exists, so this is inert until
-  `scripts/update-dependency-locks.sh` writes the `gradle.lockfile` files.
-- **Verification** ships `gradle/verification-metadata.xml` with the policy
-  (`verify-metadata=true`, `verify-signatures=false`) and no checksums yet, and
-  `gradle.properties` sets `org.gradle.dependency.verification=off` — there is nothing to verify
-  against until the bootstrap runs, and `lenient` only adds a two-thousand-line report per build
-  without enforcing anything. `scripts/bootstrap-dependency-verification.sh` generates the checksums;
-  flip to `strict` in the same commit. See [ADR-0006](../adr/0006-dependency-locking-and-verification.md).
+Therefore:
+
+- absence of `dependencyLocking { lockAllConfigurations() }` is **intentional**;
+- there is no bootstrap lockfile step a fresh contributor is supposed to run;
+- do not reintroduce locking simply to make ADR-0006 look complete;
+- any future retry must first reproduce/solve ADR-0010's variant-resolution problem and should be its own
+  deliberate architecture change.
+
+ADR-0010 partially supersedes ADR-0006 on the locking half. Verification remains the active supply-chain
+integrity mechanism.
 
 ## Room schemas
 
-KSP exports each schema version to `core/database/schemas`, which is committed.
-`:core:database:verifyRoomSchemas` fails if the file for the current `@Database(version = ...)` is
-missing, and CI additionally checks `git status --porcelain` over that directory so an uncommitted
-schema change cannot merge. This is what makes `PRODUCT_SPEC 13.1`'s ban on destructive migration
-enforceable: without the exported schema, a column change is invisible in a diff.
+KSP exports Room schemas under `core/database/schemas`, and schema changes are committed with the migration
+that explains them. The quality/CI checks make an uncommitted current schema visible rather than allowing a
+schema change to merge without its evidence.
 
-`git status`, not `git diff`: the schema for a brand-new database version is an *untracked* file,
-which `git diff` reports as clean — precisely the case the check exists to catch.
+This is one of the mechanisms behind the project's no-destructive-migration posture.
 
 ## Configuration cache
 
-Off for Phase 0. The protobuf, KSP and AGP plugin combination has not been validated against it here,
-and a build that fails only on a clean CI checkout is worse than one that is slightly slower. Turning
-it on is tracked as a follow-up.
+`org.gradle.configuration-cache=false` remains the current repository setting. The historical comment still
+calls this a Phase 0 choice; it should be revisited only as a measured build/tooling task, not enabled while
+unrelated feature work is in flight.
+
+## Build identity and signing
+
+Build identity/version-code and debug/release signing rules have evolved beyond the original phase docs.
+[`../release.md`](../release.md) is the current operational authority. In particular, stable debug signing
+and release/upload signing are separate concerns; old device-test instructions that used release signing
+inputs for debug builds are historical evidence, not current setup.
