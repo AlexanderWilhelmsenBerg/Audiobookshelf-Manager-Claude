@@ -91,7 +91,9 @@ What the host draws on the player is the title, the byline and these two icons. 
 
 **The byline is deliberately not used.** It is built once in `MediaItems.queueFor` from the session, so making it name the live route would mean replacing the `MediaItem` on every route change — rebuilding the media source of a playing book for a cosmetic gain, against product priority 1. A lit icon costs a republish of the button preferences, which the service already does when the route moves.
 
-**And the minimised player still shows neither action.** Android Auto's compact card renders the transport controls and the two slot buttons, not the overflow ones, which is the same host-layout limit as §7 — an app publishes preferences, not a layout. The only way to put an output action there is to claim `SLOT_BACK` or `SLOT_FORWARD`, and those hold PLAY-007's skips because Media3's default *previous* seeks to zero and a device run found it restarting a thirty-four-hour book. A driver losing a skip is a worse trade than a driver opening the full player, so the compact card keeps the skips.
+**The minimised player shows neither action, and that is a defect rather than a limit.** The device run reported it, and this section first recorded it as unavoidable: the compact card draws the transport controls and the two slot buttons but not the overflow ones, so an output action could only get there by taking `SLOT_BACK` or `SLOT_FORWARD` from PLAY-007's skips — a worse trade, since Media3's default *previous* seeks to zero and a device run caught it restarting a thirty-four-hour book.
+
+That reasoning was drawn from the three slots this code already used rather than from Media3's API, and it is wrong. `CommandButton` declares **six**: alongside `SLOT_CENTRAL`, `SLOT_BACK`, `SLOT_FORWARD` and `SLOT_OVERFLOW` there are `SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY`, which are the further primary-bar positions taking it to the five controls the design guidance documents. Nothing has to be traded: the skips keep their slots and the output actions move out of overflow. `docs/android-auto-player-opportunities.md` item 1 carries it, with the caveat that whether a given head unit draws those positions in its *minimised* bar is still the host's to confirm — the same class of unknown as R-107, and not a reason to leave the actions in overflow, which is strictly worse.
 
 ### 9. A car arriving still leaves the book paused, and that is recorded rather than fixed here
 
@@ -110,7 +112,7 @@ What ships here is the part that needs no inference: §8's lit icons, and the ca
 - The root remains predictable even as the library changes.
 - A car arriving still stops the book; the fix is deferred to its own PR rather than merged unverified (R-106).
 - The player says which output the book is on, as far as a head unit that draws no labels permits.
-- The minimised car player shows the skips rather than the output actions, and that is a chosen trade.
+- The minimised car player shows neither output action; the primary-bar slots that would fix it are identified and unimplemented (`docs/android-auto-player-opportunities.md` item 1).
 - The phone speaker is not a BookWave Android Auto destination.
 - Connecting a car does not silently steal an audiobook from an already-active headset when BookWave has enough state to preserve it.
 - Pressing Car has one meaning on every supported car: hand routing back to Android.
