@@ -1,7 +1,6 @@
 package com.example.shelfplayer.feature.settings
 
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
