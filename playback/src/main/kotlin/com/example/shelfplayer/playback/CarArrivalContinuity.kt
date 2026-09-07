@@ -49,7 +49,15 @@ import java.time.Instant
  * Not thread-safe, and does not need to be: every caller is on the main thread, which is where the
  * player's own state has to be read anyway.
  */
-internal class CarArrivalContinuity(private val window: Duration = DEFAULT_WINDOW) {
+internal class CarArrivalContinuity(
+    /**
+     * How long after the pause a resume may still happen.
+     *
+     * Public because the service's hand-off watch has to stop somewhere, and that somewhere is this number:
+     * two of them would drift apart, and the one that mattered would be whichever was smaller.
+     */
+    val window: Duration = DEFAULT_WINDOW,
+) {
 
     private var systemPausedAt: Instant? = null
 

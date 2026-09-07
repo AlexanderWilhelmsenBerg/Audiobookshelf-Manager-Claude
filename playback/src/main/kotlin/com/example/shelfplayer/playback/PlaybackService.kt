@@ -244,6 +244,9 @@ class PlaybackService : MediaLibraryService() {
      */
     private val carContinuity = CarArrivalContinuity()
 
+    /** The bounded poll that waits for a route no callback will announce. See [watchForTheCarHandoff]. */
+    private var continuityWatch: Job? = null
+
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
 
@@ -788,7 +791,16 @@ class PlaybackService : MediaLibraryService() {
             // pause nobody asked for, moments before a car binds, is the car taking the audio away rather
             // than the end of listening. `CarArrivalContinuity` explains why this is answered by resuming
             // afterwards rather than by refusing the pause.
-            if (userInitiated) carContinuity.onUserPause() else carContinuity.onSystemPause(clock.now())
+            if (userInitiated) {
+                carContinuity.onUserPause()
+            } else {
+                carContinuity.onSystemPause(clock.now())
+                // A review found this branch recorded the pause and asked nobody. When the car bound and
+                // its route settled first, the pause is the *last* event and no publication follows it, so
+                // without this the book stayed stopped in exactly the ordering the resume exists for. Only
+                // with a car already bound: if one binds later, `onConnect` starts the watch itself.
+                if (carConnections.isConnected()) watchForTheCarHandoff()
+            }
         }
 
         /**
@@ -1062,15 +1074,15 @@ class PlaybackService : MediaLibraryService() {
      * pause — and it is what keeps this from resuming an ordinary unplug. Without a car, a headset coming
      * out is somebody stopping listening, and the remaining route is not an invitation to carry on.
      */
-    private fun resumeIfTheCarTookTheAudio() {
-        val current = player ?: return
+    private fun resumeIfTheCarTookTheAudio(): Boolean {
+        val current = player ?: return false
         // The three cheap facts as one condition rather than three guards, because detekt's `ReturnCount`
         // is four and the policy call below has to be the last of them: it *consumes* the pause when it
         // says yes, so it may only be reached once everything else already holds.
         val worthResuming = current.mediaItemCount > 0 &&
             !current.playWhenReady &&
             carConnections.isConnected()
-        if (!worthResuming) return
+        if (!worthResuming) return false
         // The selection goes in because a request outstanding changes what counts as somewhere to play:
         // the headset hold's `select` publishes before it applies, so the route on offer at that moment is
         // still the car's. See `CarArrivalContinuity.somewhereToPlay`.
@@ -1079,12 +1091,48 @@ class PlaybackService : MediaLibraryService() {
             outputs = audioOutputs.outputs.value,
             selectedId = audioOutputs.selectedId.value,
         )
-        if (!resume) return
+        if (!resume) return false
         logger.info(
             LogCategory.Playback,
             "A car arriving had stopped the book, so it was started again",
         )
         current.play()
+        return true
+    }
+
+    /**
+     * Product priority 1 — keep asking, because **nothing will call back to say the route arrived**.
+     *
+     * A review found the two edges this had were both events, and neither is guaranteed to happen after
+     * the fact that matters:
+     *
+     * - `onConnect` and the output collector fire before the pause when a car binds first, and then
+     *   nothing fires again — the pause callback did not ask, so the book stayed stopped.
+     * - `AudioOutputRouter` re-reads the route once, 400 ms after applying a preference. Android offers no
+     *   route-change callback and `AudioDeviceCallback` reports only devices coming and going, so a
+     *   hand-off that lands later is never published and the held headset is never confirmed.
+     *
+     * Both are the same shape — a state this cannot observe changing with no notification — and polling is
+     * the honest answer to that rather than a third event to hope for. It stops the moment a resume
+     * happens, and otherwise when [CarArrivalContinuity.window] closes, which is the same number the policy
+     * refuses on so the two cannot disagree.
+     *
+     * Cancel-and-replace, so a second car controller or a second pause does not leave two loops running.
+     */
+    private fun watchForTheCarHandoff() {
+        continuityWatch?.cancel()
+        continuityWatch = scope.launch {
+            // Milliseconds rather than either `Duration`: the policy's window is `java.time` and the poll
+            // interval is `kotlin.time`, and converting once here is clearer than importing a bridge to
+            // compare them.
+            val limitMs = carContinuity.window.toMillis()
+            var waitedMs = 0L
+            while (waitedMs <= limitMs) {
+                if (resumeIfTheCarTookTheAudio()) return@launch
+                delay(HANDOFF_POLL_INTERVAL)
+                waitedMs += HANDOFF_POLL_INTERVAL.inWholeMilliseconds
+            }
+        }
     }
 
     private fun publishMediaButtons() {
@@ -2044,8 +2092,10 @@ class PlaybackService : MediaLibraryService() {
                 scope.launch {
                     holdHeadsetAgainstCar()
                     // Product priority 1 — after the hold, so the route this asks about is the one the hold
-                    // just reasserted rather than the one the platform moved to.
-                    resumeIfTheCarTookTheAudio()
+                    // just reasserted rather than the one the platform moved to. A watch rather than one
+                    // ask, because the hold's preference may take longer to land than the router's single
+                    // settle read and nothing announces it when it does.
+                    watchForTheCarHandoff()
                     republishOutputButtons()
                 }
             }
@@ -2394,6 +2444,15 @@ class PlaybackService : MediaLibraryService() {
         val SEEK_CONFIRM_TIMEOUT: Duration = 2.seconds
 
         const val SECONDS_PER_MINUTE = 60L
+
+        /**
+         * How often [watchForTheCarHandoff] re-asks while waiting for a route.
+         *
+         * Comfortably shorter than `AudioOutputRouter`'s own 400 ms settle read, so the first publication
+         * after a hand-off is noticed rather than waited past, and long enough that the whole window costs
+         * a couple of dozen reads of state already in memory.
+         */
+        val HANDOFF_POLL_INTERVAL: Duration = 500.milliseconds
 
         /**
          * PRODUCT_SPEC ROUTE-002 — the two packages that are a car.
