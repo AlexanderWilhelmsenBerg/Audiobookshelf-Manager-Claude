@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
@@ -277,11 +278,13 @@ fun SettingsScreen(
         // the existing pull past the first page, both of which still call `onNavigateUp`.
         topBar = {
             Column(
-                modifier = Modifier.systemGlass(
-                    state = headerHaze,
-                    backgroundColor = MaterialTheme.colorScheme.surface,
-                    shape = RectangleShape,
-                ),
+                modifier = Modifier
+                    .systemGlass(
+                        state = headerHaze,
+                        backgroundColor = MaterialTheme.colorScheme.surface,
+                        shape = RectangleShape,
+                    )
+                    .statusBarsPadding(),
             ) {
                 /*
                  * PRODUCT_SPEC 16.2 — the indicator follows the drag rather than jumping when it lands.
