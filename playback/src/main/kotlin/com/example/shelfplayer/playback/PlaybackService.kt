@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import androidx.annotation.OptIn
@@ -702,6 +703,9 @@ class PlaybackService : MediaLibraryService() {
                 // ROUTE-002 — the first proof this book is being heard, which is what the headset hold needs.
                 if (!heardAudio) {
                     heardAudio = true
+                    // PLAY-002 — before the hold is fed, so the hold then remembers the headset this just
+                    // pinned rather than the one the selection disagreed with.
+                    startInRoutedHeadset()
                     feedHeadsetHold()
                 }
                 // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
@@ -988,14 +992,74 @@ class PlaybackService : MediaLibraryService() {
      * car button appears without any audio device having changed.
      */
     private fun republishOutputButtons() {
+        val outputs = audioOutputs.outputs.value
         val next = AudioOutputRoles.buttons(
-            outputs = audioOutputs.outputs.value,
+            outputs = outputs,
             selectedId = audioOutputs.selectedId.value,
             carConnected = carConnections.isConnected(),
         )
         if (next == outputButtons) return
         outputButtons = next
+        logOutputState(outputs, next)
         publishMediaButtons()
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 / 14.5 — the line that makes a drive conclusive instead of suggestive.
+     *
+     * Two device runs reported the Car action not lighting and neither could say **why**, because nothing
+     * recorded the inputs to that decision. The only routing log was in `AudioOutputRouter.apply`, which
+     * fires on an explicit selection and so never during the case being investigated. Four different causes
+     * produce the same photograph — the platform reported no route, it reported one BookWave classifies as
+     * a speaker or as unknown, the API is below 33 so no route is reported at all, or the host declined to
+     * draw the lit glyph — and this line separates them.
+     *
+     * Device **kinds** only, never advertised names: a headset's product name is the user's, not a
+     * diagnostic (14.5, and priority 7 keeps private self-hosted data out of reports).
+     */
+    private fun logOutputState(outputs: List<AudioOutput>, state: OutputButtons) {
+        logger.info(
+            LogCategory.Playback,
+            "The car output actions were recomputed",
+            LogField.Public("api", Build.VERSION.SDK_INT.toString()),
+            LogField.Public("carBound", carConnections.isConnected().toString()),
+            LogField.Public("routeKnown", outputs.any(AudioOutput::isActive).toString()),
+            LogField.Public(
+                "outputs",
+                outputs.joinToString("+") { output ->
+                    "${output.role}${if (output.isActive) "*" else ""}"
+                },
+            ),
+            LogField.Public("onCar", state.onCar.toString()),
+            LogField.Public("onHeadset", state.onHeadset.toString()),
+        )
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — *if play comes from a headset, start in that headset*, as far as that is knowable.
+     *
+     * Runs at the first proof a book is being heard, which is the one moment the route is settled and the
+     * decision costs the play path nothing. [AudioOutputRoles.startTarget] holds the policy and the reason
+     * the pressing device itself cannot be identified.
+     *
+     * Deliberately **not** folded into [HeadsetHold]. That class answers "which headset was the book in a
+     * moment ago, so a car arriving does not steal it"; its trigger is a car binding and its output is a
+     * memory. This is a different trigger and an immediate selection, and keeping them apart leaves
+     * `HeadsetHold`'s already-subtle release state machine untouched. They compose as they stand: this runs
+     * first, so the hold then observes the headset just pinned.
+     */
+    private fun startInRoutedHeadset() {
+        val target = AudioOutputRoles.startTarget(
+            outputs = audioOutputs.outputs.value,
+            selectedId = audioOutputs.selectedId.value,
+            carConnected = carConnections.isConnected(),
+        ) ?: return
+        logger.info(
+            LogCategory.Playback,
+            "A book started in the headset already carrying the route",
+            LogField.Public("kind", target.substringBefore(':')),
+        )
+        audioOutputs.select(target)
     }
 
     /**
@@ -1121,8 +1185,26 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
-    private fun mediaButtons(): List<CommandButton> = buildList {
-        add(
+    /**
+     * PRODUCT_SPEC PLAY-002 / PLAY-007 — every button, in the order that decides who gets the car's bar.
+     *
+     * **List order is the mechanism, not a style choice.** Pass 1 of
+     * `CommandButton.getCustomLayoutFromMediaButtonPreferences` walks this list and gives a contested slot
+     * to the *first* enabled button whose chain names it, so the output actions are emitted before the
+     * skips in order to win the two primary positions. The owner asked for exactly that trade after a
+     * device run: *"I need them more than seek forward and back."*
+     *
+     * **The back slot is never left empty, and that is a safety property rather than tidiness.** When no
+     * button holds it, Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS`, and this app has no
+     * `ForwardingPlayer` intercepting it — so a head unit's *previous* would reach `Player.seekToPrevious`
+     * and restart a thirty-four-hour book, the defect `NotificationButtons` exists to prevent. Car takes
+     * the slot when it is shown and skip back takes it when Car is not, so one of them always does.
+     * `MediaButtonSlotConversionTest` runs the real conversion over this list in all four states and
+     * asserts that invariant.
+     */
+    private fun mediaButtons(): List<CommandButton> = MediaButtonLayout.inPriorityOrder(
+        outputActions = outputCommandButtons(),
+        skipActions = listOf(
             skipButton(
                 icon = NotificationButtons.backIcon(skips.back),
                 action = NotificationButtons.ACTION_SKIP_BACK,
@@ -1133,8 +1215,6 @@ class PlaybackService : MediaLibraryService() {
                 ),
                 slot = CommandButton.SLOT_BACK,
             ),
-        )
-        add(
             skipButton(
                 icon = NotificationButtons.forwardIcon(skips.forward),
                 action = NotificationButtons.ACTION_SKIP_FORWARD,
@@ -1145,40 +1225,37 @@ class PlaybackService : MediaLibraryService() {
                 ),
                 slot = CommandButton.SLOT_FORWARD,
             ),
-        )
-        // PRODUCT_SPEC PLAY-002 — the output buttons, before the sleep timer's so their place in the car
-        // does not move when a timer starts.
-        addAll(outputCommandButtons())
+        ),
+        overflowActions = listOfNotNull(sleepTimerButton()),
+    )
+
+    /** PRODUCT_SPEC PLAY-008 — the running timer's remaining minutes, or `null` when no timer is set. */
+    private fun sleepTimerButton(): CommandButton? {
         val timer = sleepTimerState
-        if (timer.isActive) {
-            add(
-                CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
-                    .setDisplayName(getString(R.string.player_sleep_remaining, timer.remaining.asMinutesLabel()))
-                    .setSessionCommand(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
-                    // Not a transport control, so it goes where the extra actions go rather than displacing
-                    // one of the two a listener reaches for without looking.
-                    .setSlots(CommandButton.SLOT_OVERFLOW)
-                    .setEnabled(true)
-                    .build(),
-            )
-        }
+        if (!timer.isActive) return null
+        return CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
+            .setDisplayName(getString(R.string.player_sleep_remaining, timer.remaining.asMinutesLabel()))
+            .setSessionCommand(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+            // Not a transport control, so it goes where the extra actions go rather than displacing one of
+            // the two a listener reaches for without looking.
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setEnabled(true)
+            .build()
     }
 
     /**
      * PRODUCT_SPEC PLAY-002 — the car button and the headset button, or as many of them as apply.
      *
-     * **In a car these are overflow actions, and the secondary slots do not change that.** The slot chain
-     * below asks for a secondary primary-bar position first, which is right for Media3-native controllers —
-     * but it is measured to do nothing for Android Auto, and a device run confirmed the minimised control
-     * bar looked unchanged. `CommandButton.getCustomLayoutFromMediaButtonPreferences`, the conversion the
-     * legacy stub that serves a car runs, branches on exactly three slot values: `SLOT_BACK`,
-     * `SLOT_FORWARD` and `SLOT_OVERFLOW`. `SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY` are not
-     * tested anywhere in it, so a button declaring one falls through to the overflow branch.
-     * `MediaButtonSlotConversionTest` executes that conversion rather than asserting it here.
+     * **These hold the car's two app-claimable bar positions, by the owner's decision.** Android Auto
+     * reserves the *previous* and *next* positions and hands them to an app's custom actions when the app
+     * does not advertise those transport commands — which BookWave does not, because a book is one timeline
+     * window (ADR-0016). Two earlier attempts asked for the secondary slots instead; a device run showed
+     * the bar unchanged, because the legacy conversion a car is served by branches on the back, forward and
+     * overflow slots and on nothing else. So these now name the real primary slots.
      *
-     * The bar therefore holds these only by **displacing skip back and skip forward** from `SLOT_BACK` /
-     * `SLOT_FORWARD`, and for an audiobook those two are the controls a driver reaches for without looking.
-     * That trade is the owner's to make, not this comment's: `docs/risks.md` R-109 records it.
+     * The cost is deliberate and was chosen after a device run: **skip back and skip forward move to the
+     * overflow menu**, on the car *and* on the phone's system media controls, which read the same single
+     * layout. `docs/risks.md` R-109 records the trade and that the owner accepted it.
      *
      * Absent rather than disabled when there is nothing to act on. A head unit draws a disabled custom
      * action as a grey square with no explanation, and a driver cannot ask it why; one fewer button is a
@@ -1192,7 +1269,7 @@ class PlaybackService : MediaLibraryService() {
                     icon = OutputActionIcons.car(state),
                     action = NotificationButtons.ACTION_SELECT_CAR_OUTPUT,
                     label = getString(R.string.player_car_action),
-                    slot = CommandButton.SLOT_BACK_SECONDARY,
+                    slot = CommandButton.SLOT_BACK,
                 ),
             )
         }
@@ -1208,7 +1285,7 @@ class PlaybackService : MediaLibraryService() {
                     label = state.headsetName
                         ?.let { name -> getString(R.string.player_headset_action, name) }
                         ?: getString(R.string.player_headset_action_unknown),
-                    slot = CommandButton.SLOT_FORWARD_SECONDARY,
+                    slot = CommandButton.SLOT_FORWARD,
                 ),
             )
         }
@@ -1235,11 +1312,18 @@ class PlaybackService : MediaLibraryService() {
             .setEnabled(true)
             .build()
 
+    /**
+     * One skip button, asking for its primary slot and **accepting overflow when an output action wins it**.
+     *
+     * The overflow fallback is load-bearing rather than defensive. Pass 2 of the legacy conversion emits a
+     * displaced button only if its chain contains overflow; without it a skip that lost its slot is
+     * *dropped from every surface* rather than relocated. A test asserts both halves.
+     */
     private fun skipButton(icon: Int, action: String, label: String, slot: Int): CommandButton =
         CommandButton.Builder(icon)
             .setDisplayName(label)
             .setSessionCommand(SessionCommand(action, Bundle.EMPTY))
-            .setSlots(slot)
+            .setSlots(slot, CommandButton.SLOT_OVERFLOW)
             .setEnabled(true)
             .build()
 
@@ -1472,7 +1556,15 @@ class PlaybackService : MediaLibraryService() {
                 // starts a book, or a book started from a car would have no end-of-chapter timer and no
                 // outbox row. Same call, one place.
                 bookChanges.onBookOpened(session)
-                val queue = MediaItems.queueFor(session)
+                val queue = MediaItems.queueFor(
+                    session = session,
+                    // Only from the service, which is what a car talks to. The phone builds the same item
+                    // through `PlaybackController` and gets no description line.
+                    historyLink = MediaItems.HistoryLink(
+                        label = getString(R.string.car_player_history_link),
+                        historyMediaId = AutoLibrary.TAB_HISTORY,
+                    ),
+                )
                 if (startAt == null) {
                     queue
                 } else {
@@ -2080,6 +2172,11 @@ class PlaybackService : MediaLibraryService() {
                 // the main thread, and both of these read main-thread state, so they are posted rather than
                 // run here.
                 scope.launch {
+                    // Re-read the route before deciding anything from it. A car activating an already
+                    // connected A2DP link fires no `AudioDeviceCallback`, so without this both the hold and
+                    // the buttons are computed from whatever the route was before the drive began. See
+                    // `AudioOutputRouter.resettle`.
+                    audioOutputs.resettle()
                     holdHeadsetAgainstCar()
                     republishOutputButtons()
                 }

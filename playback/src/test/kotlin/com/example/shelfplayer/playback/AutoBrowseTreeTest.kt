@@ -66,13 +66,13 @@ class AutoBrowseTreeTest {
         assertEquals(
             listOf(
                 AutoLibrary.TAB_CONTINUE,
-                AutoLibrary.TAB_CHAPTERS,
-                AutoLibrary.TAB_HISTORY,
+                AutoLibrary.TAB_SERIES,
+                AutoLibrary.TAB_AUTHORS,
                 AutoLibrary.TAB_LIBRARY,
             ),
             root.map { it.mediaId },
         )
-        assertEquals(listOf("Continue", "Chapters", "History", "Library"), root.titles())
+        assertEquals(listOf("Continue", "Series", "Authors", "Library"), root.titles())
     }
 
     @Test
@@ -95,8 +95,12 @@ class AutoBrowseTreeTest {
         assertEquals("No books yet", rows.single().mediaMetadata.title?.toString())
     }
 
+    /**
+     * The owner's browse axes are at the root and everything else is one level down — *"Chapter and history
+     * can be removed from library view. Have series and author instead."*
+     */
     @Test
-    fun `library holds broad discovery rather than spending root positions on it`() = runTest {
+    fun `the root spends its four positions on the axes the owner browses by`() = runTest {
         books.value = listOf(
             book(
                 id = "book-1",
@@ -109,13 +113,39 @@ class AutoBrowseTreeTest {
         val rootIds = auto().children(AutoLibrary.ROOT, now = null).map { it.mediaId }
         val libraryIds = auto().children(AutoLibrary.TAB_LIBRARY, now = null).map { it.mediaId }
 
-        assertTrue(AutoLibrary.TAB_SERIES in libraryIds)
-        assertTrue(AutoLibrary.TAB_AUTHORS in libraryIds)
+        assertTrue(AutoLibrary.TAB_SERIES in rootIds)
+        assertTrue(AutoLibrary.TAB_AUTHORS in rootIds)
         assertTrue(AutoLibrary.TAB_DOWNLOADS in libraryIds)
         assertTrue(AutoLibrary.TAB_DISCOVER in libraryIds)
         assertTrue(AutoLibrary.TAB_OUTPUT in libraryIds)
         assertFalse(AutoLibrary.TAB_DISCOVER in rootIds)
         assertFalse(AutoLibrary.TAB_OUTPUT in rootIds)
+        // Listed once each. Leaving them in both places would make the tree describe itself inconsistently.
+        assertFalse(AutoLibrary.TAB_SERIES in libraryIds)
+        assertFalse(AutoLibrary.TAB_AUTHORS in libraryIds)
+    }
+
+    /**
+     * Chapters and History left the root but were **not** deleted. History especially is still wanted, so
+     * this pins that both are reachable and that they lead the list rather than being buried under
+     * discovery rows a driver has to scroll past.
+     */
+    @Test
+    fun `chapters and history stay reachable at the top of library`() = runTest {
+        books.value = listOf(book("book-1", "The Salt Harbour"))
+
+        val libraryIds = auto().children(AutoLibrary.TAB_LIBRARY, now = null).map { it.mediaId }
+
+        assertEquals(listOf(AutoLibrary.TAB_CHAPTERS, AutoLibrary.TAB_HISTORY), libraryIds.take(2))
+    }
+
+    /** Both answer honestly with no book playing, which is why they are listed unconditionally. */
+    @Test
+    fun `chapters and history resolve with nothing playing`() = runTest {
+        books.value = listOf(book("book-1", "The Salt Harbour"))
+
+        assertTrue(auto().children(AutoLibrary.TAB_CHAPTERS, now = null).isNotEmpty())
+        assertTrue(auto().children(AutoLibrary.TAB_HISTORY, now = null).isNotEmpty())
     }
 
     @Test

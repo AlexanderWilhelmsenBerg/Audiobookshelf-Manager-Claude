@@ -66,6 +66,15 @@ object MediaItems {
      */
     const val KEY_OWNER_PROFILE_ID = "com.example.shelfplayer.playback.OWNER_PROFILE_ID"
 
+    /**
+     * The car-media extra that makes the player's description line tap through to a browse node.
+     *
+     * The literal rather than a dependency on `androidx.car.app:app` for one string; a new artifact for a
+     * single constant is a poor trade, and dependencies here are pinned. Defined by the `MetadataExtras`
+     * reference in the car app library.
+     */
+    const val KEY_DESCRIPTION_LINK_MEDIA_ID = "androidx.car.app.mediaextensions.KEY_DESCRIPTION_LINK_MEDIA_ID"
+
     /** A book plus where to start it. */
     data class Queue(val item: MediaItem, val startPositionMs: Long)
 
@@ -78,7 +87,15 @@ object MediaItems {
      * The start position needs no conversion any more — it is a book position and the player's timeline is the
      * book, which is the whole point of ADR-0016.
      */
-    fun queueFor(session: PlaybackSession): Queue {
+    /**
+     * A tappable link from the player's description line to a browse node.
+     *
+     * [label] is the visible text and must come from a string resource — this object has no `Context`, and
+     * the car tree is drawn in the app's language. [historyMediaId] is the browse id to open.
+     */
+    data class HistoryLink(val label: String, val historyMediaId: String)
+
+    fun queueFor(session: PlaybackSession, historyLink: HistoryLink? = null): Queue {
         val tracks = session.playableTracks
         val durations = recoveredDurations(session)
         val seriesLabel = session.seriesLabel?.takeIf(String::isNotBlank)
@@ -90,6 +107,18 @@ object MediaItems {
             putLongArray(KEY_TRACK_DURATIONS_MS, durations.map { it.inWholeMilliseconds }.toLongArray())
             putStringArray(KEY_TRACK_MIME_TYPES, tracks.map { it.mimeType.orEmpty() }.toTypedArray())
             putString(KEY_OWNER_PROFILE_ID, session.profileId.value)
+            // PRODUCT_SPEC PLAY-001 — the nearest reachable thing to *"the queue button should open
+            // history"*. The queue itself cannot: a queue row's only meaning to a car is "play this now"
+            // (`onSkipToQueueItem` resolves to `seekToDefaultPosition(index)`), so a history row tapped
+            // there would interrupt the book — priority 1 — and the legacy queue is built from the player's
+            // timeline with no app-supplied list anywhere in the path.
+            //
+            // A description **link** is the one documented player-screen-to-browse-node affordance. Only
+            // published when a caller supplies the label, so the phone path is untouched, and only honoured
+            // by hosts that implement it — Automotive OS must, projected Android Auto may not. R-110.
+            historyLink?.let { link ->
+                putString(KEY_DESCRIPTION_LINK_MEDIA_ID, link.historyMediaId)
+            }
         }
         val item = MediaItem.Builder()
             .setMediaId(session.bookId.value)
@@ -105,6 +134,8 @@ object MediaItems {
                     .setSubtitle(seriesLabel)
                     .setAlbumTitle(seriesLabel ?: session.title)
                     .setArtworkUri(session.coverUrl?.let(android.net.Uri::parse))
+                    // Must be set explicitly or the link has nothing to attach to.
+                    .setDescription(historyLink?.label)
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .setExtras(extras)

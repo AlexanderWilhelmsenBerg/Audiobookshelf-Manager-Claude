@@ -15,6 +15,8 @@
 
     <string name="car_app_name" translatable="false">BookWave</string>
     <string name="car_tab_continue">Continue</string>
+    <string name="car_player_history_link">Where I have been in this book</string>
+    <string name="car_nothing_playing">Nothing is playing yet</string>
     <string name="car_tab_chapters">Chapters</string>
     <string name="car_tab_history">History</string>
     <string name="car_tab_library">Library</string>

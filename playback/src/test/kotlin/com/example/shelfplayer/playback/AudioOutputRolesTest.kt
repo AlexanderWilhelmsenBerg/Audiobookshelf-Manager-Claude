@@ -229,6 +229,124 @@ class AudioOutputRolesTest {
         assertTrue(state.showCar)
     }
 
+    /*
+     * PLAY-002 — "if play button comes from headset, start in that headset". The pressing device is not
+     * knowable (AVRCP discards it before the framework sees it), so the policy reads the route and can only
+     * ever retract BookWave's own disagreement with it. These pin that it never moves audio on its own.
+     */
+
+    @Test
+    fun `a book starting on the routed headset corrects a stale selection`() {
+        val active = buds.copy(isActive = true)
+
+        val target = AudioOutputRoles.startTarget(
+            outputs = listOf(active, overEars),
+            selectedId = overEars.id,
+            carConnected = false,
+        )
+
+        assertEquals(active.id, target)
+    }
+
+    /** Automatic is not a disagreement — the platform is already in charge and must stay there. */
+    @Test
+    fun `an automatic selection is left alone`() {
+        val active = buds.copy(isActive = true)
+
+        assertNull(AudioOutputRoles.startTarget(listOf(active), selectedId = null, carConnected = false))
+    }
+
+    @Test
+    fun `a selection that already agrees is left alone`() {
+        val active = buds.copy(isActive = true)
+
+        assertNull(AudioOutputRoles.startTarget(listOf(active), selectedId = active.id, carConnected = false))
+    }
+
+    /** The speaker is never a start target, which is what keeps a book out of the room. */
+    @Test
+    fun `a book starting on the phone speaker moves nothing`() {
+        val active = speaker.copy(isActive = true)
+
+        assertNull(AudioOutputRoles.startTarget(listOf(active, buds), selectedId = buds.id, carConnected = false))
+    }
+
+    @Test
+    fun `a book starting on the car bus moves nothing`() {
+        val active = car.copy(isActive = true)
+
+        assertNull(AudioOutputRoles.startTarget(listOf(active, buds), selectedId = buds.id, carConnected = true))
+    }
+
+    @Test
+    fun `a dock is not a headset to start in`() {
+        val active = dock.copy(isActive = true)
+
+        assertNull(AudioOutputRoles.startTarget(listOf(active, buds), selectedId = buds.id, carConnected = false))
+    }
+
+    /**
+     * The case that would be a real defect: an unselected ambiguous A2DP route with a car bound is the
+     * dashboard, and pinning it as "the headset" would hand the book to the car and call it earbuds.
+     */
+    @Test
+    fun `a projected car's dashboard is never mistaken for the headset to start in`() {
+        val dashboard = output("bluetooth:dashboard", "Dashboard").copy(isActive = true)
+
+        assertNull(
+            AudioOutputRoles.startTarget(
+                outputs = listOf(dashboard, buds),
+                selectedId = buds.id,
+                carConnected = true,
+            ),
+        )
+    }
+
+    /**
+     * Below API 33 `isActive` degenerates to "the output this app chose", so the disagreement test can
+     * never fire and the policy is inert. That is deliberate: those releases report no route at all, and
+     * acting anyway would move a book to a device nobody asked for.
+     */
+    @Test
+    fun `the policy is inert when the only active output is the chosen one`() {
+        val chosen = buds.copy(isActive = true)
+
+        assertNull(AudioOutputRoles.startTarget(listOf(chosen, overEars), chosen.id, carConnected = false))
+    }
+
+    @Test
+    fun `nothing routed means nothing to do`() {
+        assertNull(AudioOutputRoles.startTarget(listOf(buds, overEars), selectedId = buds.id, carConnected = false))
+    }
+
+    /*
+     * `current()` no longer lets a reported speaker mask another active route — one of the ways a device run
+     * found both output glyphs dark while a car was carrying the book.
+     */
+
+    @Test
+    fun `an active speaker does not mask an active headset`() {
+        val state = AudioOutputRoles.buttons(
+            outputs = listOf(speaker.copy(isActive = true), buds.copy(isActive = true)),
+            selectedId = null,
+            carConnected = false,
+        )
+
+        assertTrue(state.onHeadset)
+    }
+
+    @Test
+    fun `an active speaker does not mask the dashboard`() {
+        val dashboard = output("bluetooth:dashboard", "Dashboard").copy(isActive = true)
+        val state = AudioOutputRoles.buttons(
+            outputs = listOf(speaker.copy(isActive = true), dashboard),
+            selectedId = null,
+            carConnected = true,
+        )
+
+        assertTrue(state.onCar)
+    }
+
     private fun output(
         id: String,
         name: String,

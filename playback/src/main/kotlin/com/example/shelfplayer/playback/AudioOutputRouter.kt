@@ -141,6 +141,31 @@ class AudioOutputRouter @Inject constructor(
         publish()
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-002 / ROUTE-002 — re-read the route when something moved it that this class cannot see.
+     *
+     * ### Why a car needs this
+     *
+     * `routedIds()` is only ever consulted from [publish], and [publish] is only reached from [attach], from
+     * [refresh] — which the framework drives through `AudioDeviceCallback.onAudioDevicesAdded/Removed` — and
+     * from an explicit [select]. **A car binding is none of those.** Android Auto activating an A2DP link
+     * that was already connected moves the route without adding or removing a device, so no callback fires,
+     * nothing re-reads the route, and the output state stays whatever it was before the drive started.
+     *
+     * That is why a device run reported the Car action never lighting: the fact `AudioOutputRoles.buttons`
+     * depends on was never refreshed at the one moment it changed. ADR-0029 §8 claimed "a republish of the
+     * button preferences, which the service already does when the route moves" — true only for moves that
+     * come with a device event, which this one does not. The republish happened; the *route* behind it was
+     * stale. Fifth correction of that shape on this branch.
+     *
+     * Twice, because the route is not settled the instant the controller binds — the same reason [apply]
+     * ends in [settle], and the same delay.
+     */
+    fun resettle() {
+        publish()
+        applicationScope.launch { settle() }
+    }
+
     private fun refresh() {
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()

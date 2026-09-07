@@ -7,6 +7,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * PRODUCT_SPEC PLAY-002 — what a **car** does with `CommandButton` slots, executed rather than asserted.
@@ -89,6 +90,99 @@ class MediaButtonSlotConversionTest {
 
         assertEquals(listOf(CommandButton.SLOT_BACK), layout.map { it.slots.asList().single() })
     }
+
+    /*
+     * The arrangement BookWave publishes after the owner's device run: the output actions lead the list and
+     * name the primary slots, the skips follow and accept overflow. "I need them more than seek forward and
+     * back." These four cases are the whole state space of showCar/showHeadset.
+     */
+
+    @Test
+    fun `car and headset take the bar and the skips fall to overflow`() {
+        val layout = convert(bookwaveButtons(car = true, headset = true))
+
+        assertEquals(
+            listOf("car", "headset", "skipBack", "skipForward", "sleep"),
+            layout.map { it.displayName.toString() },
+        )
+        assertEquals(CommandButton.SLOT_BACK, slotOf(layout, "car"))
+        assertEquals(CommandButton.SLOT_FORWARD, slotOf(layout, "headset"))
+        assertEquals(CommandButton.SLOT_OVERFLOW, slotOf(layout, "skipBack"))
+        assertEquals(CommandButton.SLOT_OVERFLOW, slotOf(layout, "skipForward"))
+    }
+
+    /** With no headset connected, skip forward keeps the position Headset would have taken. */
+    @Test
+    fun `only car shown leaves skip forward in the bar`() {
+        val layout = convert(bookwaveButtons(car = true, headset = false))
+
+        assertEquals(CommandButton.SLOT_BACK, slotOf(layout, "car"))
+        assertEquals(CommandButton.SLOT_FORWARD, slotOf(layout, "skipForward"))
+        assertEquals(CommandButton.SLOT_OVERFLOW, slotOf(layout, "skipBack"))
+    }
+
+    @Test
+    fun `only headset shown leaves skip back in the bar`() {
+        val layout = convert(bookwaveButtons(car = false, headset = true))
+
+        assertEquals(CommandButton.SLOT_BACK, slotOf(layout, "skipBack"))
+        assertEquals(CommandButton.SLOT_FORWARD, slotOf(layout, "headset"))
+    }
+
+    /** No output actions at all is the pre-change layout, unchanged. */
+    @Test
+    fun `neither output action shown restores the skips to both primary slots`() {
+        val layout = convert(bookwaveButtons(car = false, headset = false))
+
+        assertEquals(CommandButton.SLOT_BACK, slotOf(layout, "skipBack"))
+        assertEquals(CommandButton.SLOT_FORWARD, slotOf(layout, "skipForward"))
+    }
+
+    /**
+     * **The anti-restart invariant, and the reason this file exists rather than a comment.**
+     *
+     * If nothing holds the back slot, Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS`; this app has no
+     * `ForwardingPlayer` intercepting it, so a head unit's *previous* reaches `Player.seekToPrevious` and
+     * restarts a thirty-four-hour book. Some button must hold that slot in every state, and after this
+     * change which button it is varies — so the property is asserted directly rather than inferred from
+     * whichever case a reader happens to look at.
+     */
+    @Test
+    fun `something always holds the back slot, in every state`() {
+        listOf(true to true, true to false, false to true, false to false).forEach { (car, headset) ->
+            val layout = convert(bookwaveButtons(car = car, headset = headset))
+
+            assertTrue(
+                CommandButton.containsButtonForSlot(layout, CommandButton.SLOT_BACK),
+                "showCar=$car showHeadset=$headset left the back slot empty, which re-arms the restart bug",
+            )
+        }
+    }
+
+    /** A displaced skip is dropped, not relocated, without its overflow fallback — so it must keep one. */
+    @Test
+    fun `a skip without the overflow fallback disappears once an output action takes its slot`() {
+        val layout = convert(
+            listOf(
+                custom("car", CommandButton.SLOT_BACK, CommandButton.SLOT_OVERFLOW),
+                custom("skipBack", CommandButton.SLOT_BACK),
+            ),
+        )
+
+        assertEquals(listOf("car"), layout.map { it.displayName.toString() })
+    }
+
+    /** BookWave's real list order, mirroring `PlaybackService.mediaButtons`. */
+    private fun bookwaveButtons(car: Boolean, headset: Boolean): List<CommandButton> = buildList {
+        if (car) add(custom("car", CommandButton.SLOT_BACK, CommandButton.SLOT_OVERFLOW))
+        if (headset) add(custom("headset", CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW))
+        add(custom("skipBack", CommandButton.SLOT_BACK, CommandButton.SLOT_OVERFLOW))
+        add(custom("skipForward", CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW))
+        add(custom("sleep", CommandButton.SLOT_OVERFLOW))
+    }
+
+    private fun slotOf(layout: List<CommandButton>, name: String): Int =
+        layout.first { it.displayName.toString() == name }.slots.asList().single()
 
     /**
      * The same arguments `MediaSessionLegacyStub.updateCustomLayoutAndLegacyExtrasForMediaButtonPreferences`

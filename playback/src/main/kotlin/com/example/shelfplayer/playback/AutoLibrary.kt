@@ -39,9 +39,13 @@ import kotlin.time.Duration.Companion.milliseconds
  * PRODUCT_SPEC PLAY-001 / 11.1 — the audiobook-first tree Android Auto sees.
  *
  * Android Auto owns the drawing. BookWave owns the information architecture and media metadata. The root is
- * intentionally limited to four stable destinations a driver can learn: Continue, Chapters, History and
- * Library. Broader discovery lives one level below Library instead of competing with the three things used
- * while a book is already playing.
+ * intentionally limited to four stable destinations a driver can learn: Continue, Series, Authors and
+ * Library. Four is the platform's documented root-children limit rather than a preference, so the set is at
+ * its ceiling and any change to it is a swap.
+ *
+ * Chapters and History used to hold two of those positions and now lead the Library list instead — the
+ * owner's call after driving with it. Neither was deleted: both are still destinations, and History is
+ * separately wanted from the player.
  */
 @OptIn(UnstableApi::class)
 @Singleton
@@ -182,24 +186,45 @@ class AutoLibrary @Inject constructor(
         else -> emptyList()
     }
 
-    /** Four stable top-level destinations; empty libraries still explain themselves instead of showing shells. */
+    /**
+     * Four stable top-level destinations; empty libraries still explain themselves instead of showing shells.
+     *
+     * **Four is the platform's number, not this app's taste.** Android Auto sends a root-children limit as a
+     * browser root hint and the documentation says to expect four, so this set is at the ceiling: changing
+     * it is a swap, never an addition. Nothing in Media3 enforces the hint, which makes it the app's job.
+     *
+     * The owner replaced Chapters and History here after a device run — *"Chapter and history can be removed
+     * from library view. Have series and author instead."* Both remain reachable one level down rather than
+     * being deleted; History in particular is still wanted, and [librarySections] now leads with them.
+     */
     private suspend fun rootTabs(): List<MediaItem> {
         if (books().isEmpty()) return listOf(emptyNotice())
         return listOf(
             tab(TAB_CONTINUE, R.string.car_tab_continue),
-            tab(TAB_CHAPTERS, R.string.car_tab_chapters),
-            tab(TAB_HISTORY, R.string.car_tab_history),
+            tab(TAB_SERIES, R.string.car_tab_series),
+            tab(TAB_AUTHORS, R.string.car_tab_authors),
             tab(TAB_LIBRARY, R.string.car_tab_library),
         )
     }
 
-    /** Broader discovery moves here so the root never exceeds the driver's four learned destinations. */
+    /**
+     * Everything that is not one of the four learned root destinations.
+     *
+     * Chapters and History lead, unconditionally. They left the root by the owner's decision but are still
+     * wanted — History especially — and they are the two entries here that describe *what is playing* rather
+     * than the library, so they sit at the top where a driver already looking for "where was I" will find
+     * them. Unconditional because both answer honestly when there is no book: `chaptersOf(null)` and
+     * `historyOf(null)` already return a notice row rather than an empty shell.
+     *
+     * Series and Authors are **not** listed here any more; they are root tabs now, and listing them twice
+     * would make the tree describe itself inconsistently.
+     */
     private suspend fun librarySections(): List<MediaItem> {
         val all = books()
         val shelves = shelves()
         return buildList {
-            if (all.any { it.seriesMemberships.isNotEmpty() }) add(tab(TAB_SERIES, R.string.car_tab_series))
-            if (all.any { it.authors.isNotEmpty() }) add(tab(TAB_AUTHORS, R.string.car_tab_authors))
+            add(tab(TAB_CHAPTERS, R.string.car_tab_chapters))
+            add(tab(TAB_HISTORY, R.string.car_tab_history))
             if (all.any { it.localAvailability == LocalAvailability.Complete }) {
                 add(tab(TAB_DOWNLOADS, R.string.car_tab_downloads))
             }
@@ -355,7 +380,13 @@ class AutoLibrary @Inject constructor(
     }
 
     private suspend fun chaptersOf(now: NowPlaying?): List<MediaItem> {
-        val book = bookFor(now?.bookId) ?: return emptyList()
+        // `bookFor(null)` falls back to the last-played book, so a missing book here means one of two very
+        // different things and conflating them would cross a profile boundary. **An id that did not
+        // resolve** is a book this profile was not granted, and must still show nothing at all (priority 4).
+        // **No id and no last-played book** is a genuinely empty state, and deserves a sentence: this is a
+        // listed row now rather than a root tab, and a blank screen in a car reads as a broken one.
+        val book = bookFor(now?.bookId)
+            ?: return if (now?.bookId == null) listOf(noticeRow(string(R.string.car_nothing_playing))) else emptyList()
         val profileId = profiles.activeProfileId() ?: return emptyList()
         val chapters = library.observeChapters(profileId, book.id).first()
         val position = positionIn(book, now)
@@ -433,7 +464,15 @@ class AutoLibrary @Inject constructor(
      * deliberately absent; meaningful position decisions and remote-device movement remain tappable.
      */
     private suspend fun historyOf(currentBookId: LibraryItemId?): List<MediaItem> {
-        val book = bookFor(currentBookId) ?: return emptyList()
+        // The same two cases kept apart as in `chaptersOf`, for the same reason.
+        val book = bookFor(currentBookId)
+            ?: return if (currentBookId ==
+                null
+            ) {
+                listOf(noticeRow(string(R.string.car_nothing_playing)))
+            } else {
+                emptyList()
+            }
         val profileId = profiles.activeProfileId() ?: return emptyList()
         val chapters = library.observeChapters(profileId, book.id).first()
         // Read deeper than the row budget and cap afterwards. The DAO's limit is SQL, so it applies before

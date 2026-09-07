@@ -13,9 +13,25 @@ import com.example.shelfplayer.core.model.playback.DeviceKind
  */
 internal object AudioOutputRoles {
 
-    /** Framework-reported media route first; explicit choice is the best fallback below API 33. */
-    fun current(outputs: List<AudioOutput>, selectedId: String?): AudioOutput? =
-        outputs.firstOrNull(AudioOutput::isActive) ?: outputs.firstOrNull { it.id == selectedId }
+    /**
+     * Framework-reported media route first; explicit choice is the best fallback below API 33.
+     *
+     * **A reported speaker never masks a reported anything-else.** `getAudioDevicesForAttributes` may name
+     * more than one device, and the order is `AudioManager.getDevices`' iteration order — so taking the
+     * first active output made the answer depend on how the platform happened to enumerate. When the
+     * built-in speaker came first, a connected dashboard or headset was invisible and both output glyphs
+     * went dark, which is one of the ways a device run found the Car action never lighting.
+     *
+     * Only speakers are demoted, deliberately. Ordering car ahead of headset would change which device
+     * `activeHeadset` reports while both are live, and that is exactly the fact `HeadsetHold` uses to stop
+     * a car stealing a book out of someone's ears.
+     */
+    fun current(outputs: List<AudioOutput>, selectedId: String?): AudioOutput? {
+        val active = outputs.filter(AudioOutput::isActive)
+        return active.firstOrNull { !it.isSpeaker }
+            ?: active.firstOrNull()
+            ?: outputs.firstOrNull { it.id == selectedId }
+    }
 
     /**
      * Everything the headset action may consider.
@@ -71,6 +87,48 @@ internal object AudioOutputRoles {
         val index = here?.let { active -> candidates.indexOfFirst { it.id == active.id } } ?: -1
         if (index == -1) return candidates.first().id
         return candidates[(index + 1) % candidates.size].id
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 / ROUTE-002 — the output to pin when a book starts, or `null` to leave it alone.
+     *
+     * ### The request, and what is actually knowable
+     *
+     * The owner asked for *"if play button comes from headset, start in that headset."* **Which device sent
+     * a play cannot be known.** A Bluetooth AVRCP passthrough loses the device before the framework sees
+     * it: the Bluetooth stack synthesises `KeyEvent(action, keyCode)`, whose two-argument constructor hard
+     * codes `deviceId` to `KeyCharacterMap.VIRTUAL_KEYBOARD`, and the JNI upcall carrying the press into
+     * Java takes no `BluetoothDevice` at all. Media3's own notification buttons synthesise a byte-identical
+     * event, and `ControllerInfo` carries a package name and no device. So earbuds pressing play and a car
+     * stereo pressing play are indistinguishable, and any policy reading a media button as *headset
+     * evidence* would let a car stereo pull the book onto whatever this app thinks is a headset.
+     *
+     * ### What is done instead
+     *
+     * The route is read rather than the presser. When a book starts and the platform is already routing to
+     * a headset, the only thing this does is **retract BookWave's own disagreement** with that route. It can
+     * never move audio somewhere the platform was not already sending it, which is what makes it safe.
+     *
+     * Every guard below is load-bearing:
+     * - a route BookWave cannot call a headset candidate is left alone, which structurally excludes the
+     *   phone speaker, a car bus, a dock and an unknown sink;
+     * - the ambiguous-dashboard case is excluded by the same predicate [buttons] uses, so a projected car's
+     *   A2DP link is never mistaken for earbuds;
+     * - and with no selection, or one that already agrees, there is nothing to correct.
+     *
+     * **Below API 33 this is inert by construction, and that is correct rather than a gap.** `isActive`
+     * degenerates to "the output this app chose", so the disagreement test can never fire — and the
+     * platform reports no route on those releases, so anything else would be a guess that moves a book to a
+     * device nobody asked for. Do not "fix" the inertness.
+     */
+    fun startTarget(outputs: List<AudioOutput>, selectedId: String?, carConnected: Boolean): String? {
+        val routed = outputs.firstOrNull(AudioOutput::isActive) ?: return null
+        if (!routed.isHeadsetCandidate) return null
+        val looksLikeDashboard = carConnected &&
+            routed.role == AudioOutputRole.Ambiguous &&
+            routed.id != selectedId
+        if (looksLikeDashboard) return null
+        return routed.id.takeIf { selectedId != null && selectedId != it }
     }
 
     /** What Android Auto/notification should publish right now. */
