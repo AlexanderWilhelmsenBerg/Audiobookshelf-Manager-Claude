@@ -1041,10 +1041,15 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun reportFailureToControllers(error: PlaybackException, willRetry: Boolean) {
         val current = session ?: return
-        val report = PlaybackFailureReport.of(error.httpResponseCode(), willRetry) ?: return
+        val report = PlaybackFailureReport.of(
+            errorCode = error.errorCode,
+            httpStatus = error.httpResponseCode(),
+            willRetry = willRetry,
+        ) ?: return
         val message = when (report.message) {
             PlaybackFailureReport.Message.CredentialsExpired -> R.string.car_error_credentials_expired
             PlaybackFailureReport.Message.ServerUnreachable -> R.string.car_error_server_unreachable
+            PlaybackFailureReport.Message.FileNotPlayable -> R.string.car_error_file_not_playable
         }
         val extras = Bundle().apply {
             if (report.isCredentialFailure) {

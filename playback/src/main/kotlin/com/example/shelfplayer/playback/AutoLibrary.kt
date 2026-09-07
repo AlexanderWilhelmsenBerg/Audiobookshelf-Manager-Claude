@@ -243,11 +243,16 @@ class AutoLibrary @Inject constructor(
     /** The browse output list is a second safety boundary: even a fake/stale router cannot surface a speaker. */
     private fun outputRows(): List<MediaItem> {
         val outputs = audioOutputs.available().filterNot(AudioOutput::isSpeaker)
-        if (outputs.isEmpty()) return listOf(noticeRow(string(R.string.car_output_none)))
         val chosen = audioOutputs.selected()
-        return listOf(
-            browsableNode("$OUT_PREFIX$AUTOMATIC_OUTPUT", string(R.string.car_output_automatic)),
-        ) + outputs.map { output ->
+        // **Automatic is listed even when nothing else is**, and a review is why. A projected car often
+        // exposes no separate audio bus, so the platform reports the built-in speaker and nothing more;
+        // filtering speakers then emptied the list and the early return took Automatic with it. A driver
+        // who had once chosen the speaker from the phone's own chooser was left with no row that could
+        // clear it — while `chooseOutput` supported exactly that. Handing routing back to Android is the
+        // one operation that must never be unreachable from here.
+        val automatic = browsableNode("$OUT_PREFIX$AUTOMATIC_OUTPUT", string(R.string.car_output_automatic))
+        if (outputs.isEmpty()) return listOf(automatic, noticeRow(string(R.string.car_output_none)))
+        return listOf(automatic) + outputs.map { output ->
             browsableNode(
                 id = "$OUT_PREFIX${output.id}",
                 title = when {

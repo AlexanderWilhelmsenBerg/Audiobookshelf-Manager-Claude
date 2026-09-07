@@ -157,6 +157,43 @@ class AutoBrowseTreeTest {
         assertTrue(rows.none { it.mediaId.contains("speaker:phone") })
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-002 — **Automatic survives a speaker-only device**, and a review found it did not.
+     *
+     * A projected car often exposes no separate audio bus, so the platform reports the built-in speaker and
+     * nothing else. Filtering speakers then emptied the list and the early return took the Automatic row
+     * with it — leaving a driver who had once chosen the speaker from the phone's own chooser with no row
+     * that could clear it, while `chooseOutput` supported exactly that. Handing routing back to Android is
+     * the one operation that must never be unreachable from this node.
+     */
+    @Test
+    fun `Automatic stays listed when only the phone speaker is reported`() = runTest {
+        books.value = listOf(book("book-1", "The Salt Harbour"))
+        val outputs = FakeAutoOutputs.of(
+            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
+            selected = "speaker:phone",
+        )
+
+        val rows = auto(outputs).children(AutoLibrary.TAB_OUTPUT, now = null)
+
+        assertEquals(listOf("Automatic", "No selectable audio outputs found"), rows.titles())
+    }
+
+    /** And it still selects: the row has to work, not merely be drawn. */
+    @Test
+    fun `Automatic can be chosen on a speaker-only device`() = runTest {
+        books.value = listOf(book("book-1", "The Salt Harbour"))
+        val outputs = FakeAutoOutputs.of(
+            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
+            selected = "speaker:phone",
+        )
+
+        auto(outputs).children("${AutoLibrary.OUT_PREFIX}${AutoLibrary.AUTOMATIC_OUTPUT}", now = null)
+
+        assertEquals(listOf<String?>(null), outputs.chosen)
+        assertNull(outputs.selected())
+    }
+
     @Test
     fun `a stale cached phone-speaker row is refused`() = runTest {
         books.value = listOf(book("book-1", "The Salt Harbour"))

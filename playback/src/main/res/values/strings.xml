@@ -74,6 +74,11 @@
     -->
     <string name="car_error_credentials_expired">Sign in again on your phone to keep listening</string>
     <string name="car_error_server_unreachable">Can\'t reach your server from here</string>
+    <!--
+      A parsing, decoding or audio-track failure: the media or this device, never the network. Worded
+      without a cause, because Media3's code says which band the failure is in and not why.
+    -->
+    <string name="car_error_file_not_playable">This book\'s audio could not be played</string>
     <!-- The label on the action beside the credential message. A verb, because it is a button. -->
     <string name="car_error_sign_in_action">Open BookWave</string>
 </resources>
