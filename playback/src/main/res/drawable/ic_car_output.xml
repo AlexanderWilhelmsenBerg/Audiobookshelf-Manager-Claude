@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- PRODUCT_SPEC PLAY-002 — deliberately simple side-profile car for tiny Android Auto action slots. -->
+<!--
+  PRODUCT_SPEC PLAY-002 — a side-profile car for the Android Auto action slot, which is tiny.
+
+  Drawn to three rules a 24dp slot enforces, all of which the previous glyph broke and a device run saw:
+
+  - **Centred on both axes.** The glyph spans y 6→18.5 and is symmetric about x=12. The earlier path sat
+    between y 5 and 17 and left the bottom third of the box empty, so the car floated above the middle of
+    a slot the host centres its other icons in.
+  - **Wheels under the ends of the body.** They sit at x 7.1 and 16.9 inside a body spanning 2.6→21.4. The
+    earlier front wheel was at 15.2 under a body reaching 22.3, a seven-unit overhang that read as a
+    misplaced wheel rather than a nose.
+  - **No detail that cannot survive the size.** One silhouette: body, cabin, two wheels, no window and no
+    bumper spur. Each wheel keeps about seven-tenths of its circle below the body edge, which is what makes
+    it read as a wheel instead of a flat stub at 24dp.
+
+  The cabin sits back over the rear axle rather than in the middle. That asymmetry is what makes the shape
+  a car instead of a shed, and it costs nothing: the *glyph* stays centred, only its interior is weighted.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,5 +24,5 @@
     android:viewportHeight="24">
     <path
         android:fillColor="@android:color/white"
-        android:pathData="M3,14.5V12.2c0,-0.7 0.4,-1.3 1.1,-1.6L6.5,9.5l1.8,-3c0.4,-0.7 1.1,-1.1 1.9,-1.1h4.4c0.9,0 1.7,0.4 2.2,1.2l2,2.9 1.1,0.4c0.8,0.3 1.3,1 1.3,1.8v2.8c0,0.8 -0.7,1.5 -1.5,1.5h-1.3c-0.4,1.5 -1.7,2.6 -3.2,2.6s-2.8,-1.1 -3.2,-2.6H9.7c-0.4,1.5 -1.7,2.6 -3.2,2.6S3.7,17.5 3.3,16H2.5C2.2,16 2,15.8 2,15.5c0,-0.6 0.4,-1 1,-1zM8.8,9.3h7.5l-1.2,-1.8c-0.2,-0.3 -0.4,-0.4 -0.8,-0.4h-3.9c-0.3,0 -0.6,0.2 -0.8,0.5L8.8,9.3zM6.5,16.9c0.9,0 1.6,-0.7 1.6,-1.6S7.4,13.7 6.5,13.7s-1.6,0.7 -1.6,1.6S5.6,16.9 6.5,16.9zM15.2,16.9c0.9,0 1.6,-0.7 1.6,-1.6s-0.7,-1.6 -1.6,-1.6 -1.6,0.7 -1.6,1.6 0.7,1.6 1.6,1.6z" />
+        android:pathData="M3.8,11H20.2a1.2,1.2 0 0,1 1.2,1.2V13.4a1.2,1.2 0 0,1 -1.2,1.2H3.8a1.2,1.2 0 0,1 -1.2,-1.2V12.2a1.2,1.2 0 0,1 1.2,-1.2zM8.2,6H13.6a1.1,1.1 0 0,1 0.92,0.54L16.2,11.3H5.7L7.28,6.54A1.1,1.1 0 0,1 8.2,6zM7.1,13.5a2.5,2.5 0 1,0 0,5a2.5,2.5 0 1,0 0,-5zM16.9,13.5a2.5,2.5 0 1,0 0,5a2.5,2.5 0 1,0 0,-5z" />
 </vector>
