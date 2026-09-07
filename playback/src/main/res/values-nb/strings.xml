@@ -66,6 +66,7 @@
     <!-- PRODUCT_SPEC PLAY-001 — se den engelske filen for hvorfor telefonen nevnes i innloggingsteksten. -->
     <string name="car_error_credentials_expired">Logg inn på telefonen for å fortsette å lytte</string>
     <string name="car_error_server_unreachable">Får ikke kontakt med serveren herfra</string>
+    <string name="car_error_server_cannot_deliver">Serveren kunne ikke levere denne boken</string>
     <string name="car_error_file_not_playable">Lyden i denne boken kunne ikke spilles</string>
     <string name="car_error_sign_in_action">Åpne BookWave</string>
 </resources>

@@ -52,7 +52,7 @@ class PlaybackFailureReportTest {
         val report = PlaybackFailureReport.of(BAD_STATUS, httpStatus = 500, localFile = false, willRetry = false)
 
         assertEquals(SessionError.ERROR_IO, report?.code)
-        assertEquals(PlaybackFailureReport.Message.ServerUnreachable, report?.message)
+        assertEquals(PlaybackFailureReport.Message.ServerCannotDeliver, report?.message)
         assertFalse(report?.isCredentialFailure == true)
     }
 
@@ -202,7 +202,48 @@ class PlaybackFailureReportTest {
             willRetry = false,
         )
 
-        assertEquals(PlaybackFailureReport.Message.ServerUnreachable, report?.message)
+        assertEquals(PlaybackFailureReport.Message.ServerCannotDeliver, report?.message)
+    }
+
+    /*
+     * A response is proof of reach. A review found every answered-but-failed request telling the driver
+     * "Can't reach your server from here" — a sentence about the network, on a connection that had just
+     * carried a reply. These pin the two apart.
+     */
+
+    @Test
+    fun `a stale library item does not blame the connection`() {
+        val report = PlaybackFailureReport.of(BAD_STATUS, httpStatus = 404, localFile = false, willRetry = false)
+
+        assertEquals(PlaybackFailureReport.Message.ServerCannotDeliver, report?.message)
+        assertFalse(report?.isCredentialFailure == true)
+    }
+
+    @Test
+    fun `a rate limit does not blame the connection either`() {
+        val report = PlaybackFailureReport.of(BAD_STATUS, httpStatus = 429, localFile = false, willRetry = false)
+
+        assertEquals(PlaybackFailureReport.Message.ServerCannotDeliver, report?.message)
+    }
+
+    /**
+     * The second fact that proves a response arrived: Media3 calling the failure a bad HTTP status. That is
+     * what the code *means*, so it holds even on a chain shape where the status number cannot be dug back
+     * out — and without it that case would fall through to the unreachable sentence it just escaped.
+     */
+    @Test
+    fun `a bad status with no number recovered is still an answered request`() {
+        val report = PlaybackFailureReport.of(BAD_STATUS, httpStatus = null, localFile = false, willRetry = false)
+
+        assertEquals(PlaybackFailureReport.Message.ServerCannotDeliver, report?.message)
+    }
+
+    /** A downloaded file that will not read is still local, even with a bad status somehow alongside it. */
+    @Test
+    fun `local evidence still beats an answered request`() {
+        val report = PlaybackFailureReport.of(BAD_STATUS, httpStatus = 404, localFile = true, willRetry = false)
+
+        assertEquals(PlaybackFailureReport.Message.FileNotPlayable, report?.message)
     }
 
     /*
@@ -224,6 +265,23 @@ class PlaybackFailureReportTest {
 
         assertEquals(PlaybackFailureReport.Message.ServerUnreachable, report?.message)
         assertFalse(report?.isCredentialFailure == true)
+    }
+
+    /** `AppError.Server` is *defined* as an error status, so it proves the server answered. */
+    @Test
+    fun `a server status opening the session does not blame the connection`() {
+        val report = PlaybackFailureReport.ofSessionFailure(AppError.Server(statusCode = 404))
+
+        assertEquals(PlaybackFailureReport.Message.ServerCannotDeliver, report?.message)
+        assertFalse(report?.isCredentialFailure == true)
+    }
+
+    /** A timeout stays with the unreachable sentence on purpose: nothing came back, which is what it says. */
+    @Test
+    fun `a timeout opening the session reads as unreachable`() {
+        val report = PlaybackFailureReport.ofSessionFailure(AppError.Timeout())
+
+        assertEquals(PlaybackFailureReport.Message.ServerUnreachable, report?.message)
     }
 
     /**

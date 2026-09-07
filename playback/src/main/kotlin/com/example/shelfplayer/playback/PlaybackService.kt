@@ -1078,6 +1078,7 @@ class PlaybackService : MediaLibraryService() {
     private fun messageFor(report: PlaybackFailureReport.Report): Int = when (report.message) {
         PlaybackFailureReport.Message.CredentialsExpired -> R.string.car_error_credentials_expired
         PlaybackFailureReport.Message.ServerUnreachable -> R.string.car_error_server_unreachable
+        PlaybackFailureReport.Message.ServerCannotDeliver -> R.string.car_error_server_cannot_deliver
         PlaybackFailureReport.Message.FileNotPlayable -> R.string.car_error_file_not_playable
     }
 

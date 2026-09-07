@@ -39,7 +39,7 @@ internal object PlaybackFailureReport {
     data class Report(val code: Int, val message: Message, val isCredentialFailure: Boolean)
 
     /** Which sentence to draw. The strings live in resources; this names one without resolving it. */
-    enum class Message { CredentialsExpired, ServerUnreachable, FileNotPlayable }
+    enum class Message { CredentialsExpired, ServerUnreachable, ServerCannotDeliver, FileNotPlayable }
 
     /**
      * Classifies a failure that playback has **given up** on, or `null` to say nothing.
@@ -69,9 +69,14 @@ internal object PlaybackFailureReport {
                 isCredentialFailure = true,
             )
         }
-        return when (errorCode) {
-            in IO_BAND -> report(Message.ServerUnreachable)
-            in LOCAL_MEDIA_BANDS -> report(Message.FileNotPlayable)
+        return when {
+            // An answered request is never an unreachable server, and a review found this branch saying so
+            // for a 404 and a 429 alike. The response *is* the proof of reach: a stale library item and a
+            // rate limit are both the server declining to hand over this book, on a connection that plainly
+            // worked. Same shape as the `localFile` evidence above — the fact decides, not the band.
+            serverAnswered(errorCode, httpStatus) -> report(Message.ServerCannotDeliver)
+            errorCode in IO_BAND -> report(Message.ServerUnreachable)
+            errorCode in LOCAL_MEDIA_BANDS -> report(Message.FileNotPlayable)
             // `ERROR_CODE_UNSPECIFIED`, `REMOTE_ERROR`, `BEHIND_LIVE_WINDOW`, `FAILED_RUNTIME_CHECK` and
             // anything Media3 adds later. **Silence is the honest answer**: there is no sentence that is
             // true of an unknown failure, and the review above is what a confident wrong one looks like.
@@ -79,6 +84,16 @@ internal object PlaybackFailureReport {
             else -> null
         }
     }
+
+    /**
+     * Whether the server got the request and answered it — with anything other than the book.
+     *
+     * Two facts say so, and either is enough. A status number survived the data-source chain, or Media3
+     * itself called the failure a bad HTTP status, which *means* a response arrived even on the chain shape
+     * where [PlaybackHttpFailure] cannot dig the number back out. Neither is an inference about the network.
+     */
+    private fun serverAnswered(errorCode: Int, httpStatus: Int?): Boolean =
+        httpStatus != null || errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
 
     /**
      * The same question for a failure that happens **while opening the session**, where there is no
@@ -101,7 +116,12 @@ internal object PlaybackFailureReport {
             isCredentialFailure = true,
         )
 
-        is AppError.Network, is AppError.Timeout, is AppError.Server -> report(Message.ServerUnreachable)
+        // Split for the same reason the bands above are: `AppError.Server` is *defined* as "the server
+        // returned an error status", so it carries its own proof of reach and must not claim otherwise. A
+        // timeout stays with the unreachable case — nothing came back, which is what the sentence says.
+        is AppError.Network, is AppError.Timeout -> report(Message.ServerUnreachable)
+
+        is AppError.Server -> report(Message.ServerCannotDeliver)
 
         // Enumerated rather than an `else`, which detekt refuses on a sealed subject and is right to: a
         // variant added later should make this fail to compile and be *decided*, not silently inherit
@@ -131,11 +151,13 @@ internal object PlaybackFailureReport {
     private const val HTTP_FORBIDDEN = 403
 
     /**
-     * Media3's I/O band — a refused connection, a timeout, a bad status, a file the *server* does not have.
+     * Media3's I/O band, **reached only when nothing answered**: a refused connection, an unreachable host,
+     * a dropped transfer, a DNS failure.
      *
-     * `ERROR_CODE_IO_FILE_NOT_FOUND` and `..._NO_PERMISSION` sit here and cannot themselves distinguish a
-     * server's 404 from a missing download. The `localFile` evidence above is what decides that, so this
-     * band no longer has to guess; reaching it means the read was not a local one.
+     * The band alone was never enough to name a cause, and both of the facts checked before it exist
+     * because a review caught it guessing. `ERROR_CODE_IO_FILE_NOT_FOUND` and `..._NO_PERMISSION` sit here
+     * and cannot tell a missing download from a server's 404; [serverAnswered] and the `localFile` evidence
+     * decide those. Reaching this band now means the read was not local *and* no response arrived.
      */
     private val IO_BAND = PlaybackException.ERROR_CODE_IO_UNSPECIFIED..IO_BAND_END
 

@@ -75,6 +75,13 @@
     <string name="car_error_credentials_expired">Sign in again on your phone to keep listening</string>
     <string name="car_error_server_unreachable">Can\'t reach your server from here</string>
     <!--
+      The server answered, and the answer was not the book: a stale library item, a rate limit, a server
+      error. Kept apart from the unreachable sentence because a review found that one claiming the network
+      had failed on a request the server had plainly received. Names no cause and promises no retry — a 404
+      is not transient and a 429 is, and the status alone does not tell a driver which.
+    -->
+    <string name="car_error_server_cannot_deliver">Your server couldn\'t deliver this book</string>
+    <!--
       A parsing, decoding or audio-track failure: the media or this device, never the network. Worded
       without a cause, because Media3's code says which band the failure is in and not why.
     -->
