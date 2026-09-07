@@ -16,7 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -106,10 +105,11 @@ private fun LoopboundWebView(modifier: Modifier = Modifier) {
 
     DisposableEffect(webView) {
         onDispose {
-            // Loopbound listens for pagehide/visibility changes and persists through its SaveAdapter.
-            // Destroying the page here also prevents a navigated-away game clock from continuing hidden.
+            // Loopbound saves and stops its game clock when the page becomes hidden. Pausing the WebView
+            // before destruction gives that lifecycle transition a chance to run without loading any
+            // replacement document that could escape the local-only navigation policy below.
+            webView.onPause()
             webView.stopLoading()
-            webView.loadUrl("about:blank")
             webView.destroy()
         }
     }
@@ -118,7 +118,7 @@ private fun LoopboundWebView(modifier: Modifier = Modifier) {
         factory = { webView },
         modifier = modifier,
         update = { view ->
-            if (view.url == null || view.url == "about:blank") {
+            if (view.url == null) {
                 view.loadUrl(LOOPBOUND_URL)
             }
         },
@@ -134,7 +134,7 @@ private fun createLoopboundWebView(context: Context): WebView {
     return WebView(context).apply {
         setBackgroundColor(Color.TRANSPARENT)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-        CookieManager.getInstance().setAcceptCookie(this, false)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
 
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
