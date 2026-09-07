@@ -138,27 +138,32 @@ internal class CarArrivalContinuity(private val window: Duration = DEFAULT_WINDO
     }
 
     /**
-     * Whether there is anywhere BookWave is willing to play, which PLAY-002 makes a real question: the
-     * phone speaker is never an answer.
+     * Whether the book is on a route BookWave is willing to play, which PLAY-002 makes a real question:
+     * the phone speaker is never an answer.
      *
-     * **Route evidence when there is any, connection evidence when there is none**, and a review is why.
-     * Below API 33 `AudioOutputRouter` cannot ask the platform which route is live, and with Automatic
-     * routing it has no selection to fall back on either — so it marks *every* output inactive and an
-     * `isActive` test can never pass. minSdk is 26, so that silently killed the resume across six API
-     * levels.
+     * **Route evidence only, and two reviews got it here.** The first observed that below API 33
+     * `AudioOutputRouter` cannot ask the platform which route is live, and under Automatic routing has no
+     * selection to fall back on either, so it marks *every* output inactive and this can never pass —
+     * minSdk is 26, so the resume does nothing across six API levels. The obvious remedy was to accept a
+     * connected non-speaker output instead, on the reasoning that Android does not pick the built-in
+     * speaker while another output is connected.
      *
-     * The fallback is weaker on purpose, and the weakness is the platform's rather than a shortcut: with no
-     * route to read, a connected non-speaker output is the whole of what is knowable. It is still enough
-     * for the guarantee that matters, because Android does not choose the built-in speaker while another
-     * output is connected — so "a non-speaker is connected" is also "the book will not come out of the
-     * phone". What it cannot promise is *which* non-speaker, which is R-106's business and a car's to
-     * settle.
+     * **That reasoning was wrong, and the second review caught it.** `getDevices(GET_DEVICES_OUTPUTS)`
+     * reports every connected *sink*, which is not the same as a route: a Bluetooth device connected for
+     * hands-free only, an A2DP device the system output switcher has been pointed away from, or an
+     * unselected USB sink all sit in that list while media plays out of the phone. So the fallback could
+     * start an audiobook aloud on the speaker — the outcome PLAY-002 exists to forbid, and a worse one than
+     * the paused book it was trying to avoid.
+     *
+     * So the platform limitation stands rather than being papered over. Below API 33, a listener who has
+     * explicitly chosen an output in BookWave still gets the resume, because that choice *is* the evidence
+     * — `publish` marks the chosen id active. Everyone else keeps a paused book, which is where it already
+     * was. R-106 records it, and `isBluetoothA2dpOn` is the one documented pre-33 call that reports media
+     * *routing* rather than connection if the case is ever worth recovering; it needs a device to validate,
+     * and guessing it from here is what produced this entry twice.
      */
-    private fun somewhereToPlay(outputs: List<AudioOutput>): Boolean {
-        val active = outputs.filter(AudioOutput::isActive)
-        if (active.isEmpty()) return outputs.any { output -> !output.isSpeaker }
-        return active.any { output -> !output.isSpeaker }
-    }
+    private fun somewhereToPlay(outputs: List<AudioOutput>): Boolean =
+        outputs.any { output -> output.isActive && !output.isSpeaker }
 
     private companion object {
         /**

@@ -80,29 +80,39 @@ class CarArrivalContinuityTest {
     }
 
     /**
-     * **API 26–32, which a review found this had silently excluded.** `AudioOutputRouter` cannot ask the
-     * platform which route is live below API 33, and under Automatic routing it has no selection to fall
-     * back on either, so it marks *every* output inactive. An `isActive` test could never pass there and
-     * the resume was dead across six API levels.
+     * **A connected output is not a route, and two reviews were needed to settle it here.**
      *
-     * With no route information at all, a connected headset is the whole of what is knowable, and it is
-     * enough: Android does not choose the built-in speaker while another output is connected.
+     * Below API 33 `AudioOutputRouter` marks every output inactive under Automatic routing, so the first
+     * version of this accepted a connected non-speaker instead — reasoning that Android would not pick the
+     * built-in speaker while another output was connected. It does:
+     * `getDevices(GET_DEVICES_OUTPUTS)` lists every connected *sink*, including a Bluetooth device
+     * connected for hands-free only, an A2DP device the output switcher points away from, and an
+     * unselected USB sink, all while media plays out of the phone.
+     *
+     * So connection alone leaves the book paused. That is the platform's limit, not a preference: starting
+     * an audiobook aloud on the phone speaker is what PLAY-002 forbids, and it is worse than the paused
+     * book it would be avoiding.
      */
     @Test
-    fun `with no route information a connected headset is enough`() {
+    fun `a connected but inactive headset is not evidence of a route`() {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(inactiveSpeaker, inactiveBuds)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(inactiveSpeaker, inactiveBuds)))
     }
 
-    /** The same platform, the unplug case: no route information and nothing but a speaker connected. */
+    /**
+     * The pre-API-33 case that does still resume: an explicit BookWave selection.
+     *
+     * `publish` marks the chosen id active even with no framework route to read, so the listener's own
+     * choice is the route evidence. It is the one legacy path where the question can be answered honestly.
+     */
     @Test
-    fun `with no route information a speaker alone is not enough`() {
+    fun `an explicitly chosen output is route evidence even with nothing else active`() {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(inactiveSpeaker)))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(inactiveSpeaker, activeBuds)))
     }
 
     /** Nothing connected at all is not an invitation either. */
@@ -162,9 +172,9 @@ class CarArrivalContinuityTest {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        // Only the speaker connected: the headset has gone and the car's audio is not up yet, so there is
-        // genuinely nowhere to play. Answering no must not spend the pause.
-        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeSpeaker)))
+        // The route has not landed on anything BookWave will play yet: the speaker is live and the buds
+        // are merely connected. Answering no must not spend the pause.
+        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeSpeaker, inactiveBuds)))
         assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds)))
     }
 
