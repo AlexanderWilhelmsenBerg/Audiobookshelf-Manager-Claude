@@ -25,7 +25,7 @@ class CarArrivalContinuityTest {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds)))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds), selectedId = null))
     }
 
     /** The whole point: the book was on a headset, and it should still be playing on it. */
@@ -34,14 +34,14 @@ class CarArrivalContinuityTest {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        assertTrue(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds, inactiveSpeaker)))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds, inactiveSpeaker), selectedId = null))
     }
 
     @Test
     fun `a pause a person asked for is never resumed by a car`() {
         continuity.onUserPause()
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds), selectedId = null))
     }
 
     /**
@@ -55,7 +55,7 @@ class CarArrivalContinuityTest {
         continuity.onSystemPause(AT)
         continuity.onUserPause()
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds), selectedId = null))
     }
 
     /** A book paused in a pocket half an hour ago must not start playing because a car connected. */
@@ -64,7 +64,7 @@ class CarArrivalContinuityTest {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        assertFalse(continuity.shouldResume(AT.plus(Duration.ofMinutes(30)), listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT.plus(Duration.ofMinutes(30)), listOf(activeBuds), selectedId = null))
     }
 
     /**
@@ -76,7 +76,7 @@ class CarArrivalContinuityTest {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(activeSpeaker)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(activeSpeaker), selectedId = null))
     }
 
     /**
@@ -98,7 +98,9 @@ class CarArrivalContinuityTest {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(inactiveSpeaker, inactiveBuds)))
+        assertFalse(
+            continuity.shouldResume(AT.plusSeconds(2), listOf(inactiveSpeaker, inactiveBuds), selectedId = null),
+        )
     }
 
     /**
@@ -112,7 +114,7 @@ class CarArrivalContinuityTest {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(inactiveSpeaker, activeBuds)))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(inactiveSpeaker, activeBuds), selectedId = null))
     }
 
     /** Nothing connected at all is not an invitation either. */
@@ -121,12 +123,12 @@ class CarArrivalContinuityTest {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(2), emptyList()))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(2), emptyList(), selectedId = null))
     }
 
     @Test
     fun `with no pause to act on a car arriving changes nothing`() {
-        assertFalse(continuity.shouldResume(AT, listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT, listOf(activeBuds), selectedId = null))
     }
 
     /**
@@ -137,9 +139,9 @@ class CarArrivalContinuityTest {
     fun `the second car controller does not resume again`() {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
-        assertTrue(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds)))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds), selectedId = null))
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds), selectedId = null))
     }
 
     /**
@@ -153,11 +155,11 @@ class CarArrivalContinuityTest {
     @Test
     fun `a pause recorded after the car bound is still resumed by a later route publication`() {
         continuity.onCarArrived(AT)
-        assertFalse(continuity.shouldResume(AT, listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT, listOf(activeBuds), selectedId = null))
 
         continuity.onSystemPause(AT.plusSeconds(1))
 
-        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds)))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds), selectedId = null))
     }
 
     /**
@@ -174,8 +176,8 @@ class CarArrivalContinuityTest {
 
         // The route has not landed on anything BookWave will play yet: the speaker is live and the buds
         // are merely connected. Answering no must not spend the pause.
-        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeSpeaker, inactiveBuds)))
-        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeSpeaker, inactiveBuds), selectedId = null))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds), selectedId = null))
     }
 
     /** A pause held across an unsettled route still expires; waiting is not a way around the window. */
@@ -183,9 +185,9 @@ class CarArrivalContinuityTest {
     fun `a pause held through an unsettled route still expires`() {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
-        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeSpeaker)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeSpeaker), selectedId = null))
 
-        assertFalse(continuity.shouldResume(AT.plus(Duration.ofMinutes(30)), listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT.plus(Duration.ofMinutes(30)), listOf(activeBuds), selectedId = null))
     }
 
     /*
@@ -198,7 +200,7 @@ class CarArrivalContinuityTest {
     fun `a system pause with no car arrival to pair with is not resumed`() {
         continuity.onSystemPause(AT)
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(2), listOf(activeBuds), selectedId = null))
     }
 
     /** The same call, an hour into the drive: the car arrived long ago and is not what stopped the book. */
@@ -208,7 +210,7 @@ class CarArrivalContinuityTest {
         continuity.onSystemPause(AT.plus(Duration.ofHours(1)))
 
         assertFalse(
-            continuity.shouldResume(AT.plus(Duration.ofHours(1)).plusSeconds(2), listOf(activeBuds)),
+            continuity.shouldResume(AT.plus(Duration.ofHours(1)).plusSeconds(2), listOf(activeBuds), selectedId = null),
         )
     }
 
@@ -218,7 +220,7 @@ class CarArrivalContinuityTest {
         continuity.onSystemPause(AT)
         continuity.onCarArrived(AT.plusSeconds(3))
 
-        assertTrue(continuity.shouldResume(AT.plusSeconds(4), listOf(activeBuds)))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(4), listOf(activeBuds), selectedId = null))
     }
 
     /**
@@ -231,11 +233,11 @@ class CarArrivalContinuityTest {
     fun `a second pause after a resume is not resumed by the same arrival`() {
         continuity.onCarArrived(AT)
         continuity.onSystemPause(AT)
-        assertTrue(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds)))
+        assertTrue(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds), selectedId = null))
 
         continuity.onSystemPause(AT.plusSeconds(2))
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(3), listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(3), listOf(activeBuds), selectedId = null))
     }
 
     /**
@@ -248,7 +250,67 @@ class CarArrivalContinuityTest {
         continuity.onSystemPause(AT)
         continuity.onPlaying()
 
-        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds)))
+        assertFalse(continuity.shouldResume(AT.plusSeconds(1), listOf(activeBuds), selectedId = null))
+    }
+
+    /*
+     * A route that has been *asked* for. `AudioOutputRouter.select` publishes synchronously and applies
+     * `setPreferredAudioDevice` on another coroutine, so the headset hold's own publication still carries
+     * the framework's old route — the car's. A review found that starting the book on it defeats the hold.
+     */
+
+    /** The hold has asked for the earbuds and the platform is still on the dashboard. Wait. */
+    @Test
+    fun `a requested route that is not active yet is not somewhere to play`() {
+        continuity.onCarArrived(AT)
+        continuity.onSystemPause(AT)
+
+        assertFalse(
+            continuity.shouldResume(AT.plusSeconds(1), listOf(activeDashboard, inactiveBuds), BUDS),
+        )
+    }
+
+    /** The settle publication: the preference was honoured, so this is the ask that says yes. */
+    @Test
+    fun `a requested route becoming active is what resumes the book`() {
+        continuity.onCarArrived(AT)
+        continuity.onSystemPause(AT)
+        assertFalse(
+            continuity.shouldResume(AT.plusSeconds(1), listOf(activeDashboard, inactiveBuds), BUDS),
+        )
+
+        assertTrue(
+            continuity.shouldResume(AT.plusSeconds(2), listOf(inactiveDashboard, activeBuds), BUDS),
+        )
+    }
+
+    /**
+     * The preference declined, which `setPreferredAudioDevice` is entitled to be.
+     *
+     * The book stays paused rather than starting in the car. That is the safe direction and the honest
+     * one: the listener asked for a headset, and playing somewhere they did not choose is not a smaller
+     * failure than leaving the book where it already was.
+     */
+    @Test
+    fun `a request the platform never honours leaves the book paused`() {
+        continuity.onCarArrived(AT)
+        continuity.onSystemPause(AT)
+
+        assertFalse(
+            continuity.shouldResume(AT.plusSeconds(2), listOf(activeDashboard, inactiveBuds), BUDS),
+        )
+        assertFalse(
+            continuity.shouldResume(AT.plusSeconds(5), listOf(activeDashboard, inactiveBuds), BUDS),
+        )
+    }
+
+    /** With no request outstanding — Car pressed, or nothing held — the live route is the answer. */
+    @Test
+    fun `with no request outstanding the active car route resumes the book`() {
+        continuity.onCarArrived(AT)
+        continuity.onSystemPause(AT)
+
+        assertTrue(continuity.shouldResume(AT.plusSeconds(1), listOf(activeDashboard), selectedId = null))
     }
 
     private companion object {
@@ -270,5 +332,18 @@ class CarArrivalContinuityTest {
             role = AudioOutputRole.Speaker,
         )
         val inactiveSpeaker = activeSpeaker.copy(isActive = false)
+
+        /** The projected dashboard: classic A2DP, so ambiguous rather than a speaker (ADR-0029 §4). */
+        val activeDashboard = AudioOutput(
+            id = "bluetooth:dashboard",
+            displayName = "Dashboard",
+            kind = DeviceKind.Bluetooth,
+            isActive = true,
+            role = AudioOutputRole.Ambiguous,
+        )
+        val inactiveDashboard = activeDashboard.copy(isActive = false)
+
+        /** The id the headset hold asks for. */
+        const val BUDS = "bluetooth:buds"
     }
 }

@@ -106,7 +106,7 @@ internal class CarArrivalContinuity(private val window: Duration = DEFAULT_WINDO
      * driver's own pause being undone, including by a second car controller, and [onPlaying] retires a book
      * that is already playing again.
      */
-    fun shouldResume(at: Instant, outputs: List<AudioOutput>): Boolean {
+    fun shouldResume(at: Instant, outputs: List<AudioOutput>, selectedId: String?): Boolean {
         val paused = systemPausedAt ?: return false
         if (Duration.between(paused, at) > window) {
             systemPausedAt = null
@@ -115,7 +115,7 @@ internal class CarArrivalContinuity(private val window: Duration = DEFAULT_WINDO
         // Both clauses keep the pause rather than spending it. The first is a pause that has nothing to do
         // with a car and may yet be paired with one; the second is the hand-off still in flight, and
         // dropping it there is what left the book stopped in the ordering the first review found.
-        if (!pairsWithACarArrival(paused) || !somewhereToPlay(outputs)) return false
+        if (!pairsWithACarArrival(paused) || !somewhereToPlay(outputs, selectedId)) return false
         systemPausedAt = null
         // One resume per arrival. Without this, a resume the platform immediately undoes — audio focus is
         // still held elsewhere — would be re-recorded as a system pause and resumed again on the next route
@@ -161,9 +161,26 @@ internal class CarArrivalContinuity(private val window: Duration = DEFAULT_WINDO
      * was. R-106 records it, and `isBluetoothA2dpOn` is the one documented pre-33 call that reports media
      * *routing* rather than connection if the case is ever worth recovering; it needs a device to validate,
      * and guessing it from here is what produced this entry twice.
+     *
+     * **And when a route has been *asked* for, only that route will do** — a third review, on the last
+     * ordering left. `AudioOutputRouter.select` sets the selection and publishes synchronously but applies
+     * `setPreferredAudioDevice` on another coroutine, so the publication the headset hold produces still
+     * carries the framework's old route: the dashboard, which is ambiguous A2DP and so not a speaker. A
+     * plain "any active non-speaker" test accepted it and started the book **in the car** — with the hold
+     * still in flight, and permanently so if the platform declines the preference, since it is a request
+     * and not a promise.
+     *
+     * @param selectedId BookWave's requested output, or `null` for Automatic. With a request outstanding
+     *   the resume waits for the platform to honour it; the settle publication that follows is what says
+     *   yes. If it is never honoured the book stays paused, which is the safe direction and the honest one:
+     *   the listener asked for a headset, and starting the book somewhere they did not choose is not a
+     *   smaller failure than leaving it where it already was.
      */
-    private fun somewhereToPlay(outputs: List<AudioOutput>): Boolean =
-        outputs.any { output -> output.isActive && !output.isSpeaker }
+    private fun somewhereToPlay(outputs: List<AudioOutput>, selectedId: String?): Boolean {
+        val active = outputs.filter { output -> output.isActive && !output.isSpeaker }
+        if (selectedId == null) return active.isNotEmpty()
+        return active.any { output -> output.id == selectedId }
+    }
 
     private companion object {
         /**

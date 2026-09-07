@@ -1071,7 +1071,15 @@ class PlaybackService : MediaLibraryService() {
             !current.playWhenReady &&
             carConnections.isConnected()
         if (!worthResuming) return
-        if (!carContinuity.shouldResume(clock.now(), audioOutputs.outputs.value)) return
+        // The selection goes in because a request outstanding changes what counts as somewhere to play:
+        // the headset hold's `select` publishes before it applies, so the route on offer at that moment is
+        // still the car's. See `CarArrivalContinuity.somewhereToPlay`.
+        val resume = carContinuity.shouldResume(
+            at = clock.now(),
+            outputs = audioOutputs.outputs.value,
+            selectedId = audioOutputs.selectedId.value,
+        )
+        if (!resume) return
         logger.info(
             LogCategory.Playback,
             "A car arriving had stopped the book, so it was started again",
