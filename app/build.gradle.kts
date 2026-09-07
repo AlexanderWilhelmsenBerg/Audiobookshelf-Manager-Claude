@@ -62,6 +62,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.webkit)
     // PRODUCT_SPEC SYNC-003 — persistent background refresh. `hilt-work` is what lets a Worker be
     // constructed with injected dependencies rather than reaching into the graph through a static.
     implementation(libs.androidx.work.runtime.ktx)
