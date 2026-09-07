@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC PLAY-002 — the car action while the book is *actually* coming out of the car.
+
+  A device run asked for the one thing the Android Auto player does not show: *"the current audio output is
+  not seen."* The host draws the title, the byline and these two icons, and nothing else this app supplies —
+  so the icon is the only surface left to say it on. `ic_car_output` is the same glyph without the bar, and
+  the pair reads as off/on side by side, which is how they are always drawn.
+
+  The glyph is scaled to 0.84 rather than left at full size: at 24dp a bar tucked directly under an
+  unscaled glyph touches it and the two read as one shape. The bar is 2.4 units of a 24-unit box, which is
+  the smallest that survives the slot.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group
+        android:pivotX="12"
+        android:pivotY="0"
+        android:scaleX="0.84"
+        android:scaleY="0.84"
+        android:translateY="0.5">
+        <path
+            android:fillColor="@android:color/white"
+            android:pathData="M3.8,11H20.2a1.2,1.2 0 0,1 1.2,1.2V13.4a1.2,1.2 0 0,1 -1.2,1.2H3.8a1.2,1.2 0 0,1 -1.2,-1.2V12.2a1.2,1.2 0 0,1 1.2,-1.2zM8.2,6H13.6a1.1,1.1 0 0,1 0.92,0.54L16.2,11.3H5.7L7.28,6.54A1.1,1.1 0 0,1 8.2,6zM7.1,13.5a2.5,2.5 0 1,0 0,5a2.5,2.5 0 1,0 0,-5zM16.9,13.5a2.5,2.5 0 1,0 0,5a2.5,2.5 0 1,0 0,-5z" />
+    </group>
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M7.2,20.6H16.8a1.2,1.2 0 0,1 1.2,1.2v0.4a1.2,1.2 0 0,1 -1.2,1.2H7.2a1.2,1.2 0 0,1 -1.2,-1.2v-0.4a1.2,1.2 0 0,1 1.2,-1.2z" />
+</vector>

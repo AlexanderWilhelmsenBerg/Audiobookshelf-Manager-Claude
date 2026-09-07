@@ -93,13 +93,34 @@ internal object AudioOutputRoles {
             showCar = carConnected || car(outputs) != null,
             showHeadset = availableHeadsets.isNotEmpty(),
             headsetName = headsetRoute?.displayName,
+            onHeadset = headsetRoute != null,
         )
     }
 }
 
-/** Visible state of the two output actions. */
-internal data class OutputButtons(val showCar: Boolean, val showHeadset: Boolean, val headsetName: String?) {
+/**
+ * Visible state of the two output actions.
+ *
+ * [onHeadset] is *which one is lit*, and it is the answer to the device report that the current output
+ * could not be seen. It is deliberately a field of its own rather than `headsetName != null` read at the
+ * call site: the two happen to agree today because a route BookWave is confident about always has an
+ * advertised name, and a button lighting up is too important to rest on that coincidence.
+ *
+ * There is no `onCar` beside it. "Not on a headset" is the only thing this can honestly say about the car,
+ * because ADR-0029 §4 is exactly the admission that an ambiguous A2DP endpoint cannot be proven to be a
+ * dashboard — so the car button lights when the book is somewhere BookWave cannot call a headset, which is
+ * what [OutputButtons.onCar] means and all it means.
+ */
+internal data class OutputButtons(
+    val showCar: Boolean,
+    val showHeadset: Boolean,
+    val headsetName: String?,
+    val onHeadset: Boolean = false,
+) {
+    /** Lit when the book is not on a headset, which on a connected car is the car. See the class KDoc. */
+    val onCar: Boolean get() = !onHeadset
+
     companion object {
-        val None = OutputButtons(showCar = false, showHeadset = false, headsetName = null)
+        val None = OutputButtons(showCar = false, showHeadset = false, headsetName = null, onHeadset = false)
     }
 }

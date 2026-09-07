@@ -135,6 +135,43 @@ class AudioOutputRolesTest {
         assertEquals(OutputButtons.None, state)
     }
 
+    /*
+     * PRODUCT_SPEC PLAY-002 — which button is lit, which is the only way the car's player can show the
+     * current output. The device report was that it showed nowhere at all.
+     */
+
+    @Test
+    fun `the headset button is lit while the book is coming out of a headset`() {
+        val active = buds.copy(isActive = true)
+        val state = AudioOutputRoles.buttons(listOf(active), selectedId = active.id, carConnected = true)
+
+        assertTrue(state.onHeadset)
+        assertFalse(state.onCar)
+    }
+
+    /** The car-arrival hold's own state: a car is bound, and the book is still in the listener's ears. */
+    @Test
+    fun `a held headset keeps the headset lit even with a car connected`() {
+        val held = wired.copy(isActive = true)
+        val state = AudioOutputRoles.buttons(listOf(held, car), selectedId = held.id, carConnected = true)
+
+        assertTrue(state.onHeadset)
+        assertFalse(state.onCar)
+    }
+
+    /**
+     * The dashboard case. An ambiguous A2DP route nobody selected, with a car bound, is not a headset —
+     * ADR-0029 §4 — so the car is what lights up, which is all "on the car" can honestly mean.
+     */
+    @Test
+    fun `an unselected ambiguous route with a car bound lights the car`() {
+        val dashboard = output("bluetooth:dashboard", "Dashboard").copy(isActive = true)
+        val state = AudioOutputRoles.buttons(listOf(dashboard), selectedId = null, carConnected = true)
+
+        assertFalse(state.onHeadset)
+        assertTrue(state.onCar)
+    }
+
     private fun output(
         id: String,
         name: String,
