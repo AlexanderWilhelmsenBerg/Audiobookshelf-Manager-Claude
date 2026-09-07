@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.BufferPreset
@@ -58,7 +59,7 @@ class PlaybackSettingsTabScreenTest {
         render()
 
         composeRule.onNodeWithText("Very high").assertDoesNotExist()
-        scrollTo("Buffer")
+        scrollToDescription("Buffer, Automatic")
         composeRule.onNodeWithContentDescription("Buffer, Automatic").performClick()
         composeRule.onNodeWithText("Very high").assertIsDisplayed()
     }
@@ -92,7 +93,7 @@ class PlaybackSettingsTabScreenTest {
         var chosen: BufferPreset? = null
         render(actions = actions(onBufferChanged = { chosen = it }))
 
-        scrollTo("Buffer")
+        scrollToDescription("Buffer, Automatic")
         composeRule.onNodeWithContentDescription("Buffer, Automatic").performClick()
         composeRule.onNodeWithText("High").performClick()
 
@@ -101,6 +102,9 @@ class PlaybackSettingsTabScreenTest {
 
     private fun scrollTo(text: String) =
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(text, substring = true))
+
+    private fun scrollToDescription(description: String) =
+        composeRule.onNodeWithContentDescription(description).performScrollTo()
 
     private fun render(
         actions: PlaybackSettingsActions = actions(),
