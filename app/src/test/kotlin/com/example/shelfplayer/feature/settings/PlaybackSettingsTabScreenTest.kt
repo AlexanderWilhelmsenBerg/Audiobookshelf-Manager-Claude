@@ -126,7 +126,7 @@ class PlaybackSettingsTabScreenTest {
     private fun actions(
         onSpeedChanged: (PlaybackSpeed) -> Unit = {},
         onBufferChanged: (BufferPreset) -> Unit = {},
-    ) = PlaybackSettingsActions(
+    ): PlaybackSettingsActions = PlaybackSettingsActions(
         onSpeedChanged = onSpeedChanged,
         onSkipsChanged = {},
         onAutoRewindChanged = {},
