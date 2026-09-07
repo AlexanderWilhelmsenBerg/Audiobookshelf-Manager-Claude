@@ -354,38 +354,24 @@
         <item quantity="one">%1$d fil</item>
         <item quantity="other">%1$d filer</item>
     </plurals>
-    <string name="settings_section_downloads">Nedlastinger</string>
-    <string name="settings_downloads_hint">Begge disse er av til du slår dem på. Den ene bruker plass og data på en bok du ikke ba om; den andre sletter en bok du ba om.</string>
     <string name="settings_downloads_manage">Administrer nedlastede bøker</string>
     <string name="settings_downloads_smart">Last ned neste bok i en serie</string>
-    <string name="settings_downloads_smart_hint">Når du passerer halvveis i en bok, begynner den neste i samme serie å lastes ned.</string>
     <string name="settings_downloads_delete_previous">Fjern forrige bok i serien</string>
-    <string name="settings_downloads_delete_previous_hint">Når neste bok kommer, fjernes boken før den du hører på fra denne enheten. Aldri den som spilles.</string>
     <string name="settings_downloads_retention">Fjern fullførte bøker</string>
-    <string name="settings_downloads_retention_hint">En fullført bok fjernes så lenge etter at du fullførte den. Aldri boken som spilles, aldri en hvis fremdrift ikke har nådd serveren din, og aldri en du har festet.</string>
     <plurals name="settings_downloads_retention_days">
         <item quantity="one">%1$d dag</item>
         <item quantity="other">%1$d dager</item>
     </plurals>
     <string name="settings_downloads_retention_never">Aldri</string>
-    <string name="settings_section_network">Mobildata</string>
-    <string name="settings_network_hint">Wi-Fi brukes alltid når det er tilgjengelig. Disse bestemmer hva som også kan bruke mobildata. Telefonen din avgjør hva som regnes som mobildata, så et Wi-Fi-nett du har merket som målt behandles på samme måte.</string>
     <string name="settings_network_streaming">Strøm over mobildata</string>
     <string name="settings_network_downloads">Last ned over mobildata</string>
     <string name="settings_network_smart_downloads">Last ned neste bok over mobildata</string>
-    <string name="settings_section_car">I bilen</string>
-    <string name="settings_car_hint">BookWave vises i Android Auto med tre faner: Fortsett, Kapitler og Historikk. Den åpner alltid på boka du sist hørte på. Hva som skjer når en bil kobles til, settes sammen med de andre enhetene nedenfor.</string>
-    <string name="sleep_timer_settings">Standardverdier</string>
     <string name="sleep_timer_default_length">Standard lengde</string>
     <string name="sleep_timer_rewind">Spol tilbake når sovetiden stopper avspillingen</string>
-    <string name="sleep_timer_rewind_hint">Hvis du sovner, spoles boka tilbake så mye at du kan ta opp tråden et sted du husker. Av som standard.</string>
     <string name="sleep_timer_fade">Ton ut over</string>
     <string name="sleep_timer_shake">Rist for å starte sovetiden på nytt</string>
-    <string name="sleep_timer_shake_hint">Av som standard. Når den er på, måler appen bevegelse bare mens sovetiden går — aldri ellers.</string>
 
     <string name="sleep_timer_history">Nylige sovetider</string>
-    <string name="sleep_timer_history_empty">Ingen sovetid er stilt inn på denne enheten ennå.</string>
-    <string name="sleep_timer_history_hint">Lagres bare på denne enheten, og sendes aldri videre.</string>
     <string name="sleep_timer_history_started">%1$s · %2$s</string>
     <string name="sleep_timer_outcome_expired">Gikk ut og satte boken på pause</string>
     <string name="sleep_timer_outcome_cancelled">Slått av</string>
@@ -454,14 +440,12 @@
     <string name="settings_section_interruptions">Korte avbrudd</string>
     <string name="settings_focus_pause">Sett på pause</string>
     <string name="settings_focus_duck">Fortsett, men lavt</string>
-    <string name="settings_focus_hint">Hva som skjer under en veibeskrivelse eller et varsel. Pause betyr at du ikke går glipp av noe; å fortsette betyr at du ikke må spole tilbake. En telefonsamtale setter boka på pause uansett — det er Androids avgjørelse, ikke appens. En endring gjelder neste gang en bok starter.</string>
 
     <!-- PRODUCT_SPEC ROUTE-003 — hva det å åpne appen gjør. Bare det tredje valget lager lyd. -->
     <string name="settings_section_startup">Når du åpner appen</string>
     <string name="settings_startup_nothing">Ingenting</string>
     <string name="settings_startup_restore">Last inn siste bok</string>
     <string name="settings_startup_resume">Spill siste bok</string>
-    <string name="settings_startup_hint">Ingenting er standard: å åpne appen for å se på biblioteket legger ikke en spiller i varselpanelet. Avspillingsknappen på hodetelefonene starter siste bok uansett hva du velger her.</string>
 
     <!-- PRODUCT_SPEC PLAY-006 — de to tallene som sier om bufferinnstillingen er riktig. -->
     <string name="about_section_playback_metrics">Avspilling siden appen startet</string>
@@ -481,13 +465,6 @@
     <string name="settings_device_policy_arm">Klar</string>
     <string name="settings_device_policy_auto">Spill</string>
     <string name="settings_device_policy_ask">Spør</string>
-    <string name="settings_device_kind_wired">Kablet</string>
-    <string name="settings_device_kind_bluetooth">Bluetooth</string>
-    <string name="settings_device_kind_car">Bil</string>
-    <string name="settings_device_kind_hearing_aid">Høreapparat</string>
-    <string name="settings_device_kind_speaker">Høyttaler</string>
-    <string name="settings_device_kind_other">Lydenhet</string>
-    <string name="settings_device_speaker_warning">Dette er en høyttaler, så boka starter høyt i rommet den står i.</string>
     <string name="settings_section_icon">Appikon</string>
     <string name="settings_icon_bookwave">BookWave</string>
     <string name="settings_icon_indigo">Indigo</string>
@@ -616,43 +593,26 @@
     </plurals>
 
     <string name="settings_tab_playback">Avspilling</string>
-    <string name="settings_section_speed">Hastighet</string>
     <string name="settings_speed_default">Standardhastighet</string>
-    <string name="settings_speed_hint">Brukes av alle bøker som ikke har fått sin egen hastighet i spilleren.</string>
-    <string name="settings_section_skip">Hoppknapper</string>
     <string name="settings_skip_back">Tilbake</string>
     <string name="settings_skip_forward">Fram</string>
-    <string name="settings_skip_hint">Knappene viser tallet der det finnes et ikon for det, og lengden leses alltid opp.</string>
     <string name="settings_section_rewind">Spol tilbake etter pause</string>
     <string name="settings_rewind_enabled">Spol tilbake når avspilling fortsetter</string>
-    <string name="settings_rewind_hint">Av som standard. Krysser aldri en kapittelstart, brukes aldri etter at du selv har flyttet posisjonen, og aldri etter en samtale eller en navigasjonsbeskjed.</string>
     <string name="settings_rewind_short">Pauset under 2 minutter</string>
     <string name="settings_rewind_medium">2 til 10 minutter</string>
     <string name="settings_rewind_long">10 til 60 minutter</string>
     <string name="settings_rewind_very_long">Over en time</string>
     <string name="settings_section_buffer">Strømmebuffer</string>
-    <string name="settings_section_series">N\u00e5r en bok er ferdig</string>
-    <string name="settings_series_hint">En ferdig bok g\u00e5r rett videre til neste bok i serien. B\u00f8ker du allerede har fullf\u00f8rt, hoppes over. Hvis du sovner til lydb\u00f8ker, sett ogs\u00e5 en sovetimer \u2014 den stopper boken der den er.</string>
     <string name="settings_series_auto_advance">Start neste bok i serien</string>
-    <string name="settings_buffer_hint">Bare strømmede bøker; en nedlastet bok bruker spillerens egne standarder. En større buffer tåler dårligere forbindelse og bruker mer minne og mobildata. Trer i kraft neste gang en bok starter.</string>
     <string name="settings_buffer_automatic">Automatisk</string>
     <string name="settings_buffer_low">Lav</string>
     <string name="settings_buffer_standard">Standard</string>
     <string name="settings_buffer_high">Høy</string>
     <string name="settings_buffer_very_high">Svært høy</string>
-    <plurals name="settings_buffer_range">
-        <item quantity="one">%1$d–%2$d sekund framover</item>
-        <item quantity="other">%1$d–%2$d sekunder framover</item>
-    </plurals>
-    <string name="settings_buffer_automatic_range">Det spilleren bestemmer</string>
     <string name="settings_seconds">%1$d s</string>
 
     <!-- PRODUCT_SPEC PLAY-004 / ADR-0013 — når en bok regnes som ferdig. En visning, ikke en innstilling. -->
     <string name="settings_section_finished">Ferdig</string>
-    <string name="settings_finished_hint">En bok merkes som ferdig når det er litt igjen av den, slik at de siste sekundene med rulletekst ikke etterlater den som ulest. Hvor lite er serveren din som bestemmer, per bibliotek — i Audiobookshelf-nettgrensesnittet, under innstillingene til biblioteket, som «mark as finished when time remaining is». BookWave følger den framfor å ha en egen mening. Å merke en bok som ferdig selv virker uansett, og å starte en ferdig bok fra begynnelsen gjør den alltid ulest igjen.</string>
-    <string name="settings_finished_inherited">%1$s: ferdig når %2$d s er igjen</string>
-    <string name="settings_finished_inherited_none">%1$s: serveren din har ikke sagt noe, så %2$d s brukes inntil den gjør det</string>
-    <string name="settings_finished_no_libraries">Ingen bibliotek er lest fra serveren din ennå, så ingenting kan vises her.</string>
 
     <plurals name="home_library_books">
         <item quantity="one">%1$d bok</item>

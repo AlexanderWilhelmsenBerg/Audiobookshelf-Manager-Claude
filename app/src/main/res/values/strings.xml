@@ -483,40 +483,26 @@
         <item quantity="other">%1$d files</item>
     </plurals>
     <!-- PRODUCT_SPEC DL-005 / DL-006 / ADR-0018 decisions 1 and 7 — what the app may do unasked. -->
-    <string name="settings_section_downloads">Downloads</string>
-    <string name="settings_downloads_hint">Both of these are off until you turn them on. One spends space and data on a book you did not ask for; the other deletes a book you did.</string>
     <string name="settings_downloads_manage">Manage downloaded books</string>
     <string name="settings_downloads_smart">Download the next book in a series</string>
-    <string name="settings_downloads_smart_hint">When you pass halfway through a book, the next one in the same series starts downloading.</string>
     <string name="settings_downloads_delete_previous">Remove the previous book in the series</string>
-    <string name="settings_downloads_delete_previous_hint">When the next book arrives, the one before the book you are listening to is removed from this device. Never the one playing.</string>
     <string name="settings_downloads_retention">Remove finished books</string>
-    <string name="settings_downloads_retention_hint">A finished book is removed this long after you finished it. Never the book playing, never one whose progress has not reached your server, and never one you have pinned.</string>
     <plurals name="settings_downloads_retention_days">
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
     </plurals>
     <string name="settings_downloads_retention_never">Never</string>
-    <string name="settings_section_network">Mobile data</string>
-    <string name="settings_network_hint">Wi-Fi is always used when it is available. These decide what may also use mobile data. Your phone decides what counts as mobile data, so a Wi-Fi network you marked as metered is treated the same way.</string>
     <string name="settings_network_streaming">Stream over mobile data</string>
     <string name="settings_network_downloads">Download over mobile data</string>
     <string name="settings_network_smart_downloads">Download next book over mobile data</string>
-    <string name="settings_section_car">In the car</string>
-    <string name="settings_car_hint">BookWave appears in Android Auto with three tabs: Continue, Chapters and History. It always opens on the book you were last listening to. What happens when a car connects is set with the other devices, below.</string>
-    <string name="sleep_timer_settings">Timer defaults</string>
     <string name="sleep_timer_default_length">Default length</string>
     <string name="sleep_timer_fade">Fade out over</string>
     <!-- PRODUCT_SPEC PLAY-008 / PLAY-009 — how far back to go when the timer stops the book. -->
     <string name="sleep_timer_rewind">Rewind when the timer stops playback</string>
-    <string name="sleep_timer_rewind_hint">If you fall asleep, the book winds back by this much so you can pick up something you remember. Off by default.</string>
     <string name="sleep_timer_shake">Shake to restart the timer</string>
-    <string name="sleep_timer_shake_hint">Off by default. When it is on, the app senses motion only while a timer is running — never at other times.</string>
 
     <!-- PRODUCT_SPEC PLAY-008 / SET-002 — the local history. -->
     <string name="sleep_timer_history">Recent timers</string>
-    <string name="sleep_timer_history_empty">No sleep timers have been set on this device yet.</string>
-    <string name="sleep_timer_history_hint">Kept on this device only, and never sent anywhere.</string>
     <!-- %1$s is a date and time; %2$s is the mode, such as "30 min". -->
     <string name="sleep_timer_history_started">%1$s · %2$s</string>
     <string name="sleep_timer_outcome_expired">Ran down and paused the book</string>
@@ -613,14 +599,12 @@
     <string name="settings_section_interruptions">Short interruptions</string>
     <string name="settings_focus_pause">Pause</string>
     <string name="settings_focus_duck">Keep playing, quietly</string>
-    <string name="settings_focus_hint">What happens during a navigation prompt or a notification sound. Pausing means you miss nothing; keeping it playing means you have nothing to rewind. A phone call pauses the book either way — that is Android\'s decision, not this app\'s. A change applies the next time a book starts.</string>
 
     <!-- PRODUCT_SPEC ROUTE-003 — what opening the app does. Only the third option makes a sound. -->
     <string name="settings_section_startup">When you open the app</string>
     <string name="settings_startup_nothing">Nothing</string>
     <string name="settings_startup_restore">Load the last book</string>
     <string name="settings_startup_resume">Play the last book</string>
-    <string name="settings_startup_hint">Nothing is the default: opening the app to look at your library does not put a player in your notification shade. The play button on your headphones starts your last book whichever of these you choose.</string>
 
     <!-- PRODUCT_SPEC PLAY-006 — the two readings that say whether the buffer preset is the right one. -->
     <string name="about_section_playback_metrics">Playback since the app started</string>
@@ -640,13 +624,6 @@
     <string name="settings_device_policy_arm">Ready</string>
     <string name="settings_device_policy_auto">Play</string>
     <string name="settings_device_policy_ask">Ask</string>
-    <string name="settings_device_kind_wired">Wired</string>
-    <string name="settings_device_kind_bluetooth">Bluetooth</string>
-    <string name="settings_device_kind_car">Car</string>
-    <string name="settings_device_kind_hearing_aid">Hearing aid</string>
-    <string name="settings_device_kind_speaker">Speaker</string>
-    <string name="settings_device_kind_other">Audio device</string>
-    <string name="settings_device_speaker_warning">This is a speaker, so a book will start out loud in whatever room it is in.</string>
     <string name="settings_section_icon">App icon</string>
     <string name="settings_icon_bookwave">BookWave</string>
     <string name="settings_icon_indigo">Indigo</string>
@@ -836,16 +813,11 @@
 
     <!-- PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the Playback settings tab. -->
     <string name="settings_tab_playback">Playback</string>
-    <string name="settings_section_speed">Speed</string>
     <string name="settings_speed_default">Default speed</string>
-    <string name="settings_speed_hint">Used by every book that has not been given its own speed in the player.</string>
-    <string name="settings_section_skip">Skip buttons</string>
     <string name="settings_skip_back">Back</string>
     <string name="settings_skip_forward">Forward</string>
-    <string name="settings_skip_hint">The buttons show the number where an icon exists for it, and the amount is always announced.</string>
     <string name="settings_section_rewind">Rewind after a pause</string>
     <string name="settings_rewind_enabled">Rewind when playback resumes</string>
-    <string name="settings_rewind_hint">Off by default. Never crosses a chapter start, never applies after you move the position yourself, and never after a call or a navigation prompt.</string>
     <string name="settings_rewind_short">Paused under 2 minutes</string>
     <string name="settings_rewind_medium">2 to 10 minutes</string>
     <string name="settings_rewind_long">10 to 60 minutes</string>
@@ -856,20 +828,12 @@
       the present tense, and it names the one case where continuing is wrong along with the control that
       answers it.
     -->
-    <string name="settings_section_series">When a book ends</string>
-    <string name="settings_series_hint">A finished book rolls straight into the next one in its series. Books you have already finished are skipped. If you listen yourself to sleep, set a sleep timer as well — it stops the book wherever it is.</string>
     <string name="settings_series_auto_advance">Start the next book in the series</string>
-    <string name="settings_buffer_hint">Streamed books only; a downloaded book uses the player\'s own defaults. A larger buffer survives a worse connection and uses more memory and mobile data. Takes effect the next time a book starts.</string>
     <string name="settings_buffer_automatic">Automatic</string>
     <string name="settings_buffer_low">Low</string>
     <string name="settings_buffer_standard">Standard</string>
     <string name="settings_buffer_high">High</string>
     <string name="settings_buffer_very_high">Very high</string>
-    <plurals name="settings_buffer_range">
-        <item quantity="one">%1$d–%2$d second ahead</item>
-        <item quantity="other">%1$d–%2$d seconds ahead</item>
-    </plurals>
-    <string name="settings_buffer_automatic_range">Whatever the player decides</string>
     <string name="settings_seconds">%1$d s</string>
 
     <!--
@@ -880,10 +844,6 @@
       own and does not write the library's settings back.
     -->
     <string name="settings_section_finished">Finished</string>
-    <string name="settings_finished_hint">A book is marked finished when a little of it is left, so the last few seconds of credits do not leave it looking unread. How little is your server\'s decision, set per library — in the Audiobookshelf web interface, under that library\'s settings, as “mark as finished when time remaining is”. BookWave follows it rather than keeping a second opinion. Marking a book finished by hand always works either way, and starting a finished book from the beginning always un-finishes it.</string>
-    <string name="settings_finished_inherited">%1$s: finished with %2$d s left</string>
-    <string name="settings_finished_inherited_none">%1$s: your server has not said, so %2$d s is used until it does</string>
-    <string name="settings_finished_no_libraries">No libraries have been read from your server yet, so nothing here can be shown.</string>
 
     <!--
       PRODUCT_SPEC 3.1 — counts are plurals, not formatted strings.
