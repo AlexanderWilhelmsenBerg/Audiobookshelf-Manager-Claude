@@ -1,7 +1,9 @@
 package com.example.shelfplayer.feature.loopbound
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
@@ -125,7 +127,7 @@ private fun LoopboundWebView(modifier: Modifier = Modifier) {
     )
 }
 
-@Suppress("SetJavaScriptEnabled") // Loopbound is the bundled JS application; remote requests are blocked below.
+@SuppressLint("SetJavaScriptEnabled") // Required by the bundled game; all non-game requests are blocked below.
 private fun createLoopboundWebView(context: Context): WebView {
     val assetLoader = WebViewAssetLoader.Builder()
         .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
@@ -145,15 +147,16 @@ private fun createLoopboundWebView(context: Context): WebView {
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
         webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse? {
-                assetLoader.shouldInterceptRequest(request.url)?.let { return it }
-                return blockedResponse()
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest,
+            ): WebResourceResponse? {
+                if (!request.url.isLoopboundAssetUrl()) return blockedResponse()
+                return assetLoader.shouldInterceptRequest(request.url) ?: blockedResponse()
             }
 
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
-                val url = request.url
-                return url.host != APP_ASSET_HOST || !url.path.orEmpty().startsWith(LOOPBOUND_URL_PATH_PREFIX)
-            }
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean =
+                !request.url.isLoopboundAssetUrl()
 
             override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
                 view?.destroy()
@@ -162,6 +165,9 @@ private fun createLoopboundWebView(context: Context): WebView {
         }
     }
 }
+
+private fun Uri.isLoopboundAssetUrl(): Boolean =
+    scheme == "https" && host == APP_ASSET_HOST && path.orEmpty().startsWith(LOOPBOUND_URL_PATH_PREFIX)
 
 private fun Context.hasLoopboundBundle(): Boolean = runCatching {
     assets.open(LOOPBOUND_ENTRY_PATH).use { Unit }
