@@ -27,13 +27,7 @@ import com.example.shelfplayer.domain.usecase.ServerDiagnostics
  * preference, this one owns the readings and the small row composables they share.
  */
 
-/**
- * What the app is connected to — the Server tab.
- *
- * The address is printed because this is the screen a user reads to answer "which server am I even
- * talking to" with two profiles on the go. It never reaches a log or a report unless the user has opted
- * in (PRODUCT_SPEC SET-002, Privacy/diagnostics); on screen it is their own address.
- */
+/** What the app is connected to — the Server tab. */
 internal fun LazyListScope.serverInfoRows(server: ServerDiagnostics) {
     server.serverAddress?.let { address ->
         item { TextRow(labelRes = R.string.settings_server_address, value = address) }
@@ -58,16 +52,6 @@ internal fun LazyListScope.serverInfoRows(server: ServerDiagnostics) {
     }
 }
 
-/**
- * PRODUCT_SPEC SYNC-001 — "the compatibility result is visible in diagnostics".
- *
- * Under *Testing* rather than beside the address, because it is not a fact about the server so much as a
- * record of what this build asked it — and a device run said so in as many words.
- *
- * The interesting line is that most of the list says **no**. The handshake confirms nothing it has not
- * probed, and from outside the app "confirmed nothing" and "never ran" look identical — so the header
- * says which of those happened, and the rows say what was asked.
- */
 internal fun LazyListScope.capabilityRows(server: ServerDiagnostics) {
     item { SubHeader(text = stringResource(R.string.settings_section_capabilities)) }
     item {
@@ -89,16 +73,6 @@ internal fun LazyListScope.capabilityRows(server: ServerDiagnostics) {
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
 }
 
-/**
- * PRODUCT_SPEC SET-002 (Privacy/diagnostics) — the on-device answer to the questions that used to need
- * `adb shell run-as … sqlite3`.
- *
- * The two pairs are the interesting ones. **Libraries stored** against **visible to this profile** is how
- * "unauthorized libraries never appear" becomes checkable: the requirement is that unauthorized rows were
- * never *written*, and a screen that merely hides them looks identical to one that never had them. Same
- * for books. Counts only — printing the names of libraries this profile may not see would be a strange way
- * to demonstrate that they are hidden.
- */
 internal fun LazyListScope.storageRows(storage: StorageDiagnostics) {
     item {
         ValueRow(
@@ -219,18 +193,6 @@ private fun ValueRow(labelRes: Int, value: Int, modifier: Modifier = Modifier, h
     }
 }
 
-/**
- * A tab's own name, at the top of the tab.
- *
- * Exists because three of the four tabs are labelled by an icon in the row above — *Appearance* is a long
- * word and four long words left no tab wide enough to read one. An icon is a fine target and a poor
- * title, so the word moves here, where there is room for it. About keeps its text label and needs no
- * heading, which is why this is a composable a tab opts into rather than something the screen draws for
- * every page.
- *
- * `headlineSmall`, a step above [SectionHeader], so the page has one title and then its sections rather
- * than two competing rows of the same weight.
- */
 @Composable
 internal fun TabHeading(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -250,7 +212,6 @@ internal fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** A heading *inside* a section, so two blocks read as parts of it rather than as peers. */
 @Composable
 internal fun SubHeader(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -262,6 +223,16 @@ internal fun SubHeader(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 internal fun Hint(text: String, modifier: Modifier = Modifier) {
+    // The compact Playback refresh deliberately has no explanatory prose. The legacy device section still
+    // calls these three hints from SettingsScreen, so suppress precisely those resources here rather than
+    // removing Hint from Server/About, where the text is diagnostic rather than preference explanation.
+    val playbackDeviceCopy = setOf(
+        stringResource(R.string.settings_devices_hint),
+        stringResource(R.string.settings_devices_empty),
+        stringResource(R.string.settings_devices_background_hint),
+    )
+    if (text in playbackDeviceCopy) return
+
     Text(
         text = text,
         style = MaterialTheme.typography.bodySmall,
