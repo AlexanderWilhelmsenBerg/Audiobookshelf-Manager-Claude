@@ -1,0 +1,269 @@
+exit_status=0
+--- last 800 lines ---
+Starting a Gradle Daemon (subsequent builds will be faster)
+Type-safe project accessors is an incubating feature.
+> Task :build-logic:convention:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :build-logic:convention:pluginDescriptors
+> Task :build-logic:convention:processResources
+> Task :build-logic:convention:compileKotlin
+> Task :build-logic:convention:compileJava NO-SOURCE
+> Task :build-logic:convention:classes
+> Task :build-logic:convention:jar
+
+> Configure project :app
+BookWave: created a stable debug keystore at /home/runner/.bookwave/debug.keystore. The first install after this needs an uninstall; none after it will.
+
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :playback:preBuild UP-TO-DATE
+> Task :core:database:preBuild UP-TO-DATE
+> Task :playback:preDebugBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:database:preDebugBuild UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :core:model:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :playback:writeDebugAarMetadata
+> Task :app:generateDebugBuildConfig
+> Task :core:datastore:preBuild UP-TO-DATE
+> Task :core:datastore:preDebugBuild UP-TO-DATE
+> Task :core:designsystem:preBuild UP-TO-DATE
+> Task :core:designsystem:preDebugBuild UP-TO-DATE
+> Task :core:database:writeDebugAarMetadata
+> Task :core:network:preBuild UP-TO-DATE
+> Task :core:network:preDebugBuild UP-TO-DATE
+> Task :core:datastore:writeDebugAarMetadata
+> Task :core:designsystem:writeDebugAarMetadata
+> Task :core:network:writeDebugAarMetadata
+> Task :data:auth:preBuild UP-TO-DATE
+> Task :data:auth:preDebugBuild UP-TO-DATE
+> Task :data:library:preBuild UP-TO-DATE
+> Task :data:downloads:preBuild UP-TO-DATE
+> Task :data:library:preDebugBuild UP-TO-DATE
+> Task :data:downloads:preDebugBuild UP-TO-DATE
+> Task :data:auth:writeDebugAarMetadata
+> Task :data:settings:preBuild UP-TO-DATE
+> Task :data:settings:preDebugBuild UP-TO-DATE
+> Task :data:library:writeDebugAarMetadata
+> Task :data:settings:writeDebugAarMetadata
+> Task :data:downloads:writeDebugAarMetadata
+> Task :playback:generateDebugResValues
+> Task :app:generateDebugResValues
+> Task :core:database:generateDebugResValues
+> Task :core:database:generateDebugResources
+> Task :playback:generateDebugResources
+> Task :core:database:packageDebugResources
+> Task :core:datastore:generateDebugResValues FROM-CACHE
+> Task :core:datastore:generateDebugResources FROM-CACHE
+> Task :core:datastore:packageDebugResources
+> Task :core:designsystem:generateDebugResValues FROM-CACHE
+> Task :core:designsystem:generateDebugResources FROM-CACHE
+> Task :core:designsystem:packageDebugResources
+> Task :playback:packageDebugResources
+> Task :data:auth:generateDebugResValues FROM-CACHE
+> Task :core:network:generateDebugResValues FROM-CACHE
+> Task :data:auth:generateDebugResources FROM-CACHE
+> Task :core:network:generateDebugResources FROM-CACHE
+> Task :data:auth:packageDebugResources
+> Task :core:network:packageDebugResources
+> Task :data:downloads:generateDebugResValues FROM-CACHE
+> Task :data:downloads:generateDebugResources FROM-CACHE
+> Task :data:library:generateDebugResValues FROM-CACHE
+> Task :data:library:generateDebugResources FROM-CACHE
+> Task :data:downloads:packageDebugResources
+> Task :data:settings:generateDebugResValues FROM-CACHE
+> Task :data:library:packageDebugResources
+> Task :data:settings:generateDebugResources FROM-CACHE
+> Task :playback:extractDeepLinksDebug
+> Task :data:settings:packageDebugResources
+> Task :core:database:extractDeepLinksDebug FROM-CACHE
+> Task :core:database:processDebugManifest
+> Task :playback:processDebugManifest
+> Task :core:designsystem:extractDeepLinksDebug FROM-CACHE
+> Task :core:datastore:extractDeepLinksDebug FROM-CACHE
+> Task :core:designsystem:processDebugManifest
+> Task :core:datastore:processDebugManifest
+> Task :data:auth:extractDeepLinksDebug FROM-CACHE
+> Task :core:network:extractDeepLinksDebug FROM-CACHE
+> Task :data:auth:processDebugManifest
+> Task :core:network:processDebugManifest
+> Task :data:library:extractDeepLinksDebug FROM-CACHE
+> Task :data:downloads:extractDeepLinksDebug FROM-CACHE
+> Task :data:library:processDebugManifest
+> Task :data:downloads:processDebugManifest
+> Task :data:settings:extractDeepLinksDebug FROM-CACHE
+> Task :data:settings:processDebugManifest
+> Task :core:database:compileDebugLibraryResources
+> Task :playback:compileDebugLibraryResources
+> Task :core:database:parseDebugLocalResources
+> Task :core:model:processResources NO-SOURCE
+> Task :playback:parseDebugLocalResources
+> Task :core:database:generateDebugRFile
+> Task :playback:generateDebugRFile
+> Task :core:datastore:compileDebugLibraryResources FROM-CACHE
+> Task :core:designsystem:compileDebugLibraryResources FROM-CACHE
+> Task :core:datastore:parseDebugLocalResources FROM-CACHE
+> Task :core:designsystem:parseDebugLocalResources FROM-CACHE
+> Task :core:datastore:generateDebugRFile
+> Task :core:designsystem:generateDebugRFile
+> Task :core:network:compileDebugLibraryResources FROM-CACHE
+> Task :data:auth:compileDebugLibraryResources FROM-CACHE
+> Task :core:network:parseDebugLocalResources FROM-CACHE
+> Task :data:auth:parseDebugLocalResources FROM-CACHE
+> Task :core:network:generateDebugRFile
+> Task :data:auth:generateDebugRFile
+> Task :data:downloads:compileDebugLibraryResources FROM-CACHE
+> Task :data:library:compileDebugLibraryResources FROM-CACHE
+> Task :data:library:parseDebugLocalResources FROM-CACHE
+> Task :data:downloads:parseDebugLocalResources FROM-CACHE
+> Task :data:downloads:generateDebugRFile
+> Task :data:library:generateDebugRFile
+> Task :playback:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:network:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:settings:compileDebugLibraryResources FROM-CACHE
+> Task :data:settings:parseDebugLocalResources FROM-CACHE
+> Task :data:settings:generateDebugRFile
+> Task :core:network:javaPreCompileDebug
+> Task :core:database:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :playback:javaPreCompileDebug
+> Task :core:designsystem:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:database:javaPreCompileDebug
+> Task :core:datastore:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:datastore:protobufDummy UP-TO-DATE
+> Task :core:datastore:extractDebugProto
+> Task :core:datastore:extractProto
+> Task :core:datastore:javaPreCompileDebug FROM-CACHE
+> Task :data:auth:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:auth:javaPreCompileDebug FROM-CACHE
+> Task :data:downloads:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:downloads:javaPreCompileDebug FROM-CACHE
+> Task :data:library:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:library:javaPreCompileDebug FROM-CACHE
+> Task :data:settings:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:settings:javaPreCompileDebug FROM-CACHE
+> Task :core:testing:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:testing:processResources NO-SOURCE
+> Task :app:checkDebugAarMetadata
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources
+> Task :core:designsystem:javaPreCompileDebug
+> Task :app:packageDebugResources
+> Task :app:parseDebugLocalResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :app:mergeDebugResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:javaPreCompileDebug
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :app:processDebugResources
+> Task :core:designsystem:compileDebugKotlin
+> Task :core:designsystem:compileDebugJavaWithJavac NO-SOURCE
+> Task :core:designsystem:processDebugJavaRes
+> Task :core:designsystem:bundleLibCompileToJarDebug
+> Task :core:designsystem:bundleLibRuntimeToJarDebug
+> Task :core:designsystem:createFullJarDebug
+> Task :core:model:compileKotlin
+> Task :core:model:compileJava NO-SOURCE
+> Task :core:model:classes UP-TO-DATE
+> Task :core:model:jar
+> Task :core:common:kspKotlin
+> Task :core:common:processResources NO-SOURCE
+> Task :core:common:compileKotlin
+> Task :core:common:compileJava
+> Task :core:common:classes
+> Task :core:common:jar
+> Task :core:datastore:extractIncludeDebugProto
+> Task :core:datastore:generateDebugProto
+> Task :domain:kspKotlin
+> Task :core:network:kspDebugKotlin
+> Task :domain:processResources NO-SOURCE
+> Task :core:datastore:kspDebugKotlin
+> Task :domain:compileKotlin
+> Task :domain:compileJava
+> Task :domain:classes
+> Task :domain:jar
+> Task :core:database:kspDebugKotlin
+> Task :core:testing:compileKotlin
+> Task :core:testing:compileJava NO-SOURCE
+> Task :core:testing:classes UP-TO-DATE
+> Task :core:testing:jar
+> Task :core:datastore:compileDebugKotlin
+> Task :core:datastore:compileDebugJavaWithJavac
+> Task :core:datastore:processDebugJavaRes
+> Task :core:datastore:transformDebugClassesWithAsm
+> Task :core:datastore:bundleLibCompileToJarDebug
+> Task :core:datastore:bundleLibRuntimeToJarDebug
+> Task :core:datastore:createFullJarDebug
+> Task :core:network:compileDebugKotlin
+> Task :core:network:compileDebugJavaWithJavac
+> Task :core:network:processDebugJavaRes
+> Task :core:network:transformDebugClassesWithAsm
+> Task :core:network:bundleLibCompileToJarDebug
+> Task :core:network:bundleLibRuntimeToJarDebug
+> Task :core:network:createFullJarDebug
+> Task :core:database:compileDebugKotlin
+> Task :core:database:compileDebugJavaWithJavac
+> Task :core:database:copyRoomSchemas NO-SOURCE
+> Task :core:database:processDebugJavaRes
+> Task :core:database:transformDebugClassesWithAsm
+> Task :core:database:bundleLibCompileToJarDebug
+> Task :core:database:bundleLibRuntimeToJarDebug
+> Task :data:downloads:kspDebugKotlin
+> Task :data:auth:kspDebugKotlin
+> Task :data:library:kspDebugKotlin
+> Task :playback:kspDebugKotlin
+> Task :data:downloads:compileDebugKotlin
+> Task :data:auth:compileDebugKotlin
+> Task :data:downloads:compileDebugJavaWithJavac
+> Task :data:downloads:transformDebugClassesWithAsm
+> Task :data:downloads:bundleLibCompileToJarDebug
+> Task :data:auth:compileDebugJavaWithJavac
+> Task :data:auth:transformDebugClassesWithAsm
+> Task :data:auth:bundleLibCompileToJarDebug
+> Task :data:auth:bundleLibRuntimeToJarDebug
+> Task :data:auth:processDebugJavaRes
+> Task :data:auth:createFullJarDebug
+> Task :data:downloads:bundleLibRuntimeToJarDebug
+> Task :data:downloads:processDebugJavaRes
+> Task :data:downloads:createFullJarDebug
+> Task :core:database:createFullJarDebug
+> Task :data:settings:kspDebugKotlin
+> Task :data:library:compileDebugKotlin
+> Task :data:library:compileDebugJavaWithJavac
+> Task :data:library:processDebugJavaRes
+> Task :data:library:transformDebugClassesWithAsm
+> Task :data:library:bundleLibCompileToJarDebug
+> Task :data:library:bundleLibRuntimeToJarDebug
+> Task :data:library:createFullJarDebug
+> Task :data:settings:compileDebugKotlin
+> Task :data:settings:compileDebugJavaWithJavac
+> Task :data:settings:processDebugJavaRes
+> Task :data:settings:transformDebugClassesWithAsm
+> Task :data:settings:bundleLibCompileToJarDebug
+> Task :data:settings:bundleLibRuntimeToJarDebug
+> Task :data:settings:createFullJarDebug
+> Task :playback:compileDebugKotlin
+> Task :playback:compileDebugJavaWithJavac
+> Task :playback:processDebugJavaRes
+> Task :playback:transformDebugClassesWithAsm
+> Task :playback:bundleLibCompileToJarDebug
+> Task :playback:bundleLibRuntimeToJarDebug
+> Task :playback:createFullJarDebug
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin
+> Task :app:compileDebugJavaWithJavac
+> Task :app:detektDebug
+> Task :app:hiltAggregateDepsDebug
+> Task :app:hiltJavaCompileDebug
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:kspDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:detektDebugUnitTest
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1788784648881.json
+
+BUILD SUCCESSFUL in 4m 12s
+205 actionable tasks: 162 executed, 43 from cache
