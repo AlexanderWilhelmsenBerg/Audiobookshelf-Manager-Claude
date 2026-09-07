@@ -1,0 +1,190 @@
+# The Android Auto player screen — what is available and what is worth doing
+
+Written 2026-09-07, after the device run that produced ADR-0029 §8 and R-106/R-107.
+
+This began as a **survey and a set of recommendations**, not a decision. Items 1, 2 and 3 have since been
+built at the owner's request — see *What has since been built* — and the rest stand as recommendations.
+Each item says what the platform documents, what BookWave does today, and what it would cost; where the
+documentation stops short it says so instead of guessing (product priority 6).
+
+**The numbering here is the recommended order**, which the sections now follow. An earlier draft numbered
+them in the order they were written and then gave a different priority order at the end, which meant two
+schemes for the same five items.
+
+## What the player screen actually consists of
+
+Android Auto's playback view is host-drawn from four things the app supplies:
+
+| Element | Source | BookWave today |
+| --- | --- | --- |
+| Album art | `MediaMetadata.artworkUri` on the live item | Set from the playback session |
+| Title | `MediaMetadata.title` | The book title |
+| Subtitle (one optional line) | rendered from the legacy artist/subtitle fields | `Author • Series #N` (§6) |
+| Elapsed time + progress bar | `PlaybackStateCompat` position and `METADATA_KEY_DURATION` | Correct; the book is one timeline (ADR-0016) |
+| Explicit-content indicator | metadata | n/a |
+| Primary control bar, left to right: **queue · previous · play/pause · next · custom** | media button preferences | play/pause, the two skips, and Car/Headset requesting the two secondary primary-bar slots |
+| Overflow menu, up to **4** secondary actions | custom actions beyond/falling back from the bar | Car and Headset also declare overflow as fallback |
+
+Two documented capacity numbers matter:
+
+- the **minimised** control bar holds **up to five** controls, and expands to five more in a second row;
+- an app may publish **up to six** custom actions, or **up to eight** if it does not use Next/Previous.
+
+BookWave now asks the host to place Car and Headset in the two secondary primary-bar slots while retaining
+overflow as a fallback. Whether a particular head unit actually shows those secondary positions in its
+*minimised* player remains a host/device question rather than an app-side guarantee.
+
+## 1. Move the output actions into the primary bar — the device finding, and it has an answer
+
+**The finding.** *"The headset and car icon is gone from the smaller window."* Correct, and ADR-0029 §8
+initially recorded it as a host-layout limit that could not be worked around. **That conclusion was wrong**,
+and the reason is worth stating plainly: it was reasoned from `CommandButton`'s three slots the code already
+used rather than from the class's actual API. Media3 1.11 declares **six**:
+
+```
+SLOT_CENTRAL   SLOT_BACK   SLOT_FORWARD   SLOT_BACK_SECONDARY   SLOT_FORWARD_SECONDARY   SLOT_OVERFLOW
+```
+
+`SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY` are the two further positions in the primary bar — the
+ones that take it from three controls to the documented five.
+
+**Implemented in #78.** Car requests `SLOT_BACK_SECONDARY` and Headset requests
+`SLOT_FORWARD_SECONDARY`, each with `SLOT_OVERFLOW` second in its slot chain. The skips keep their slots,
+so PLAY-007 is untouched and nothing is traded away.
+
+**What still needs a car.** Whether a given head unit draws the secondary slots in its *minimised* bar is a
+host decision, exactly like R-107's indicator bar. The implementation no longer relies on overflow-only
+placement, but the claim "they appear in the small window" is not proven until a head unit does it. Worth
+photographing both bars in the same run as R-107.
+
+## 2. Reserve, or deliberately release, the seek slots
+
+`MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_NEXT` / `..._SEEK_TO_PREV`, set through
+`MediaSession.setSessionExtras`, tell the host whether to keep the prev/next positions blank when the app
+does not support them or to fill them with custom actions.
+
+**Implemented in #78.** BookWave now calls `setSessionExtras` and explicitly sets both reservation keys to
+`false`. That is intentionally the same answer as the default: a book is one timeline window (ADR-0016),
+PLAY-007's skip buttons already own the meaningful backward/forward controls, and reserving empty seek
+positions would work against the output-action placement in item 1. The value of the change is making the
+layout decision explicit rather than inherited.
+
+## 3. Say something when the server will not answer
+
+A self-hosted server whose credentials have expired, or which is unreachable from the car's network, can
+otherwise present as a book that simply does not start. Media3's compatibility error path gives the player
+a way to explain that failure.
+
+**Corrected and implemented 2026-09-07.** This section first said the documentation offered no way to attach
+a resolution action, so the message had to be a bare "unlock this on your phone". That was a reading of the
+guide rather than of the API. Media3 1.11 carries `ERROR_CODE_AUTHENTICATION_EXPIRED_COMPAT` together with
+`EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT` and `..._INTENT_COMPAT`, and `MediaSession.sendError`
+delivers them. `PlaybackFailureReport` now classifies the credential/network cases; an expired-credential
+message carries a labelled button that opens the app, while an unreachable-server case is explained without
+pretending the head unit can fix connectivity.
+
+This remains device-host behaviour: the mapping and session call exist in the implementation, while the
+exact way a particular Android Auto host renders the sentence/action must be checked in the car.
+
+## 4. Metadata the player can draw and BookWave does not send
+
+`androidx.car.app.mediaextensions.MetadataExtras` carries several keys the player screen honours:
+
+- **`KEY_SUBTITLE_LINK_MEDIA_ID` / `KEY_DESCRIPTION_LINK_MEDIA_ID`** — the subtitle or description becomes
+  **tappable**, opening a browse node. AOSP's customisation guide says OEMs *must* render these as
+  tappable and open the linked item. For BookWave this is the obvious one: the subtitle is already
+  `Author • Series #N`, and linking it to the series node turns the byline into navigation.
+- **`KEY_CONTENT_FORMAT_TINTABLE_LARGE_ICON_URI` / `..._SMALL_...`** — a format badge beside the title.
+- **`KEY_IMMERSIVE_AUDIO`** — an indicator; not applicable to Audiobookshelf content.
+
+**Do not schedule any of these before testing one.** Whether `MediaMetadata.extras` set through Media3
+reaches the legacy `MediaMetadataCompat` that Android Auto reads is an **open, unresolved question
+upstream** — androidx/media#2127, still open, with no maintainer answer and the note that the
+documentation for it "still uses legacy code". BookWave already has one bet in this family:
+`EXTRAS_KEY_COMPLETION_PERCENTAGE` on browse rows, which R-10 records as unverified for the same reason.
+The honest sequencing is to verify the mechanism once, on a head unit, with the completion percentage that
+is already there — and only then decide whether to add more.
+
+## 5. Chapters as the media session queue — the one real restructuring
+
+The primary bar's **far-left position is queue access**, and BookWave leaves it empty. Filling it gives the
+driver a native chapter list *on the player screen*, plus a "Now playing" marker via
+`setActiveQueueItemId`, instead of a `Chapters` node four taps into the browse tree.
+
+**This is a genuine trade against ADR-0016, and should not be done casually.** Media3 derives the legacy
+queue from the player's timeline, so a chapter queue means one media item per chapter rather than one per
+book. ADR-0016 chose one window deliberately, and PLAY-007's notification buttons exist because Media3's
+default *previous* seeked to zero and a device run caught it **restarting a thirty-four-hour book**. One
+item per chapter changes the meaning of every seek, every position write, and both skip buttons.
+
+Two ways to have most of it without paying that:
+
+- **A queue of one.** Publish the book as a single queue item with a title. Cheap, and it fills the slot
+  with something honest, but it tells the driver nothing they cannot already see.
+- **Keep the timeline and expose chapters only as browse.** What BookWave does now. The chapter list is
+  correct and complete; it is merely further away than the queue slot would be.
+
+My recommendation is to **leave ADR-0016 alone** unless a device run shows drivers reaching for the queue
+button. The prize is one tap; the risk is the seek model of the whole app.
+
+## What has since been built
+
+Items 1, 2 and 3 were applied on 2026-09-07 at the owner's request.
+
+- **1 — output actions in the primary bar.** They declare `SLOT_BACK_SECONDARY` / `SLOT_FORWARD_SECONDARY`
+  before `SLOT_OVERFLOW`. `setSlots` takes a chain, so a host that will not place them in the bar still
+  has overflow available as the fallback requested by BookWave.
+- **2 — the seek-slot reservation.** Now stated as `false` rather than inherited. `setSessionExtras` had
+  never been called before this slice.
+- **3 — failure reporting.** `MediaSession.sendError` with `PlaybackFailureReport` deciding between an
+  expired credential and an unreachable server, and **this document was wrong about the ceiling**: it said
+  the documentation offered no way to attach a resolution action. Media3 1.11 has
+  `ERROR_CODE_AUTHENTICATION_EXPIRED_COMPAT` plus `EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT` and
+  `..._INTENT_COMPAT`, so the credential message carries a labelled button that opens the app.
+
+Two answers to the owner's follow-up questions, both checked against the API rather than assumed:
+
+- **Chapter *n* of *m* is available.** `MediaMetadata` carries `trackNumber` and `totalTrackCount`, and
+  `Player.replaceMediaItem` is the documented way to update a playing item's metadata **without
+  interrupting playback**, position preserved — so the byline can change at each chapter boundary.
+  [androidx/media#2993](https://github.com/androidx/media/issues/2993) reported a `MediaItem` leak on
+  repeated calls; once per chapter is infrequent enough to accept, but the fixed version should be checked.
+- **Chapter-relative *progress* is not.** The progress bar is the timeline, and the timeline is the book
+  (ADR-0016).
+- **History cannot go in the queue slot.** Not a trade-off — `MediaSession` has no queue API at all in
+  Media3, and the legacy queue is derived from the player's timeline, so nothing that is not a timeline
+  window can be put there. The reachable lever is `KEY_SUBTITLE_LINK_MEDIA_ID` pointing a metadata line at
+  a browse node, which belongs to item 4's open metadata-extras question rather than item 5's queue model.
+
+## Still open
+
+Items 4 and 5 stand. Item 4 is a **measurement before it is a feature**: verify that Media3 forwards
+metadata extras to Android Auto at all, using the `EXTRAS_KEY_COMPLETION_PERCENTAGE` already on browse
+rows, before adding more that depend on the same path. Item 5 needs evidence that drivers reach for the
+queue button, and reopening ADR-0016 deliberately if they do.
+
+## What this survey does not claim
+
+The API readings above do not prove a particular head unit's rendering. Items 1, 2 and 3 are now implemented,
+but the new secondary-slot placement, error presentation and other host-facing details have not been accepted
+on a head unit yet. This project's own record is that the car keeps finding what the documents do not say —
+R-10 covers exactly that gap, and ADR-0029 §8's original "nothing else on the player can show it" conclusion
+was itself drawn from a partial reading of an API. Treat capacity numbers and slot rendering as the host's to
+confirm.
+
+## Sources
+
+- [Android for Cars — media apps](https://developer.android.com/training/cars/media)
+- [Enable playback control](https://developer.android.com/training/cars/media/enable-playback) — the
+  reserved skip slots, custom action ordering, queue APIs
+- [Handle errors](https://developer.android.com/training/cars/media/errors)
+- [Customize playback controls](https://developers.google.com/cars/design/create-apps/media-apps/customize-playback-controls)
+  — up to 6 custom actions, or 8 without Next/Previous
+- [Playback view](https://docs.partner.android.com/drivingux/android-auto/apps/playback-view) — the primary
+  bar's order, the queue position, 4 overflow actions
+- [Customize media (AOSP)](https://source.android.com/docs/automotive/hmi/media/customization) — what OEMs
+  must honour for the subtitle/description links and format badges
+- [androidx/media#2127](https://github.com/androidx/media/issues/2127) — whether Media3 metadata extras
+  reach Android Auto, open
+- `androidx.media3:media3-session:1.11.0`, read from the artifact: `CommandButton`'s six slots,
+  `MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_*`, `MediaSession.setSessionExtras`

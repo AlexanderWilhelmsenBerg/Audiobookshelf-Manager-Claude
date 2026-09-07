@@ -11,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.CommandButton
+import androidx.media3.session.MediaConstants
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
@@ -206,10 +207,35 @@ class PlaybackService : MediaLibraryService() {
     private var sleepTimerState: SleepTimerState = SleepTimerState.Idle
 
     /**
-     * PRODUCT_SPEC PLAY-002 — what the audio-output button is currently labelled with, or `null` for
-     * *Automatic*. Read on the main thread like the two above.
+     * PRODUCT_SPEC PLAY-002 — which of the car's two output buttons are published, and what the headset one
+     * is labelled with. Read on the main thread like the two above.
      */
-    private var currentOutput: AudioOutput? = null
+    private var outputButtons: OutputButtons = OutputButtons.None
+
+    /**
+     * PRODUCT_SPEC PLAY-002 / ROUTE-002 — whether this book has actually made sound in this process.
+     *
+     * `mediaItemCount > 0` was standing in for "the book was being heard here", and arming breaks that
+     * proxy: `DevicePolicy.ArmOnly` is the **default**, and it deliberately loads the last book paused so a
+     * headset button starts it instantly. Under the old predicate, connecting earbuds armed a book, the
+     * platform's media route reported those earbuds as active, and a car arriving was then refused in favour
+     * of a headset that had never played — the *merely connected* case `HeadsetHold` exists to exclude.
+     *
+     * Set when audio starts and kept across a pause, because a book paused in a headset on the walk to the
+     * car is the case worth preserving. Cleared when the book changes or the queue empties.
+     */
+    private var heardAudio: Boolean = false
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — which headset the book was last heard in.
+     *
+     * ADR-0029: preservation is routing behaviour with no user-facing preference, so there is no setting
+     * behind this — only the observed route.
+     *
+     * Stateful because the fact it holds outlives the moment it is needed; `HeadsetHold` explains why asking
+     * at car-connect time is too late.
+     */
+    private val headsetHold = HeadsetHold()
 
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
@@ -242,6 +268,7 @@ class PlaybackService : MediaLibraryService() {
             // the notification to see where they are gets no response and no explanation.
             .apply { launchIntent()?.let(::setSessionActivity) }
             .build()
+        publishSlotReservations()
         // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
         // singleton in this process, so it is the same object the app's UI drives.
         sleepTimer.attach(exoPlayer)
@@ -672,6 +699,11 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) {
                 // Audio is coming out, so whatever went wrong is over and the next failure starts from one.
                 recovery.onPlaying()
+                // ROUTE-002 — the first proof this book is being heard, which is what the headset hold needs.
+                if (!heardAudio) {
+                    heardAudio = true
+                    feedHeadsetHold()
+                }
                 // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
                 // longer a description of where this device is. See `ResumeBaseline.onLocalMove`.
                 resumeBaseline.onLocalMove()
@@ -755,6 +787,11 @@ class PlaybackService : MediaLibraryService() {
             // this fires for every book including one started from a car or by a media button, and the wait
             // to hear a book is the wait for *that* book.
             if (mediaItem != null) metrics.onItemPrepared()
+            // PRODUCT_SPEC PLAY-002 — a book arriving is the other half of what the headset hold watches;
+            // already-connected earbuds raise no device event, so without this the common order never
+            // registers a headset to preserve. A *new* book has been heard nowhere yet.
+            heardAudio = false
+            feedHeadsetHold()
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
@@ -854,6 +891,7 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Count("attempt", recovery.attemptCount),
             )
             scope.launch { recordPosition() }
+            reportFailureToControllers(error, willRetry = retryIn != null)
             if (retryIn == null) return
             scope.launch {
                 delay(retryIn)
@@ -895,30 +933,162 @@ class PlaybackService : MediaLibraryService() {
         skipWatch = scope.launch {
             playbackSettings.observeSettings().collect { settings ->
                 skips = settings.skips
+                // PRODUCT_SPEC PLAY-002 — read here rather than in its own collector: it comes off the same
+                // flow, and a second `observeSettings()` would be a second cold DataStore read of the same
+                // bytes on every write to any playback setting.
                 publishMediaButtons()
             }
         }
     }
 
     /**
-     * PRODUCT_SPEC PLAY-002 — keeps the car's output button naming the right destination.
+     * PRODUCT_SPEC PLAY-002 — keeps the car's two output buttons matching what is connected.
      *
-     * Both flows, because the button reports the **route** and falls back to the **choice**, and either can
-     * move without the other: a headset disconnecting changes the route with no selection involved, and
-     * choosing an output changes the selection before the platform has acted on it.
+     * Both flows, because the headset button reports the **route** and falls back to the **choice**, and
+     * either can move without the other: a headset disconnecting changes the route with no selection
+     * involved, and choosing an output changes the selection before the platform has acted on it.
+     *
+     * This is also the only place [headsetHold] is fed, and it is fed on **every** emission rather than only
+     * on a change — the hold is about which headset was in use a moment ago, so it has to see every moment.
      */
     private fun observeAudioOutputs() {
         outputWatch = scope.launch {
             combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, selected) ->
-                val next = AudioOutputCycle.current(outputs, selected)
+                feedHeadsetHold(outputs, selected)
                 // Republishing on every emission would rewrite the notification for a device change that
-                // does not touch the button's text, and Media3 pushes each set to every controller.
-                if (next != currentOutput) {
-                    currentOutput = next
-                    publishMediaButtons()
+                // does not touch either button, and Media3 pushes each set to every controller.
+                republishOutputButtons()
+            }
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — the one place [headsetHold] is fed, from **two** triggers.
+     *
+     * Output changes alone are not enough. Earbuds that are already connected when a book is started produce
+     * no device event, so a collector watching only the output flows would never see the book arrive: the
+     * common order — connect earbuds, then press play — left nothing remembered and the car took the audio
+     * anyway. Loading a book is therefore the second trigger, and it is why this is a function rather than
+     * two lines inside the collector.
+     *
+     * Called on [mainDispatcher] from both, which is where Media3 requires the player read.
+     */
+    private fun feedHeadsetHold(
+        outputs: List<AudioOutput> = audioOutputs.outputs.value,
+        selectedId: String? = audioOutputs.selectedId.value,
+    ) {
+        val loaded = (player?.mediaItemCount ?: 0) > 0
+        headsetHold.observe(outputs, selectedId, hasMedia = loaded && heardAudio)
+    }
+
+    /**
+     * Recomputes the two output buttons and rewrites the notification only if they moved.
+     *
+     * Called from the output collector and from both halves of a car binding, because a car is a reason the
+     * car button appears without any audio device having changed.
+     */
+    private fun republishOutputButtons() {
+        val next = AudioOutputRoles.buttons(
+            outputs = audioOutputs.outputs.value,
+            selectedId = audioOutputs.selectedId.value,
+            carConnected = carConnections.isConnected(),
+        )
+        if (next == outputButtons) return
+        outputButtons = next
+        publishMediaButtons()
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — *Keep sound in the headset*, applied at the one moment it means anything.
+     *
+     * A no-op unless the book was already coming out of a headset that is still connected. The log line
+     * names the *kind* rather than the headset's advertised name (14.5).
+     *
+     * The queue is re-checked **here** rather than trusted from the memory. The collector that maintains it
+     * runs on output changes, and `PlaybackController.stop()` empties the queue without touching either
+     * output flow — so a memory set while a book was playing can outlive the book, and a car arriving would
+     * pin the route to earbuds nobody is listening to.
+     */
+    private fun holdHeadsetAgainstCar() {
+        if ((player?.mediaItemCount ?: 0) == 0) {
+            headsetHold.forget()
+            return
+        }
+        val hold = headsetHold.holdOnCarArrival(audioOutputs.outputs.value) ?: return
+        logger.info(
+            LogCategory.Playback,
+            "A car connected and the book was held in the headset",
+            LogField.Public("kind", hold.substringBefore(':')),
+        )
+        audioOutputs.select(hold)
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — say why the book stopped, to whoever is listening.
+     *
+     * A device run found the car's player silent about everything; §8 answered the routing half and this is
+     * the other. A driver whose self-hosted server has expired its credentials, or which is simply not
+     * reachable from the car's network, otherwise sees a book that does not start and no explanation.
+     *
+     * `sendError` reaches every connected controller, which is right: the phone notification benefits from
+     * the same sentence, and there is no per-controller version of this that a head unit reads.
+     *
+     * The credential case carries a **labelled action**, because Media3 has the two legacy extras for it
+     * and a message with a way out is worth more than a message. It opens the app rather than pretending
+     * a head unit can host a sign-in — see the string's own comment.
+     *
+     * [PlaybackFailureReport] holds the decision and the reason a retry stays quiet.
+     */
+    private fun reportFailureToControllers(error: PlaybackException, willRetry: Boolean) {
+        val current = session ?: return
+        val report = PlaybackFailureReport.of(error.httpResponseCode(), willRetry) ?: return
+        val message = when (report.message) {
+            PlaybackFailureReport.Message.CredentialsExpired -> R.string.car_error_credentials_expired
+            PlaybackFailureReport.Message.ServerUnreachable -> R.string.car_error_server_unreachable
+        }
+        val extras = Bundle().apply {
+            if (report.isCredentialFailure) {
+                launchIntent()?.let { intent ->
+                    putString(
+                        MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT,
+                        getString(R.string.car_error_sign_in_action),
+                    )
+                    putParcelable(MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_INTENT_COMPAT, intent)
                 }
             }
         }
+        logger.warn(
+            LogCategory.Playback,
+            "The car was told why the book stopped",
+            LogField.Public("kind", report.message.name),
+            LogField.Public("hasAction", extras.isEmpty.not().toString()),
+        )
+        current.sendError(SessionError(report.code, getString(message), extras))
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — telling the car **not** to hold the seek slots empty.
+     *
+     * A car reserves space for seek-to-previous and seek-to-next. An app that does not support them can
+     * either have that space left blank or have its own custom actions placed there, and
+     * `EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_*` is the switch. A book is one timeline window (ADR-0016), so
+     * Media3 reports neither command and this app is squarely in that case.
+     *
+     * **`false` is the answer, and it is the same as the default — which is the point.** This app had never
+     * called `setSessionExtras` at all, so the layout it got in a car was inherited rather than chosen, and
+     * PLAY-007's skip buttons occupy those two positions precisely because Media3's own *previous* seeks to
+     * zero and a device run caught it restarting a thirty-four-hour book. Reserving them would invite a
+     * host to blank the positions those buttons live in. Written down explicitly so the next reader finds a
+     * decision instead of an absence.
+     */
+    private fun publishSlotReservations() {
+        val current = session ?: return
+        current.setSessionExtras(
+            Bundle().apply {
+                putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_PREV, false)
+                putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_NEXT, false)
+            },
+        )
     }
 
     private fun publishMediaButtons() {
@@ -951,29 +1121,9 @@ class PlaybackService : MediaLibraryService() {
                 slot = CommandButton.SLOT_FORWARD,
             ),
         )
-        // PRODUCT_SPEC PLAY-002 — the output button, before the sleep timer's so its place in the car does
-        // not move when a timer starts. `SLOT_OVERFLOW` is not a preference here but the requirement:
-        // `CommandButton.getCustomLayoutFromMediaButtonPreferences` keeps the back and forward buttons and
-        // then only buttons declaring that slot, and the legacy layout is what Android Auto renders.
-        add(
-            // `ICON_UNDEFINED` on purpose: none of Media3's constants is a Bluetooth glyph, and the constant
-            // is passed to legacy controllers as a hint beside the resource. Naming a wrong one would invite
-            // a head unit to draw a signal bar instead of the icon that was asked for.
-            CommandButton.Builder(CommandButton.ICON_UNDEFINED)
-                // `PlayerWrapper` builds the legacy custom action from this resource id, and that is what
-                // Android Auto draws.
-                .setCustomIconResId(R.drawable.ic_audio_output)
-                .setDisplayName(
-                    getString(
-                        R.string.player_output_action,
-                        currentOutput?.displayName ?: getString(R.string.car_output_automatic),
-                    ),
-                )
-                .setSessionCommand(SessionCommand(NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT, Bundle.EMPTY))
-                .setSlots(CommandButton.SLOT_OVERFLOW)
-                .setEnabled(true)
-                .build(),
-        )
+        // PRODUCT_SPEC PLAY-002 — the output buttons, before the sleep timer's so their place in the car
+        // does not move when a timer starts.
+        addAll(outputCommandButtons())
         val timer = sleepTimerState
         if (timer.isActive) {
             add(
@@ -988,6 +1138,72 @@ class PlaybackService : MediaLibraryService() {
             )
         }
     }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — the car button and the headset button, or as many of them as apply.
+     *
+     * **They ask for a primary-bar slot first and overflow second.** This used to declare `SLOT_OVERFLOW`
+     * alone, on the belief that the legacy layout Android Auto renders keeps nothing else — and a device
+     * run showed the cost: neither action appeared in the minimised control bar, which draws the transport
+     * row and not the overflow menu. Media3 has six slots, and `SLOT_BACK_SECONDARY` /
+     * `SLOT_FORWARD_SECONDARY` are the further primary-bar positions that take the bar to the five
+     * controls the car design guidance documents. `setSlots` takes a chain, so naming overflow second
+     * means a host that will not place them there still shows them where it did before.
+     *
+     * Absent rather than disabled when there is nothing to act on. A head unit draws a disabled custom
+     * action as a grey square with no explanation, and a driver cannot ask it why; one fewer button is a
+     * clearer statement than a dead one.
+     */
+    private fun outputCommandButtons(): List<CommandButton> = buildList {
+        val state = outputButtons
+        if (state.showCar) {
+            add(
+                outputButton(
+                    icon = OutputActionIcons.car(state),
+                    action = NotificationButtons.ACTION_SELECT_CAR_OUTPUT,
+                    label = getString(R.string.player_car_action),
+                    slot = CommandButton.SLOT_BACK_SECONDARY,
+                ),
+            )
+        }
+        if (state.showHeadset) {
+            add(
+                outputButton(
+                    icon = OutputActionIcons.headset(state),
+                    action = NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT,
+                    // The headset's own advertised name when the book is in one, so a long press and a
+                    // screen reader both answer "which earbuds". Whether a head unit finds room to draw the
+                    // text beside the icon is the head unit's decision and not one an app can make; §2.11
+                    // records what this car does with it.
+                    label = state.headsetName
+                        ?.let { name -> getString(R.string.player_headset_action, name) }
+                        ?: getString(R.string.player_headset_action_unknown),
+                    slot = CommandButton.SLOT_FORWARD_SECONDARY,
+                ),
+            )
+        }
+    }
+
+    /**
+     * One output button.
+     *
+     * `ICON_UNDEFINED` on purpose: neither a car nor a headset is among Media3's icon constants, and the
+     * constant is passed to legacy controllers as a hint beside the resource. Naming a wrong one would
+     * invite a head unit to draw something else entirely. `setCustomIconResId` is what actually reaches the
+     * car — Media3 builds the legacy `PlaybackStateCompat.CustomAction` from that resource.
+     */
+    private fun outputButton(icon: Int, action: String, label: String, slot: Int): CommandButton =
+        CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+            .setCustomIconResId(icon)
+            .setDisplayName(label)
+            .setSessionCommand(SessionCommand(action, Bundle.EMPTY))
+            // Two slots, in preference order, and the second is why this is safe. `setSlots` is a *chain*:
+            // the host takes the first it can honour. So a head unit that gives these a primary-bar
+            // position draws them beside the transport controls — where the minimised bar can reach them —
+            // and one that cannot falls back to the overflow menu, which is exactly where they were.
+            .setSlots(slot, CommandButton.SLOT_OVERFLOW)
+            .setEnabled(true)
+            .build()
 
     private fun skipButton(icon: Int, action: String, label: String, slot: Int): CommandButton =
         CommandButton.Builder(icon)
@@ -1823,6 +2039,15 @@ class PlaybackService : MediaLibraryService() {
                     "A car connected to the media session",
                     LogField.Public("controller", controller.packageName),
                 )
+                // PRODUCT_SPEC PLAY-002 — both of these are about a car *arriving*, and neither may wait for
+                // `onPostConnect`: the platform moves the route the moment the car's audio link comes up, and
+                // by the later callback there may be no headset left to hold. Media3 calls `onConnect` off
+                // the main thread, and both of these read main-thread state, so they are posted rather than
+                // run here.
+                scope.launch {
+                    holdHeadsetAgainstCar()
+                    republishOutputButtons()
+                }
             }
             /*
              * PRODUCT_SPEC AUTH-003 / 14.5 — the command set is where the browse decision is enforced.
@@ -1849,7 +2074,8 @@ class PlaybackService : MediaLibraryService() {
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_BACK, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
-                        .add(SessionCommand(NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT, Bundle.EMPTY))
+                        .add(SessionCommand(NotificationButtons.ACTION_SELECT_CAR_OUTPUT, Bundle.EMPTY))
+                        .add(SessionCommand(NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT, Bundle.EMPTY))
                         // PRODUCT_SPEC SYNC-002 — the app's own atomic resume. Granted on the same
                         // condition as the four above and refused to everything else: a seek followed by a
                         // play, driven from outside the app, is exactly the pair `ControllerTrust`
@@ -1923,6 +2149,18 @@ class PlaybackService : MediaLibraryService() {
          * the gap between the two and gets no policy at all. It also puts the car in Settings, which is where
          * the listener changes their mind.
          */
+        /**
+         * PRODUCT_SPEC PLAY-002 — a controller went away, and if it was a car the car button goes with it.
+         *
+         * The counterpart to the `onConnect` half above. Without it the car button would be published for
+         * the rest of the process's life after one drive, on a phone with no car anywhere near it.
+         */
+        override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
+            if (!controller.isCar()) return
+            carConnections.onDisconnected()
+            scope.launch { republishOutputButtons() }
+        }
+
         override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
             if (!controller.isCar()) return
             val current = player ?: return
@@ -2104,9 +2342,28 @@ class PlaybackService : MediaLibraryService() {
                 NotificationButtons.ACTION_SKIP_BACK -> skipBy(-skips.back)
                 NotificationButtons.ACTION_SKIP_FORWARD -> skipBy(skips.forward)
                 NotificationButtons.ACTION_ADD_BOOKMARK -> bookmarkHere()
-                // PLAY-002. Never touches the player's queue, so the book does not stop or rebuffer —
+                // PLAY-002. Neither touches the player's queue, so the book does not stop or rebuffer —
                 // product priority 1, and the same reason the car's output rows are browsable.
-                NotificationButtons.ACTION_CYCLE_AUDIO_OUTPUT -> audioOutputs.selectNext()
+                //
+                // The car target is `null` on every car that does not report an audio bus of its own, and
+                // `null` means *Automatic*: routing goes back to the platform, whose answer while a car is
+                // connected is the car. `AudioOutputRoles.carTarget` says why that is the honest mapping
+                // rather than a shrug.
+                NotificationButtons.ACTION_SELECT_CAR_OUTPUT -> {
+                    // The press retires the hold. Without this the memory survives, the ambiguous-route
+                    // guard keeps it across the dashboard becoming active, and the next car binding
+                    // reasserts the headset — silently undoing the choice just made.
+                    headsetHold.releaseToCar(audioOutputs.outputs.value, audioOutputs.selectedId.value)
+                    audioOutputs.select(AudioOutputRoles.carTarget(audioOutputs.outputs.value))
+                }
+
+                // `null` here means there is no headset to step to, and the button would not have been
+                // published — but a stale custom action from a car's cached layout can still arrive, and
+                // selecting *Automatic* for it would move the book somewhere nobody asked for.
+                NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT ->
+                    AudioOutputRoles
+                        .nextHeadset(audioOutputs.outputs.value, audioOutputs.selectedId.value)
+                        ?.let(audioOutputs::select)
                 else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))

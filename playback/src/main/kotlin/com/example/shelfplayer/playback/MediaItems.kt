@@ -81,6 +81,10 @@ object MediaItems {
     fun queueFor(session: PlaybackSession): Queue {
         val tracks = session.playableTracks
         val durations = recoveredDurations(session)
+        val seriesLabel = session.seriesLabel?.takeIf(String::isNotBlank)
+        val byline = listOfNotNull(session.author?.takeIf(String::isNotBlank), seriesLabel)
+            .joinToString(" • ")
+            .takeIf(String::isNotBlank)
         val extras = Bundle().apply {
             putStringArray(KEY_TRACK_URLS, tracks.map { it.url }.toTypedArray())
             putLongArray(KEY_TRACK_DURATIONS_MS, durations.map { it.inWholeMilliseconds }.toLongArray())
@@ -95,8 +99,11 @@ object MediaItems {
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(session.title)
-                    .setArtist(session.author)
-                    .setAlbumTitle(session.title)
+                    // A tested head unit renders title + artist and ignores the richer subtitle fields. Keep
+                    // author truthful in the session model, but make that visible byline carry series context.
+                    .setArtist(byline)
+                    .setSubtitle(seriesLabel)
+                    .setAlbumTitle(seriesLabel ?: session.title)
                     .setArtworkUri(session.coverUrl?.let(android.net.Uri::parse))
                     .setIsBrowsable(false)
                     .setIsPlayable(true)

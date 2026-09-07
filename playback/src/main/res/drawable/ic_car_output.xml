@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PRODUCT_SPEC PLAY-002 — a side-profile car for the Android Auto action slot, which is tiny.
+
+  Drawn to three rules a 24dp slot enforces, all of which the previous glyph broke and a device run saw:
+
+  - **Centred on both axes.** The glyph spans y 6→18.5 and is symmetric about x=12. The earlier path sat
+    between y 5 and 17 and left the bottom third of the box empty, so the car floated above the middle of
+    a slot the host centres its other icons in.
+  - **Wheels under the ends of the body.** They sit at x 7.1 and 16.9 inside a body spanning 2.6→21.4. The
+    earlier front wheel was at 15.2 under a body reaching 22.3, a seven-unit overhang that read as a
+    misplaced wheel rather than a nose.
+  - **No detail that cannot survive the size.** One silhouette: body, cabin, two wheels, no window and no
+    bumper spur. Each wheel keeps about seven-tenths of its circle below the body edge, which is what makes
+    it read as a wheel instead of a flat stub at 24dp.
+
+  The cabin sits back over the rear axle rather than in the middle. That asymmetry is what makes the shape
+  a car instead of a shed, and it costs nothing: the *glyph* stays centred, only its interior is weighted.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3.8,11H20.2a1.2,1.2 0 0,1 1.2,1.2V13.4a1.2,1.2 0 0,1 -1.2,1.2H3.8a1.2,1.2 0 0,1 -1.2,-1.2V12.2a1.2,1.2 0 0,1 1.2,-1.2zM8.2,6H13.6a1.1,1.1 0 0,1 0.92,0.54L16.2,11.3H5.7L7.28,6.54A1.1,1.1 0 0,1 8.2,6zM7.1,13.5a2.5,2.5 0 1,0 0,5a2.5,2.5 0 1,0 0,-5zM16.9,13.5a2.5,2.5 0 1,0 0,5a2.5,2.5 0 1,0 0,-5z" />
+</vector>
