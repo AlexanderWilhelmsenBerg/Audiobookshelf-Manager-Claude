@@ -269,7 +269,6 @@ class PlaybackService : MediaLibraryService() {
             // the notification to see where they are gets no response and no explanation.
             .apply { launchIntent()?.let(::setSessionActivity) }
             .build()
-        publishSlotReservations()
         // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
         // singleton in this process, so it is the same object the app's UI drives.
         sleepTimer.attach(exoPlayer)
@@ -1060,21 +1059,15 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * PRODUCT_SPEC PLAY-002 — telling the car **not** to hold the seek slots empty.
+     * The sentence for a report. Both failure paths draw from the same four.
      *
-     * A car reserves space for seek-to-previous and seek-to-next. An app that does not support them can
-     * either have that space left blank or have its own custom actions placed there, and
-     * `EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_*` is the switch. A book is one timeline window (ADR-0016), so
-     * Media3 reports neither command and this app is squarely in that case.
-     *
-     * **`false` is the answer, and it is the same as the default — which is the point.** This app had never
-     * called `setSessionExtras` at all, so the layout it got in a car was inherited rather than chosen, and
-     * PLAY-007's skip buttons occupy those two positions precisely because Media3's own *previous* seeks to
-     * zero and a device run caught it restarting a thirty-four-hour book. Reserving them would invite a
-     * host to blank the positions those buttons live in. Written down explicitly so the next reader finds a
-     * decision instead of an absence.
+     * The seek-slot reservation extras used to be published from here, set to `false`. That was removed as
+     * measured dead code: `MediaSessionLegacyStub` recomputes both keys from the custom layout on every
+     * button update and overwrites whatever the app put there, and because PLAY-007's skip buttons occupy
+     * `SLOT_BACK` and `SLOT_FORWARD` it computes exactly the `false` this was setting. The decision is
+     * still the right one — a book is one timeline window (ADR-0016), so reserving those positions would
+     * invite a host to blank the ones the skip buttons live in — it simply is not this app's to make.
      */
-    /** The sentence for a report. Both failure paths draw from the same three. */
     private fun messageFor(report: PlaybackFailureReport.Report): Int = when (report.message) {
         PlaybackFailureReport.Message.CredentialsExpired -> R.string.car_error_credentials_expired
         PlaybackFailureReport.Message.ServerUnreachable -> R.string.car_error_server_unreachable
@@ -1111,19 +1104,21 @@ class PlaybackService : MediaLibraryService() {
         current.sendError(SessionError(report.code, getString(messageFor(report)), resolutionExtras(report)))
     }
 
-    private fun publishSlotReservations() {
-        val current = session ?: return
-        current.setSessionExtras(
-            Bundle().apply {
-                putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_PREV, false)
-                putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_NEXT, false)
-            },
-        )
-    }
-
+    /**
+     * PRODUCT_SPEC PLAY-002 — pushes the button set, including to the car.
+     *
+     * The second publish is what reaches Android Auto and is not optional; [MediaButtonPublishing] holds
+     * the measured reason, and `MediaButtonPublishingTest` fails if it is dropped.
+     */
     private fun publishMediaButtons() {
         val current = session ?: return
-        current.setMediaButtonPreferences(mediaButtons())
+        MediaButtonPublishing.publish(
+            buttons = mediaButtons(),
+            toAllControllers = current::setMediaButtonPreferences,
+            toNotificationController = current.mediaNotificationControllerInfo?.let { controller ->
+                { buttons -> current.setMediaButtonPreferences(controller, buttons) }
+            },
+        )
     }
 
     private fun mediaButtons(): List<CommandButton> = buildList {
@@ -1172,13 +1167,18 @@ class PlaybackService : MediaLibraryService() {
     /**
      * PRODUCT_SPEC PLAY-002 — the car button and the headset button, or as many of them as apply.
      *
-     * **They ask for a primary-bar slot first and overflow second.** This used to declare `SLOT_OVERFLOW`
-     * alone, on the belief that the legacy layout Android Auto renders keeps nothing else — and a device
-     * run showed the cost: neither action appeared in the minimised control bar, which draws the transport
-     * row and not the overflow menu. Media3 has six slots, and `SLOT_BACK_SECONDARY` /
-     * `SLOT_FORWARD_SECONDARY` are the further primary-bar positions that take the bar to the five
-     * controls the car design guidance documents. `setSlots` takes a chain, so naming overflow second
-     * means a host that will not place them there still shows them where it did before.
+     * **In a car these are overflow actions, and the secondary slots do not change that.** The slot chain
+     * below asks for a secondary primary-bar position first, which is right for Media3-native controllers —
+     * but it is measured to do nothing for Android Auto, and a device run confirmed the minimised control
+     * bar looked unchanged. `CommandButton.getCustomLayoutFromMediaButtonPreferences`, the conversion the
+     * legacy stub that serves a car runs, branches on exactly three slot values: `SLOT_BACK`,
+     * `SLOT_FORWARD` and `SLOT_OVERFLOW`. `SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY` are not
+     * tested anywhere in it, so a button declaring one falls through to the overflow branch.
+     * `MediaButtonSlotConversionTest` executes that conversion rather than asserting it here.
+     *
+     * The bar therefore holds these only by **displacing skip back and skip forward** from `SLOT_BACK` /
+     * `SLOT_FORWARD`, and for an audiobook those two are the controls a driver reaches for without looking.
+     * That trade is the owner's to make, not this comment's: `docs/risks.md` R-109 records it.
      *
      * Absent rather than disabled when there is nothing to act on. A head unit draws a disabled custom
      * action as a grey square with no explanation, and a driver cannot ask it why; one fewer button is a
