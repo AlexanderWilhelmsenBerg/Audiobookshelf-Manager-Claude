@@ -70,12 +70,13 @@ jobs:
           from pathlib import Path
 
           text = Path('.github/workflows/apk.yml').read_text(encoding='utf-8')
+          expression_open = '$' + '{{'
           required = (
-              'run-name: "${{ inputs.pull_request',
+              'run-name: "' + expression_open + ' inputs.pull_request',
               'type: choice',
               '# BEGIN GENERATED OPEN PR OPTIONS',
               '# END GENERATED OPEN PR OPTIONS',
-              'REQUESTED_PR: ${{ inputs.pull_request }}',
+              'REQUESTED_PR: ' + expression_open + ' inputs.pull_request }}',
           )
           missing = [part for part in required if part not in text]
           if missing:
