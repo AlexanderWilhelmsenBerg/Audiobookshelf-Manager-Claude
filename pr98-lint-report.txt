@@ -1,0 +1,196 @@
+exit_status=1
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/settings/PlaybackSettingsTab.kt:76: Error: Composable functions that return Unit should start with an uppercase letter [ComposableNaming from androidx.compose.runtime]
+private fun autoRewindRow(rewind: AutoRewind, onChanged: (AutoRewind) -> Unit) {
+            ~~~~~~~~~~~~~
+
+   Explanation for issues of type "ComposableNaming":
+   @Composable functions without a return type should use similar naming to
+   classes, starting with an uppercase letter and ending with a noun.
+   @Composable functions with a return type should be treated as normal Kotlin
+   functions, starting with a lowercase letter.
+
+   Vendor: Jetpack Compose
+   Identifier: androidx.compose.runtime
+   Feedback: https://issuetracker.google.com/issues/new?component=612128
+
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/settings/SettingsControls.kt:135: Error: Modifier parameter should be the first optional parameter [ModifierParameter from androidx.compose.ui]
+    modifier: Modifier = Modifier,
+    ~~~~~~~~
+
+   Explanation for issues of type "ModifierParameter":
+   The first (or only) Modifier parameter in a Composable function should
+   follow the following rules:
+   - Be named modifier
+   - Have a type of Modifier
+   - Either have no default value, or have a default value of Modifier
+   - If optional, be the first optional parameter in the parameter list
+
+   Vendor: Jetpack Compose
+   Identifier: androidx.compose.ui
+   Feedback: https://issuetracker.google.com/issues/new?component=612128
+
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/test/kotlin/com/example/shelfplayer/ui/gesture/EdgeOverspillRecompositionScreenTest.kt:45: Hint: Prefer mutableIntStateOf instead of mutableStateOf [AutoboxingStateCreation from androidx.compose.runtime]
+        var tick by mutableStateOf(0)
+                    ~~~~~~~~~~~~~~
+
+   Explanation for issues of type "AutoboxingStateCreation":
+   Calling mutableStateOf<T>() when T is either backed by a primitive type on
+   the JVM or is a value class results in a state implementation that requires
+   all state values to be boxed. This usually causes an additional allocation
+   for each state write, and adds some additional work to auto-unbox values
+   when reading the value of the state. Instead, prefer to use a specialized
+   primitive state implementation for Int, Long, Float, and Double when the
+   state does not need to track null values and does not override the default
+   SnapshotMutationPolicy. See mutableIntStateOf(), mutableLongStateOf(),
+   mutableFloatStateOf(), and mutableDoubleStateOf() for more information.
+
+   Vendor: Jetpack Compose
+   Identifier: androidx.compose.runtime
+   Feedback: https://issuetracker.google.com/issues/new?component=612128
+
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:486: Error: The resource R.string.settings_section_downloads appears to be unused [UnusedResources]
+    <string name="settings_section_downloads">Downloads</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:487: Error: The resource R.string.settings_downloads_hint appears to be unused [UnusedResources]
+    <string name="settings_downloads_hint">Both of these are off until you turn them on. One spends space and data on a book you did not ask for; the other deletes a book you did.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:490: Error: The resource R.string.settings_downloads_smart_hint appears to be unused [UnusedResources]
+    <string name="settings_downloads_smart_hint">When you pass halfway through a book, the next one in the same series starts downloading.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:492: Error: The resource R.string.settings_downloads_delete_previous_hint appears to be unused [UnusedResources]
+    <string name="settings_downloads_delete_previous_hint">When the next book arrives, the one before the book you are listening to is removed from this device. Never the one playing.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:494: Error: The resource R.string.settings_downloads_retention_hint appears to be unused [UnusedResources]
+    <string name="settings_downloads_retention_hint">A finished book is removed this long after you finished it. Never the book playing, never one whose progress has not reached your server, and never one you have pinned.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:500: Error: The resource R.string.settings_section_network appears to be unused [UnusedResources]
+    <string name="settings_section_network">Mobile data</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:501: Error: The resource R.string.settings_network_hint appears to be unused [UnusedResources]
+    <string name="settings_network_hint">Wi-Fi is always used when it is available. These decide what may also use mobile data. Your phone decides what counts as mobile data, so a Wi-Fi network you marked as metered is treated the same way.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:505: Error: The resource R.string.settings_section_car appears to be unused [UnusedResources]
+    <string name="settings_section_car">In the car</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:506: Error: The resource R.string.settings_car_hint appears to be unused [UnusedResources]
+    <string name="settings_car_hint">BookWave appears in Android Auto with three tabs: Continue, Chapters and History. It always opens on the book you were last listening to. What happens when a car connects is set with the other devices, below.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:507: Error: The resource R.string.sleep_timer_settings appears to be unused [UnusedResources]
+    <string name="sleep_timer_settings">Timer defaults</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:512: Error: The resource R.string.sleep_timer_rewind_hint appears to be unused [UnusedResources]
+    <string name="sleep_timer_rewind_hint">If you fall asleep, the book winds back by this much so you can pick up something you remember. Off by default.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:514: Error: The resource R.string.sleep_timer_shake_hint appears to be unused [UnusedResources]
+    <string name="sleep_timer_shake_hint">Off by default. When it is on, the app senses motion only while a timer is running — never at other times.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:518: Error: The resource R.string.sleep_timer_history_empty appears to be unused [UnusedResources]
+    <string name="sleep_timer_history_empty">No sleep timers have been set on this device yet.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:519: Error: The resource R.string.sleep_timer_history_hint appears to be unused [UnusedResources]
+    <string name="sleep_timer_history_hint">Kept on this device only, and never sent anywhere.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:616: Error: The resource R.string.settings_focus_hint appears to be unused [UnusedResources]
+    <string name="settings_focus_hint">What happens during a navigation prompt or a notification sound. Pausing means you miss nothing; keeping it playing means you have nothing to rewind. A phone call pauses the book either way — that is Android\'s decision, not this app\'s. A change applies the next time a book starts.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:623: Error: The resource R.string.settings_startup_hint appears to be unused [UnusedResources]
+    <string name="settings_startup_hint">Nothing is the default: opening the app to look at your library does not put a player in your notification shade. The play button on your headphones starts your last book whichever of these you choose.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:643: Error: The resource R.string.settings_device_kind_wired appears to be unused [UnusedResources]
+    <string name="settings_device_kind_wired">Wired</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:644: Error: The resource R.string.settings_device_kind_bluetooth appears to be unused [UnusedResources]
+    <string name="settings_device_kind_bluetooth">Bluetooth</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:645: Error: The resource R.string.settings_device_kind_car appears to be unused [UnusedResources]
+    <string name="settings_device_kind_car">Car</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:646: Error: The resource R.string.settings_device_kind_hearing_aid appears to be unused [UnusedResources]
+    <string name="settings_device_kind_hearing_aid">Hearing aid</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:647: Error: The resource R.string.settings_device_kind_speaker appears to be unused [UnusedResources]
+    <string name="settings_device_kind_speaker">Speaker</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:648: Error: The resource R.string.settings_device_kind_other appears to be unused [UnusedResources]
+    <string name="settings_device_kind_other">Audio device</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:649: Error: The resource R.string.settings_device_speaker_warning appears to be unused [UnusedResources]
+    <string name="settings_device_speaker_warning">This is a speaker, so a book will start out loud in whatever room it is in.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:839: Error: The resource R.string.settings_section_speed appears to be unused [UnusedResources]
+    <string name="settings_section_speed">Speed</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:841: Error: The resource R.string.settings_speed_hint appears to be unused [UnusedResources]
+    <string name="settings_speed_hint">Used by every book that has not been given its own speed in the player.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:842: Error: The resource R.string.settings_section_skip appears to be unused [UnusedResources]
+    <string name="settings_section_skip">Skip buttons</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:845: Error: The resource R.string.settings_skip_hint appears to be unused [UnusedResources]
+    <string name="settings_skip_hint">The buttons show the number where an icon exists for it, and the amount is always announced.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:848: Error: The resource R.string.settings_rewind_hint appears to be unused [UnusedResources]
+    <string name="settings_rewind_hint">Off by default. Never crosses a chapter start, never applies after you move the position yourself, and never after a call or a navigation prompt.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:859: Error: The resource R.string.settings_section_series appears to be unused [UnusedResources]
+    <string name="settings_section_series">When a book ends</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:860: Error: The resource R.string.settings_series_hint appears to be unused [UnusedResources]
+    <string name="settings_series_hint">A finished book rolls straight into the next one in its series. Books you have already finished are skipped. If you listen yourself to sleep, set a sleep timer as well — it stops the book wherever it is.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:862: Error: The resource R.string.settings_buffer_hint appears to be unused [UnusedResources]
+    <string name="settings_buffer_hint">Streamed books only; a downloaded book uses the player\'s own defaults. A larger buffer survives a worse connection and uses more memory and mobile data. Takes effect the next time a book starts.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:868: Error: The resource R.plurals.settings_buffer_range appears to be unused [UnusedResources]
+    <plurals name="settings_buffer_range">
+             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:872: Error: The resource R.string.settings_buffer_automatic_range appears to be unused [UnusedResources]
+    <string name="settings_buffer_automatic_range">Whatever the player decides</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:883: Error: The resource R.string.settings_finished_hint appears to be unused [UnusedResources]
+    <string name="settings_finished_hint">A book is marked finished when a little of it is left, so the last few seconds of credits do not leave it looking unread. How little is your server\'s decision, set per library — in the Audiobookshelf web interface, under that library\'s settings, as “mark as finished when time remaining is”. BookWave follows it rather than keeping a second opinion. Marking a book finished by hand always works either way, and starting a finished book from the beginning always un-finishes it.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:884: Error: The resource R.string.settings_finished_inherited appears to be unused [UnusedResources]
+    <string name="settings_finished_inherited">%1$s: finished with %2$d s left</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:885: Error: The resource R.string.settings_finished_inherited_none appears to be unused [UnusedResources]
+    <string name="settings_finished_inherited_none">%1$s: your server has not said, so %2$d s is used until it does</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/res/values/strings.xml:886: Error: The resource R.string.settings_finished_no_libraries appears to be unused [UnusedResources]
+    <string name="settings_finished_no_libraries">No libraries have been read from your server yet, so nothing here can be shown.</string>
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "UnusedResources":
+   Unused resources make applications larger and slow down builds.
+
+
+   The unused resource check can ignore tests. If you want to include
+   resources that are only referenced from tests, consider packaging them in a
+   test source set instead.
+
+   You can include test sources in the unused resource check by setting the
+   system property lint.unused-resources.include-tests =true, and to exclude
+   them (usually for performance reasons), use
+   lint.unused-resources.exclude-tests =true.
+   ,
+
+   Available options:
+
+   **skip-libraries** (default is true):
+   Whether the unused resource check should skip reporting unused resources in libraries.
+
+   Many libraries will declare resources that are part of the library surface; other modules depending on the library will also reference the resources. To avoid reporting all these resources as unused (in the context of a library), the unused resource check normally skips reporting unused resources in libraries. Instead, run the unused resource check on the consuming app module (along with `checkDependencies=true`).
+
+   However, there are cases where you want to check that all the resources declared in a library are used; in that case, you can disable the skip option.
+
+   To configure this option, use a `lint.xml` file with an <option> like this:
+
+   ```xml
+   <lint>
+       <issue id="UnusedResources">
+           <option name="skip-libraries" value="true" />
+       </issue>
+   </lint>
+   ```
+
+39 errors, 0 warnings, 1 hint
