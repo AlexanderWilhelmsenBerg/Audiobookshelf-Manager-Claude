@@ -59,8 +59,8 @@ class PlaybackSettingsTabScreenTest {
         render()
 
         composeRule.onNodeWithText("Very high").assertDoesNotExist()
-        scrollToDescription("Buffer, Automatic")
-        composeRule.onNodeWithContentDescription("Buffer, Automatic").performClick()
+        scrollToDescription("Streaming buffer, Automatic")
+        composeRule.onNodeWithContentDescription("Streaming buffer, Automatic").performClick()
         composeRule.onNodeWithText("Very high").assertIsDisplayed()
     }
 
@@ -93,8 +93,8 @@ class PlaybackSettingsTabScreenTest {
         var chosen: BufferPreset? = null
         render(actions = actions(onBufferChanged = { chosen = it }))
 
-        scrollToDescription("Buffer, Automatic")
-        composeRule.onNodeWithContentDescription("Buffer, Automatic").performClick()
+        scrollToDescription("Streaming buffer, Automatic")
+        composeRule.onNodeWithContentDescription("Streaming buffer, Automatic").performClick()
         composeRule.onNodeWithText("High").performClick()
 
         assertEquals(BufferPreset.High, chosen)
