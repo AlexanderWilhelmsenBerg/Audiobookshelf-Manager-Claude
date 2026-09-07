@@ -1,0 +1,25 @@
+name: PR 98 buffer tests final
+
+on:
+  push:
+    branches:
+      - diagnostic/pr98-buffer-tests-final
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - name: Run Playback settings screen tests
+        run: ./gradlew :app:testDebugUnitTest --tests 'com.example.shelfplayer.feature.settings.PlaybackSettingsTabScreenTest'
