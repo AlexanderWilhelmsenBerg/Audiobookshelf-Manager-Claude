@@ -1,121 +1,170 @@
 # Architecture overview
 
-This describes what Phase 0 actually built. It is not a plan; everything below exists in the
-repository and is exercised by tests.
+**Classification:** Current contract.  
+**Current as reviewed:** 2026-09-07.
 
-## The shape
+This is the current architectural map of BookWave. Historical phase documents remain useful evidence, but
+this file no longer describes only the original Phase 0 vertical slice.
+
+## Shape
 
 ```text
-        ┌──────────────────────────────────────────────┐
-        │  :app                                        │
-        │  MainActivity → NavHost                      │
-        │  feature.home / feature.library / feature.book│
-        │  ViewModels expose StateFlow<*UiState>       │
-        └───────────────┬──────────────────────────────┘
-                        │ use cases only
-        ┌───────────────▼──────────────────────────────┐
-        │  :domain            (JVM, no Android)        │
-        │  LibraryRepository, ProfileRepository        │  ← interfaces
-        │  Observe*/Refresh* use cases, sorting policy │
-        └───────────────┬──────────────────────────────┘
-                        │ implemented by
-        ┌───────────────▼──────────────────────────────┐
-        │  :data:library                               │
-        │  DefaultLibraryRepository                    │
-        │  DefaultProfileRepository                    │
-        │  FixtureLibraryBootstrapper                  │
-        └───┬───────────────┬──────────────────┬───────┘
-            │               │                  │
-   ┌────────▼─────┐ ┌───────▼───────┐ ┌────────▼────────┐
-   │ :core:database│ │ :core:network │ │ :core:datastore │
-   │ Room = truth  │ │ gateway + fake│ │ Proto DataStore │
-   └───────────────┘ └───────────────┘ └─────────────────┘
+Android/system surfaces
+  :app UI/navigation/WorkManager wiring
+  :playback Media3 service + Android Auto + routing + sleep timer
+          │
+          ▼
+       :domain                     Kotlin/JVM policy + repository contracts
+          │
+          ▼
+      :core:model                  Kotlin/JVM value/domain model, zero project deps
 
-   :core:model    AppResult, AppError, domain types      (JVM, zero deps)
-   :core:common   dispatchers, clock, redacted logging   (JVM)
-   :core:designsystem  Material 3 theme, state views
-   :core:testing  shared test doubles                    (JVM)
+Repository implementations/adapters
+  :data:auth       ─┐
+  :data:library     ├─► :domain / :core:model
+  :data:downloads   │
+  :data:settings   ─┘
+        │
+        ├─► :core:network          Retrofit/OkHttp + Audiobookshelf DTOs/gateways
+        ├─► :core:database         Room + migrations/schemas
+        └─► :core:datastore        Proto/settings + secure local storage
+
+Shared support
+  :core:common       clock, dispatchers, redacted logging/event log
+  :core:designsystem Material/Compose UI primitives and theme
+  :core:testing      shared test doubles/helpers
 ```
 
-## The four rules that shape everything else
+See [`module-boundaries.md`](module-boundaries.md) for the dependency rules and exact boundary rationale.
 
-**1. Room is the read source.** Every `observe*` on a repository is a Room query. Nothing in the UI
-observes the network. A refresh writes into Room and the UI updates because the query re-emits
-(`PRODUCT_SPEC 9.1`, `LIB-001`). The practical consequence: a failed refresh cannot blank the screen,
-because it never had the power to.
+## Rules that shape the application
 
-**2. Types enforce the layer boundaries, not conventions.**
+### 1. Durable local state is the read source for cached product surfaces
 
-- `:core:model`, `:core:common` and `:domain` use the plain Kotlin/JVM plugin. An `import android.*`
-  in domain policy is a compile error, not a review comment.
-- `:core:database` and `:core:network` are `implementation` dependencies of `:data:library`. Room
-  entities and gateway internals cannot be named from `:domain` or `:app` because they are not on
-  those modules' compile classpaths.
-- The gateway returns `:core:model` types, so no wire type exists outside `:core:network`.
+Library/settings/download UI should observe repositories backed by Room/DataStore rather than bind itself to
+one network response. Refresh/realtime work updates evidence/state through repository seams; a transient
+network failure must not be allowed to blank already-valid local content merely because the last request
+failed.
 
-**3. Everything crosses a boundary as `AppResult<T>`.** Repositories and the gateway never throw
-across a layer. `resultOf` is the single place allowed to catch `Throwable`, and it rethrows
-`CancellationException` (`PRODUCT_SPEC 14.2`).
+Not every live playback fact belongs in Room, but every system surface that must survive process death needs
+a durable/reconstructable projection rather than an in-memory UI singleton.
 
-**4. Nothing private reaches a log.** A log field's *type* decides whether its value survives:
-`LogField.Secret` has no value to render at all, and `MediaTitle`, `ServerHost`, `Username`,
-`FilePath` and `Url` redact by default. A developer adding a log line cannot leak a book title,
-because the only way to attach one is through a type that redacts it (`PRODUCT_SPEC 14.5`).
+### 2. Types and Gradle boundaries enforce dependency direction
 
-## The Phase 0 vertical slice, end to end
+- `:core:model` has no project dependencies.
+- `:domain` is JVM-only and cannot import Android framework types.
+- platform/storage/wire types are mapped before they cross into domain/UI contracts.
+- Android Media3, WorkManager, Room and DataStore implementation concerns do not become domain policy.
 
-1. `ShelfPlayerApplication.onCreate` launches `FixtureLibraryBootstrapper.seedIfNeeded()` into the
-   injected `@ApplicationScope` — never `GlobalScope`, and never blocking the main thread.
-2. The bootstrapper asks `FakeAudiobookshelfGateway` for the server and profile, writes both to Room,
-   records the active profile in Proto DataStore, and calls `LibraryRepository.refresh`.
-3. `DefaultLibraryRepository.refresh` pulls libraries and books from the gateway, maps them to
-   entities, and writes everything in **one transaction**.
-4. It marks the seed complete in DataStore only *after* the transaction commits, so an interrupted
-   first launch retries instead of leaving a half-populated library.
-5. `HomeViewModel` combines the active profile, the library list and its own refresh state into
-   `HomeUiState`. `HomeScreen` renders one of loading / empty / error / content.
+This is why future iOS research can evaluate sharing selected model/domain policy without first rewriting the
+Android application or sharing UI.
 
-Every step is covered by a test: `FakeAudiobookshelfGatewayTest`, `DefaultLibraryRepositoryTest`
-(Robolectric, real in-memory Room), `LibraryUseCaseTest` and `HomeViewModelTest`.
+### 3. Policy has one owner
 
-## Identity
+When a rule affects correctness across several surfaces, put it behind one named policy/use-case/service
+boundary and make every surface enter there.
 
-Remote ids are unique per server, never globally (`PRODUCT_SPEC 13.1`). Every remote entity stores
-`serverId` and `remoteId` *and* a derived single-column key, because Room's `@Relation` can only join
-on one column. `EntityKey` owns that format; no other module knows the separator, so changing it is a
-migration rather than a rewrite.
+The playback architecture is the strongest example: app Play, notification, headset and car controls must
+not grow separate resume algorithms. See [`playback.md`](playback.md).
 
-Per-profile rows (`media_progress`, `sync_state`) additionally key on `profileId`, and progress is
-filtered by profile **in SQL**. That makes `PRODUCT_SPEC 5.2` structural: a screen cannot render
-another account's position, because those rows never leave the database.
+The same principle applies to profile authorization, download ownership, sorting, cleanup and future system
+actions.
 
-## Where each concern lives
+### 4. Profile identity travels with work that owns it
 
-| Concern | Home | Requirement |
-| --- | --- | --- |
-| Result and error taxonomy | `:core:model` `AppResult`, `AppError` | 14.1, 14.2 |
-| Injected clock | `:core:common` `AppClock` (wall clock *and* monotonic) | 16.3 |
-| Injected dispatchers | `:core:common` `@Dispatcher(...)`, `@ApplicationScope` | 16.3, 22.10 |
-| Redaction | `:core:common` `LogField`, `Redactor`, `RedactingLogger` | 14.5 |
-| Android log sink | `:app` `AndroidLogSink` — the only `android.util.Log` call site | 14.5 |
-| Series ordering | `:core:model` `SeriesSequence` + `:domain` `sortBooks` | LIB-003 |
-| URL normalization | `:core:network` `ServerUrlNormalizer` | AUTH-001 |
-| HTTP → `AppError` | `:core:network` `NetworkErrorMapper` | 14.3 |
-| Schema and migrations | `:core:database`, schemas exported to `core/database/schemas` | 13.1 |
-| Settings | `:core:datastore` Proto DataStore | SET-001 |
+An asynchronous operation may run after the active UI profile changes. Network/session/download/progress work
+therefore carries the profile that authorized/owns the operation instead of resolving "the active profile"
+late and silently crossing an account boundary.
 
-## Deliberate omissions
+Content visibility remains profile-filtered even where physical device resources are shared. Downloads are
+the important example: one physical copy can be referenced by several authorized profiles, while progress
+and visibility remain profile-specific.
 
-These are absences with reasons, not gaps:
+### 5. Realtime/event sources are evidence, not uncontrolled authority
 
-- **No Retrofit service interfaces.** Defining endpoints without a server to contract-test against
-  would violate `PRODUCT_SPEC 22.4`. The HTTP *foundation* (OkHttp stack, interceptors, error mapper,
-  JSON configuration) exists; the endpoints arrive with their fixtures in Phase 1.
-- **Only three gateway sub-APIs.** `PRODUCT_SPEC 10.4` lists nine. Phase 0 declares the three the
-  fake actually implements. Empty marker interfaces for the rest would look like coverage that does
-  not exist.
-- **`feature:*` are packages, not modules.** `PRODUCT_SPEC 9.2` explicitly sanctions this for the
-  first milestone. The package names match the ones the spec prescribes, so promotion is a move.
-  See [ADR-0002](../adr/0002-module-structure.md).
-- **No deep links.** `PRODUCT_SPEC 15` requires deep links to validate profile and item access.
-  There are no permissions to validate yet, so no `<intent-filter>` is registered at all.
+Socket events, REST responses, system callbacks and media-controller commands each report different facts.
+Receiving a fact does not automatically authorize a destructive state change or seek.
+
+The owning domain/service policy decides what the evidence means.
+
+### 6. Privacy is structural where practical
+
+Logging uses typed/redacted fields rather than relying on developers to remember which strings are safe.
+Profile access is filtered before UI/media surfaces receive content. Secret/token implementations remain
+behind auth/storage boundaries. A future widget, shortcut or car surface does not get an exception merely
+because it is outside the normal app screen.
+
+## Concern ownership
+
+| Concern | Current home |
+| --- | --- |
+| Result/error/value models | `:core:model` |
+| Clock, dispatchers, redacted logging | `:core:common` |
+| Domain repository contracts and policy | `:domain` |
+| Authentication/profile/token implementation | `:data:auth` + secure datastore/network seams |
+| Library/progress/bookmark/history implementation | `:data:library` |
+| Download manifest/files/verification/storage | `:data:downloads` |
+| Playback/appearance/device settings implementation | `:data:settings` |
+| Room schema/migrations | `:core:database` |
+| Proto/settings/secure local persistence | `:core:datastore` |
+| Audiobookshelf HTTP/wire mapping | `:core:network` |
+| Media3 player/session/Android Auto/routing | `:playback` |
+| Compose navigation and screen presentation | `:app` |
+| Shared Compose theme/primitives | `:core:designsystem` |
+
+## Room and identity
+
+Remote identities are server-scoped, not globally unique. Persistent rows retain the server/profile context
+needed to prevent a book, progress row or permission grant from one server/account being mistaken for
+another.
+
+Room schema exports and explicit migrations are part of the architecture, not release paperwork. A feature
+that requires durable schema change must ship its migration/evidence with the change; destructive migration
+is not an ordinary escape hatch.
+
+## Downloads: device bytes, profile authorization
+
+The download architecture intentionally separates:
+
+- the **physical book copy** on this device, keyed by server/item;
+- the set of **profiles that requested/are authorized to use** that copy;
+- each profile's progress;
+- WorkManager's transient execution state;
+- the durable manifest/file state.
+
+Future recovery UX must preserve those separations. In particular, WorkManager waiting/backoff should not be
+persisted into the manifest merely so the UI can display it, and a file existing on disk does not authorize a
+profile that cannot access that book.
+
+## Playback
+
+See [`playback.md`](playback.md). The lasting direction is:
+
+- one logical book timeline;
+- serialized session/profile ownership;
+- realtime/REST/acknowledgements as evidence;
+- one resume-freshness owner (pending PR #93);
+- future local remembered-book identity separate from server progress recency;
+- system surfaces call the playback owner rather than implementing playback policy.
+
+## Android Auto
+
+Android Auto is part of the playback/media-session architecture. The host draws its UI; BookWave supplies a
+browse hierarchy, metadata and media-session actions. PR #78 is the current committed finalization and carries
+ADR-0029 until it merges.
+
+Car/head-unit presentation claims require DHU/real-car evidence. A JVM test of a `MediaItem` cannot prove a
+vehicle rendered it.
+
+## Feature UI modules
+
+Feature UIs remain packages in `:app`. This is a current choice, not unfinished scaffolding. Create another
+Gradle module only when present coupling/ownership/build evidence makes the boundary valuable.
+
+## Future portability
+
+The roadmap's iOS foundation starts by testing whether `:core:model` and selected pure domain policy provide
+real Kotlin Multiplatform reuse. It explicitly does **not** assume shared UI, Media3, WorkManager, Room,
+Android routing or Apple playback should be made common.
+
+See [`../roadmap.md`](../roadmap.md) for sequencing rather than using this architecture overview as a backlog.
