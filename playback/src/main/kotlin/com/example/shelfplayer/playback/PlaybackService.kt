@@ -1045,24 +1045,11 @@ class PlaybackService : MediaLibraryService() {
         val report = PlaybackFailureReport.of(
             errorCode = error.errorCode,
             httpStatus = error.httpResponseCode(),
+            localFile = error.isLocalFileFailure(),
             willRetry = willRetry,
         ) ?: return
-        val message = when (report.message) {
-            PlaybackFailureReport.Message.CredentialsExpired -> R.string.car_error_credentials_expired
-            PlaybackFailureReport.Message.ServerUnreachable -> R.string.car_error_server_unreachable
-            PlaybackFailureReport.Message.FileNotPlayable -> R.string.car_error_file_not_playable
-        }
-        val extras = Bundle().apply {
-            if (report.isCredentialFailure) {
-                launchIntent()?.let { intent ->
-                    putString(
-                        MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT,
-                        getString(R.string.car_error_sign_in_action),
-                    )
-                    putParcelable(MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_INTENT_COMPAT, intent)
-                }
-            }
-        }
+        val message = messageFor(report)
+        val extras = resolutionExtras(report)
         logger.warn(
             LogCategory.Playback,
             "The car was told why the book stopped",
@@ -1087,6 +1074,42 @@ class PlaybackService : MediaLibraryService() {
      * host to blank the positions those buttons live in. Written down explicitly so the next reader finds a
      * decision instead of an absence.
      */
+    /** The sentence for a report. Both failure paths draw from the same three. */
+    private fun messageFor(report: PlaybackFailureReport.Report): Int = when (report.message) {
+        PlaybackFailureReport.Message.CredentialsExpired -> R.string.car_error_credentials_expired
+        PlaybackFailureReport.Message.ServerUnreachable -> R.string.car_error_server_unreachable
+        PlaybackFailureReport.Message.FileNotPlayable -> R.string.car_error_file_not_playable
+    }
+
+    /**
+     * The labelled action, for the one failure a person can act on.
+     *
+     * Empty for everything else: a button that cannot help is worse than no button, and a head unit draws
+     * whatever it is given.
+     */
+    private fun resolutionExtras(report: PlaybackFailureReport.Report): Bundle = Bundle().apply {
+        if (!report.isCredentialFailure) return@apply
+        launchIntent()?.let { intent ->
+            putString(
+                MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT,
+                getString(R.string.car_error_sign_in_action),
+            )
+            putParcelable(MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_INTENT_COMPAT, intent)
+        }
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-001 — the session-opening half of [reportFailureToControllers].
+     *
+     * Shares the sentence and the labelled action, and differs only in what it classifies from: a typed
+     * `AppError` rather than a `PlaybackException`, because on this path nothing ever reached the player.
+     */
+    private fun reportSessionFailureToControllers(error: AppError) {
+        val current = session ?: return
+        val report = PlaybackFailureReport.ofSessionFailure(error) ?: return
+        current.sendError(SessionError(report.code, getString(messageFor(report)), resolutionExtras(report)))
+    }
+
     private fun publishSlotReservations() {
         val current = session ?: return
         current.setSessionExtras(
@@ -1434,6 +1457,11 @@ class PlaybackService : MediaLibraryService() {
                     "Could not open a session for a browse or resume request",
                     LogField.Public("error", opened.error.code),
                 )
+                // PRODUCT_SPEC PLAY-001 — and *tell the car*, which a review found this branch did not.
+                // Nothing reaches the player on this path, so `onPlayerError` never runs: a driver picking
+                // a book against an expired credential got a row that did nothing and no explanation, which
+                // is the case the labelled sign-in action exists for.
+                reportSessionFailureToControllers(opened.error)
                 null
             }
 

@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import androidx.media3.common.PlaybackException
 import androidx.media3.session.SessionError
+import com.example.shelfplayer.core.model.AppError
 
 /**
  * PRODUCT_SPEC PLAY-001 — what a car should be *told* when a book will not play.
@@ -51,8 +52,13 @@ internal object PlaybackFailureReport {
      *   to interrupt a driver over: the book may simply resume, and a message that appears and vanishes is
      *   worse than a moment's silence.
      */
-    fun of(errorCode: Int, httpStatus: Int?, willRetry: Boolean): Report? {
+    fun of(errorCode: Int, httpStatus: Int?, localFile: Boolean, willRetry: Boolean): Report? {
         if (willRetry) return null
+        // Evidence before bands. `FileDataSource` throws its own exception type, so a local read is
+        // *proven* rather than inferred — and Media3's I/O band cannot tell a server's 404 from a missing
+        // download. A review found that guess telling a listener the server was unreachable for an offline
+        // book, which is product priority 3 and never touched the network at all.
+        if (localFile) return report(Message.FileNotPlayable)
         // Credentials first, because they are the only failure a person can actually do something about,
         // and they arrive as an ordinary bad-status I/O error. 403 is a token the server accepts but will
         // not honour here; to a driver that is the same thing as an expired one, with the same remedy.
@@ -74,6 +80,47 @@ internal object PlaybackFailureReport {
         }
     }
 
+    /**
+     * The same question for a failure that happens **while opening the session**, where there is no
+     * `PlaybackException` because nothing ever reached the player.
+     *
+     * A review found this to be the path that matters most and the one the report missed entirely:
+     * `openQueue` handles an `AppResult.Failure` by logging and handing back `null`, so a car selecting a
+     * book against an expired credential got silence — the exact case the labelled sign-in action exists
+     * for. The typed `AppError` was already in hand.
+     *
+     * Only the two errors a driver can read something true about are mapped. Everything else — a missing
+     * permission, a validation failure, an incompatible server, a storage problem — **stays silent**, for
+     * the reason an unspecified `PlaybackException` does: there is no sentence that is true of it, and the
+     * three findings before this one were all confident wrong sentences.
+     */
+    fun ofSessionFailure(error: AppError): Report? = when (error) {
+        is AppError.Authentication -> Report(
+            code = SessionError.ERROR_SESSION_AUTHENTICATION_EXPIRED,
+            message = Message.CredentialsExpired,
+            isCredentialFailure = true,
+        )
+
+        is AppError.Network, is AppError.Timeout, is AppError.Server -> report(Message.ServerUnreachable)
+
+        // Enumerated rather than an `else`, which detekt refuses on a sealed subject and is right to: a
+        // variant added later should make this fail to compile and be *decided*, not silently inherit
+        // silence. Every one of these is silent today, and each for the same reason — there is no sentence
+        // a driver could act on. A missing permission is not fixed by signing in again; an incompatible
+        // server, a conflict, a validation failure and a security error are all diagnoses for a screen.
+        is AppError.ApiCompatibility,
+        is AppError.Authorization,
+        is AppError.Canceled,
+        is AppError.Conflict,
+        is AppError.Download,
+        is AppError.Playback,
+        is AppError.Security,
+        is AppError.Storage,
+        is AppError.Unknown,
+        is AppError.Validation,
+        -> null
+    }
+
     private fun report(message: Message) = Report(
         code = SessionError.ERROR_IO,
         message = message,
@@ -86,10 +133,9 @@ internal object PlaybackFailureReport {
     /**
      * Media3's I/O band — a refused connection, a timeout, a bad status, a file the *server* does not have.
      *
-     * `ERROR_CODE_IO_FILE_NOT_FOUND` sits here and is genuinely ambiguous: it covers both an HTTP 404 and a
-     * local file that has gone. It stays in this band because the streamed case is the common one for this
-     * app — a download that vanishes is rarer than a server that has moved a file — and because "can't
-     * reach your server" is the less wrong of the two sentences when the file was being fetched.
+     * `ERROR_CODE_IO_FILE_NOT_FOUND` and `..._NO_PERMISSION` sit here and cannot themselves distinguish a
+     * server's 404 from a missing download. The `localFile` evidence above is what decides that, so this
+     * band no longer has to guess; reaching it means the read was not a local one.
      */
     private val IO_BAND = PlaybackException.ERROR_CODE_IO_UNSPECIFIED..IO_BAND_END
 
