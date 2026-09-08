@@ -1,0 +1,1872 @@
+Downloading https://services.gradle.org/distributions/gradle-8.14.3-bin.zip
+.............10%.............20%.............30%.............40%.............50%.............60%.............70%.............80%.............90%..............100%
+
+Welcome to Gradle 8.14.3!
+
+Here are the highlights of this release:
+ - Java 24 support
+ - GraalVM Native Image toolchain selection
+ - Enhancements to test reporting
+ - Build Authoring improvements
+
+For more details see https://docs.gradle.org/8.14.3/release-notes.html
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14.3/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Type-safe project accessors is an incubating feature.
+> Task :build-logic:convention:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :build-logic:convention:pluginDescriptors
+> Task :build-logic:convention:processResources
+> Task :build-logic:convention:compileKotlin
+> Task :build-logic:convention:compileJava NO-SOURCE
+> Task :build-logic:convention:classes
+> Task :build-logic:convention:jar
+
+> Configure project :app
+BookWave: created a stable debug keystore at /home/runner/.bookwave/debug.keystore. The first install after this needs an uninstall; none after it will.
+
+> Task :loadKtlintReporters
+> Task :app:loadKtlintReporters
+> Task :app:runKtlintCheckOverAndroidTestBenchmarkSourceSet NO-SOURCE
+> Task :app:ktlintAndroidTestBenchmarkSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :app:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :app:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :domain:loadKtlintReporters
+> Task :app:runKtlintCheckOverAndroidTestSourceSet NO-SOURCE
+> Task :benchmark:loadKtlintReporters
+> Task :app:ktlintAndroidTestSourceSetCheck SKIPPED
+> Task :benchmark:runKtlintCheckOverBenchmarkSourceSet NO-SOURCE
+> Task :benchmark:ktlintBenchmarkSourceSetCheck SKIPPED
+> Task :benchmark:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :benchmark:ktlintDebugSourceSetCheck SKIPPED
+> Task :domain:runKtlintCheckOverKotlinScripts
+> Task :app:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :app:ktlintDebugSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverBenchmarkSourceSet
+> Task :app:ktlintBenchmarkSourceSetCheck
+> Task :app:runKtlintCheckOverKotlinScripts
+> Task :benchmark:runKtlintCheckOverKotlinScripts
+> Task :app:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :app:ktlintReleaseSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverTestBenchmarkSourceSet NO-SOURCE
+> Task :app:ktlintTestBenchmarkSourceSetCheck SKIPPED
+> Task :app:ktlintKotlinScriptCheck
+> Task :app:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :app:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverTestFixturesBenchmarkSourceSet NO-SOURCE
+> Task :app:ktlintTestFixturesBenchmarkSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :app:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :app:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :app:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :app:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :benchmark:ktlintKotlinScriptCheck
+> Task :runKtlintCheckOverKotlinScripts
+> Task :benchmark:runKtlintCheckOverMainSourceSet
+> Task :benchmark:ktlintMainSourceSetCheck
+> Task :benchmark:ktlintCheck
+> Task :ktlintKotlinScriptCheck
+> Task :ktlintCheck
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:model:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:ktlintKotlinScriptCheck
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:testing:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:testing:processResources NO-SOURCE
+> Task :playback:loadKtlintReporters FROM-CACHE
+> Task :playback:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :playback:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :playback:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverAndroidTestSourceSet NO-SOURCE
+> Task :playback:ktlintAndroidTestSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :playback:ktlintDebugSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverKotlinScripts
+> Task :playback:ktlintKotlinScriptCheck
+> Task :playback:runKtlintCheckOverMainSourceSet
+
+> Task :playback:ktlintMainSourceSetCheck FAILED
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:615:1 Unexpected indentation (4) (should be 8)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:616:1 Unexpected indentation (8) (should be 12)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:617:1 Unexpected indentation (12) (should be 16)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:618:1 Unexpected indentation (16) (should be 20)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:619:1 Unexpected indentation (16) (should be 20)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:620:1 Unexpected indentation (12) (should be 16)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:621:1 Unexpected indentation (8) (should be 12)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:622:1 Unexpected indentation (8) (should be 12)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:623:1 Unexpected indentation (12) (should be 16)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:624:1 Unexpected indentation (16) (should be 20)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:625:1 Unexpected indentation (16) (should be 20)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:626:1 Unexpected indentation (12) (should be 16)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:627:1 Unexpected indentation (12) (should be 16)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:628:1 Unexpected indentation (16) (should be 20)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:629:1 Unexpected indentation (12) (should be 16)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:630:1 Unexpected indentation (8) (should be 12)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:631:1 Unexpected indentation (4) (should be 8)
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:632:1 Unexpected indentation (0) (should be 4)
+
+> Task :playback:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :playback:ktlintReleaseSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :playback:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :playback:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :playback:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :playback:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :playback:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverTestSourceSet
+> Task :app:ktlintTestSourceSetCheck
+> Task :core:common:loadKtlintReporters FROM-CACHE
+> Task :core:common:runKtlintCheckOverKotlinScripts
+> Task :core:common:ktlintKotlinScriptCheck
+> Task :core:database:loadKtlintReporters FROM-CACHE
+> Task :core:database:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :core:database:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :core:database:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverAndroidTestSourceSet NO-SOURCE
+> Task :core:database:ktlintAndroidTestSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :core:database:ktlintDebugSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverKotlinScripts
+> Task :core:database:ktlintKotlinScriptCheck
+> Task :core:database:runKtlintCheckOverMainSourceSet
+> Task :core:database:ktlintMainSourceSetCheck
+> Task :core:model:processResources NO-SOURCE
+> Task :core:database:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :core:database:ktlintReleaseSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :core:database:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :core:database:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :core:database:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :core:database:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :core:database:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :core:database:runKtlintCheckOverTestSourceSet
+> Task :core:database:ktlintTestSourceSetCheck
+> Task :core:database:ktlintCheck
+> Task :core:datastore:loadKtlintReporters FROM-CACHE
+> Task :core:datastore:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :core:datastore:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :core:datastore:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :core:datastore:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :playback:runKtlintCheckOverTestSourceSet
+> Task :core:datastore:runKtlintCheckOverAndroidTestSourceSet
+> Task :playback:ktlintTestSourceSetCheck
+> Task :core:designsystem:loadKtlintReporters FROM-CACHE
+> Task :core:datastore:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :core:datastore:ktlintDebugSourceSetCheck SKIPPED
+> Task :core:datastore:ktlintAndroidTestSourceSetCheck
+> Task :core:datastore:runKtlintCheckOverKotlinScripts
+> Task :core:datastore:ktlintKotlinScriptCheck
+> Task :core:datastore:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :core:datastore:ktlintReleaseSourceSetCheck SKIPPED
+> Task :core:datastore:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :core:datastore:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :core:datastore:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :core:datastore:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :core:datastore:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :core:datastore:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :core:datastore:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :core:datastore:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :core:datastore:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :core:datastore:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :app:runKtlintCheckOverMainSourceSet
+> Task :core:datastore:runKtlintCheckOverTestSourceSet
+> Task :app:ktlintMainSourceSetCheck
+> Task :app:ktlintCheck
+> Task :core:designsystem:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :core:designsystem:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :core:designsystem:runKtlintCheckOverAndroidTestSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintAndroidTestSourceSetCheck SKIPPED
+> Task :core:designsystem:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintDebugSourceSetCheck SKIPPED
+> Task :core:datastore:ktlintTestSourceSetCheck
+> Task :core:designsystem:runKtlintCheckOverKotlinScripts
+> Task :core:designsystem:runKtlintCheckOverMainSourceSet
+> Task :core:designsystem:ktlintKotlinScriptCheck
+> Task :core:designsystem:ktlintMainSourceSetCheck
+> Task :core:designsystem:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintReleaseSourceSetCheck SKIPPED
+> Task :core:designsystem:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :core:designsystem:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :core:datastore:runKtlintCheckOverMainSourceSet
+> Task :core:designsystem:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :core:designsystem:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :core:designsystem:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :core:designsystem:runKtlintCheckOverTestSourceSet NO-SOURCE
+> Task :core:designsystem:ktlintTestSourceSetCheck SKIPPED
+> Task :core:designsystem:ktlintCheck
+> Task :core:network:loadKtlintReporters FROM-CACHE
+> Task :core:model:loadKtlintReporters FROM-CACHE
+> Task :core:network:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :core:network:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :core:network:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :core:network:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :core:network:runKtlintCheckOverAndroidTestSourceSet NO-SOURCE
+> Task :core:network:ktlintAndroidTestSourceSetCheck SKIPPED
+> Task :core:network:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :core:network:ktlintDebugSourceSetCheck SKIPPED
+> Task :core:model:runKtlintCheckOverKotlinScripts
+> Task :core:datastore:ktlintMainSourceSetCheck
+> Task :core:datastore:ktlintCheck
+> Task :core:network:runKtlintCheckOverKotlinScripts
+> Task :core:model:ktlintKotlinScriptCheck
+> Task :core:model:runKtlintCheckOverTestSourceSet
+> Task :core:model:ktlintTestSourceSetCheck
+> Task :core:network:ktlintKotlinScriptCheck
+> Task :core:network:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :core:network:ktlintReleaseSourceSetCheck SKIPPED
+> Task :core:network:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :core:network:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :core:network:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :core:network:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :core:network:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :core:network:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :core:network:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :core:network:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :core:network:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :core:network:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :core:model:runKtlintCheckOverMainSourceSet
+> Task :core:model:ktlintMainSourceSetCheck
+> Task :core:model:ktlintCheck
+> Task :core:testing:loadKtlintReporters FROM-CACHE
+> Task :core:testing:runKtlintCheckOverKotlinScripts
+> Task :core:testing:ktlintKotlinScriptCheck
+> Task :core:testing:runKtlintCheckOverMainSourceSet
+> Task :core:testing:ktlintMainSourceSetCheck
+> Task :core:testing:runKtlintCheckOverTestSourceSet NO-SOURCE
+> Task :core:testing:ktlintTestSourceSetCheck SKIPPED
+> Task :core:testing:ktlintCheck
+> Task :data:auth:loadKtlintReporters FROM-CACHE
+> Task :data:auth:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :data:auth:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :data:auth:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverAndroidTestSourceSet NO-SOURCE
+> Task :data:auth:ktlintAndroidTestSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :data:auth:ktlintDebugSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverKotlinScripts
+> Task :data:auth:ktlintKotlinScriptCheck
+> Task :core:network:runKtlintCheckOverMainSourceSet
+> Task :core:network:ktlintMainSourceSetCheck
+> Task :data:auth:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :data:auth:ktlintReleaseSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :data:auth:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :data:auth:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :data:auth:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :data:auth:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :data:auth:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :data:auth:runKtlintCheckOverMainSourceSet
+> Task :data:auth:ktlintMainSourceSetCheck
+> Task :data:downloads:loadKtlintReporters FROM-CACHE
+> Task :data:downloads:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :data:downloads:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :data:downloads:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :data:downloads:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :data:downloads:runKtlintCheckOverAndroidTestSourceSet NO-SOURCE
+> Task :data:downloads:ktlintAndroidTestSourceSetCheck SKIPPED
+> Task :data:downloads:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :data:downloads:ktlintDebugSourceSetCheck SKIPPED
+> Task :data:downloads:runKtlintCheckOverKotlinScripts
+> Task :data:auth:runKtlintCheckOverTestSourceSet
+> Task :core:network:runKtlintCheckOverTestSourceSet
+> Task :data:downloads:ktlintKotlinScriptCheck
+> Task :data:auth:ktlintTestSourceSetCheck
+> Task :data:auth:ktlintCheck
+> Task :data:downloads:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :data:downloads:ktlintReleaseSourceSetCheck SKIPPED
+> Task :core:network:ktlintTestSourceSetCheck
+> Task :core:network:ktlintCheck
+> Task :data:downloads:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :data:downloads:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :data:downloads:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :data:downloads:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :data:downloads:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :data:downloads:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :data:downloads:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :data:downloads:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :data:downloads:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :data:downloads:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :data:library:loadKtlintReporters FROM-CACHE
+> Task :data:library:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :data:library:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :data:library:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :data:library:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :data:library:runKtlintCheckOverAndroidTestSourceSet NO-SOURCE
+> Task :data:library:ktlintAndroidTestSourceSetCheck SKIPPED
+> Task :data:library:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :data:library:ktlintDebugSourceSetCheck SKIPPED
+> Task :data:library:runKtlintCheckOverKotlinScripts
+> Task :data:library:ktlintKotlinScriptCheck
+> Task :core:model:compileKotlin
+> Task :data:downloads:runKtlintCheckOverTestSourceSet
+> Task :data:downloads:runKtlintCheckOverMainSourceSet
+> Task :data:downloads:ktlintTestSourceSetCheck
+> Task :data:library:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :data:library:ktlintReleaseSourceSetCheck SKIPPED
+> Task :data:library:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :data:library:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :data:library:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :data:library:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :data:library:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :data:library:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :data:library:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :data:library:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :data:library:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :data:library:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :data:downloads:ktlintMainSourceSetCheck
+> Task :data:downloads:ktlintCheck
+> Task :data:settings:loadKtlintReporters FROM-CACHE
+> Task :data:settings:runKtlintCheckOverAndroidTestDebugSourceSet NO-SOURCE
+> Task :data:settings:ktlintAndroidTestDebugSourceSetCheck SKIPPED
+> Task :data:settings:runKtlintCheckOverAndroidTestReleaseSourceSet NO-SOURCE
+> Task :data:settings:ktlintAndroidTestReleaseSourceSetCheck SKIPPED
+> Task :data:settings:runKtlintCheckOverAndroidTestSourceSet NO-SOURCE
+> Task :data:settings:ktlintAndroidTestSourceSetCheck SKIPPED
+> Task :data:settings:runKtlintCheckOverDebugSourceSet NO-SOURCE
+> Task :data:settings:ktlintDebugSourceSetCheck SKIPPED
+> Task :data:settings:runKtlintCheckOverKotlinScripts
+> Task :data:settings:ktlintKotlinScriptCheck
+> Task :data:settings:runKtlintCheckOverMainSourceSet
+> Task :data:library:runKtlintCheckOverMainSourceSet
+> Task :data:settings:ktlintMainSourceSetCheck
+> Task :data:settings:runKtlintCheckOverReleaseSourceSet NO-SOURCE
+> Task :data:settings:ktlintReleaseSourceSetCheck SKIPPED
+> Task :data:settings:runKtlintCheckOverTestDebugSourceSet NO-SOURCE
+> Task :data:settings:ktlintTestDebugSourceSetCheck SKIPPED
+> Task :data:library:ktlintMainSourceSetCheck
+> Task :data:settings:runKtlintCheckOverTestFixturesDebugSourceSet NO-SOURCE
+> Task :data:settings:ktlintTestFixturesDebugSourceSetCheck SKIPPED
+> Task :data:settings:runKtlintCheckOverTestFixturesReleaseSourceSet NO-SOURCE
+> Task :data:settings:ktlintTestFixturesReleaseSourceSetCheck SKIPPED
+> Task :data:settings:runKtlintCheckOverTestFixturesSourceSet NO-SOURCE
+> Task :koverGenerateArtifact
+> Task :data:settings:ktlintTestFixturesSourceSetCheck SKIPPED
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:settings:runKtlintCheckOverTestReleaseSourceSet NO-SOURCE
+> Task :data:settings:ktlintTestReleaseSourceSetCheck SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preBenchmarkBuild UP-TO-DATE
+> Task :app:generateBenchmarkBuildConfig
+> Task :playback:preBuild UP-TO-DATE
+> Task :playback:preReleaseBuild UP-TO-DATE
+> Task :playback:writeReleaseAarMetadata
+> Task :core:database:preBuild UP-TO-DATE
+> Task :core:database:preReleaseBuild UP-TO-DATE
+> Task :core:database:writeReleaseAarMetadata
+> Task :core:datastore:preBuild UP-TO-DATE
+> Task :core:datastore:preReleaseBuild UP-TO-DATE
+> Task :core:datastore:writeReleaseAarMetadata
+> Task :core:designsystem:preBuild UP-TO-DATE
+> Task :core:designsystem:preReleaseBuild UP-TO-DATE
+> Task :core:designsystem:writeReleaseAarMetadata
+> Task :core:network:preBuild UP-TO-DATE
+> Task :core:network:preReleaseBuild UP-TO-DATE
+> Task :core:network:writeReleaseAarMetadata
+> Task :data:auth:preBuild UP-TO-DATE
+> Task :data:auth:preReleaseBuild UP-TO-DATE
+> Task :data:auth:writeReleaseAarMetadata
+> Task :data:downloads:preBuild UP-TO-DATE
+> Task :data:downloads:preReleaseBuild UP-TO-DATE
+> Task :data:downloads:writeReleaseAarMetadata
+> Task :data:library:preBuild UP-TO-DATE
+> Task :data:library:preReleaseBuild UP-TO-DATE
+> Task :data:library:writeReleaseAarMetadata
+> Task :data:settings:preBuild UP-TO-DATE
+> Task :data:settings:preReleaseBuild UP-TO-DATE
+> Task :data:settings:writeReleaseAarMetadata
+> Task :data:settings:runKtlintCheckOverTestSourceSet
+> Task :data:library:runKtlintCheckOverTestSourceSet
+> Task :data:settings:ktlintTestSourceSetCheck
+> Task :data:settings:ktlintCheck
+> Task :playback:generateReleaseResValues
+> Task :playback:generateReleaseResources
+> Task :data:library:ktlintTestSourceSetCheck
+> Task :data:library:ktlintCheck
+> Task :core:database:generateReleaseResValues FROM-CACHE
+> Task :core:database:generateReleaseResources
+> Task :core:database:packageReleaseResources
+> Task :core:datastore:generateReleaseResValues FROM-CACHE
+> Task :core:datastore:generateReleaseResources FROM-CACHE
+> Task :core:datastore:packageReleaseResources
+> Task :playback:packageReleaseResources
+> Task :core:network:generateReleaseResValues FROM-CACHE
+> Task :core:designsystem:generateReleaseResValues FROM-CACHE
+> Task :core:designsystem:generateReleaseResources FROM-CACHE
+> Task :core:network:generateReleaseResources FROM-CACHE
+> Task :core:designsystem:packageReleaseResources
+> Task :core:network:packageReleaseResources
+> Task :data:auth:generateReleaseResValues FROM-CACHE
+> Task :data:downloads:generateReleaseResValues FROM-CACHE
+> Task :data:auth:generateReleaseResources FROM-CACHE
+> Task :data:downloads:generateReleaseResources FROM-CACHE
+> Task :data:auth:packageReleaseResources
+> Task :data:downloads:packageReleaseResources
+> Task :data:library:generateReleaseResValues FROM-CACHE
+> Task :data:settings:generateReleaseResValues FROM-CACHE
+> Task :data:settings:generateReleaseResources FROM-CACHE
+> Task :data:library:generateReleaseResources FROM-CACHE
+> Task :data:library:packageReleaseResources
+> Task :data:settings:packageReleaseResources
+> Task :core:database:extractDeepLinksRelease
+> Task :playback:extractDeepLinksRelease
+> Task :core:database:processReleaseManifest
+> Task :playback:processReleaseManifest
+> Task :core:datastore:extractDeepLinksRelease FROM-CACHE
+> Task :core:designsystem:extractDeepLinksRelease FROM-CACHE
+> Task :core:datastore:processReleaseManifest
+> Task :core:network:extractDeepLinksRelease FROM-CACHE
+> Task :core:network:processReleaseManifest
+> Task :data:auth:extractDeepLinksRelease FROM-CACHE
+> Task :core:designsystem:processReleaseManifest
+> Task :data:downloads:extractDeepLinksRelease FROM-CACHE
+> Task :data:auth:processReleaseManifest
+> Task :data:library:extractDeepLinksRelease FROM-CACHE
+> Task :data:downloads:processReleaseManifest
+> Task :data:settings:extractDeepLinksRelease FROM-CACHE
+> Task :data:library:processReleaseManifest
+> Task :data:settings:processReleaseManifest
+> Task :core:database:parseReleaseLocalResources
+> Task :playback:parseReleaseLocalResources
+> Task :playback:generateReleaseRFile
+> Task :core:database:generateReleaseRFile
+> Task :core:designsystem:parseReleaseLocalResources FROM-CACHE
+> Task :core:datastore:parseReleaseLocalResources FROM-CACHE
+> Task :core:datastore:generateReleaseRFile
+> Task :core:designsystem:generateReleaseRFile
+> Task :core:network:parseReleaseLocalResources FROM-CACHE
+> Task :data:auth:parseReleaseLocalResources FROM-CACHE
+> Task :core:network:generateReleaseRFile
+> Task :data:auth:generateReleaseRFile
+> Task :data:downloads:parseReleaseLocalResources FROM-CACHE
+> Task :data:library:parseReleaseLocalResources FROM-CACHE
+> Task :data:downloads:generateReleaseRFile
+> Task :data:library:generateReleaseRFile
+> Task :playback:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:network:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:settings:parseReleaseLocalResources FROM-CACHE
+> Task :data:settings:generateReleaseRFile
+> Task :core:network:javaPreCompileRelease
+> Task :core:database:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :playback:javaPreCompileRelease
+> Task :core:datastore:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:datastore:protobufDummy UP-TO-DATE
+> Task :core:datastore:extractProto
+> Task :core:datastore:extractReleaseProto
+> Task :core:datastore:javaPreCompileRelease FROM-CACHE
+> Task :core:designsystem:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:database:javaPreCompileRelease
+> Task :core:database:preDebugBuild UP-TO-DATE
+> Task :core:database:generateDebugResValues FROM-CACHE
+> Task :core:database:generateDebugResources FROM-CACHE
+> Task :core:database:packageDebugResources
+> Task :core:database:parseDebugLocalResources FROM-CACHE
+> Task :core:database:generateDebugRFile FROM-CACHE
+> Task :core:database:javaPreCompileDebug FROM-CACHE
+> Task :core:database:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:database:writeDebugAarMetadata
+> Task :core:model:compileJava NO-SOURCE
+> Task :core:model:classes UP-TO-DATE
+> Task :core:model:jar
+> Task :core:database:checkDebugUnitTestAarMetadata
+> Task :core:database:compileDebugLibraryResources
+> Task :core:database:generateDebugUnitTestResValues FROM-CACHE
+> Task :core:database:mapDebugUnitTestSourceSetPaths
+> Task :core:database:generateDebugUnitTestResources FROM-CACHE
+> Task :core:database:mergeDebugUnitTestResources
+> Task :core:database:extractDeepLinksDebug FROM-CACHE
+> Task :core:database:processDebugManifest FROM-CACHE
+> Task :core:database:processDebugUnitTestManifest
+> Task :core:database:processDebugUnitTestResources
+> Task :core:database:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :core:database:preReleaseUnitTestBuild UP-TO-DATE
+> Task :core:database:checkReleaseUnitTestAarMetadata
+> Task :core:database:compileReleaseLibraryResources
+> Task :core:database:generateReleaseUnitTestResValues FROM-CACHE
+> Task :core:database:mapReleaseUnitTestSourceSetPaths
+> Task :core:database:generateReleaseUnitTestResources FROM-CACHE
+> Task :core:database:mergeReleaseUnitTestResources
+> Task :core:database:processReleaseUnitTestManifest
+> Task :core:designsystem:compileReleaseKotlin
+> Task :core:database:javaPreCompileReleaseUnitTest FROM-CACHE
+> Task :core:designsystem:javaPreCompileRelease
+> Task :core:designsystem:compileReleaseJavaWithJavac NO-SOURCE
+> Task :core:database:processReleaseUnitTestResources
+> Task :data:auth:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:auth:javaPreCompileRelease FROM-CACHE
+> Task :data:downloads:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:downloads:javaPreCompileRelease FROM-CACHE
+> Task :data:library:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:library:javaPreCompileRelease FROM-CACHE
+> Task :data:settings:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:settings:javaPreCompileRelease FROM-CACHE
+> Task :playback:preDebugBuild UP-TO-DATE
+> Task :playback:writeDebugAarMetadata
+> Task :core:datastore:preDebugBuild UP-TO-DATE
+> Task :core:datastore:writeDebugAarMetadata
+> Task :core:designsystem:preDebugBuild UP-TO-DATE
+> Task :core:designsystem:bundleLibCompileToJarRelease
+> Task :core:network:preDebugBuild UP-TO-DATE
+> Task :core:designsystem:writeDebugAarMetadata
+> Task :data:auth:preDebugBuild UP-TO-DATE
+> Task :core:network:writeDebugAarMetadata
+> Task :data:downloads:preDebugBuild UP-TO-DATE
+> Task :data:auth:writeDebugAarMetadata
+> Task :data:library:preDebugBuild UP-TO-DATE
+> Task :data:downloads:writeDebugAarMetadata
+> Task :data:settings:preDebugBuild UP-TO-DATE
+> Task :data:library:writeDebugAarMetadata
+> Task :playback:generateDebugResValues FROM-CACHE
+> Task :playback:generateDebugResources FROM-CACHE
+> Task :data:settings:writeDebugAarMetadata
+> Task :core:datastore:generateDebugResValues FROM-CACHE
+> Task :core:datastore:generateDebugResources FROM-CACHE
+> Task :core:datastore:packageDebugResources
+> Task :core:designsystem:generateDebugResValues FROM-CACHE
+> Task :playback:packageDebugResources
+> Task :core:designsystem:generateDebugResources FROM-CACHE
+> Task :core:network:generateDebugResValues FROM-CACHE
+> Task :core:network:generateDebugResources FROM-CACHE
+> Task :core:designsystem:packageDebugResources
+> Task :data:auth:generateDebugResValues FROM-CACHE
+> Task :core:network:packageDebugResources
+> Task :data:downloads:generateDebugResValues FROM-CACHE
+> Task :data:auth:generateDebugResources FROM-CACHE
+> Task :data:downloads:generateDebugResources FROM-CACHE
+> Task :data:downloads:packageDebugResources
+> Task :data:auth:packageDebugResources
+> Task :data:library:generateDebugResValues FROM-CACHE
+> Task :data:settings:generateDebugResValues FROM-CACHE
+> Task :data:library:generateDebugResources FROM-CACHE
+> Task :data:settings:generateDebugResources FROM-CACHE
+> Task :data:library:packageDebugResources
+> Task :playback:extractDeepLinksDebug FROM-CACHE
+> Task :data:settings:packageDebugResources
+> Task :core:datastore:extractDeepLinksDebug FROM-CACHE
+> Task :playback:processDebugManifest FROM-CACHE
+> Task :core:designsystem:extractDeepLinksDebug FROM-CACHE
+> Task :core:datastore:processDebugManifest FROM-CACHE
+> Task :core:designsystem:processDebugManifest FROM-CACHE
+> Task :core:network:extractDeepLinksDebug FROM-CACHE
+> Task :core:network:processDebugManifest FROM-CACHE
+> Task :data:auth:extractDeepLinksDebug FROM-CACHE
+> Task :data:downloads:extractDeepLinksDebug FROM-CACHE
+> Task :data:downloads:processDebugManifest FROM-CACHE
+> Task :data:auth:processDebugManifest FROM-CACHE
+> Task :data:library:extractDeepLinksDebug FROM-CACHE
+> Task :data:settings:extractDeepLinksDebug FROM-CACHE
+> Task :data:settings:processDebugManifest FROM-CACHE
+> Task :data:library:processDebugManifest FROM-CACHE
+> Task :core:datastore:compileDebugLibraryResources FROM-CACHE
+> Task :core:datastore:parseDebugLocalResources FROM-CACHE
+> Task :playback:parseDebugLocalResources FROM-CACHE
+> Task :playback:compileDebugLibraryResources
+> Task :playback:generateDebugRFile FROM-CACHE
+> Task :core:designsystem:compileDebugLibraryResources FROM-CACHE
+> Task :core:designsystem:parseDebugLocalResources FROM-CACHE
+> Task :core:datastore:generateDebugRFile FROM-CACHE
+> Task :core:network:compileDebugLibraryResources FROM-CACHE
+> Task :core:designsystem:generateDebugRFile FROM-CACHE
+> Task :core:network:parseDebugLocalResources FROM-CACHE
+> Task :data:auth:compileDebugLibraryResources FROM-CACHE
+> Task :data:auth:parseDebugLocalResources FROM-CACHE
+> Task :core:network:generateDebugRFile FROM-CACHE
+> Task :data:auth:generateDebugRFile FROM-CACHE
+> Task :data:library:compileDebugLibraryResources FROM-CACHE
+> Task :data:downloads:compileDebugLibraryResources FROM-CACHE
+> Task :data:library:parseDebugLocalResources FROM-CACHE
+> Task :data:downloads:parseDebugLocalResources FROM-CACHE
+> Task :data:library:generateDebugRFile FROM-CACHE
+> Task :data:downloads:generateDebugRFile FROM-CACHE
+> Task :data:settings:compileDebugLibraryResources FROM-CACHE
+> Task :core:network:javaPreCompileDebug FROM-CACHE
+> Task :data:settings:parseDebugLocalResources FROM-CACHE
+> Task :playback:javaPreCompileDebug FROM-CACHE
+> Task :data:settings:generateDebugRFile FROM-CACHE
+> Task :core:datastore:extractDebugProto
+> Task :core:datastore:javaPreCompileDebug FROM-CACHE
+> Task :data:auth:javaPreCompileDebug FROM-CACHE
+> Task :data:downloads:javaPreCompileDebug FROM-CACHE
+> Task :data:library:javaPreCompileDebug FROM-CACHE
+> Task :data:settings:javaPreCompileDebug FROM-CACHE
+> Task :playback:mergeDebugShaders
+> Task :playback:compileDebugShaders NO-SOURCE
+> Task :playback:generateDebugAssets UP-TO-DATE
+> Task :playback:mergeDebugAssets
+> Task :core:database:mergeDebugShaders
+> Task :core:database:compileDebugShaders NO-SOURCE
+> Task :core:database:generateDebugAssets UP-TO-DATE
+> Task :core:database:mergeDebugAssets
+> Task :core:datastore:mergeDebugShaders
+> Task :core:datastore:compileDebugShaders NO-SOURCE
+> Task :core:datastore:generateDebugAssets UP-TO-DATE
+> Task :core:datastore:mergeDebugAssets
+> Task :core:network:mergeDebugShaders
+> Task :core:network:compileDebugShaders NO-SOURCE
+> Task :core:network:generateDebugAssets UP-TO-DATE
+> Task :core:network:mergeDebugAssets
+> Task :data:auth:mergeDebugShaders
+> Task :data:auth:compileDebugShaders NO-SOURCE
+> Task :data:auth:generateDebugAssets UP-TO-DATE
+> Task :data:auth:mergeDebugAssets
+> Task :data:downloads:mergeDebugShaders
+> Task :data:downloads:compileDebugShaders NO-SOURCE
+> Task :data:downloads:generateDebugAssets UP-TO-DATE
+> Task :data:downloads:mergeDebugAssets
+> Task :data:library:mergeDebugShaders
+> Task :data:library:compileDebugShaders NO-SOURCE
+> Task :data:library:generateDebugAssets UP-TO-DATE
+> Task :data:library:mergeDebugAssets
+> Task :data:settings:mergeDebugShaders
+> Task :data:settings:compileDebugShaders NO-SOURCE
+> Task :data:settings:generateDebugAssets UP-TO-DATE
+> Task :data:settings:mergeDebugAssets
+> Task :playback:mergeReleaseShaders
+> Task :playback:compileReleaseShaders NO-SOURCE
+> Task :playback:generateReleaseAssets UP-TO-DATE
+> Task :playback:mergeReleaseAssets
+> Task :core:database:mergeReleaseShaders
+> Task :core:database:compileReleaseShaders NO-SOURCE
+> Task :core:database:generateReleaseAssets UP-TO-DATE
+> Task :core:database:mergeReleaseAssets
+> Task :core:datastore:mergeReleaseShaders
+> Task :core:datastore:compileReleaseShaders NO-SOURCE
+> Task :core:datastore:generateReleaseAssets UP-TO-DATE
+> Task :core:datastore:mergeReleaseAssets
+> Task :core:network:mergeReleaseShaders
+> Task :core:network:compileReleaseShaders NO-SOURCE
+> Task :core:network:generateReleaseAssets UP-TO-DATE
+> Task :core:network:mergeReleaseAssets
+> Task :core:common:kspKotlin
+> Task :data:auth:mergeReleaseShaders
+> Task :data:auth:compileReleaseShaders NO-SOURCE
+> Task :data:auth:generateReleaseAssets UP-TO-DATE
+> Task :data:auth:mergeReleaseAssets
+> Task :data:downloads:mergeReleaseShaders
+> Task :data:downloads:compileReleaseShaders NO-SOURCE
+> Task :data:downloads:generateReleaseAssets UP-TO-DATE
+> Task :data:downloads:mergeReleaseAssets
+> Task :data:library:mergeReleaseShaders
+> Task :data:library:compileReleaseShaders NO-SOURCE
+> Task :data:library:generateReleaseAssets UP-TO-DATE
+> Task :data:library:mergeReleaseAssets
+> Task :data:settings:mergeReleaseShaders
+> Task :data:settings:compileReleaseShaders NO-SOURCE
+> Task :data:settings:generateReleaseAssets UP-TO-DATE
+> Task :data:settings:mergeReleaseAssets
+> Task :domain:koverFindJar
+> Task :core:database:generateDebugUnitTestAssets UP-TO-DATE
+> Task :core:database:mergeDebugUnitTestAssets
+> Task :core:database:packageDebugUnitTestForUnitTest
+> Task :core:database:generateDebugUnitTestConfig
+> Task :core:database:koverFindJar
+> Task :core:database:generateReleaseUnitTestAssets UP-TO-DATE
+> Task :core:database:mergeReleaseUnitTestAssets
+> Task :core:database:packageReleaseUnitTestForUnitTest
+> Task :core:database:generateReleaseUnitTestConfig
+> Task :app:checkBenchmarkAarMetadata
+> Task :core:common:processResources NO-SOURCE
+> Task :core:common:runKtlintCheckOverMainSourceSet
+> Task :core:common:ktlintMainSourceSetCheck
+> Task :app:generateBenchmarkResValues FROM-CACHE
+> Task :core:designsystem:compileDebugKotlin
+> Task :core:designsystem:javaPreCompileDebug FROM-CACHE
+> Task :core:designsystem:compileDebugJavaWithJavac NO-SOURCE
+> Task :core:designsystem:bundleLibCompileToJarDebug
+> Task :app:mapBenchmarkSourceSetPaths
+> Task :core:designsystem:bundleLibRuntimeToJarDebug
+> Task :app:generateBenchmarkResources
+> Task :core:designsystem:processDebugJavaRes
+> Task :core:designsystem:createFullJarDebug
+> Task :core:designsystem:mergeDebugShaders
+> Task :core:designsystem:compileDebugShaders NO-SOURCE
+> Task :core:designsystem:generateDebugAssets UP-TO-DATE
+> Task :core:designsystem:mergeDebugAssets
+> Task :core:designsystem:bundleLibRuntimeToJarRelease
+> Task :core:designsystem:processReleaseJavaRes
+> Task :core:designsystem:createFullJarRelease
+> Task :core:designsystem:mergeReleaseShaders
+> Task :core:designsystem:compileReleaseShaders NO-SOURCE
+> Task :core:designsystem:generateReleaseAssets UP-TO-DATE
+> Task :core:designsystem:mergeReleaseAssets
+> Task :core:common:koverFindJar
+> Task :core:model:koverFindJar
+> Task :core:model:processTestResources NO-SOURCE
+> Task :core:network:generateDebugUnitTestAssets UP-TO-DATE
+> Task :core:network:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:common:compileKotlin
+> Task :core:network:mergeDebugUnitTestAssets
+> Task :core:network:checkDebugUnitTestAarMetadata
+> Task :core:network:generateDebugUnitTestResValues FROM-CACHE
+> Task :core:network:mapDebugUnitTestSourceSetPaths
+> Task :core:network:generateDebugUnitTestResources FROM-CACHE
+> Task :core:network:mergeDebugUnitTestResources
+> Task :app:packageBenchmarkResources
+> Task :core:model:compileTestKotlin
+> Task :app:createBenchmarkCompatibleScreenManifests
+> Task :app:extractDeepLinksBenchmark FROM-CACHE
+> Task :app:parseBenchmarkLocalResources
+> Task :core:model:compileTestJava NO-SOURCE
+> Task :core:model:testClasses UP-TO-DATE
+> Task :app:mergeBenchmarkResources
+> Task :core:common:compileJava
+> Task :core:common:classes
+> Task :core:common:jar
+> Task :core:network:processDebugUnitTestManifest
+> Task :app:processBenchmarkMainManifest
+> Task :core:common:kspTestKotlin
+> Task :core:common:runKtlintCheckOverTestSourceSet
+> Task :core:common:ktlintTestSourceSetCheck
+> Task :core:common:ktlintCheck
+> Task :app:processBenchmarkManifest
+> Task :app:processBenchmarkManifestForPackage
+> Task :core:testing:compileKotlin
+> Task :core:testing:compileJava NO-SOURCE
+> Task :core:testing:classes UP-TO-DATE
+> Task :core:testing:jar
+> Task :app:processBenchmarkResources
+> Task :core:model:test
+> Task :domain:kspKotlin
+> Task :domain:runKtlintCheckOverMainSourceSet
+> Task :domain:ktlintMainSourceSetCheck
+> Task :core:network:kspReleaseKotlin
+> Task :domain:processResources NO-SOURCE
+> Task :domain:compileKotlin
+> Task :domain:compileJava
+> Task :domain:classes
+> Task :domain:kspTestKotlin
+> Task :domain:runKtlintCheckOverTestSourceSet
+> Task :domain:ktlintTestSourceSetCheck
+> Task :domain:ktlintCheck
+> Task :core:database:kspDebugKotlin
+> Task :domain:jar
+> Task :core:database:kspReleaseKotlin
+> Task :core:datastore:extractIncludeReleaseProto
+> Task :app:javaPreCompileBenchmark
+> Task :core:datastore:generateReleaseProto
+> Task :core:network:compileReleaseKotlin
+> Task :core:datastore:kspReleaseKotlin
+> Task :core:database:compileReleaseKotlin
+> Task :core:database:compileDebugKotlin
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :core:datastore:compileReleaseKotlin
+> Task :core:database:compileReleaseJavaWithJavac
+> Task :core:network:compileReleaseJavaWithJavac
+> Task :core:database:compileDebugJavaWithJavac
+> Task :core:database:transformDebugClassesWithAsm
+> Task :core:database:bundleLibCompileToJarDebug
+> Task :core:network:transformReleaseClassesWithAsm
+> Task :core:network:bundleLibCompileToJarRelease
+> Task :core:datastore:compileReleaseJavaWithJavac
+> Task :core:network:bundleLibRuntimeToJarRelease
+> Task :core:datastore:transformReleaseClassesWithAsm
+> Task :core:datastore:bundleLibCompileToJarRelease
+> Task :app:checkDebugAarMetadata
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :core:datastore:bundleLibRuntimeToJarRelease
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources
+> Task :core:database:kspDebugUnitTestKotlin
+> Task :app:mergeDebugResources
+> Task :core:database:transformReleaseClassesWithAsm
+> Task :core:database:bundleLibCompileToJarRelease
+> Task :core:database:kspReleaseUnitTestKotlin
+> Task :core:network:kspDebugKotlin
+> Task :core:database:bundleLibRuntimeToJarRelease
+> Task :core:database:compileDebugUnitTestKotlin
+> Task :core:database:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :data:auth:kspReleaseKotlin
+> Task :core:database:compileReleaseUnitTestKotlin
+> Task :core:database:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :core:database:copyRoomSchemas NO-SOURCE
+> Task :data:downloads:kspReleaseKotlin
+> Task :playback:kspReleaseKotlin
+> Task :data:auth:compileReleaseKotlin
+> Task :data:downloads:compileReleaseKotlin
+> Task :data:library:kspReleaseKotlin
+> Task :data:auth:compileReleaseJavaWithJavac
+> Task :data:downloads:compileReleaseJavaWithJavac
+> Task :data:auth:transformReleaseClassesWithAsm
+> Task :data:auth:bundleLibCompileToJarRelease
+> Task :data:downloads:transformReleaseClassesWithAsm
+> Task :data:downloads:bundleLibCompileToJarRelease
+> Task :app:packageDebugResources
+> Task :app:parseDebugLocalResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :data:settings:kspReleaseKotlin
+> Task :data:library:compileReleaseKotlin
+> Task :data:settings:compileReleaseKotlin
+> Task :data:settings:compileReleaseJavaWithJavac
+> Task :data:library:compileReleaseJavaWithJavac
+> Task :data:settings:transformReleaseClassesWithAsm
+> Task :data:settings:bundleLibCompileToJarRelease
+> Task :core:database:bundleLibRuntimeToJarDebug
+> Task :data:library:transformReleaseClassesWithAsm
+> Task :data:library:bundleLibCompileToJarRelease
+> Task :app:javaPreCompileDebug FROM-CACHE
+> Task :core:database:processDebugJavaRes
+> Task :core:database:createFullJarDebug
+> Task :core:datastore:extractIncludeDebugProto
+> Task :core:datastore:generateDebugProto FROM-CACHE
+> Task :app:mergeDebugShaders
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:packageDebugUnitTestForUnitTest
+> Task :app:processDebugUnitTestManifest
+> Task :app:generateDebugUnitTestConfig
+> Task :app:koverFindJar
+> Task :app:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:generateReleaseBuildConfig
+> Task :app:checkReleaseAarMetadata
+> Task :app:generateReleaseResValues FROM-CACHE
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources FROM-CACHE
+> Task :playback:compileReleaseKotlin
+> Task :core:datastore:kspDebugKotlin
+> Task :app:mergeReleaseResources
+> Task :app:packageReleaseResources
+> Task :app:parseReleaseLocalResources FROM-CACHE
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease FROM-CACHE
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:processReleaseManifestForPackage
+> Task :core:network:compileDebugKotlin
+> Task :core:network:compileDebugJavaWithJavac
+> Task :app:processReleaseResources
+> Task :core:network:processDebugJavaRes
+> Task :app:javaPreCompileRelease FROM-CACHE
+> Task :playback:compileReleaseJavaWithJavac
+> Task :app:buildKotlinToolingMetadata
+> Task :data:auth:bundleLibRuntimeToJarRelease
+> Task :data:auth:processReleaseJavaRes
+> Task :core:network:transformDebugClassesWithAsm
+> Task :data:auth:createFullJarRelease
+> Task :core:network:bundleLibCompileToJarDebug
+> Task :core:network:bundleLibRuntimeToJarDebug
+> Task :data:downloads:bundleLibRuntimeToJarRelease
+> Task :core:network:createFullJarDebug
+> Task :data:downloads:processReleaseJavaRes
+> Task :data:downloads:createFullJarRelease
+> Task :data:library:processReleaseJavaRes
+> Task :data:library:bundleLibRuntimeToJarRelease
+> Task :data:settings:bundleLibRuntimeToJarRelease
+> Task :data:library:createFullJarRelease
+> Task :data:settings:processReleaseJavaRes
+> Task :core:database:processReleaseJavaRes
+> Task :data:settings:createFullJarRelease
+> Task :core:database:createFullJarRelease
+> Task :core:network:processReleaseJavaRes
+> Task :core:datastore:processReleaseJavaRes
+> Task :core:network:createFullJarRelease
+> Task :core:datastore:createFullJarRelease
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :playback:transformReleaseClassesWithAsm
+> Task :playback:bundleLibCompileToJarRelease
+> Task :playback:bundleLibRuntimeToJarRelease
+> Task :playback:processReleaseJavaRes
+> Task :playback:createFullJarRelease
+> Task :app:convertLinkedResourcesToBinaryRelease
+> Task :core:datastore:compileDebugKotlin
+> Task :core:datastore:compileDebugJavaWithJavac
+> Task :core:datastore:transformDebugClassesWithAsm
+> Task :core:datastore:bundleLibCompileToJarDebug
+> Task :core:datastore:bundleLibRuntimeToJarDebug
+> Task :data:auth:kspDebugKotlin
+> Task :playback:kspDebugKotlin
+> Task :data:auth:compileDebugKotlin
+> Task :domain:compileTestKotlin
+> Task :data:auth:compileDebugJavaWithJavac
+> Task :data:auth:transformDebugClassesWithAsm
+> Task :data:auth:bundleLibCompileToJarDebug
+> Task :data:downloads:kspDebugKotlin
+> Task :data:library:kspDebugKotlin
+> Task :data:downloads:compileDebugKotlin
+> Task :data:downloads:compileDebugJavaWithJavac
+> Task :data:downloads:transformDebugClassesWithAsm
+> Task :data:downloads:bundleLibCompileToJarDebug
+> Task :data:settings:kspDebugKotlin
+> Task :playback:compileDebugKotlin
+> Task :data:library:compileDebugKotlin
+> Task :data:library:compileDebugJavaWithJavac
+> Task :app:kspBenchmarkKotlin
+> Task :playback:compileDebugJavaWithJavac
+> Task :data:library:transformDebugClassesWithAsm
+> Task :playback:transformDebugClassesWithAsm
+> Task :data:settings:compileDebugKotlin
+> Task :playback:bundleLibCompileToJarDebug
+> Task :data:auth:bundleLibRuntimeToJarDebug
+> Task :data:library:bundleLibCompileToJarDebug
+> Task :data:auth:processDebugJavaRes
+> Task :data:downloads:bundleLibRuntimeToJarDebug
+> Task :data:auth:createFullJarDebug
+> Task :data:downloads:processDebugJavaRes
+> Task :data:downloads:createFullJarDebug
+> Task :data:library:bundleLibRuntimeToJarDebug
+> Task :data:library:processDebugJavaRes
+> Task :playback:bundleLibRuntimeToJarDebug
+> Task :data:library:createFullJarDebug
+> Task :playback:processDebugJavaRes
+> Task :core:datastore:processDebugJavaRes
+> Task :core:datastore:createFullJarDebug
+> Task :playback:createFullJarDebug
+> Task :domain:compileTestJava NO-SOURCE
+> Task :domain:processTestResources NO-SOURCE
+> Task :domain:testClasses UP-TO-DATE
+> Task :data:settings:compileDebugJavaWithJavac
+> Task :data:settings:transformDebugClassesWithAsm
+> Task :data:settings:bundleLibCompileToJarDebug
+> Task :data:settings:bundleLibRuntimeToJarDebug
+> Task :data:settings:processDebugJavaRes
+> Task :data:settings:createFullJarDebug
+> Task :core:common:processTestResources NO-SOURCE
+> Task :core:common:compileTestKotlin
+> Task :domain:test
+> Task :core:database:hiltAggregateDepsDebugUnitTest
+> Task :app:preReleaseUnitTestBuild UP-TO-DATE
+> Task :app:packageReleaseUnitTestForUnitTest
+> Task :app:processReleaseUnitTestManifest
+> Task :app:generateReleaseUnitTestConfig
+> Task :app:javaPreCompileReleaseUnitTest FROM-CACHE
+> Task :domain:koverGenerateArtifactJvm
+> Task :domain:koverGenerateArtifact
+> Task :core:common:compileTestJava NO-SOURCE
+> Task :core:common:testClasses UP-TO-DATE
+> Task :core:common:test
+> Task :core:common:koverGenerateArtifactJvm
+> Task :core:common:koverGenerateArtifact
+> Task :core:database:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :core:database:processDebugUnitTestJavaRes
+> Task :core:database:transformDebugUnitTestClassesWithAsm
+
+> Task :app:compileBenchmarkKotlin
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:76:17 Conflicting declarations:
+val history: StateFlow<List<PlaybackHistoryEntry>>
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:129:9 Conflicting declarations:
+val history: PlaybackHistoryRepository
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:132:10 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:132:10 Not enough information to infer type argument for 'R'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:13 Not enough information to infer type argument for 'K'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:33 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:33 Not enough information to infer type argument for 'T'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:40 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:40 Not enough information to infer type argument for 'T'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:58 Overload resolution ambiguity between candidates:
+val history: PlaybackHistoryRepository
+val history: StateFlow<List<PlaybackHistoryEntry>>
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:66 Unresolved reference 'observe'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:157:33 Overload resolution ambiguity between candidates:
+val history: PlaybackHistoryRepository
+val history: StateFlow<List<PlaybackHistoryEntry>>
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:157:41 Unresolved reference 'refreshServerSessions'.
+
+> Task :app:compileBenchmarkKotlin FAILED
+> Task :core:model:koverGenerateArtifactJvm
+> Task :core:model:koverGenerateArtifact
+> Task :app:kspDebugKotlin
+> Task :app:kspReleaseKotlin
+> Task :core:network:processDebugUnitTestResources
+> Task :core:network:packageDebugUnitTestForUnitTest
+> Task :core:network:generateDebugUnitTestConfig
+> Task :core:network:koverFindJar
+> Task :core:network:kspDebugUnitTestKotlin
+> Task :core:network:compileDebugUnitTestKotlin
+> Task :core:network:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :core:network:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:network:hiltAggregateDepsDebugUnitTest
+> Task :core:network:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :core:network:processDebugUnitTestJavaRes
+> Task :core:network:transformDebugUnitTestClassesWithAsm
+
+> Task :app:compileDebugKotlin
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:76:17 Conflicting declarations:
+val history: StateFlow<List<PlaybackHistoryEntry>>
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:129:9 Conflicting declarations:
+val history: PlaybackHistoryRepository
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:132:10 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:132:10 Not enough information to infer type argument for 'R'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:13 Not enough information to infer type argument for 'K'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:33 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:33 Not enough information to infer type argument for 'T'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:40 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:40 Not enough information to infer type argument for 'T'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:58 Overload resolution ambiguity between candidates:
+val history: PlaybackHistoryRepository
+val history: StateFlow<List<PlaybackHistoryEntry>>
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:66 Unresolved reference 'observe'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:157:33 Overload resolution ambiguity between candidates:
+val history: PlaybackHistoryRepository
+val history: StateFlow<List<PlaybackHistoryEntry>>
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:157:41 Unresolved reference 'refreshServerSessions'.
+
+> Task :app:compileDebugKotlin FAILED
+> Task :data:auth:generateDebugUnitTestAssets UP-TO-DATE
+> Task :data:auth:preDebugUnitTestBuild UP-TO-DATE
+> Task :data:auth:mergeDebugUnitTestAssets
+> Task :data:auth:checkDebugUnitTestAarMetadata
+> Task :data:auth:generateDebugUnitTestResValues FROM-CACHE
+> Task :data:auth:mapDebugUnitTestSourceSetPaths
+> Task :data:auth:generateDebugUnitTestResources FROM-CACHE
+
+> Task :app:compileReleaseKotlin FAILED
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:76:17 Conflicting declarations:
+val history: StateFlow<List<PlaybackHistoryEntry>>
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:129:9 Conflicting declarations:
+val history: PlaybackHistoryRepository
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:132:10 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:132:10 Not enough information to infer type argument for 'R'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:13 Not enough information to infer type argument for 'K'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:33 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:33 Not enough information to infer type argument for 'T'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:40 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:40 Not enough information to infer type argument for 'T'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:58 Overload resolution ambiguity between candidates:
+val history: PlaybackHistoryRepository
+val history: StateFlow<List<PlaybackHistoryEntry>>
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:133:66 Unresolved reference 'observe'.
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:157:33 Overload resolution ambiguity between candidates:
+val history: PlaybackHistoryRepository
+val history: StateFlow<List<PlaybackHistoryEntry>>
+e: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt:157:41 Unresolved reference 'refreshServerSessions'.
+
+> Task :core:datastore:compileReleaseLibraryResources FROM-CACHE
+> Task :data:library:generateDebugUnitTestAssets UP-TO-DATE
+> Task :data:library:preDebugUnitTestBuild UP-TO-DATE
+> Task :data:library:mergeDebugUnitTestAssets
+> Task :data:auth:processDebugUnitTestManifest
+> Task :data:auth:koverFindJar
+> Task :data:auth:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :data:auth:generateReleaseUnitTestAssets UP-TO-DATE
+> Task :data:auth:preReleaseUnitTestBuild UP-TO-DATE
+> Task :data:auth:mergeReleaseUnitTestAssets
+> Task :data:auth:mergeDebugUnitTestResources
+> Task :data:library:checkDebugUnitTestAarMetadata
+> Task :data:auth:checkReleaseUnitTestAarMetadata
+> Task :data:library:generateDebugUnitTestResValues FROM-CACHE
+> Task :data:library:mapDebugUnitTestSourceSetPaths
+> Task :data:library:generateDebugUnitTestResources FROM-CACHE
+> Task :data:library:mergeDebugUnitTestResources
+> Task :data:auth:compileReleaseLibraryResources FROM-CACHE
+> Task :data:auth:generateReleaseUnitTestResValues FROM-CACHE
+> Task :data:auth:mapReleaseUnitTestSourceSetPaths
+> Task :data:auth:generateReleaseUnitTestResources FROM-CACHE
+> Task :data:auth:processDebugUnitTestResources
+> Task :data:library:processDebugUnitTestManifest
+> Task :data:auth:mergeReleaseUnitTestResources
+> Task :data:auth:packageDebugUnitTestForUnitTest
+> Task :data:auth:generateDebugUnitTestConfig
+> Task :data:library:processDebugUnitTestResources
+> Task :data:library:packageDebugUnitTestForUnitTest
+> Task :data:library:generateDebugUnitTestConfig
+> Task :data:library:koverFindJar
+> Task :data:auth:kspDebugUnitTestKotlin
+> Task :data:library:kspDebugUnitTestKotlin
+> Task :data:auth:processReleaseUnitTestManifest
+> Task :data:auth:javaPreCompileReleaseUnitTest FROM-CACHE
+> Task :data:auth:compileDebugUnitTestKotlin
+> Task :data:auth:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :data:auth:hiltAggregateDepsDebugUnitTest
+> Task :data:auth:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :data:auth:processDebugUnitTestJavaRes
+> Task :data:auth:transformDebugUnitTestClassesWithAsm
+> Task :core:database:testDebugUnitTest
+> Task :data:library:compileDebugUnitTestKotlin
+> Task :data:library:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :data:library:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :data:library:hiltAggregateDepsDebugUnitTest
+> Task :data:library:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :data:library:processDebugUnitTestJavaRes
+> Task :data:library:transformDebugUnitTestClassesWithAsm
+> Task :core:network:testDebugUnitTest
+> Task :core:database:koverGenerateArtifactDebug
+> Task :core:database:hiltAggregateDepsReleaseUnitTest FROM-CACHE
+> Task :core:database:hiltJavaCompileReleaseUnitTest NO-SOURCE
+> Task :core:database:processReleaseUnitTestJavaRes
+> Task :core:database:transformReleaseUnitTestClassesWithAsm
+> Task :data:auth:testDebugUnitTest
+> Task :data:auth:koverGenerateArtifactDebug
+> Task :data:settings:generateDebugUnitTestAssets UP-TO-DATE
+> Task :data:settings:preDebugUnitTestBuild UP-TO-DATE
+> Task :data:settings:mergeDebugUnitTestAssets
+> Task :data:settings:checkDebugUnitTestAarMetadata
+> Task :data:settings:generateDebugUnitTestResValues FROM-CACHE
+> Task :data:settings:mapDebugUnitTestSourceSetPaths
+> Task :data:settings:generateDebugUnitTestResources FROM-CACHE
+> Task :data:library:testDebugUnitTest
+> Task :data:settings:mergeDebugUnitTestResources
+> Task :data:settings:processDebugUnitTestManifest
+> Task :data:settings:processDebugUnitTestResources
+> Task :data:settings:packageDebugUnitTestForUnitTest
+> Task :data:settings:generateDebugUnitTestConfig
+> Task :data:settings:koverFindJar
+> Task :data:settings:kspDebugUnitTestKotlin
+> Task :data:settings:compileDebugUnitTestKotlin
+> Task :data:settings:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :data:settings:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :data:settings:hiltAggregateDepsDebugUnitTest
+> Task :data:settings:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :data:settings:processDebugUnitTestJavaRes
+> Task :data:settings:transformDebugUnitTestClassesWithAsm
+> Task :data:library:koverGenerateArtifactDebug
+> Task :data:library:generateReleaseUnitTestAssets UP-TO-DATE
+> Task :data:library:preReleaseUnitTestBuild UP-TO-DATE
+> Task :data:library:mergeReleaseUnitTestAssets
+> Task :data:library:checkReleaseUnitTestAarMetadata
+> Task :data:library:compileReleaseLibraryResources FROM-CACHE
+> Task :data:library:generateReleaseUnitTestResValues FROM-CACHE
+> Task :data:library:mapReleaseUnitTestSourceSetPaths
+> Task :data:library:generateReleaseUnitTestResources FROM-CACHE
+> Task :data:library:mergeReleaseUnitTestResources
+> Task :data:library:processReleaseUnitTestManifest
+> Task :data:library:javaPreCompileReleaseUnitTest FROM-CACHE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:compressDebugAssets
+> Task :core:database:testReleaseUnitTest
+> Task :core:network:koverGenerateArtifactDebug
+> Task :core:network:generateReleaseUnitTestAssets UP-TO-DATE
+> Task :core:network:preReleaseUnitTestBuild UP-TO-DATE
+> Task :core:network:mergeReleaseUnitTestAssets
+> Task :core:network:checkReleaseUnitTestAarMetadata
+> Task :core:network:compileReleaseLibraryResources FROM-CACHE
+> Task :core:network:generateReleaseUnitTestResValues FROM-CACHE
+> Task :core:network:mapReleaseUnitTestSourceSetPaths
+> Task :core:network:generateReleaseUnitTestResources FROM-CACHE
+> Task :core:network:mergeReleaseUnitTestResources
+> Task :core:network:processReleaseUnitTestManifest
+> Task :core:network:processReleaseUnitTestResources
+> Task :core:network:packageReleaseUnitTestForUnitTest
+> Task :core:network:generateReleaseUnitTestConfig
+> Task :core:network:kspReleaseUnitTestKotlin
+> Task :core:database:koverGenerateArtifactRelease
+> Task :core:database:koverGenerateArtifact
+> Task :core:network:javaPreCompileReleaseUnitTest FROM-CACHE
+> Task :data:auth:processReleaseUnitTestResources
+> Task :data:auth:packageReleaseUnitTestForUnitTest
+> Task :data:auth:generateReleaseUnitTestConfig
+> Task :data:auth:kspReleaseUnitTestKotlin
+> Task :data:library:processReleaseUnitTestResources
+> Task :data:library:packageReleaseUnitTestForUnitTest
+> Task :data:library:generateReleaseUnitTestConfig
+> Task :data:library:kspReleaseUnitTestKotlin
+> Task :data:auth:compileReleaseUnitTestKotlin
+> Task :data:auth:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :data:auth:hiltAggregateDepsReleaseUnitTest FROM-CACHE
+> Task :data:auth:hiltJavaCompileReleaseUnitTest NO-SOURCE
+> Task :data:auth:processReleaseUnitTestJavaRes
+> Task :data:auth:transformReleaseUnitTestClassesWithAsm
+> Task :data:settings:testDebugUnitTest
+> Task :core:network:compileReleaseUnitTestKotlin
+> Task :core:network:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :core:network:hiltAggregateDepsReleaseUnitTest FROM-CACHE
+> Task :core:network:hiltJavaCompileReleaseUnitTest NO-SOURCE
+> Task :core:network:processReleaseUnitTestJavaRes
+> Task :core:network:transformReleaseUnitTestClassesWithAsm
+> Task :data:library:compileReleaseUnitTestKotlin
+> Task :data:library:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :data:library:hiltAggregateDepsReleaseUnitTest FROM-CACHE
+> Task :data:library:hiltJavaCompileReleaseUnitTest NO-SOURCE
+> Task :data:library:processReleaseUnitTestJavaRes
+> Task :data:library:transformReleaseUnitTestClassesWithAsm
+> Task :data:settings:koverGenerateArtifactDebug
+> Task :data:settings:generateReleaseUnitTestAssets UP-TO-DATE
+> Task :data:settings:preReleaseUnitTestBuild UP-TO-DATE
+> Task :data:settings:mergeReleaseUnitTestAssets
+> Task :data:settings:checkReleaseUnitTestAarMetadata
+> Task :data:settings:compileReleaseLibraryResources FROM-CACHE
+> Task :data:settings:generateReleaseUnitTestResValues FROM-CACHE
+> Task :data:settings:mapReleaseUnitTestSourceSetPaths
+> Task :data:settings:generateReleaseUnitTestResources FROM-CACHE
+> Task :data:settings:mergeReleaseUnitTestResources
+> Task :data:settings:processReleaseUnitTestManifest
+> Task :data:settings:processReleaseUnitTestResources
+> Task :data:settings:packageReleaseUnitTestForUnitTest
+> Task :data:settings:generateReleaseUnitTestConfig
+> Task :data:settings:kspReleaseUnitTestKotlin
+> Task :data:settings:compileReleaseUnitTestKotlin
+> Task :data:settings:javaPreCompileReleaseUnitTest FROM-CACHE
+> Task :data:settings:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :data:settings:hiltAggregateDepsReleaseUnitTest FROM-CACHE
+> Task :data:settings:hiltJavaCompileReleaseUnitTest NO-SOURCE
+> Task :data:settings:processReleaseUnitTestJavaRes
+> Task :data:settings:transformReleaseUnitTestClassesWithAsm
+> Task :data:auth:testReleaseUnitTest
+> Task :core:network:testReleaseUnitTest
+> Task :data:auth:koverGenerateArtifactRelease
+> Task :data:auth:koverGenerateArtifact
+> Task :data:library:testReleaseUnitTest
+> Task :data:settings:testReleaseUnitTest
+> Task :data:settings:koverGenerateArtifactRelease
+> Task :data:settings:koverGenerateArtifact
+> Task :data:library:koverGenerateArtifactRelease
+> Task :data:library:koverGenerateArtifact
+> Task :app:desugarDebugFileDependencies
+> Task :data:auth:bundleLibRuntimeToDirDebug
+> Task :data:downloads:bundleLibRuntimeToDirDebug
+> Task :app:checkDebugDuplicateClasses
+> Task :data:library:bundleLibRuntimeToDirDebug
+> Task :data:settings:bundleLibRuntimeToDirDebug
+> Task :core:database:bundleLibRuntimeToDirDebug
+> Task :playback:bundleLibRuntimeToDirDebug
+> Task :core:designsystem:bundleLibRuntimeToDirDebug
+> Task :playback:mergeDebugJniLibFolders
+> Task :playback:mergeDebugNativeLibs NO-SOURCE
+> Task :core:datastore:bundleLibRuntimeToDirDebug
+> Task :app:mergeExtDexDebug
+> Task :playback:copyDebugJniLibsProjectOnly
+> Task :core:database:mergeDebugJniLibFolders
+> Task :core:database:mergeDebugNativeLibs NO-SOURCE
+> Task :core:network:koverGenerateArtifactRelease
+> Task :core:network:koverGenerateArtifact
+> Task :core:database:copyDebugJniLibsProjectOnly
+> Task :core:network:bundleLibRuntimeToDirDebug
+> Task :core:datastore:mergeDebugJniLibFolders
+> Task :core:datastore:mergeDebugNativeLibs NO-SOURCE
+> Task :core:designsystem:mergeDebugJniLibFolders
+> Task :core:designsystem:mergeDebugNativeLibs NO-SOURCE
+> Task :core:datastore:copyDebugJniLibsProjectOnly
+> Task :core:designsystem:copyDebugJniLibsProjectOnly
+> Task :core:network:mergeDebugJniLibFolders
+> Task :core:network:mergeDebugNativeLibs NO-SOURCE
+> Task :core:network:copyDebugJniLibsProjectOnly
+> Task :data:auth:mergeDebugJniLibFolders
+> Task :data:auth:mergeDebugNativeLibs NO-SOURCE
+> Task :data:downloads:mergeDebugJniLibFolders
+> Task :data:downloads:mergeDebugNativeLibs NO-SOURCE
+> Task :data:auth:copyDebugJniLibsProjectOnly
+> Task :data:downloads:copyDebugJniLibsProjectOnly
+> Task :data:settings:mergeDebugJniLibFolders
+> Task :data:settings:mergeDebugNativeLibs NO-SOURCE
+> Task :data:library:mergeDebugJniLibFolders
+> Task :data:library:mergeDebugNativeLibs NO-SOURCE
+> Task :data:settings:copyDebugJniLibsProjectOnly
+> Task :core:database:stripDebugDebugSymbols NO-SOURCE
+> Task :data:library:copyDebugJniLibsProjectOnly
+> Task :core:database:copyDebugJniLibsProjectAndLocalJars
+> Task :core:designsystem:stripDebugDebugSymbols NO-SOURCE
+> Task :core:designsystem:copyDebugJniLibsProjectAndLocalJars
+> Task :core:network:stripDebugDebugSymbols NO-SOURCE
+> Task :core:network:copyDebugJniLibsProjectAndLocalJars
+> Task :core:designsystem:extractDebugAnnotations
+> Task :core:database:extractDebugAnnotations
+> Task :core:network:extractDebugAnnotations
+> Task :core:network:extractDeepLinksForAarDebug
+> Task :core:designsystem:extractDeepLinksForAarDebug
+> Task :core:database:extractDeepLinksForAarDebug
+> Task :core:database:mergeDebugGeneratedProguardFiles
+> Task :core:network:mergeDebugGeneratedProguardFiles
+> Task :core:designsystem:mergeDebugGeneratedProguardFiles
+> Task :core:network:mergeDebugConsumerProguardFiles
+> Task :core:database:mergeDebugConsumerProguardFiles
+> Task :core:network:prepareDebugArtProfile
+> Task :core:database:prepareDebugArtProfile
+> Task :core:designsystem:mergeDebugConsumerProguardFiles
+> Task :core:designsystem:prepareDebugArtProfile
+> Task :core:database:prepareLintJarForPublish
+> Task :core:network:prepareLintJarForPublish
+> Task :core:designsystem:prepareLintJarForPublish
+> Task :core:network:mergeDebugJavaResource
+> Task :core:database:mergeDebugJavaResource
+> Task :core:designsystem:mergeDebugJavaResource
+> Task :core:designsystem:syncDebugLibJars
+> Task :core:designsystem:bundleDebugLocalLintAar
+> Task :data:auth:stripDebugDebugSymbols NO-SOURCE
+> Task :data:auth:copyDebugJniLibsProjectAndLocalJars
+> Task :data:auth:extractDebugAnnotations
+> Task :data:auth:extractDeepLinksForAarDebug FROM-CACHE
+> Task :core:database:syncDebugLibJars
+> Task :data:auth:mergeDebugGeneratedProguardFiles
+> Task :core:database:bundleDebugLocalLintAar
+> Task :data:auth:mergeDebugConsumerProguardFiles
+> Task :data:auth:prepareDebugArtProfile
+> Task :data:auth:prepareLintJarForPublish
+> Task :data:auth:mergeDebugJavaResource
+> Task :data:downloads:stripDebugDebugSymbols NO-SOURCE
+> Task :data:downloads:copyDebugJniLibsProjectAndLocalJars
+> Task :data:downloads:extractDebugAnnotations
+> Task :data:downloads:extractDeepLinksForAarDebug FROM-CACHE
+> Task :data:downloads:mergeDebugGeneratedProguardFiles
+> Task :data:downloads:mergeDebugConsumerProguardFiles
+> Task :data:downloads:prepareDebugArtProfile
+> Task :data:downloads:prepareLintJarForPublish
+> Task :data:auth:syncDebugLibJars
+> Task :data:downloads:mergeDebugJavaResource
+> Task :data:auth:bundleDebugLocalLintAar
+> Task :data:library:stripDebugDebugSymbols NO-SOURCE
+> Task :data:library:copyDebugJniLibsProjectAndLocalJars
+> Task :data:library:extractDebugAnnotations
+> Task :data:library:extractDeepLinksForAarDebug FROM-CACHE
+> Task :data:downloads:syncDebugLibJars
+> Task :data:library:mergeDebugGeneratedProguardFiles
+> Task :data:library:mergeDebugConsumerProguardFiles
+> Task :data:library:prepareDebugArtProfile
+> Task :core:network:syncDebugLibJars
+> Task :data:downloads:bundleDebugLocalLintAar
+> Task :data:library:prepareLintJarForPublish
+> Task :data:settings:stripDebugDebugSymbols NO-SOURCE
+> Task :core:network:bundleDebugLocalLintAar
+> Task :data:library:mergeDebugJavaResource
+> Task :data:settings:copyDebugJniLibsProjectAndLocalJars
+> Task :data:settings:extractDebugAnnotations
+> Task :data:settings:extractDeepLinksForAarDebug FROM-CACHE
+> Task :data:settings:mergeDebugGeneratedProguardFiles
+> Task :data:settings:mergeDebugConsumerProguardFiles
+> Task :data:settings:prepareDebugArtProfile
+> Task :data:settings:prepareLintJarForPublish
+> Task :playback:stripDebugDebugSymbols NO-SOURCE
+> Task :playback:copyDebugJniLibsProjectAndLocalJars
+> Task :data:settings:mergeDebugJavaResource
+> Task :playback:extractDebugAnnotations
+> Task :playback:extractDeepLinksForAarDebug FROM-CACHE
+> Task :playback:mergeDebugGeneratedProguardFiles
+> Task :playback:mergeDebugConsumerProguardFiles
+> Task :playback:prepareDebugArtProfile
+> Task :playback:prepareLintJarForPublish
+> Task :playback:mergeDebugJavaResource
+> Task :data:library:syncDebugLibJars
+> Task :data:library:bundleDebugLocalLintAar
+> Task :data:settings:syncDebugLibJars
+> Task :core:database:writeDebugLintModelMetadata
+> Task :core:designsystem:writeDebugLintModelMetadata
+> Task :data:settings:bundleDebugLocalLintAar
+> Task :core:network:writeDebugLintModelMetadata
+> Task :data:auth:writeDebugLintModelMetadata
+> Task :data:downloads:writeDebugLintModelMetadata
+> Task :data:library:writeDebugLintModelMetadata
+> Task :data:settings:writeDebugLintModelMetadata
+> Task :core:network:extractProguardFiles
+> Task :core:database:extractProguardFiles
+> Task :playback:syncDebugLibJars
+> Task :playback:bundleDebugLocalLintAar
+> Task :playback:writeDebugLintModelMetadata
+> Task :playback:extractProguardFiles
+> Task :core:datastore:extractProguardFiles
+> Task :core:database:generateDebugLintModel
+> Task :core:datastore:generateDebugLintModel
+> Task :core:network:generateDebugLintModel
+> Task :core:designsystem:extractProguardFiles
+> Task :core:datastore:prepareLintJarForPublish
+> Task :data:auth:extractProguardFiles
+> Task :data:auth:generateDebugLintModel
+> Task :data:downloads:extractProguardFiles
+> Task :data:downloads:generateDebugLintModel
+> Task :data:library:extractProguardFiles
+> Task :data:library:generateDebugLintModel
+> Task :data:settings:extractProguardFiles
+> Task :data:settings:generateDebugLintModel
+> Task :core:datastore:stripDebugDebugSymbols NO-SOURCE
+> Task :core:datastore:copyDebugJniLibsProjectAndLocalJars
+> Task :core:datastore:extractDebugAnnotations
+> Task :core:datastore:extractDeepLinksForAarDebug FROM-CACHE
+> Task :core:datastore:mergeDebugGeneratedProguardFiles
+> Task :core:datastore:mergeDebugConsumerProguardFiles
+> Task :core:datastore:prepareDebugArtProfile
+> Task :core:datastore:mergeDebugJavaResource
+> Task :core:datastore:syncDebugLibJars
+> Task :core:datastore:bundleDebugLocalLintAar
+> Task :core:datastore:writeDebugLintModelMetadata
+> Task :playback:generateDebugLintModel
+> Task :core:designsystem:generateDebugLintModel
+> Task :core:network:lintAnalyzeDebug
+> Task :core:database:lintAnalyzeDebug
+> Task :core:datastore:lintAnalyzeDebug
+> Task :playback:preDebugAndroidTestBuild UP-TO-DATE
+> Task :playback:generateDebugAndroidTestResValues FROM-CACHE
+> Task :playback:generateDebugAndroidTestLintModel
+> Task :playback:preDebugUnitTestBuild UP-TO-DATE
+> Task :playback:generateDebugUnitTestLintModel
+> Task :playback:lintAnalyzeDebugAndroidTest
+> Task :core:designsystem:lintAnalyzeDebug
+> Task :core:database:preDebugAndroidTestBuild UP-TO-DATE
+> Task :core:database:generateDebugAndroidTestResValues FROM-CACHE
+> Task :core:database:generateDebugAndroidTestLintModel
+> Task :core:database:generateDebugUnitTestLintModel
+> Task :core:database:lintAnalyzeDebugAndroidTest
+> Task :playback:lintAnalyzeDebugUnitTest
+> Task :app:mergeDebugJniLibFolders
+> Task :app:mergeDebugNativeLibs
+
+> Task :app:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libdatastore_shared_counter.so. Run with --info option to learn more.
+
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:generateDebugAndroidTestResValues FROM-CACHE
+> Task :app:extractProguardFiles
+> Task :app:mergeLibDexDebug
+> Task :data:auth:lintAnalyzeDebug
+> Task :data:downloads:lintAnalyzeDebug
+> Task :data:settings:lintAnalyzeDebug
+> Task :core:datastore:preDebugAndroidTestBuild UP-TO-DATE
+> Task :core:datastore:generateDebugAndroidTestResValues FROM-CACHE
+> Task :core:datastore:generateDebugAndroidTestLintModel
+> Task :core:datastore:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:datastore:generateDebugUnitTestLintModel
+> Task :core:datastore:lintAnalyzeDebugAndroidTest
+> Task :playback:lintAnalyzeDebug
+> Task :data:library:lintAnalyzeDebug
+> Task :core:designsystem:preDebugAndroidTestBuild UP-TO-DATE
+> Task :core:designsystem:generateDebugAndroidTestResValues FROM-CACHE
+> Task :core:designsystem:generateDebugAndroidTestLintModel
+> Task :core:designsystem:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:designsystem:generateDebugUnitTestLintModel
+> Task :core:designsystem:lintAnalyzeDebugAndroidTest
+> Task :core:designsystem:lintAnalyzeDebugUnitTest
+> Task :core:network:preDebugAndroidTestBuild UP-TO-DATE
+> Task :core:network:generateDebugAndroidTestResValues FROM-CACHE
+> Task :core:network:generateDebugAndroidTestLintModel
+> Task :core:network:generateDebugUnitTestLintModel
+> Task :core:datastore:lintAnalyzeDebugUnitTest
+> Task :core:database:lintAnalyzeDebugUnitTest
+> Task :data:auth:preDebugAndroidTestBuild UP-TO-DATE
+> Task :data:auth:generateDebugAndroidTestResValues FROM-CACHE
+> Task :data:auth:generateDebugAndroidTestLintModel
+> Task :core:network:lintAnalyzeDebugAndroidTest
+> Task :data:downloads:preDebugAndroidTestBuild UP-TO-DATE
+> Task :data:auth:generateDebugUnitTestLintModel
+> Task :data:downloads:generateDebugAndroidTestResValues FROM-CACHE
+> Task :data:downloads:generateDebugAndroidTestLintModel
+> Task :data:auth:lintAnalyzeDebugAndroidTest
+> Task :data:downloads:preDebugUnitTestBuild UP-TO-DATE
+> Task :data:downloads:generateDebugUnitTestLintModel
+> Task :data:downloads:lintAnalyzeDebugAndroidTest
+> Task :data:auth:lintAnalyzeDebugUnitTest
+> Task :data:library:preDebugAndroidTestBuild UP-TO-DATE
+> Task :data:library:generateDebugAndroidTestResValues FROM-CACHE
+> Task :data:library:generateDebugAndroidTestLintModel
+> Task :data:library:generateDebugUnitTestLintModel
+> Task :data:library:lintAnalyzeDebugAndroidTest
+> Task :data:settings:preDebugAndroidTestBuild UP-TO-DATE
+> Task :data:settings:generateDebugAndroidTestResValues FROM-CACHE
+> Task :data:settings:generateDebugAndroidTestLintModel
+> Task :data:settings:generateDebugUnitTestLintModel
+> Task :data:settings:lintAnalyzeDebugAndroidTest
+> Task :data:downloads:lintAnalyzeDebugUnitTest
+> Task :benchmark:preBuild UP-TO-DATE
+> Task :benchmark:preDebugBuild UP-TO-DATE
+> Task :benchmark:checkTestedAppObfuscationDebug
+> Task :benchmark:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:settings:lintAnalyzeDebugUnitTest
+> Task :benchmark:checkDebugAarMetadata
+> Task :benchmark:generateDebugResValues FROM-CACHE
+> Task :benchmark:mapDebugSourceSetPaths
+> Task :benchmark:generateDebugResources FROM-CACHE
+> Task :benchmark:mergeDebugResources
+> Task :benchmark:processDebugManifest
+> Task :benchmark:processDebugResources
+> Task :benchmark:compileDebugKotlin
+> Task :benchmark:javaPreCompileDebug FROM-CACHE
+> Task :benchmark:compileDebugJavaWithJavac NO-SOURCE
+> Task :benchmark:mergeDebugShaders
+> Task :benchmark:compileDebugShaders NO-SOURCE
+> Task :benchmark:generateDebugAssets UP-TO-DATE
+> Task :benchmark:mergeDebugAssets
+> Task :core:network:lintAnalyzeDebugUnitTest
+> Task :benchmark:desugarDebugFileDependencies
+> Task :benchmark:dexBuilderDebug
+> Task :benchmark:compressDebugAssets
+> Task :playback:bundleDebugAar
+> Task :playback:assembleDebug
+> Task :data:library:lintAnalyzeDebugUnitTest
+> Task :core:common:detektMain
+> Task :domain:detektMain
+> Task :core:common:detektTest
+> Task :core:common:verifyDebug
+> Task :core:database:bundleDebugAar
+> Task :core:database:assembleDebug
+> Task :benchmark:mergeDebugGlobalSynthetics
+> Task :playback:detektDebug
+> Task :benchmark:processDebugJavaRes
+> Task :benchmark:mergeDebugJavaResource
+> Task :benchmark:checkDebugDuplicateClasses
+> Task :benchmark:mergeExtDexDebug
+> Task :benchmark:mergeLibDexDebug
+> Task :benchmark:mergeProjectDexDebug
+> Task :benchmark:mergeDebugJniLibFolders
+> Task :benchmark:mergeDebugNativeLibs
+
+> Task :benchmark:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libbenchmarkNative.so, libtracing_perfetto.so. Run with --info option to learn more.
+
+> Task :core:database:detektDebug
+> Task :benchmark:validateSigningDebug
+> Task :benchmark:writeDebugSigningConfigVersions
+> Task :benchmark:packageDebug
+> Task :benchmark:createDebugApkListingFileRedirect
+> Task :benchmark:assembleDebug
+> Task :benchmark:detektDebug
+> Task :benchmark:verifyDebug
+> Task :core:datastore:bundleDebugAar
+> Task :core:datastore:assembleDebug
+> Task :core:database:detektDebugUnitTest
+
+> Task :core:database:generateDebugLintReportModel
+Warning: Lint will treat :core:common as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:common. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:model as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:model. to enable lint to analyze those sources.
+
+
+> Task :core:database:lintReportDebug
+> Task :core:database:lintDebug
+> Task :core:database:verifyRoomSchemas
+> Task :core:database:verifyDebug
+> Task :core:designsystem:bundleDebugAar
+> Task :core:designsystem:assembleDebug
+> Task :core:datastore:detektDebug
+> Task :core:datastore:extractIncludeDebugUnitTestProto
+> Task :core:datastore:extractTestDebugProto
+> Task :core:datastore:extractTestProto
+> Task :core:datastore:generateDebugUnitTestProto NO-SOURCE
+> Task :core:datastore:checkDebugUnitTestAarMetadata
+> Task :core:datastore:generateDebugUnitTestResValues FROM-CACHE
+> Task :core:datastore:mapDebugUnitTestSourceSetPaths
+> Task :core:datastore:generateDebugUnitTestResources FROM-CACHE
+> Task :core:datastore:mergeDebugUnitTestResources
+> Task :core:designsystem:detektDebug
+> Task :core:datastore:processDebugUnitTestManifest
+> Task :core:designsystem:checkDebugUnitTestAarMetadata
+> Task :core:datastore:javaPreCompileDebugUnitTest FROM-CACHE
+
+> Task :core:datastore:generateDebugLintReportModel
+Warning: Lint will treat :core:common as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:common. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:model as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:model. to enable lint to analyze those sources.
+
+
+> Task :core:datastore:lintReportDebug
+> Task :core:datastore:lintDebug
+> Task :core:datastore:generateDebugUnitTestAssets UP-TO-DATE
+> Task :core:datastore:mergeDebugUnitTestAssets
+> Task :core:designsystem:generateDebugUnitTestResValues FROM-CACHE
+> Task :core:designsystem:mapDebugUnitTestSourceSetPaths
+> Task :core:designsystem:generateDebugUnitTestResources FROM-CACHE
+> Task :core:datastore:processDebugUnitTestResources
+> Task :core:datastore:kspDebugUnitTestKotlin
+> Task :core:designsystem:mergeDebugUnitTestResources
+> Task :core:datastore:packageDebugUnitTestForUnitTest
+> Task :core:datastore:generateDebugUnitTestConfig
+> Task :core:designsystem:processDebugUnitTestManifest
+> Task :core:datastore:compileDebugUnitTestKotlin
+> Task :core:datastore:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:designsystem:processDebugUnitTestResources
+> Task :core:designsystem:compileDebugUnitTestKotlin NO-SOURCE
+> Task :core:designsystem:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :core:designsystem:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:designsystem:detektDebugUnitTest NO-SOURCE
+> Task :core:designsystem:generateDebugLintReportModel
+> Task :core:designsystem:lintReportDebug
+> Task :core:designsystem:lintDebug
+> Task :core:designsystem:generateDebugUnitTestAssets UP-TO-DATE
+> Task :core:designsystem:mergeDebugUnitTestAssets
+> Task :core:designsystem:packageDebugUnitTestForUnitTest
+> Task :core:designsystem:generateDebugUnitTestConfig
+> Task :core:designsystem:processDebugUnitTestJavaRes NO-SOURCE
+> Task :core:designsystem:testDebugUnitTest
+> Task :core:designsystem:verifyDebug
+> Task :core:datastore:detektDebugUnitTest
+> Task :core:datastore:hiltAggregateDepsDebugUnitTest
+> Task :core:datastore:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :core:datastore:processDebugUnitTestJavaRes
+> Task :core:datastore:transformDebugUnitTestClassesWithAsm
+
+> Task :playback:detektDebug FAILED
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt:101:7: Class PlaybackService is too large. Consider splitting it into smaller pieces. [LargeClass]
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/ResumeFreshnessCoordinator.kt:150:17: Function preparePlay has 5 return statements which exceeds the limit of 4. [ReturnCount]
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/ResumeFreshnessCoordinator.kt:229:17: Function beginRequest has 5 return statements which exceeds the limit of 4. [ReturnCount]
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/ResumeFreshnessCoordinator.kt:249:17: Function rememberEvidence has 8 return statements which exceeds the limit of 4. [ReturnCount]
+/home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/src/main/kotlin/com/example/shelfplayer/playback/ResumeFreshnessCoordinator.kt:277:17: Function isCurrentOnMain has 7 return statements which exceeds the limit of 4. [ReturnCount]
+
+
+> Task :playback:checkDebugUnitTestAarMetadata
+> Task :playback:generateDebugUnitTestResValues FROM-CACHE
+> Task :playback:mapDebugUnitTestSourceSetPaths
+> Task :playback:generateDebugUnitTestResources FROM-CACHE
+> Task :playback:mergeDebugUnitTestResources
+> Task :playback:processDebugUnitTestManifest
+> Task :playback:processDebugUnitTestResources
+> Task :playback:kspDebugUnitTestKotlin
+> Task :domain:detektTest
+> Task :playback:compileDebugUnitTestKotlin
+> Task :playback:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :playback:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:datastore:testDebugUnitTest
+> Task :core:datastore:verifyDebug
+> Task :core:network:bundleDebugAar
+> Task :core:network:assembleDebug
+> Task :core:model:detektMain
+> Task :domain:verifyDebug
+> Task :core:testing:detektMain
+> Task :core:testing:compileTestKotlin NO-SOURCE
+> Task :core:testing:compileTestJava NO-SOURCE
+> Task :core:testing:detektTest NO-SOURCE
+> Task :core:testing:processTestResources NO-SOURCE
+> Task :core:testing:testClasses UP-TO-DATE
+> Task :core:testing:test NO-SOURCE
+> Task :core:testing:verifyDebug
+> Task :data:auth:bundleDebugAar
+> Task :data:auth:assembleDebug
+> Task :data:auth:detektDebug
+> Task :core:model:detektTest
+> Task :core:model:verifyDebug
+> Task :data:downloads:bundleDebugAar
+> Task :data:downloads:assembleDebug
+> Task :data:auth:detektDebugUnitTest
+
+> Task :data:auth:generateDebugLintReportModel
+Warning: Lint will treat :domain as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :domain. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:common as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:common. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:model as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:model. to enable lint to analyze those sources.
+
+
+> Task :data:auth:lintReportDebug
+> Task :data:auth:lintDebug
+> Task :data:auth:verifyDebug
+> Task :data:library:bundleDebugAar
+> Task :data:library:assembleDebug
+> Task :playback:detektDebugUnitTest
+> Task :data:downloads:detektDebug
+> Task :data:downloads:checkDebugUnitTestAarMetadata
+> Task :data:downloads:generateDebugUnitTestResValues FROM-CACHE
+> Task :data:downloads:mapDebugUnitTestSourceSetPaths
+> Task :data:downloads:generateDebugUnitTestResources FROM-CACHE
+> Task :data:downloads:mergeDebugUnitTestResources
+> Task :data:downloads:processDebugUnitTestManifest
+> Task :data:downloads:processDebugUnitTestResources
+> Task :data:downloads:kspDebugUnitTestKotlin
+> Task :data:downloads:compileDebugUnitTestKotlin
+> Task :data:downloads:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :data:downloads:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:network:detektDebug
+
+> Task :playback:generateDebugLintReportModel
+Warning: Lint will treat :domain as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :domain. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:common as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:common. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:model as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:model. to enable lint to analyze those sources.
+
+
+> Task :playback:lintReportDebug
+> Task :playback:lintDebug
+> Task :playback:generateDebugUnitTestAssets UP-TO-DATE
+> Task :playback:mergeDebugUnitTestAssets
+> Task :playback:packageDebugUnitTestForUnitTest
+> Task :playback:generateDebugUnitTestConfig
+> Task :playback:koverFindJar
+> Task :playback:hiltAggregateDepsDebugUnitTest
+> Task :playback:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :playback:processDebugUnitTestJavaRes
+> Task :playback:transformDebugUnitTestClassesWithAsm
+> Task :data:downloads:detektDebugUnitTest
+
+> Task :data:downloads:generateDebugLintReportModel
+Warning: Lint will treat :domain as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :domain. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:common as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:common. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:model as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:model. to enable lint to analyze those sources.
+
+
+> Task :data:downloads:lintReportDebug
+> Task :data:downloads:lintDebug
+> Task :data:downloads:generateDebugUnitTestAssets UP-TO-DATE
+> Task :data:downloads:mergeDebugUnitTestAssets
+> Task :data:downloads:packageDebugUnitTestForUnitTest
+> Task :data:downloads:generateDebugUnitTestConfig
+> Task :data:downloads:koverFindJar
+> Task :data:downloads:hiltAggregateDepsDebugUnitTest
+> Task :data:downloads:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :data:downloads:processDebugUnitTestJavaRes
+> Task :data:downloads:transformDebugUnitTestClassesWithAsm
+> Task :data:library:detektDebug
+> Task :core:network:detektDebugUnitTest
+> Task :playback:testDebugUnitTest
+> Task :data:settings:bundleDebugAar
+> Task :data:settings:assembleDebug
+> Task :data:settings:detektDebug
+> Task :data:downloads:testDebugUnitTest
+> Task :data:downloads:verifyDebug
+> Task :data:settings:detektDebugUnitTest
+
+> Task :data:settings:generateDebugLintReportModel
+Warning: Lint will treat :domain as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :domain. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:common as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:common. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:model as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:model. to enable lint to analyze those sources.
+
+
+> Task :data:settings:lintReportDebug
+> Task :data:settings:lintDebug
+> Task :data:settings:verifyDebug
+> Task :data:library:detektDebugUnitTest
+
+> Task :core:network:generateDebugLintReportModel
+Warning: Lint will treat :core:common as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:common. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:model as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:model. to enable lint to analyze those sources.
+
+
+> Task :core:network:lintReportDebug
+> Task :core:network:lintDebug
+> Task :core:network:verifyDebug
+
+> Task :data:library:generateDebugLintReportModel
+Warning: Lint will treat :domain as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :domain. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:common as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:common. to enable lint to analyze those sources.
+
+Warning: Lint will treat :core:model as an external dependency and not analyze it.
+ * Recommended Action: Apply the 'com.android.lint' plugin to java library project :core:model. to enable lint to analyze those sources.
+
+
+> Task :data:library:lintReportDebug
+> Task :data:library:lintDebug
+> Task :data:library:verifyDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1788871280622.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/build/reports/problems/problems-report.html
+
+FAILURE: Build completed with 5 failures.
+
+1: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':playback:ktlintMainSourceSetCheck'.
+> A failure occurred while executing org.jlleitschuh.gradle.ktlint.worker.ConsoleReportWorkAction
+   > KtLint found code style violations. Please see the following reports:
+     - /home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/build/reports/ktlint/ktlintMainSourceSetCheck/ktlintMainSourceSetCheck.txt
+     - /home/runner/work/Audiobookshelf-Manager-Claude/Audiobookshelf-Manager-Claude/playback/build/reports/ktlint/ktlintMainSourceSetCheck/ktlintMainSourceSetCheck.xml
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':app:compileBenchmarkKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+3: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+4: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':app:compileReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+5: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':playback:detektDebug'.
+> Analysis failed with 5 weighted issues.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14.3/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 14m 44s
+1124 actionable tasks: 924 executed, 200 from cache
+exit_status=1
