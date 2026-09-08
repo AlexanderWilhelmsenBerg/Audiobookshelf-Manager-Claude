@@ -1,0 +1,446 @@
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    p = Path(path)
+    text = p.read_text()
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{path}: expected exactly one match, found {count}\n--- needle ---\n{old}")
+    p.write_text(text.replace(old, new))
+
+
+atomic = "playback/src/main/kotlin/com/example/shelfplayer/playback/AtomicResume.kt"
+replace_once(
+    atomic,
+    "    fun play()\n",
+    "    /** Starts audio only if the freshness request still owns playback at this exact moment. */\n"
+    "    suspend fun playIfCurrent(): Boolean\n",
+)
+replace_once(
+    atomic,
+    "    SeekLost,\n}\n",
+    "    SeekLost,\n\n"
+    "    /** A newer command took ownership while the adopted seek was being confirmed. */\n"
+    "    Superseded,\n}\n",
+)
+replace_once(
+    atomic,
+    "    if (landed == null || (landed - target).absoluteValue > tolerance) return ResumeOutcome.SeekLost\n"
+    "    play()\n"
+    "    return ResumeOutcome.Resumed\n",
+    "    if (landed == null || (landed - target).absoluteValue > tolerance) return ResumeOutcome.SeekLost\n"
+    "    if (!playIfCurrent()) return ResumeOutcome.Superseded\n"
+    "    return ResumeOutcome.Resumed\n",
+)
+replace_once(
+    atomic,
+    " *  5. **play** — last, and only on success, so the first sound is from where the listener should be.\n",
+    " *  5. **revalidate ownership and play** — last, in one operation, so a newer Pause/seek/Stop that\n"
+    " *     arrived during seek confirmation cannot be undone by this older Play.\n",
+)
+
+coordinator = "playback/src/main/kotlin/com/example/shelfplayer/playback/ResumeFreshnessCoordinator.kt"
+replace_once(
+    coordinator,
+    "    suspend fun onSessionOpened(session: PlaybackSession) = withContext(mainDispatcher) {\n",
+    "    suspend fun onSessionOpened(\n"
+    "        session: PlaybackSession,\n"
+    "        invalidatePendingRequest: Boolean = true,\n"
+    "    ) = withContext(mainDispatcher) {\n",
+)
+replace_once(
+    coordinator,
+    "        realtimeCandidate = null\n        requestGeneration += 1\n    }\n",
+    "        realtimeCandidate = null\n"
+    "        if (invalidatePendingRequest) requestGeneration += 1\n"
+    "    }\n",
+)
+
+book_changes = "playback/src/main/kotlin/com/example/shelfplayer/playback/BookChanges.kt"
+replace_once(
+    book_changes,
+    "    suspend fun onBookOpened(session: PlaybackSession) {\n",
+    "    suspend fun onBookOpened(\n"
+    "        session: PlaybackSession,\n"
+    "        invalidateFreshnessRequest: Boolean = true,\n"
+    "    ) {\n",
+)
+replace_once(
+    book_changes,
+    "        resumeFreshness.onSessionOpened(session)\n",
+    "        resumeFreshness.onSessionOpened(\n"
+    "            session = session,\n"
+    "            invalidatePendingRequest = invalidateFreshnessRequest,\n"
+    "        )\n",
+)
+
+service = "playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt"
+replace_once(
+    service,
+    "import com.example.shelfplayer.core.model.library.Bookmark\n",
+    "import com.example.shelfplayer.core.model.library.Bookmark\n"
+    "import com.example.shelfplayer.core.model.library.PlaybackSession\n",
+)
+replace_once(
+    service,
+    "                    resumeAt(plan.bookId, decision.position)\n",
+    "                    resumeAt(plan, decision.position)\n",
+)
+replace_once(
+    service,
+    "                    reopenFreshnessFromServer(plan.bookId)\n",
+    "                    reopenFreshnessFromServer(plan)\n",
+)
+replace_once(
+    service,
+    "    private suspend fun reopenFreshnessFromServer(bookId: LibraryItemId) {\n"
+    "        val queue = openQueue(bookId, startAt = null) ?: return\n"
+    "        withContext(mainDispatcher) {\n"
+    "            val current = player ?: return@withContext\n"
+    "            current.setMediaItem(queue.item, queue.startPositionMs)\n"
+    "            current.prepare()\n"
+    "            current.play()\n"
+    "        }\n"
+    "        logger.info(LogCategory.Playback, \"A failed remote-position adoption was reopened from the server\")\n"
+    "    }\n",
+    "    private suspend fun reopenFreshnessFromServer(plan: ResumeFreshnessPlan) {\n"
+    "        val reopened = guardedFreshnessReopen(\n"
+    "            openCandidate = { openQueueCandidate(plan.bookId, startAt = null) },\n"
+    "            prepareIfCurrent = { candidate ->\n"
+    "                val prepared = resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {\n"
+    "                    // The server response is still only a candidate until this ownership check.\n"
+    "                    // Preserve this request's token while BookChanges installs the replacement\n"
+    "                    // session; only a genuinely newer command should supersede it.\n"
+    "                    bookChanges.onBookOpened(candidate.session, invalidateFreshnessRequest = false)\n"
+    "                    true\n"
+    "                } ?: false\n"
+    "                prepared && resumeFreshness.requestStillCurrent(plan)\n"
+    "            },\n"
+    "            applyIfCurrent = { candidate ->\n"
+    "                resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {\n"
+    "                    val current = player ?: return@withCurrentPlan false\n"
+    "                    current.setMediaItem(candidate.queue.item, candidate.queue.startPositionMs)\n"
+    "                    current.prepare()\n"
+    "                    current.play()\n"
+    "                    true\n"
+    "                } ?: false\n"
+    "            },\n"
+    "        )\n"
+    "        if (reopened) {\n"
+    "            logger.info(LogCategory.Playback, \"A failed remote-position adoption was reopened from the server\")\n"
+    "        }\n"
+    "    }\n",
+)
+replace_once(
+    service,
+    "    private suspend fun resumeAt(bookId: LibraryItemId, target: Duration): ResumeOutcome = withContext(mainDispatcher) {\n"
+    "        val current = player ?: return@withContext ResumeOutcome.NotLoaded\n"
+    "        val outcome = OwnedPlayer(current).seekAndResume(\n"
+    "            bookId = bookId,\n",
+    "    private suspend fun resumeAt(plan: ResumeFreshnessPlan, target: Duration): ResumeOutcome =\n"
+    "        withContext(mainDispatcher) {\n"
+    "            val current = player ?: return@withContext ResumeOutcome.NotLoaded\n"
+    "            val outcome = OwnedPlayer(current, plan).seekAndResume(\n"
+    "                bookId = plan.bookId,\n",
+)
+replace_once(
+    service,
+    "        outcome\n    }\n\n    /**\n     * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.\n",
+    "            outcome\n"
+    "        }\n\n"
+    "    /**\n"
+    "     * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.\n",
+)
+replace_once(
+    service,
+    "    private inner class OwnedPlayer(private val media: ExoPlayer) : ResumeTarget {\n",
+    "    private inner class OwnedPlayer(\n"
+    "        private val media: ExoPlayer,\n"
+    "        private val plan: ResumeFreshnessPlan,\n"
+    "    ) : ResumeTarget {\n",
+)
+replace_once(
+    service,
+    "        override fun play() = media.play()\n",
+    "        override suspend fun playIfCurrent(): Boolean =\n"
+    "            resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {\n"
+    "                media.play()\n"
+    "                true\n"
+    "            } ?: false\n",
+)
+
+old_open_queue = '''    private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? =
+        when (val opened = openPlaybackSession(bookId)) {
+            is AppResult.Failure -> {
+                logger.warn(
+                    LogCategory.Playback,
+                    "Could not open a session for a browse or resume request",
+                    LogField.Public("error", opened.error.code),
+                )
+                // PRODUCT_SPEC PLAY-001 — and *tell the car*, which a review found this branch did not.
+                // Nothing reaches the player on this path, so `onPlayerError` never runs: a driver picking
+                // a book against an expired credential got a row that did nothing and no explanation, which
+                // is the case the labelled sign-in action exists for.
+                reportSessionFailureToControllers(opened.error)
+                null
+            }
+
+            is AppResult.Success -> {
+                val session = opened.value
+                // The chapters have to reach the sleep timer and the outbox exactly as they do when the app
+                // starts a book, or a book started from a car would have no end-of-chapter timer and no
+                // outbox row. Same call, one place.
+                bookChanges.onBookOpened(session)
+                val queue = MediaItems.queueFor(
+                    session = session,
+                    // Only from the service, which is what a car talks to. The phone builds the same item
+                    // through `PlaybackController` and gets no description line.
+                    historyLink = MediaItems.HistoryLink(
+                        label = getString(R.string.car_player_history_link),
+                        historyMediaId = AutoLibrary.TAB_HISTORY,
+                    ),
+                )
+                if (startAt == null) {
+                    queue
+                } else {
+                    queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
+                }
+            }
+        }
+'''
+new_open_queue = '''    private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? {
+        val candidate = openQueueCandidate(bookId, startAt) ?: return null
+        bookChanges.onBookOpened(candidate.session)
+        return candidate.queue
+    }
+
+    /**
+     * Opens and resolves a server session without mutating BookWave's loaded-book state.
+     *
+     * The separation matters for resume-freshness fallback: a slow `/play` answer can arrive after a newer
+     * Pause, seek, Stop, book or profile command. Such an answer must be discardable before BookChanges or
+     * the player are touched.
+     */
+    private suspend fun openQueueCandidate(bookId: LibraryItemId, startAt: Duration?): QueueCandidate? =
+        when (val opened = openPlaybackSession(bookId)) {
+            is AppResult.Failure -> {
+                logger.warn(
+                    LogCategory.Playback,
+                    "Could not open a session for a browse or resume request",
+                    LogField.Public("error", opened.error.code),
+                )
+                reportSessionFailureToControllers(opened.error)
+                null
+            }
+
+            is AppResult.Success -> {
+                val session = opened.value
+                val queue = MediaItems.queueFor(
+                    session = session,
+                    historyLink = MediaItems.HistoryLink(
+                        label = getString(R.string.car_player_history_link),
+                        historyMediaId = AutoLibrary.TAB_HISTORY,
+                    ),
+                )
+                QueueCandidate(
+                    session = session,
+                    queue = if (startAt == null) {
+                        queue
+                    } else {
+                        queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
+                    },
+                )
+            }
+        }
+
+    private data class QueueCandidate(val session: PlaybackSession, val queue: MediaItems.Queue)
+'''
+replace_once(service, old_open_queue, new_open_queue)
+
+atomic_test = "playback/src/test/kotlin/com/example/shelfplayer/playback/AtomicResumeTest.kt"
+replace_once(
+    atomic_test,
+    "import kotlinx.coroutines.test.runTest\n",
+    "import kotlinx.coroutines.CompletableDeferred\n"
+    "import kotlinx.coroutines.async\n"
+    "import kotlinx.coroutines.test.runTest\n",
+)
+insert_before = "    /** A player that never reports back at all is the same refusal: unverified is not resumed. */\n"
+new_test = '''    /** A newer Pause/seek/Stop that arrives while the seek is confirming wins. */
+    @Test
+    fun `a newer command during seek confirmation prevents stale play`() = runTest {
+        val seekStarted = CompletableDeferred<Unit>()
+        val releaseSeek = CompletableDeferred<Unit>()
+        val player = FakeTarget(
+            loaded = BOOK,
+            landsAt = MOVED_TO,
+            beforeLanding = {
+                seekStarted.complete(Unit)
+                releaseSeek.await()
+            },
+        )
+
+        val outcome = async { player.resume(MOVED_TO) }
+        seekStarted.await()
+        player.mayPlay = false
+        releaseSeek.complete(Unit)
+
+        assertEquals(ResumeOutcome.Superseded, outcome.await())
+        assertEquals(listOf("seekTo(37142000)", "awaited"), player.commands)
+    }
+
+'''
+replace_once(atomic_test, insert_before, new_test + insert_before)
+replace_once(
+    atomic_test,
+    "        private val needsPreparing: Boolean = false,\n    ) : ResumeTarget {\n        val commands = mutableListOf<String>()\n",
+    "        private val needsPreparing: Boolean = false,\n"
+    "        private val beforeLanding: suspend () -> Unit = {},\n"
+    "    ) : ResumeTarget {\n"
+    "        val commands = mutableListOf<String>()\n"
+    "        var mayPlay: Boolean = true\n",
+)
+replace_once(
+    atomic_test,
+    "        override suspend fun seekAndAwait(position: Duration, timeout: Duration): Duration? {\n"
+    "            commands += \"seekTo(${position.inWholeMilliseconds})\"\n"
+    "            commands += \"awaited\"\n"
+    "            return landsAt\n"
+    "        }\n\n"
+    "        override fun play() {\n"
+    "            commands += \"play\"\n"
+    "        }\n",
+    "        override suspend fun seekAndAwait(position: Duration, timeout: Duration): Duration? {\n"
+    "            commands += \"seekTo(${position.inWholeMilliseconds})\"\n"
+    "            beforeLanding()\n"
+    "            commands += \"awaited\"\n"
+    "            return landsAt\n"
+    "        }\n\n"
+    "        override suspend fun playIfCurrent(): Boolean {\n"
+    "            if (!mayPlay) return false\n"
+    "            commands += \"play\"\n"
+    "            return true\n"
+    "        }\n",
+)
+
+Path("playback/src/main/kotlin/com/example/shelfplayer/playback/FreshnessReopen.kt").write_text(
+    '''package com.example.shelfplayer.playback
+
+/**
+ * Two-phase guard for the rare fallback after a remote-position seek could not be confirmed.
+ *
+ * [openCandidate] is deliberately side-effect free with respect to BookWave's loaded-book state. The first
+ * ownership check happens in [prepareIfCurrent], before BookChanges is committed. [applyIfCurrent] performs
+ * the final generation/profile/book check in the same player-thread turn as installing and playing the
+ * replacement item. Returning `false` means a newer command won and the old Play must do nothing further.
+ */
+internal suspend fun <T> guardedFreshnessReopen(
+    openCandidate: suspend () -> T?,
+    prepareIfCurrent: suspend (T) -> Boolean,
+    applyIfCurrent: suspend (T) -> Boolean,
+): Boolean {
+    val candidate = openCandidate() ?: return false
+    if (!prepareIfCurrent(candidate)) return false
+    return applyIfCurrent(candidate)
+}
+'''
+)
+
+Path("playback/src/test/kotlin/com/example/shelfplayer/playback/FreshnessReopenTest.kt").write_text(
+    '''package com.example.shelfplayer.playback
+
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runTest
+import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class FreshnessReopenTest {
+
+    @Test
+    fun `a newer command while the server is opening prevents any commit`() = runTest {
+        val serverStarted = CompletableDeferred<Unit>()
+        val serverMayReturn = CompletableDeferred<Unit>()
+        var current = true
+        var prepareCalls = 0
+        var applyCalls = 0
+
+        val result = async {
+            guardedFreshnessReopen(
+                openCandidate = {
+                    serverStarted.complete(Unit)
+                    serverMayReturn.await()
+                    "candidate"
+                },
+                prepareIfCurrent = {
+                    prepareCalls += 1
+                    current
+                },
+                applyIfCurrent = {
+                    applyCalls += 1
+                    current
+                },
+            )
+        }
+
+        serverStarted.await()
+        current = false
+        serverMayReturn.complete(Unit)
+
+        assertFalse(result.await())
+        assertEquals(1, prepareCalls)
+        assertEquals(0, applyCalls)
+    }
+
+    @Test
+    fun `a newer command during book preparation prevents player application`() = runTest {
+        val prepareStarted = CompletableDeferred<Unit>()
+        val prepareMayFinish = CompletableDeferred<Unit>()
+        var current = true
+        var applyCalls = 0
+
+        val result = async {
+            guardedFreshnessReopen(
+                openCandidate = { "candidate" },
+                prepareIfCurrent = {
+                    prepareStarted.complete(Unit)
+                    prepareMayFinish.await()
+                    current
+                },
+                applyIfCurrent = {
+                    applyCalls += 1
+                    current
+                },
+            )
+        }
+
+        prepareStarted.await()
+        current = false
+        prepareMayFinish.complete(Unit)
+
+        assertFalse(result.await())
+        assertEquals(0, applyCalls)
+    }
+
+    @Test
+    fun `a current fallback reaches the player exactly once`() = runTest {
+        var applyCalls = 0
+
+        val result = guardedFreshnessReopen(
+            openCandidate = { "candidate" },
+            prepareIfCurrent = { true },
+            applyIfCurrent = {
+                applyCalls += 1
+                true
+            },
+        )
+
+        assertTrue(result)
+        assertEquals(1, applyCalls)
+    }
+}
+'''
+)
