@@ -1,0 +1,61 @@
+name: PR93 repair skip once
+
+on:
+  push:
+    branches:
+      - refactor/unified-resume-freshness
+    paths:
+      - .github/workflows/pr93-fix-skip-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refactor/unified-resume-freshness
+          fetch-depth: 0
+      - name: Restore raw-service skip invalidation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt')
+          text = p.read_text()
+          old = '''     * Media3 clamps the top end at the window's duration; the bottom is clamped here, because a negative
+     * seek would be silently accepted as zero by some controllers and rejected by others.
+     */
+    /**
+     * PRODUCT_SPEC PLAY-003 — one play or pause, in the playing book's history.
+'''
+          new = '''     * Media3 clamps the top end at the window's duration; the bottom is clamped here, because a negative
+     * seek would be silently accepted as zero by some controllers and rejected by others.
+     */
+    private fun skipBy(delta: Duration) {
+        val current = player ?: return
+        if (current.mediaItemCount == 0) return
+        // Issue #91 — notification skip is a custom session command and therefore reaches the raw player
+        // without passing through ResumeFreshnessPlayer.handleSeek. Invalidate here before moving it so an
+        // older REST/realtime decision cannot reopen over the listener's explicit skip.
+        resumeFreshness.invalidate(ResumeInvalidation.Seek)
+        current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))
+    }
+
+    /**
+     * PRODUCT_SPEC PLAY-003 — one play or pause, in the playing book's history.
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one skip insertion point, found {text.count(old)}')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          git rm .github/workflows/pr93-fix-skip-once.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt
+          git commit -m 'Restore notification skip freshness invalidation'
+          git push origin HEAD:refactor/unified-resume-freshness
