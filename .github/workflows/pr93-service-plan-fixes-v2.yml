@@ -1,0 +1,80 @@
+name: PR93 service plan fixes v2
+
+on:
+  push:
+    branches:
+      - diagnostic/pr93-compile
+    paths:
+      - .github/workflows/pr93-service-plan-fixes-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refactor/unified-resume-freshness
+          fetch-depth: 0
+      - name: Apply audited service wiring fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt')
+          text = path.read_text()
+
+          replacement = '''    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan) {
+              when (val decision = plan.decision) {
+                  is ResumeFreshnessDecision.Current -> {
+                      resumeFreshness.withCurrentPlan(plan) {
+                          applicationScope.launch { recordFreshnessHistory(plan) }
+                          resumeLoadedCurrent()
+                      } ?: return
+                  }
+                  is ResumeFreshnessDecision.Adopt -> {
+                      val outcome = resumeFreshness.withCurrentPlan(plan) {
+                          applicationScope.launch { recordFreshnessHistory(plan) }
+                          resumeAt(plan.bookId, decision.position)
+                      } ?: return
+                      if (outcome != ResumeOutcome.Resumed && resumeFreshness.requestStillCurrent(plan)) {
+                          reopenFreshnessFromServer(plan.bookId)
+                      }
+                  }
+              }
+          }
+
+          '''
+          pattern = r'    private suspend fun applyFreshnessPlan\(plan: ResumeFreshnessPlan\) \{.*?\n    \}\n\n(?=    /\*\* The old direct Play behaviour)'
+          text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('applyFreshnessPlan block not found')
+
+          text, count = re.subn(
+              r'^        autoRewind\.attach\(exoPlayer\)$',
+              '        autoRewind.attach(exoPlayer) {\n            resumeFreshness.invalidate(ResumeInvalidation.AutoRewind)\n        }',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          if count != 1:
+              raise SystemExit('autoRewind attach not found')
+
+          old = '        resumeFreshness.invalidate(ResumeInvalidation.Seek)\n        current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))'
+          new = '        resumeFreshness.invalidate(ResumeInvalidation.NotificationSkip)\n        current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))'
+          if old not in text:
+              raise SystemExit('notification skip invalidation not found')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt
+          git commit -m "Complete PR93 service invalidation wiring"
+          git push origin HEAD:refactor/unified-resume-freshness
