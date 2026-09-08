@@ -1,61 +1,281 @@
 from pathlib import Path
 
 
-def remove_between(path: str, start: str, end: str) -> None:
-    p = Path(path)
-    text = p.read_text()
-    start_at = text.find(start)
-    if start_at < 0:
-        raise SystemExit(f"{path}: start marker not found: {start!r}")
-    end_at = text.find(end, start_at)
-    if end_at < 0:
-        raise SystemExit(f"{path}: end marker not found: {end!r}")
-    p.write_text(text[:start_at] + text[end_at:])
-
-
 def replace_once(path: str, old: str, new: str) -> None:
-    p = Path(path)
-    text = p.read_text()
+    file = Path(path)
+    text = file.read_text()
     count = text.count(old)
     if count != 1:
-        raise SystemExit(f"{path}: expected one match, found {count}: {old!r}")
-    p.write_text(text.replace(old, new))
+        raise SystemExit(f"{path}: expected one match, found {count}: {old[:100]!r}")
+    file.write_text(text.replace(old, new))
 
 
-# #93 makes the ordinary Media3 Play boundary the only freshness owner. Retire the old
-# first-party custom adoption API rather than preserving a second, now-unowned resume path.
-controller = "playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackController.kt"
-remove_between(
-    controller,
-    "    /**\n     * PRODUCT_SPEC SYNC-002 — resumes, adopting [position] when another device has moved the book.\n",
-    "    /**\n     * PRODUCT_SPEC PLAY-001 — retry after a failure the service gave up on.\n",
-)
-for unused_import in (
-    "import androidx.media3.session.SessionError\n",
-    "import androidx.media3.session.SessionResult\n",
-    "import com.example.shelfplayer.core.model.resultOf\n",
-):
-    replace_once(controller, unused_import, "")
+def replace_section(text: str, start: str, end: str, replacement: str) -> str:
+    start_at = text.index(start)
+    end_at = text.index(end, start_at)
+    return text[:start_at] + replacement + text[end_at:]
 
-service = "playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt"
-remove_between(
-    service,
-    "        /**\n         * PRODUCT_SPEC SYNC-002 — runs the atomic resume and answers with whether it worked.\n",
-    "        override fun onCustomCommand(\n",
-)
+
+vm = "app/src/main/kotlin/com/example/shelfplayer/feature/player/PlayerViewModel.kt"
+replace_once(vm, "    private val history: PlaybackHistoryRepository,\n", "    private val historyRepository: PlaybackHistoryRepository,\n")
+replace_once(vm, "else history.observe(bookId)", "else historyRepository.observe(bookId)")
 replace_once(
-    service,
-    "                        // PRODUCT_SPEC SYNC-002 — the app's own atomic resume. Granted on the same\n"
-    "                        // condition as the four above and refused to everything else: a seek followed by a\n"
-    "                        // play, driven from outside the app, is exactly the pair `ControllerTrust`\n"
-    "                        // withholds. See `ResumeCommand`.\n"
-    "                        .add(ResumeCommand.command())\n",
-    "",
+    vm,
+    "viewModelScope.launch { history.refreshServerSessions(bookId) }",
+    "viewModelScope.launch { historyRepository.refreshServerSessions(bookId) }",
 )
-replace_once(
-    service,
-    "            // PRODUCT_SPEC SYNC-002 — the one command with an answer, so it is handled before the\n"
-    "            // fire-and-forget four rather than inside their `when`.\n"
-    "            if (customCommand.customAction == ResumeCommand.ACTION) return resumeCommand(args)\n",
-    "",
+
+coordinator = Path("playback/src/main/kotlin/com/example/shelfplayer/playback/ResumeFreshnessCoordinator.kt")
+text = coordinator.read_text()
+text = replace_section(
+    text,
+    "    suspend fun preparePlay(): ResumePlayPreparation {",
+    "    /** Full validation before a plan is allowed to move or start audio. */",
+    '''    suspend fun preparePlay(): ResumePlayPreparation {
+        val context = withContext(mainDispatcher) { beginRequest() }
+        return if (context == null) {
+            ResumePlayPreparation.Bypass
+        } else {
+            preparePlay(context)
+        }
+    }
+
+    private suspend fun preparePlay(context: RequestContext): ResumePlayPreparation {
+        val acknowledged = context.baseline
+        if (acknowledged == null) {
+            return ResumePlayPreparation.Ready(
+                context.plan(ResumeFreshnessDecision.Current(FreshnessEvidenceSource.LocalUnverified)),
+            )
+        }
+
+        val realtimeDecision = context.remoteSessionId?.let { sessionId ->
+            ResumeFreshnessPolicy.realtime(
+                loadedProfile = context.profileId,
+                loadedBook = context.bookId,
+                loadedSessionId = sessionId,
+                baseline = acknowledged,
+                candidate = context.candidate,
+            )
+        }
+        if (realtimeDecision != null) return finish(context, realtimeDecision)
+
+        // PlaybackRepository resolves the active profile internally. Refuse to ask it under a different
+        // profile than the item owns; otherwise a late Play during a profile switch can compare two accounts.
+        if (profiles.activeProfileId() != context.profileId) return ResumePlayPreparation.Superseded
+        val checked = withTimeoutOrNull(SERVER_CHECK_TIMEOUT) {
+            playback.checkServerPosition(context.bookId, acknowledged)
+        } ?: ExternalSessionCheck.Unavailable
+        return finish(context, ResumeFreshnessPolicy.rest(acknowledged, checked))
+    }
+
+''',
 )
+text = replace_section(
+    text,
+    "    private fun beginRequest(): RequestContext? {",
+    "    private fun rememberEvidence(evidence: RealtimeProgressEvidence) {",
+    '''    private fun beginRequest(): RequestContext? {
+        val current = player?.takeIf { it.mediaItemCount > 0 } ?: return null
+        val item = current.currentMediaItem ?: return null
+        val profileId = MediaItems.ownerOf(item) ?: return null
+        val bookId = MediaItems.bookIdOf(item)
+        requestGeneration += 1
+        val session = openedSession?.takeIf { it.profileId == profileId && it.bookId == bookId }
+        return RequestContext(
+            requestGeneration = requestGeneration,
+            profileId = profileId,
+            bookId = bookId,
+            remoteSessionId = session?.remoteSessionId,
+            localPosition = current.currentPosition.coerceAtLeast(0).milliseconds,
+            baseline = baseline.acknowledged(bookId),
+            // Without our own remote session id, a socket candidate cannot prove it is not our echo.
+            candidate = realtimeCandidate.takeIf { session?.remoteSessionId != null },
+        )
+    }
+
+''',
+)
+text = replace_section(
+    text,
+    "    private fun rememberEvidence(evidence: RealtimeProgressEvidence) {",
+    "    private fun isCurrentOnMain(plan: ResumeFreshnessPlan, requireBaseline: Boolean): Boolean {",
+    '''    private fun rememberEvidence(evidence: RealtimeProgressEvidence) {
+        val context = currentEvidenceContext() ?: return
+        if (evidence.profileId != context.profileId || evidence.progress.bookId != context.bookId) return
+        val acknowledged = baseline.acknowledged(context.bookId) ?: return
+        realtimeCandidate = RealtimeResumeCandidate(evidence, acknowledged.generation)
+        logger.debug(
+            LogCategory.Playback,
+            "Realtime progress became resume evidence",
+            LogField.Public("generation", acknowledged.generation.toString()),
+            LogField.Public(
+                "origin",
+                if (context.remoteSessionId != null && evidence.sessionId == context.remoteSessionId) {
+                    "ownSession"
+                } else {
+                    "otherSession"
+                },
+            ),
+        )
+    }
+
+    private fun currentEvidenceContext(): EvidenceContext? {
+        val current = player ?: return null
+        val item = current.currentMediaItem
+        val session = openedSession
+        if (current.mediaItemCount == 0 || item == null || session == null) return null
+        val profileId = MediaItems.ownerOf(item) ?: return null
+        val bookId = MediaItems.bookIdOf(item)
+        return if (session.profileId == profileId && session.bookId == bookId) {
+            EvidenceContext(profileId, bookId, session.remoteSessionId)
+        } else {
+            null
+        }
+    }
+
+''',
+)
+text = replace_section(
+    text,
+    "    private fun isCurrentOnMain(plan: ResumeFreshnessPlan, requireBaseline: Boolean): Boolean {",
+    "    private fun movementOf(acknowledged: AcknowledgedPause?, decision: ResumeFreshnessDecision): String =",
+    '''    private fun isCurrentOnMain(plan: ResumeFreshnessPlan, requireBaseline: Boolean): Boolean {
+        val current = player
+        val itemMatches = current?.currentMediaItem?.let { item ->
+            current.mediaItemCount > 0 &&
+                MediaItems.bookIdOf(item) == plan.bookId &&
+                MediaItems.ownerOf(item) == plan.profileId
+        } == true
+        val baselineMatches = !requireBaseline ||
+            plan.baselineGeneration == null ||
+            baseline.acknowledged(plan.bookId)?.generation == plan.baselineGeneration
+        return requestGeneration == plan.requestGeneration && itemMatches && baselineMatches
+    }
+
+''',
+)
+opened_session = "    private data class OpenedSession(val profileId: ProfileId, val bookId: LibraryItemId, val remoteSessionId: String?)\n"
+if text.count(opened_session) != 1:
+    raise SystemExit("OpenedSession marker did not match exactly once")
+text = text.replace(
+    opened_session,
+    '''    private data class EvidenceContext(
+        val profileId: ProfileId,
+        val bookId: LibraryItemId,
+        val remoteSessionId: String?,
+    )
+
+''' + opened_session,
+    1,
+)
+coordinator.write_text(text)
+
+service = Path("playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt")
+text = service.read_text()
+text = text.replace("import kotlinx.coroutines.CompletableDeferred\n", "", 1)
+text = text.replace("import kotlinx.coroutines.withTimeoutOrNull\n", "", 1)
+replace_from = "            val outcome = OwnedPlayer(current, plan).seekAndResume(\n"
+replace_to = "            val outcome = OwnedResumePlayer(current, plan, resumeFreshness, logger).seekAndResume(\n"
+if text.count(replace_from) != 1:
+    raise SystemExit("OwnedPlayer call marker did not match exactly once")
+text = text.replace(replace_from, replace_to, 1)
+owned_start = text.index("    /**\n     * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.")
+player_events = text.index("    /**\n     * The moments a five-second timer would round off.", owned_start)
+text = text[:owned_start] + text[player_events:]
+annotation = "@OptIn(UnstableApi::class)\n@AndroidEntryPoint\nclass PlaybackService : MediaLibraryService() {"
+replacement = '''/*
+ * `LargeClass` is intentionally scoped to this Android service. The resume-player adapter was extracted
+ * when #93 crossed the limit; what remains is the single framework callback/lifecycle owner for the one
+ * MediaLibrarySession and ExoPlayer. Splitting that ownership merely to satisfy a line count would create
+ * multiple state owners for the session. Feature policy continues to live in collaborators.
+ */
+@Suppress("LargeClass")
+@OptIn(UnstableApi::class)
+@AndroidEntryPoint
+class PlaybackService : MediaLibraryService() {'''
+if text.count(annotation) != 1:
+    raise SystemExit("PlaybackService annotation marker did not match exactly once")
+text = text.replace(annotation, replacement, 1)
+service.write_text(text)
+
+Path("playback/src/main/kotlin/com/example/shelfplayer/playback/OwnedResumePlayer.kt").write_text('''package com.example.shelfplayer.playback
+
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.example.shelfplayer.core.common.log.LogCategory
+import com.example.shelfplayer.core.common.log.LogField
+import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.log.debug
+import com.example.shelfplayer.core.model.LibraryItemId
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+
+/**
+ * [ResumeTarget] over the service-owned [ExoPlayer].
+ *
+ * This adapter keeps Media3-specific seek confirmation out of [PlaybackService] while preserving the
+ * important ownership rule: the freshness generation is revalidated in the same player-thread turn as
+ * `play()`, so a newer Pause, seek, Stop or book/profile change wins even after the seek has landed.
+ */
+internal class OwnedResumePlayer(
+    private val media: ExoPlayer,
+    private val plan: ResumeFreshnessPlan,
+    private val freshness: ResumeFreshnessCoordinator,
+    private val logger: Logger,
+) : ResumeTarget {
+
+    override fun loadedBookId(): LibraryItemId? =
+        media.currentMediaItem?.takeIf { media.mediaItemCount > 0 }?.let(MediaItems::bookIdOf)
+
+    override fun needsPreparing(): Boolean = media.playbackState == Player.STATE_IDLE || media.playerError != null
+
+    override fun prepare() = media.prepare()
+
+    /**
+     * Seeks and waits for the owned player itself to report where it landed.
+     *
+     * The listener is attached before `seekTo`: ExoPlayer may dispatch the discontinuity synchronously on
+     * this thread. If no discontinuity arrives, the player's own live position is the fallback observation.
+     */
+    override suspend fun seekAndAwait(position: Duration, timeout: Duration): Duration? {
+        val landed = CompletableDeferred<Duration>()
+        val listener = object : Player.Listener {
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                if (reason != Player.DISCONTINUITY_REASON_SEEK &&
+                    reason != Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
+                ) {
+                    return
+                }
+                landed.complete(newPosition.positionMs.coerceAtLeast(0).milliseconds)
+            }
+        }
+        media.addListener(listener)
+        return try {
+            media.seekTo(position.inWholeMilliseconds.coerceAtLeast(0))
+            val reported = withTimeoutOrNull(timeout) { landed.await() }
+            (reported ?: media.bookPosition()).also { where ->
+                logger.debug(
+                    LogCategory.Playback,
+                    "The player reported where a seek landed",
+                    LogField.Millis("target", position.inWholeMilliseconds),
+                    LogField.Millis("landed", where.inWholeMilliseconds),
+                    LogField.Public("source", if (reported == null) "position" else "discontinuity"),
+                )
+            }
+        } finally {
+            media.removeListener(listener)
+        }
+    }
+
+    override suspend fun playIfCurrent(): Boolean = freshness.withCurrentPlan(plan, requireBaseline = false) {
+        media.play()
+        true
+    } ?: false
+}
+''')
