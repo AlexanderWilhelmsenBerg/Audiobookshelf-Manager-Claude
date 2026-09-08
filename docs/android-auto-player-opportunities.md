@@ -45,17 +45,31 @@ used rather than from the class's actual API. Media3 1.11 declares **six**:
 SLOT_CENTRAL   SLOT_BACK   SLOT_FORWARD   SLOT_BACK_SECONDARY   SLOT_FORWARD_SECONDARY   SLOT_OVERFLOW
 ```
 
-`SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY` are the two further positions in the primary bar — the
-ones that take it from three controls to the documented five.
+`SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY` exist in the API, and **a car never sees them.** The
+legacy conversion Android Auto is served by — `CommandButton.getCustomLayoutFromMediaButtonPreferences` —
+branches on `SLOT_BACK`, `SLOT_FORWARD` and `SLOT_OVERFLOW` and on nothing else, so a button naming a
+secondary slot falls through to the overflow branch and one naming it *without* an overflow fallback is
+dropped outright. `MediaButtonSlotConversionTest` executes that conversion rather than restating it.
 
-**Implemented in #78.** Car requests `SLOT_BACK_SECONDARY` and Headset requests
-`SLOT_FORWARD_SECONDARY`, each with `SLOT_OVERFLOW` second in its slot chain. The skips keep their slots,
-so PLAY-007 is untouched and nothing is traded away.
+**Implemented in #78, and not as this section first described it.** The first attempt requested the
+secondary slots; a device run reported the compact player unchanged, and the paragraph above is why it could
+not have been otherwise. The owner then took the trade explicitly — *"I need them more than seek forward and
+back"* — so the shipped layout is:
 
-**What still needs a car.** Whether a given head unit draws the secondary slots in its *minimised* bar is a
-host decision, exactly like R-107's indicator bar. The implementation no longer relies on overflow-only
-placement, but the claim "they appear in the small window" is not proven until a head unit does it. Worth
-photographing both bars in the same run as R-107.
+- Car requests `SLOT_BACK`, Headset requests `SLOT_FORWARD`, each with `SLOT_OVERFLOW` second.
+- The skips request the **same two slots**, also with `SLOT_OVERFLOW` second, and are published *after* the
+  output actions. Pass 1 of the conversion gives a contested slot to the first button naming it, so the
+  outputs win and the skips are relocated to overflow rather than dropped.
+- With an output action absent, the corresponding skip reclaims its slot, so the bar is never short.
+
+**This is a real trade, not a free win.** PLAY-007's skips leave the compact bar on the car *and* on the
+phone, which reads the same single layout — `docs/risks.md` R-109 records what it costs and that the owner
+accepted it. One invariant is asserted rather than assumed: some button always holds `SLOT_BACK`, because if
+it is ever vacated Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS`, nothing here intercepts it, and a head
+unit's *previous* restarts the book.
+
+**What still needs a car.** Only whether the head unit draws what it is now unambiguously sent. Photograph
+the minimised bar in the same run as R-107.
 
 ## 2. Reserve, or deliberately release, the seek slots
 
@@ -63,11 +77,20 @@ photographing both bars in the same run as R-107.
 `MediaSession.setSessionExtras`, tell the host whether to keep the prev/next positions blank when the app
 does not support them or to fill them with custom actions.
 
-**Implemented in #78.** BookWave now calls `setSessionExtras` and explicitly sets both reservation keys to
-`false`. That is intentionally the same answer as the default: a book is one timeline window (ADR-0016),
-PLAY-007's skip buttons already own the meaningful backward/forward controls, and reserving empty seek
-positions would work against the output-action placement in item 1. The value of the change is making the
-layout decision explicit rather than inherited.
+**Not implemented, and deliberately so — an earlier version of this section claimed otherwise.** BookWave
+briefly did call `setSessionExtras` with both reservation keys set to `false`; that call was removed as
+measured dead code and there is no `setSessionExtras` anywhere in the repository now.
+
+The reason is that the app does not own these keys. `MediaSessionLegacyStub` recomputes both from the custom
+layout on every button update *and* on every `setSessionExtras`, as `!containsButtonForSlot(layout, SLOT_BACK
+/ SLOT_FORWARD)`, overwriting whatever the app wrote. Under the layout in item 1 both slots are always
+occupied, so Media3 computes `false` for both — exactly the intended answer, arrived at without the app
+asserting it.
+
+The decision itself still stands and is still worth stating: a book is one timeline window (ADR-0016), so
+reserving empty seek positions would blank the very positions the output actions now occupy. It simply is
+not this app's decision to publish. Do not treat "the reservations are explicitly false" as an invariant the
+app maintains — it is inherited, and a layout change that vacates a primary slot flips it.
 
 ## 3. Say something when the server will not answer
 
@@ -107,9 +130,18 @@ is already there — and only then decide whether to add more.
 
 ## 5. Chapters as the media session queue — the one real restructuring
 
-The primary bar's **far-left position is queue access**, and BookWave leaves it empty. Filling it gives the
-driver a native chapter list *on the player screen*, plus a "Now playing" marker via
-`setActiveQueueItemId`, instead of a `Chapters` node four taps into the browse tree.
+The primary bar's **far-left position is queue access**, and BookWave does *not* leave it empty — an earlier
+version of this section said it did. `MediaSessionLegacyStub` publishes a queue whenever the timeline is
+non-empty and `COMMAND_GET_TIMELINE` is available, both of which hold, so a car is already offered a queue
+of one row: the current book. Filling it with chapters would give the driver a native chapter list *on the
+player screen*, plus a "Now playing" marker via `setActiveQueueItemId`, instead of a `Chapters` node inside
+Library.
+
+**And the queue cannot be repurposed for anything else.** The owner asked for History there. A queue row's
+only meaning to a car is *play this now* — `onSkipToQueueItem` resolves to `seekToDefaultPosition(index)` —
+so a History row tapped in the queue would interrupt the book (priority 1) and make every position writer
+name the wrong one (priority 2). `docs/risks.md` R-110 records that, and the description link shipped in its
+place.
 
 **This is a genuine trade against ADR-0016, and should not be done casually.** Media3 derives the legacy
 queue from the player's timeline, so a chapter queue means one media item per chapter rather than one per
@@ -131,11 +163,16 @@ button. The prize is one tap; the risk is the seek model of the whole app.
 
 Items 1, 2 and 3 were applied on 2026-09-07 at the owner's request.
 
-- **1 — output actions in the primary bar.** They declare `SLOT_BACK_SECONDARY` / `SLOT_FORWARD_SECONDARY`
-  before `SLOT_OVERFLOW`. `setSlots` takes a chain, so a host that will not place them in the bar still
-  has overflow available as the fallback requested by BookWave.
-- **2 — the seek-slot reservation.** Now stated as `false` rather than inherited. `setSessionExtras` had
-  never been called before this slice.
+- **1 — output actions in the primary bar, on the second attempt.** The first declared
+  `SLOT_BACK_SECONDARY` / `SLOT_FORWARD_SECONDARY`, and a device run showed the compact player unchanged:
+  those slots are discarded by the legacy conversion before any head unit sees them. Car now takes
+  `SLOT_BACK` and Headset `SLOT_FORWARD`, published ahead of the skips, which request the same slots with
+  overflow as their fallback and are relocated there rather than dropped. The owner accepted losing the
+  skips from the compact bar — on the phone as well as the car — to get this; R-109.
+- **2 — the seek-slot reservation: reverted, not shipped.** The `setSessionExtras` call this document once
+  described was removed as measured dead code. Media3 recomputes both keys from the custom layout on every
+  update and overwrites the app's value, and under item 1's layout it computes exactly the `false` that was
+  wanted. The value is inherited, not asserted — do not rely on it as an app-maintained invariant.
 - **3 — failure reporting.** `MediaSession.sendError` with `PlaybackFailureReport` deciding between an
   expired credential and an unreachable server, and **this document was wrong about the ceiling**: it said
   the documentation offered no way to attach a resolution action. Media3 1.11 has
