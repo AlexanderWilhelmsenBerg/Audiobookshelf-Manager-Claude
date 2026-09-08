@@ -190,8 +190,12 @@ Two answers to the owner's follow-up questions, both checked against the API rat
   (ADR-0016).
 - **History cannot go in the queue slot.** Not a trade-off — `MediaSession` has no queue API at all in
   Media3, and the legacy queue is derived from the player's timeline, so nothing that is not a timeline
-  window can be put there. The reachable lever is `KEY_SUBTITLE_LINK_MEDIA_ID` pointing a metadata line at
-  a browse node, which belongs to item 4's open metadata-extras question rather than item 5's queue model.
+  window can be put there — and a queue row's only meaning to a car is *play this now*, since
+  `onSkipToQueueItem` resolves to `seekToDefaultPosition(index)`, so a History row tapped there would
+  interrupt the book. **What shipped is `KEY_DESCRIPTION_LINK_MEDIA_ID`**, set on the playing item and
+  pointing at `tab/history`; `MediaItems.queueFor` writes that key and no other. `KEY_SUBTITLE_LINK_MEDIA_ID`
+  is the untaken alternative — the subtitle already carries `Author • Series #N`. Inspect the
+  **description** field when validating this on a head unit (#127).
 
 ## Still open
 
@@ -203,7 +207,7 @@ queue button, and reopening ADR-0016 deliberately if they do.
 ## What this survey does not claim
 
 The API readings above do not prove a particular head unit's rendering. Items 1, 2 and 3 are now implemented,
-but the new secondary-slot placement, error presentation and other host-facing details have not been accepted
+but the primary-slot takeover, error presentation and other host-facing details have not been accepted
 on a head unit yet. This project's own record is that the car keeps finding what the documents do not say —
 R-10 covers exactly that gap, and ADR-0029 §8's original "nothing else on the player can show it" conclusion
 was itself drawn from a partial reading of an API. Treat capacity numbers and slot rendering as the host's to
