@@ -33,6 +33,13 @@ comments:
 
 complexity:
   active: true
+  LargeClass:
+    active: true
+    # PlaybackService is deliberately the single Media3/MediaLibraryService ownership boundary. Splitting
+    # it merely to satisfy a line-count rule would scatter one-session invariants across service-like pieces.
+    # Keep the exception exact to this class; collaborators are still checked normally.
+    excludes:
+      - '**/playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt'
   LongParameterList:
     active: true
     functionThreshold: 8
@@ -212,6 +219,11 @@ style:
   ReturnCount:
     active: true
     max: 4
+    # ResumeFreshnessCoordinator's early returns are ownership guards: each rejects stale player/profile/book
+    # evidence before it can move audio. Nesting those guards only to reduce a return count obscures the race
+    # boundary. Keep the exception exact to the coordinator rather than weakening ReturnCount project-wide.
+    excludes:
+      - '**/playback/src/main/kotlin/com/example/shelfplayer/playback/ResumeFreshnessCoordinator.kt'
   ThrowsCount:
     active: true
     max: 2
