@@ -106,14 +106,23 @@ internal object AudioOutputRoles {
      * ### What is done instead
      *
      * The route is read rather than the presser. When a book starts and the platform is already routing to
-     * a headset, the only thing this does is **retract BookWave's own disagreement** with that route. It can
-     * never move audio somewhere the platform was not already sending it, which is what makes it safe.
+     * a headset, this retracts BookWave's own disagreement with that route.
+     *
+     * Two honest limits on that, because the first draft of this comment overstated both. The route read is
+     * the **system-policy** route — `getAudioDevicesForAttributes` answers for audio *attributes*, not for
+     * this app's track — so with two headsets connected and an app preference the platform honoured, pinning
+     * the policy route can move audio rather than merely agreeing with it. And the value read is the last
+     * published snapshot, refreshed on device changes and on a car binding rather than at this instant, so
+     * it can be a moment stale. Both are narrow, and both are the reason this only ever fires when an
+     * explicit selection already disagrees; with Automatic — the common case — it does nothing at all.
      *
      * Every guard below is load-bearing:
      * - a route BookWave cannot call a headset candidate is left alone, which structurally excludes the
      *   phone speaker, a car bus, a dock and an unknown sink;
-     * - the ambiguous-dashboard case is excluded by the same predicate [buttons] uses, so a projected car's
-     *   A2DP link is never mistaken for earbuds;
+     * - the ambiguous-dashboard case is excluded by the same predicate [buttons] uses, so a *projected*
+     *   car's A2DP link is never mistaken for earbuds. A plain Bluetooth car stereo with no Android Auto
+     *   binding is **not** covered by that guard — nothing distinguishes it from earbuds — but it is
+     *   harmless here, because reaching it at all needs an explicit selection naming a different device;
      * - and with no selection, or one that already agrees, there is nothing to correct.
      *
      * **Below API 33 this is inert by construction, and that is correct rather than a gap.** `isActive`
@@ -122,7 +131,13 @@ internal object AudioOutputRoles {
      * device nobody asked for. Do not "fix" the inertness.
      */
     fun startTarget(outputs: List<AudioOutput>, selectedId: String?, carConnected: Boolean): String? {
-        val routed = outputs.firstOrNull(AudioOutput::isActive) ?: return null
+        // [current] rather than the first active output, and a review caught the difference: when the
+        // framework reports the built-in speaker *and* a headset and enumerates the speaker first, taking
+        // the first active one picks the speaker, fails the candidate test below and silently does nothing.
+        // That is the same enumeration-order defect `current` exists to fix, re-adopted three functions
+        // later. Its selection fallback is harmless here — it can only return the already-selected output,
+        // which the last line then declines.
+        val routed = current(outputs, selectedId) ?: return null
         if (!routed.isHeadsetCandidate) return null
         val looksLikeDashboard = carConnected &&
             routed.role == AudioOutputRole.Ambiguous &&

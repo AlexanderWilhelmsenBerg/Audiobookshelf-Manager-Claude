@@ -314,6 +314,22 @@ class AudioOutputRolesTest {
         assertNull(AudioOutputRoles.startTarget(listOf(chosen, overEars), chosen.id, carConnected = false))
     }
 
+    /**
+     * The defect two independent reviews caught within an hour of each other: `startTarget` took the first
+     * active output while `current()` three functions above demoted speakers, so a framework that reported
+     * the speaker and a headset — and enumerated the speaker first — made the policy silently do nothing.
+     */
+    @Test
+    fun `an active speaker does not stop the routed headset being pinned`() {
+        val target = AudioOutputRoles.startTarget(
+            outputs = listOf(speaker.copy(isActive = true), buds.copy(isActive = true), overEars),
+            selectedId = overEars.id,
+            carConnected = false,
+        )
+
+        assertEquals(buds.id, target)
+    }
+
     @Test
     fun `nothing routed means nothing to do`() {
         assertNull(AudioOutputRoles.startTarget(listOf(buds, overEars), selectedId = buds.id, carConnected = false))

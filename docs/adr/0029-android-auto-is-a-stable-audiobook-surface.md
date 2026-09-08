@@ -19,13 +19,24 @@ That makes the correct design a small number of stable destinations with predict
 For a non-empty accessible library the Android Auto root is always, in this order:
 
 1. **Continue**
-2. **Chapters**
-3. **History**
+2. **Series**
+3. **Authors**
 4. **Library**
 
 The driver can learn those four positions once. Empty shelves do not cause the root itself to rearrange.
 
-`Library` contains the broader discovery choices that do not need to be one tap from the player: Series, Authors, Downloads, Recently added, Listen again, Discover and Audio output when applicable. Series reuse BookWave's existing numeric series-order rules rather than inventing a car-specific sort.
+**Four is the platform's number.** Android Auto sends a root-children limit as a browser root hint and the
+documentation says to expect four, so this list is at its ceiling and any change to it is a swap rather than
+an addition. Nothing in Media3 enforces the hint, which makes honouring it the app's job.
+
+**Chapters and History held positions 2 and 3 until the owner drove with it** — *"Chapter and history can be
+removed from library view. Have series and author instead."* Neither was deleted. Both now lead `Library`,
+where they are one tap further away and still answer honestly with nothing playing rather than showing a
+blank screen. Series and Authors moved the other way, out of `Library` and onto the root, and are listed in
+one place only.
+
+`Library` therefore contains, in order: Chapters, History, then the broader discovery choices — Downloads,
+Recently added, Listen again, Discover and Audio output when applicable. Series reuse BookWave's existing numeric series-order rules rather than inventing a car-specific sort.
 
 Voice search also matches series names in addition to title, author and narrator.
 
