@@ -185,17 +185,16 @@ private fun Context.hasLoopboundBundle(): Boolean = runCatching {
     assets.open(LOOPBOUND_ENTRY_PATH).use { Unit }
 }.isSuccess
 
-private fun String.responseEncoding(): String? =
-    if (
-        startsWith("text/") ||
-        this == "application/javascript" ||
-        this == "application/json" ||
-        this == "image/svg+xml"
-    ) {
-        Charsets.UTF_8.name()
-    } else {
-        null
-    }
+private fun String.responseEncoding(): String? = if (
+    startsWith("text/") ||
+    this == "application/javascript" ||
+    this == "application/json" ||
+    this == "image/svg+xml"
+) {
+    Charsets.UTF_8.name()
+} else {
+    null
+}
 
 private fun blockedResponse(): WebResourceResponse = errorResponse(403, "Blocked by BookWave")
 
