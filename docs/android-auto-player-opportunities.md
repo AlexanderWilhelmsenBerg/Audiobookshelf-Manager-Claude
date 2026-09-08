@@ -22,7 +22,7 @@ Android Auto's playback view is host-drawn from four things the app supplies:
 | Subtitle (one optional line) | rendered from the legacy artist/subtitle fields | `Author • Series #N` (§6) |
 | Elapsed time + progress bar | `PlaybackStateCompat` position and `METADATA_KEY_DURATION` | Correct; the book is one timeline (ADR-0016) |
 | Explicit-content indicator | metadata | n/a |
-| Primary control bar, left to right: **queue · previous · play/pause · next · custom** | media button preferences | play/pause, the two skips, and Car/Headset requesting the two secondary primary-bar slots |
+| Primary control bar, left to right: **queue · previous · play/pause · next · custom** | media button preferences | play/pause, Car in the *previous* position and Headset in the *next* one, with both skips relocated to overflow |
 | Overflow menu, up to **4** secondary actions | custom actions beyond/falling back from the bar | Car and Headset also declare overflow as fallback |
 
 Two documented capacity numbers matter:
@@ -30,9 +30,13 @@ Two documented capacity numbers matter:
 - the **minimised** control bar holds **up to five** controls, and expands to five more in a second row;
 - an app may publish **up to six** custom actions, or **up to eight** if it does not use Next/Previous.
 
-BookWave now asks the host to place Car and Headset in the two secondary primary-bar slots while retaining
-overflow as a fallback. Whether a particular head unit actually shows those secondary positions in its
-*minimised* player remains a host/device question rather than an app-side guarantee.
+BookWave gives Car `SLOT_BACK` and Headset `SLOT_FORWARD` — the two positions Android Auto reserves for
+*previous* and *next* and hands to custom actions when an app does not advertise those transport commands,
+which BookWave does not (ADR-0016). PLAY-007's skips request the same two slots with overflow as their
+fallback and are published second, so they are relocated to the overflow menu rather than dropped. An
+earlier revision of this document described the *secondary* slots here; those are discarded by the legacy
+conversion before a head unit sees them, which item 1 explains. What remains a host/device question is only
+whether a given head unit draws what it is now unambiguously sent.
 
 ## 1. Move the output actions into the primary bar — the device finding, and it has an answer
 
@@ -113,17 +117,26 @@ exact way a particular Android Auto host renders the sentence/action must be che
 
 `androidx.car.app.mediaextensions.MetadataExtras` carries several keys the player screen honours:
 
-- **`KEY_SUBTITLE_LINK_MEDIA_ID` / `KEY_DESCRIPTION_LINK_MEDIA_ID`** — the subtitle or description becomes
-  **tappable**, opening a browse node. AOSP's customisation guide says OEMs *must* render these as
-  tappable and open the linked item. For BookWave this is the obvious one: the subtitle is already
-  `Author • Series #N`, and linking it to the series node turns the byline into navigation.
+- **`KEY_DESCRIPTION_LINK_MEDIA_ID` — shipped.** `MediaItems.queueFor` writes it on the playing item,
+  pointing at `tab/history`, with a label on `MediaMetadata.description` for it to attach to. It is the
+  nearest reachable thing to the owner's request that the queue button open History (item 5 explains why
+  the queue itself cannot), and whether a head unit renders it is #127's device check. Note the asymmetry
+  in the documentation: AOSP's customisation guide says Automotive OS OEMs **must** render these as
+  tappable, while `developer.android.com` hedges for projected Android Auto with *"if the car supports
+  this feature"*.
+- **`KEY_SUBTITLE_LINK_MEDIA_ID` — not shipped**, and the untaken alternative rather than a second
+  opportunity: the subtitle already carries `Author • Series #N`, so linking *it* to the series node would
+  turn the byline into navigation, but the description was the free line and History was what was asked for.
 - **`KEY_CONTENT_FORMAT_TINTABLE_LARGE_ICON_URI` / `..._SMALL_...`** — a format badge beside the title.
 - **`KEY_IMMERSIVE_AUDIO`** — an indicator; not applicable to Audiobookshelf content.
 
-**Do not schedule any of these before testing one.** Whether `MediaMetadata.extras` set through Media3
-reaches the legacy `MediaMetadataCompat` that Android Auto reads is an **open, unresolved question
-upstream** — androidx/media#2127, still open, with no maintainer answer and the note that the
-documentation for it "still uses legacy code". BookWave already has one bet in this family:
+**Do not schedule any *further* keys from this family before the shipped one is tested.** The Media3 half of
+the old question here is now answered: disassembling `LegacyConversions.convertToMediaMetadataCompat` shows
+it iterates `MediaMetadata.extras` and forwards String entries, so the extra does reach the legacy
+`MediaMetadataCompat`. What stays open is only whether the **host** reads it — androidx/media#2127 remains
+open with no maintainer answer, and the note that its documentation "still uses legacy code". BookWave now
+has two bets in this family, and the description link above is the one that will be looked at first because
+the owner asked for it. The other:
 `EXTRAS_KEY_COMPLETION_PERCENTAGE` on browse rows, which R-10 records as unverified for the same reason.
 The honest sequencing is to verify the mechanism once, on a head unit, with the completion percentage that
 is already there — and only then decide whether to add more.
@@ -199,16 +212,20 @@ Two answers to the owner's follow-up questions, both checked against the API rat
 
 ## Still open
 
-Items 4 and 5 stand. Item 4 is a **measurement before it is a feature**: verify that Media3 forwards
-metadata extras to Android Auto at all, using the `EXTRAS_KEY_COMPLETION_PERCENTAGE` already on browse
-rows, before adding more that depend on the same path. Item 5 needs evidence that drivers reach for the
-queue button, and reopening ADR-0016 deliberately if they do.
+Item 4 is **partly shipped**: `KEY_DESCRIPTION_LINK_MEDIA_ID` is on the playing item and awaiting a device
+check (#127). The remaining keys stay a **measurement before they are features** — the Media3 forwarding
+half is now settled by disassembly, so what is left to verify is host rendering, and the shipped link is the
+cheapest thing to verify it with. Item 5 is **closed as impossible** in the form asked for: the queue cannot
+carry History, because `onSkipToQueueItem` resolves to `seekToDefaultPosition(index)` and a row tapped there
+would interrupt the book. Chapters-as-queue remains theoretically open but needs evidence that drivers reach
+for the queue button, and reopening ADR-0016 deliberately if they do.
 
 ## What this survey does not claim
 
-The API readings above do not prove a particular head unit's rendering. Items 1, 2 and 3 are now implemented,
-but the primary-slot takeover, error presentation and other host-facing details have not been accepted
-on a head unit yet. This project's own record is that the car keeps finding what the documents do not say —
+The API readings above do not prove a particular head unit's rendering. Items 1 and 3 are implemented and
+item 4 partly so, item 2 was reverted as measured dead code, and item 5 is closed as impossible — but the
+primary-slot takeover, the lit output glyphs, the description link and the error presentation have all yet
+to be accepted on a head unit. #126 and #127 track the two the owner has already reported back on. This project's own record is that the car keeps finding what the documents do not say —
 R-10 covers exactly that gap, and ADR-0029 §8's original "nothing else on the player can show it" conclusion
 was itself drawn from a partial reading of an API. Treat capacity numbers and slot rendering as the host's to
 confirm.
