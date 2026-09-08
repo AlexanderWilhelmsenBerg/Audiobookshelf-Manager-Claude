@@ -60,17 +60,22 @@ internal object ResumeFreshnessPolicy {
         baseline: AcknowledgedPause,
         candidate: RealtimeResumeCandidate?,
     ): ResumeFreshnessDecision? {
-        val evidence = candidate?.evidence ?: return null
-        val matchesCurrentPause =
+        val evidence = candidate?.evidence
+        val evidenceSessionId = evidence?.sessionId
+        val matchesCurrentPause = evidence != null &&
             baseline.bookId == loadedBook &&
-                candidate.baselineGeneration == baseline.generation &&
-                evidence.profileId == loadedProfile &&
-                evidence.progress.bookId == loadedBook
-        if (!matchesCurrentPause) return null
-        val localSessionId = loadedSessionId ?: return null
-        val evidenceSessionId = evidence.sessionId ?: return null
-        if (evidenceSessionId == localSessionId) return null
-        return materialDecision(evidence.progress.position, baseline, FreshnessEvidenceSource.Realtime)
+            candidate.baselineGeneration == baseline.generation &&
+            evidence.profileId == loadedProfile &&
+            evidence.progress.bookId == loadedBook
+        val trustedOtherSession = loadedSessionId != null &&
+            evidenceSessionId != null &&
+            evidenceSessionId != loadedSessionId
+
+        return if (matchesCurrentPause && trustedOtherSession) {
+            materialDecision(evidence.progress.position, baseline, FreshnessEvidenceSource.Realtime)
+        } else {
+            null
+        }
     }
 
     /** Applies the exact same product threshold to the one-book REST fallback. */
