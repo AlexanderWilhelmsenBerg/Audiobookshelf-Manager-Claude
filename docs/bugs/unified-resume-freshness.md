@@ -58,6 +58,11 @@ transport replacement:
 - stop / replace media / book switch;
 - a superseding Play or Pause.
 
+The notification's configurable skip buttons are custom session commands and therefore bypass the forwarding
+player's `handleSeek`; `PlaybackService.skipBy` invalidates the same request token explicitly before moving the
+raw ExoPlayer. This closes the mid-adoption case where a listener's notification skip must beat an older
+freshness answer.
+
 The existing service listener also invalidates `ResumeBaseline` when playback starts, a seek lands, the book
 changes, or the book ends. The coordinator revalidates both its request token and the baseline generation, so
 an older suspended REST/realtime answer cannot reclaim the player after a newer action.
