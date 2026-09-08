@@ -119,15 +119,16 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
      * That id is the only way to reject the server echo of BookWave's own session without putting a server
      * session identifier into `MediaMetadata.extras`, where external controllers could read it.
      */
-    suspend fun onSessionOpened(session: PlaybackSession) = withContext(mainDispatcher) {
-        openedSession = OpenedSession(
-            profileId = session.profileId,
-            bookId = session.bookId,
-            remoteSessionId = session.id.takeIf(String::isNotBlank),
-        )
-        realtimeCandidate = null
-        requestGeneration += 1
-    }
+    suspend fun onSessionOpened(session: PlaybackSession, invalidatePendingRequest: Boolean = true) =
+        withContext(mainDispatcher) {
+            openedSession = OpenedSession(
+                profileId = session.profileId,
+                bookId = session.bookId,
+                remoteSessionId = session.id.takeIf(String::isNotBlank),
+            )
+            realtimeCandidate = null
+            if (invalidatePendingRequest) requestGeneration += 1
+        }
 
     /** Invalidates a suspended decision before the underlying explicit command is forwarded. */
     fun invalidate(origin: ResumeInvalidation) {

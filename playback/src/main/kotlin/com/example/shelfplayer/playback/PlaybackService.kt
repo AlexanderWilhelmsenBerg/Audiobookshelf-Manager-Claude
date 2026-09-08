@@ -37,6 +37,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Bookmark
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.SkipIntervals
@@ -622,10 +623,10 @@ class PlaybackService : MediaLibraryService() {
             is ResumeFreshnessDecision.Adopt -> {
                 val outcome = resumeFreshness.withCurrentPlan(plan) {
                     applicationScope.launch { recordFreshnessHistory(plan) }
-                    resumeAt(plan.bookId, decision.position)
+                    resumeAt(plan, decision.position)
                 } ?: return
                 if (outcome != ResumeOutcome.Resumed && resumeFreshness.requestStillCurrent(plan)) {
-                    reopenFreshnessFromServer(plan.bookId)
+                    reopenFreshnessFromServer(plan)
                 }
             }
         }
@@ -645,15 +646,32 @@ class PlaybackService : MediaLibraryService() {
      * Reopening obtains a fresh `/play` session and therefore a fresh server-chosen position. It is slower
      * than the normal path but never substitutes an unconfirmed seek with stale local audio.
      */
-    private suspend fun reopenFreshnessFromServer(bookId: LibraryItemId) {
-        val queue = openQueue(bookId, startAt = null) ?: return
-        withContext(mainDispatcher) {
-            val current = player ?: return@withContext
-            current.setMediaItem(queue.item, queue.startPositionMs)
-            current.prepare()
-            current.play()
+    private suspend fun reopenFreshnessFromServer(plan: ResumeFreshnessPlan) {
+        val reopened = guardedFreshnessReopen(
+            openCandidate = { openQueueCandidate(plan.bookId, startAt = null) },
+            prepareIfCurrent = { candidate ->
+                val prepared = resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {
+                    // The server response is still only a candidate until this ownership check.
+                    // Preserve this request's token while BookChanges installs the replacement
+                    // session; only a genuinely newer command should supersede it.
+                    bookChanges.onBookOpened(candidate.session, invalidateFreshnessRequest = false)
+                    true
+                } ?: false
+                prepared && resumeFreshness.requestStillCurrent(plan)
+            },
+            applyIfCurrent = { candidate ->
+                resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {
+                    val current = player ?: return@withCurrentPlan false
+                    current.setMediaItem(candidate.queue.item, candidate.queue.startPositionMs)
+                    current.prepare()
+                    current.play()
+                    true
+                } ?: false
+            },
+        )
+        if (reopened) {
+            logger.info(LogCategory.Playback, "A failed remote-position adoption was reopened from the server")
         }
-        logger.info(LogCategory.Playback, "A failed remote-position adoption was reopened from the server")
     }
 
     /**
@@ -705,29 +723,30 @@ class PlaybackService : MediaLibraryService() {
      *
      * Everything runs on [mainDispatcher] because every `Player` read and write must.
      */
-    private suspend fun resumeAt(bookId: LibraryItemId, target: Duration): ResumeOutcome = withContext(mainDispatcher) {
-        val current = player ?: return@withContext ResumeOutcome.NotLoaded
-        val outcome = OwnedPlayer(current).seekAndResume(
-            bookId = bookId,
-            target = target,
-            tolerance = ADOPT_TOLERANCE,
-            timeout = SEEK_CONFIRM_TIMEOUT,
-        )
-        // Where the seek landed is logged by `OwnedPlayer.seekAndAwait`, which is the only place that holds
-        // it *before* audio starts. Reading the position again here would report the target plus however
-        // much has played since, which is the kind of confident wrong number R-90 was made of.
-        logger.info(
-            LogCategory.Playback,
-            if (outcome == ResumeOutcome.Resumed) {
-                "Resumed on a position adopted from another device"
-            } else {
-                "A position adopted from another device did not take"
-            },
-            LogField.Millis("target", target.inWholeMilliseconds),
-            LogField.Public("outcome", outcome.name),
-        )
-        outcome
-    }
+    private suspend fun resumeAt(plan: ResumeFreshnessPlan, target: Duration): ResumeOutcome =
+        withContext(mainDispatcher) {
+            val current = player ?: return@withContext ResumeOutcome.NotLoaded
+            val outcome = OwnedPlayer(current, plan).seekAndResume(
+                bookId = plan.bookId,
+                target = target,
+                tolerance = ADOPT_TOLERANCE,
+                timeout = SEEK_CONFIRM_TIMEOUT,
+            )
+            // Where the seek landed is logged by `OwnedPlayer.seekAndAwait`, which is the only place that holds
+            // it *before* audio starts. Reading the position again here would report the target plus however
+            // much has played since, which is the kind of confident wrong number R-90 was made of.
+            logger.info(
+                LogCategory.Playback,
+                if (outcome == ResumeOutcome.Resumed) {
+                    "Resumed on a position adopted from another device"
+                } else {
+                    "A position adopted from another device did not take"
+                },
+                LogField.Millis("target", target.inWholeMilliseconds),
+                LogField.Public("outcome", outcome.name),
+            )
+            outcome
+        }
 
     /**
      * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.
@@ -736,7 +755,8 @@ class PlaybackService : MediaLibraryService() {
      * everything here is a single Media3 call so that there is as little as possible that only a device can
      * exercise.
      */
-    private inner class OwnedPlayer(private val media: ExoPlayer) : ResumeTarget {
+    private inner class OwnedPlayer(private val media: ExoPlayer, private val plan: ResumeFreshnessPlan) :
+        ResumeTarget {
 
         override fun loadedBookId(): LibraryItemId? =
             media.currentMediaItem?.takeIf { media.mediaItemCount > 0 }?.let(MediaItems::bookIdOf)
@@ -794,7 +814,10 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
-        override fun play() = media.play()
+        override suspend fun playIfCurrent(): Boolean = resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {
+            media.play()
+            true
+        } ?: false
     }
 
     /**
@@ -1636,7 +1659,20 @@ class PlaybackService : MediaLibraryService() {
      * which is what ROUTE-001 asks for — "if no playable item exists, the command does nothing and logs a
      * non-fatal diagnostic".
      */
-    private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? =
+    private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? {
+        val candidate = openQueueCandidate(bookId, startAt) ?: return null
+        bookChanges.onBookOpened(candidate.session)
+        return candidate.queue
+    }
+
+    /**
+     * Opens and resolves a server session without mutating BookWave's loaded-book state.
+     *
+     * The separation matters for resume-freshness fallback: a slow `/play` answer can arrive after a newer
+     * Pause, seek, Stop, book or profile command. Such an answer must be discardable before BookChanges or
+     * the player are touched.
+     */
+    private suspend fun openQueueCandidate(bookId: LibraryItemId, startAt: Duration?): QueueCandidate? =
         when (val opened = openPlaybackSession(bookId)) {
             is AppResult.Failure -> {
                 logger.warn(
@@ -1644,36 +1680,31 @@ class PlaybackService : MediaLibraryService() {
                     "Could not open a session for a browse or resume request",
                     LogField.Public("error", opened.error.code),
                 )
-                // PRODUCT_SPEC PLAY-001 — and *tell the car*, which a review found this branch did not.
-                // Nothing reaches the player on this path, so `onPlayerError` never runs: a driver picking
-                // a book against an expired credential got a row that did nothing and no explanation, which
-                // is the case the labelled sign-in action exists for.
                 reportSessionFailureToControllers(opened.error)
                 null
             }
 
             is AppResult.Success -> {
                 val session = opened.value
-                // The chapters have to reach the sleep timer and the outbox exactly as they do when the app
-                // starts a book, or a book started from a car would have no end-of-chapter timer and no
-                // outbox row. Same call, one place.
-                bookChanges.onBookOpened(session)
                 val queue = MediaItems.queueFor(
                     session = session,
-                    // Only from the service, which is what a car talks to. The phone builds the same item
-                    // through `PlaybackController` and gets no description line.
                     historyLink = MediaItems.HistoryLink(
                         label = getString(R.string.car_player_history_link),
                         historyMediaId = AutoLibrary.TAB_HISTORY,
                     ),
                 )
-                if (startAt == null) {
-                    queue
-                } else {
-                    queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
-                }
+                QueueCandidate(
+                    session = session,
+                    queue = if (startAt == null) {
+                        queue
+                    } else {
+                        queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
+                    },
+                )
             }
         }
+
+    private data class QueueCandidate(val session: PlaybackSession, val queue: MediaItems.Queue)
 
     /**
      * A suspending body as the `ListenableFuture` Media3's callbacks return.
@@ -2322,11 +2353,6 @@ class PlaybackService : MediaLibraryService() {
                         .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_SELECT_CAR_OUTPUT, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT, Bundle.EMPTY))
-                        // PRODUCT_SPEC SYNC-002 — the app's own atomic resume. Granted on the same
-                        // condition as the four above and refused to everything else: a seek followed by a
-                        // play, driven from outside the app, is exactly the pair `ControllerTrust`
-                        // withholds. See `ResumeCommand`.
-                        .add(ResumeCommand.command())
                         .build()
 
                 ControllerAccess.PlaybackOnly -> {
@@ -2538,34 +2564,6 @@ class PlaybackService : MediaLibraryService() {
             return LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
         }
 
-        /**
-         * PRODUCT_SPEC SYNC-002 — runs the atomic resume and answers with whether it worked.
-         *
-         * A `SessionResult` rather than a fire-and-forget: the caller adopted a position because the server
-         * said another device had moved the book, and "the seek did not take" is something the app has to
-         * be able to act on rather than discover from a log line a second later.
-         *
-         * `ERROR_INVALID_STATE` covers every failure the same way on purpose — the specific outcome is in
-         * the service's log, where the position that failed can be recorded, and the controller's only
-         * decision is the same in all three cases: reopen the book rather than play the wrong position.
-         */
-        private fun resumeCommand(args: Bundle): ListenableFuture<SessionResult> {
-            val bookId = ResumeCommand.bookIdFrom(args)?.takeIf(String::isNotBlank)
-            val positionMs = ResumeCommand.positionFrom(args)
-            if (bookId == null || positionMs == null) {
-                logger.warn(LogCategory.Playback, "A resume command arrived without a book and a position")
-                return Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
-            }
-            return future {
-                val outcome = resumeAt(LibraryItemId(bookId), positionMs.milliseconds)
-                if (outcome == ResumeOutcome.Resumed) {
-                    SessionResult(SessionResult.RESULT_SUCCESS)
-                } else {
-                    SessionResult(SessionError.ERROR_INVALID_STATE)
-                }
-            }
-        }
-
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -2579,9 +2577,6 @@ class PlaybackService : MediaLibraryService() {
                 denied(controller, "onCustomCommand")
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
             }
-            // PRODUCT_SPEC SYNC-002 — the one command with an answer, so it is handled before the
-            // fire-and-forget four rather than inside their `when`.
-            if (customCommand.customAction == ResumeCommand.ACTION) return resumeCommand(args)
             when (customCommand.customAction) {
                 // PLAY-008 says the notification action *extends*; the shake *restarts*. See ADR-0014.
                 NotificationButtons.ACTION_EXTEND_SLEEP_TIMER -> sleepTimer.extend()

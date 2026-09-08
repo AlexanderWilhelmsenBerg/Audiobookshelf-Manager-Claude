@@ -48,7 +48,8 @@ internal interface ResumeTarget {
      */
     suspend fun seekAndAwait(position: Duration, timeout: Duration): Duration?
 
-    fun play()
+    /** Starts audio only if the freshness request still owns playback at this exact moment. */
+    suspend fun playIfCurrent(): Boolean
 }
 
 /** What [ResumeTarget.seekAndResume] did, in the order the failures are worth telling apart. */
@@ -69,6 +70,9 @@ internal enum class ResumeOutcome {
      * is the exact defect this path exists to remove. The caller reopens the book instead.
      */
     SeekLost,
+
+    /** A newer command took ownership while the adopted seek was being confirmed. */
+    Superseded,
 }
 
 /**
@@ -84,7 +88,8 @@ internal enum class ResumeOutcome {
  *  4. **confirm within [tolerance]** — nothing is playing yet, so the landed position is still the seek's
  *     result rather than the seek's result plus however long the check took. That is what lets this be a
  *     tolerance at all; the earlier post-play version had to compare two distances instead;
- *  5. **play** — last, and only on success, so the first sound is from where the listener should be.
+ *  5. **revalidate ownership and play** — last, in one operation, so a newer Pause/seek/Stop that
+ *     arrived during seek confirmation cannot be undone by this older Play.
  *
  * Negative targets are clamped by the implementation rather than rejected: a server that reports a nonsense
  * position should start the book, not fail the resume (product priority 1).
@@ -99,7 +104,7 @@ internal suspend fun ResumeTarget.seekAndResume(
     if (needsPreparing()) prepare()
     val landed = seekAndAwait(target, timeout)
     if (landed == null || (landed - target).absoluteValue > tolerance) return ResumeOutcome.SeekLost
-    play()
+    if (!playIfCurrent()) return ResumeOutcome.Superseded
     return ResumeOutcome.Resumed
 }
 

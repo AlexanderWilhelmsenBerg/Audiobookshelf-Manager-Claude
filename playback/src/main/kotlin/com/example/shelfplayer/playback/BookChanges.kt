@@ -43,7 +43,7 @@ class BookChanges @Inject internal constructor(
      * A single-file fallback stages `null`. Its player position is file-relative while the server position is
      * book-relative, so claiming they agree would create exactly the kind of false evidence SYNC-002 avoids.
      */
-    suspend fun onBookOpened(session: PlaybackSession) {
+    suspend fun onBookOpened(session: PlaybackSession, invalidateFreshnessRequest: Boolean = true) {
         sessionSync.onSessionOpened(session)
         resumeBaseline.stageServerPosition(
             bookId = session.bookId,
@@ -51,7 +51,10 @@ class BookChanges @Inject internal constructor(
         )
         // Issue #91 — keep the remote ABS session id service-side so realtime evidence can reject
         // BookWave's own sync echo without exposing that identifier through MediaMetadata extras.
-        resumeFreshness.onSessionOpened(session)
+        resumeFreshness.onSessionOpened(
+            session = session,
+            invalidatePendingRequest = invalidateFreshnessRequest,
+        )
         sleepTimer.onBookChanged(session.chapters)
         autoRewind.onBookChanged(session.chapters)
     }
