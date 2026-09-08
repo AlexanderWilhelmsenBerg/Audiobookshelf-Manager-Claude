@@ -73,7 +73,7 @@ class PlayerViewModel @Inject constructor(
     private val sessionSync: SessionSyncCoordinator,
     private val notifications: NotificationAccessReader,
     private val autoRewind: AutoRewindController,
-    private val history: PlaybackHistoryRepository,
+    private val historyRepository: PlaybackHistoryRepository,
     private val bookmarks: BookmarkRepository,
     playbackSettings: PlaybackSettingsRepository,
     private val surface: PlayerSurface,
@@ -130,7 +130,7 @@ class PlayerViewModel @Inject constructor(
         .map { it.bookId }
         .distinctUntilChanged()
         .flatMapLatest { bookId ->
-            if (bookId == null) flowOf(emptyList()) else history.observe(bookId)
+            if (bookId == null) flowOf(emptyList()) else historyRepository.observe(bookId)
         }
         .stateIn(
             scope = viewModelScope,
@@ -154,7 +154,7 @@ class PlayerViewModel @Inject constructor(
      */
     fun onOpenHistory() {
         val bookId = controller.state.value.bookId ?: return
-        viewModelScope.launch { history.refreshServerSessions(bookId) }
+        viewModelScope.launch { historyRepository.refreshServerSessions(bookId) }
     }
 
     /**
