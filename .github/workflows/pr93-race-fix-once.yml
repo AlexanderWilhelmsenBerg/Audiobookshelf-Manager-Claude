@@ -15,13 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Check out runner helper
+      - name: Check out runner helpers
         uses: actions/checkout@v7
         with:
           ref: diagnostic/pr93-race-fix-runner
 
-      - name: Preserve repair script
-        run: cp tools/pr93_race_fix.py /tmp/pr93_race_fix.py
+      - name: Preserve repair scripts
+        run: |
+          cp tools/pr93_race_fix.py /tmp/pr93_race_fix.py
+          cp tools/pr93_race_fix_followup.py /tmp/pr93_race_fix_followup.py
 
       - name: Check out PR branch
         uses: actions/checkout@v7
@@ -30,9 +32,10 @@ jobs:
           fetch-depth: 0
           clean: true
 
-      - name: Patch ownership races and add deterministic tests
+      - name: Patch ownership races and retire the old custom resume path
         run: |
           python3 /tmp/pr93_race_fix.py
+          python3 /tmp/pr93_race_fix_followup.py
           git diff --check
           git status --short
 
@@ -45,8 +48,16 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Run focused tests and formatting
+      - name: Format repaired code
+        run: ./gradlew :playback:ktlintFormat
+
+      - name: Run focused machine tests and formatting gate
         run: ./gradlew :playback:testDebugUnitTest ktlintCheck --continue -Pshelfplayer.warningsAsErrors=true
+
+      - name: Verify only intended files changed
+        run: |
+          git diff --check
+          git status --short
 
       - name: Commit repaired PR head
         run: |
@@ -56,6 +67,7 @@ jobs:
                   playback/src/main/kotlin/com/example/shelfplayer/playback/BookChanges.kt \
                   playback/src/main/kotlin/com/example/shelfplayer/playback/ResumeFreshnessCoordinator.kt \
                   playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt \
+                  playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackController.kt \
                   playback/src/main/kotlin/com/example/shelfplayer/playback/FreshnessReopen.kt \
                   playback/src/test/kotlin/com/example/shelfplayer/playback/AtomicResumeTest.kt \
                   playback/src/test/kotlin/com/example/shelfplayer/playback/FreshnessReopenTest.kt
