@@ -12,13 +12,13 @@ The Loopbound page receives bottom padding from the same mini-player inset as th
 
 ## Security boundary
 
-Loopbound is loaded from APK assets through `WebViewAssetLoader` at the fixed origin:
+Loopbound is loaded from APK assets through BookWave's local-only `WebViewClient` asset responder at the fixed origin:
 
 ```text
 https://appassets.androidplatform.net/assets/loopbound/index.html
 ```
 
-The host enables JavaScript and DOM storage because Loopbound requires them, but disables file/content access, mixed content, multiple windows and third-party cookies. Requests that are not satisfied by the local APK asset loader receive a local `403` response, and navigation outside the Loopbound asset path is blocked.
+The host enables JavaScript and DOM storage because Loopbound requires them, but disables file/content access, mixed content, multiple windows and third-party cookies. The responder accepts only that exact HTTPS host and the `/assets/loopbound/` path, rejects traversal segments, serves matching files directly from the APK, returns local error responses for everything else, and blocks navigation outside the Loopbound asset path.
 
 There is deliberately no JavaScript bridge into BookWave playback in this slice. The embedded game cannot read Audiobookshelf credentials or take ownership of the Media3 session.
 
