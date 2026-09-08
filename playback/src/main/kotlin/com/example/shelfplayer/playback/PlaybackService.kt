@@ -288,7 +288,9 @@ class PlaybackService : MediaLibraryService() {
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
         sessionSync.attach(exoPlayer)
-        autoRewind.attach(exoPlayer)
+        autoRewind.attach(exoPlayer) {
+            resumeFreshness.invalidate(ResumeInvalidation.AutoRewind)
+        }
         // PRODUCT_SPEC PLAY-002 — after the player exists and before anything can be chosen. A preference
         // set on a released player routes nothing, so this is re-run on every player this service builds.
         audioOutputs.attach(exoPlayer)
@@ -610,18 +612,24 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan) {
-        if (!resumeFreshness.isCurrent(plan)) return
-        applicationScope.launch { recordFreshnessHistory(plan) }
-        when (val decision = plan.decision) {
-            is ResumeFreshnessDecision.Current -> resumeLoadedCurrent()
-            is ResumeFreshnessDecision.Adopt -> {
-                val outcome = resumeAt(plan.bookId, decision.position)
-                if (outcome != ResumeOutcome.Resumed && resumeFreshness.requestStillCurrent(plan)) {
-                    reopenFreshnessFromServer(plan.bookId)
-                }
+    when (val decision = plan.decision) {
+        is ResumeFreshnessDecision.Current -> {
+            resumeFreshness.withCurrentPlan(plan) {
+                applicationScope.launch { recordFreshnessHistory(plan) }
+                resumeLoadedCurrent()
+            } ?: return
+        }
+        is ResumeFreshnessDecision.Adopt -> {
+            val outcome = resumeFreshness.withCurrentPlan(plan) {
+                applicationScope.launch { recordFreshnessHistory(plan) }
+                resumeAt(plan.bookId, decision.position)
+            } ?: return
+            if (outcome != ResumeOutcome.Resumed && resumeFreshness.requestStillCurrent(plan)) {
+                reopenFreshnessFromServer(plan.bookId)
             }
         }
     }
+}
 
     /** The old direct Play behaviour, now used only after the shared freshness decision says to stay local. */
     private suspend fun resumeLoadedCurrent() = withContext(mainDispatcher) {
@@ -1749,7 +1757,7 @@ class PlaybackService : MediaLibraryService() {
         val current = player ?: return
         if (current.mediaItemCount == 0) return
         // Issue #91 — this custom notification command bypasses ResumeFreshnessPlayer.handleSeek.
-        resumeFreshness.invalidate(ResumeInvalidation.Seek)
+        resumeFreshness.invalidate(ResumeInvalidation.NotificationSkip)
         current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))
     }
 
