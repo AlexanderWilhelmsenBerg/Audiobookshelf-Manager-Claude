@@ -1441,15 +1441,6 @@ class PlaybackService : MediaLibraryService() {
      * Media3 clamps the top end at the window's duration; the bottom is clamped here, because a negative
      * seek would be silently accepted as zero by some controllers and rejected by others.
      */
-    private fun skipBy(delta: Duration) {
-        val current = player ?: return
-        if (current.mediaItemCount == 0) return
-        // Issue #91 — notification skip reaches the raw player through a custom session command.
-        // Invalidate before moving so an older freshness answer cannot overwrite this explicit skip.
-        resumeFreshness.invalidate(ResumeInvalidation.Seek)
-        current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))
-    }
-
     /**
      * PRODUCT_SPEC PLAY-003 — one play or pause, in the playing book's history.
      *
@@ -1757,6 +1748,8 @@ class PlaybackService : MediaLibraryService() {
     private fun skipBy(delta: Duration) {
         val current = player ?: return
         if (current.mediaItemCount == 0) return
+        // Issue #91 — this custom notification command bypasses ResumeFreshnessPlayer.handleSeek.
+        resumeFreshness.invalidate(ResumeInvalidation.Seek)
         current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))
     }
 
