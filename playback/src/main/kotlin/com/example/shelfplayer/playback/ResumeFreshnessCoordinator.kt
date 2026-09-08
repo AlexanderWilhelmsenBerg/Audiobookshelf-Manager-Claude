@@ -177,8 +177,8 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
     }
 
     /** Full validation before a plan is allowed to move or start audio. */
-    suspend fun isCurrent(plan: ResumeFreshnessPlan): Boolean =
-        profiles.activeProfileId() == plan.profileId && withContext(mainDispatcher) {
+    suspend fun isCurrent(plan: ResumeFreshnessPlan): Boolean = profiles.activeProfileId() == plan.profileId &&
+        withContext(mainDispatcher) {
             isCurrentOnMain(plan, requireBaseline = true)
         }
 
@@ -190,14 +190,12 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
      * that happened while the service was confirming the seek.
      */
     suspend fun requestStillCurrent(plan: ResumeFreshnessPlan): Boolean =
-        profiles.activeProfileId() == plan.profileId && withContext(mainDispatcher) {
-            isCurrentOnMain(plan, requireBaseline = false)
-        }
+        profiles.activeProfileId() == plan.profileId &&
+            withContext(mainDispatcher) {
+                isCurrentOnMain(plan, requireBaseline = false)
+            }
 
-    private suspend fun finish(
-        context: RequestContext,
-        decision: ResumeFreshnessDecision,
-    ): ResumePlayPreparation {
+    private suspend fun finish(context: RequestContext, decision: ResumeFreshnessDecision): ResumePlayPreparation {
         val plan = context.plan(decision)
         if (!isCurrent(plan)) return ResumePlayPreparation.Superseded
         logger.debug(
@@ -247,7 +245,13 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
             LogField.Public("generation", acknowledged.generation.toString()),
             LogField.Public(
                 "origin",
-                if (session.remoteSessionId != null && evidence.sessionId == session.remoteSessionId) "ownSession" else "otherSession",
+                if (session.remoteSessionId != null &&
+                    evidence.sessionId == session.remoteSessionId
+                ) {
+                    "ownSession"
+                } else {
+                    "otherSession"
+                },
             ),
         )
     }
@@ -262,25 +266,19 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
         return baseline.acknowledged(plan.bookId)?.generation == plan.baselineGeneration
     }
 
-    private fun movementOf(
-        acknowledged: AcknowledgedPause?,
-        decision: ResumeFreshnessDecision,
-    ): String = when (decision) {
-        is ResumeFreshnessDecision.Current ->
-            if (decision.source == FreshnessEvidenceSource.LocalUnverified) "unverified" else "local"
-        is ResumeFreshnessDecision.Adopt -> when {
-            acknowledged == null -> "adopt"
-            decision.position > acknowledged.position -> "forward"
-            decision.position < acknowledged.position -> "rewind"
-            else -> "local"
+    private fun movementOf(acknowledged: AcknowledgedPause?, decision: ResumeFreshnessDecision): String =
+        when (decision) {
+            is ResumeFreshnessDecision.Current ->
+                if (decision.source == FreshnessEvidenceSource.LocalUnverified) "unverified" else "local"
+            is ResumeFreshnessDecision.Adopt -> when {
+                acknowledged == null -> "adopt"
+                decision.position > acknowledged.position -> "forward"
+                decision.position < acknowledged.position -> "rewind"
+                else -> "local"
+            }
         }
-    }
 
-    private data class OpenedSession(
-        val profileId: ProfileId,
-        val bookId: LibraryItemId,
-        val remoteSessionId: String?,
-    )
+    private data class OpenedSession(val profileId: ProfileId, val bookId: LibraryItemId, val remoteSessionId: String?)
 
     private data class RequestContext(
         val requestGeneration: Long,
