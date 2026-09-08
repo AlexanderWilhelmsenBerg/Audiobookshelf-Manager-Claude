@@ -1,0 +1,90 @@
+name: PR93 service plan fixes
+
+on:
+  push:
+    branches:
+      - diagnostic/pr93-compile
+    paths:
+      - .github/workflows/pr93-service-plan-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refactor/unified-resume-freshness
+          fetch-depth: 0
+      - name: Apply audited service wiring fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt')
+          text = path.read_text()
+
+          old_apply = '''    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan) {
+              if (!resumeFreshness.isCurrent(plan)) return
+              applicationScope.launch { recordFreshnessHistory(plan) }
+              when (val decision = plan.decision) {
+                  is ResumeFreshnessDecision.Current -> resumeLoadedCurrent()
+                  is ResumeFreshnessDecision.Adopt -> {
+                      val outcome = resumeAt(plan.bookId, decision.position)
+                      if (outcome != ResumeOutcome.Resumed && resumeFreshness.requestStillCurrent(plan)) {
+                          reopenFreshnessFromServer(plan.bookId)
+                      }
+                  }
+              }
+          }
+          '''
+          new_apply = '''    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan) {
+              when (val decision = plan.decision) {
+                  is ResumeFreshnessDecision.Current -> {
+                      resumeFreshness.withCurrentPlan(plan) {
+                          applicationScope.launch { recordFreshnessHistory(plan) }
+                          resumeLoadedCurrent()
+                      } ?: return
+                  }
+                  is ResumeFreshnessDecision.Adopt -> {
+                      val outcome = resumeFreshness.withCurrentPlan(plan) {
+                          applicationScope.launch { recordFreshnessHistory(plan) }
+                          resumeAt(plan.bookId, decision.position)
+                      } ?: return
+                      if (outcome != ResumeOutcome.Resumed && resumeFreshness.requestStillCurrent(plan)) {
+                          reopenFreshnessFromServer(plan.bookId)
+                      }
+                  }
+              }
+          }
+          '''
+          if text.count(old_apply) != 1:
+              raise SystemExit('applyFreshnessPlan shape changed')
+          text = text.replace(old_apply, new_apply)
+
+          old_attach = '        autoRewind.attach(exoPlayer)\n'
+          new_attach = '''        autoRewind.attach(exoPlayer) {
+              resumeFreshness.invalidate(ResumeInvalidation.AutoRewind)
+          }
+          '''
+          if text.count(old_attach) != 1:
+              raise SystemExit('autoRewind attach shape changed')
+          text = text.replace(old_attach, new_attach)
+
+          old_skip = '        resumeFreshness.invalidate(ResumeInvalidation.Seek)\n        current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))\n'
+          new_skip = '        resumeFreshness.invalidate(ResumeInvalidation.NotificationSkip)\n        current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))\n'
+          if text.count(old_skip) != 1:
+              raise SystemExit('notification skip shape changed')
+          text = text.replace(old_skip, new_skip)
+
+          path.write_text(text)
+          PY
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add playback/src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt
+          git commit -m "Complete PR93 service invalidation wiring"
+          git push origin HEAD:refactor/unified-resume-freshness
