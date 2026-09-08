@@ -1432,16 +1432,6 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
     /**
-     * PRODUCT_SPEC PLAY-007 — the notification's skip, which is the app's skip.
-     *
-     * Expressed as a seek rather than as `Player.seekForward` for the same reason `PlaybackController` does:
-     * Media3's own skip uses the increment fixed when the player was built, and PLAY-007's is configurable
-     * per direction while the player is running.
-     *
-     * Media3 clamps the top end at the window's duration; the bottom is clamped here, because a negative
-     * seek would be silently accepted as zero by some controllers and rejected by others.
-     */
-    /**
      * PRODUCT_SPEC PLAY-003 — one play or pause, in the playing book's history.
      *
      * Silent when nothing is loaded: `playWhenReady` also changes as a book is torn down, and a pause
@@ -1745,6 +1735,16 @@ class PlaybackService : MediaLibraryService() {
         applicationScope.launch { bookmarks.add(bookId, at, title = "", owner = owner) }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-007 — the notification's skip, which is the app's skip.
+     *
+     * Expressed as a seek rather than as `Player.seekForward` for the same reason `PlaybackController` does:
+     * Media3's own skip uses the increment fixed when the player was built, and PLAY-007's is configurable
+     * per direction while the player is running.
+     *
+     * Media3 clamps the top end at the window's duration; the bottom is clamped here, because a negative
+     * seek would be silently accepted as zero by some controllers and rejected by others.
+     */
     private fun skipBy(delta: Duration) {
         val current = player ?: return
         if (current.mediaItemCount == 0) return
