@@ -1,9 +1,10 @@
 # #91 — unified resume freshness
 
 Status: service wiring is implemented on PR #93 after #81 and #78. Repository `ktlintFormat` has been applied
-to the completed integration, and the custom notification-skip path has been deduplicated and tied into the
-same invalidation owner. The PR remains **draft** until exact-head CI and the cross-surface device acceptance
-pass are complete.
+to the integration, and the custom notification-skip path is tied into the same invalidation owner. Review
+hardening removed the unsafe second-`/play` adoption recovery and requires explicit session identity before
+realtime evidence may replace the REST check. The PR remains **draft** until exact-head CI and the cross-surface
+device acceptance pass are complete.
 
 ## Problem
 
@@ -35,8 +36,8 @@ For every externally requested paused/armed -> Play:
 1. Snapshot loaded profile, book and ABS playback-session id.
 2. Read the acknowledged `ResumeBaseline`.
 3. Allocate a resume-decision generation/token.
-4. If #90 delivered a progress event **while this exact baseline generation was current**, and its
-   `sessionId` is not this BookWave session, evaluate it with `ResumeFreshnessPolicy`.
+4. If #90 delivered a progress event **while this exact baseline generation was current**, and both the local
+   and evidence session ids are present and different, evaluate it with `ResumeFreshnessPolicy`.
 5. Otherwise make the existing one-book REST progress check under the two-second latency cap.
 6. Apply one shared material-move rule: differences of **two minutes or less continue locally**; larger
    forward *or backward* moves are adopted. Never use `max(position)`.
@@ -44,10 +45,14 @@ For every externally requested paused/armed -> Play:
    player.
 8. If adopting, seek/confirm on the service-owned ExoPlayer before audio. If no adoption is required, resume
    the current player normally.
-9. If the atomic adoption cannot be confirmed and the request still owns the player, reopen through `/play`
-   so the fallback position is server-chosen rather than an unconfirmed local seek.
+9. If the atomic adoption cannot be confirmed, leave playback paused. Do **not** open a second `/play` session
+   as recovery: session opening can mutate finished state and `BookChanges` commits session/baseline/chapter
+   state across suspension points, so an obsolete Play must not be allowed to run those side effects after a
+   newer command owns playback.
 
 A missing socket candidate never means "current". Socket events are not replayed; REST remains the fallback.
+Likewise, realtime evidence with unknown local or remote session identity cannot prove that it is not
+BookWave's own echo, so it also falls back to REST.
 
 ## Invalidation
 
@@ -78,22 +83,40 @@ with the baseline generation current at receipt. That means:
 - a stale socket push cannot bypass unsynced-local protection;
 - a push seen before the current pause is not proof about this pause;
 - this BookWave session's own sync echo (same `sessionId`) is not mistaken for another device;
+- a push with no session id is ambiguous and therefore falls back to REST;
+- an opened session with no remote id likewise cannot use realtime as cross-device evidence;
 - process death/background gaps naturally lose the candidate and therefore force REST;
 - realtime evidence never moves active playback by itself.
 
 `BookChanges` passes the opened ABS session identity to the coordinator before the item is exposed to Media3;
 the remote session id stays service-side and is not placed in `MediaMetadata` extras.
 
+## Failed-adoption recovery
+
+The first implementation reopened the book through `/play` when the service-owned seek could not be confirmed.
+Review showed that this was not a true candidate transaction. `DefaultPlaybackRepository.openSession()` may
+clear a locally finished book when the server returns a start near zero, and `BookChanges.onBookOpened()` can
+suspend after committing part of the replacement session. A stale fallback could therefore change local state
+even though its final player write was later rejected by the ownership token.
+
+That recovery is removed rather than papered over with another pre/post check. The compatibility seam is a
+no-op and its regression test asserts that candidate, preparation and application callbacks are never invoked.
+The failure mode is now bounded: the adopted seek logs `SeekLost` and playback remains paused. No stale
+fallback can open a server session, clear progress state, replace the active session, stage a baseline, or
+change chapter/timer state.
+
 ## Acceptance still required
 
 - app Play, notification Play, headset/Bluetooth Play and Android Auto Play all enter the same resume path;
-- candidate + same baseline generation + another session + >2 min => adopt before audio;
+- candidate + same baseline generation + another identified session + >2 min => adopt before audio;
 - candidate <=2 min => resume locally;
 - candidate from own session / wrong profile / wrong book / old generation => REST fallback;
+- sessionless candidate or sessionless loaded playback => REST fallback;
 - no candidate => REST fallback;
 - local seek while REST is in flight invalidates the result;
 - profile/book switch while REST is in flight invalidates the result;
 - active playback ignores realtime for player movement;
 - intentional remote rewind >2 min is adopted;
+- a failed adopted seek stays paused and starts no fallback `/play` or `BookChanges` transaction;
 - #89 restored-baseline stress runs at least 60 seconds without returning to the old baseline;
 - logs name generation, evidence source and movement category without media metadata.

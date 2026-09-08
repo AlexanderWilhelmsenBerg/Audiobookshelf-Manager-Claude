@@ -202,17 +202,32 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
     }
 
     /**
-     * Validation used only after an atomic adoption attempt has begun.
+     * Legacy gate for the removed second-`/play` adoption recovery.
      *
-     * The adoption seek itself invalidates [ResumeBaseline], so the baseline can no longer be required here.
-     * The command token and loaded owner/book still detect a user seek, Pause, Stop or book/profile switch
-     * that happened while the service was confirming the seek.
+     * Review of PR #93 found that a fallback `/play` was not a side-effect-free candidate: the repository can
+     * clear a finished flag before returning, and `BookChanges.onBookOpened` can suspend after committing part
+     * of the replacement session. A request-generation check around those calls therefore cannot make the
+     * transaction safe. The recovery is deliberately closed instead of letting an obsolete Play mutate local
+     * progress/session/baseline/chapter state after a newer Pause, seek, Stop or media change won ownership.
+     *
+     * Keep the method while `PlaybackService` still carries the old fallback call site; it always returns
+     * false, so that call site cannot reach `/play` or `BookChanges`. A failed adopted seek remains paused and
+     * is diagnosable rather than being "recovered" by a stale state-changing request.
      */
-    suspend fun requestStillCurrent(plan: ResumeFreshnessPlan): Boolean =
-        profiles.activeProfileId() == plan.profileId &&
+    suspend fun requestStillCurrent(plan: ResumeFreshnessPlan): Boolean {
+        val wasStillCurrent = profiles.activeProfileId() == plan.profileId &&
             withContext(mainDispatcher) {
                 isCurrentOnMain(plan, requireBaseline = false)
             }
+        if (wasStillCurrent) {
+            logger.debug(
+                LogCategory.Playback,
+                "A failed adopted seek stayed paused; server-session reopen is disabled",
+                LogField.Public("generation", plan.requestGeneration.toString()),
+            )
+        }
+        return false
+    }
 
     private suspend fun finish(context: RequestContext, decision: ResumeFreshnessDecision): ResumePlayPreparation {
         val plan = context.plan(decision)

@@ -49,7 +49,9 @@ internal object ResumeFreshnessPolicy {
      *
      * `null` never means "resume locally": Socket.IO events are not replayed after disconnect/background/
      * process death, and BookWave's own server echo is confirmation of our write rather than another
-     * session's movement.
+     * session's movement. Realtime evidence is usable only when both sides carry session identity and those
+     * identities differ. A missing id cannot prove that the push came from another device, so REST answers
+     * that case instead of trusting an ambiguous echo.
      */
     fun realtime(
         loadedProfile: ProfileId,
@@ -65,7 +67,9 @@ internal object ResumeFreshnessPolicy {
                 evidence.profileId == loadedProfile &&
                 evidence.progress.bookId == loadedBook
         if (!matchesCurrentPause) return null
-        if (loadedSessionId != null && evidence.sessionId == loadedSessionId) return null
+        val localSessionId = loadedSessionId ?: return null
+        val evidenceSessionId = evidence.sessionId ?: return null
+        if (evidenceSessionId == localSessionId) return null
         return materialDecision(evidence.progress.position, baseline, FreshnessEvidenceSource.Realtime)
     }
 

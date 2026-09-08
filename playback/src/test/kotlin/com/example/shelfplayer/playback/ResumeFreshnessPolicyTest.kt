@@ -74,6 +74,32 @@ class ResumeFreshnessPolicyTest {
     }
 
     @Test
+    fun `sessionless realtime evidence falls back to REST`() {
+        val decision = ResumeFreshnessPolicy.realtime(
+            loadedProfile = profile,
+            loadedBook = book,
+            loadedSessionId = "bookwave-session",
+            baseline = baseline,
+            candidate = candidate(position = 1.hours + 10.minutes, sessionId = null),
+        )
+
+        assertNull(decision)
+    }
+
+    @Test
+    fun `a loaded session without remote identity falls back to REST`() {
+        val decision = ResumeFreshnessPolicy.realtime(
+            loadedProfile = profile,
+            loadedBook = book,
+            loadedSessionId = null,
+            baseline = baseline,
+            candidate = candidate(position = 1.hours + 10.minutes),
+        )
+
+        assertNull(decision)
+    }
+
+    @Test
     fun `candidate from an older baseline generation is stale`() {
         val decision = ResumeFreshnessPolicy.realtime(
             loadedProfile = profile,
@@ -150,6 +176,7 @@ class ResumeFreshnessPolicyTest {
         generation: Long = baseline.generation,
         candidateProfile: ProfileId = profile,
         candidateBook: LibraryItemId = book,
+        sessionId: String? = "remote-session",
     ) = RealtimeResumeCandidate(
         evidence = RealtimeProgressEvidence(
             profileId = candidateProfile,
@@ -160,7 +187,7 @@ class ResumeFreshnessPolicyTest {
                 isFinished = false,
                 updatedAt = Instant.parse("2026-09-06T06:00:00Z"),
             ),
-            sessionId = "remote-session",
+            sessionId = sessionId,
         ),
         baselineGeneration = generation,
     )

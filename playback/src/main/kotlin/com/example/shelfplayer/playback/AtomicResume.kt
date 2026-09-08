@@ -67,7 +67,8 @@ internal enum class ResumeOutcome {
      * The seek did not arrive where it was sent, or the player never reported it.
      *
      * Playback is deliberately **not** started: resuming from the position the listener was trying to leave
-     * is the exact defect this path exists to remove. The caller reopens the book instead.
+     * is the exact defect this path exists to remove. The service leaves the book paused rather than opening
+     * a second server session whose state-changing response could outlive this request's ownership.
      */
     SeekLost,
 
