@@ -273,17 +273,18 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
         if (evidence.profileId != profileId || evidence.progress.bookId != bookId) return
         val acknowledged = baseline.acknowledged(bookId) ?: return
         realtimeCandidate = RealtimeResumeCandidate(evidence, acknowledged.generation)
-        val origin = when {
-            session.remoteSessionId == null || evidence.sessionId == null -> "unknownSession"
-            evidence.sessionId == session.remoteSessionId -> "ownSession"
-            else -> "otherSession"
-        }
         logger.debug(
             LogCategory.Playback,
             "Realtime progress became resume evidence",
             LogField.Public("generation", acknowledged.generation.toString()),
-            LogField.Public("origin", origin),
+            LogField.Public("origin", evidenceOrigin(session.remoteSessionId, evidence.sessionId)),
         )
+    }
+
+    private fun evidenceOrigin(localSessionId: String?, evidenceSessionId: String?): String = when {
+        localSessionId == null || evidenceSessionId == null -> "unknownSession"
+        evidenceSessionId == localSessionId -> "ownSession"
+        else -> "otherSession"
     }
 
     private fun isCurrentOnMain(plan: ResumeFreshnessPlan, requireBaseline: Boolean): Boolean {
