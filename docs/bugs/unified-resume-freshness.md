@@ -1,7 +1,8 @@
 # #91 — unified resume freshness
 
-Status: service wiring is implemented on PR #93 after #81 and #78. The PR remains **draft** until exact-head CI
-and the cross-surface device acceptance pass are complete.
+Status: service wiring is implemented on PR #93 after #81 and #78. Repository `ktlintFormat` has been applied
+to the completed integration. The PR remains **draft** until exact-head CI and the cross-surface device
+acceptance pass are complete.
 
 ## Problem
 
