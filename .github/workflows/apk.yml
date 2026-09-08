@@ -81,7 +81,6 @@ on:
           - "#131 — chore/codex-cloud-environment"
           - "#125 — feature/loopbound-overflow-menu"
           - "#93 — refactor/unified-resume-freshness"
-          - "#78 — claude/shelfplayer-android-auth-lk77fv"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
