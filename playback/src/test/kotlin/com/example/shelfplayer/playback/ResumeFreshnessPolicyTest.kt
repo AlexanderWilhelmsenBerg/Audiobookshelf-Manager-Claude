@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.playback.AcknowledgedPause
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.domain.realtime.RealtimeProgressEvidence
 import org.junit.Test
 import java.time.Instant
@@ -96,6 +97,52 @@ class ResumeFreshnessPolicyTest {
         assertNull(
             ResumeFreshnessPolicy.realtime(profile, book, "bookwave-session", baseline, wrongBook),
         )
+    }
+
+    @Test
+    fun `material REST fast forward uses the same adoption threshold`() {
+        val decision = ResumeFreshnessPolicy.rest(
+            baseline = baseline,
+            check = ExternalSessionCheck.Ahead(1.hours + 3.minutes),
+        )
+
+        val adopted = assertIs<ResumeFreshnessDecision.Adopt>(decision)
+        assertEquals(1.hours + 3.minutes, adopted.position)
+        assertEquals(FreshnessEvidenceSource.Rest, adopted.source)
+    }
+
+    @Test
+    fun `material REST rewind is adopted rather than max position`() {
+        val decision = ResumeFreshnessPolicy.rest(
+            baseline = baseline,
+            check = ExternalSessionCheck.Ahead(30.minutes),
+        )
+
+        val adopted = assertIs<ResumeFreshnessDecision.Adopt>(decision)
+        assertEquals(30.minutes, adopted.position)
+        assertEquals(FreshnessEvidenceSource.Rest, adopted.source)
+    }
+
+    @Test
+    fun `exactly two minutes of REST drift stays local`() {
+        val decision = ResumeFreshnessPolicy.rest(
+            baseline = baseline,
+            check = ExternalSessionCheck.Ahead(1.hours + 2.minutes),
+        )
+
+        val current = assertIs<ResumeFreshnessDecision.Current>(decision)
+        assertEquals(FreshnessEvidenceSource.Rest, current.source)
+    }
+
+    @Test
+    fun `unavailable REST check resumes locally but remains unverified`() {
+        val decision = ResumeFreshnessPolicy.rest(
+            baseline = baseline,
+            check = ExternalSessionCheck.Unavailable,
+        )
+
+        val current = assertIs<ResumeFreshnessDecision.Current>(decision)
+        assertEquals(FreshnessEvidenceSource.LocalUnverified, current.source)
     }
 
     private fun candidate(
