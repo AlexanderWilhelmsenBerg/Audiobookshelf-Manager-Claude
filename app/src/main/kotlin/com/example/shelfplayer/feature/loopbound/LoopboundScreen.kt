@@ -186,7 +186,12 @@ private fun Context.hasLoopboundBundle(): Boolean = runCatching {
 }.isSuccess
 
 private fun String.responseEncoding(): String? =
-    if (startsWith("text/") || this == "application/javascript" || this == "application/json" || this == "image/svg+xml") {
+    if (
+        startsWith("text/") ||
+        this == "application/javascript" ||
+        this == "application/json" ||
+        this == "image/svg+xml"
+    ) {
         Charsets.UTF_8.name()
     } else {
         null
