@@ -1,8 +1,9 @@
 # #91 — unified resume freshness
 
 Status: service wiring is implemented on PR #93 after #81 and #78. Repository `ktlintFormat` has been applied
-to the completed integration. The PR remains **draft** until exact-head CI and the cross-surface device
-acceptance pass are complete.
+to the completed integration, and the custom notification-skip path has been deduplicated and tied into the
+same invalidation owner. The PR remains **draft** until exact-head CI and the cross-surface device acceptance
+pass are complete.
 
 ## Problem
 
