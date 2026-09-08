@@ -25,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -36,6 +35,7 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import java.io.ByteArrayInputStream
+import androidx.compose.ui.graphics.Color as ComposeColor
 
 private const val LOOPBOUND_ASSET_DIRECTORY = "loopbound"
 private const val LOOPBOUND_ENTRY_FILE = "index.html"
@@ -147,10 +147,7 @@ private fun createLoopboundWebView(context: Context): WebView {
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
         webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest,
-            ): WebResourceResponse? {
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse? {
                 if (!request.url.isLoopboundAssetUrl()) return blockedResponse()
                 return assetLoader.shouldInterceptRequest(request.url) ?: blockedResponse()
             }
