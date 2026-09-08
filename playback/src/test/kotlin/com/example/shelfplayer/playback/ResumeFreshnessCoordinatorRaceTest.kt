@@ -1,0 +1,207 @@
+package com.example.shelfplayer.playback
+
+import android.os.Bundle
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import com.example.shelfplayer.core.common.log.LogEvent
+import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.Profile
+import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.core.model.playback.AcknowledgedPause
+import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
+import com.example.shelfplayer.domain.playback.ResumeBaseline
+import com.example.shelfplayer.domain.realtime.RealtimeProgressEvidenceStore
+import com.example.shelfplayer.domain.repository.PlaybackRepository
+import com.example.shelfplayer.domain.repository.ProfileRepository
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import java.lang.reflect.Proxy
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+
+/**
+ * Issue #91 — ownership races at the coordinator boundary, not only in the pure policy helper.
+ *
+ * Each test suspends the real REST freshness call after [ResumeFreshnessCoordinator.preparePlay] has allocated
+ * its request generation. A newer command then takes ownership before the server answer is released. The old
+ * Play must resolve as [ResumePlayPreparation.Superseded], which is the contract consumed by PlaybackService.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+class ResumeFreshnessCoordinatorRaceTest {
+
+    @Test
+    fun `pause seek media skip and auto rewind beat a suspended REST freshness check`() = runTest {
+        listOf(
+            ResumeInvalidation.Pause,
+            ResumeInvalidation.Seek,
+            ResumeInvalidation.MediaChanged,
+            ResumeInvalidation.NotificationSkip,
+            ResumeInvalidation.AutoRewind,
+        ).forEach { origin ->
+            assertSuspendedRestIsSuperseded(origin)
+        }
+    }
+
+    @Test
+    fun `a second Play supersedes an older suspended Play`() = runTest {
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        var calls = 0
+        val fixture = fixture(
+            check = { _, _ ->
+                calls += 1
+                if (calls == 1) {
+                    firstStarted.complete(Unit)
+                    releaseFirst.await()
+                }
+                ExternalSessionCheck.Current
+            },
+        )
+
+        val first = async(start = CoroutineStart.UNDISPATCHED) { fixture.coordinator.preparePlay() }
+        firstStarted.await()
+
+        val second = fixture.coordinator.preparePlay()
+        assertIs<ResumePlayPreparation.Ready>(second)
+
+        releaseFirst.complete(Unit)
+        assertIs<ResumePlayPreparation.Superseded>(first.await())
+    }
+
+    private suspend fun TestScope.assertSuspendedRestIsSuperseded(origin: ResumeInvalidation) {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val fixture = fixture(
+            check = { _, _ ->
+                started.complete(Unit)
+                release.await()
+                ExternalSessionCheck.Current
+            },
+        )
+
+        val preparing = async(start = CoroutineStart.UNDISPATCHED) { fixture.coordinator.preparePlay() }
+        started.await()
+        fixture.coordinator.invalidate(origin)
+        release.complete(Unit)
+
+        assertIs<ResumePlayPreparation.Superseded>(preparing.await())
+    }
+
+    private fun TestScope.fixture(
+        check: suspend (LibraryItemId, AcknowledgedPause?) -> ExternalSessionCheck,
+    ): Fixture {
+        val baseline = ResumeBaseline()
+        val generation = baseline.onPaused(BOOK, BASELINE_POSITION)
+        assertTrue(baseline.onPositionAccepted(BOOK, BASELINE_POSITION, generation))
+        val coordinator = ResumeFreshnessCoordinator(
+            playback = FakePlaybackRepository(check),
+            profiles = FakeProfileRepository(PROFILE),
+            baseline = baseline,
+            realtime = RealtimeProgressEvidenceStore(),
+            logger = NO_OP_LOGGER,
+            applicationScope = backgroundScope,
+            mainDispatcher = UnconfinedTestDispatcher(testScheduler),
+        )
+        coordinator.attach(player())
+        return Fixture(coordinator)
+    }
+
+    private fun player(): Player {
+        val extras = Bundle().apply { putString(MediaItems.KEY_OWNER_PROFILE_ID, PROFILE.value) }
+        val item = MediaItem.Builder()
+            .setMediaId(BOOK.value)
+            .setMediaMetadata(MediaMetadata.Builder().setExtras(extras).build())
+            .build()
+        return Proxy.newProxyInstance(
+            Player::class.java.classLoader,
+            arrayOf(Player::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getMediaItemCount" -> 1
+                "getCurrentMediaItem" -> item
+                "getCurrentPosition" -> BASELINE_POSITION.inWholeMilliseconds
+                else -> defaultValue(method.returnType)
+            }
+        } as Player
+    }
+
+    private fun defaultValue(type: Class<*>): Any? = when (type) {
+        java.lang.Boolean.TYPE -> false
+        java.lang.Byte.TYPE -> 0.toByte()
+        java.lang.Short.TYPE -> 0.toShort()
+        java.lang.Integer.TYPE -> 0
+        java.lang.Long.TYPE -> 0L
+        java.lang.Float.TYPE -> 0f
+        java.lang.Double.TYPE -> 0.0
+        java.lang.Character.TYPE -> '\u0000'
+        else -> null
+    }
+
+    private data class Fixture(val coordinator: ResumeFreshnessCoordinator)
+
+    private class FakePlaybackRepository(
+        private val check: suspend (LibraryItemId, AcknowledgedPause?) -> ExternalSessionCheck,
+    ) : PlaybackRepository {
+        override suspend fun openSession(bookId: LibraryItemId): AppResult<PlaybackSession> = error("unused")
+
+        override suspend fun recordPosition(
+            bookId: LibraryItemId,
+            position: Duration,
+            duration: Duration,
+            owner: ProfileId?,
+        ): AppResult<Unit> = error("unused")
+
+        override suspend fun setFinished(
+            bookId: LibraryItemId,
+            isFinished: Boolean,
+            position: Duration,
+        ): AppResult<Unit> = error("unused")
+
+        override suspend fun checkServerPosition(
+            bookId: LibraryItemId,
+            baseline: AcknowledgedPause?,
+        ): ExternalSessionCheck = check(bookId, baseline)
+    }
+
+    private class FakeProfileRepository(private var active: ProfileId?) : ProfileRepository {
+        override fun observeProfiles(): Flow<List<Profile>> = emptyFlow()
+
+        override fun observeServers(): Flow<List<Server>> = emptyFlow()
+
+        override fun observeActiveProfile(): Flow<Profile?> = emptyFlow()
+
+        override suspend fun activeProfileId(): ProfileId? = active
+
+        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
+            active = profileId
+            return AppResult.Success(Unit)
+        }
+    }
+
+    private companion object {
+        val PROFILE = ProfileId("profile-a")
+        val BOOK = LibraryItemId("book-a")
+        val BASELINE_POSITION = 10.minutes
+        val NO_OP_LOGGER = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+    }
+}
