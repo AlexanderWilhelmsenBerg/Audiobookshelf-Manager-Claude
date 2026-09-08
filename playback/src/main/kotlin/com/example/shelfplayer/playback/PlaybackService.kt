@@ -186,6 +186,10 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var resumeBaseline: ResumeBaseline
 
+    /** Issue #91 — one freshness decision shared by every standard Media3 Play surface. */
+    @Inject
+    internal lateinit var resumeFreshness: ResumeFreshnessCoordinator
+
     @Inject
     internal lateinit var logger: Logger
 
@@ -263,7 +267,15 @@ class PlaybackService : MediaLibraryService() {
         val exoPlayer = players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
             .also { player = it }
         exoPlayer.addListener(PlayerEvents())
-        session = MediaLibrarySession.Builder(this, exoPlayer, LibraryCallback())
+        resumeFreshness.attach(exoPlayer)
+        val sessionPlayer = ResumeFreshnessPlayer(
+            delegate = exoPlayer,
+            preparePlay = { future { handleFreshnessPlay() } },
+            invalidate = resumeFreshness::invalidate,
+        )
+        // Issue #91 — controllers see the forwarding player; service-owned timers/sync/routing below keep
+        // the raw ExoPlayer so internal atomic operations cannot recursively enter the external Play gate.
+        session = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
             .setBitmapLoader(players.bitmapLoader())
             // PRODUCT_SPEC PLAY-001 — tapping the notification opens the app. Without this the media
             // notification has no `contentIntent` at all, so a tap does nothing: a listener who reaches for
@@ -399,6 +411,7 @@ class PlaybackService : MediaLibraryService() {
         // coordinator, because `scope` is cancelled two lines below.
         sessionSync.onShutdown()
         sessionSync.attach(null)
+        resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
         audioOutputs.detach()
@@ -579,6 +592,97 @@ class PlaybackService : MediaLibraryService() {
         /** PRODUCT_SPEC 6.5 — whose book this is; `null` for an item this app did not build. */
         val owner: ProfileId?,
     )
+
+    /**
+     * Issue #91 — handles one standard Play after [ResumeFreshnessPlayer] intercepted it.
+     *
+     * No controller identity is needed here: every controller that can send standard Play reaches the same
+     * forwarding player, which is the point of putting the decision at the Media3 boundary rather than in a
+     * screen. A superseded request does nothing; the newer seek/Pause/book/profile command already owns the
+     * player.
+     */
+    private suspend fun handleFreshnessPlay() {
+        when (val prepared = resumeFreshness.preparePlay()) {
+            ResumePlayPreparation.Bypass -> resumeLoadedCurrent()
+            ResumePlayPreparation.Superseded -> Unit
+            is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan)
+        }
+    }
+
+    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan) {
+        if (!resumeFreshness.isCurrent(plan)) return
+        applicationScope.launch { recordFreshnessHistory(plan) }
+        when (val decision = plan.decision) {
+            is ResumeFreshnessDecision.Current -> resumeLoadedCurrent()
+            is ResumeFreshnessDecision.Adopt -> {
+                val outcome = resumeAt(plan.bookId, decision.position)
+                if (outcome != ResumeOutcome.Resumed && resumeFreshness.requestStillCurrent(plan)) {
+                    reopenFreshnessFromServer(plan.bookId)
+                }
+            }
+        }
+    }
+
+    /** The old direct Play behaviour, now used only after the shared freshness decision says to stay local. */
+    private suspend fun resumeLoadedCurrent() = withContext(mainDispatcher) {
+        val current = player ?: return@withContext
+        if (current.mediaItemCount == 0) return@withContext
+        if (current.playbackState == Player.STATE_IDLE || current.playerError != null) current.prepare()
+        current.play()
+    }
+
+    /**
+     * The fallback when the service-owned atomic seek could not prove it landed.
+     *
+     * Reopening obtains a fresh `/play` session and therefore a fresh server-chosen position. It is slower
+     * than the normal path but never substitutes an unconfirmed seek with stale local audio.
+     */
+    private suspend fun reopenFreshnessFromServer(bookId: LibraryItemId) {
+        val queue = openQueue(bookId, startAt = null) ?: return
+        withContext(mainDispatcher) {
+            val current = player ?: return@withContext
+            current.setMediaItem(queue.item, queue.startPositionMs)
+            current.prepare()
+            current.play()
+        }
+        logger.info(LogCategory.Playback, "A failed remote-position adoption was reopened from the server")
+    }
+
+    /**
+     * Keeps the existing History diagnostics while moving the decision out of PlayerViewModel.
+     *
+     * Realtime is not recorded as a `ServerCheck*` row because no server check happened. An adopted realtime
+     * move still gets the ordinary `RemoteProgress` row. REST keeps the three check outcomes users already
+     * see in History.
+     */
+    private suspend fun recordFreshnessHistory(plan: ResumeFreshnessPlan) {
+        val decision = plan.decision
+        if (plan.baselineGeneration != null && decision.source != FreshnessEvidenceSource.Realtime) {
+            history.record(
+                bookId = plan.bookId,
+                event = when (decision) {
+                    is ResumeFreshnessDecision.Adopt -> PlaybackEvent.ServerCheckAhead
+                    is ResumeFreshnessDecision.Current -> when (decision.source) {
+                        FreshnessEvidenceSource.LocalUnverified -> PlaybackEvent.ServerCheckUnavailable
+                        FreshnessEvidenceSource.Rest -> PlaybackEvent.ServerCheckCurrent
+                        FreshnessEvidenceSource.Realtime -> error("Realtime was filtered above")
+                    }
+                },
+                from = null,
+                to = plan.localPosition,
+                owner = plan.profileId,
+            )
+        }
+        if (decision is ResumeFreshnessDecision.Adopt) {
+            history.record(
+                bookId = plan.bookId,
+                event = PlaybackEvent.RemoteProgress,
+                from = plan.localPosition,
+                to = decision.position,
+                owner = plan.profileId,
+            )
+        }
+    }
 
     /**
      * PRODUCT_SPEC SYNC-002 — the whole adopt-a-remote-position operation, on the player this service owns.

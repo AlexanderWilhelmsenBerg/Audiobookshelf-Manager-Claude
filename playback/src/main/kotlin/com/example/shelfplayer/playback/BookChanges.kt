@@ -9,7 +9,7 @@ import javax.inject.Singleton
 /**
  * PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — everything that has to be told a book changed.
  *
- * Four singletons need the same news, in the same order, every time a session opens: the outbox needs a row
+ * Five singletons need the same news, in the same order, every time a session opens: the outbox needs a row
  * before a byte of audio is fetched; the resume baseline stages the server's `/play` position before Media3
  * receives the item; the sleep timer needs the chapters so an end-of-chapter timer knows where the chapter
  * ends; and auto-rewind needs the chapters so a rewind cannot cross a chapter start.
@@ -25,6 +25,7 @@ class BookChanges @Inject constructor(
     private val sessionSync: SessionSyncCoordinator,
     private val autoRewind: AutoRewindController,
     private val resumeBaseline: ResumeBaseline,
+    private val resumeFreshness: ResumeFreshnessCoordinator,
 ) {
     /**
      * A session has been opened for a book. Called before the player is handed the item.
@@ -48,6 +49,9 @@ class BookChanges @Inject constructor(
             bookId = session.bookId,
             position = MediaItems.serverStartPositionFor(session),
         )
+        // Issue #91 — keep the remote ABS session id service-side so realtime evidence can reject
+        // BookWave's own sync echo without exposing that identifier through MediaMetadata extras.
+        resumeFreshness.onSessionOpened(session)
         sleepTimer.onBookChanged(session.chapters)
         autoRewind.onBookChanged(session.chapters)
     }
