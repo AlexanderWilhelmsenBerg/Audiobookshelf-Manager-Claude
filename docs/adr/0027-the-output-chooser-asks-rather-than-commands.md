@@ -91,7 +91,7 @@ authoritative final decision:**
 - An already-active headset is preserved automatically when a car arrives; this is normal routing behaviour,
   not a persisted setting.
 - Classic Bluetooth A2DP is represented as semantically ambiguous instead of being assumed to be a headset.
-- Android Auto uses the stable Continue / Chapters / History / Library root described in ADR-0029.
+- Android Auto uses the stable Continue / Series / Authors / Library root described in ADR-0029.
 
 Keeping this short retired section is deliberate: it preserves why the PR contains `AudioOutputRoles` and
 `HeadsetHold`, while ADR-0029 prevents the temporary setting-based design from being mistaken for current
