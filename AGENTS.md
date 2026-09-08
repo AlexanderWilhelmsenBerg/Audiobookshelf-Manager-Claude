@@ -41,6 +41,53 @@ On a machine with a device attached:
 ./gradlew :core:datastore:connectedDebugAndroidTest   # the instrumented tier; never runs in CI
 ```
 
+## Codex Cloud environment
+
+The repository owns the Codex bootstrap in `scripts/codex/`; do not spend an agent turn rebuilding the
+environment by hand.
+
+Configure the Codex Cloud environment with:
+
+```text
+CODEX_ENV_JAVA_VERSION=21
+Setup:       bash scripts/codex/setup.sh
+Maintenance: bash scripts/codex/maintenance.sh
+```
+
+JDK 21 is deliberate. A compatibility matrix run on 2026-09-08 proved that the complete BookWave gate
+passes on JDK 21. JDK 22, 23 and 24 all prepared the same Codex environment successfully but failed
+`verifyDebug` with the current Gradle 8.14.3 / AGP 8.12.0 / Kotlin 2.2.0 stack. BookWave still targets Java
+17 bytecode, while normal GitHub CI stays on JDK 17 to exercise the minimum supported runtime. Re-probe
+newer JDKs after the staged build-tool migration in `docs/latest-stable-upgrade-plan.md`; do not infer
+compatibility merely because Gradle itself starts.
+
+The bootstrap pins the current stable Android command-line tools, installs only the Android SDK packages
+this repository actually needs (`platforms;android-36`, `build-tools;36.0.0`, and `platform-tools`), and
+pre-warms the Gradle verification graph. It also installs the pinned gitleaks version used for agent-side
+supply-chain work. Use the repository Gradle wrapper; never install or invoke a separate Gradle version.
+
+`BOOKWAVE_DEBUG_KEYSTORE_BASE64` must be configured as a **Codex secret**, not as an ordinary environment
+variable. The secret is exposed to the setup process under that environment-variable name, and the
+bootstrap restores it to `~/.bookwave/debug.keystore`. It is optional for compilation and tests, but
+without it an APK produced in a fresh Codex environment may not upgrade the developer's existing install.
+The GitHub Actions repository secret with the same name is separate; Codex does not inherit GitHub Actions
+secrets automatically. Never request or place release or Play upload signing credentials in the ordinary
+Codex environment.
+
+Cloud verification does not replace hardware testing. `connectedDebugAndroidTest` and macrobenchmarks
+still require a device or emulator; do not claim those tiers ran merely because `verifyDebug` passed.
+
+If the Codex bootstrap or its compatibility-canary workflow fails after a toolchain change, fix or update
+the bootstrap deliberately. Do not work around it by silently downgrading the application toolchain or
+weakening `verifyDebug`.
+
+## Dependency and toolchain upgrades
+
+Follow `docs/latest-stable-upgrade-plan.md` rather than bulk-bumping the version catalog. Build-system,
+Kotlin/compiler, AndroidX/platform, networking, persistence/playback, UI and test-tool upgrades are kept in
+separate reviewable phases. Resolve "latest stable" again immediately before each phase because the plan is
+a sequence and policy, not permission to use stale version numbers or previews.
+
 ## Coding rules
 
 - Work from requirement IDs in `PRODUCT_SPEC.md`.
