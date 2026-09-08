@@ -35,6 +35,8 @@ import kotlin.time.Duration.Companion.seconds
 internal enum class ResumeInvalidation {
     Pause,
     Seek,
+    NotificationSkip,
+    AutoRewind,
     Stop,
     MediaChanged,
 }
@@ -181,6 +183,22 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
         withContext(mainDispatcher) {
             isCurrentOnMain(plan, requireBaseline = true)
         }
+
+    /**
+     * Runs the service-owned movement only after the final generation/profile/book/baseline check on the
+     * player's main thread. The block begins in the same main-dispatch turn as that check, so a delayed REST
+     * or realtime answer cannot win a gap between validation and the first raw player command.
+     */
+    suspend fun <T> withCurrentPlan(
+        plan: ResumeFreshnessPlan,
+        requireBaseline: Boolean = true,
+        block: suspend () -> T,
+    ): T? {
+        if (profiles.activeProfileId() != plan.profileId) return null
+        return withContext(mainDispatcher) {
+            if (!isCurrentOnMain(plan, requireBaseline)) null else block()
+        }
+    }
 
     /**
      * Validation used only after an atomic adoption attempt has begun.
