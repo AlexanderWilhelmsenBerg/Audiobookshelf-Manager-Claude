@@ -1,0 +1,42 @@
+name: PR93 final format
+
+on:
+  push:
+    branches:
+      - diagnostic/pr93-compile
+    paths:
+      - .github/workflows/pr93-format-final.yml
+
+permissions:
+  contents: write
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refactor/unified-resume-freshness
+          fetch-depth: 0
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Apply repository Kotlin formatting
+        shell: bash
+        run: |
+          ./gradlew ktlintFormat
+          git diff --check
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add '*.kt'
+          git commit -m "Format final PR93 integration"
+          git push origin HEAD:refactor/unified-resume-freshness
