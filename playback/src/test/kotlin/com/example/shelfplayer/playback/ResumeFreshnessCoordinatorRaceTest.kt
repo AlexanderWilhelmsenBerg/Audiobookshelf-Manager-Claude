@@ -56,7 +56,7 @@ class ResumeFreshnessCoordinatorRaceTest {
             ResumeInvalidation.NotificationSkip,
             ResumeInvalidation.AutoRewind,
         ).forEach { origin ->
-            assertSuspendedRestIsSuperseded(origin)
+            assertSuspendedRestIsSuperseded(this, origin)
         }
     }
 
@@ -86,10 +86,10 @@ class ResumeFreshnessCoordinatorRaceTest {
         assertIs<ResumePlayPreparation.Superseded>(first.await())
     }
 
-    private suspend fun TestScope.assertSuspendedRestIsSuperseded(origin: ResumeInvalidation) {
+    private suspend fun assertSuspendedRestIsSuperseded(scope: TestScope, origin: ResumeInvalidation) {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        val fixture = fixture(
+        val fixture = scope.fixture(
             check = { _, _ ->
                 started.complete(Unit)
                 release.await()
@@ -97,7 +97,7 @@ class ResumeFreshnessCoordinatorRaceTest {
             },
         )
 
-        val preparing = async(start = CoroutineStart.UNDISPATCHED) { fixture.coordinator.preparePlay() }
+        val preparing = scope.async(start = CoroutineStart.UNDISPATCHED) { fixture.coordinator.preparePlay() }
         started.await()
         fixture.coordinator.invalidate(origin)
         release.complete(Unit)
