@@ -612,24 +612,24 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan) {
-    when (val decision = plan.decision) {
-        is ResumeFreshnessDecision.Current -> {
-            resumeFreshness.withCurrentPlan(plan) {
-                applicationScope.launch { recordFreshnessHistory(plan) }
-                resumeLoadedCurrent()
-            } ?: return
-        }
-        is ResumeFreshnessDecision.Adopt -> {
-            val outcome = resumeFreshness.withCurrentPlan(plan) {
-                applicationScope.launch { recordFreshnessHistory(plan) }
-                resumeAt(plan.bookId, decision.position)
-            } ?: return
-            if (outcome != ResumeOutcome.Resumed && resumeFreshness.requestStillCurrent(plan)) {
-                reopenFreshnessFromServer(plan.bookId)
+        when (val decision = plan.decision) {
+            is ResumeFreshnessDecision.Current -> {
+                resumeFreshness.withCurrentPlan(plan) {
+                    applicationScope.launch { recordFreshnessHistory(plan) }
+                    resumeLoadedCurrent()
+                } ?: return
+            }
+            is ResumeFreshnessDecision.Adopt -> {
+                val outcome = resumeFreshness.withCurrentPlan(plan) {
+                    applicationScope.launch { recordFreshnessHistory(plan) }
+                    resumeAt(plan.bookId, decision.position)
+                } ?: return
+                if (outcome != ResumeOutcome.Resumed && resumeFreshness.requestStillCurrent(plan)) {
+                    reopenFreshnessFromServer(plan.bookId)
+                }
             }
         }
     }
-}
 
     /** The old direct Play behaviour, now used only after the shared freshness decision says to stay local. */
     private suspend fun resumeLoadedCurrent() = withContext(mainDispatcher) {
