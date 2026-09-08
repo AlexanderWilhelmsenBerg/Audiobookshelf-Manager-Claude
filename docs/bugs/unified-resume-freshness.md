@@ -1,15 +1,14 @@
 # #91 — unified resume freshness
 
-Status: implementation PR is intentionally **draft** until #81 lands. #81 changes the playback-session
-handoff that this coordinator must sit on top of; wiring against the pre-#81 order and then resolving the
-same overlap again would make the most timing-sensitive code in the app harder to review.
+Status: service wiring is implemented on PR #93 after #81 and #78. The PR remains **draft** until exact-head CI
+and the cross-surface device acceptance pass are complete.
 
 ## Problem
 
 #89 fixed one narrow path: when the in-app Play button resumes a restored paused book, it can compare an
-acknowledged baseline with the current ABS progress and adopt a remote move. The decision still lives in
+acknowledged baseline with the current ABS progress and adopt a remote move. The decision lived in
 `PlayerViewModel`, so standard Media3 Play commands from the notification, Bluetooth/headsets, Android Auto
-and steering-wheel controls bypass it.
+and steering-wheel controls bypassed it.
 
 The #89 device run also exposed an unexplained move back toward the pre-adoption baseline. The later move
 forward in that run was intentional (the tester tapped a History row); the earlier backward move was not.
@@ -19,12 +18,13 @@ That is enough evidence to stop adding independent position-changing paths.
 
 Android's current Media3 guidance is explicit: standard `Player` commands sent to a `MediaSession` are
 forwarded to the player automatically. To customize standard Play/seek behavior, wrap the player in
-`ForwardingSimpleBasePlayer` and override the relevant `handle{Action}` methods. This is the correct place to
-make app, notification, headset and car Play converge without replacing standard media controls with custom
+`ForwardingSimpleBasePlayer` and override the relevant `handle{Action}` methods. This is the boundary used by
+#93 so app, notification, headset and car Play converge without replacing standard media controls with custom
 commands.
 
-After #81 lands, the service will therefore expose a forwarding player to `MediaLibrarySession` while
-retaining the underlying ExoPlayer for internal atomic operations.
+`PlaybackService` exposes `ResumeFreshnessPlayer` to `MediaLibrarySession` and retains the underlying
+`ExoPlayer` for internal atomic operations. `PlayerViewModel` no longer performs a freshness/network decision;
+its Play/Pause button is an ordinary Media3 transport command like every other controller.
 
 ## Serialized resume algorithm
 
@@ -42,35 +42,42 @@ For every externally requested paused/armed -> Play:
    player.
 8. If adopting, seek/confirm on the service-owned ExoPlayer before audio. If no adoption is required, resume
    the current player normally.
+9. If the atomic adoption cannot be confirmed and the request still owns the player, reopen through `/play`
+   so the fallback position is server-chosen rather than an unconfirmed local seek.
 
 A missing socket candidate never means "current". Socket events are not replayed; REST remains the fallback.
 
 ## Invalidation
 
-The forwarding player invalidates any pending resume decision before forwarding explicit local movement:
+`ResumeFreshnessPlayer` invalidates any pending resume decision before forwarding explicit movement or
+transport replacement:
 
 - seek bar / arbitrary seek;
-- skip back/forward;
-- chapter jump;
-- History or bookmark return (both are seeks at the Media3 boundary);
+- skip back/forward and chapter jump, which arrive as seeks;
+- History or bookmark return, which also arrive as seeks;
 - stop / replace media / book switch;
 - a superseding Play or Pause.
 
-Direct service-owned moves such as auto-rewind also invalidate the decision, except while the coordinator is
-performing its own marked remote-adoption seek.
+The existing service listener also invalidates `ResumeBaseline` when playback starts, a seek lands, the book
+changes, or the book ends. The coordinator revalidates both its request token and the baseline generation, so
+an older suspended REST/realtime answer cannot reclaim the player after a newer action.
 
 ## Realtime evidence
 
 #90 persists a `user_item_progress_updated` row through the normal conflict-safe repository and publishes a
-non-replayed in-memory evidence event only when that repository accepted the row. #91 pairs an evidence event
+non-replayed in-memory evidence event only when that repository accepted the row. #93 pairs an evidence event
 with the baseline generation current at receipt. That means:
 
 - a stale socket push cannot bypass unsynced-local protection;
 - a push seen before the current pause is not proof about this pause;
 - this BookWave session's own sync echo (same `sessionId`) is not mistaken for another device;
-- process death/background gaps naturally lose the candidate and therefore force REST.
+- process death/background gaps naturally lose the candidate and therefore force REST;
+- realtime evidence never moves active playback by itself.
 
-## Tests required when wiring after #81
+`BookChanges` passes the opened ABS session identity to the coordinator before the item is exposed to Media3;
+the remote session id stays service-side and is not placed in `MediaMetadata` extras.
+
+## Acceptance still required
 
 - app Play, notification Play, headset/Bluetooth Play and Android Auto Play all enter the same resume path;
 - candidate + same baseline generation + another session + >2 min => adopt before audio;
