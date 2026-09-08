@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.playback.CarReadiness
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,10 +40,31 @@ class CarConnections @Inject constructor(private val clock: AppClock) {
     @Volatile
     private var last: Instant? = null
 
+    private val bound = AtomicInteger()
+
     /** Called from the media session's connect callback, which is any thread Media3 chooses. */
     fun onConnected() {
         last = clock.now()
+        bound.incrementAndGet()
     }
+
+    /**
+     * PRODUCT_SPEC PLAY-002 — a car controller went away.
+     *
+     * Counted rather than flagged, because two can be bound at once: Android Auto's projection host and the
+     * phone's own companion are separate controllers and both match `PlaybackService`'s car packages. A
+     * flag would clear on the first disconnect and take the car button away while a car was still there.
+     *
+     * Floored at zero. Media3 does not promise a `onDisconnected` for every `onConnect` — a controller whose
+     * process dies is reaped, and a service recreated under a bound car sees the disconnect without ever
+     * having seen the connect — and a negative count would keep the button hidden for the rest of the run.
+     */
+    fun onDisconnected() {
+        bound.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
+    }
+
+    /** Whether a car is bound to the media session **right now**, as opposed to having been at some point. */
+    fun isConnected(): Boolean = bound.get() > 0
 
     fun lastConnectedAt(): Instant? = last
 }
