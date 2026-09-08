@@ -20,7 +20,7 @@ import javax.inject.Singleton
  * detekt's parameter limit in the first place.
  */
 @Singleton
-class BookChanges @Inject constructor(
+class BookChanges @Inject internal constructor(
     private val sleepTimer: SleepTimerController,
     private val sessionSync: SessionSyncCoordinator,
     private val autoRewind: AutoRewindController,
