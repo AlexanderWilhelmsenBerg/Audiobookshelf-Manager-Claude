@@ -35,15 +35,28 @@ class PlaybackFailureReportTest {
     }
 
     /**
-     * 403 is a token the server accepts but will not honour here. To a driver that is the same thing as an
-     * expired one and has the same remedy, so it gets the same sentence.
+     * 403 is **not** an expired credential, and offering a sign-in for it is offering a remedy that cannot
+     * work. `AppError` defines 403 as `Authorization` — authenticated, but not permitted — and this file
+     * used to say both things at once: the playback path handed a driver a sign-in button while the
+     * session path stayed silent, for the same status.
      */
     @Test
-    fun `a refused token reads as a credential failure too`() {
+    fun `a forbidden item is not an expired credential`() {
         val report = PlaybackFailureReport.of(BAD_STATUS, httpStatus = 403, localFile = false, willRetry = false)
 
-        assertEquals(PlaybackFailureReport.Message.CredentialsExpired, report?.message)
-        assertTrue(report?.isCredentialFailure == true)
+        assertEquals(PlaybackFailureReport.Message.ServerCannotDeliver, report?.message)
+        assertFalse(report?.isCredentialFailure == true)
+    }
+
+    /** The same status must mean the same thing whichever path reaches it. */
+    @Test
+    fun `a permission failure opening the session reads the same as a forbidden item`() {
+        val opening = PlaybackFailureReport.ofSessionFailure(AppError.Authorization("no permission"))
+        val playing = PlaybackFailureReport.of(BAD_STATUS, httpStatus = 403, localFile = false, willRetry = false)
+
+        assertEquals(PlaybackFailureReport.Message.ServerCannotDeliver, opening?.message)
+        assertEquals(playing?.message, opening?.message)
+        assertFalse(opening?.isCredentialFailure == true)
     }
 
     /** A server error is not something a driver can fix, and must not offer them a sign-in. */
@@ -291,8 +304,8 @@ class PlaybackFailureReportTest {
      */
     @Test
     fun `other session failures say nothing`() {
-        assertNull(PlaybackFailureReport.ofSessionFailure(AppError.Authorization("no permission")))
         assertNull(PlaybackFailureReport.ofSessionFailure(AppError.Validation("bad request")))
+        assertNull(PlaybackFailureReport.ofSessionFailure(AppError.Conflict("conflict")))
     }
 
     private companion object {

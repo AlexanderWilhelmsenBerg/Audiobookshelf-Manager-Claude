@@ -60,9 +60,17 @@ internal object PlaybackFailureReport {
         // book, which is product priority 3 and never touched the network at all.
         if (localFile) return report(Message.FileNotPlayable)
         // Credentials first, because they are the only failure a person can actually do something about,
-        // and they arrive as an ordinary bad-status I/O error. 403 is a token the server accepts but will
-        // not honour here; to a driver that is the same thing as an expired one, with the same remedy.
-        if (httpStatus == HTTP_UNAUTHORIZED || httpStatus == HTTP_FORBIDDEN) {
+        // and they arrive as an ordinary bad-status I/O error.
+        //
+        // **401 only.** This used to take 403 as well, on the reasoning that "a token the server accepts
+        // but will not honour is the same thing to a driver, with the same remedy". It is not the same
+        // remedy, and this file said so twelve lines further down: `AppError` defines 403 as
+        // `Authorization` — authenticated, but not permitted — and `ofSessionFailure` has always left it
+        // silent *because a missing permission is not fixed by signing in again*. So one path offered a
+        // sign-in button that could not work while the other stayed quiet, for the same status. A review
+        // caught the contradiction between the two comments. 403 now falls to [serverAnswered], which is
+        // true of it: the server was reached and declined to hand over the book.
+        if (httpStatus == HTTP_UNAUTHORIZED) {
             return Report(
                 code = SessionError.ERROR_SESSION_AUTHENTICATION_EXPIRED,
                 message = Message.CredentialsExpired,
@@ -121,15 +129,18 @@ internal object PlaybackFailureReport {
         // timeout stays with the unreachable case — nothing came back, which is what the sentence says.
         is AppError.Network, is AppError.Timeout -> report(Message.ServerUnreachable)
 
-        is AppError.Server -> report(Message.ServerCannotDeliver)
+        // Both are the server answering and refusing to hand over the book — a status it chose, and a
+        // permission it withheld. `Authorization` was silent here until 403 stopped being treated as an
+        // expired credential on the other path; leaving it silent would have kept the same status saying
+        // two different things depending on which path reached it.
+        is AppError.Server, is AppError.Authorization -> report(Message.ServerCannotDeliver)
 
         // Enumerated rather than an `else`, which detekt refuses on a sealed subject and is right to: a
         // variant added later should make this fail to compile and be *decided*, not silently inherit
         // silence. Every one of these is silent today, and each for the same reason — there is no sentence
-        // a driver could act on. A missing permission is not fixed by signing in again; an incompatible
-        // server, a conflict, a validation failure and a security error are all diagnoses for a screen.
+        // a driver could act on. An incompatible server, a conflict, a validation failure and a security
+        // error are all diagnoses for a screen, not for somebody driving.
         is AppError.ApiCompatibility,
-        is AppError.Authorization,
         is AppError.Canceled,
         is AppError.Conflict,
         is AppError.Download,
@@ -148,7 +159,6 @@ internal object PlaybackFailureReport {
     )
 
     private const val HTTP_UNAUTHORIZED = 401
-    private const val HTTP_FORBIDDEN = 403
 
     /**
      * Media3's I/O band, **reached only when nothing answered**: a refused connection, an unreachable host,
