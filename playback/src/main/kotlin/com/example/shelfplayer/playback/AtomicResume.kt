@@ -16,17 +16,17 @@ import kotlin.time.Duration
  * proxy — the read is a report of what the session *believes*, not of what the player *did*. Re-reading the
  * thing that told you the lie is not a check.
  *
- * So the whole operation is one custom session command now. `PlaybackService` receives it and drives its
- * **own** [androidx.media3.exoplayer.ExoPlayer] directly: seek it, wait for that player's own position
- * discontinuity, confirm where it actually landed, and only then start audio. The outcome travels back to
- * the controller as a `SessionResult`, so the app learns whether the adoption succeeded instead of assuming
- * it and logging a contradiction a second later.
+ * The current architecture has no private resume command. Standard Media3 Play reaches
+ * [ResumeFreshnessPlayer], the coordinator decides whether the paused book stays local or adopts remote
+ * progress, and `PlaybackService` performs any adopted movement on its service-owned
+ * [androidx.media3.exoplayer.ExoPlayer] before audio starts. The service waits for that player's own position
+ * discontinuity, confirms where the seek landed, revalidates request ownership, and only then calls Play.
  *
  * ### Why the ordering is a pure function over a seam
  *
- * `ExoPlayer` cannot be constructed in a unit test and `MediaController` is final, which is how the
- * two-coroutine defect survived review twice (see [ResumeSurface]). [ResumeTarget] is the four questions
- * and three commands this operation needs, so `AtomicResumeTest` can assert *prepare, seek, confirm, then
+ * `ExoPlayer` cannot be constructed cheaply in a unit test and `MediaController` is final, which is how the
+ * old multi-coroutine defect survived review. [ResumeTarget] is exactly the player-side observations and
+ * commands this operation needs, so `AtomicResumeTest` can assert *prepare, seek, confirm, revalidate, then
  * play* — and, more importantly, that **no play happens** when the seek did not land.
  */
 internal interface ResumeTarget {
