@@ -89,10 +89,7 @@ internal object NotificationButtons {
      * no command behind it. [displayName] is evaluated only for an active timer so callers do not have to
      * manufacture a countdown label for [SleepTimerState.Idle].
      */
-    fun sleepTimerButton(
-        timer: SleepTimerState,
-        displayName: (Duration) -> CharSequence,
-    ): CommandButton? {
+    fun sleepTimerButton(timer: SleepTimerState, displayName: (Duration) -> CharSequence): CommandButton? {
         if (!timer.isActive) return null
         return CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
             .setDisplayName(displayName(timer.remaining))
