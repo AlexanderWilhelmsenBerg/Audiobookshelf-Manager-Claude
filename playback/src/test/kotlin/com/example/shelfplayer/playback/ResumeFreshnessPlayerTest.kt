@@ -4,6 +4,7 @@ import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -30,7 +31,7 @@ class ResumeFreshnessPlayerTest {
             },
         )
 
-        player.handleSetPlayWhenReady(true).get()
+        await(player.handleSetPlayWhenReady(true))
 
         assertEquals(0, preparations)
         assertEquals(1, freshStarts)
@@ -47,7 +48,7 @@ class ResumeFreshnessPlayerTest {
             consumeFreshStart = { false },
         )
 
-        player.handleSetPlayWhenReady(true).get()
+        await(player.handleSetPlayWhenReady(true))
 
         assertEquals(1, preparations)
         assertTrue(delegate.events.isEmpty())
@@ -56,39 +57,35 @@ class ResumeFreshnessPlayerTest {
     @Test
     fun `Pause invalidates before it is forwarded`() {
         val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = true)
-        val events = mutableListOf<String>()
-        delegate.externalEvents = events
         val player = forwarding(
             delegate = delegate,
-            invalidate = { origin -> events += "invalidate:$origin" },
+            invalidate = { origin -> delegate.events += "invalidate:$origin" },
         )
 
-        player.handleSetPlayWhenReady(false).get()
+        await(player.handleSetPlayWhenReady(false))
 
         assertEquals(
             listOf("invalidate:Pause", "delegate:play=false"),
-            events,
+            delegate.events,
         )
     }
 
     @Test
     fun `seek media replacement and Stop invalidate before forwarding`() {
         val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = false)
-        val events = mutableListOf<String>()
-        delegate.externalEvents = events
         val player = forwarding(
             delegate = delegate,
-            invalidate = { origin -> events += "invalidate:$origin" },
+            invalidate = { origin -> delegate.events += "invalidate:$origin" },
         )
         val replacement = listOf(MediaItem.Builder().setMediaId("replacement").build())
 
-        player.handleSeek(0, 1_000L, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM).get()
-        player.handleReplaceMediaItems(0, 1, replacement).get()
-        player.handleStop().get()
+        await(player.handleSeek(0, 1_000L, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM))
+        await(player.handleReplaceMediaItems(0, 1, replacement))
+        await(player.handleStop())
 
-        assertEquals(ResumeInvalidation.Seek, invalidationBefore(events, "delegate:seek"))
-        assertEquals(ResumeInvalidation.MediaChanged, invalidationBefore(events, "delegate:replace"))
-        assertEquals(ResumeInvalidation.Stop, invalidationBefore(events, "delegate:stop"))
+        assertEquals(ResumeInvalidation.Seek, invalidationBefore(delegate.events, "delegate:seek"))
+        assertEquals(ResumeInvalidation.MediaChanged, invalidationBefore(delegate.events, "delegate:replace"))
+        assertEquals(ResumeInvalidation.Stop, invalidationBefore(delegate.events, "delegate:stop"))
     }
 
     @Test
@@ -97,11 +94,13 @@ class ResumeFreshnessPlayerTest {
         val invalidations = mutableListOf<ResumeInvalidation>()
         val player = forwarding(delegate = delegate, invalidate = invalidations::add)
 
-        player.handleSetMediaItems(
-            listOf(MediaItem.Builder().setMediaId("other").build()),
-            startIndex = 0,
-            startPositionMs = 0L,
-        ).get()
+        await(
+            player.handleSetMediaItems(
+                listOf(MediaItem.Builder().setMediaId("other").build()),
+                startIndex = 0,
+                startPositionMs = 0L,
+            ),
+        )
 
         assertEquals(listOf(ResumeInvalidation.MediaChanged), invalidations)
     }
@@ -120,7 +119,7 @@ class ResumeFreshnessPlayerTest {
             },
         )
 
-        player.handleSetPlayWhenReady(true).get()
+        await(player.handleSetPlayWhenReady(true))
 
         assertEquals(0, preparations)
         assertFalse(freshTokenRead)
@@ -141,7 +140,7 @@ class ResumeFreshnessPlayerTest {
             },
         )
 
-        player.handleSetPlayWhenReady(true).get()
+        await(player.handleSetPlayWhenReady(true))
 
         assertEquals(0, preparations)
         assertFalse(freshTokenRead)
@@ -163,6 +162,11 @@ class ResumeFreshnessPlayerTest {
         invalidate = invalidate,
     )
 
+    private fun await(future: ListenableFuture<*>) {
+        val result = future.get()
+        assertTrue(result == null || result == Unit, "Unexpected forwarding result: $result")
+    }
+
     private fun invalidationBefore(events: List<String>, delegateEvent: String): ResumeInvalidation {
         val delegateIndex = events.indexOf(delegateEvent)
         assertTrue(delegateIndex > 0, "Expected $delegateEvent after an invalidation: $events")
@@ -172,7 +176,6 @@ class ResumeFreshnessPlayerTest {
 
     private class RecordingDelegate(private var mediaItemCount: Int, private var playWhenReady: Boolean) {
         val events = mutableListOf<String>()
-        var externalEvents: MutableList<String>? = null
 
         val player: Player = Proxy.newProxyInstance(
             Player::class.java.classLoader,
@@ -196,7 +199,7 @@ class ResumeFreshnessPlayerTest {
                     record("delegate:setMedia")
                     Unit
                 }
-                "replaceMediaItems" -> {
+                "replaceMediaItem", "replaceMediaItems" -> {
                     record("delegate:replace")
                     Unit
                 }
@@ -218,7 +221,6 @@ class ResumeFreshnessPlayerTest {
 
         private fun record(event: String) {
             events += event
-            externalEvents?.add(event)
         }
     }
 
