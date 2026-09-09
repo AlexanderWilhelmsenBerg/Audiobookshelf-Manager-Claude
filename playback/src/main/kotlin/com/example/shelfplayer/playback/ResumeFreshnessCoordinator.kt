@@ -76,6 +76,13 @@ internal sealed interface ResumePlayPreparation {
  * with the acknowledged-pause generation that existed when it arrived. Movement happens later, and only
  * from [preparePlay], after the same checks that a REST result must pass.
  *
+ * A freshly opened server session is different from a resume of an already loaded paused book. `/play`
+ * already chose the authoritative starting position, so its immediate first Play must not spend another
+ * network round trip asking the same server the same question. [onSessionOpened] may therefore mint one
+ * identity-bound [freshStart] token. [consumeFreshStart] consumes it exactly once at the forwarding-player
+ * boundary. An armed session never gets that token, so a later headset/car/notification Play still performs
+ * normal freshness reconciliation.
+ *
  * Mutable state is main-thread confined. Network work happens outside that thread, then the request token,
  * loaded owner/book and baseline generation are checked again before a plan may be returned.
  */
@@ -91,6 +98,7 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
 ) {
     private var player: Player? = null
     private var openedSession: OpenedSession? = null
+    private var freshStart: OpenedSession? = null
     private var realtimeCandidate: RealtimeResumeCandidate? = null
     private var requestGeneration: Long = 0
     private var evidenceWatch: Job? = null
@@ -102,6 +110,7 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
         evidenceWatch = null
         if (player == null) {
             openedSession = null
+            freshStart = null
             realtimeCandidate = null
             requestGeneration += 1
             return
@@ -118,22 +127,49 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
      *
      * That id is the only way to reject the server echo of BookWave's own session without putting a server
      * session identifier into `MediaMetadata.extras`, where external controllers could read it.
+     *
+     * [initialPlayWillFollow] is true only when the caller opened this server session as part of the same
+     * user action that will immediately issue Play. It is deliberately false for arm-only paths. A blank
+     * session id is local/offline and can never mint a fresh-server token because no server chose its start.
      */
-    suspend fun onSessionOpened(session: PlaybackSession, invalidatePendingRequest: Boolean = true) =
+    suspend fun onSessionOpened(session: PlaybackSession, initialPlayWillFollow: Boolean = false) =
         withContext(mainDispatcher) {
-            openedSession = OpenedSession(
+            val opened = OpenedSession(
                 profileId = session.profileId,
                 bookId = session.bookId,
                 remoteSessionId = session.id.takeIf(String::isNotBlank),
             )
+            openedSession = opened
+            freshStart = opened.takeIf { initialPlayWillFollow && it.remoteSessionId != null }
             realtimeCandidate = null
-            if (invalidatePendingRequest) requestGeneration += 1
+            requestGeneration += 1
         }
+
+    /**
+     * Consumes the one immediate-Play exemption created by a fresh server `/play` response.
+     *
+     * Identity is re-read from the raw player at consumption time. A media replacement between opening the
+     * session and Play therefore cannot borrow another book/profile's exemption. The token is consumed even
+     * on mismatch so it can never become a later sticky bypass.
+     */
+    fun consumeFreshStart(): Boolean {
+        val pending = freshStart ?: return false
+        freshStart = null
+        val current = player ?: return false
+        if (current.mediaItemCount == 0) return false
+        val item = current.currentMediaItem ?: return false
+        return MediaItems.ownerOf(item) == pending.profileId && MediaItems.bookIdOf(item) == pending.bookId
+    }
 
     /** Invalidates a suspended decision before the underlying explicit command is forwarded. */
     fun invalidate(origin: ResumeInvalidation) {
         requestGeneration += 1
         realtimeCandidate = null
+        // BookChanges records a fresh-start token before the app hands the newly opened item through the
+        // forwarding player, so that initial setMediaItem is expected. Every other explicit movement means
+        // the immediate-start exemption is no longer true. A replacement with a different identity is still
+        // rejected when consumeFreshStart re-reads the loaded item.
+        if (origin != ResumeInvalidation.MediaChanged) freshStart = null
         logger.debug(
             LogCategory.Playback,
             "A pending resume-freshness decision was invalidated",
@@ -199,34 +235,6 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
         return withContext(mainDispatcher) {
             if (!isCurrentOnMain(plan, requireBaseline)) null else block()
         }
-    }
-
-    /**
-     * Legacy gate for the removed second-`/play` adoption recovery.
-     *
-     * Review of PR #93 found that a fallback `/play` was not a side-effect-free candidate: the repository can
-     * clear a finished flag before returning, and `BookChanges.onBookOpened` can suspend after committing part
-     * of the replacement session. A request-generation check around those calls therefore cannot make the
-     * transaction safe. The recovery is deliberately closed instead of letting an obsolete Play mutate local
-     * progress/session/baseline/chapter state after a newer Pause, seek, Stop or media change won ownership.
-     *
-     * Keep the method while `PlaybackService` still carries the old fallback call site; it always returns
-     * false, so that call site cannot reach `/play` or `BookChanges`. A failed adopted seek remains paused and
-     * is diagnosable rather than being "recovered" by a stale state-changing request.
-     */
-    suspend fun requestStillCurrent(plan: ResumeFreshnessPlan): Boolean {
-        val wasStillCurrent = profiles.activeProfileId() == plan.profileId &&
-            withContext(mainDispatcher) {
-                isCurrentOnMain(plan, requireBaseline = false)
-            }
-        if (wasStillCurrent) {
-            logger.debug(
-                LogCategory.Playback,
-                "A failed adopted seek stayed paused; server-session reopen is disabled",
-                LogField.Public("generation", plan.requestGeneration.toString()),
-            )
-        }
-        return false
     }
 
     private suspend fun finish(context: RequestContext, decision: ResumeFreshnessDecision): ResumePlayPreparation {
