@@ -130,25 +130,29 @@ class ResumeFreshnessCoordinatorRaceTest {
     }
 
     @Test
-    fun `offline session without server baseline keeps newer local position instead of adopting older server`() = runTest {
-        var checks = 0
-        val fixture = fixture(
-            acknowledgedBaseline = false,
-            localPosition = 60.minutes,
-            check = { _, _ ->
-                checks += 1
-                ExternalSessionCheck.Ahead(30.minutes)
-            },
-        )
-        fixture.coordinator.onSessionOpened(serverSession(id = ""), initialPlayWillFollow = true)
+    fun `offline session without server baseline keeps newer local position instead of adopting older server`() =
+        runTest {
+            var checks = 0
+            val fixture = fixture(
+                acknowledgedBaseline = false,
+                localPosition = 60.minutes,
+                check = { _, _ ->
+                    checks += 1
+                    ExternalSessionCheck.Ahead(30.minutes)
+                },
+            )
+            fixture.coordinator.onSessionOpened(serverSession(id = ""), initialPlayWillFollow = true)
 
-        assertFalse(fixture.coordinator.consumeFreshStart(), "blank id is local evidence, not a fresh server session")
-        val preparation = assertIs<ResumePlayPreparation.Ready>(fixture.coordinator.preparePlay())
-        val current = assertIs<ResumeFreshnessDecision.Current>(preparation.plan.decision)
+            assertFalse(
+                fixture.coordinator.consumeFreshStart(),
+                "blank id is local evidence, not a fresh server session",
+            )
+            val preparation = assertIs<ResumePlayPreparation.Ready>(fixture.coordinator.preparePlay())
+            val current = assertIs<ResumeFreshnessDecision.Current>(preparation.plan.decision)
 
-        assertEquals(FreshnessEvidenceSource.LocalUnverified, current.source)
-        assertEquals(0, checks, "without a server-acknowledged pause there is nothing safe to compare remotely")
-    }
+            assertEquals(FreshnessEvidenceSource.LocalUnverified, current.source)
+            assertEquals(0, checks, "without a server-acknowledged pause there is nothing safe to compare remotely")
+        }
 
     private suspend fun assertSuspendedRestIsSuperseded(scope: TestScope, origin: ResumeInvalidation) {
         val started = CompletableDeferred<Unit>()
