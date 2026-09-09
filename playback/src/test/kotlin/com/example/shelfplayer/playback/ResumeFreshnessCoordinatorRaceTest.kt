@@ -300,7 +300,7 @@ class ResumeFreshnessCoordinatorRaceTest {
         author = null,
         coverUrl = null,
         startAt = BASELINE_POSITION,
-        duration = 2 * 60.minutes,
+        duration = 120.minutes,
         tracks = emptyList(),
         chapters = emptyList(),
     )
