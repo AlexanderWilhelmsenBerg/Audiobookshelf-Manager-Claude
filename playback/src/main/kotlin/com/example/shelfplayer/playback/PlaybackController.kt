@@ -17,12 +17,10 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
-import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.domain.playback.GlobalTimeline
-import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
@@ -67,8 +65,6 @@ class PlaybackController @Inject constructor(
     private val bookChanges: BookChanges,
     private val playbackSettings: PlaybackSettingsRepository,
     private val history: PlaybackHistoryRepository,
-    /** PRODUCT_SPEC SYNC-002 — the service's record of the last acknowledged pause. Read only, here. */
-    private val resumeBaseline: ResumeBaseline,
     /** PRODUCT_SPEC PLAY-002 — where the book goes, which is part of what the player screen shows. */
     private val audioOutputs: AudioOutputRouter,
     private val logger: Logger,
@@ -160,8 +156,9 @@ class PlaybackController @Inject constructor(
             // PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — the sleep timer, the outbox and auto-rewind all need
             // to know, in that order. See [BookChanges]; the chapters travel to them here rather than in the
             // playlist, because a long book's list in every `MediaItem`'s extras would be tens of kilobytes
-            // across the binder to answer one question.
-            bookChanges.onBookOpened(session)
+            // across the binder to answer one question. `startPlaying` also tells BookChanges whether the
+            // fresh server session's immediate first Play is part of this same action or whether this is an arm.
+            bookChanges.onBookOpened(session, initialPlayWillFollow = startPlaying)
             chapters = session.chapters
             lastChapter = null
             // ADR-0016 — one item for the whole book, and the resume point is a book position because the
@@ -215,16 +212,6 @@ class PlaybackController @Inject constructor(
             }
         }
     }
-
-    /**
-     * PRODUCT_SPEC SYNC-002 — the last pause for [bookId] that the server confirmed, or `null`.
-     *
-     * Through this façade rather than by injecting `ResumeBaseline` into the player's view model, for the
-     * same reason [outputs] is: the screen already takes everything it knows about playback from here, and
-     * a second object in the view model would be a second place for the two to disagree. `PlaybackService`
-     * writes it; nothing outside `:playback` writes it at all.
-     */
-    fun acknowledgedPause(bookId: LibraryItemId): AcknowledgedPause? = resumeBaseline.acknowledged(bookId)
 
     /**
      * PRODUCT_SPEC PLAY-001 — retry after a failure the service gave up on.
