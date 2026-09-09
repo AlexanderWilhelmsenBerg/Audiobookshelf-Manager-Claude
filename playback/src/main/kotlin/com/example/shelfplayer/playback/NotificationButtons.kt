@@ -1,6 +1,9 @@
 package com.example.shelfplayer.playback
 
+import android.os.Bundle
 import androidx.media3.session.CommandButton
+import androidx.media3.session.SessionCommand
+import com.example.shelfplayer.core.model.playback.SleepTimerState
 import kotlin.time.Duration
 
 /**
@@ -77,6 +80,27 @@ internal object NotificationButtons {
      * not — every stop is something the listener is wearing, and the button's own name says which.
      */
     const val ACTION_CYCLE_HEADSET_OUTPUT = "com.example.shelfplayer.playback.CYCLE_HEADSET_OUTPUT"
+
+    /**
+     * The active sleep timer's overflow action, or no action while the timer is idle.
+     *
+     * Media3 1.11 requires a [CommandButton] to carry exactly one session or player command. Keeping the
+     * binding next to the active-state guard makes it impossible to publish a visible timer button that has
+     * no command behind it. [displayName] is evaluated only for an active timer so callers do not have to
+     * manufacture a countdown label for [SleepTimerState.Idle].
+     */
+    fun sleepTimerButton(
+        timer: SleepTimerState,
+        displayName: (Duration) -> CharSequence,
+    ): CommandButton? {
+        if (!timer.isActive) return null
+        return CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
+            .setDisplayName(displayName(timer.remaining))
+            .setSessionCommand(SessionCommand(ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setEnabled(true)
+            .build()
+    }
 
     fun backIcon(interval: Duration): Int = when (interval.inWholeSeconds) {
         FIVE -> CommandButton.ICON_SKIP_BACK_5
