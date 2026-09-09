@@ -7,6 +7,15 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
+ * The session start that is actually server evidence.
+ *
+ * Offline sessions deliberately use a blank id and seed [PlaybackSession.startAt] from local cached progress.
+ * They are valid queues, but they cannot say what the server acknowledged because no server session exists.
+ */
+internal fun PlaybackSession.serverAcknowledgedStartPosition() =
+    id.takeIf(String::isNotBlank)?.let { MediaItems.serverStartPositionFor(this) }
+
+/**
  * PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — everything that has to be told a book changed.
  *
  * Five singletons need the same news, in the same order, every time a session opens: the outbox needs a row
@@ -52,9 +61,7 @@ class BookChanges @Inject internal constructor(
         sessionSync.onSessionOpened(session)
         resumeBaseline.stageServerPosition(
             bookId = session.bookId,
-            position = session.id
-                .takeIf(String::isNotBlank)
-                ?.let { MediaItems.serverStartPositionFor(session) },
+            position = session.serverAcknowledgedStartPosition(),
         )
         // Issue #91 — keep the remote ABS session id service-side so realtime evidence can reject
         // BookWave's own sync echo without exposing that identifier through MediaMetadata extras.
