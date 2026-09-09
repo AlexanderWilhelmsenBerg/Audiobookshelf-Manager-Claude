@@ -89,7 +89,7 @@ class ResumeFreshnessCoordinatorRaceTest {
     }
 
     @Test
-    fun `fresh server start is one shot and the next acknowledged pause checks REST normally`() = runTest {
+    fun `fresh server start survives exactly its initial media install and then bypasses once`() = runTest {
         var checks = 0
         val fixture = fixture(
             check = { _, _ ->
@@ -98,6 +98,14 @@ class ResumeFreshnessCoordinatorRaceTest {
             },
         )
         fixture.coordinator.onSessionOpened(serverSession(), initialPlayWillFollow = true)
+
+        assertFalse(
+            fixture.coordinator.consumeFreshStart(),
+            "the server token is not usable before the newly opened item has been installed",
+        )
+
+        fixture.coordinator.onSessionOpened(serverSession(), initialPlayWillFollow = true)
+        fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
 
         assertTrue(fixture.coordinator.consumeFreshStart())
         assertFalse(fixture.coordinator.consumeFreshStart())
@@ -111,6 +119,17 @@ class ResumeFreshnessCoordinatorRaceTest {
 
         assertIs<ResumePlayPreparation.Ready>(fixture.coordinator.preparePlay())
         assertEquals(1, checks)
+    }
+
+    @Test
+    fun `a second media replacement before first Play cancels the fresh exemption`() = runTest {
+        val fixture = fixture(check = { _, _ -> ExternalSessionCheck.Current })
+        fixture.coordinator.onSessionOpened(serverSession(), initialPlayWillFollow = true)
+
+        fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
+        fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
+
+        assertFalse(fixture.coordinator.consumeFreshStart())
     }
 
     @Test
