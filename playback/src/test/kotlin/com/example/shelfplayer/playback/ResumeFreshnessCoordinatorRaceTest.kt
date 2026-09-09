@@ -50,10 +50,11 @@ import kotlin.time.Duration.Companion.minutes
 class ResumeFreshnessCoordinatorRaceTest {
 
     @Test
-    fun `pause seek media skip and auto rewind beat a suspended REST freshness check`() = runTest {
+    fun `pause seek stop media skip and auto rewind beat a suspended REST freshness check`() = runTest {
         listOf(
             ResumeInvalidation.Pause,
             ResumeInvalidation.Seek,
+            ResumeInvalidation.Stop,
             ResumeInvalidation.MediaChanged,
             ResumeInvalidation.NotificationSkip,
             ResumeInvalidation.AutoRewind,
@@ -122,6 +123,39 @@ class ResumeFreshnessCoordinatorRaceTest {
     }
 
     @Test
+    fun `generic set media open cannot leave a fresh exemption for a later Play`() = runTest {
+        var checks = 0
+        val fixture = fixture(
+            check = { _, _ ->
+                checks += 1
+                ExternalSessionCheck.Ahead(20.minutes)
+            },
+        )
+
+        // PlaybackService's generic onSetMediaItems/open path is arm-only: installing the returned item is
+        // a MediaChanged, but Media3 does not promise a Play as part of that operation.
+        fixture.coordinator.onSessionOpened(serverSession(), initialPlayWillFollow = false)
+        fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
+
+        assertFalse(fixture.coordinator.consumeFreshStart())
+        val laterPlay = assertIs<ResumePlayPreparation.Ready>(fixture.coordinator.preparePlay())
+        assertIs<ResumeFreshnessDecision.Adopt>(laterPlay.plan.decision)
+        assertEquals(1, checks, "the later Play must reconcile freshness instead of consuming stale state")
+    }
+
+    @Test
+    fun `pause and seek before initial Play cancel the fresh exemption`() = runTest {
+        val fixture = fixture(check = { _, _ -> ExternalSessionCheck.Current })
+
+        listOf(ResumeInvalidation.Pause, ResumeInvalidation.Seek).forEach { origin ->
+            fixture.coordinator.onSessionOpened(serverSession(), initialPlayWillFollow = true)
+            fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
+            fixture.coordinator.invalidate(origin)
+            assertFalse(fixture.coordinator.consumeFreshStart(), "$origin must cancel the initial-Play token")
+        }
+    }
+
+    @Test
     fun `a second media replacement before first Play cancels the fresh exemption`() = runTest {
         val fixture = fixture(check = { _, _ -> ExternalSessionCheck.Current })
         fixture.coordinator.onSessionOpened(serverSession(), initialPlayWillFollow = true)
@@ -129,6 +163,25 @@ class ResumeFreshnessCoordinatorRaceTest {
         fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
         fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
 
+        assertFalse(fixture.coordinator.consumeFreshStart())
+    }
+
+    @Test
+    fun `wrong book or profile cannot consume a fresh exemption`() = runTest {
+        val fixture = fixture(check = { _, _ -> ExternalSessionCheck.Current })
+
+        fixture.coordinator.onSessionOpened(
+            serverSession(bookId = LibraryItemId("book-b")),
+            initialPlayWillFollow = true,
+        )
+        fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
+        assertFalse(fixture.coordinator.consumeFreshStart())
+
+        fixture.coordinator.onSessionOpened(
+            serverSession(profileId = ProfileId("profile-b")),
+            initialPlayWillFollow = true,
+        )
+        fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
         assertFalse(fixture.coordinator.consumeFreshStart())
     }
 
@@ -142,6 +195,7 @@ class ResumeFreshnessCoordinatorRaceTest {
             },
         )
         fixture.coordinator.onSessionOpened(serverSession(), initialPlayWillFollow = false)
+        fixture.coordinator.invalidate(ResumeInvalidation.MediaChanged)
 
         assertFalse(fixture.coordinator.consumeFreshStart())
         assertIs<ResumePlayPreparation.Ready>(fixture.coordinator.preparePlay())
@@ -234,10 +288,14 @@ class ResumeFreshnessCoordinatorRaceTest {
         } as Player
     }
 
-    private fun serverSession(id: String = "session-a") = PlaybackSession(
+    private fun serverSession(
+        id: String = "session-a",
+        profileId: ProfileId = PROFILE,
+        bookId: LibraryItemId = BOOK,
+    ) = PlaybackSession(
         id = id,
-        profileId = PROFILE,
-        bookId = BOOK,
+        profileId = profileId,
+        bookId = bookId,
         title = "Test book",
         author = null,
         coverUrl = null,
