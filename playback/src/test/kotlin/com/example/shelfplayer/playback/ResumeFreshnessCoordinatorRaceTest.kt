@@ -288,22 +288,19 @@ class ResumeFreshnessCoordinatorRaceTest {
         } as Player
     }
 
-    private fun serverSession(
-        id: String = "session-a",
-        profileId: ProfileId = PROFILE,
-        bookId: LibraryItemId = BOOK,
-    ) = PlaybackSession(
-        id = id,
-        profileId = profileId,
-        bookId = bookId,
-        title = "Test book",
-        author = null,
-        coverUrl = null,
-        startAt = BASELINE_POSITION,
-        duration = 120.minutes,
-        tracks = emptyList(),
-        chapters = emptyList(),
-    )
+    private fun serverSession(id: String = "session-a", profileId: ProfileId = PROFILE, bookId: LibraryItemId = BOOK) =
+        PlaybackSession(
+            id = id,
+            profileId = profileId,
+            bookId = bookId,
+            title = "Test book",
+            author = null,
+            coverUrl = null,
+            startAt = BASELINE_POSITION,
+            duration = 120.minutes,
+            tracks = emptyList(),
+            chapters = emptyList(),
+        )
 
     private fun defaultValue(type: Class<*>): Any? = when (type) {
         java.lang.Boolean.TYPE -> false
