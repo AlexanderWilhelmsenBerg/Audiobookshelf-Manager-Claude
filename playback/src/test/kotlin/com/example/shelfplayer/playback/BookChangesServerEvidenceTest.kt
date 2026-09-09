@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
@@ -133,7 +134,16 @@ class BookChangesServerEvidenceTest {
         coverUrl = null,
         startAt = START,
         duration = 8.hours,
-        tracks = emptyList(),
+        tracks = listOf(
+            PlayableTrack(
+                index = 0,
+                url = "file:///book.m4b",
+                startOffset = Duration.ZERO,
+                duration = 8.hours,
+                mimeType = "audio/mp4",
+                isExcluded = false,
+            ),
+        ),
         chapters = emptyList(),
     )
 
