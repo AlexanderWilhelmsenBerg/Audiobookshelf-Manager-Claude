@@ -27,4 +27,6 @@ internal fun ResumeFreshnessPlan.serverCheckHistoryEvent(): PlaybackEvent? {
  * player or superseding command must therefore never produce `RemoteProgress`.
  */
 internal fun ResumeFreshnessPlan.remoteProgressHistoryEvent(outcome: ResumeOutcome): PlaybackEvent? =
-    PlaybackEvent.RemoteProgress.takeIf { decision is ResumeFreshnessDecision.Adopt && outcome == ResumeOutcome.Resumed }
+    PlaybackEvent.RemoteProgress.takeIf {
+        decision is ResumeFreshnessDecision.Adopt && outcome == ResumeOutcome.Resumed
+    }
