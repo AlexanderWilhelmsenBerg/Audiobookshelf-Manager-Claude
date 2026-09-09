@@ -1,6 +1,8 @@
 package com.example.shelfplayer.playback
 
 import android.os.Bundle
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
 import androidx.media3.session.SessionCommand
 import com.example.shelfplayer.core.model.playback.SleepTimerState
@@ -89,6 +91,7 @@ internal object NotificationButtons {
      * no command behind it. [displayName] is evaluated only for an active timer so callers do not have to
      * manufacture a countdown label for [SleepTimerState.Idle].
      */
+    @OptIn(UnstableApi::class)
     fun sleepTimerButton(timer: SleepTimerState, displayName: (Duration) -> CharSequence): CommandButton? {
         if (!timer.isActive) return null
         return CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
