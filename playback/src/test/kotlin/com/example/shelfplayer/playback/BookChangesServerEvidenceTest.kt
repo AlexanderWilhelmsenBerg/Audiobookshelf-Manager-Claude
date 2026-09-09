@@ -147,12 +147,11 @@ class BookChangesServerEvidenceTest {
         chapters = emptyList(),
     )
 
-    private inline fun <reified T : Any> proxy(
-        crossinline answer: (String) -> Any? = { null },
-    ): T = Proxy.newProxyInstance(
-        T::class.java.classLoader,
-        arrayOf(T::class.java),
-    ) { _, method, _ -> answer(method.name) ?: defaultValue(method.returnType) } as T
+    private inline fun <reified T : Any> proxy(crossinline answer: (String) -> Any? = { null }): T =
+        Proxy.newProxyInstance(
+            T::class.java.classLoader,
+            arrayOf(T::class.java),
+        ) { _, method, _ -> answer(method.name) ?: defaultValue(method.returnType) } as T
 
     private fun defaultValue(type: Class<*>): Any? = when (type) {
         java.lang.Boolean.TYPE -> false
