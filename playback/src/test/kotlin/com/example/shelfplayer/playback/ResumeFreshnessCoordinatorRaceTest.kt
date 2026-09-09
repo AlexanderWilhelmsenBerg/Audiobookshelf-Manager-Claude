@@ -31,15 +31,17 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.lang.reflect.Proxy
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
 /**
- * Issue #91 — ownership races at the coordinator boundary, not only in the pure policy helper.
+ * Issue #91 — ownership races and fresh-start semantics at the real coordinator boundary.
  *
- * Each test suspends the real REST freshness call after [ResumeFreshnessCoordinator.preparePlay] has allocated
+ * Race tests suspend the real REST freshness call after [ResumeFreshnessCoordinator.preparePlay] has allocated
  * its request generation. A newer command then takes ownership before the server answer is released. The old
  * Play must resolve as [ResumePlayPreparation.Superseded], which is the contract consumed by PlaybackService.
  */
@@ -86,6 +88,68 @@ class ResumeFreshnessCoordinatorRaceTest {
         assertIs<ResumePlayPreparation.Superseded>(first.await())
     }
 
+    @Test
+    fun `fresh server start is one shot and the next acknowledged pause checks REST normally`() = runTest {
+        var checks = 0
+        val fixture = fixture(
+            check = { _, _ ->
+                checks += 1
+                ExternalSessionCheck.Current
+            },
+        )
+        fixture.coordinator.onSessionOpened(serverSession(), initialPlayWillFollow = true)
+
+        assertTrue(fixture.coordinator.consumeFreshStart())
+        assertFalse(fixture.coordinator.consumeFreshStart())
+        assertEquals(0, checks, "the immediate first Play must trust the fresh server session")
+
+        // Once audio has moved, the fresh session's staged baseline is no longer a pause. A real pause and
+        // server acknowledgement establishes the next freshness boundary.
+        fixture.baseline.onLocalMove()
+        val generation = fixture.baseline.onPaused(BOOK, 12.minutes)
+        assertTrue(fixture.baseline.onPositionAccepted(BOOK, 12.minutes, generation))
+
+        assertIs<ResumePlayPreparation.Ready>(fixture.coordinator.preparePlay())
+        assertEquals(1, checks)
+    }
+
+    @Test
+    fun `armed server session does not get the immediate Play exemption`() = runTest {
+        var checks = 0
+        val fixture = fixture(
+            check = { _, _ ->
+                checks += 1
+                ExternalSessionCheck.Current
+            },
+        )
+        fixture.coordinator.onSessionOpened(serverSession(), initialPlayWillFollow = false)
+
+        assertFalse(fixture.coordinator.consumeFreshStart())
+        assertIs<ResumePlayPreparation.Ready>(fixture.coordinator.preparePlay())
+        assertEquals(1, checks)
+    }
+
+    @Test
+    fun `offline session without server baseline keeps newer local position instead of adopting older server`() = runTest {
+        var checks = 0
+        val fixture = fixture(
+            acknowledgedBaseline = false,
+            localPosition = 60.minutes,
+            check = { _, _ ->
+                checks += 1
+                ExternalSessionCheck.Ahead(30.minutes)
+            },
+        )
+        fixture.coordinator.onSessionOpened(serverSession(id = ""), initialPlayWillFollow = true)
+
+        assertFalse(fixture.coordinator.consumeFreshStart(), "blank id is local evidence, not a fresh server session")
+        val preparation = assertIs<ResumePlayPreparation.Ready>(fixture.coordinator.preparePlay())
+        val current = assertIs<ResumeFreshnessDecision.Current>(preparation.plan.decision)
+
+        assertEquals(FreshnessEvidenceSource.LocalUnverified, current.source)
+        assertEquals(0, checks, "without a server-acknowledged pause there is nothing safe to compare remotely")
+    }
+
     private suspend fun assertSuspendedRestIsSuperseded(scope: TestScope, origin: ResumeInvalidation) {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -106,11 +170,15 @@ class ResumeFreshnessCoordinatorRaceTest {
     }
 
     private fun TestScope.fixture(
+        acknowledgedBaseline: Boolean = true,
+        localPosition: Duration = BASELINE_POSITION,
         check: suspend (LibraryItemId, AcknowledgedPause?) -> ExternalSessionCheck,
     ): Fixture {
         val baseline = ResumeBaseline()
-        val generation = baseline.onPaused(BOOK, BASELINE_POSITION)
-        assertTrue(baseline.onPositionAccepted(BOOK, BASELINE_POSITION, generation))
+        if (acknowledgedBaseline) {
+            val generation = baseline.onPaused(BOOK, BASELINE_POSITION)
+            assertTrue(baseline.onPositionAccepted(BOOK, BASELINE_POSITION, generation))
+        }
         val coordinator = ResumeFreshnessCoordinator(
             playback = FakePlaybackRepository(check),
             profiles = FakeProfileRepository(PROFILE),
@@ -120,11 +188,11 @@ class ResumeFreshnessCoordinatorRaceTest {
             applicationScope = backgroundScope,
             mainDispatcher = UnconfinedTestDispatcher(testScheduler),
         )
-        coordinator.attach(player())
-        return Fixture(coordinator)
+        coordinator.attach(player(localPosition))
+        return Fixture(coordinator, baseline)
     }
 
-    private fun player(): Player {
+    private fun player(position: Duration): Player {
         val extras = Bundle().apply { putString(MediaItems.KEY_OWNER_PROFILE_ID, PROFILE.value) }
         val item = MediaItem.Builder()
             .setMediaId(BOOK.value)
@@ -137,11 +205,24 @@ class ResumeFreshnessCoordinatorRaceTest {
             when (method.name) {
                 "getMediaItemCount" -> 1
                 "getCurrentMediaItem" -> item
-                "getCurrentPosition" -> BASELINE_POSITION.inWholeMilliseconds
+                "getCurrentPosition" -> position.inWholeMilliseconds
                 else -> defaultValue(method.returnType)
             }
         } as Player
     }
+
+    private fun serverSession(id: String = "session-a") = PlaybackSession(
+        id = id,
+        profileId = PROFILE,
+        bookId = BOOK,
+        title = "Test book",
+        author = null,
+        coverUrl = null,
+        startAt = BASELINE_POSITION,
+        duration = 2 * 60.minutes,
+        tracks = emptyList(),
+        chapters = emptyList(),
+    )
 
     private fun defaultValue(type: Class<*>): Any? = when (type) {
         java.lang.Boolean.TYPE -> false
@@ -155,7 +236,7 @@ class ResumeFreshnessCoordinatorRaceTest {
         else -> null
     }
 
-    private data class Fixture(val coordinator: ResumeFreshnessCoordinator)
+    private data class Fixture(val coordinator: ResumeFreshnessCoordinator, val baseline: ResumeBaseline)
 
     private class FakePlaybackRepository(
         private val check: suspend (LibraryItemId, AcknowledgedPause?) -> ExternalSessionCheck,
