@@ -79,9 +79,10 @@ internal sealed interface ResumePlayPreparation {
  * A freshly opened server session is different from a resume of an already loaded paused book. `/play`
  * already chose the authoritative starting position, so its immediate first Play must not spend another
  * network round trip asking the same server the same question. [onSessionOpened] may therefore mint one
- * identity-bound [freshStart] token. [consumeFreshStart] consumes it exactly once at the forwarding-player
- * boundary. An armed session never gets that token, so a later headset/car/notification Play still performs
- * normal freshness reconciliation.
+ * identity-bound [freshStart] token. That token survives exactly one expected media installation and then
+ * [consumeFreshStart] consumes it exactly once at the forwarding-player boundary. A later media replacement
+ * invalidates it like every other explicit movement. An armed session never gets that token, so a later
+ * headset/car/notification Play still performs normal freshness reconciliation.
  *
  * Mutable state is main-thread confined. Network work happens outside that thread, then the request token,
  * loaded owner/book and baseline generation are checked again before a plan may be returned.
@@ -98,7 +99,7 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
 ) {
     private var player: Player? = null
     private var openedSession: OpenedSession? = null
-    private var freshStart: OpenedSession? = null
+    private var freshStart: FreshStart? = null
     private var realtimeCandidate: RealtimeResumeCandidate? = null
     private var requestGeneration: Long = 0
     private var evidenceWatch: Job? = null
@@ -140,7 +141,9 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
                 remoteSessionId = session.id.takeIf(String::isNotBlank),
             )
             openedSession = opened
-            freshStart = opened.takeIf { initialPlayWillFollow && it.remoteSessionId != null }
+            freshStart = opened
+                .takeIf { initialPlayWillFollow && it.remoteSessionId != null }
+                ?.let { FreshStart(session = it, awaitingMediaInstall = true) }
             realtimeCandidate = null
             requestGeneration += 1
         }
@@ -148,34 +151,44 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
     /**
      * Consumes the one immediate-Play exemption created by a fresh server `/play` response.
      *
-     * Identity is re-read from the raw player at consumption time. A media replacement between opening the
-     * session and Play therefore cannot borrow another book/profile's exemption. The token is consumed even
-     * on mismatch so it can never become a later sticky bypass.
+     * Identity is re-read from the raw player at consumption time. The token is useful only after the one
+     * media installation that belongs to the session open; a Play before that installation, or after any
+     * later replacement, cannot use it. The token is consumed even on mismatch so it can never become a
+     * later sticky bypass.
      */
     fun consumeFreshStart(): Boolean {
         val pending = freshStart ?: return false
         freshStart = null
+        if (pending.awaitingMediaInstall) return false
         val current = player ?: return false
         if (current.mediaItemCount == 0) return false
         val item = current.currentMediaItem ?: return false
-        return MediaItems.ownerOf(item) == pending.profileId && MediaItems.bookIdOf(item) == pending.bookId
+        return MediaItems.ownerOf(item) == pending.session.profileId &&
+            MediaItems.bookIdOf(item) == pending.session.bookId
     }
 
     /** Invalidates a suspended decision before the underlying explicit command is forwarded. */
     fun invalidate(origin: ResumeInvalidation) {
         requestGeneration += 1
         realtimeCandidate = null
-        // BookChanges records a fresh-start token before the app hands the newly opened item through the
-        // forwarding player, so that initial setMediaItem is expected. Every other explicit movement means
-        // the immediate-start exemption is no longer true. A replacement with a different identity is still
-        // rejected when consumeFreshStart re-reads the loaded item.
-        if (origin != ResumeInvalidation.MediaChanged) freshStart = null
+        freshStart = freshStartAfter(origin, freshStart)
         logger.debug(
             LogCategory.Playback,
             "A pending resume-freshness decision was invalidated",
             LogField.Public("generation", requestGeneration.toString()),
             LogField.Public("origin", origin.name),
         )
+    }
+
+    /**
+     * The first MediaChanged after opening is the expected `setMediaItem` that installs that exact session.
+     * Every later replacement is a new local ownership decision and therefore clears the exemption.
+     */
+    private fun freshStartAfter(origin: ResumeInvalidation, current: FreshStart?): FreshStart? = when {
+        current == null -> null
+        origin != ResumeInvalidation.MediaChanged -> null
+        current.awaitingMediaInstall -> current.copy(awaitingMediaInstall = false)
+        else -> null
     }
 
     /**
@@ -318,6 +331,8 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
         }
 
     private data class OpenedSession(val profileId: ProfileId, val bookId: LibraryItemId, val remoteSessionId: String?)
+
+    private data class FreshStart(val session: OpenedSession, val awaitingMediaInstall: Boolean)
 
     private data class RequestContext(
         val requestGeneration: Long,
