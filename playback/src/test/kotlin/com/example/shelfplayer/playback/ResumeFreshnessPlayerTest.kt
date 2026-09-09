@@ -170,10 +170,7 @@ class ResumeFreshnessPlayerTest {
         return ResumeInvalidation.valueOf(value)
     }
 
-    private class RecordingDelegate(
-        private var mediaItemCount: Int,
-        private var playWhenReady: Boolean,
-    ) {
+    private class RecordingDelegate(private var mediaItemCount: Int, private var playWhenReady: Boolean) {
         val events = mutableListOf<String>()
         var externalEvents: MutableList<String>? = null
 
