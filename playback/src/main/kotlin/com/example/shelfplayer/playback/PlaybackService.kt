@@ -1327,7 +1327,6 @@ class PlaybackService : MediaLibraryService() {
         if (!timer.isActive) return null
         return CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
             .setDisplayName(getString(R.string.player_sleep_remaining, timer.remaining.asMinutesLabel()))
-            .setSessionCommand(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
             // Not a transport control, so it goes where the extra actions go rather than displacing one of
             // the two a listener reaches for without looking.
             .setSlots(CommandButton.SLOT_OVERFLOW)
@@ -1563,10 +1562,7 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun resolvePlayable(item: MediaItem, trusted: Boolean): MediaItem? =
         if (trusted && MediaItems.isReadyToPlay(item)) item else resolveQueue(item)?.item
 
-    private suspend fun resolveQueue(
-        item: MediaItem,
-        initialPlayWillFollow: Boolean = false,
-    ): MediaItems.Queue? {
+    private suspend fun resolveQueue(item: MediaItem, initialPlayWillFollow: Boolean = false): MediaItems.Queue? {
         val target = AutoLibrary.resolve(item.mediaId) ?: return null
         return openQueue(target.bookId, target.startAt, initialPlayWillFollow)
     }
