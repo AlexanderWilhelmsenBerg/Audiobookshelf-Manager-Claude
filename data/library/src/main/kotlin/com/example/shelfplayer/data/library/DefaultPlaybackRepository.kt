@@ -374,10 +374,10 @@ class DefaultPlaybackRepository @Inject constructor(
      *
      * ### The cap is the caller's, not this function's
      *
-     * How long a tap may wait is a decision about the tap, so `PlayerViewModel` wraps this call in its own
-     * timeout and treats a late answer as `Unavailable`. Putting it here would also have put a virtual
-     * clock inside every test of this repository, which is a lot of machinery for a policy that belongs one
-     * layer up.
+     * How long a Play may wait is a decision about the shared Play boundary, so `ResumeFreshnessCoordinator`
+     * wraps this call in its own timeout and treats a late answer as `Unavailable`. Keeping that cap here
+     * would also put a virtual clock inside every test of this repository, which is machinery for policy
+     * owned one layer up.
      */
     override suspend fun checkServerPosition(
         bookId: LibraryItemId,
