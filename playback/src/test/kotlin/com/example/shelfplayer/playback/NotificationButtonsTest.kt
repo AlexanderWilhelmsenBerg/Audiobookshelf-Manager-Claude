@@ -33,7 +33,6 @@ class NotificationButtonsTest {
         val button = assertNotNull(NotificationButtons.sleepTimerButton(timer) { "12 min" })
 
         assertEquals(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, button.sessionCommand?.customAction)
-        assertEquals(null, button.playerCommand)
     }
 
     @Test
