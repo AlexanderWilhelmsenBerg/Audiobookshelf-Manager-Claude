@@ -3,6 +3,7 @@ package com.example.shelfplayer.domain.usecase
 import com.example.shelfplayer.core.common.log.DefaultRedactor
 import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
+import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Book
@@ -13,6 +14,9 @@ import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.TEST_SERVER
 import com.example.shelfplayer.domain.book
 import com.example.shelfplayer.domain.playback.StartupPlayer
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.time.Instant
@@ -21,101 +25,107 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
 /**
- * PRODUCT_SPEC 6.5 step 6 — *"The new profile's last player state is restored paused."*
+ * PRODUCT_SPEC 6.5 step 6 / BW-PLAY-01 — *"The new profile's last player state is restored paused."*
  *
- * ### What these are actually protecting
- *
- * Two clauses that pull against the obvious implementation. 6.5.3 says playback pauses by default and 6.5.8
- * says continuing across a switch is *not supported in version 1*, so the restore must **arm and never
- * play** — which is why `ApplyStartupModeUseCase` could not be reused despite doing a similar thing on a
- * cold start: it honours `StartupMode`, and `ResumeOnOpen` would start audio here.
- *
- * And the book has to be the *incoming* profile's. The rule used to live in `AutoLibrary.lastPlayed()`,
- * which resolved the active profile itself and so could not answer this question at all.
+ * These tests pin the distinction #115 introduces: the book identity belongs to this physical BookWave
+ * install, while server progress timestamps may move independently on another client. The incoming profile's
+ * remembered id chooses the book; its Room progress remains presentation/resume evidence only.
  */
 class RestoreProfilePlaybackUseCaseTest {
 
     private val player = RecordingStartupPlayer()
 
+    /** A remote client advancing B later must not replace locally remembered A. */
     @Test
-    fun `the incoming profile's most recently played unfinished book is armed`() = runTest {
+    fun `the incoming profile's remembered book wins over newer remote progress`() = runTest {
         val library = FakeLibraryRepository(
             listOf(
-                playedBook("older", at = "2026-08-01T10:00:00Z"),
-                playedBook("newest", at = "2026-08-20T10:00:00Z"),
-                playedBook("middle", at = "2026-08-10T10:00:00Z"),
+                playedBook("local-a", at = "2026-08-01T10:00:00Z"),
+                playedBook("remote-b", at = "2026-09-10T10:00:00Z"),
             ),
         )
 
-        useCase(library)(TEST_PROFILE)
+        useCase(library, remembered = LibraryItemId("local-a"))(TEST_PROFILE)
 
-        assertEquals(listOf(LibraryItemId("newest")), player.armed)
+        assertEquals(listOf(LibraryItemId("local-a")), player.armed)
     }
 
     /**
      * **Armed, never played.** 6.5.3 and 6.5.8 both forbid audio starting from a switch.
-     *
-     * The assertion that `played` is empty is the one with teeth: `StartupPlayer` offers both verbs, and the
-     * wrong one is one character away.
      */
     @Test
     fun `nothing is ever played`() = runTest {
         val library = FakeLibraryRepository(listOf(playedBook("resume", at = "2026-08-20T10:00:00Z")))
 
-        useCase(library)(TEST_PROFILE)
+        useCase(library, remembered = LibraryItemId("resume"))(TEST_PROFILE)
 
         assertTrue(player.played.isEmpty(), "a switch must never start audio")
     }
 
-    /** A finished book has nothing left to resume, so it is not offered. */
+    /** A finished remembered book has nothing left to resume, so it is not offered. */
     @Test
-    fun `a finished book is not restored`() = runTest {
+    fun `a finished remembered book is not restored`() = runTest {
         val library = FakeLibraryRepository(listOf(playedBook("done", at = "2026-08-20T10:00:00Z", finished = true)))
 
-        useCase(library)(TEST_PROFILE)
+        useCase(library, remembered = LibraryItemId("done"))(TEST_PROFILE)
 
         assertTrue(player.armed.isEmpty())
     }
 
-    /** A book with no progress row was never playing, so there is nothing to come back to. */
+    /** A missing progress row is not resumable even if the durable identity still names the book. */
     @Test
-    fun `a book with no progress is not restored`() = runTest {
+    fun `a remembered book with no progress is not restored`() = runTest {
         val library = FakeLibraryRepository(listOf(book("untouched")))
 
-        useCase(library)(TEST_PROFILE)
+        useCase(library, remembered = LibraryItemId("untouched"))(TEST_PROFILE)
 
         assertTrue(player.armed.isEmpty())
     }
 
-    /** An account with nothing played is silent rather than a failure — there is nothing wrong. */
+    /** No durable local ownership means no heuristic server-recency backfill. */
     @Test
-    fun `an account with an empty library restores nothing and does not fail`() = runTest {
-        val library = FakeLibraryRepository(emptyList())
+    fun `newer server progress does not invent remembered identity`() = runTest {
+        val library = FakeLibraryRepository(listOf(playedBook("remote-only", at = "2026-09-10T10:00:00Z")))
 
-        useCase(library)(TEST_PROFILE)
+        useCase(library, remembered = null)(TEST_PROFILE)
 
         assertTrue(player.armed.isEmpty())
-        assertTrue(player.played.isEmpty())
+    }
+
+    /** An id that is no longer accessible for the incoming profile must not cross the authorization boundary. */
+    @Test
+    fun `an inaccessible remembered book is not restored`() = runTest {
+        val library = FakeLibraryRepository(listOf(playedBook("visible", at = "2026-08-20T10:00:00Z")))
+
+        useCase(library, remembered = LibraryItemId("revoked"))(TEST_PROFILE)
+
+        assertTrue(player.armed.isEmpty())
     }
 
     /**
-     * The library is read **for the profile named**, not for whoever is active.
-     *
-     * This runs immediately after a switch, so naming the profile is what makes it independent of whether
-     * the selection has reached every reader yet — the same reasoning behind the explicit owner on the
-     * progress and bookmark writes (R-49, R-50).
+     * Both the durable identity and the library are read **for the profile named**, not whoever is active.
      */
     @Test
-    fun `the library is read for the profile that was switched to`() = runTest {
+    fun `the remembered identity and library are read for the profile switched to`() = runTest {
         val library = FakeLibraryRepository(listOf(playedBook("theirs", at = "2026-08-20T10:00:00Z")))
+        val remembered = RecordingRememberedBooks(mapOf(OTHER to LibraryItemId("theirs")))
 
-        useCase(library)(OTHER)
+        useCase(library, remembered)(OTHER)
 
+        assertEquals(listOf(OTHER), remembered.requestedFor)
         assertEquals(listOf(OTHER), library.accessibleBooksRequestedFor)
+        assertEquals(listOf(LibraryItemId("theirs")), player.armed)
     }
 
-    private fun useCase(library: FakeLibraryRepository) = RestoreProfilePlaybackUseCase(
+    private fun useCase(library: FakeLibraryRepository, remembered: LibraryItemId?) =
+        useCase(library, RecordingRememberedBooks(mapOf(TEST_PROFILE to remembered)))
+
+    private fun useCase(
+        library: FakeLibraryRepository,
+        remembered: RememberedBookRepository,
+    ) = RestoreProfilePlaybackUseCase(
         library = library,
+        rememberedBooks = remembered,
         player = player,
         logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
     )
@@ -134,6 +144,20 @@ class RestoreProfilePlaybackUseCaseTest {
                 hasUnsyncedChanges = false,
             ),
         )
+    }
+
+    private class RecordingRememberedBooks(
+        private val values: Map<ProfileId, LibraryItemId?>,
+    ) : RememberedBookRepository {
+        val requestedFor = mutableListOf<ProfileId>()
+
+        override fun observe(profileId: ProfileId): Flow<LibraryItemId?> {
+            requestedFor += profileId
+            return flowOf(values[profileId])
+        }
+
+        override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
+            AppResult.Success(Unit)
     }
 
     private class RecordingStartupPlayer : StartupPlayer {
