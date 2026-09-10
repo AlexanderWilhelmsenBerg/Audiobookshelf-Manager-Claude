@@ -44,12 +44,13 @@ message AppSettings {
   reserved 8;
   reserved "home_shows_libraries";
 
-  // PRODUCT_SPEC SET-001 / AUTH-002 — preferences that belong to one account, keyed by profile id.
+  // PRODUCT_SPEC SET-001 / AUTH-002 / BW-PLAY-01 — device-local state that belongs to one account,
+  // keyed by profile id.
   //
   // Per profile rather than global because two accounts on one server are two different people's
-  // shelves: PRODUCT_SPEC 5.2 keeps their content apart, and a sort order or a default library that
-  // followed the device rather than the account would leak one person's arrangement onto another's
-  // screen. Removing a profile removes its entry.
+  // shelves and playback ownership. PRODUCT_SPEC 5.2 keeps their content apart, so neither a view
+  // preference nor this device's remembered audiobook may cross that boundary. Removing a profile
+  // removes its entry.
   map<string, ProfileSettings> profile_settings = 9;
 
   // PRODUCT_SPEC PLAY-001 / 14.5 — the identifier this install sends as `deviceInfo.deviceId` when it
@@ -288,9 +289,7 @@ message AppSettings {
   reserved "keep_sound_in_headset";
 }
 
-// PRODUCT_SPEC SET-001 — one account's view preferences.
-//
-// Nothing here is a credential or an identifier of the user. It is how they last left a screen.
+// PRODUCT_SPEC SET-001 / BW-PLAY-01 — one account's device-local non-secret state.
 message ProfileSettings {
   // PRODUCT_SPEC 6.1 step 9 — the library this profile opens on. Empty means no choice has been made,
   // which is not the same as a choice of "all": the home shelf spans every granted library by default,
@@ -307,6 +306,14 @@ message ProfileSettings {
 
   // The order used on the home shelf, which spans libraries and so has no library id to key on.
   string shelf_sort_order = 3;
+
+  // BW-PLAY-01 — the opaque audiobook id this physical BookWave install most recently took local
+  // playback ownership of for this profile. Empty means no trustworthy local ownership evidence.
+  //
+  // This is intentionally not derived from server progress timestamps. Another Audiobookshelf client may
+  // advance a different book without changing which book this device remembers. Position freshness remains
+  // owned by the playback resume coordinator and is not stored here.
+  string remembered_book_id = 4;
 }
 
 // PRODUCT_SPEC ROUTE-002 — one output device this app has seen.
