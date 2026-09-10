@@ -18,10 +18,10 @@ import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.library.booksInSeriesOrder
-import com.example.shelfplayer.domain.library.lastPlayedBook
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -56,6 +56,7 @@ class AutoLibrary @Inject constructor(
     private val history: PlaybackHistoryRepository,
     private val homeShelves: ObserveHomeShelvesUseCase,
     private val audioOutputs: Outputs,
+    private val rememberedBooks: RememberedBookRepository,
 ) {
 
     /** Narrow seam around the live router so the entire car tree remains JVM-testable. */
@@ -367,7 +368,18 @@ class AutoLibrary @Inject constructor(
         narrators.any { it.lowercase().contains(needle) } ||
         seriesMemberships.any { it.series.name.lowercase().contains(needle) }
 
-    suspend fun lastPlayed(): Book? = lastPlayedBook(books())
+    /**
+     * BW-PLAY-01 — resolve only this device's remembered identity for the active profile.
+     *
+     * The progress row is still used below for presentation/position, but never for choosing the book.
+     * A remote client may therefore advance B while this method continues returning locally remembered A.
+     */
+    suspend fun lastPlayed(): Book? {
+        val profileId = profiles.activeProfileId() ?: return null
+        val rememberedId = rememberedBooks.observe(profileId).first() ?: return null
+        return library.observeAccessibleBooks(profileId).first()
+            .firstOrNull { book -> book.id == rememberedId && book.progress?.isFinished == false }
+    }
 
     private suspend fun books(): List<Book> {
         val profileId = profiles.activeProfileId() ?: return emptyList()
