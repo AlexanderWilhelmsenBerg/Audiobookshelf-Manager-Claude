@@ -196,11 +196,9 @@ private fun String.responseEncoding(): String? = when (this) {
     else -> if (startsWith("text/")) Charsets.UTF_8.name() else null
 }
 
-private fun blockedResponse(): WebResourceResponse =
-    errorResponse(HTTP_STATUS_FORBIDDEN, "Blocked by BookWave")
+private fun blockedResponse(): WebResourceResponse = errorResponse(HTTP_STATUS_FORBIDDEN, "Blocked by BookWave")
 
-private fun notFoundResponse(): WebResourceResponse =
-    errorResponse(HTTP_STATUS_NOT_FOUND, "Not Found")
+private fun notFoundResponse(): WebResourceResponse = errorResponse(HTTP_STATUS_NOT_FOUND, "Not Found")
 
 private fun errorResponse(statusCode: Int, reasonPhrase: String): WebResourceResponse = WebResourceResponse(
     "text/plain",
