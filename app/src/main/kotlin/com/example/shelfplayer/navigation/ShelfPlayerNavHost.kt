@@ -13,6 +13,7 @@ import com.example.shelfplayer.feature.author.AuthorRoute
 import com.example.shelfplayer.feature.book.BookRoute
 import com.example.shelfplayer.feature.downloads.DownloadsRoute
 import com.example.shelfplayer.feature.home.HomeRoute
+import com.example.shelfplayer.feature.loopbound.LoopboundRoute
 import com.example.shelfplayer.feature.metadata.EditMetadataScreen
 import com.example.shelfplayer.feature.onboarding.SignInRoute
 import com.example.shelfplayer.feature.onboarding.SignInViewModel
@@ -74,6 +75,8 @@ fun ShelfPlayerNavHost(
                     navController.navigate(ShelfDestinations.series(seriesId))
                 },
                 onProfilesSelected = { navController.navigate(ShelfDestinations.PROFILES) },
+                onDownloadsSelected = { navController.navigate(ShelfDestinations.DOWNLOADS) },
+                onLoopboundSelected = { navController.navigate(ShelfDestinations.LOOPBOUND) },
                 onSettingsSelected = { navController.navigate(ShelfDestinations.SETTINGS) },
                 onSignInSelected = { navController.navigate(ShelfDestinations.signIn()) },
                 playbackMessage = playbackMessage,
@@ -103,10 +106,13 @@ fun ShelfPlayerNavHost(
                 onManageServerUsers = { navController.navigate(ShelfDestinations.SERVER_USERS) },
             )
         }
-        // PRODUCT_SPEC DL-003 / ADR-0018 decision 6 — reachable from Settings and from a book's own menu,
-        // because both are places somebody wonders where their space went.
+        // PRODUCT_SPEC DL-003 / ADR-0018 decision 6 — reachable from Settings, Home and from a book's own
+        // menu, because all three are places somebody wonders where their space went.
         composable(ShelfDestinations.DOWNLOADS) {
             DownloadsRoute(onNavigateUp = navController::navigateUp)
+        }
+        composable(ShelfDestinations.LOOPBOUND) {
+            LoopboundRoute(onNavigateUp = navController::navigateUp)
         }
         composable(
             route = ShelfDestinations.BOOK,

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_more">More options</string>
+    <string name="home_downloads">Downloads</string>
+    <string name="home_loopbound">Loopbound</string>
+    <string name="loopbound_title">Loopbound</string>
+    <string name="loopbound_not_bundled_title">Loopbound is not included in this build</string>
+    <string name="loopbound_not_bundled_body">This BookWave build was made without the Loopbound game bundle.</string>
+</resources>

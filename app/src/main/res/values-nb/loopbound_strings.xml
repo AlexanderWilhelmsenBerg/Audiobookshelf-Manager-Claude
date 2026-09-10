@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_more">Flere valg</string>
+    <string name="home_downloads">Nedlastinger</string>
+    <string name="home_loopbound">Loopbound</string>
+    <string name="loopbound_title">Loopbound</string>
+    <string name="loopbound_not_bundled_title">Loopbound er ikke inkludert i denne versjonen</string>
+    <string name="loopbound_not_bundled_body">Denne BookWave-versjonen ble bygget uten Loopbound-spillpakken.</string>
+</resources>

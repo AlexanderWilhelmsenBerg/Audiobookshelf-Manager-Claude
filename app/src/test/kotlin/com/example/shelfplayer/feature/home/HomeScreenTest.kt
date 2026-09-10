@@ -154,7 +154,7 @@ class HomeScreenTest {
     fun `every icon button in the top bar is named`() {
         compose.setContent { HomeScreen(uiState = state(), actions = noActions()) }
 
-        listOf("Search", "Refresh", "Profiles", "Settings").forEach { name ->
+        listOf("Search", "Refresh", "More options").forEach { name ->
             compose.onNodeWithContentDescription(name).assertExists()
         }
     }
@@ -614,7 +614,7 @@ class HomeScreenTest {
         }
 
         compose.onNodeWithText(longLibraryName).assertExists()
-        compose.onNodeWithContentDescription("Settings").assertExists()
+        compose.onNodeWithContentDescription("More options").assertExists()
         compose.onNodeWithContentDescription("Refresh").assertExists()
         compose.onNodeWithTag(HOME_MARK_TEST_TAG).assertDoesNotExist()
     }

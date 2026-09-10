@@ -29,6 +29,10 @@ Thumbs.db
 # Codex desktop attachments are task inputs, not repository assets. Some may contain private content.
 .codex-remote-attachments/
 
+# Loopbound is private. Its production web bundle may be injected into a local/release build, but the
+# generated JavaScript and content are not committed to this public repository.
+app/src/main/assets/loopbound/
+
 # Reports produced by the quality gate
 **/reports/
 **/lint-results*.xml

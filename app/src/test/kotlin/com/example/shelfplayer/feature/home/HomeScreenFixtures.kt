@@ -151,6 +151,8 @@ internal fun noActions() = HomeActions(
     onFocusCleared = {},
     onRefresh = {},
     onProfilesSelected = {},
+    onDownloadsSelected = {},
+    onLoopboundSelected = {},
     onSettingsSelected = {},
     onSignInSelected = {},
 )

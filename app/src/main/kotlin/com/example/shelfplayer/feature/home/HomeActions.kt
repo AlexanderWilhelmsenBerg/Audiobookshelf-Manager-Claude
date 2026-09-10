@@ -11,9 +11,9 @@ import com.example.shelfplayer.domain.library.BookSortOrder
  * Everything the home screen can do, in one parameter.
  *
  * Home is now the only browse surface — four axes, three shelves, a search, a sort row, a filter row,
- * a dismissible focus and four destinations — which is far past what a readable parameter list holds.
- * Grouping them keeps `HomeScreen` a function of `(state, actions)`, which is also what makes it
- * previewable: a preview supplies one no-op instance instead of a long row of lambdas.
+ * a dismissible focus and several app-level destinations — which is far past what a readable parameter
+ * list holds. Grouping them keeps `HomeScreen` a function of `(state, actions)`, which is also what makes
+ * it previewable: a preview supplies one no-op instance instead of a long row of lambdas.
  */
 @Immutable
 data class HomeActions(
@@ -36,6 +36,8 @@ data class HomeActions(
     val onFocusCleared: () -> Unit,
     val onRefresh: () -> Unit,
     val onProfilesSelected: () -> Unit,
+    val onDownloadsSelected: () -> Unit,
+    val onLoopboundSelected: () -> Unit,
     val onSettingsSelected: () -> Unit,
     val onSignInSelected: () -> Unit,
 )
