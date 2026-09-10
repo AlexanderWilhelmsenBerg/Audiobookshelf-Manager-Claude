@@ -1,10 +1,15 @@
 package com.example.shelfplayer.playback
 
 import androidx.media3.session.CommandButton
+import com.example.shelfplayer.core.model.playback.SleepTimerMode
+import com.example.shelfplayer.core.model.playback.SleepTimerState
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -16,6 +21,24 @@ import kotlin.time.Duration.Companion.seconds
  */
 @RunWith(RobolectricTestRunner::class)
 class NotificationButtonsTest {
+
+    @Test
+    fun `an active sleep timer produces an extend command button`() {
+        val timer = SleepTimerState(
+            mode = SleepTimerMode.Fixed(30.minutes),
+            remaining = 12.minutes,
+            isFading = false,
+        )
+
+        val button = assertNotNull(NotificationButtons.sleepTimerButton(timer) { "12 min" })
+
+        assertEquals(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, button.sessionCommand?.customAction)
+    }
+
+    @Test
+    fun `an idle sleep timer produces no media button`() {
+        assertNull(NotificationButtons.sleepTimerButton(SleepTimerState.Idle) { "unused" })
+    }
 
     @Test
     fun `an interval Media3 has a glyph for gets the numbered glyph`() {

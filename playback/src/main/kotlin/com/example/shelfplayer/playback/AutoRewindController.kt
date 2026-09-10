@@ -63,6 +63,7 @@ class AutoRewindController @Inject constructor(
     @param:ApplicationScope private val applicationScope: CoroutineScope,
 ) {
     private var player: Player? = null
+    private var beforeSeek: (() -> Unit)? = null
     private var chapters: List<Chapter> = emptyList()
 
     /**
@@ -88,8 +89,14 @@ class AutoRewindController @Inject constructor(
         }
     }
 
-    fun attach(player: Player?) {
+    /**
+     * Attaches the service-owned player and an optional hook that must run immediately before this controller
+     * changes its position. Issue #91 uses the hook to invalidate an older resume-freshness decision without
+     * forcing auto-rewind through a MediaController and losing its synchronous pre-audio seek semantics.
+     */
+    fun attach(player: Player?, beforeSeek: (() -> Unit)? = null) {
         this.player = player
+        this.beforeSeek = if (player == null) null else beforeSeek
         if (player == null) pausedAt = null
     }
 
@@ -177,6 +184,7 @@ class AutoRewindController @Inject constructor(
 
     // ADR-0016 — a book position is a player position, so there is nothing left to convert.
     private fun seekTo(media: Player, position: Duration) {
+        beforeSeek?.invoke()
         media.seekTo(position.inWholeMilliseconds.coerceAtLeast(0))
     }
 

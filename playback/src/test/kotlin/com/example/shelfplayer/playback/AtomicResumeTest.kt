@@ -1,6 +1,8 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.LibraryItemId
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -74,6 +76,29 @@ class AtomicResumeTest {
 
         assertEquals(ResumeOutcome.SeekLost, outcome)
         assertEquals(listOf("seekTo(37142000)", "awaited"), player.commands, "no play may follow a lost seek")
+    }
+
+    /** A newer Pause/seek/Stop that arrives while the seek is confirming wins. */
+    @Test
+    fun `a newer command during seek confirmation prevents stale play`() = runTest {
+        val seekStarted = CompletableDeferred<Unit>()
+        val releaseSeek = CompletableDeferred<Unit>()
+        val player = FakeTarget(
+            loaded = BOOK,
+            landsAt = MOVED_TO,
+            beforeLanding = {
+                seekStarted.complete(Unit)
+                releaseSeek.await()
+            },
+        )
+
+        val outcome = async { player.resume(MOVED_TO) }
+        seekStarted.await()
+        player.mayPlay = false
+        releaseSeek.complete(Unit)
+
+        assertEquals(ResumeOutcome.Superseded, outcome.await())
+        assertEquals(listOf("seekTo(37142000)", "awaited"), player.commands)
     }
 
     /** A player that never reports back at all is the same refusal: unverified is not resumed. */
@@ -159,8 +184,10 @@ class AtomicResumeTest {
         /** Where the player says it ended up, or `null` for a player that never reports back. */
         private val landsAt: Duration?,
         private val needsPreparing: Boolean = false,
+        private val beforeLanding: suspend () -> Unit = {},
     ) : ResumeTarget {
         val commands = mutableListOf<String>()
+        var mayPlay: Boolean = true
 
         override fun loadedBookId(): LibraryItemId? = loaded
 
@@ -172,12 +199,15 @@ class AtomicResumeTest {
 
         override suspend fun seekAndAwait(position: Duration, timeout: Duration): Duration? {
             commands += "seekTo(${position.inWholeMilliseconds})"
+            beforeLanding()
             commands += "awaited"
             return landsAt
         }
 
-        override fun play() {
+        override suspend fun playIfCurrent(): Boolean {
+            if (!mayPlay) return false
             commands += "play"
+            return true
         }
     }
 

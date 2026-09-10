@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.domain.playback.ResumeBaseline
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -11,7 +12,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 
-/** SYNC-002 / R-61 — the resume baseline must use the same coordinate space as the Media3 queue. */
+/** SYNC-002 / R-61 — the resume baseline must use the same coordinate space and evidence source as the queue. */
 class MediaItemsServerStartTest {
 
     @Test
@@ -26,6 +27,26 @@ class MediaItemsServerStartTest {
         )
 
         assertEquals(9.hours + 25.minutes, MediaItems.serverStartPositionFor(session))
+        assertEquals(9.hours + 25.minutes, session.serverAcknowledgedStartPosition())
+    }
+
+    @Test
+    fun `an offline local start remains playable but cannot become server acknowledged evidence`() {
+        val localPosition = 60.minutes
+        val offline = session(
+            startAt = localPosition,
+            tracks = listOf(track(index = 0, duration = 2.hours)),
+            duration = 2.hours,
+        ).copy(id = "")
+        val baseline = ResumeBaseline()
+
+        // The offline queue must still resume local listening where this device left it.
+        assertEquals(localPosition.inWholeMilliseconds, MediaItems.queueFor(offline).startPositionMs)
+        // But blank id means the server never opened this session, so the same number is not server truth.
+        assertNull(offline.serverAcknowledgedStartPosition())
+        baseline.stageServerPosition(BOOK, offline.serverAcknowledgedStartPosition())
+        baseline.onBookClosed()
+        assertNull(baseline.acknowledged(BOOK))
     }
 
     @Test
@@ -43,6 +64,7 @@ class MediaItemsServerStartTest {
         )
 
         assertNull(MediaItems.serverStartPositionFor(session))
+        assertNull(session.serverAcknowledgedStartPosition())
         assertEquals(0L, MediaItems.queueFor(session).startPositionMs)
     }
 

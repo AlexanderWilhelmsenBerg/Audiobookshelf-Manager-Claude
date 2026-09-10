@@ -181,10 +181,14 @@ class PlaybackService : MediaLibraryService() {
      *
      * Written here and only here: this listener is the one thing that sees every pause, every seek and every
      * track boundary, whether they came from the app's screen, the notification, a headset or a car. The
-     * app's ViewModel only reads it. A singleton, so the two are the same object — see [ResumeBaseline].
+     * shared freshness coordinator reads the same singleton — see [ResumeBaseline].
      */
     @Inject
     internal lateinit var resumeBaseline: ResumeBaseline
+
+    /** Issue #91 — one freshness decision shared by every standard Media3 Play surface. */
+    @Inject
+    internal lateinit var resumeFreshness: ResumeFreshnessCoordinator
 
     @Inject
     internal lateinit var logger: Logger
@@ -263,7 +267,16 @@ class PlaybackService : MediaLibraryService() {
         val exoPlayer = players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
             .also { player = it }
         exoPlayer.addListener(PlayerEvents())
-        session = MediaLibrarySession.Builder(this, exoPlayer, LibraryCallback())
+        resumeFreshness.attach(exoPlayer)
+        val sessionPlayer = ResumeFreshnessPlayer(
+            delegate = exoPlayer,
+            preparePlay = { future { handleFreshnessPlay() } },
+            consumeFreshStart = resumeFreshness::consumeFreshStart,
+            invalidate = resumeFreshness::invalidate,
+        )
+        // Issue #91 — controllers see the forwarding player; service-owned timers/sync/routing below keep
+        // the raw ExoPlayer so internal atomic operations cannot recursively enter the external Play gate.
+        session = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
             .setBitmapLoader(players.bitmapLoader())
             // PRODUCT_SPEC PLAY-001 — tapping the notification opens the app. Without this the media
             // notification has no `contentIntent` at all, so a tap does nothing: a listener who reaches for
@@ -276,7 +289,9 @@ class PlaybackService : MediaLibraryService() {
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
         sessionSync.attach(exoPlayer)
-        autoRewind.attach(exoPlayer)
+        autoRewind.attach(exoPlayer) {
+            resumeFreshness.invalidate(ResumeInvalidation.AutoRewind)
+        }
         // PRODUCT_SPEC PLAY-002 — after the player exists and before anything can be chosen. A preference
         // set on a released player routes nothing, so this is re-run on every player this service builds.
         audioOutputs.attach(exoPlayer)
@@ -399,6 +414,7 @@ class PlaybackService : MediaLibraryService() {
         // coordinator, because `scope` is cancelled two lines below.
         sessionSync.onShutdown()
         sessionSync.attach(null)
+        resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
         audioOutputs.detach()
@@ -511,7 +527,7 @@ class PlaybackService : MediaLibraryService() {
     /**
      * The last write, on a scope that outlives this service.
      *
-     * [scope] is cancelled in [onDestroy], so a `launch` on it would be cancelled before the row reached
+     * [scope] is cancelled in `onDestroy`, so a `launch` on it would be cancelled before the row reached
      * Room — precisely the moment the position matters most. The application scope is PRODUCT_SPEC
      * 22.10's sanctioned alternative to `GlobalScope`, and this is the case it exists for.
      *
@@ -581,6 +597,77 @@ class PlaybackService : MediaLibraryService() {
     )
 
     /**
+     * Issue #91 — handles one standard Play after [ResumeFreshnessPlayer] intercepted it.
+     *
+     * No controller identity is needed here: every controller that can send standard Play reaches the same
+     * forwarding player, which is the point of putting the decision at the Media3 boundary rather than in a
+     * screen. A superseded request does nothing; the newer seek/Pause/book/profile command already owns the
+     * player.
+     */
+    private suspend fun handleFreshnessPlay() {
+        when (val prepared = resumeFreshness.preparePlay()) {
+            ResumePlayPreparation.Bypass -> resumeLoadedCurrent()
+            ResumePlayPreparation.Superseded -> Unit
+            is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan)
+        }
+    }
+
+    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan) {
+        when (val decision = plan.decision) {
+            is ResumeFreshnessDecision.Current -> {
+                resumeFreshness.withCurrentPlan(plan) {
+                    recordFreshnessCheck(plan)
+                    resumeLoadedCurrent()
+                }
+            }
+            is ResumeFreshnessDecision.Adopt -> {
+                val outcome = resumeFreshness.withCurrentPlan(plan) {
+                    recordFreshnessCheck(plan)
+                    resumeAt(plan, decision.position)
+                } ?: return
+                recordRemoteProgress(plan, outcome)
+            }
+        }
+    }
+
+    /** The old direct Play behaviour, now used only after the shared freshness decision says to stay local. */
+    private suspend fun resumeLoadedCurrent() = withContext(mainDispatcher) {
+        val current = player ?: return@withContext
+        if (current.mediaItemCount == 0) return@withContext
+        if (current.playbackState == Player.STATE_IDLE || current.playerError != null) current.prepare()
+        current.play()
+    }
+
+    /** Records the REST check result independently of whether a later adopted seek succeeds. */
+    private fun recordFreshnessCheck(plan: ResumeFreshnessPlan) {
+        val event = plan.serverCheckHistoryEvent() ?: return
+        applicationScope.launch {
+            history.record(
+                bookId = plan.bookId,
+                event = event,
+                from = null,
+                to = plan.localPosition,
+                owner = plan.profileId,
+            )
+        }
+    }
+
+    /** Records an undoable remote movement only after the raw player confirmed it was actually applied. */
+    private fun recordRemoteProgress(plan: ResumeFreshnessPlan, outcome: ResumeOutcome) {
+        val event = plan.remoteProgressHistoryEvent(outcome) ?: return
+        val decision = plan.decision as? ResumeFreshnessDecision.Adopt ?: return
+        applicationScope.launch {
+            history.record(
+                bookId = plan.bookId,
+                event = event,
+                from = plan.localPosition,
+                to = decision.position,
+                owner = plan.profileId,
+            )
+        }
+    }
+
+    /**
      * PRODUCT_SPEC SYNC-002 — the whole adopt-a-remote-position operation, on the player this service owns.
      *
      * ### Why the app cannot do this for itself
@@ -593,29 +680,30 @@ class PlaybackService : MediaLibraryService() {
      *
      * Everything runs on [mainDispatcher] because every `Player` read and write must.
      */
-    private suspend fun resumeAt(bookId: LibraryItemId, target: Duration): ResumeOutcome = withContext(mainDispatcher) {
-        val current = player ?: return@withContext ResumeOutcome.NotLoaded
-        val outcome = OwnedPlayer(current).seekAndResume(
-            bookId = bookId,
-            target = target,
-            tolerance = ADOPT_TOLERANCE,
-            timeout = SEEK_CONFIRM_TIMEOUT,
-        )
-        // Where the seek landed is logged by `OwnedPlayer.seekAndAwait`, which is the only place that holds
-        // it *before* audio starts. Reading the position again here would report the target plus however
-        // much has played since, which is the kind of confident wrong number R-90 was made of.
-        logger.info(
-            LogCategory.Playback,
-            if (outcome == ResumeOutcome.Resumed) {
-                "Resumed on a position adopted from another device"
-            } else {
-                "A position adopted from another device did not take"
-            },
-            LogField.Millis("target", target.inWholeMilliseconds),
-            LogField.Public("outcome", outcome.name),
-        )
-        outcome
-    }
+    private suspend fun resumeAt(plan: ResumeFreshnessPlan, target: Duration): ResumeOutcome =
+        withContext(mainDispatcher) {
+            val current = player ?: return@withContext ResumeOutcome.NotLoaded
+            val outcome = OwnedPlayer(current, plan).seekAndResume(
+                bookId = plan.bookId,
+                target = target,
+                tolerance = ADOPT_TOLERANCE,
+                timeout = SEEK_CONFIRM_TIMEOUT,
+            )
+            // Where the seek landed is logged by `OwnedPlayer.seekAndAwait`, which is the only place that holds
+            // it *before* audio starts. Reading the position again here would report the target plus however
+            // much has played since, which is the kind of confident wrong number R-90 was made of.
+            logger.info(
+                LogCategory.Playback,
+                if (outcome == ResumeOutcome.Resumed) {
+                    "Resumed on a position adopted from another device"
+                } else {
+                    "A position adopted from another device did not take"
+                },
+                LogField.Millis("target", target.inWholeMilliseconds),
+                LogField.Public("outcome", outcome.name),
+            )
+            outcome
+        }
 
     /**
      * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.
@@ -624,7 +712,8 @@ class PlaybackService : MediaLibraryService() {
      * everything here is a single Media3 call so that there is as little as possible that only a device can
      * exercise.
      */
-    private inner class OwnedPlayer(private val media: ExoPlayer) : ResumeTarget {
+    private inner class OwnedPlayer(private val media: ExoPlayer, private val plan: ResumeFreshnessPlan) :
+        ResumeTarget {
 
         override fun loadedBookId(): LibraryItemId? =
             media.currentMediaItem?.takeIf { media.mediaItemCount > 0 }?.let(MediaItems::bookIdOf)
@@ -682,7 +771,10 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
-        override fun play() = media.play()
+        override suspend fun playIfCurrent(): Boolean = resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {
+            media.play()
+            true
+        } ?: false
     }
 
     /**
@@ -1230,18 +1322,10 @@ class PlaybackService : MediaLibraryService() {
     )
 
     /** PRODUCT_SPEC PLAY-008 — the running timer's remaining minutes, or `null` when no timer is set. */
-    private fun sleepTimerButton(): CommandButton? {
-        val timer = sleepTimerState
-        if (!timer.isActive) return null
-        return CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
-            .setDisplayName(getString(R.string.player_sleep_remaining, timer.remaining.asMinutesLabel()))
-            .setSessionCommand(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
-            // Not a transport control, so it goes where the extra actions go rather than displacing one of
-            // the two a listener reaches for without looking.
-            .setSlots(CommandButton.SLOT_OVERFLOW)
-            .setEnabled(true)
-            .build()
-    }
+    private fun sleepTimerButton(): CommandButton? =
+        NotificationButtons.sleepTimerButton(sleepTimerState) { remaining ->
+            getString(R.string.player_sleep_remaining, remaining.asMinutesLabel())
+        }
 
     /**
      * PRODUCT_SPEC PLAY-002 — the car button and the headset button, or as many of them as apply.
@@ -1278,10 +1362,6 @@ class PlaybackService : MediaLibraryService() {
                 outputButton(
                     icon = OutputActionIcons.headset(state),
                     action = NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT,
-                    // The headset's own advertised name when the book is in one, so a long press and a
-                    // screen reader both answer "which earbuds". Whether a head unit finds room to draw the
-                    // text beside the icon is the head unit's decision and not one an app can make; §2.11
-                    // records what this car does with it.
                     label = state.headsetName
                         ?.let { name -> getString(R.string.player_headset_action, name) }
                         ?: getString(R.string.player_headset_action_unknown),
@@ -1328,16 +1408,6 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
     /**
-     * PRODUCT_SPEC PLAY-007 — the notification's skip, which is the app's skip.
-     *
-     * Expressed as a seek rather than as `Player.seekForward` for the same reason `PlaybackController` does:
-     * Media3's own skip uses the increment fixed when the player was built, and PLAY-007's is configurable
-     * per direction while the player is running.
-     *
-     * Media3 clamps the top end at the window's duration; the bottom is clamped here, because a negative
-     * seek would be silently accepted as zero by some controllers and rejected by others.
-     */
-    /**
      * PRODUCT_SPEC PLAY-003 — one play or pause, in the playing book's history.
      *
      * Silent when nothing is loaded: `playWhenReady` also changes as a book is torn down, and a pause
@@ -1357,29 +1427,15 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * PRODUCT_SPEC 11.1 — the book the browse tree's Chapters and History tabs describe.
+     * PRODUCT_SPEC 11.1 / PLAY-003 — the loaded book and current position used by Chapters and History.
      *
      * Whatever is loaded, or `null` for a car opened with nothing playing — in which case [AutoLibrary]
-     * falls back to the last book with progress, which is what "it always opens the last played book"
-     * means when the app has been closed all night.
-     */
-    /**
-     * PRODUCT_SPEC PLAY-003 — where the player is, for the browse tree to draw chapter progress against.
+     * falls back to the last book with progress. It deliberately does not fall back to zero: zero is a real
+     * position and would draw every chapter bar empty for a book the listener is halfway through.
      *
-     * **Must be called on the main thread**, which is where a `MediaLibrarySession` callback already runs,
-     * because `currentMediaItem` and `currentPosition` are `Player` calls and Media3 asserts the application
-     * thread. The browse tree then uses the result off-thread as a plain number, which is safe precisely
-     * because it was copied out here.
-     *
-     * That paragraph has said this since the function was written, and for three phases two of its three
-     * callers ignored it: `onGetChildren` and `onGetItem` called it *inside* `future`, whose block runs on
-     * `Dispatchers.Default`. Every car browse therefore threw `IllegalStateException` and reached a head
-     * unit as an empty tree. `docs/risks.md` R-66 and R-32 — the documentation was right and the code was
-     * wrong, which is the harder direction to notice, because reading either one alone looks correct.
-     *
-     * `null` when nothing is loaded, and the tree falls back to stored progress. It deliberately does *not*
-     * fall back to zero: zero is a position, and it would draw every chapter bar empty for a book the
-     * listener is halfway through.
+     * **Must be called on the main thread.** `currentMediaItem` and `currentPosition` are Player calls and
+     * Media3 asserts the application thread. Callers copy the plain [NowPlaying] value out before they hop to
+     * the application scope; R-66 was the bug caused by doing those Player reads after the hop.
      */
     private fun nowPlaying(): NowPlaying? {
         val current = player ?: return null
@@ -1453,7 +1509,7 @@ class PlaybackService : MediaLibraryService() {
      * for the instant it was read: playback advances, and `unresolved`'s caller can spend seconds in a
      * network failure before it needs one. A value copied out beforehand would seek a playing book
      * backwards by exactly that long. Freshness and the thread are two requirements, and a snapshot taken
-     * on the right thread satisfies only one of them (R-72).
+     * on the right thread satisfies only one (R-72).
      *
      * Both properties are read in one place so a book that changed between them cannot produce a position
      * from one item against the identity of another (ADR-0016), and `null` when the player holds nothing —
@@ -1481,6 +1537,14 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun resolvePlayable(item: MediaItem, trusted: Boolean): MediaItem? =
         if (trusted && MediaItems.isReadyToPlay(item)) item else resolveQueue(item)?.item
 
+    /**
+     * Resolves a controller-supplied browse/spoken item to a fresh server queue.
+     *
+     * Deliberately has no "Play follows" argument. `MediaSession.Callback.onSetMediaItems` and
+     * `onAddMediaItems` mean only that a controller is setting media; Media3 1.11 does not promise a Play in
+     * the same operation. Treating this helper as arm-only makes generic external resolution structurally
+     * unable to mint a fresh-start exemption that a much later Play could consume.
+     */
     private suspend fun resolveQueue(item: MediaItem): MediaItems.Queue? {
         val target = AutoLibrary.resolve(item.mediaId) ?: return null
         return openQueue(target.bookId, target.startAt)
@@ -1533,45 +1597,45 @@ class PlaybackService : MediaLibraryService() {
      * headset, neither of which has anywhere to show an error. What they get instead is nothing happening,
      * which is what ROUTE-001 asks for — "if no playable item exists, the command does nothing and logs a
      * non-fatal diagnostic".
+     *
+     * [initialPlayWillFollow] is a proof obligation, not a prediction. In this service it is true only for
+     * `onPlaybackResumption(isForPlayback = true)`, whose pinned Media3 1.11 contract says the returned media
+     * is immediately installed, prepared and played. Generic `onSetMediaItems`, browse and spoken requests
+     * never pass true. Service-owned direct ExoPlayer play paths also leave it false because they bypass the
+     * forwarding Play gate and already own the fresh `/play` result.
      */
-    private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? =
-        when (val opened = openPlaybackSession(bookId)) {
-            is AppResult.Failure -> {
-                logger.warn(
-                    LogCategory.Playback,
-                    "Could not open a session for a browse or resume request",
-                    LogField.Public("error", opened.error.code),
-                )
-                // PRODUCT_SPEC PLAY-001 — and *tell the car*, which a review found this branch did not.
-                // Nothing reaches the player on this path, so `onPlayerError` never runs: a driver picking
-                // a book against an expired credential got a row that did nothing and no explanation, which
-                // is the case the labelled sign-in action exists for.
-                reportSessionFailureToControllers(opened.error)
-                null
-            }
+    private suspend fun openQueue(
+        bookId: LibraryItemId,
+        startAt: Duration?,
+        initialPlayWillFollow: Boolean = false,
+    ): MediaItems.Queue? = when (val opened = openPlaybackSession(bookId)) {
+        is AppResult.Failure -> {
+            logger.warn(
+                LogCategory.Playback,
+                "Could not open a session for a browse or resume request",
+                LogField.Public("error", opened.error.code),
+            )
+            reportSessionFailureToControllers(opened.error)
+            null
+        }
 
-            is AppResult.Success -> {
-                val session = opened.value
-                // The chapters have to reach the sleep timer and the outbox exactly as they do when the app
-                // starts a book, or a book started from a car would have no end-of-chapter timer and no
-                // outbox row. Same call, one place.
-                bookChanges.onBookOpened(session)
-                val queue = MediaItems.queueFor(
-                    session = session,
-                    // Only from the service, which is what a car talks to. The phone builds the same item
-                    // through `PlaybackController` and gets no description line.
-                    historyLink = MediaItems.HistoryLink(
-                        label = getString(R.string.car_player_history_link),
-                        historyMediaId = AutoLibrary.TAB_HISTORY,
-                    ),
-                )
-                if (startAt == null) {
-                    queue
-                } else {
-                    queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
-                }
+        is AppResult.Success -> {
+            val playbackSession = opened.value
+            bookChanges.onBookOpened(playbackSession, initialPlayWillFollow = initialPlayWillFollow)
+            val queue = MediaItems.queueFor(
+                session = playbackSession,
+                historyLink = MediaItems.HistoryLink(
+                    label = getString(R.string.car_player_history_link),
+                    historyMediaId = AutoLibrary.TAB_HISTORY,
+                ),
+            )
+            if (startAt == null) {
+                queue
+            } else {
+                queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
             }
         }
+    }
 
     /**
      * A suspending body as the `ListenableFuture` Media3's callbacks return.
@@ -1641,9 +1705,21 @@ class PlaybackService : MediaLibraryService() {
         applicationScope.launch { bookmarks.add(bookId, at, title = "", owner = owner) }
     }
 
+    /**
+     * PRODUCT_SPEC PLAY-007 — the notification's skip, which is the app's skip.
+     *
+     * Expressed as a seek rather than as `Player.seekForward` for the same reason `PlaybackController` does:
+     * Media3's own skip uses the increment fixed when the player was built, and PLAY-007's is configurable
+     * per direction while the player is running.
+     *
+     * Media3 clamps the top end at the window's duration; the bottom is clamped here, because a negative
+     * seek would be silently accepted as zero by some controllers and rejected by others.
+     */
     private fun skipBy(delta: Duration) {
         val current = player ?: return
         if (current.mediaItemCount == 0) return
+        // Issue #91 — this custom notification command bypasses ResumeFreshnessPlayer.handleSeek.
+        resumeFreshness.invalidate(ResumeInvalidation.NotificationSkip)
         current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))
     }
 
@@ -1662,12 +1738,12 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * Connections and transport controls, plus the three commands the notification's own buttons carry.
-     * No browse tree.
+     * Connections, browse and transport controls at the controller trust boundary.
      *
-     * `MediaLibrarySession.Callback`'s defaults accept a connection with the standard command set and
-     * reject `onGetLibraryRoot`, which is the accurate answer until a browse tree exists. The custom
-     * commands have to be granted here, or the buttons would be rendered and then rejected when pressed.
+     * Media3's standard transport commands are available to playback-only controllers, but library reads,
+     * arbitrary browse resolution and BookWave's custom commands stay behind [ControllerTrust]. That split
+     * is intentional: a headset may control playback without gaining access to private library metadata or
+     * the ability to submit an arbitrary URI and have the service play it.
      */
     private inner class LibraryCallback : MediaLibrarySession.Callback {
 
@@ -1721,25 +1797,7 @@ class PlaybackService : MediaLibraryService() {
             val now = nowPlaying()
             return future {
                 if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetChildren")
-                // Paged by the caller, so a long continue-listening list arrives a screen at a time rather
-                // than as one binder transaction a head unit may refuse.
                 val all = auto.children(parentId, now)
-                /*
-                 * PRODUCT_SPEC 14.4 — what the car asked for and how much it got.
-                 *
-                 * The 2026-08-24 head-unit run found the browse root rendering zero items while search
-                 * returned books, and there was no way to tell from outside which of three things had
-                 * happened: the node was refused, the tree answered empty, or the car cached an earlier
-                 * empty answer and never re-asked. This line separates them, and it is the same reasoning
-                 * as `CarReadiness` — two device runs were spent on an Android Auto problem that a log line
-                 * would have named.
-                 *
-                 * It earned its keep on the 2026-08-27 run by being **absent**: no line at all, for either
-                 * root, which is what said the failure was upstream of the answer rather than in it.
-                 *
-                 * A parent id is a node in this app's own tree (`root`, `tab/continue`) and a count is a
-                 * count; neither is a book title, so both are safe where a media id would not be (14.5).
-                 */
                 logger.info(
                     LogCategory.Playback,
                     "A browser asked for a node's children",
@@ -1757,9 +1815,6 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> {
-            // The player on the callback thread, for the reason `onGetChildren` states at length (R-66).
-            // This site had the same defect and would have produced the same `error=unknown` the moment a
-            // head unit asked about a single item rather than a node.
             val now = nowPlaying()
             return future {
                 if (!session.mayBrowse(browser)) return@future deniedItem(browser, "onGetItem")
@@ -1770,15 +1825,10 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * PRODUCT_SPEC 11.1 — a spoken query. Answers whether there are results; the browser then asks for
-         * them through [onGetSearchResult].
-         *
-         * `notifySearchResultChanged` is how the two halves are joined: the browser is told the count and
-         * calls back for the page it wants.
+         * Media3 search is a two-step protocol: this callback announces how many results are available,
+         * then [onGetSearchResult] supplies the requested page. Returning items directly from `onSearch`
+         * would skip the notification a browser is waiting for and leave Android Auto showing no results.
          */
-        // `Void` rather than `Unit` because Media3 declares it: `LibraryResult<Void>` is the return type of
-        // the interface method, and Kotlin's `Unit` is not the same erasure. detekt's rule is right in
-        // general and cannot apply to an override of a Java signature.
         @Suppress("ForbiddenVoid")
         override fun onSearch(
             session: MediaLibrarySession,
@@ -1786,9 +1836,6 @@ class PlaybackService : MediaLibraryService() {
             query: String,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<Void>> = future {
-            // Refused before `auto.search` runs, not after: a caller that could learn the *count* of
-            // matches for a guessed title would have a working oracle over the library, which is the
-            // thing 14.5 is about even though no title crosses the boundary.
             if (!session.mayBrowse(browser)) return@future deniedVoid(browser, "onSearch")
             val results = auto.search(query)
             session.notifySearchResultChanged(browser, query, results.size, params)
@@ -1811,19 +1858,11 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * PRODUCT_SPEC PLAY-001 / 11.1 — something asked the session to load an item.
+         * Resolves media ids submitted through controller `addMediaItems` into playable server-backed items.
          *
-         * Two kinds of caller arrive here and they need opposite treatment. A **browser** — a car, an
-         * assistant — hands back only the media id this app put in its tree, so the id has to be resolved
-         * into an open session before anything can play (see [AutoLibrary]). The **app itself** hands back an
-         * item it built from a session it already opened, and the only correct thing to do with that is to
-         * give it straight back.
-         *
-         * Wave 5 added this override for the first case and, in doing so, broke the second.
-         * [MediaItems.isReadyToPlay] is the distinction it was missing.
-         *
-         * An item that is neither is dropped rather than passed on: Media3 would hand the player an item with
-         * no URI and no tracks, and the player would report an error a driver cannot act on.
+         * This is how a browser/head unit can press a library row whose [MediaItem] intentionally carries no
+         * private stream URI. Only this application's UID may pass through a pre-resolved playable item;
+         * outside controllers are resolved against BookWave's own browse ids so they cannot choose a URI.
          */
         override fun onAddMediaItems(
             session: MediaSession,
@@ -1831,9 +1870,6 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: MutableList<MediaItem>,
         ): ListenableFuture<MutableList<MediaItem>> = future {
             val trusted = controller.isThisApplication()
-            // Each survivor is kept beside the item it came from. There is no fallback on this path —
-            // `mapNotNull` drops what did not resolve — so a partly-resolved add hands back a short list,
-            // and both fields of the diagnostic have to describe an item that actually survived.
             val matches = mediaItems.mapNotNull { item -> resolvePlayable(item, trusted)?.let { item to it } }
             val resolved = matches.map { (_, playable) -> playable }.toMutableList()
             logSelection(
@@ -1841,11 +1877,6 @@ class PlaybackService : MediaLibraryService() {
                 asked = mediaItems,
                 selection = Selection(
                     branch = if (trusted) "passthrough" else "browse",
-                    // The same meaning as on `onSetMediaItems`: the request produced something playable.
-                    // Whether *everything* did is `asked` against `handedBack`, which is on the same line —
-                    // and a field that means one thing here and another there is a trap for the reader this
-                    // line exists to serve. It formerly compared the two sizes while the comment beside it
-                    // said "whether anything survived at all", so the code and its own note disagreed.
                     resolved = matches.isNotEmpty(),
                     kind = actedKind(mediaItems, matches.firstOrNull()?.first),
                     answer = MediaSession.MediaItemsWithStartPosition(resolved.toList(), 0, 0L),
@@ -1854,6 +1885,14 @@ class PlaybackService : MediaLibraryService() {
             resolved
         }
 
+        /**
+         * Resolves a controller's requested playlist without assuming transport intent.
+         *
+         * Media3 1.11 gives `onSetMediaItems` no guarantee that `play()` follows. A controller may set or
+         * replace the item and leave it paused indefinitely. Therefore both spoken and browse resolution use
+         * arm-only [resolveQueue]; neither can create a fresh-start token. If Play arrives later it enters
+         * [ResumeFreshnessPlayer] normally and reconciles against current server evidence.
+         */
         override fun onSetMediaItems(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -1864,16 +1903,6 @@ class PlaybackService : MediaLibraryService() {
             setMediaItems(session, controller, mediaItems, startIndex, startPositionMs)
         }
 
-        /**
-         * The body of [onSetMediaItems], off the callback thread.
-         *
-         * It carries **no** player value: an early snapshot is what would rewind a playing book after a
-         * slow `openSession` failure, so `unresolved` hops back onto the main thread and reads the player
-         * itself, late, at the one point that needs it. See that function for the two hazards and why only
-         * a late read on the right thread satisfies both.
-         *
-         * Separated from the callback so this body is visibly free of `Player` access.
-         */
         private suspend fun setMediaItems(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -1881,54 +1910,23 @@ class PlaybackService : MediaLibraryService() {
             startIndex: Int,
             startPositionMs: Long,
         ): MediaSession.MediaItemsWithStartPosition {
-            // "Play <something>" arrives as an item with no media id and a search query on it, which is a
-            // different question from "play this id" and has to be answered before either of the others.
-            //
-            // It is a *search*, so it is gated with the rest of them. A caller that could not list the
-            // library but could ask it to play "the salt harbour" and watch whether anything started would
-            // have the same oracle by a slower route. Assistant and the system voice host reach this
-            // because the platform reports them trusted, which is the whole reason the gate asks Media3
-            // rather than carrying a list of voice apps.
-            // Whether a query was *asked* and whether it *found* something are two facts, and collapsing
-            // them lost the more useful one. A permitted voice request whose words match no book produced
-            // `null` here and fell through to the browse branch, so the log read `branch=browse` — which
-            // the device scripts define as "the voice host resolved a title and sent an id". The failure
-            // case that most needs the diagnostic was the one it described wrongly.
-            //
-            // The item is kept beside its query for the same reason the browse branch keeps its own: this
-            // searches the list, so the item carrying the query need not be the first one. Reading the
-            // first would log `branch=spoken kind=book` for a request whose spoken half was a later,
-            // empty-id item — naming an id the spoken branch never touched.
             val spokenRequest = mediaItems
                 .firstNotNullOfOrNull { item -> item.requestMetadata.searchQuery?.let { q -> item to q } }
                 ?.takeIf { session.mayBrowse(controller) }
             val query = spokenRequest?.second
             val spoken = query?.let { asked -> auto.search(asked).firstOrNull() }
             val selection = when {
-                query != null -> spoken?.let { match -> resolveQueue(match) }.let { queue ->
-                    // `resolved=false` here means the words matched no book, or the match would not open.
-                    // Either way it stays on the spoken branch, because that is what was asked.
+                query != null -> spoken?.let { match ->
+                    resolveQueue(match)
+                }.let { queue ->
                     Selection(
                         branch = "spoken",
                         resolved = queue != null,
-                        // The item that carried the query, not the book that matched: a voice request
-                        // carries an empty id, and `kind=empty` is what tells a reader it came in as
-                        // words. `branch=spoken` already names the route, so naming the matched book
-                        // here would say less.
-                        // Smart-cast: `query != null` above implies this pair is not null.
                         kind = actedKind(mediaItems, spokenRequest.first),
                         answer = queue.asItems(startIndex, startPositionMs),
                     )
                 }
 
-                // The app's own call. The index and the position are the caller's — it opened the session and
-                // knows where the book resumes — and the list is handed back whole rather than collapsed to
-                // one item, because this callback is not the place to decide what a queue contains.
-                //
-                // Gated on the caller's UID. `isReadyToPlay` is satisfied by any item carrying a
-                // `localConfiguration`, and a bare URI carries one — so without this check an outside
-                // controller could put a URI of its choosing straight into the player, on the
-                // authenticated streaming client. See [isThisApplication].
                 controller.isThisApplication() &&
                     mediaItems.isNotEmpty() &&
                     mediaItems.all(MediaItems::isReadyToPlay) ->
@@ -1943,11 +1941,11 @@ class PlaybackService : MediaLibraryService() {
                         ),
                     )
 
-                // The pair, not just the queue: this searches the list, so the item that resolved need
-                // not be the first one asked for, and `kind` must name the id the service acted on.
                 else ->
                     mediaItems
-                        .firstNotNullOfOrNull { item -> resolveQueue(item)?.let { queue -> item to queue } }
+                        .firstNotNullOfOrNull { item ->
+                            resolveQueue(item)?.let { queue -> item to queue }
+                        }
                         .let { match ->
                             Selection(
                                 branch = "browse",
@@ -1961,52 +1959,15 @@ class PlaybackService : MediaLibraryService() {
             return selection.answer
         }
 
-        /**
-         * PRODUCT_SPEC 14.4 — what a controller asked to play, and what it got.
-         *
-         * **A successful car tap used to log nothing whatsoever.** The browse tree said `children=6`, the
-         * next line in the log was minutes later, and between them was the whole of the thing that had
-         * failed. A 2026-08-28 head-unit run found a book that stayed on its loading message forever, and
-         * the two candidate explanations — a throw in this callback, and a withheld player command — were
-         * both *refuted* by evidence that already existed, leaving no evidence at all for what did happen.
-         * That is R-64 exactly: the information existed and was discarded where it would have been read.
-         *
-         * ### What is safe here, and what is not
-         *
-         * The **shape** of the id and not the id: see [AutoLibrary.kindOf]. Counts, because a count names
-         * nothing. The start position, because a position is a number and this app already logs the ones
-         * the server accepts. Never the media id, the title, or the URI (14.5).
-         *
-         * **`resolved` is the field to read, not `handedBack`.** `resolved=false` means this service could
-         * not turn the request into a book, which is a different defect from the player refusing what it
-         * was given — and `handedBack` cannot say so on its own, because the fallback that keeps a playing
-         * book alive returns one item for a request that resolved nothing. `branch` says which of the three
-         * routes answered: a spoken query, the app's own pre-resolved items, or a browse id.
-         *
-         * `resolved` means the same thing on both callbacks — *something* playable came back — because a
-         * field that means one thing on one line and another on the next is a trap for the reader this line
-         * exists to serve. Whether **everything** asked for resolved is `asked` against `handedBack`, which
-         * is on the same line: `onAddMediaItems` drops what it cannot resolve, so `asked=2 handedBack=1` is
-         * a partly-resolved add and `kind` names one of the items that survived it.
-         */
-        /**
-         * The shape of the id a selection acted on: the item that resolved where one did, and the first id
-         * asked for where none did.
-         *
-         * The browse branch searches the list with `firstNotNullOfOrNull`, so when a controller submits
-         * several items the one that resolves need not be the first. Reading the first would print, say,
-         * `kind=tab resolved=true` for a request a `book` id satisfied — naming an id form the service did
-         * not act on, in the one field a reader uses to decide which id form to go and look at.
-         *
-         * Still the shape and never the id (14.5); [AutoLibrary.kindOf] returns constants from that file.
-         */
         private fun actedKind(asked: List<MediaItem>, acted: MediaItem? = null): String =
             (acted ?: asked.firstOrNull())?.mediaId?.let(AutoLibrary::kindOf) ?: "none"
 
+        /**
+         * Selection diagnostics intentionally carry only public routing facts: callback/branch/kind, counts,
+         * resolution status and a numeric start position. They never log a search query, title or stream URI;
+         * those are private library/server data and are not needed to diagnose controller resolution.
+         */
         private fun logSelection(callback: String, asked: List<MediaItem>, selection: Selection) {
-            // `LogEvent` directly rather than the `Logger.info` helper: the helper takes `vararg`, and the
-            // field list is built conditionally, so calling it would need a spread — which copies the array
-            // on every log call and which detekt rightly refuses. The helper builds this same value.
             logger.log(
                 LogEvent(
                     level = LogLevel.Info,
@@ -2026,51 +1987,20 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * A resolved browse target as Media3's answer, or an empty one when nothing resolved.
-         *
-         * The resolved queue brings its own start position — that is the whole content of an `at/…` id, and
-         * of a book resumed from its stored progress — so the caller's is used only for the empty case, where
-         * it is what Media3 handed in and echoing it back is the least surprising thing to do.
+         * A successfully opened queue owns its authoritative start position. The controller's requested
+         * position is retained only when resolution failed and [unresolved] must preserve the existing item.
          */
         private suspend fun MediaItems.Queue?.asItems(startIndex: Int, startPositionMs: Long) = when (this) {
-            /*
-             * Nothing resolved — so leave the player alone rather than emptying it.
-             *
-             * This used to return `emptyList()`, which Media3 applies: a request this service could not
-             * resolve **cleared whatever was playing**. The same device run that found the player-command
-             * gap found this, and the two compounded — an untrusted controller could send an id that
-             * resolves to nothing and wipe the queue without ever being allowed to set one.
-             *
-             * Narrowing `Player.Commands` closes the untrusted route on its own. This closes the rest of
-             * it: a car or the app asking for an id that no longer exists gets silence, not a stopped book.
-             * Product priority 1.
-             */
             null -> unresolved(startIndex, startPositionMs)
             else -> MediaSession.MediaItemsWithStartPosition(listOf(item), 0, this.startPositionMs)
         }
 
         /**
-         * What to hand back when nothing resolved: whatever is loaded **now**, or an empty queue.
+         * Keeps current playback intact when a controller request cannot be resolved.
          *
-         * ### Two hazards, and only one fix satisfies both
-         *
-         * `currentMediaItem` and `currentPosition` are `Player` reads, and this function runs inside
-         * `future` — `Dispatchers.Default`. Reading them here directly threw, which was R-66's defect at
-         * the third of the three sites that had it, and a head unit waited on a future nobody completed.
-         *
-         * The obvious fix — snapshot the player on the callback thread before the coroutine starts — trades
-         * that for a worse bug, and a review caught it. Resolution happens in between, and resolution
-         * includes `openSession`, a network call that can fail *slowly*. The book keeps playing while it
-         * does. Handing Media3 a position captured seconds earlier makes it seek there, **rewinding a book
-         * nobody asked to move** — product priority 2, caused by the fallback whose entire purpose is
-         * priority 1.
-         *
-         * So the read happens here, at the moment of use, hopped onto the player's own thread. Fresh and
-         * on the right thread, which snapshotting could only ever be one of.
-         *
-         * The KDoc that stood here worried about the right hazard and missed both: it said to read once
-         * into a local *because two reads of a mutable player can disagree*, which is true, and said
-         * nothing about which thread was reading or how stale the answer could be.
+         * [loadedNow] is deliberately read late and on [mainDispatcher], after any network/search work. A
+         * position snapshot taken before that work could be seconds stale and hand Media3 the current book
+         * with an older position, effectively seeking backwards while merely declining another request.
          */
         private suspend fun unresolved(
             startIndex: Int,
@@ -2079,32 +2009,12 @@ class PlaybackService : MediaLibraryService() {
             ?: MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
 
         /**
-         * PRODUCT_SPEC ROUTE-001 — "a headset Play resumes the last item". The exit criterion, finally.
+         * Media3 1.11 distinguishes describing resumable media from requesting playback.
          *
-         * Android calls this when a media button arrives at a session whose player holds nothing — after a
-         * process death, or on the first press of the day. What it wants back is a queue and a position,
-         * which for this app means the most recently played unfinished book at the position stored for it.
-         *
-         * `MediaSession` rather than `MediaLibrarySession` in the signature: this is inherited from
-         * `MediaSession.Callback`, not declared on the library one.
-         *
-         * ### `isForPlayback` is two different questions, and only one of them may open a session
-         *
-         * Media3 1.11.0 added the flag and deprecated the two-argument form. `true` is the callback this
-         * app has always answered: a button was pressed, playback is about to start, so the book has to be
-         * *opened* — `openQueue` calls `openSession`, which tells the server a listening session has begun.
-         *
-         * `false` is a question 1.7.1 could not ask. `MediaLibrarySessionImpl.getRecentMediaItemAtDeviceBootTime`
-         * passes it when System UI wants metadata for the playback-resumption notification it draws after a
-         * reboot — *"without an immediate intention to start playback"*, in the javadoc's words. Answering
-         * that by opening a session would post a play to the server for a notification nobody has touched,
-         * which is a listening session that never listened (product priority 2's neighbourhood, and
-         * PRODUCT_SPEC 12.2's "the server's history is a record of what was played"). So the `false` branch
-         * describes the book and opens nothing.
-         *
-         * Media3 reaches the `false` branch through the `MediaButtonReceiver` declared in the manifest. The
-         * receiver makes boot/System UI metadata resumption available without connecting that metadata-only
-         * question to a network write.
+         * `isForPlayback = false` is metadata-only and opens no server session. For `true`, Media3's pinned
+         * callback contract automatically installs the returned media, prepares it and calls Play. That
+         * structural guarantee is what allows [resumeForPlayback]—and only this generic service callback—to
+         * mint an immediate fresh-start exemption.
          */
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
@@ -2114,14 +2024,13 @@ class PlaybackService : MediaLibraryService() {
             if (isForPlayback) resumeForPlayback() else describeResumable()
         }
 
-        /** The `isForPlayback = true` half: open the book and hand back a real queue. */
+        /** The `isForPlayback = true` half: open the book and hand back a queue Media3 immediately plays. */
         private suspend fun resumeForPlayback(): MediaSession.MediaItemsWithStartPosition {
             val book = auto.lastPlayed()
-            val queue = book?.let { openQueue(it.id, startAt = null) }
+            val queue = book?.let {
+                openQueue(it.id, startAt = null, initialPlayWillFollow = true)
+            }
             return if (queue == null) {
-                // PRODUCT_SPEC ROUTE-001 — "if no playable item exists, the command does nothing and logs a
-                // non-fatal diagnostic". This is that diagnostic. No book id: a log a user might share does
-                // not need to name what they listen to (14.5).
                 logger.info(LogCategory.Playback, "A resume was requested with nothing to resume")
                 MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
             } else {
@@ -2148,17 +2057,16 @@ class PlaybackService : MediaLibraryService() {
             return MediaSession.MediaItemsWithStartPosition(listOf(item), 0, 0L)
         }
 
+        /**
+         * Grants controller capabilities according to the same trust decision used by browse callbacks.
+         * Playback-only controllers keep standard transport controls; library/custom commands are granted
+         * only to controllers allowed across the library boundary. This prevents a convenient media-control
+         * connection from silently becoming read access to the listener's private library.
+         */
         override fun onConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
-            // PRODUCT_SPEC PLAY-001 / 14.5 — who bound to the session, and when.
-            //
-            // A package name, which is the one fact about a controller that is safe to write down: it names
-            // an app, not a book. Two device runs reported the app missing from a car with no way to tell a
-            // discovery problem from a browse-tree one, and this is the line that separates them — if
-            // `gearhead` never appears here, Android Auto never reached the app at all and nothing in the
-            // tree can be at fault. See `CarReadiness`.
             if (controller.isCar()) {
                 carConnections.onConnected()
                 logger.info(
@@ -2166,37 +2074,12 @@ class PlaybackService : MediaLibraryService() {
                     "A car connected to the media session",
                     LogField.Public("controller", controller.packageName),
                 )
-                // PRODUCT_SPEC PLAY-002 — both of these are about a car *arriving*, and neither may wait for
-                // `onPostConnect`: the platform moves the route the moment the car's audio link comes up, and
-                // by the later callback there may be no headset left to hold. Media3 calls `onConnect` off
-                // the main thread, and both of these read main-thread state, so they are posted rather than
-                // run here.
                 scope.launch {
-                    // Re-read the route before deciding anything from it. A car activating an already
-                    // connected A2DP link fires no `AudioDeviceCallback`, so without this both the hold and
-                    // the buttons are computed from whatever the route was before the drive began. See
-                    // `AudioOutputRouter.resettle`.
                     audioOutputs.resettle()
                     holdHeadsetAgainstCar()
                     republishOutputButtons()
                 }
             }
-            /*
-             * PRODUCT_SPEC AUTH-003 / 14.5 — the command set is where the browse decision is enforced.
-             *
-             * Media3 checks the granted commands before it dispatches to a callback, so withholding the
-             * library half here is the real gate; the per-callback checks further up are the second lock
-             * on the same door, for the legacy `MediaBrowserServiceCompat` path this service also
-             * advertises. Two mechanisms rather than one because a browse tree is private data and the
-             * cost of the redundancy is four lines.
-             *
-             * `DEFAULT_SESSION_COMMANDS` is Media3's own transport-only set. An untrusted caller keeps
-             * play, pause, seek and skip — a headset button, a watch and a Bluetooth remote all still
-             * work — and loses only the ability to enumerate the library or write a bookmark into it.
-             *
-             * The custom commands go with the library half deliberately: `ADD_BOOKMARK` *writes*, and the
-             * other three are this app's own notification buttons. Nothing outside needs them.
-             */
             val access = session.accessFor(controller)
             val commands = when (access) {
                 ControllerAccess.LibraryAndPlayback ->
@@ -2208,18 +2091,9 @@ class PlaybackService : MediaLibraryService() {
                         .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_SELECT_CAR_OUTPUT, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT, Bundle.EMPTY))
-                        // PRODUCT_SPEC SYNC-002 — the app's own atomic resume. Granted on the same
-                        // condition as the four above and refused to everything else: a seek followed by a
-                        // play, driven from outside the app, is exactly the pair `ControllerTrust`
-                        // withholds. See `ResumeCommand`.
-                        .add(ResumeCommand.command())
                         .build()
 
                 ControllerAccess.PlaybackOnly -> {
-                    // Logged, because the failure this produces on a device is a car or a watch that
-                    // connects and shows an empty list, and the only way to tell that from a broken browse
-                    // tree is a line saying the session refused it. The package name is the caller's own
-                    // claim and identifies an app, not a book (14.5).
                     logger.info(
                         LogCategory.Playback,
                         "A controller connected without library access",
@@ -2228,24 +2102,11 @@ class PlaybackService : MediaLibraryService() {
                     MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
                 }
             }
-            /*
-             * Player commands, narrowed separately — and this is the line whose absence a device run found.
-             *
-             * `setAvailableSessionCommands` narrows the *session* surface only. `Player.Commands` is a
-             * different set with its own default, and Media3's default grants `COMMAND_SET_MEDIA_ITEM`,
-             * `COMMAND_CHANGE_MEDIA_ITEMS`, `COMMAND_STOP` and `COMMAND_RELEASE` to everything that
-             * connects. So the first version of this policy refused an untrusted controller the library and
-             * then let it clear the queue and stop the book — product priority 1, reachable by any
-             * installed app, which is worse than the leak the policy was written for.
-             */
             val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
                 .buildUpon()
                 .apply { ControllerTrust.withheldPlayerCommands(access).forEach(::remove) }
                 .build()
 
-            // The two-argument builder. Media3 1.11.0 deprecated the session-only one; passing the
-            // controller is what lets the session scope its answer to who asked, which is exactly what the
-            // three lines below do.
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(commands)
                 .setAvailablePlayerCommands(playerCommands)
@@ -2253,59 +2114,24 @@ class PlaybackService : MediaLibraryService() {
                 .build()
         }
 
-        /**
-         * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — a car connected, and its **own policy** decides what happens.
-         *
-         * The only path in this app that can start audio with nobody pressing anything, and it is fenced
-         * accordingly: the controller has to be a car, there has to be nothing already loaded, and the car's
-         * policy has to say so — which by default it does not.
-         *
-         * ### This used to read a global switch, and that was the defect
-         *
-         * The comment here claimed ROUTE-002's per-device policies "are not built. One global switch is the
-         * honest interim". They *were* built — `AutoStartDecision` and `OutputDeviceWatcher` shipped in
-         * Phase 4 — and the interim was never retired, so two controls decided one thing. The global one
-         * bypassed the other's warning and its `Arm only` default, which meant a listener who had set their
-         * car to *Never react* could still be auto-played from a switch on a different screen. A warning that
-         * does not describe what happens is worse than no warning.
-         *
-         * ### Why the car is not left to `OutputDeviceWatcher`
-         *
-         * Because it would not see it. That watcher listens to `AudioDeviceCallback` — *audio outputs* — and
-         * a projected Android Auto or Automotive OS connection arrives here, as a media controller from a car
-         * package. `DeviceKind.Car`'s own KDoc says as much: *"a car, which reaches this app as a media
-         * controller rather than as an audio device."* So the trigger stays; only the policy moves.
-         *
-         * `remember` before `policyFor`, in that order and for the reason `OutputDeviceWatcher.onConnected`
-         * does it: a first-ever connection has to be stored before it can be asked about, or it falls through
-         * the gap between the two and gets no policy at all. It also puts the car in Settings, which is where
-         * the listener changes their mind.
-         */
-        /**
-         * PRODUCT_SPEC PLAY-002 — a controller went away, and if it was a car the car button goes with it.
-         *
-         * The counterpart to the `onConnect` half above. Without it the car button would be published for
-         * the rest of the process's life after one drive, on a phone with no car anywhere near it.
-         */
         override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
             if (!controller.isCar()) return
             carConnections.onDisconnected()
             scope.launch { republishOutputButtons() }
         }
 
+        /**
+         * Applies the user's remembered car policy only after Media3 accepted the controller connection.
+         * Arm means set/prepare and stay silent; ArmAndPlay is a deliberate service-owned direct start. Both
+         * operate on the raw ExoPlayer, so neither needs an external forwarding-player fresh-start token.
+         */
         override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
             if (!controller.isCar()) return
             val current = player ?: return
             if (current.mediaItemCount > 0) return
             scope.launch {
-                // PRODUCT_SPEC ROUTE-002 / AUTH-005 — a car connecting is the clearest case the lock clause
-                // covers: nobody pressed anything, and the car is a speaker in a room with other people in
-                // it. `CarConnection` holds the three lines so a test can reach them; see its comment on
-                // why the wiring rather than the decision is what needed covering.
                 when (CarConnection.decide(devices, lock, clock.now())) {
                     AutoStartAction.ArmAndPlay -> startLastBook(current, play = true)
-                    // `Ask` arms as well: the paused session is what puts a resume control in the car's
-                    // shade, which is the notification ROUTE-002 asks for without a second one competing.
                     AutoStartAction.Arm -> startLastBook(current, play = false)
                     AutoStartAction.Suppressed -> logger.info(
                         LogCategory.Playback,
@@ -2333,39 +2159,15 @@ class PlaybackService : MediaLibraryService() {
             if (play) current.play()
         }
 
-        /**
-         * Whether a connection came from a car.
-         *
-         * Matched on package name, which is what Media3 gives and what every media app checks. Both are
-         * listed: `gearhead` is Android Auto's projected head unit, `androidauto` is Automotive OS.
-         */
+        /** Package names identify known car hosts for routing UX only; they are not the library trust anchor. */
         private fun MediaSession.ControllerInfo.isCar(): Boolean = packageName in CAR_PACKAGES
 
-        /**
-         * Whether this controller is BookWave itself.
-         *
-         * **Matched on UID, not on package name.** The UID is assigned by the platform and a caller cannot
-         * choose it; a package name arrives over IPC and is a claim. Media3 populates both, and only one of
-         * them is evidence.
-         *
-         * What it gates is narrow and deliberate: submitting a *pre-resolved* item — a URI or a track list
-         * the player will fetch as given. Every other controller keeps the whole browse surface and may
-         * submit app-issued `book/…` and `at/…` ids, which this service resolves itself after checking the
-         * profile's access. Android Auto, Assistant and a headset lose nothing they legitimately do.
-         *
-         * `Process.myUid()` is the service's own UID because this code runs in the app's process.
-         */
+        /** Same-process UID is the trust anchor for accepting a pre-resolved playable URI from BookWave. */
         private fun MediaSession.ControllerInfo.isThisApplication(): Boolean = uid == Process.myUid()
 
         /**
-         * PRODUCT_SPEC AUTH-003 / 14.5 — the boundary between Media3's types and [ControllerTrust].
-         *
-         * Six facts, read once, none of them derived here. `isTrusted`, `isMediaNotificationController`,
-         * `isAutomotiveController` and `isAutoCompanionController` are all Media3's own computations —
-         * `isTrusted` is `MediaSessionManager.isTrustedForMediaControl`, which is the platform's answer and
-         * not this project's guess. Keeping the reads in one adapter is what lets the policy itself be a
-         * pure function with tests, since `ControllerInfo` is final with a package-private constructor and
-         * nothing outside Media3 can build one.
+         * Builds the trust input from Media3's public controller classifiers. Package names are diagnostics
+         * and car-routing hints, not substitutes for Media3's trust/automotive identity signals.
          */
         private fun MediaSession.identityOf(controller: MediaSession.ControllerInfo) = ControllerIdentity(
             packageName = controller.packageName,
@@ -2376,26 +2178,13 @@ class PlaybackService : MediaLibraryService() {
             isAutoCompanion = isAutoCompanionController(controller),
         )
 
-        /** The access [controller] is granted on this session. */
         private fun MediaSession.accessFor(controller: MediaSession.ControllerInfo): ControllerAccess =
             ControllerTrust.accessFor(identityOf(controller), selfUid = Process.myUid())
 
-        /** Whether [controller] may read, search or write library content. */
         private fun MediaSession.mayBrowse(controller: MediaSession.ControllerInfo): Boolean =
             ControllerTrust.mayBrowse(accessFor(controller))
 
-        /*
-         * The three refusals, one per `LibraryResult` shape Media3 declares.
-         *
-         * `ERROR_PERMISSION_DENIED` rather than `ERROR_BAD_VALUE` or an empty list, because the three say
-         * different things to whoever is holding the phone. An empty list reads as "this library has
-         * nothing in it" and would send a driver to check their server; a bad value reads as a bug in the
-         * caller. Permission denied is what actually happened, and it is the answer a head unit surfaces
-         * as a refusal rather than as an empty shelf.
-         *
-         * Each logs once, with the caller's package and the callback that refused it, for the same reason
-         * `onConnect` does: without it, an unsupported controller is indistinguishable from a broken tree.
-         */
+        /** Records the public controller package/request only; no media id, title, query or private URI. */
         private fun denied(browser: MediaSession.ControllerInfo, callback: String) {
             logger.info(
                 LogCategory.Playback,
@@ -2425,73 +2214,30 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * PRODUCT_SPEC SYNC-002 — runs the atomic resume and answers with whether it worked.
-         *
-         * A `SessionResult` rather than a fire-and-forget: the caller adopted a position because the server
-         * said another device had moved the book, and "the seek did not take" is something the app has to
-         * be able to act on rather than discover from a log line a second later.
-         *
-         * `ERROR_INVALID_STATE` covers every failure the same way on purpose — the specific outcome is in
-         * the service's log, where the position that failed can be recorded, and the controller's only
-         * decision is the same in all three cases: reopen the book rather than play the wrong position.
+         * Executes only commands already granted to library-capable controllers in [onConnect]. The explicit
+         * guard remains defense in depth: bookmark/output/sleep-timer actions should never become an escape
+         * hatch around the same controller trust boundary that protects browse resolution.
          */
-        private fun resumeCommand(args: Bundle): ListenableFuture<SessionResult> {
-            val bookId = ResumeCommand.bookIdFrom(args)?.takeIf(String::isNotBlank)
-            val positionMs = ResumeCommand.positionFrom(args)
-            if (bookId == null || positionMs == null) {
-                logger.warn(LogCategory.Playback, "A resume command arrived without a book and a position")
-                return Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
-            }
-            return future {
-                val outcome = resumeAt(LibraryItemId(bookId), positionMs.milliseconds)
-                if (outcome == ResumeOutcome.Resumed) {
-                    SessionResult(SessionResult.RESULT_SUCCESS)
-                } else {
-                    SessionResult(SessionError.ERROR_INVALID_STATE)
-                }
-            }
-        }
-
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
             customCommand: SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
-            // Second lock on the same door as `onConnect`: an untrusted controller was never granted these
-            // commands, so Media3 should refuse the call before it arrives. `ADD_BOOKMARK` writes to the
-            // user's library, which is reason enough not to let one mechanism be the only thing stopping it.
             if (!session.mayBrowse(controller)) {
                 denied(controller, "onCustomCommand")
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
             }
-            // PRODUCT_SPEC SYNC-002 — the one command with an answer, so it is handled before the
-            // fire-and-forget four rather than inside their `when`.
-            if (customCommand.customAction == ResumeCommand.ACTION) return resumeCommand(args)
             when (customCommand.customAction) {
-                // PLAY-008 says the notification action *extends*; the shake *restarts*. See ADR-0014.
                 NotificationButtons.ACTION_EXTEND_SLEEP_TIMER -> sleepTimer.extend()
                 NotificationButtons.ACTION_SKIP_BACK -> skipBy(-skips.back)
                 NotificationButtons.ACTION_SKIP_FORWARD -> skipBy(skips.forward)
                 NotificationButtons.ACTION_ADD_BOOKMARK -> bookmarkHere()
-                // PLAY-002. Neither touches the player's queue, so the book does not stop or rebuffer —
-                // product priority 1, and the same reason the car's output rows are browsable.
-                //
-                // The car target is `null` on every car that does not report an audio bus of its own, and
-                // `null` means *Automatic*: routing goes back to the platform, whose answer while a car is
-                // connected is the car. `AudioOutputRoles.carTarget` says why that is the honest mapping
-                // rather than a shrug.
                 NotificationButtons.ACTION_SELECT_CAR_OUTPUT -> {
-                    // The press retires the hold. Without this the memory survives, the ambiguous-route
-                    // guard keeps it across the dashboard becoming active, and the next car binding
-                    // reasserts the headset — silently undoing the choice just made.
                     headsetHold.releaseToCar(audioOutputs.outputs.value, audioOutputs.selectedId.value)
                     audioOutputs.select(AudioOutputRoles.carTarget(audioOutputs.outputs.value))
                 }
 
-                // `null` here means there is no headset to step to, and the button would not have been
-                // published — but a stale custom action from a car's cached layout can still arrive, and
-                // selecting *Automatic* for it would move the book somewhere nobody asked for.
                 NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT ->
                     AudioOutputRoles
                         .nextHeadset(audioOutputs.outputs.value, audioOutputs.selectedId.value)
@@ -2520,20 +2266,13 @@ class PlaybackService : MediaLibraryService() {
          *
          * Nothing is playing yet, so this is dead air on a Play the listener has already waited a network
          * round trip for; two seconds is the same budget the freshness read itself gets. A seek that has not
-         * landed by then has almost certainly been dropped, and the recovery — reopening the book — is
-         * faster than waiting longer.
+         * landed by then is treated as failed and the book remains paused. There is deliberately no second
+         * state-changing `/play` recovery after ownership may have moved elsewhere.
          */
         val SEEK_CONFIRM_TIMEOUT: Duration = 2.seconds
 
         const val SECONDS_PER_MINUTE = 60L
 
-        /**
-         * PRODUCT_SPEC ROUTE-002 — the two packages that are a car.
-         *
-         * Android Auto projects from `gearhead`; a car running Automotive OS natively connects as
-         * `androidauto`. Anything else — a watch, a desktop companion, the app itself — is not a car and
-         * does not get the auto-play behaviour whatever the setting says.
-         */
         val CAR_PACKAGES = setOf(
             "com.google.android.projection.gearhead",
             "com.google.android.autoauto",

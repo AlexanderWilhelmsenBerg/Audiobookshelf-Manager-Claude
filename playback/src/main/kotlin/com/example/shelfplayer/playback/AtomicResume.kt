@@ -16,17 +16,17 @@ import kotlin.time.Duration
  * proxy — the read is a report of what the session *believes*, not of what the player *did*. Re-reading the
  * thing that told you the lie is not a check.
  *
- * So the whole operation is one custom session command now. `PlaybackService` receives it and drives its
- * **own** [androidx.media3.exoplayer.ExoPlayer] directly: seek it, wait for that player's own position
- * discontinuity, confirm where it actually landed, and only then start audio. The outcome travels back to
- * the controller as a `SessionResult`, so the app learns whether the adoption succeeded instead of assuming
- * it and logging a contradiction a second later.
+ * The current architecture has no private resume command. Standard Media3 Play reaches
+ * [ResumeFreshnessPlayer], the coordinator decides whether the paused book stays local or adopts remote
+ * progress, and `PlaybackService` performs any adopted movement on its service-owned
+ * [androidx.media3.exoplayer.ExoPlayer] before audio starts. The service waits for that player's own position
+ * discontinuity, confirms where the seek landed, revalidates request ownership, and only then calls Play.
  *
  * ### Why the ordering is a pure function over a seam
  *
- * `ExoPlayer` cannot be constructed in a unit test and `MediaController` is final, which is how the
- * two-coroutine defect survived review twice (see [ResumeSurface]). [ResumeTarget] is the four questions
- * and three commands this operation needs, so `AtomicResumeTest` can assert *prepare, seek, confirm, then
+ * `ExoPlayer` cannot be constructed cheaply in a unit test and `MediaController` is final, which is how the
+ * old multi-coroutine defect survived review. [ResumeTarget] is exactly the player-side observations and
+ * commands this operation needs, so `AtomicResumeTest` can assert *prepare, seek, confirm, revalidate, then
  * play* — and, more importantly, that **no play happens** when the seek did not land.
  */
 internal interface ResumeTarget {
@@ -48,7 +48,8 @@ internal interface ResumeTarget {
      */
     suspend fun seekAndAwait(position: Duration, timeout: Duration): Duration?
 
-    fun play()
+    /** Starts audio only if the freshness request still owns playback at this exact moment. */
+    suspend fun playIfCurrent(): Boolean
 }
 
 /** What [ResumeTarget.seekAndResume] did, in the order the failures are worth telling apart. */
@@ -66,9 +67,13 @@ internal enum class ResumeOutcome {
      * The seek did not arrive where it was sent, or the player never reported it.
      *
      * Playback is deliberately **not** started: resuming from the position the listener was trying to leave
-     * is the exact defect this path exists to remove. The caller reopens the book instead.
+     * is the exact defect this path exists to remove. The service leaves the book paused rather than opening
+     * a second server session whose state-changing response could outlive this request's ownership.
      */
     SeekLost,
+
+    /** A newer command took ownership while the adopted seek was being confirmed. */
+    Superseded,
 }
 
 /**
@@ -84,7 +89,8 @@ internal enum class ResumeOutcome {
  *  4. **confirm within [tolerance]** — nothing is playing yet, so the landed position is still the seek's
  *     result rather than the seek's result plus however long the check took. That is what lets this be a
  *     tolerance at all; the earlier post-play version had to compare two distances instead;
- *  5. **play** — last, and only on success, so the first sound is from where the listener should be.
+ *  5. **revalidate ownership and play** — last, in one operation, so a newer Pause/seek/Stop that
+ *     arrived during seek confirmation cannot be undone by this older Play.
  *
  * Negative targets are clamped by the implementation rather than rejected: a server that reports a nonsense
  * position should start the book, not fail the resume (product priority 1).
@@ -99,7 +105,7 @@ internal suspend fun ResumeTarget.seekAndResume(
     if (needsPreparing()) prepare()
     val landed = seekAndAwait(target, timeout)
     if (landed == null || (landed - target).absoluteValue > tolerance) return ResumeOutcome.SeekLost
-    play()
+    if (!playIfCurrent()) return ResumeOutcome.Superseded
     return ResumeOutcome.Resumed
 }
 
