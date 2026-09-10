@@ -4,14 +4,14 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.domain.library.lastPlayedBook
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 /**
- * PRODUCT_SPEC 6.5 step 6 — *"The new profile's last player state is restored paused."*
+ * PRODUCT_SPEC 6.5 step 6 / BW-PLAY-01 — restores the incoming profile's remembered local book, paused.
  *
  * ### The last step of the switch, and the only optional one
  *
@@ -22,6 +22,14 @@ import javax.inject.Inject
  * That difference decides everything about how it is called. The flush is **awaited** inside the switch; this
  * is **not**, because [StartupPlayer.arm] opens a session and AUTH-002 allows the switch 500 ms. A network
  * call inside that budget would make the ordinary case slow to protect the pleasant one.
+ *
+ * ### Identity is local; position freshness is not
+ *
+ * The book comes from [RememberedBookRepository], never from the newest `progress.updatedAt`. Audiobookshelf
+ * progress is account state and can move on another client; BW-PLAY-01 asks a different question: which book
+ * this physical BookWave install last took local playback ownership of. The opaque id is then resolved
+ * against [profileId]'s accessible Room rows. A revoked/missing or finished book is not armed, but remote
+ * activity on another book can never replace the remembered identity.
  *
  * ### It arms, and never plays
  *
@@ -39,21 +47,26 @@ import javax.inject.Inject
  */
 class RestoreProfilePlaybackUseCase @Inject constructor(
     private val library: LibraryRepository,
+    private val rememberedBooks: RememberedBookRepository,
     private val player: StartupPlayer,
     private val logger: Logger,
 ) {
 
     /**
-     * Arms [profileId]'s last unfinished book, or does nothing when it has none.
+     * Arms [profileId]'s locally remembered unfinished book, or does nothing when it has none.
      *
      * Silent about failure by design. This is a courtesy performed after an action that has already
      * succeeded; a listener who has just switched account does not need to be told that the book they were
      * not asking for could not be loaded (product priority 1 — nothing here may interrupt).
      */
     suspend operator fun invoke(profileId: ProfileId) {
-        val books = library.observeAccessibleBooks(profileId).first()
-        val book = lastPlayedBook(books) ?: return
-        logger.info(LogCategory.Playback, "The account that was switched to had its last book restored, paused")
+        val rememberedId = rememberedBooks.observe(profileId).first() ?: return
+        val book = library.observeAccessibleBooks(profileId).first()
+            .firstOrNull { candidate ->
+                candidate.id == rememberedId && candidate.progress?.isFinished == false
+            }
+            ?: return
+        logger.info(LogCategory.Playback, "The account that was switched to had its remembered book restored, paused")
         player.arm(book.id)
     }
 }
