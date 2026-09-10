@@ -42,6 +42,8 @@ private const val LOOPBOUND_ENTRY_PATH = "$LOOPBOUND_ASSET_DIRECTORY/$LOOPBOUND_
 private const val APP_ASSET_HOST = "appassets.androidplatform.net"
 private const val LOOPBOUND_URL = "https://$APP_ASSET_HOST/assets/$LOOPBOUND_ENTRY_PATH"
 private const val LOOPBOUND_URL_PATH_PREFIX = "/assets/$LOOPBOUND_ASSET_DIRECTORY/"
+private const val HTTP_STATUS_FORBIDDEN = 403
+private const val HTTP_STATUS_NOT_FOUND = 404
 
 /**
  * Hosts the web build of Loopbound as an ordinary BookWave destination.
@@ -185,20 +187,20 @@ private fun Context.hasLoopboundBundle(): Boolean = runCatching {
     assets.open(LOOPBOUND_ENTRY_PATH).use { Unit }
 }.isSuccess
 
-private fun String.responseEncoding(): String? = if (
-    startsWith("text/") ||
-    this == "application/javascript" ||
-    this == "application/json" ||
-    this == "image/svg+xml"
-) {
-    Charsets.UTF_8.name()
-} else {
-    null
+private fun String.responseEncoding(): String? = when (this) {
+    "application/javascript",
+    "application/json",
+    "image/svg+xml",
+    -> Charsets.UTF_8.name()
+
+    else -> if (startsWith("text/")) Charsets.UTF_8.name() else null
 }
 
-private fun blockedResponse(): WebResourceResponse = errorResponse(403, "Blocked by BookWave")
+private fun blockedResponse(): WebResourceResponse =
+    errorResponse(HTTP_STATUS_FORBIDDEN, "Blocked by BookWave")
 
-private fun notFoundResponse(): WebResourceResponse = errorResponse(404, "Not Found")
+private fun notFoundResponse(): WebResourceResponse =
+    errorResponse(HTTP_STATUS_NOT_FOUND, "Not Found")
 
 private fun errorResponse(statusCode: Int, reasonPhrase: String): WebResourceResponse = WebResourceResponse(
     "text/plain",
