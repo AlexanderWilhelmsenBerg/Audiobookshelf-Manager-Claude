@@ -3,6 +3,7 @@ package com.example.shelfplayer.playback
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.ResumeBaseline
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,10 +19,11 @@ internal fun PlaybackSession.serverAcknowledgedStartPosition() =
 /**
  * PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — everything that has to be told a book changed.
  *
- * Five singletons need the same news, in the same order, every time a session opens: the outbox needs a row
- * before a byte of audio is fetched; the resume baseline stages a real server `/play` position before Media3
- * receives the item; the sleep timer needs the chapters so an end-of-chapter timer knows where the chapter
- * ends; and auto-rewind needs the chapters so a rewind cannot cross a chapter start.
+ * The playback singletons need the same news, in the same order, every time a session opens: the outbox
+ * needs a row before a byte of audio is fetched; BW-PLAY-01 records this device's local book ownership;
+ * the resume baseline stages a real server `/play` position before Media3 receives the item; the sleep
+ * timer needs the chapters so an end-of-chapter timer knows where the chapter ends; and auto-rewind needs
+ * the chapters so a rewind cannot cross a chapter start.
  *
  * Gathered here rather than listed at the call site for two reasons. It keeps the *order* in one place —
  * the outbox row must exist before playback can fail — and it means adding a listener is a change to this
@@ -35,6 +37,7 @@ class BookChanges @Inject internal constructor(
     private val autoRewind: AutoRewindController,
     private val resumeBaseline: ResumeBaseline,
     private val resumeFreshness: ResumeFreshnessCoordinator,
+    private val rememberedBooks: RememberedBookRepository,
 ) {
     /**
      * A session has been opened for a book. Called before the player is handed the item.
@@ -42,6 +45,12 @@ class BookChanges @Inject internal constructor(
      * The outbox row is written first, deliberately: a session recorded only once playback succeeded would
      * lose the listening of a book that started and then hit a network error (PLAY-005). This is suspending
      * because "written first" must be an ordering guarantee, not a coroutine scheduled for later.
+     *
+     * BW-PLAY-01 records the session's own [PlaybackSession.profileId] and [PlaybackSession.bookId] next.
+     * Opening a local playback session is the shared ownership boundary used by both phone controls and
+     * Media3/Android Auto, while REST and websocket progress never pass through it. Restoring or arming an
+     * already remembered book is therefore idempotent; another client's newer progress cannot replace it.
+     * A storage failure is returned as an `AppResult` by the repository and deliberately does not stop audio.
      *
      * A **server-backed** `/play` start position is staged after that durable-session request and before
      * Media3 sees the item. `PlaybackService.onMediaItemTransition` promotes it into an acknowledged baseline,
@@ -59,6 +68,7 @@ class BookChanges @Inject internal constructor(
      */
     suspend fun onBookOpened(session: PlaybackSession, initialPlayWillFollow: Boolean = false) {
         sessionSync.onSessionOpened(session)
+        rememberedBooks.remember(session.profileId, session.bookId)
         resumeBaseline.stageServerPosition(
             bookId = session.bookId,
             position = session.serverAcknowledgedStartPosition(),
