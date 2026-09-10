@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
@@ -114,6 +115,23 @@ class AppSettingsDataSource @Inject constructor(
         stored.profileSettingsMap[profileId.value]?.toPreferences() ?: ProfilePreferences.Empty
     }
 
+    /**
+     * BW-PLAY-01 — the opaque audiobook this physical install most recently took local ownership of.
+     *
+     * Empty is deliberately `null`: an upgrading profile has no trustworthy device-local ownership
+     * evidence, and server progress recency is not a migration source for this field.
+     */
+    fun rememberedBookId(profileId: ProfileId): Flow<LibraryItemId?> = settings.map { stored ->
+        stored.profileSettingsMap[profileId.value]?.rememberedBookId
+            ?.takeIf(String::isNotBlank)
+            ?.let(::LibraryItemId)
+    }
+
+    /** BW-PLAY-01 — writes only the identity; resume position remains owned by playback freshness policy. */
+    suspend fun setRememberedBookId(profileId: ProfileId, bookId: LibraryItemId) {
+        updateProfile(profileId) { current -> current.setRememberedBookId(bookId.value) }
+    }
+
     /** PRODUCT_SPEC 6.1 step 9 — `null` clears the choice and returns the profile to every library. */
     suspend fun setDefaultLibrary(profileId: ProfileId, libraryId: LibraryId?) {
         updateProfile(profileId) { current ->
@@ -134,10 +152,10 @@ class AppSettingsDataSource @Inject constructor(
     }
 
     /**
-     * PRODUCT_SPEC AUTH-002 — removing a profile takes its preferences with it.
+     * PRODUCT_SPEC AUTH-002 — removing a profile takes every value in its per-profile settings entry.
      *
-     * Otherwise the map grows a dead entry per removed account, and a profile id reissued by a server
-     * would inherit the arrangement of the account it replaced.
+     * That includes BW-PLAY-01's remembered audiobook identity as well as view preferences. Otherwise a
+     * profile id reissued by a server could inherit device-local state from the account it replaced.
      */
     suspend fun clearProfilePreferences(profileId: ProfileId) {
         dataStore.updateData { current ->
