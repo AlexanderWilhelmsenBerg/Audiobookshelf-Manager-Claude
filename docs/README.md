@@ -14,7 +14,7 @@ The repository has accumulated detailed investigation over time. Detail does **n
 | What playback correctness rules are current? | [`architecture/playback.md`](architecture/playback.md), accepted ADRs, and the active roadmap while pending PRs are not yet on `main` |
 | What risks remain open? | [`risks.md`](risks.md) |
 | How should the repository be tested now? | [`testing.md`](testing.md) |
-| What dependency-upgrade work is active? | [`dependency-upgrade-plan.md`](dependency-upgrade-plan.md), sequenced by the roadmap |
+| What dependency-upgrade work is active? | [`latest-stable-upgrade-plan.md`](latest-stable-upgrade-plan.md) with the dated [`dependency-compatibility-inventory.md`](dependency-compatibility-inventory.md), sequenced by the roadmap |
 | What Android Auto ideas still need experiments? | [`android-auto-player-opportunities.md`](android-auto-player-opportunities.md) |
 | What did older phases investigate or prove? | [`archive/`](archive/), [`bugs/`](bugs/), and [`reviews/`](reviews/) |
 
