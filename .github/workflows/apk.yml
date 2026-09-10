@@ -79,7 +79,6 @@ on:
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
           - "#125 — feature/loopbound-overflow-menu"
-          - "#93 — refactor/unified-resume-freshness"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
