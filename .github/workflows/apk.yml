@@ -78,7 +78,6 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
-          - "#137 — chore/bw-dep-01-inventory"
           - "#136 — fix/bw-dl-02-recovery-state"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
