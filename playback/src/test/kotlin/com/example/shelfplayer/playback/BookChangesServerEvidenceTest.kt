@@ -18,9 +18,11 @@ import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -36,7 +38,8 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 
 /**
- * Issue #91 — only a real server `/play` result may become an acknowledged start baseline.
+ * Issue #91 / BW-PLAY-01 — only real server `/play` state becomes server resume evidence, while every local
+ * playback-session open records the session's own device-local book identity.
  *
  * These tests intentionally cross the real [BookChanges.onBookOpened] boundary and then perform the same
  * [ResumeBaseline.onBookClosed] transition the service performs when Media3 installs the item. If
@@ -69,7 +72,21 @@ class BookChangesServerEvidenceTest {
         assertEquals(START, baseline.acknowledged(BOOK)?.position)
     }
 
-    private fun TestScope.bookChanges(baseline: ResumeBaseline): BookChanges {
+    /** BW-PLAY-01 — offline playback is still local device ownership even though it has no server session id. */
+    @Test
+    fun `offline local session records its own profile and book as remembered identity`() = runTest {
+        val remembered = RecordingRememberedBooks()
+        val changes = bookChanges(ResumeBaseline(), remembered)
+
+        changes.onBookOpened(session(id = ""))
+
+        assertEquals(listOf(PROFILE to BOOK), remembered.writes)
+    }
+
+    private fun TestScope.bookChanges(
+        baseline: ResumeBaseline,
+        remembered: RememberedBookRepository = RecordingRememberedBooks(),
+    ): BookChanges {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val clock = TestAppClock()
         val sync = SessionSyncCoordinator(
@@ -122,6 +139,7 @@ class BookChangesServerEvidenceTest {
             autoRewind = autoRewind,
             resumeBaseline = baseline,
             resumeFreshness = freshness,
+            rememberedBooks = remembered,
         )
     }
 
@@ -146,6 +164,17 @@ class BookChangesServerEvidenceTest {
         ),
         chapters = emptyList(),
     )
+
+    private class RecordingRememberedBooks : RememberedBookRepository {
+        val writes = mutableListOf<Pair<ProfileId, LibraryItemId>>()
+
+        override fun observe(profileId: ProfileId): Flow<LibraryItemId?> = flowOf(null)
+
+        override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> {
+            writes += profileId to bookId
+            return AppResult.Success(Unit)
+        }
+    }
 
     private inline fun <reified T : Any> proxy(crossinline answer: (String) -> Any? = { null }): T =
         Proxy.newProxyInstance(
