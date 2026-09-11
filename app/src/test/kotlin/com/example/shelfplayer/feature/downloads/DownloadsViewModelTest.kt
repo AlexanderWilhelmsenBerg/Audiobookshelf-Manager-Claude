@@ -27,6 +27,7 @@ import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.download.BookAssets
 import com.example.shelfplayer.domain.download.DownloadLocations
+import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import com.example.shelfplayer.domain.download.DownloadScheduler
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
@@ -77,6 +78,28 @@ class DownloadsViewModelTest {
         }
     }
 
+    @Test
+    fun `visible failed download retains safe recovery reason`() = runTest {
+        downloads.emit(
+            listOf(
+                offlineBook(
+                    id = "tidewatch",
+                    state = DownloadState.Failed,
+                    failureSummary = SAFE_FAILURE,
+                ),
+            ),
+        )
+        library.emit(listOf(book("tidewatch", "Tidewatch")))
+
+        viewModel().uiState.test {
+            val state = awaitItem().takeIf { it.isLoaded } ?: awaitItem()
+            val row = state.books.single()
+            assertEquals(DownloadRecoveryState.Failed, row.recoveryState)
+            assertEquals(SAFE_FAILURE, row.failureSummary)
+            assertTrue(row.isFailed)
+        }
+    }
+
     /**
      * Decision 6 and 5.2 at once. The row exists — it is using space on this device, which is a fact about
      * the device — and it has no name, because naming it would show one profile another's library.
@@ -91,6 +114,30 @@ class DownloadsViewModelTest {
             val row = state.books.single()
             assertNull(row.title, "PRODUCT_SPEC 5.2 — not this profile's book to name")
             assertEquals(LibraryItemId("someone-elses"), row.bookId, "but still removable")
+        }
+    }
+
+    @Test
+    fun `title hidden failed row keeps recovery state but redacts failure copy`() = runTest {
+        downloads.emit(
+            listOf(
+                offlineBook(
+                    id = "someone-elses",
+                    state = DownloadState.Failed,
+                    failureSummary = "Tidewatch failed at /private/path?token=secret",
+                ),
+            ),
+        )
+        library.emit(emptyList())
+
+        viewModel().uiState.test {
+            val state = awaitItem().takeIf { it.isLoaded } ?: awaitItem()
+            val row = state.books.single()
+            assertEquals(DownloadRecoveryState.Failed, row.recoveryState)
+            assertTrue(row.isFailed)
+            assertNull(row.title)
+            assertNull(row.author)
+            assertNull(row.failureSummary, "a title-hidden row must not forward even allegedly safe failure copy")
         }
     }
 
@@ -289,18 +336,24 @@ class DownloadsViewModelTest {
         localAvailability = LocalAvailability.NotDownloaded,
     )
 
-    private fun offlineBook(id: String, requestedBy: Set<ProfileId> = setOf(ADA)) = OfflineBook(
+    private fun offlineBook(
+        id: String,
+        requestedBy: Set<ProfileId> = setOf(ADA),
+        state: DownloadState = DownloadState.Complete,
+        failureSummary: String? = null,
+    ) = OfflineBook(
         serverId = SERVER,
         itemId = LibraryItemId(id),
-        state = DownloadState.Complete,
+        state = state,
+        failureSummary = failureSummary,
         files = listOf(
             OfflineFile(
                 remoteFileId = "$id-1",
                 index = 0,
                 uri = "file:///downloads/$id/1.mp3",
-                state = DownloadState.Complete,
+                state = if (state == DownloadState.Complete) DownloadState.Complete else DownloadState.Running,
                 expectedBytes = 1_024,
-                downloadedBytes = 1_024,
+                downloadedBytes = if (state == DownloadState.Complete) 1_024 else 512,
                 mimeType = "audio/mpeg",
                 duration = null,
                 eTag = null,
@@ -495,5 +548,6 @@ class DownloadsViewModelTest {
         val SERVER = ServerId("srv_books")
         val ADA = ProfileId("prf_ada")
         val GRACE = ProfileId("prf_grace")
+        const val SAFE_FAILURE = "The server refused the download. Sign in again and retry."
     }
 }

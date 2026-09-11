@@ -5,12 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
-import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.download.VerificationReport
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.download.DownloadLocations
+import com.example.shelfplayer.domain.download.DownloadRecoveryPolicy
+import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.DownloadRepository
@@ -190,21 +191,30 @@ class DownloadsViewModel @Inject constructor(
         "$booksBroken book(s) are missing files and now offer a retry. Nothing was deleted."
     }
 
-    private fun OfflineBook.toRow(book: Book?): DownloadRow = DownloadRow(
-        bookId = itemId,
-        serverId = serverId,
-        // PRODUCT_SPEC 5.2 — the title only for a book this profile may see. `null` renders as a size
-        // without a name, which is enough to decide to delete it.
-        title = book?.title,
-        author = book?.authors?.firstOrNull()?.name,
-        fileCount = files.size,
-        bytes = downloadedBytes,
-        isComplete = isComplete,
-        isFailed = state == DownloadState.Failed,
-        isPaused = state == DownloadState.Paused,
-        isPinned = isPinned,
-        isSharedWithAnotherProfile = requestedBy.size > 1,
-    )
+    private fun OfflineBook.toRow(book: Book?): DownloadRow {
+        val recovery = DownloadRecoveryPolicy.resolve(
+            durableState = state,
+            manifestFilesComplete = isComplete,
+            safeFailureSummary = failureSummary,
+        )
+        return DownloadRow(
+            bookId = itemId,
+            serverId = serverId,
+            // PRODUCT_SPEC 5.2 — the title only for a book this profile may see. `null` renders as a size
+            // without a name, which is enough to decide to delete it.
+            title = book?.title,
+            author = book?.authors?.firstOrNull()?.name,
+            fileCount = files.size,
+            bytes = downloadedBytes,
+            isComplete = isComplete,
+            recoveryState = recovery.state,
+            // A title-hidden row keeps the generic recovery state but never carries failure text into UI.
+            // Even sanitized infrastructure text is not permission to reveal another profile's media context.
+            failureSummary = recovery.failureSummary.takeIf { book != null },
+            isPinned = isPinned,
+            isSharedWithAnotherProfile = requestedBy.size > 1,
+        )
+    }
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
@@ -228,6 +238,9 @@ data class DownloadsUiState(
  *
  * @property title `null` when the active profile may not see this book (PRODUCT_SPEC 5.2). The row is still
  *   shown and still deletable — that is the point of decision 6.
+ * @property recoveryState the pure BW-DL-02 presentation result. BW-DL-04 may later refine it with transient
+ *   execution evidence without persisting WorkManager state.
+ * @property failureSummary safe failure copy for a visible failed row; always `null` for title-hidden rows.
  * @property isSharedWithAnotherProfile whether removing it will actually free anything, which is worth
  *   knowing *before* pressing rather than after.
  */
@@ -239,9 +252,13 @@ data class DownloadRow(
     val fileCount: Int,
     val bytes: Long,
     val isComplete: Boolean,
-    val isFailed: Boolean,
-    /** PRODUCT_SPEC DL-001 — stopped by the listener, not by a failure. The row must not conflate them. */
-    val isPaused: Boolean = false,
+    val recoveryState: DownloadRecoveryState,
+    val failureSummary: String?,
     val isPinned: Boolean,
     val isSharedWithAnotherProfile: Boolean,
-)
+) {
+    val isFailed: Boolean get() = recoveryState == DownloadRecoveryState.Failed
+
+    /** PRODUCT_SPEC DL-001 — stopped by the listener, not by a failure. The row must not conflate them. */
+    val isPaused: Boolean get() = recoveryState == DownloadRecoveryState.Paused
+}
