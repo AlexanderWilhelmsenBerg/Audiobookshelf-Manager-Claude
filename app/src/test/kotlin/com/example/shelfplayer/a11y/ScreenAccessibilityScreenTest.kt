@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import com.example.shelfplayer.feature.downloads.DownloadRow
 import com.example.shelfplayer.feature.downloads.DownloadsScreen
 import com.example.shelfplayer.feature.downloads.DownloadsUiState
@@ -103,7 +104,8 @@ class ScreenAccessibilityScreenTest {
                             fileCount = 12,
                             bytes = 400_000_000,
                             isComplete = true,
-                            isFailed = false,
+                            recoveryState = DownloadRecoveryState.Complete,
+                            failureSummary = null,
                             isPinned = false,
                             isSharedWithAnotherProfile = false,
                         ),

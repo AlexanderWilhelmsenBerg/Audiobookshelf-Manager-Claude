@@ -1,7 +1,7 @@
 # Architecture overview
 
 **Classification:** Current contract.  
-**Current as reviewed:** 2026-09-07.
+**Current as reviewed:** 2026-09-10.
 
 This is the current architectural map of BookWave. Historical phase documents remain useful evidence, but
 this file no longer describes only the original Phase 0 vertical slice.
@@ -132,9 +132,15 @@ The download architecture intentionally separates:
 - WorkManager's transient execution state;
 - the durable manifest/file state.
 
-Future recovery UX must preserve those separations. In particular, WorkManager waiting/backoff should not be
-persisted into the manifest merely so the UI can display it, and a file existing on disk does not authorize a
-profile that cannot access that book.
+`DownloadedBookEntity.failureSummary` is durable manifest evidence and is carried through `OfflineBook` only
+as already-sanitized application copy. `DownloadRecoveryPolicy` in `:domain` owns the pure presentation
+precedence between that durable state and optional transient execution evidence. Durable `Complete` and
+listener-owned `Paused` win over stale execution evidence; live queued/running/waiting/retrying evidence may
+refine the remaining manifest states; terminal/cancelled execution evidence falls back to the manifest.
+
+The WorkManager adapter remains an Android concern: it may supply the transient evidence to this policy, but
+must not mirror waiting/backoff into Room. Likewise, a file existing on disk does not authorize a profile that
+cannot access that book, and title-hidden rows must not forward failure copy that could reveal media context.
 
 ## Playback
 

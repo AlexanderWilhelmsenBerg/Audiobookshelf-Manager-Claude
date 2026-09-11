@@ -36,6 +36,13 @@ data class OfflineBook(
     val serverId: ServerId,
     val itemId: LibraryItemId,
     val state: DownloadState,
+    /**
+     * BW-DL-02 / #107 — the already-sanitized reason the last durable failure recorded, if any.
+     *
+     * This is presentation-safe application error text, not a throwable/message dump. Raw URLs, response
+     * bodies, filesystem paths, access tokens and hidden media metadata must never be stored here.
+     */
+    val failureSummary: String? = null,
     /** Every audio file the book needs, in playback order. */
     val files: List<OfflineFile>,
     /** The cover, if one was fetched. Absent is normal and is not a reason to call a download incomplete. */

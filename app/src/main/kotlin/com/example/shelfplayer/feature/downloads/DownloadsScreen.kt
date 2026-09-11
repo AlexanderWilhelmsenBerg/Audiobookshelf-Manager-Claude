@@ -318,9 +318,10 @@ private fun DownloadRowItem(
                 text = listOfNotNull(
                     formatBytes(row.bytes),
                     pluralStringResource(R.plurals.downloads_files, row.fileCount, row.fileCount),
-                    // PRODUCT_SPEC DL-001 — "paused" and "incomplete" are the same fact stated at two
-                    // depths, so the row says the more specific one and not both.
+                    // BW-DL-02 / #107 — a visible failed row can finally say why. Title-hidden rows have
+                    // this field redacted in the ViewModel and therefore keep the generic incomplete copy.
                     when {
+                        row.isFailed && row.failureSummary != null -> row.failureSummary
                         row.isPaused -> stringResource(R.string.downloads_paused)
                         !row.isComplete -> stringResource(R.string.downloads_incomplete)
                         else -> null
@@ -338,6 +339,7 @@ private fun DownloadRowItem(
         }
         // PRODUCT_SPEC DL-001 — only for a book still being fetched. A completed download has nothing to
         // pause, and a control that does nothing is worse than no control.
+        // BW-DL-03 / #108 owns correcting the Failed-row action; this slice deliberately leaves it unchanged.
         if (!row.isComplete) {
             IconButton(onClick = { onPauseToggled(!row.isPaused) }) {
                 Icon(
