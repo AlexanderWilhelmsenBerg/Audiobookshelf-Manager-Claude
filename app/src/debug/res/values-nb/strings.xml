@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="about_playback_diagnostics">Avspillingsdiagnostikk (debug)</string>
+    <string name="about_playback_diagnostics_body" tools:ignore="Typos">Aktiverer en engangsfeil for neste kalde systemgjenopptak. Media3 installerer først 0:00, mens BookWave beholder den virkelige pålitelige fremdriften for kontroll av gjenopptak. Avspilling fra forgrunnen påvirkes ikke.</string>
+    <string name="about_playback_diagnostics_state">Tilstand: %1$s</string>
+    <string name="about_playback_diagnostics_not_armed">Ikke aktivert</string>
+    <string name="about_playback_diagnostics_armed">Aktivert</string>
+    <string name="about_playback_diagnostics_consumed">Brukt</string>
+    <string name="about_playback_diagnostics_arm_zero">Aktiver neste kalde gjenopptak på 0:00</string>
+</resources>

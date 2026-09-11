@@ -76,13 +76,20 @@ internal sealed interface ResumePlayPreparation {
  * with the acknowledged-pause generation that existed when it arrived. Movement happens later, and only
  * from [preparePlay], after the same checks that a REST result must pass.
  *
- * A freshly opened server session is different from a resume of an already loaded paused book. `/play`
- * already chose the authoritative starting position, so its immediate first Play must not spend another
- * network round trip asking the same server the same question. [onSessionOpened] may therefore mint one
- * identity-bound [freshStart] token. That token survives exactly one expected media installation and then
- * [consumeFreshStart] consumes it exactly once at the forwarding-player boundary. A later media replacement
- * invalidates it like every other explicit movement. An armed session never gets that token, so a later
- * headset/car/notification Play still performs normal freshness reconciliation.
+ * A freshly opened server session may mint one identity-bound [freshStart] token only for a direct BookWave
+ * action where opening `/play` and issuing the immediate first Play are one operation. That exemption is not
+ * a blanket claim that every new `/play` start position is authoritative. Cold Media3 playback resumption is
+ * deliberately different: `onPlaybackResumption(isForPlayback = true)` opens the real session, Media3 then
+ * installs it and issues a separate loaded-item Play, and issue #138 proved that newly opened position may be
+ * stale or zero. The service therefore does not mint [freshStart] for that path; the loaded Play reaches
+ * [preparePlay] and the shared policy validates trusted progress before raw Play. When a REST check is needed
+ * it is bounded by [SERVER_CHECK_TIMEOUT] and an unavailable check preserves the installed local position.
+ * Intentional remote rewinds, including a trusted rewind to zero, remain valid policy outcomes.
+ *
+ * For the direct-play case, [onSessionOpened] creates the token. It survives exactly one expected media
+ * installation and [consumeFreshStart] consumes it exactly once at the forwarding-player boundary. A later
+ * media replacement invalidates it like every other explicit movement. An armed session never gets that
+ * token, so a later headset/car/notification Play still performs normal freshness reconciliation.
  *
  * Mutable state is main-thread confined. Network work happens outside that thread, then the request token,
  * loaded owner/book and baseline generation are checked again before a plan may be returned.
@@ -130,8 +137,10 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
      * session identifier into `MediaMetadata.extras`, where external controllers could read it.
      *
      * [initialPlayWillFollow] is true only when the caller opened this server session as part of the same
-     * user action that will immediately issue Play. It is deliberately false for arm-only paths. A blank
-     * session id is local/offline and can never mint a fresh-server token because no server chose its start.
+     * direct BookWave action that will immediately issue Play. It is deliberately false for arm-only paths
+     * and for cold Media3 playback resumption, whose later loaded-item Play must run normal freshness
+     * reconciliation. A blank session id is local/offline and can never mint a fresh-server token because no
+     * server chose its start.
      */
     suspend fun onSessionOpened(session: PlaybackSession, initialPlayWillFollow: Boolean = false) =
         withContext(mainDispatcher) {
