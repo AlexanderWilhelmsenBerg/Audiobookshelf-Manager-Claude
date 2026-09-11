@@ -69,7 +69,7 @@ class ColdPlaybackResumptionFreshnessTest {
     }
 
     @Test
-    fun `debug zero install leaves trusted progress for the coordinator to adopt`() = runTest {
+    fun `debug zero install restores the server-verified opened baseline`() = runTest {
         val trusted = 25.minutes
         val diagnostic = ArmedColdResumeDiagnostic()
         val installedPositionMs = ColdResumeStartPosition(diagnostic)
@@ -81,16 +81,36 @@ class ColdPlaybackResumptionFreshnessTest {
         val fixture = fixture(
             serverStart = trusted,
             loadedPosition = installedPositionMs.milliseconds,
-            check = { _, _ -> ExternalSessionCheck.Ahead(trusted) },
+            check = { _, _ -> ExternalSessionCheck.Current },
         )
 
         val preparation = fixture.afterMedia3InstalledColdItem()
 
         val ready = assertIs<ResumePlayPreparation.Ready>(preparation)
-        val adopted = assertIs<ResumeFreshnessDecision.Adopt>(ready.plan.decision)
+        val restored = assertIs<ResumeFreshnessDecision.Adopt>(ready.plan.decision)
         assertEquals(trusted, fixture.serverStart, "the real opened session evidence must remain untouched")
-        assertEquals(trusted, adopted.position)
-        assertEquals(FreshnessEvidenceSource.Rest, adopted.source)
+        assertEquals(trusted, restored.position)
+        assertEquals(FreshnessEvidenceSource.RestoredBaseline, restored.source)
+    }
+
+    @Test
+    fun `debug zero install remains local when freshness lookup is unavailable`() = runTest {
+        val trusted = 25.minutes
+        val diagnostic = ArmedColdResumeDiagnostic()
+        val installedPositionMs = ColdResumeStartPosition(diagnostic)
+            .forPlaybackResumption(trusted.inWholeMilliseconds)
+        val fixture = fixture(
+            serverStart = trusted,
+            loadedPosition = installedPositionMs.milliseconds,
+            check = { _, _ -> ExternalSessionCheck.Unavailable },
+        )
+
+        val preparation = fixture.afterMedia3InstalledColdItem()
+
+        val ready = assertIs<ResumePlayPreparation.Ready>(preparation)
+        val current = assertIs<ResumeFreshnessDecision.Current>(ready.plan.decision)
+        assertEquals(Duration.ZERO, ready.plan.localPosition)
+        assertEquals(FreshnessEvidenceSource.LocalUnverified, current.source)
     }
 
     @Test

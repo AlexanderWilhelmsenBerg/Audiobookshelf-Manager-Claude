@@ -21,6 +21,7 @@ internal data class RealtimeResumeCandidate(val evidence: RealtimeProgressEviden
 internal enum class FreshnessEvidenceSource {
     Realtime,
     Rest,
+    RestoredBaseline,
     LocalUnverified,
 }
 
@@ -30,7 +31,7 @@ internal sealed interface ResumeFreshnessDecision {
     /** Resume where this device is. [source] says whether that position was verified or merely tolerated. */
     data class Current(override val source: FreshnessEvidenceSource) : ResumeFreshnessDecision
 
-    /** Adopt another session's materially different position before any audio starts. */
+    /** Adopt a trusted position before any audio starts. */
     data class Adopt(val position: Duration, override val source: FreshnessEvidenceSource) : ResumeFreshnessDecision
 }
 

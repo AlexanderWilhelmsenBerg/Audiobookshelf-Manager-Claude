@@ -27,7 +27,7 @@ class DebugColdResumeDiagnosticTest {
     }
 
     @Test
-    fun `armed diagnostic survives recreation and is consumed exactly once`() {
+    fun armedDiagnosticSurvivesRecreationAndIsConsumedExactlyOnce() {
         val firstProcess = diagnostic()
         assertEquals(ColdResumeDiagnosticState.NotArmed, firstProcess.state.value)
 
@@ -45,7 +45,7 @@ class DebugColdResumeDiagnosticTest {
     }
 
     @Test
-    fun `rearming a consumed diagnostic creates one new injection`() {
+    fun rearmingAConsumedDiagnosticCreatesOneNewInjection() {
         val diagnostic = diagnostic()
         diagnostic.arm()
         assertTrue(diagnostic.consumeForColdPlaybackResumption())

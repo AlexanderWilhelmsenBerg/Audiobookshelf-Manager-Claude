@@ -86,6 +86,13 @@ internal sealed interface ResumePlayPreparation {
  * it is bounded by [SERVER_CHECK_TIMEOUT] and an unavailable check preserves the installed local position.
  * Intentional remote rewinds, including a trusted rewind to zero, remain valid policy outcomes.
  *
+ * A successful server check can also prove that the acknowledged baseline is still the position BookWave
+ * should regard as local even if Media3 was installed somewhere else. That mismatch is not treated as a
+ * remote move: when it exceeds [INSTALLED_POSITION_TOLERANCE], the coordinator restores the confirmed
+ * baseline with [FreshnessEvidenceSource.RestoredBaseline]. This is what lets the debug cold-resume fault
+ * injector install zero without turning that synthetic zero into progress or into fake cross-device history.
+ * If the lookup is unavailable, no such restore is allowed and the installed position remains untouched.
+ *
  * For the direct-play case, [onSessionOpened] creates the token. It survives exactly one expected media
  * installation and [consumeFreshStart] consumes it exactly once at the forwarding-player boundary. A later
  * media replacement invalidates it like every other explicit movement. An armed session never gets that
@@ -224,7 +231,7 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
                 candidate = context.candidate,
             )
         }
-        if (realtimeDecision != null) {
+        if (realtimeDecision != null && !needsServerConfirmation(context, realtimeDecision)) {
             return finish(context, realtimeDecision)
         }
 
@@ -234,7 +241,49 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
         val checked = withTimeoutOrNull(SERVER_CHECK_TIMEOUT) {
             playback.checkServerPosition(context.bookId, acknowledged)
         } ?: ExternalSessionCheck.Unavailable
-        return finish(context, ResumeFreshnessPolicy.rest(acknowledged, checked))
+        val decision = restoreVerifiedBaseline(
+            context = context,
+            decision = ResumeFreshnessPolicy.rest(acknowledged, checked),
+        )
+        return finish(context, decision)
+    }
+
+    /**
+     * A verified `Current` normally means raw Play can keep the installed position.
+     *
+     * The exception is an unexplained installed-position mismatch while the acknowledged baseline is still
+     * valid. A real local seek/play movement would already have invalidated that baseline. If realtime says
+     * `Current` while such a mismatch exists, force the bounded REST confirmation instead of trusting the
+     * synthetic/local install. A material remote decision already has its own trusted target.
+     */
+    private fun needsServerConfirmation(context: RequestContext, decision: ResumeFreshnessDecision): Boolean =
+        decision is ResumeFreshnessDecision.Current && installedPositionDiffersFromBaseline(context)
+
+    /**
+     * Restores the acknowledged baseline only after REST proved there is no material remote movement.
+     *
+     * `LocalUnverified` is deliberately excluded: when the lookup is unavailable, the installed position is
+     * the fallback contract. The dedicated evidence source prevents this restore from being recorded as if
+     * another device moved the audiobook.
+     */
+    private fun restoreVerifiedBaseline(
+        context: RequestContext,
+        decision: ResumeFreshnessDecision,
+    ): ResumeFreshnessDecision {
+        val acknowledged = context.baseline ?: return decision
+        if (decision !is ResumeFreshnessDecision.Current || decision.source != FreshnessEvidenceSource.Rest) {
+            return decision
+        }
+        if (!installedPositionDiffersFromBaseline(context)) return decision
+        return ResumeFreshnessDecision.Adopt(
+            position = acknowledged.position,
+            source = FreshnessEvidenceSource.RestoredBaseline,
+        )
+    }
+
+    private fun installedPositionDiffersFromBaseline(context: RequestContext): Boolean {
+        val acknowledged = context.baseline ?: return false
+        return (context.localPosition - acknowledged.position).absoluteValue > INSTALLED_POSITION_TOLERANCE
     }
 
     /** Full validation before a plan is allowed to move or start audio. */
@@ -364,5 +413,6 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
 
     private companion object {
         val SERVER_CHECK_TIMEOUT: Duration = 2.seconds
+        val INSTALLED_POSITION_TOLERANCE: Duration = 1.seconds
     }
 }

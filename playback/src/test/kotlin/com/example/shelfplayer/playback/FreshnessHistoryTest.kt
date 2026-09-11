@@ -28,6 +28,14 @@ class FreshnessHistoryTest {
         assertEquals(PlaybackEvent.ServerCheckAhead, plan.serverCheckHistoryEvent())
     }
 
+    @Test
+    fun `restoring a verified baseline is not recorded as remote progress`() {
+        val plan = restoredBaselinePlan()
+
+        assertEquals(PlaybackEvent.ServerCheckCurrent, plan.serverCheckHistoryEvent())
+        assertNull(plan.remoteProgressHistoryEvent(ResumeOutcome.Resumed))
+    }
+
     private fun adoptPlan() = ResumeFreshnessPlan(
         requestGeneration = 7,
         bookId = LibraryItemId("book-a"),
@@ -37,6 +45,18 @@ class FreshnessHistoryTest {
         decision = ResumeFreshnessDecision.Adopt(
             position = 20.minutes,
             source = FreshnessEvidenceSource.Rest,
+        ),
+    )
+
+    private fun restoredBaselinePlan() = ResumeFreshnessPlan(
+        requestGeneration = 8,
+        bookId = LibraryItemId("book-a"),
+        profileId = ProfileId("profile-a"),
+        baselineGeneration = 6,
+        localPosition = kotlin.time.Duration.ZERO,
+        decision = ResumeFreshnessDecision.Adopt(
+            position = 20.minutes,
+            source = FreshnessEvidenceSource.RestoredBaseline,
         ),
     )
 }
