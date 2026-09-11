@@ -78,6 +78,7 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
+          - "#140 — fix/bw-138-cold-resumption"
           - "#136 — fix/bw-dl-02-recovery-state"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
