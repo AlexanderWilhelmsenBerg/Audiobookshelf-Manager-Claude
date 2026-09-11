@@ -1,7 +1,7 @@
 # Playback architecture
 
 **Classification:** Current contract for `main`, plus clearly marked pending contracts from the committed PR chain.  
-**Current as reviewed:** 2026-09-11.
+**Current as reviewed:** 2026-09-12.
 
 This document is the compact entry point for BookWave's playback correctness architecture. Detailed ADRs, bug investigations and reviews remain the evidence for why these rules exist.
 
@@ -67,6 +67,8 @@ The current contract is:
 A fresh-session first-Play exemption is narrower than "new `/play` means authoritative". It may be minted only when one direct BookWave action opens the server session and immediately issues Play. Service-owned browse/arm opens do not get it.
 
 Cold Media3 playback resumption is also explicitly excluded. `MediaSession.Callback.onPlaybackResumption(isForPlayback = true)` opens the real Audiobookshelf session and returns media for Media3 to install; Media3 then issues a loaded-item Play. That loaded Play must enter `ResumeFreshnessCoordinator` before raw Play because a newly opened `/play` position can still be stale or zero. The REST fallback remains bounded by the coordinator's timeout, and an unavailable check preserves the installed local position rather than inventing movement.
+
+If the still-valid acknowledged baseline and Media3's installed position have diverged without a local-movement invalidation, a successful REST check may prove that the server still agrees with that baseline. In that case the coordinator restores the verified baseline before audio starts. That restore is not another device's progress and must not be recorded as remote movement. If the REST lookup is unavailable, the coordinator does not manufacture authority from the baseline and leaves the installed position untouched.
 
 The debug cold-resume diagnostic may replace only the Media3-installed initial position. It must not change the underlying opened session/baseline, become durable progress, run for foreground Play, or run for metadata-only `onPlaybackResumption(false)` queries.
 
