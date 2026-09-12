@@ -10,6 +10,10 @@ name: Main
 on:
   push:
     branches: [main]
+    # The generated APK PR picker changes whenever a PR opens/closes. It does not change
+    # application or release behavior, so do not spend a full release gate on that bot-only commit.
+    paths-ignore:
+      - '.github/workflows/apk.yml'
   schedule:
     # Weekly, so a dependency that breaks the build is found before the next change lands on it.
     - cron: '17 4 * * 1'
@@ -17,7 +21,8 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  # Only the newest main commit needs the expensive release gate when merges land back-to-back.
+  cancel-in-progress: true
 
 permissions:
   contents: read
