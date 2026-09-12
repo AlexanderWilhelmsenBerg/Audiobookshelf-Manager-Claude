@@ -307,6 +307,12 @@ message ProfileSettings {
 
   // The order used on the home shelf, which spans libraries and so has no library id to key on.
   string shelf_sort_order = 3;
+
+  // BW-PLAY-01 — the one audiobook this device last actually played for this profile.
+  //
+  // Empty is intentionally meaningful: an upgraded profile has no trustworthy local ownership evidence,
+  // and server progress timestamps must never be used to invent one.
+  string remembered_book_id = 4;
 }
 
 // PRODUCT_SPEC ROUTE-002 — one output device this app has seen.
