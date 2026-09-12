@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryId
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
@@ -28,6 +29,7 @@ import com.example.shelfplayer.core.model.settings.ProfilePreferences
 import com.example.shelfplayer.core.model.settings.TextContrast
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import java.time.Instant
@@ -112,6 +114,37 @@ class AppSettingsDataSource @Inject constructor(
      */
     fun profilePreferences(profileId: ProfileId): Flow<ProfilePreferences> = settings.map { stored ->
         stored.profileSettingsMap[profileId.value]?.toPreferences() ?: ProfilePreferences.Empty
+    }
+
+    /**
+     * BW-PLAY-01 — the book this device last actually played for [profileId], or `null`.
+     *
+     * This is deliberately not reconstructed from progress. Server REST/realtime activity can update
+     * progress for a book this phone never played, while an empty value after migration means exactly
+     * "this device has no trustworthy remembered book yet".
+     */
+    suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? =
+        settings.first().profileSettingsMap[profileId.value]
+            ?.rememberedBookId
+            ?.takeIf(String::isNotBlank)
+            ?.let(::LibraryItemId)
+
+    /** BW-PLAY-01 — records only the opaque book id; title, cover and progress stay in their own stores. */
+    suspend fun setRememberedBook(profileId: ProfileId, bookId: LibraryItemId) {
+        updateProfile(profileId) { current -> current.setRememberedBookId(bookId.value) }
+    }
+
+    /** BW-PLAY-01 — profile deletion removes only this ownership fact, not another profile's state. */
+    suspend fun clearRememberedBook(profileId: ProfileId) {
+        dataStore.updateData { current ->
+            val existing = current.profileSettingsMap[profileId.value] ?: return@updateData current
+            current.toBuilder()
+                .putProfileSettings(
+                    profileId.value,
+                    existing.toBuilder().clearRememberedBookId().build(),
+                )
+                .build()
+        }
     }
 
     /** PRODUCT_SPEC 6.1 step 9 — `null` clears the choice and returns the profile to every library. */
@@ -238,7 +271,7 @@ class AppSettingsDataSource @Inject constructor(
     }
 
     /**
-     * PRODUCT_SPEC SET-002 — the app-wide blur radius, in dp.
+     * PRODUCT_SPEC SET-002 (Appearance) — the app-wide blur radius, in dp.
      *
      * Written through `GlassBlur.toStored`, which is where the *off*-versus-unset sentinel lives. Passing
      * the raw dp would store a plain `0` for off, and the next reader could not tell that from a device
