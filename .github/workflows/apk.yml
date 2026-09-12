@@ -21,17 +21,6 @@ run-name: "${{ inputs.pull_request != 'Use selected branch/ref' && format('Build
 # When the build finishes, the APK is on the run's summary page under **Artifacts**. Phones can download it
 # directly from that page.
 #
-# ## Optional private Loopbound bundle
-#
-# `include_loopbound` builds the requested private Loopbound ref in a separate job, then passes only its
-# generated `dist/` to the APK job. The private checkout and its read token never enter the job that executes
-# selected BookWave PR code. `LOOPBOUND_READ_TOKEN` must be a fine-grained token limited to the private
-# `AlexanderWilhelmsenBerg/Loopbound` repository with Contents: Read and no write permissions.
-#
-# The exact resolved Loopbound commit is written into `BOOKWAVE_LOOPBOUND_VERSION` inside the APK and shown
-# in the workflow summary. Disabling `include_loopbound` preserves the public/no-private-repository build
-# path and BookWave shows the explicit "not included in this build" fallback.
-#
 # ## Why `workflow_dispatch` only
 #
 # Not on every push: this repository already runs `verifyDebug` on every pull request and the full release
@@ -90,7 +79,6 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
-          - "#143 — fix/loopbound-apk-bundling"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
