@@ -18,10 +18,11 @@ import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.library.booksInSeriesOrder
-import com.example.shelfplayer.domain.library.lastPlayedBook
+import com.example.shelfplayer.domain.library.rememberedBook
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -53,6 +54,7 @@ class AutoLibrary @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val profiles: ProfileRepository,
     private val library: LibraryRepository,
+    private val rememberedBooks: RememberedBookRepository,
     private val history: PlaybackHistoryRepository,
     private val homeShelves: ObserveHomeShelvesUseCase,
     private val audioOutputs: Outputs,
@@ -367,7 +369,11 @@ class AutoLibrary @Inject constructor(
         narrators.any { it.lowercase().contains(needle) } ||
         seriesMemberships.any { it.series.name.lowercase().contains(needle) }
 
-    suspend fun lastPlayed(): Book? = lastPlayedBook(books())
+    suspend fun lastPlayed(): Book? {
+        val profileId = profiles.activeProfileId() ?: return null
+        val rememberedId = rememberedBooks.rememberedBook(profileId) ?: return null
+        return rememberedBook(library.observeAccessibleBooks(profileId).first(), rememberedId)
+    }
 
     private suspend fun books(): List<Book> {
         val profileId = profiles.activeProfileId() ?: return emptyList()
