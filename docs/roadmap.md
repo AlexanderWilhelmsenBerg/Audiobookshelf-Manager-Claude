@@ -1,293 +1,278 @@
 # BookWave roadmap
 
-**Classification:** Active plan — canonical sequencing authority.  
-**Roadmap issue:** #103 (`BW-DOC-01`).
+**Classification:** Active plan — canonical sequencing authority.
 
-This is the only document that answers **"what should BookWave work on next?"** Detailed child plans, ADRs, risks, reviews and experiments provide evidence and implementation detail but do not independently change priority.
+This is the only document that answers **“what should BookWave work on next?”** Detailed issue bodies, accepted ADRs, architecture documents, risks, reviews and experiments supply evidence and implementation detail, but do not independently change sequence.
+
+This roadmap describes work that is still open on current `main`. Completed PRs and issues are retained only as historical boundaries where they explain why an owner or experiment must not be recreated.
 
 ## How to use this roadmap
 
-Each implementation item states the problem/opportunity, user value, scope, exclusions, dependencies, architecture seams, server/API assumptions, storage implications, privacy/security, automated test level, device/platform acceptance, effort, risk and sequence.
-
-A fresh implementation worker should be able to start from an item ID, read the linked ADR/risk/issue material, and implement that slice without rediscovering the project's history.
-
-## Now — correctness, regressions and current commitments
-
-### Committed PR chain
-
-These are near-term committed implementation, not speculative roadmap work and not invitations for competing implementations:
-
-1. **PR #78 — Android Auto/routing finalization**
-2. **PR #93 — unified resume freshness**
-3. **PR #86 — Appearance inline controls**
-4. **PR #98 — Playback settings UI refresh**
-
-Planning work may run alongside them, but must distinguish what exists on `main` from what exists only on an open PR.
-
-### BW-DOC-01 / issue #103 — Establish canonical documentation index and roadmap
-
-**Problem/opportunity:** detailed historical documents are still easy to mistake for current architecture or backlog.  
-**User/project value:** a fresh worker can identify current contracts and executable work without chronological archaeology.  
-**Scope:** documentation index, this roadmap, current playback architecture summary, status/authority banners, architecture corrections, risk-registration cleanup and historical classification.  
-**Out of scope:** runtime behavior, feature implementation, deleting useful engineering history.  
-**Dependencies:** none.  
-**Architecture seams:** documentation of all modules and accepted boundaries only.  
-**Server/API assumptions:** unchanged.  
-**Storage/migration:** none.  
-**Privacy/security:** preserve current threat-model and redaction reasoning.  
-**Automated test level:** docs/link/current-state review; repository docs checks if present.  
-**Device acceptance:** none.  
-**Effort:** Medium.  
-**Implementation risk:** Low runtime / medium documentation risk.  
-**Sequence:** active now.
-
-### BW-DL-01 / issue #104 — Audit actionable download and offline recovery UX
-
-**Problem/opportunity:** download failures, pause, storage/network constraints and repair states have accumulated incrementally; before adding widgets or more automation, BookWave needs a truthful user-facing recovery model.  
-**User value:** offline listening failures become understandable and safely actionable without destroying partial or valid media.  
-**Scope:** audit current download state owners and UX for failed, paused, constrained, storage-unavailable, partial, verification-failed, manifest/file disagreement, authentication/server, process-death and missing-file states; split findings into independent implementation slices.  
-**Out of scope:** production behavior changes in the audit; download widget implementation; broad coordinator rewrite without evidence.  
-**Dependencies:** none for audit.  
-**Architecture seams:** download manifest, WorkManager/coordinator, storage volume, network policy, profile authorization, local availability, UI actions.  
-**Server/API assumptions:** Audiobookshelf remains source for authorization/library/media URLs; local repair cannot assume server capabilities it does not expose.  
-**Storage/migration:** audit must state migration implications for any future state addition; never delete files merely because a newer UI cannot classify them.  
-**Privacy/security:** physical-file existence does not grant profile authorization; diagnostics/system surfaces follow current privacy rules.  
-**Automated test level:** map future slices to domain, storage/manifest, WorkManager, repository and UI tests.  
-**Device acceptance:** removable storage, offline/airplane mode, network policy, process death, low storage and offline playback as applicable.  
-**Effort:** Medium audit.  
-**Implementation risk:** Low audit / Medium–High future repair behavior.  
-**Sequence:** active now in parallel with BW-DOC-01.
-
-## Next — small high-value work on settled architecture
-
-### BW-PLAY-01 — Persist per-profile local remembered audiobook identity
-
-**Problem/opportunity:** current remembered-book selection is derived from the most recently updated unfinished server progress row. A remote device can therefore change which book this phone thinks it last listened to.  
-**User value:** Continue/resume restores the book this phone actually used, surviving remote activity, restart, profile switching and offline operation.  
-**Scope:** one durable local remembered-book identity per profile; update it only from unambiguous local playback ownership; use it for startup/profile restore and system resume surfaces.  
-**Out of scope:** resume-position freshness; PR #93 owns the position decision. No server-timestamp fallback that pretends remote recency is local ownership.  
-**Dependencies:** PR #93 should merge first so "which book?" and "which position?" remain separate contracts.  
-**Architecture seams:** domain remembered-book policy, profile restore, playback service/session ownership, Android Auto recent/Continue, future system actions/widgets.  
-**Server/API assumptions:** none; deliberately independent of server progress timestamps.  
-**Storage/migration:** durable profile-keyed local ID in existing device storage. Do not backfill from `progress.updatedAt`; null is safer than invented ownership.  
-**Privacy/security:** store opaque local identity only; no title/server host required. Respect profile removal.  
-**Automated tests:** pure ownership policy, persistence/migration, process-death, profile-switch and offline tests.  
-**Device acceptance:** listen to A locally, advance B remotely, restart/offline/profile-switch and confirm A remains this device's remembered book until local playback changes it.  
-**Effort:** Medium.  
-**Risk:** Medium–High because it changes restore ownership.  
-**Sequence:** first playback-correctness slice after #93.
-
-### BW-AUTO-01 — Derive and diff Android Auto browse-tree shape
-
-**Problem/opportunity:** profile-boundary invalidation must remain safe, but invalidating/rereading the entire tree for every library change would waste work and can cause repeated complete library reads for dynamic series/author nodes.  
-**User value:** Android Auto updates correctly after meaningful library changes without stale profile content or unnecessary database work.  
-**Scope:** derive one immutable browse-tree shape per sweep; diff old/new; invalidate only affected parents; snapshot the accessible library once per sweep; handle dynamic series/author nodes and fixed shelf availability.  
-**Out of scope:** redesigning the stable Android Auto root; resume-freshness logic; changing ADR-0029 product decisions.  
-**Dependencies:** PR #78.  
-**Architecture seams:** `MediaLibrarySession`, `AutoLibrary`, library/shelf derivation, profile boundary.  
-**Server/API assumptions:** no server changes.  
-**Storage/migration:** none; derived in memory.  
-**Privacy/security:** profile switch must clear/invalidate old-profile dynamic nodes atomically enough that a cached head unit cannot continue exposing another profile's titles.  
-**Automated tests:** shape diff for empty/non-empty, series and author add/remove, Downloads, Recently added, Listen again, Discover, Continue and profile switch. Assert one library snapshot per sweep in the orchestration test.  
-**Device acceptance:** DHU and real car verify visible changes without reconnecting the controller.  
-**Effort:** Medium.  
-**Risk:** Medium.  
-**Sequence:** after #78; can proceed independently of widgets/iOS.
-
-### BW-SYS-01 — Define BookWave system action/deep-link contract
-
-**Problem/opportunity:** launcher shortcuts, widgets, App Actions, notifications and future iOS system surfaces need common conceptual destinations. Independent private routes would duplicate navigation and eventually playback/resume policy.  
-**User value:** system integrations behave consistently and future surfaces are cheaper to add.  
-**Scope:** define semantic actions/destinations such as ContinueListening, OpenCurrentBook, OpenBook, OpenLibrary, OpenSearch, OpenDownloads, OpenHistory, OpenPlayer and future sleep-timer actions; add one Android action router/deep-link boundary.  
-**Out of scope:** implementing every system surface; custom voice parsing; moving #93 resume policy into UI routing.  
-**Dependencies:** #93 and preferably BW-PLAY-01 for truthful Continue ownership.  
-**Architecture seams:** app navigation, playback controller/session, domain remembered-book/resume policy.  
-**Server/API assumptions:** none for internal actions. Public web/App Links can be added later without changing semantic action names.  
-**Storage/migration:** none.  
-**Privacy/security:** no credentials/server addresses in URIs, shortcuts or external intent payloads; validate externally supplied identifiers against current profile access.  
-**Automated tests:** action parsing/routing, malformed/unauthorized IDs, cold-start routing, resume action delegates to playback owner.  
-**Device acceptance:** cold/warm app launch from shortcuts/deep links and locked-profile behavior.  
-**Effort:** Medium.  
-**Risk:** Low–Medium.  
-**Sequence:** before shortcuts/widgets/App Actions.
-
-### BW-SYS-02 — Add launcher shortcuts
-
-**Problem/opportunity:** frequent destinations require opening the app and navigating several taps.  
-**User value:** fast access from the launcher.  
-**Scope:** initial stable shortcuts: Continue Listening, Search, Downloads, History. Keep the action stable even when the underlying remembered book changes.  
-**Out of scope:** dynamic title-bearing shortcut by default; widget; custom Assistant architecture.  
-**Dependencies:** BW-SYS-01; Continue should use BW-PLAY-01/#93 policy rather than deriving its own state.  
-**Architecture seams:** launcher shortcut metadata → action router.  
-**Server/API assumptions:** none.  
-**Storage/migration:** none.  
-**Privacy/security:** avoid current book/title in launcher metadata by default; locked-profile action must not leak content.  
-**Automated tests:** shortcut intents map to semantic actions; static XML/resources validate.  
-**Device acceptance:** at least one Pixel/AOSP-style launcher and Samsung launcher; cold and warm launch.  
-**Effort:** Small.  
-**Risk:** Low.  
-**Sequence:** after BW-SYS-01.
+For each active major item, follow the linked issue for implementation detail and use this document for ordering. The roadmap records the user value, owner/boundary, prerequisites, non-goals, expected automated proof, required device/platform evidence, and approximate effort/risk.
 
-### BW-WIDGET-01 — Minimal Resume / Now Playing widget
+BookWave correctness work follows these standing rules:
 
-**Problem/opportunity:** the highest-value Home-screen surface is a one-glance way to continue the current/remembered audiobook.  
-**User value:** resume and inspect core playback state without opening the app.  
-**Scope:** one Jetpack Glance widget with compact and normal responsive layouts; cover/title/author/progress where privacy permits; play/resume and open-book/player actions. State is a passive projection of existing durable/domain state.  
-**Out of scope:** Continue multi-book shelf, sleep widget, download-count widget, independent resume freshness/network socket.  
-**Dependencies:** BW-SYS-01, BW-PLAY-01 and #93.  
-**Architecture seams:** durable playback/library projection, Glance receiver, system actions.  
-**Server/API assumptions:** widget shows best locally known state; no dedicated network correctness owner.  
-**Storage/migration:** may introduce a small durable widget projection if repository reads are unsuitable, but it cannot become playback source of truth.  
-**Privacy/security:** locked profile renders generic locked state without title/cover/progress; profile changes remove old-profile content immediately.  
-**Automated tests:** projection logic, process death, profile switch, offline, downloaded/not-downloaded, locked profile, stale/updated durable state.  
-**Device acceptance:** resize and update behavior on at least Pixel/AOSP and Samsung launchers; process killed; offline; profile switch.  
-**Effort:** Medium.  
-**Risk:** Medium.  
-**Sequence:** first and only initial widget.
+- preserve one owner for each cross-surface correctness policy;
+- do not make Android Auto, widgets, notifications or other system surfaces invent their own playback truth;
+- keep device-local remembered-book identity separate from resume-position freshness and from server-derived library progress;
+- prefer measured platform evidence over speculative routing or host workarounds;
+- keep Android correctness and ownership contracts ahead of iOS expansion;
+- when an issue body names an already-merged prerequisite, treat the merge as satisfied rather than preserving a stale blocker.
 
-### BW-SLEEP-01 — Automatic sleep schedule
+## Now — playback and lifecycle correctness
 
-**Problem/opportunity:** PR #98 deliberately excludes automatic nightly sleep behavior. Implementing platform scheduling before product rules would make ambiguous behavior permanent.  
-**User value:** listeners who routinely fall asleep to audiobooks get their normal timer automatically during a chosen nightly window.  
-**Scope:** product state machine first: enabled, local start/end, eligibility window, automatic/manual timer precedence, manual cancel suppression for current window, restart/reboot/timezone/DST reconciliation. Implement Android mechanism only after state-machine tests pass.  
-**Out of scope:** #98 UI refresh; second competing timer; waking an idle app nightly when nothing is playing.  
-**Dependencies:** #98 for settings UI stability; existing sleep-timer domain.  
-**Architecture seams:** playback service, sleep-timer owner, settings repository, clock/time-zone abstraction.  
-**Server/API assumptions:** none.  
-**Storage/migration:** schedule settings plus durable suppression/window identity if required. Sleep schedule remains device-wide like current sleep settings.  
-**Privacy/security:** none beyond existing notification/lock-screen rules.  
-**Automated tests:** disabled/normal/overnight windows, before/inside/after, crossing start while playing, near-end start, manual replacement/cancel, next-window reset, expiry + explicit replay, timezone/DST gap/overlap, process restart.  
-**Device acceptance:** background/screen-off, process death, timezone change where practical, Bluetooth playback and normal sleep notification.  
-**Effort:** Medium.  
-**Risk:** Medium.  
-**Sequence:** after #98; can run after the action foundation if a future widget/tile should control it.
+These four issues are the current correctness chain. Implement them sequentially from current `main`; do not stack a dependent implementation on an unmerged predecessor.
 
-## Later — larger product/platform integrations
+### 1. Issue #142 — capture the final session snapshot before service teardown
 
-### Richer History navigation and search
+**User problem/value:** service replacement, process/service teardown or an in-app update can detach the player before shutdown synchronization captures the final progress/session state, leaving the server-acknowledged position behind what the listener actually heard.
 
-**Problem/value:** History is more useful to BookWave users as a way back to meaningful listening positions than as a raw audit log. Improve filtering, search/book navigation and deep-link entry points.  
-**Dependencies:** BW-SYS-01 helpful.  
-**Risk/effort:** Low–Medium / Medium.  
-**Platform:** mostly platform-neutral domain/UI concept.
+**Owner/boundary:** `PlaybackService` teardown ordering and `SessionSyncCoordinator` shutdown snapshot ownership. Capture the immutable profile/book/playback facts while the player is still available, then let bounded asynchronous persistence/close work continue. Existing periodic/local durability remains necessary for abrupt process death.
 
-### Download/offline recovery implementation slices
+**Prerequisites:** PR #93 and PR #140 are merged. #142 is intentionally separate from #138 and from Android Auto media resolution.
 
-Created only after BW-DL-01 completes. They must remain smaller than a general "downloads redesign" and preserve physical-file/profile-authorization semantics.
+**Explicit non-goals:** no new resume-freshness algorithm; no Android-Auto-specific policy; no unbounded network wait inside Android service destruction; no assumption that `onDestroy()` is guaranteed for process death.
 
-### Continue Listening multi-book widget
+**Automated proof:** direct deterministic `SessionSyncCoordinator.onShutdown()` regression; mutation proof that immediate detach makes the regression fail; existing Pause/seek/session-transition tests remain green.
 
-Consider after BW-WIDGET-01 proves process-death/profile/privacy behavior. A short active-profile shelf is the first expansion candidate; fixed-profile configurable widgets come later if privacy rules are clear.
+**Device/platform acceptance:** process/service replacement and, where practical, `adb install -r` while listening; verify final progress does not regress after recreation.
 
-### Search improvements
+**Effort / risk:** Medium / High correctness risk because teardown ordering touches the final durability boundary.
 
-Evaluate unified title/author/series search, deep-linkable results and offline cached behavior. Do not invent server-side guarantees where local search is sufficient.
+**Sequence:** first executable playback slice.
 
-### Tablet/foldable layouts and accessibility
+### 2. Issue #115 — persist the audiobook this device remembers for each profile
 
-Treat adaptive layout and accessibility as product-quality work, not novelty features. Prioritize evidence from actual large-screen/large-font/TalkBack use over decorative responsive changes.
+**User problem/value:** remote progress activity can currently influence which audiobook the phone thinks it last used. BookWave needs one durable local answer to **which audiobook did this device last play for this profile?**
 
-### Wear OS companion
+**Owner/boundary:** a profile-scoped, device-local remembered audiobook identity updated only by unambiguous local playback ownership/activity. Profile deletion clears it.
 
-Candidate only after the action/playback contracts are stable. Likely value: Continue/current-book controls and sleep timer; avoid a miniature library app unless usage evidence supports it.
+**Prerequisites:** PR #93 is merged; land #142 first so lifecycle ownership is stable before expanding cold-start state.
 
-## Foundations for iOS — deliberately slow
+**Explicit non-goals:** no resume-position decision; `ResumeFreshnessCoordinator` remains the owner of **where** the selected book starts. No backfill from maximum remote `progress.updatedAt`; no duplicated title/cover metadata merely to remember identity; remote REST/realtime progress never changes this local identity.
 
-Android correctness remains ahead of the iOS port.
+**Automated proof:** persistence/migration, local A versus remote B, process restart, offline startup, profile A/B isolation and profile deletion.
 
-### BW-IOS-00 — KMP portability feasibility spike
+**Device/platform acceptance:** play A locally, advance B remotely, restart/offline/profile-switch, and confirm A remains the device-remembered book until this device locally plays another book.
 
-**Problem/opportunity:** `:core:model` is dependency-free and much of `:domain` is Android-free, suggesting useful reuse; other modules contain Android/Hilt/Retrofit assumptions. We need evidence before committing to a shared-core strategy.  
-**User/project value:** reduce duplicated correctness policy without destabilizing Android or forcing shared UI.  
-**Scope:** compile a very small model/domain slice for JVM and iOS simulator, preferably model/value objects plus one pure playback policy such as resume freshness. Define portable interfaces only where required by the experiment.  
-**Out of scope:** iOS product app, shared UI, wholesale KMP conversion, moving Media3/network/storage adapters.  
-**Dependencies:** Android playback contracts (#93 and BW-PLAY-01) should be stable first.  
-**Architecture seams:** `core:model`, selected pure domain policy, clocks/errors as needed.  
-**Server/API assumptions:** none beyond existing domain contracts.  
-**Storage/migration/privacy:** none for spike.  
-**Automated tests:** same policy tests on JVM and iOS simulator target.  
-**Acceptance gate:** Android unchanged; Swift can consume the shared API without unreasonable interop; shared code removes duplicated meaning rather than merely moving files.  
-**Effort:** Medium.  
-**Risk:** Medium architecture risk if over-expanded; keep spike narrow.
+**Effort / risk:** Medium / Medium–High because it changes startup/Continue ownership.
 
-### iOS Stage 1 — Native SwiftUI shell and sign-in
+**Sequence:** after #142.
 
-Launch, connect/authenticate to Audiobookshelf, securely store credentials, switch profiles/accounts and show server/library identity. No playback.
+### 3. Issue #141 — make cold/background Android Auto surface remembered media reliably
 
-### Stage 2 — Read-only library
+**User problem/value:** Android Auto can start BookWave from a cold/background state, briefly attempt to resolve the last-played item, then return no usable media.
 
-Books, authors, series, shelves, details, search, cached data and artwork. This stage is the decision gate for whether shared API/domain code is actually saving work.
+**Owner/boundary:** diagnose the staged path `remembered identity -> profile/auth readiness -> media item resolution -> playback-session open -> Media3 resumption`. Once a media item is resolved, standard playback continues through the shared PR #93/#140 owners.
 
-### Stage 3 — Native Apple playback
+**Prerequisites:** #115 must establish the remembered-book owner on `main`; #142 should already have stabilized teardown/recreation ordering.
 
-Use native Apple playback/audio-session/Now Playing/remote-command integration. Acceptance: stream, chapters, seek, speed, background audio, lock-screen/Control Center, interruptions. No clever cross-device reconciliation yet.
+**Explicit non-goals:** no Android-Auto-specific resume-position policy; no second remembered-media store; do not reopen #138 unless a new regression proves its merged fix is broken.
 
-### Stage 4 — Progress/session correctness
+**Automated proof:** cold `MediaLibraryService` startup, active-profile readiness, missing/revoked remembered item, offline downloaded item where applicable, cancellation/timeouts and redaction-safe stage diagnostics.
 
-Port BookWave's behavioral contracts deliberately: session ownership, acknowledged progress, server sync, resume freshness, intentional remote rewind, realtime evidence and offline handling. Android tests/ADRs become behavioral specifications where portable.
+**Device/platform acceptance:** DHU plus a real Android Auto connection where practical, including process death/background startup.
 
-### Stage 5 — Downloads/offline
+**Effort / risk:** Medium / High because the defect crosses Android service, profile and Media3 startup boundaries.
 
-Native iOS storage/background transfer. Preserve profile authorization ownership and safe one-copy semantics where applicable; do not port WorkManager concepts mechanically.
+**Sequence:** after #115.
 
-### Stage 6 — Apple system integrations
+### 4. Issue #139 — persist one clear playback stop/end marker
 
-App Intents/Shortcuts, WidgetKit, Siri-facing actions, Spotlight where valuable and system Now Playing. Conceptual actions align with Android but implementations remain platform-native.
+**User problem/value:** History can show that listening started without reliably showing where or why it ended, especially around Pause, sleep-timer expiry and teardown.
 
-### Stage 7 — CarPlay
+**Owner/boundary:** preserve playback-transition/history ownership at the existing service/player boundary and make the local event durable. The current `Pause` and `SleepTimerExpired` concepts may be refined, but there must be one unambiguous end marker rather than duplicate recorders.
 
-Own product surface using Apple's current templates/entitlements and BookWave product lessons. Do not mechanically recreate the Android Auto tree.
+**Prerequisites:** #142 should make final lifecycle ordering trustworthy. PR #93 remains the media-control freshness owner rather than the History owner.
 
-### Stage 8 — Parity and polish
+**Explicit non-goals:** no parallel event recorder; buffering/suppression must not become a false stop; network failure must not gate local History durability.
 
-Pursue value-based parity only after core reliability.
+**Automated proof:** ordinary Pause across control surfaces, sleep-timer expiry, no duplicate stop for one physical transition, no false end from buffering/suppression, persistence across History reopen and service/process recreation.
 
-### What may be shared
+**Device/platform acceptance:** background/screen-off sleep-timer expiry plus physical Bluetooth/headset/media-button Pause.
 
-- model/value objects;
-- pure domain policies and sorting/search rules;
-- resume freshness and remembered-book policy;
-- progress/session behavioral rules;
-- smart-download policy where platform-independent;
-- API-facing interfaces and possibly DTO/serialization later if proven worthwhile;
-- clocks/time/logging abstractions where clean.
+**Effort / risk:** Medium / Medium–High because event ordering and lifecycle races can make the timeline misleading.
 
-### What stays native
+**Sequence:** after #141 and before features that rely on trustworthy end-of-listening semantics.
 
-- Android Compose, Media3/ExoPlayer, MediaSessionService, Android Auto, Glance, WorkManager, Android routing/storage/credentials;
-- SwiftUI, AVFoundation/Apple media session surfaces, WidgetKit, App Intents, CarPlay, native downloads/storage/Keychain.
+## Next — live library and progress consistency
 
-## Experimental — evidence before product commitment
+These items improve the server-derived Room projection. They do **not** change which book the device remembers or where active playback resumes.
 
-### BW-AUTO-02 — Observe the route actually carrying playback audio
+### 5. Issue #133 — own one foreground realtime progress connection
 
-Research/prototype a route-observation seam tied to genuine audio playback rather than adding more `HeadsetHold` inference flags. Distinguish transport from semantic role and allow `Unknown`.
+**User problem/value:** accepted progress changed in another Audiobookshelf client should appear in BookWave while the app is foregrounded, even when Home is not the visible screen.
 
-Measure API 26–32, 33–35 and 36 behavior where practical for wired/headset, classic A2DP, speaker and projected car. No production routing redesign until the experiment demonstrates a trustworthy observation source.
+**Owner/boundary:** exactly one realtime connection/collector for the active authenticated profile while BookWave is foregrounded. Events continue through `LibraryRepository.writeProgress(...)`; Room remains the UI source of truth and the existing conflict boundary remains authoritative.
 
-### BW-AUTO-03 — Android Auto metadata/progress/head-unit experiments
+**Prerequisites:** PR #93 is merged. Complete the playback/cold-start correctness chain first so realtime evidence is not confused with active-player ownership.
 
-Use `docs/android-auto-player-opportunities.md` as experiment evidence, not roadmap authority. Measure secondary action slots, session extras, completion metadata, MediaMetadata extras forwarding, richer series/chapter presentation and browse artwork/content-provider value on DHU and the real car.
+**Explicit non-goals:** no permanent background websocket; no direct seek of active playback from a socket event; no bypass of local-unsynced conflict protection; no second durable progress database.
 
-A JVM test proves BookWave built metadata. It does not prove the car drew it.
+**Automated proof:** Home and non-Home foreground ownership, exactly one collector, profile A -> B cancellation, late A event isolation, background disconnect, foreground reconnect/reconciliation, accepted newer remote progress, rejected conflicting local-unsynced progress, and no player seek.
 
-### Quick Settings
+**Device/platform acceptance:** while BookWave is foregrounded on multiple screens, change progress in the Audiobookshelf web client and verify Room/UI follows without a full library refresh.
 
-Playback Play/Pause tile is currently low priority because Android's media surface already owns the job well. Re-evaluate a sleep-timer tile after BW-SLEEP-01 if it can display/control meaningful timer state faster than the notification.
+**Effort / risk:** Medium / Medium because lifecycle ownership and profile isolation are correctness boundaries.
 
-### App Actions / Assistant
+**Sequence:** after #139.
 
-Bind stable BookWave actions to supported Android capabilities after BW-SYS-01 where locale/platform support makes them useful. Do not make Assistant capability coverage a dependency of the action architecture.
+### 6. Issue #134 — hydrate a bounded recent-book hot set before bulk expansion
 
-### Live Activities / Apple widgets in CarPlay
+**User problem/value:** on large libraries, a remotely recent book can remain unavailable or stale until expensive catalogue expansion reaches it, delaying the book a listener is most likely to use.
 
-Research only after native iOS playback/system integration exists. Ordinary audiobook playback already has system Now Playing; a Live Activity needs a distinct user problem before becoming a feature.
+**Owner/boundary:** use a bounded, deduplicated set of recent IDs as priority hints, prove active-profile visibility, then hydrate through the existing targeted fetch path. The normal full refresh remains authoritative for complete visibility, deletion and reconciliation.
 
-## Active child plans
+**Prerequisites:** #133 first so foreground freshness ownership is settled. Keep #115 independent: recent server activity may improve Room/library usefulness but must never replace the device-local remembered book.
 
-- [`dependency-upgrade-plan.md`](dependency-upgrade-plan.md) — dependency/Gradle upgrade sequencing. It remains active but does not supersede this roadmap's product/correctness sequence.
-- [`android-auto-player-opportunities.md`](android-auto-player-opportunities.md) — experiment/research backlog; implementation requires roadmap promotion or explicit owner request.
+**Explicit non-goals:** no second refresh architecture; no use of listening-session timestamps as another progress source; no assumption that a recent-session ID is permission evidence; no new `/api/me/items-in-progress` contract without a supported-server capture/fixture and compatibility proof.
 
-## Completed and historical planning
+**Automated proof:** bounded request count, deduplication, item/tag visibility filtering, local-unsynced protection, skip already-current/current item work, no redundant later expansion, failure isolation, and final full-refresh reconciliation.
 
-`handover.md`, `closeout.md`, `gaps.md`, dated reviews, bug investigations and version-specific device tests contain important evidence but are not independent current backlogs. Their lasting rules should be represented by current architecture/ADRs/risks or promoted here when still actionable.
+**Device/platform acceptance:** on a realistically large library, advance/play another book in the web client, foreground BookWave, and verify that useful book becomes current/usable materially before bulk expansion completes.
+
+**Effort / risk:** Medium–High / Medium–High because latency optimization must not weaken profile visibility or conflict safety.
+
+**Sequence:** after #133.
+
+## Then — Android Auto and audio-routing hardening
+
+PR #78 and [ADR-0029](adr/0029-android-auto-is-a-stable-audiobook-surface.md) define the settled Android Auto product/routing baseline. PR #93 owns resume freshness across all Play surfaces. Do not resurrect the withdrawn secondary-slot experiment or the old inference-based car-arrival continuity implementation as roadmap work.
+
+Before implementing this lane, complete the playback/cold-start work above and perform one consolidated DHU/real-car evidence pass for #126/#127/#128.
+
+### Evidence pass — issues #126, #127 and #128
+
+**Value:** separate genuine BookWave defects from Android Auto host limitations before spending another implementation cycle on guesses.
+
+**Owner/boundary:** measure existing redaction-safe route/button diagnostics, actual host rendering, pause cause and timing. Test evidence and head-unit evidence must remain distinct.
+
+**Required evidence:**
+
+- **#128:** capture `PLAY_WHEN_READY_CHANGE_REASON_*`, whether the pause is becoming-noisy or audio-focus loss, interval to car binding, active/selected output before/after, headset preservation and prior deliberate-pause state.
+- **#126:** capture API level, car-bound state, route-known state, output roles/active output and computed `onCar`/`onHeadset`; change app code only if those facts prove an app-side state/publication defect.
+- **#127:** confirm what the projected host actually renders and whether the shipped description-link-to-History affordance appears/works. Do not turn Media3's player queue/timeline into History.
+
+**Effort / risk:** Small–Medium evidence effort / High risk of wasting work if skipped.
+
+### Issue #100 — replace inferred `HeadsetHold` with route-heard ownership
+
+**User problem/value:** a merely connected or formerly heard headset must not be resurrected after the listener deliberately moved playback elsewhere.
+
+**Owner/boundary:** one generation/book-bound record of the route actually carrying BookWave playback, with explicit listener output choice outranking inferred system-policy state until stronger evidence exists.
+
+**Prerequisites:** evidence pass; stable Step-2 ownership on `main`.
+
+**Non-goals:** do not relabel ambiguous classic A2DP as headset/car to simplify tests; do not add another sticky inference boolean; Car remains Automatic rather than a guessed dashboard endpoint.
+
+**Proof/acceptance:** pure precedence/generation/disconnect tests plus physical headset -> speaker -> car, merely-connected headset, explicit headset choice and multiple-candidate routing sequences.
+
+**Effort / risk:** Medium–High / High.
+
+**Sequence:** first Android Auto/routing implementation after evidence.
+
+### Issue #128 — preserve intentional headset playback when the car arrives
+
+**User problem/value:** connecting Android Auto must not stop a book that should continue through the headset.
+
+**Owner/boundary:** handle the measured pause cause using trustworthy route-heard ownership from #100 or equivalent current-main evidence.
+
+**Prerequisites:** #100 and measured pause cause/timing.
+
+**Non-goals:** never auto-resume onto phone speaker or car; never resume a deliberately paused book; do not restore the withdrawn `CarArrivalContinuity` implementation wholesale.
+
+**Proof/acceptance:** regression must fail when continuity handling is removed; physical headset + car sequence required.
+
+**Effort / risk:** Medium / High because an incorrect auto-resume is worse than remaining paused.
+
+### Issue #99 — make Android Auto browse invalidation shape-aware
+
+**User problem/value:** meaningful browse membership changes must refresh without stale profile content or N-full-library-read fan-out.
+
+**Owner/boundary:** one profile-bound browse snapshot per invalidation sweep; compare shape/membership, including same-count/different-member cases.
+
+**Prerequisites:** PR #78 is merged; preferably after routing work so `PlaybackService` changes do not overlap unnecessarily.
+
+**Non-goals:** no root redesign, routing redesign or resume-freshness policy.
+
+**Proof/acceptance:** one-snapshot orchestration, dynamic series/author nodes, Downloads, Recently added, Listen again, Discover, Continue, same-count membership changes and hard profile-switch invalidation; DHU/real host verifies visible refresh separately.
+
+**Effort / risk:** Medium / Medium.
+
+### Issue #130 — phone-versus-car media-button priority
+
+**User problem/value:** skip controls should remain primary on the phone, while Car/Headset deserve primary slots only while an Android Auto controller is actually bound.
+
+**Owner/boundary:** media-button layout based on real car-controller binding state, not presence of a car-like audio route.
+
+**Prerequisites:** settled Android Auto service path after the earlier routing work.
+
+**Non-goals:** no secondary-slot experiment; keep `SLOT_BACK` occupied in every supported combination.
+
+**Proof/acceptance:** layout matrix across car-bound/unbound and action visibility combinations; phone notification plus DHU/real-car confirmation.
+
+**Effort / risk:** Small–Medium / Medium.
+
+### Conditional closure — issues #126 and #127
+
+- **#126:** if BookWave computes and publishes the correct Car state but the projected host still ignores/caches/renders the icon indistinguishably, treat it as a measured host limitation. Do not accumulate workarounds merely to force a visual toggle.
+- **#127:** if projected Android Auto does not expose the History affordance, record the platform/product limitation and keep an honest browse/navigation path. Never fake History into Media3's queue or redefine `seekToDefaultPosition()` as navigation.
+
+## Download reliability and recovery lane
+
+The audit (#104) is complete and BW-DL-02/#107 landed through PR #136. The active implementation sequence starts from the concrete recovery issues rather than reopening the audit.
+
+This lane may proceed independently when it does not collide with playback/service ownership work.
+
+1. **#108 — correct Pause / Resume / Retry actions.** User value: each recovery row action must match what will actually happen. Depends on completed #107. Test the presentation-state/action matrix and verify partial data is preserved. **Effort/risk:** Small / Low–Medium.
+2. **#109 — project WorkManager waiting/retry state into Downloads UX.** User value: distinguish automatic retry/waiting from terminal failure. Depends on #107 and is recommended after #108. WorkManager remains transient execution truth; do not mirror it into Room. **Effort/risk:** Medium / Medium.
+3. **#112 — explicit discard-partial recovery.** Eligible after #108 and can proceed independently of #109. It is secondary, destructive and confirmed; Retry/Resume preserves partials by default. **Effort/risk:** Small–Medium / Medium.
+4. **#120 — live queue/progress in Downloads and notifications.** Depends on #107-#109 so screen/notification states share the same truthful presentation model. Test multiple active downloads, process recreation and privacy-safe notification behavior. **Effort/risk:** Medium / Medium.
+5. **#110 — removable/secondary storage correctness.** Keep after the core recovery/execution model so volume loss/return is expressed through stable ownership rather than another state machine. Physical removable-storage evidence is required. **Effort/risk:** High / High.
+6. **#111 — device-wide destructive removal semantics.** Do only after the physical-copy/profile-owner product decision is explicit. Destructive operations must not mistake one profile's request for permission to destroy another profile's usable device copy. **Effort/risk:** Medium–High / High.
+
+## Android system surfaces
+
+Start these only after playback ownership is stable enough that every surface can delegate rather than copy policy.
+
+1. **#114 — semantic Android action contract.** Establish stable actions/deep links that delegate Continue/resume to #115 + PR #93 owners. No credentials/server addresses in external intents. Test cold/warm launch, malformed/unauthorized IDs and delegation. **Effort/risk:** Medium / Low–Medium.
+2. **#117 — home-screen widget** and **#118 — Quick Settings tile.** Build as projections/controllers over #114 and existing durable owners; neither gets an independent socket or resume algorithm. Test process death, profile/privacy state and Android surface lifecycle. **Effort/risk:** Medium each.
+3. **#116 — wired/Bluetooth headset automation.** Follow #114 and the routing hardening where relevant so automation acts through settled playback/routing semantics rather than becoming another owner. Physical headset acceptance required. **Effort/risk:** Medium–High / High.
+4. **#124 — scheduled automatic sleep.** Start once #139 makes end-of-listening/sleep History trustworthy. Preserve one sleep-timer owner and test time windows, restart, timezone/DST and manual precedence. **Effort/risk:** Medium / Medium.
+5. **#119 — Garmin evaluation/custom surface.** First validate the built-in Control Phone path. Add custom Garmin work only for a demonstrated gap, using #114 where semantic actions are needed. **Effort/risk:** investigation first; implementation risk depends on evidence.
+
+## Maintenance and non-sequencing backlog
+
+- **#101** remains open technical cleanup. Delete stale playback data adapters only when current callers/tests prove they are truly retired; do not let cleanup destabilize the correctness chain.
+- **#132** remains open as the documentation follow-up that identified the stale committed-PR chain and superseded Android Auto experiment wording. This roadmap reconciliation addresses that canonical-roadmap portion; close the issue only when its acceptance criteria are actually satisfied by merged documentation.
+- Dependency/toolchain work follows the pinned version catalog, accepted ADRs and the current latest-stable compatibility documentation. **#135 is closed**, so it is not an active roadmap blocker or implementation wave.
+
+## Historical boundaries — completed, not active work
+
+These are retained because they define ownership or explain why older roadmap wording must not return:
+
+- **PR #78 — merged:** Android Auto/routing finalization and ADR-0029. The secondary-slot experiment and inference-heavy car-arrival continuity attempt are historical evidence, not future roadmap items.
+- **PR #93 — merged:** one shared resume-freshness owner: standard Media3 Play -> `ResumeFreshnessPlayer` -> `ResumeFreshnessCoordinator` -> service-owned player. Do not create parallel phone/headset/Android Auto position policy.
+- **PR #98 — merged:** playback settings UI refresh; automatic sleep scheduling remained intentionally separate as #124.
+- **PR #113 / issue #103 — merged/completed:** established the canonical documentation/roadmap authority. The old “committed PR chain” from that snapshot is no longer active.
+- **PR #131 — merged:** Codex/build compatibility preparation and staged dependency plan.
+- **PR #136 / issue #107 — merged/completed:** safe download recovery presentation state. #108/#109 now build on it.
+- **PR #137 — merged:** dependency compatibility inventory for #135. Issue #135 is now closed/completed and must not remain in the active queue.
+- **PR #140 / issue #138 — merged/closed:** cold Media3 playback resumption now lets the first loaded-item Play pass through the existing shared freshness owner. Do not schedule #138 as active work or introduce another cold-resume algorithm.
+- **PR #143 — merged after #140:** Loopbound/manual-APK build packaging only; it does not implement #142/#115/#141/#139/#133/#134.
+- **Issue #104 — completed:** download/offline recovery audit; its concrete child issues now own implementation.
+
+## Last — iOS, deliberately after Android correctness
+
+Do not pull iOS work forward to avoid Android lifecycle, routing, library or download correctness. Shared code is justified only where it preserves a proven behavioral contract without forcing shared UI or platform adapters.
+
+1. **#121 — narrow Kotlin Multiplatform portability spike.** Prove a small model/pure-domain slice on JVM + iOS simulator; no wholesale KMP conversion and no shared UI.
+2. **Native iOS shell and authentication.** SwiftUI shell, Audiobookshelf sign-in, secure credentials and profile/account switching; no playback yet.
+3. **Read-only library.** Books, authors, series, shelves, details, search, artwork and useful caching. Use this stage to re-evaluate whether shared code is actually reducing duplicated meaning.
+4. **Native Apple playback.** AVFoundation/native Apple audio session, background audio, Now Playing/remote commands, chapters/seek/speed/interruption handling.
+5. **Progress/session correctness.** Deliberately port BookWave's proven ownership, acknowledged progress, sync, resume freshness, intentional rewind and offline behavior as product contracts rather than Android implementation details.
+6. **Downloads/offline.** Native iOS storage/background transfer while preserving authorization versus physical-file ownership semantics.
+7. **Apple system integrations.** App Intents/Shortcuts, WidgetKit, Spotlight/Siri-facing actions where useful, all delegating to native/shared owners rather than duplicating playback policy.
+8. **#123 — purposeful Live Activity only where it solves a distinct user problem.** Ordinary audiobook playback already has system Now Playing.
+9. **#122 — CarPlay only after native playback and progress correctness are proven.** Build a platform-native CarPlay product surface; do not mechanically reproduce Android Auto.
+10. **Parity and polish.** Pursue value-based parity, accessibility, performance and platform fit only after the native correctness layers are trustworthy.
