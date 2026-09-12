@@ -46,6 +46,7 @@ class SessionSyncCoordinator @Inject constructor(
     private val baseline: ResumeBaseline,
     private val clock: AppClock,
     private val logger: Logger,
+    private val rememberedBookRecorder: RememberedBookRecorder = RememberedBookRecorder.None,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
 ) {
@@ -115,6 +116,7 @@ class SessionSyncCoordinator @Inject constructor(
      * moved to [mainDispatcher], so the deliberately non-thread-safe counter remains single-thread confined.
      */
     fun onPlayingChanged(isPlaying: Boolean) {
+        if (isPlaying) rememberedBookRecorder.onPlaying(player?.currentMediaItem)
         listened.onPlayingChanged(isPlaying, clock.elapsed())
     }
 
