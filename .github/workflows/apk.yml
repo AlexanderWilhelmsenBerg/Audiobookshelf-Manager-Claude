@@ -79,6 +79,7 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
+          - "#147 — chore/workflow-cleanup"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
