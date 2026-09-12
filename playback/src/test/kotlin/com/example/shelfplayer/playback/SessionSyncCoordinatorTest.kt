@@ -22,6 +22,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.lang.reflect.Proxy
@@ -116,6 +117,24 @@ class SessionSyncCoordinatorTest {
 
         assertFalse(accepted)
         assertEquals(0, repository.syncCalls)
+    }
+
+    @Test
+    fun `shutdown captures final snapshot before immediate player detach`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val book = LibraryItemId("book-a")
+
+        coordinator.onSessionOpened(session(book))
+        coordinator.attach(playerFor(book, position = 42.seconds))
+
+        coordinator.onShutdown()
+        coordinator.attach(null)
+        advanceUntilIdle()
+
+        assertEquals(1, repository.closeCalls)
+        assertEquals(42.seconds, repository.lastClosedProgress?.position)
+        assertEquals(SyncTrigger.ServiceShutdown, repository.lastCloseTrigger)
     }
 
     private fun kotlinx.coroutines.test.TestScope.coordinator(repository: SessionSyncRepository) =
@@ -214,6 +233,12 @@ class SessionSyncCoordinatorTest {
     private class RecordingSessionSyncRepository : SessionSyncRepository {
         var syncCalls: Int = 0
             private set
+        var closeCalls: Int = 0
+            private set
+        var lastClosedProgress: SessionProgress? = null
+            private set
+        var lastCloseTrigger: SyncTrigger? = null
+            private set
 
         override suspend fun openSession(
             bookId: LibraryItemId,
@@ -240,7 +265,12 @@ class SessionSyncCoordinatorTest {
             progress: SessionProgress,
             updatedAt: Instant,
             trigger: SyncTrigger,
-        ): AppResult<SyncOutcome> = AppResult.Success(SyncOutcome.Accepted)
+        ): AppResult<SyncOutcome> {
+            closeCalls += 1
+            lastClosedProgress = progress
+            lastCloseTrigger = trigger
+            return AppResult.Success(SyncOutcome.Accepted)
+        }
 
         override suspend fun drainOutbox(): AppResult<Int> = AppResult.Success(0)
 
