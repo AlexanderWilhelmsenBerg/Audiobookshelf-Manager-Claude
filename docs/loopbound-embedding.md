@@ -22,6 +22,8 @@ The host enables JavaScript and DOM storage because Loopbound requires them, but
 
 There is deliberately no JavaScript bridge into BookWave playback in this slice. The embedded game cannot read Audiobookshelf credentials or take ownership of the Media3 session.
 
+BookWave's repository remains public while Loopbound's source repository is private. The generated game bundle is never committed to BookWave, but a distributed APK necessarily contains the compiled JavaScript/assets and those bytes can be inspected by somebody who has the APK. Repository privacy therefore protects Loopbound's source repository/history; it is not DRM for the shipped game bundle.
+
 ## Where the game bundle lives
 
 The generated bundle is copied to:
@@ -46,11 +48,35 @@ The script assumes Loopbound is a sibling directory by default. A different chec
 
 Before copying anything, the script runs Loopbound's clean install, content validation, tests and production build. It then copies `dist/` and writes `BOOKWAVE_LOOPBOUND_VERSION` containing the exact Loopbound Git commit bundled into that BookWave build.
 
+## Manual GitHub APK builds
+
+The manually dispatched **Build APK** workflow can also embed Loopbound without committing private game files into BookWave.
+
+The workflow exposes:
+
+- `include_loopbound` — enabled by default for device-test APKs;
+- `loopbound_ref` — the Loopbound branch, tag or commit to resolve, defaulting to `main`.
+
+Embedding requires the BookWave repository secret `LOOPBOUND_READ_TOKEN`. It must be a **fine-grained personal access token restricted to `AlexanderWilhelmsenBerg/Loopbound` with only `Contents: Read`**. Do not give it write, administration or BookWave permissions, and never paste its value into repository files, build logs or chat.
+
+The private build and BookWave build are deliberately separate jobs:
+
+1. The Loopbound job checks out only the requested private Loopbound ref using the read-only token with checkout credential persistence disabled.
+2. It uses Node 22, runs `npm ci`, content validation, the Vitest suite and the production build.
+3. It resolves the exact Loopbound commit, writes that SHA to `dist/BOOKWAVE_LOOPBOUND_VERSION`, and uploads only `dist/` as a one-day workflow artifact.
+4. The BookWave APK job independently checks out the selected BookWave commit/PR. It never receives the Loopbound repository token or private source checkout.
+5. The APK job downloads only the compiled bundle into `app/src/main/assets/loopbound/`, verifies its version marker against the first job's resolved SHA, and then performs the normal BookWave verification/signing/assembly flow.
+6. The workflow summary records the exact Loopbound commit included in the APK.
+
+This separation matters because the Build APK workflow may compile a selected BookWave PR. Private Loopbound credentials and source must not be exposed to code from that selected BookWave revision merely because both are needed to produce one final APK.
+
+When `include_loopbound` is disabled, the workflow requires no Loopbound credential and preserves the public/no-game build path. Normal push and pull-request CI also remain independent of the private repository.
+
 ## How Loopbound updates in BookWave
 
 **The installed game does not update itself over the network.** A BookWave APK/AAB contains an immutable snapshot of Loopbound. This is intentional: a BookWave version should not silently change behaviour because the private Loopbound `main` branch changed later.
 
-To update the embedded game:
+For a local build:
 
 1. Update and review Loopbound in its own repository.
 2. Check out the exact Loopbound commit intended for BookWave.
@@ -58,13 +84,13 @@ To update the embedded game:
 4. Build and test BookWave normally.
 5. Ship a new BookWave APK/AAB. That release now contains the new Loopbound snapshot.
 
+For a manually dispatched GitHub APK, select the desired `loopbound_ref`; the workflow performs the same validate/test/build/stage process and records the exact resolved commit automatically.
+
 The version marker makes a built APK traceable to a precise game commit even though the generated bundle itself is not tracked by BookWave Git.
 
 ### Why updates are coupled to a BookWave release
 
 Serving Loopbound from a remote URL would allow instant game updates, but it would also make the game dependent on connectivity and let behaviour change independently of the BookWave version that was tested. Bundling keeps Loopbound offline-capable, reproducible and subject to the same release gate as the Android host.
-
-A future private release workflow may automate the copy by consuming a versioned Loopbound build artifact with narrowly scoped credentials. Fork/PR workflows must never receive that credential. The public BookWave CI must continue to build and test successfully without access to the private game.
 
 ## Saves across game updates
 
@@ -82,12 +108,14 @@ With no local Loopbound bundle:
 
 BookWave must build normally and the Loopbound route must show the fallback state.
 
-With both repositories available:
+With both repositories available locally:
 
 ```powershell
 .\scripts\bundle-loopbound.ps1
 .\gradlew.bat verifyDebug -Pshelfplayer.warningsAsErrors=true
 ```
+
+For GitHub device builds, run **Build APK** from a workflow revision containing the private-bundle job, keep `include_loopbound` enabled, and confirm the run summary identifies the intended Loopbound commit before installing the APK.
 
 Device acceptance should verify:
 
@@ -97,5 +125,6 @@ Device acceptance should verify:
 - an audiobook keeps playing while Loopbound is open;
 - the mini player remains usable and does not cover the game;
 - leaving and reopening Loopbound preserves game progress;
+- killing and reopening BookWave preserves game progress;
 - installing a BookWave build with a newer Loopbound snapshot preserves and migrates the existing save;
 - external navigation/resource requests from the game are not loaded by the embedded WebView.
