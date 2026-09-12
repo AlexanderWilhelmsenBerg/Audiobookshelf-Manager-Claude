@@ -8,7 +8,7 @@ BookWave can host the production web build of the private Loopbound repository a
 
 Home's overflow menu contains **Profiles**, **Downloads**, **Loopbound** and **Settings**. Opening Loopbound pushes an ordinary BookWave navigation destination. The audiobook `MediaLibraryService` remains the only playback owner, and BookWave's mini player stays above the navigation graph, so listening can continue while the game is open.
 
-The Loopbound page receives bottom padding from the same mini-player inset as the rest of BookWave. If a BookWave build does not contain a Loopbound bundle, the route remains valid and shows a clear "not included in this build" state rather than failing to load a WebView.
+The Loopbound page receives bottom padding from the same mini-player inset as the rest of BookWave. The Android `WebView` requests the full size of that remaining host slot explicitly: Loopbound uses a percentage-height web root, and the Android view bounds are also its touch/scroll hit area. The native Loopbound app bar is intentionally compact so the game keeps as much of the phone viewport as practical without reducing the back button below its normal 48 dp touch target. If a BookWave build does not contain a Loopbound bundle, the route remains valid and shows a clear "not included in this build" state rather than failing to load a WebView.
 
 ## Security boundary
 
@@ -122,6 +122,7 @@ Device acceptance should verify:
 - Home's overflow menu exposes Profiles, Downloads, Loopbound and Settings;
 - each menu item reaches the expected destination;
 - Loopbound renders from local assets with the device offline;
+- the game WebView fills the usable destination below the compact native app bar, with no dark dead-touch region; dragging anywhere over the visible game viewport scrolls the game where content is scrollable;
 - an audiobook keeps playing while Loopbound is open;
 - the mini player remains usable and does not cover the game;
 - leaving and reopening Loopbound preserves game progress;
