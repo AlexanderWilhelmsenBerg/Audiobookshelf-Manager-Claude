@@ -79,7 +79,6 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
-          - "#145 — fix/loopbound-webview-viewport"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
