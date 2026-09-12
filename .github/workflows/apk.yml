@@ -79,6 +79,7 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
+          - "#144 — docs/reconcile-canonical-roadmap-2026-09-12"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
