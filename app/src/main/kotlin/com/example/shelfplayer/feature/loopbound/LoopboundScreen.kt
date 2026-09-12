@@ -3,6 +3,7 @@ package com.example.shelfplayer.feature.loopbound
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
 import android.webkit.RenderProcessGoneDetail
@@ -44,6 +45,7 @@ private const val LOOPBOUND_URL = "https://$APP_ASSET_HOST/assets/$LOOPBOUND_ENT
 private const val LOOPBOUND_URL_PATH_PREFIX = "/assets/$LOOPBOUND_ASSET_DIRECTORY/"
 private const val HTTP_STATUS_FORBIDDEN = 403
 private const val HTTP_STATUS_NOT_FOUND = 404
+private val LOOPBOUND_TOP_BAR_HEIGHT = 48.dp
 
 /**
  * Hosts the web build of Loopbound as an ordinary BookWave destination.
@@ -79,6 +81,9 @@ internal fun LoopboundScreen(onNavigateUp: () -> Unit, modifier: Modifier = Modi
                         )
                     }
                 },
+                // This is a utility shell around a game rather than a content-heavy BookWave screen. Keep
+                // the full 48dp navigation target while giving the embedded viewport more vertical room.
+                expandedHeight = LOOPBOUND_TOP_BAR_HEIGHT,
             )
         },
     ) { innerPadding ->
@@ -129,7 +134,16 @@ private fun LoopboundWebView(modifier: Modifier = Modifier) {
 }
 
 @SuppressLint("SetJavaScriptEnabled") // Required by the bundled game; all non-game requests are blocked below.
-private fun createLoopboundWebView(context: Context): WebView = WebView(context).apply {
+internal fun createLoopboundWebView(context: Context): WebView = WebView(context).apply {
+    // AndroidView measures the platform view from Compose, but the WebView also uses its own Android layout
+    // bounds when establishing the CSS viewport and hit-test area. Make the host contract explicit instead
+    // of leaving the newly-created view at its default params: Loopbound's 100%-height root must receive the
+    // whole Compose slot, otherwise only the short rendered strip accepts vertical gestures while the rest
+    // of the destination looks like a dark overlay.
+    layoutParams = ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.MATCH_PARENT,
+    )
     setBackgroundColor(android.graphics.Color.TRANSPARENT)
     WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
