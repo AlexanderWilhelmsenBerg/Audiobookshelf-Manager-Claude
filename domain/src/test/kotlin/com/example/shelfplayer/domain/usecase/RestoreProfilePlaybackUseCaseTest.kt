@@ -3,6 +3,7 @@ package com.example.shelfplayer.domain.usecase
 import com.example.shelfplayer.core.common.log.DefaultRedactor
 import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
+import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Book
@@ -13,6 +14,7 @@ import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.TEST_SERVER
 import com.example.shelfplayer.domain.book
 import com.example.shelfplayer.domain.playback.StartupPlayer
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.time.Instant
@@ -38,18 +40,17 @@ class RestoreProfilePlaybackUseCaseTest {
     private val player = RecordingStartupPlayer()
 
     @Test
-    fun `the incoming profile's most recently played unfinished book is armed`() = runTest {
+    fun `remote progress recency does not replace the locally remembered book`() = runTest {
         val library = FakeLibraryRepository(
             listOf(
-                playedBook("older", at = "2026-08-01T10:00:00Z"),
-                playedBook("newest", at = "2026-08-20T10:00:00Z"),
-                playedBook("middle", at = "2026-08-10T10:00:00Z"),
+                playedBook("local-a", at = "2026-08-01T10:00:00Z"),
+                playedBook("remote-b", at = "2026-09-12T10:00:00Z"),
             ),
         )
 
-        useCase(library)(TEST_PROFILE)
+        useCase(library, rememberedId = LibraryItemId("local-a"))(TEST_PROFILE)
 
-        assertEquals(listOf(LibraryItemId("newest")), player.armed)
+        assertEquals(listOf(LibraryItemId("local-a")), player.armed)
     }
 
     /**
@@ -62,7 +63,7 @@ class RestoreProfilePlaybackUseCaseTest {
     fun `nothing is ever played`() = runTest {
         val library = FakeLibraryRepository(listOf(playedBook("resume", at = "2026-08-20T10:00:00Z")))
 
-        useCase(library)(TEST_PROFILE)
+        useCase(library, rememberedId = LibraryItemId("resume"))(TEST_PROFILE)
 
         assertTrue(player.played.isEmpty(), "a switch must never start audio")
     }
@@ -72,7 +73,7 @@ class RestoreProfilePlaybackUseCaseTest {
     fun `a finished book is not restored`() = runTest {
         val library = FakeLibraryRepository(listOf(playedBook("done", at = "2026-08-20T10:00:00Z", finished = true)))
 
-        useCase(library)(TEST_PROFILE)
+        useCase(library, rememberedId = LibraryItemId("done"))(TEST_PROFILE)
 
         assertTrue(player.armed.isEmpty())
     }
@@ -82,7 +83,7 @@ class RestoreProfilePlaybackUseCaseTest {
     fun `a book with no progress is not restored`() = runTest {
         val library = FakeLibraryRepository(listOf(book("untouched")))
 
-        useCase(library)(TEST_PROFILE)
+        useCase(library, rememberedId = LibraryItemId("untouched"))(TEST_PROFILE)
 
         assertTrue(player.armed.isEmpty())
     }
@@ -109,13 +110,17 @@ class RestoreProfilePlaybackUseCaseTest {
     fun `the library is read for the profile that was switched to`() = runTest {
         val library = FakeLibraryRepository(listOf(playedBook("theirs", at = "2026-08-20T10:00:00Z")))
 
-        useCase(library)(OTHER)
+        useCase(library, rememberedId = LibraryItemId("theirs"))(OTHER)
 
         assertEquals(listOf(OTHER), library.accessibleBooksRequestedFor)
     }
 
-    private fun useCase(library: FakeLibraryRepository) = RestoreProfilePlaybackUseCase(
+    private fun useCase(
+        library: FakeLibraryRepository,
+        rememberedId: LibraryItemId? = null,
+    ) = RestoreProfilePlaybackUseCase(
         library = library,
+        rememberedBooks = FakeRememberedBooks(rememberedId),
         player = player,
         logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
     )
@@ -134,6 +139,17 @@ class RestoreProfilePlaybackUseCaseTest {
                 hasUnsyncedChanges = false,
             ),
         )
+    }
+
+    private class FakeRememberedBooks(
+        private val rememberedId: LibraryItemId?,
+    ) : RememberedBookRepository {
+        override suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? = rememberedId
+
+        override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
+            AppResult.Success(Unit)
+
+        override suspend fun forget(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
     }
 
     private class RecordingStartupPlayer : StartupPlayer {
