@@ -4,9 +4,10 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.domain.library.lastPlayedBook
+import com.example.shelfplayer.domain.library.rememberedBook
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
@@ -39,20 +40,22 @@ import javax.inject.Inject
  */
 class RestoreProfilePlaybackUseCase @Inject constructor(
     private val library: LibraryRepository,
+    private val rememberedBooks: RememberedBookRepository,
     private val player: StartupPlayer,
     private val logger: Logger,
 ) {
 
     /**
-     * Arms [profileId]'s last unfinished book, or does nothing when it has none.
+     * Arms [profileId]'s locally remembered unfinished book, or does nothing when it has none.
      *
      * Silent about failure by design. This is a courtesy performed after an action that has already
      * succeeded; a listener who has just switched account does not need to be told that the book they were
      * not asking for could not be loaded (product priority 1 — nothing here may interrupt).
      */
     suspend operator fun invoke(profileId: ProfileId) {
+        val rememberedId = rememberedBooks.rememberedBook(profileId) ?: return
         val books = library.observeAccessibleBooks(profileId).first()
-        val book = lastPlayedBook(books) ?: return
+        val book = rememberedBook(books, rememberedId) ?: return
         logger.info(LogCategory.Playback, "The account that was switched to had its last book restored, paused")
         player.arm(book.id)
     }
