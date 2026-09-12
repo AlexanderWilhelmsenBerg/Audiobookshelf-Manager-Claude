@@ -131,10 +131,17 @@ class SessionSyncCoordinator @Inject constructor(
      */
     suspend fun sync(trigger: SyncTrigger): Boolean = gate.withLock { syncNow(trigger) }
 
-    /** PRODUCT_SPEC PLAY-004 — the last sync, on the application scope so service teardown cannot cancel it. */
+    /**
+     * PRODUCT_SPEC PLAY-004 — captures the final session snapshot before service teardown can detach the player.
+     *
+     * [PlaybackService.onDestroy] continues teardown immediately after this call, including `attach(null)`. The
+     * player-backed facts therefore have to become immutable here, on the player's application thread, while only
+     * the durable close/server attempt is allowed to outlive the service on [applicationScope].
+     */
     fun onShutdown() {
+        val prepared = prepareClose(SyncTrigger.ServiceShutdown) ?: return
         applicationScope.launch {
-            gate.withLock { closeCurrent(SyncTrigger.ServiceShutdown) }
+            gate.withLock { closePrepared(prepared, SyncTrigger.ServiceShutdown) }
         }
     }
 
@@ -208,30 +215,42 @@ class SessionSyncCoordinator @Inject constructor(
      * outbox can recover an unclosed row; it cannot recover a position written to the wrong book.
      */
     private suspend fun closeCurrent(trigger: SyncTrigger) {
-        val prepared = withContext(mainDispatcher) {
-            val active = current ?: return@withContext null
-            val snapshot = snapshot()
-            current = null
-            if (snapshot == null) {
-                listened.reset(clock.elapsed())
-                return@withContext null
-            }
-            if (snapshot.bookId != active.bookId) {
-                listened.reset(clock.elapsed())
-                logger.debug(
-                    LogCategory.Playback,
-                    "Skipped a stale player snapshot while closing a session",
-                    LogField.Public("trigger", trigger.name),
-                )
-                return@withContext null
-            }
-            PreparedClose(
-                active = active,
-                snapshot = snapshot,
-                timeListened = listened.drain(clock.elapsed()),
-            )
-        } ?: return
+        val prepared = withContext(mainDispatcher) { prepareClose(trigger) } ?: return
+        closePrepared(prepared, trigger)
+    }
 
+    /**
+     * Captures everything a close needs while player/session ownership is still valid.
+     *
+     * Shutdown calls this directly from Media3's application thread before detaching the player. Other transitions
+     * enter through [closeCurrent], which dispatches here on [mainDispatcher]. Clearing [current] as part of the
+     * capture prevents later sync requests from re-reading teardown state.
+     */
+    private fun prepareClose(trigger: SyncTrigger): PreparedClose? {
+        val active = current ?: return null
+        val snapshot = snapshot()
+        current = null
+        if (snapshot == null) {
+            listened.reset(clock.elapsed())
+            return null
+        }
+        if (snapshot.bookId != active.bookId) {
+            listened.reset(clock.elapsed())
+            logger.debug(
+                LogCategory.Playback,
+                "Skipped a stale player snapshot while closing a session",
+                LogField.Public("trigger", trigger.name),
+            )
+            return null
+        }
+        return PreparedClose(
+            active = active,
+            snapshot = snapshot,
+            timeListened = listened.drain(clock.elapsed()),
+        )
+    }
+
+    private suspend fun closePrepared(prepared: PreparedClose, trigger: SyncTrigger) {
         val result = repository.closeSession(
             sessionId = prepared.active.sessionId,
             progress = SessionProgress(
