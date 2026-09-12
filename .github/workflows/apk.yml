@@ -79,7 +79,6 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
-          - "#146 — fix/bw-142-shutdown-session-snapshot"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
