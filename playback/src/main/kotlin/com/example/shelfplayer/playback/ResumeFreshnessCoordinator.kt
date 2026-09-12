@@ -76,13 +76,27 @@ internal sealed interface ResumePlayPreparation {
  * with the acknowledged-pause generation that existed when it arrived. Movement happens later, and only
  * from [preparePlay], after the same checks that a REST result must pass.
  *
- * A freshly opened server session is different from a resume of an already loaded paused book. `/play`
- * already chose the authoritative starting position, so its immediate first Play must not spend another
- * network round trip asking the same server the same question. [onSessionOpened] may therefore mint one
- * identity-bound [freshStart] token. That token survives exactly one expected media installation and then
- * [consumeFreshStart] consumes it exactly once at the forwarding-player boundary. A later media replacement
- * invalidates it like every other explicit movement. An armed session never gets that token, so a later
- * headset/car/notification Play still performs normal freshness reconciliation.
+ * A freshly opened server session may mint one identity-bound [freshStart] token only for a direct BookWave
+ * action where opening `/play` and issuing the immediate first Play are one operation. That exemption is not
+ * a blanket claim that every new `/play` start position is authoritative. Cold Media3 playback resumption is
+ * deliberately different: `onPlaybackResumption(isForPlayback = true)` opens the real session, Media3 then
+ * installs it and issues a separate loaded-item Play, and issue #138 proved that newly opened position may be
+ * stale or zero. The service therefore does not mint [freshStart] for that path; the loaded Play reaches
+ * [preparePlay] and the shared policy validates trusted progress before raw Play. When a REST check is needed
+ * it is bounded by [SERVER_CHECK_TIMEOUT] and an unavailable check preserves the installed local position.
+ * Intentional remote rewinds, including a trusted rewind to zero, remain valid policy outcomes.
+ *
+ * A successful server check can also prove that the acknowledged baseline is still the position BookWave
+ * should regard as local even if Media3 was installed somewhere else. That mismatch is not treated as a
+ * remote move: when it exceeds [INSTALLED_POSITION_TOLERANCE], the coordinator restores the confirmed
+ * baseline with [FreshnessEvidenceSource.RestoredBaseline]. This is what lets the debug cold-resume fault
+ * injector install zero without turning that synthetic zero into progress or into fake cross-device history.
+ * If the lookup is unavailable, no such restore is allowed and the installed position remains untouched.
+ *
+ * For the direct-play case, [onSessionOpened] creates the token. It survives exactly one expected media
+ * installation and [consumeFreshStart] consumes it exactly once at the forwarding-player boundary. A later
+ * media replacement invalidates it like every other explicit movement. An armed session never gets that
+ * token, so a later headset/car/notification Play still performs normal freshness reconciliation.
  *
  * Mutable state is main-thread confined. Network work happens outside that thread, then the request token,
  * loaded owner/book and baseline generation are checked again before a plan may be returned.
@@ -130,8 +144,10 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
      * session identifier into `MediaMetadata.extras`, where external controllers could read it.
      *
      * [initialPlayWillFollow] is true only when the caller opened this server session as part of the same
-     * user action that will immediately issue Play. It is deliberately false for arm-only paths. A blank
-     * session id is local/offline and can never mint a fresh-server token because no server chose its start.
+     * direct BookWave action that will immediately issue Play. It is deliberately false for arm-only paths
+     * and for cold Media3 playback resumption, whose later loaded-item Play must run normal freshness
+     * reconciliation. A blank session id is local/offline and can never mint a fresh-server token because no
+     * server chose its start.
      */
     suspend fun onSessionOpened(session: PlaybackSession, initialPlayWillFollow: Boolean = false) =
         withContext(mainDispatcher) {
@@ -215,7 +231,7 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
                 candidate = context.candidate,
             )
         }
-        if (realtimeDecision != null) {
+        if (realtimeDecision != null && !needsServerConfirmation(context, realtimeDecision)) {
             return finish(context, realtimeDecision)
         }
 
@@ -225,7 +241,49 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
         val checked = withTimeoutOrNull(SERVER_CHECK_TIMEOUT) {
             playback.checkServerPosition(context.bookId, acknowledged)
         } ?: ExternalSessionCheck.Unavailable
-        return finish(context, ResumeFreshnessPolicy.rest(acknowledged, checked))
+        val decision = restoreVerifiedBaseline(
+            context = context,
+            decision = ResumeFreshnessPolicy.rest(acknowledged, checked),
+        )
+        return finish(context, decision)
+    }
+
+    /**
+     * A verified `Current` normally means raw Play can keep the installed position.
+     *
+     * The exception is an unexplained installed-position mismatch while the acknowledged baseline is still
+     * valid. A real local seek/play movement would already have invalidated that baseline. If realtime says
+     * `Current` while such a mismatch exists, force the bounded REST confirmation instead of trusting the
+     * synthetic/local install. A material remote decision already has its own trusted target.
+     */
+    private fun needsServerConfirmation(context: RequestContext, decision: ResumeFreshnessDecision): Boolean =
+        decision is ResumeFreshnessDecision.Current && installedPositionDiffersFromBaseline(context)
+
+    /**
+     * Restores the acknowledged baseline only after REST proved there is no material remote movement.
+     *
+     * `LocalUnverified` is deliberately excluded: when the lookup is unavailable, the installed position is
+     * the fallback contract. The dedicated evidence source prevents this restore from being recorded as if
+     * another device moved the audiobook.
+     */
+    private fun restoreVerifiedBaseline(
+        context: RequestContext,
+        decision: ResumeFreshnessDecision,
+    ): ResumeFreshnessDecision {
+        val acknowledged = context.baseline ?: return decision
+        if (decision !is ResumeFreshnessDecision.Current || decision.source != FreshnessEvidenceSource.Rest) {
+            return decision
+        }
+        if (!installedPositionDiffersFromBaseline(context)) return decision
+        return ResumeFreshnessDecision.Adopt(
+            position = acknowledged.position,
+            source = FreshnessEvidenceSource.RestoredBaseline,
+        )
+    }
+
+    private fun installedPositionDiffersFromBaseline(context: RequestContext): Boolean {
+        val acknowledged = context.baseline ?: return false
+        return (context.localPosition - acknowledged.position).absoluteValue > INSTALLED_POSITION_TOLERANCE
     }
 
     /** Full validation before a plan is allowed to move or start audio. */
@@ -355,5 +413,6 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
 
     private companion object {
         val SERVER_CHECK_TIMEOUT: Duration = 2.seconds
+        val INSTALLED_POSITION_TOLERANCE: Duration = 1.seconds
     }
 }

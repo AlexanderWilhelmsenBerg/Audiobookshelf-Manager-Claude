@@ -89,6 +89,7 @@ internal fun LazyListScope.sessionSyncRows(sync: SessionSyncDiagnostics) {
     }
     item { ClockSkewRow(skew = sync.clockSkew) }
     item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+    playbackDiagnosticsRows()
 }
 
 /**

@@ -1,7 +1,7 @@
 # Playback architecture
 
 **Classification:** Current contract for `main`, plus clearly marked pending contracts from the committed PR chain.  
-**Current as reviewed:** 2026-09-07.
+**Current as reviewed:** 2026-09-12.
 
 This document is the compact entry point for BookWave's playback correctness architecture. Detailed ADRs, bug investigations and reviews remain the evidence for why these rules exist.
 
@@ -49,20 +49,28 @@ When this device pauses and the server acknowledges the position, that acknowled
 
 Once local playback moves again, that paused baseline becomes stale and must be invalidated for future freshness decisions.
 
-## Unified resume freshness — pending PR #93
+## Unified resume freshness
 
-**Not on `main` until PR #93 merges.** The committed design makes #93 the one owner for external/local Play resume freshness.
+PR #93 established `ResumeFreshnessCoordinator` as the one owner for standard Play resume freshness.
 
-The intended contract is:
+The current contract is:
 
 - app Play, notification/system Play, headset Play and car Play use the same policy;
 - realtime evidence can prove newer remote movement;
 - REST/session query remains a correctness fallback when evidence is insufficient;
 - acknowledged paused state is valid baseline evidence;
 - local movement invalidates stale evidence;
-- intentional remote rewinds are preserved; never replace the rule with `max(position)`;
+- intentional remote rewinds are preserved, including a trusted rewind to `0:00`; never replace the rule with `max(position)`;
 - small drift within the product threshold continues locally, while meaningful remote movement is adopted;
 - wrong-profile, wrong-book, stale-generation and own-session echo evidence is rejected.
+
+A fresh-session first-Play exemption is narrower than "new `/play` means authoritative". It may be minted only when one direct BookWave action opens the server session and immediately issues Play. Service-owned browse/arm opens do not get it.
+
+Cold Media3 playback resumption is also explicitly excluded. `MediaSession.Callback.onPlaybackResumption(isForPlayback = true)` opens the real Audiobookshelf session and returns media for Media3 to install; Media3 then issues a loaded-item Play. That loaded Play must enter `ResumeFreshnessCoordinator` before raw Play because a newly opened `/play` position can still be stale or zero. The REST fallback remains bounded by the coordinator's timeout, and an unavailable check preserves the installed local position rather than inventing movement.
+
+If the still-valid acknowledged baseline and Media3's installed position have diverged without a local-movement invalidation, a successful REST check may prove that the server still agrees with that baseline. In that case the coordinator restores the verified baseline before audio starts. That restore is not another device's progress and must not be recorded as remote movement. If the REST lookup is unavailable, the coordinator does not manufacture authority from the baseline and leaves the installed position untouched.
+
+The debug cold-resume diagnostic may replace only the Media3-installed initial position. It must not change the underlying opened session/baseline, become durable progress, run for foreground Play, or run for metadata-only `onPlaybackResumption(false)` queries.
 
 No future widget, shortcut, App Action, Android Auto callback or UI button may reimplement this policy privately.
 

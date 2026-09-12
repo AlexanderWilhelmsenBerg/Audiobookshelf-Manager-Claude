@@ -190,6 +190,10 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var resumeFreshness: ResumeFreshnessCoordinator
 
+    /** Issue #138 — debug may replace only the start position handed back by cold Media3 resumption. */
+    @Inject
+    internal lateinit var coldResumeStartPosition: ColdResumeStartPosition
+
     @Inject
     internal lateinit var logger: Logger
 
@@ -575,7 +579,7 @@ class PlaybackService : MediaLibraryService() {
          * Silent rather than logged: this runs every few seconds, and the factory already warns once per
          * session with the reason. A warning per tick would bury it.
          */
-        if (positionMs <= 0L || MediaItems.isSingleFileFallback(item)) return null
+        if (!isPersistablePlaybackPosition(positionMs, MediaItems.isSingleFileFallback(item))) return null
         // ADR-0016 — the player's timeline is the book, so the position and the duration are read straight
         // off it. There is no per-file arithmetic left to get wrong.
         return PositionSnapshot(
@@ -1598,44 +1602,40 @@ class PlaybackService : MediaLibraryService() {
      * which is what ROUTE-001 asks for — "if no playable item exists, the command does nothing and logs a
      * non-fatal diagnostic".
      *
-     * [initialPlayWillFollow] is a proof obligation, not a prediction. In this service it is true only for
-     * `onPlaybackResumption(isForPlayback = true)`, whose pinned Media3 1.11 contract says the returned media
-     * is immediately installed, prepared and played. Generic `onSetMediaItems`, browse and spoken requests
-     * never pass true. Service-owned direct ExoPlayer play paths also leave it false because they bypass the
-     * forwarding Play gate and already own the fresh `/play` result.
+     * Service-owned queue opens deliberately do not mint PR #93's first-Play exemption. Generic controller
+     * resolution can arm media without playing it, while cold `onPlaybackResumption(isForPlayback = true)`
+     * has a separate Media3 loaded-item Play after installation. That loaded Play must pass through the
+     * shared freshness coordinator because a newly opened `/play` position can still be stale.
      */
-    private suspend fun openQueue(
-        bookId: LibraryItemId,
-        startAt: Duration?,
-        initialPlayWillFollow: Boolean = false,
-    ): MediaItems.Queue? = when (val opened = openPlaybackSession(bookId)) {
-        is AppResult.Failure -> {
-            logger.warn(
-                LogCategory.Playback,
-                "Could not open a session for a browse or resume request",
-                LogField.Public("error", opened.error.code),
-            )
-            reportSessionFailureToControllers(opened.error)
-            null
-        }
+    private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? =
+        when (val opened = openPlaybackSession(bookId)) {
+            is AppResult.Failure -> {
+                logger.warn(
+                    LogCategory.Playback,
+                    "Could not open a session for a browse or resume request",
+                    LogField.Public("error", opened.error.code),
+                )
+                reportSessionFailureToControllers(opened.error)
+                null
+            }
 
-        is AppResult.Success -> {
-            val playbackSession = opened.value
-            bookChanges.onBookOpened(playbackSession, initialPlayWillFollow = initialPlayWillFollow)
-            val queue = MediaItems.queueFor(
-                session = playbackSession,
-                historyLink = MediaItems.HistoryLink(
-                    label = getString(R.string.car_player_history_link),
-                    historyMediaId = AutoLibrary.TAB_HISTORY,
-                ),
-            )
-            if (startAt == null) {
-                queue
-            } else {
-                queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
+            is AppResult.Success -> {
+                val playbackSession = opened.value
+                bookChanges.onBookOpened(playbackSession)
+                val queue = MediaItems.queueFor(
+                    session = playbackSession,
+                    historyLink = MediaItems.HistoryLink(
+                        label = getString(R.string.car_player_history_link),
+                        historyMediaId = AutoLibrary.TAB_HISTORY,
+                    ),
+                )
+                if (startAt == null) {
+                    queue
+                } else {
+                    queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
+                }
             }
         }
-    }
 
     /**
      * A suspending body as the `ListenableFuture` Media3's callbacks return.
@@ -2013,8 +2013,8 @@ class PlaybackService : MediaLibraryService() {
          *
          * `isForPlayback = false` is metadata-only and opens no server session. For `true`, Media3's pinned
          * callback contract automatically installs the returned media, prepares it and calls Play. That
-         * structural guarantee is what allows [resumeForPlayback]—and only this generic service callback—to
-         * mint an immediate fresh-start exemption.
+         * loaded-item Play deliberately gets no fresh-start exemption here: it is the point where the shared
+         * PR #93 freshness coordinator validates the newly opened `/play` position before audio starts.
          */
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
@@ -2028,14 +2028,19 @@ class PlaybackService : MediaLibraryService() {
         private suspend fun resumeForPlayback(): MediaSession.MediaItemsWithStartPosition {
             val book = auto.lastPlayed()
             val queue = book?.let {
-                openQueue(it.id, startAt = null, initialPlayWillFollow = true)
+                openQueue(it.id, startAt = null)
             }
             return if (queue == null) {
                 logger.info(LogCategory.Playback, "A resume was requested with nothing to resume")
                 MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
             } else {
+                // Issue #138 — fault injection happens after the real `/play` session was staged above, so
+                // ResumeFreshnessCoordinator still owns the real trusted/server position. Only Media3's
+                // initial local install is replaced with zero, and only this playback-resumption callback
+                // can consume the one-shot diagnostic.
+                val startPositionMs = coldResumeStartPosition.forPlaybackResumption(queue.startPositionMs)
                 logger.info(LogCategory.Playback, "Resuming the last book for a media button")
-                MediaSession.MediaItemsWithStartPosition(listOf(queue.item), 0, queue.startPositionMs)
+                MediaSession.MediaItemsWithStartPosition(listOf(queue.item), 0, startPositionMs)
             }
         }
 

@@ -53,9 +53,13 @@ class BookChanges @Inject internal constructor(
      * position is book-relative, so claiming they agree would create exactly the false evidence SYNC-002
      * avoids.
      *
-     * [initialPlayWillFollow] is true only when this server session was opened as part of the same action
-     * that will immediately issue Play. The coordinator uses that to mint a one-shot first-Play exemption;
-     * arm-only sessions pass false so a later Play still performs normal resume freshness.
+     * [initialPlayWillFollow] is true only for the direct [PlaybackController] path where opening the server
+     * session and immediately issuing Play are the same BookWave action. That lets the coordinator mint the
+     * one-shot first-Play exemption introduced by PR #93. Service-owned queue opens deliberately use the
+     * default `false`: browse/arm paths may remain paused, and cold Media3 playback resumption must let the
+     * loaded-item Play enter [ResumeFreshnessCoordinator] because the newly opened `/play` position can be
+     * stale or zero. This flag therefore describes a proven direct-play contract, not merely an expectation
+     * that some later Play will happen.
      */
     suspend fun onBookOpened(session: PlaybackSession, initialPlayWillFollow: Boolean = false) {
         sessionSync.onSessionOpened(session)

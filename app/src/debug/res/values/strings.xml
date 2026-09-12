@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="about_playback_diagnostics">Playback diagnostics (debug)</string>
+    <string name="about_playback_diagnostics_body" tools:ignore="Typos">Arms a one-shot fault for the next cold system playback resumption. Media3 will initially install 0:00 while BookWave keeps the real trusted progress for resume-freshness validation. Foreground Play is unaffected.</string>
+    <string name="about_playback_diagnostics_state">State: %1$s</string>
+    <string name="about_playback_diagnostics_not_armed">Not armed</string>
+    <string name="about_playback_diagnostics_armed">Armed</string>
+    <string name="about_playback_diagnostics_consumed">Consumed</string>
+    <string name="about_playback_diagnostics_arm_zero">Arm next cold resume at 0:00</string>
+</resources>

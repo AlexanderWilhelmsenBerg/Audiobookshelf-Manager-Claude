@@ -103,6 +103,21 @@ class SessionSyncCoordinatorTest {
         assertEquals(0, repository.syncCalls)
     }
 
+    @Test
+    fun `zero player snapshot is never synced into the active session`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val book = LibraryItemId("book-a")
+
+        coordinator.onSessionOpened(session(book))
+        coordinator.attach(playerFor(book, position = Duration.ZERO))
+
+        val accepted = coordinator.sync(SyncTrigger.TrackChanged)
+
+        assertFalse(accepted)
+        assertEquals(0, repository.syncCalls)
+    }
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(repository: SessionSyncRepository) =
         SessionSyncCoordinator(
             repository = repository,
@@ -126,7 +141,7 @@ class SessionSyncCoordinatorTest {
         chapters = emptyList(),
     )
 
-    private fun playerFor(bookId: LibraryItemId): Player {
+    private fun playerFor(bookId: LibraryItemId, position: Duration = 10.seconds): Player {
         val item = MediaItem.Builder().setMediaId(bookId.value).build()
         return Proxy.newProxyInstance(
             Player::class.java.classLoader,
@@ -134,7 +149,7 @@ class SessionSyncCoordinatorTest {
         ) { _, method, _ ->
             when (method.name) {
                 "getCurrentMediaItem" -> item
-                "getCurrentPosition" -> 10.seconds.inWholeMilliseconds
+                "getCurrentPosition" -> position.inWholeMilliseconds
                 "getDuration" -> 60.minutes.inWholeMilliseconds
                 else -> defaultValue(method.returnType)
             }
