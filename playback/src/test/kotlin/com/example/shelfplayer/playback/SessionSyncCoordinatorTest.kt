@@ -22,7 +22,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.lang.reflect.Proxy
@@ -130,7 +130,7 @@ class SessionSyncCoordinatorTest {
 
         coordinator.onShutdown()
         coordinator.attach(null)
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(1, repository.closeCalls)
         assertEquals(42.seconds, repository.lastClosedProgress?.position)
