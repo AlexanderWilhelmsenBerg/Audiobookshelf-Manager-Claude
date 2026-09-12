@@ -21,6 +21,17 @@ run-name: "${{ inputs.pull_request != 'Use selected branch/ref' && format('Build
 # When the build finishes, the APK is on the run's summary page under **Artifacts**. Phones can download it
 # directly from that page.
 #
+# ## Optional private Loopbound bundle
+#
+# `include_loopbound` builds the requested private Loopbound ref in a separate job, then passes only its
+# generated `dist/` to the APK job. The private checkout and its read token never enter the job that executes
+# selected BookWave PR code. `LOOPBOUND_READ_TOKEN` must be a fine-grained token limited to the private
+# `AlexanderWilhelmsenBerg/Loopbound` repository with Contents: Read and no write permissions.
+#
+# The exact resolved Loopbound commit is written into `BOOKWAVE_LOOPBOUND_VERSION` inside the APK and shown
+# in the workflow summary. Disabling `include_loopbound` preserves the public/no-private-repository build
+# path and BookWave shows the explicit "not included in this build" fallback.
+#
 # ## Why `workflow_dispatch` only
 #
 # Not on every push: this repository already runs `verifyDebug` on every pull request and the full release
@@ -60,6 +71,7 @@ run-name: "${{ inputs.pull_request != 'Use selected branch/ref' && format('Build
 #   BOOKWAVE_SIGNING_STORE_PASSWORD
 #   BOOKWAVE_SIGNING_KEY_ALIAS
 #   BOOKWAVE_SIGNING_KEY_PASSWORD
+#   LOOPBOUND_READ_TOKEN               fine-grained token for Loopbound, Contents: Read only
 #
 # The keystore is written to the runner's temp directory, never into the checkout — the build refuses a
 # keystore inside the repository outright, which is `ReleaseSigning.kt`'s second refusal.
@@ -92,6 +104,15 @@ on:
         description: 'Run verifyDebug before building (slower, but the APK is then known-good)'
         type: boolean
         default: false
+      include_loopbound:
+        description: 'Embed the private Loopbound game bundle'
+        type: boolean
+        default: true
+      loopbound_ref:
+        description: 'Loopbound branch, tag, or commit to embed'
+        type: string
+        required: true
+        default: 'main'
 
 concurrency:
   group: ${{ github.workflow }}-${{ inputs.pull_request == 'Use selected branch/ref' && github.ref || inputs.pull_request }}-${{ inputs.variant }}
@@ -108,8 +129,65 @@ env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false
 
 jobs:
+  loopbound:
+    name: Loopbound web bundle
+    if: ${{ inputs.include_loopbound }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      sha: ${{ steps.bundle.outputs.sha }}
+    steps:
+      - name: Require Loopbound read token
+        env:
+          LOOPBOUND_READ_TOKEN: ${{ secrets.LOOPBOUND_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LOOPBOUND_READ_TOKEN:-}" ]; then
+            echo "::error::Loopbound embedding is enabled, but LOOPBOUND_READ_TOKEN is not configured."
+            echo "::error::Create a fine-grained token limited to AlexanderWilhelmsenBerg/Loopbound with Contents: Read."
+            exit 1
+          fi
+
+      - name: Check out private Loopbound source
+        uses: actions/checkout@v7
+        with:
+          repository: AlexanderWilhelmsenBerg/Loopbound
+          ref: ${{ inputs.loopbound_ref }}
+          token: ${{ secrets.LOOPBOUND_READ_TOKEN }}
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Validate, test and build Loopbound
+        id: bundle
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run validate:content
+          npm test
+          npm run build
+          LOOPBOUND_SHA=$(git rev-parse HEAD)
+          test -f dist/index.html
+          printf '%s\n' "$LOOPBOUND_SHA" > dist/BOOKWAVE_LOOPBOUND_VERSION
+          echo "sha=$LOOPBOUND_SHA" >> "$GITHUB_OUTPUT"
+          echo "Built Loopbound ${LOOPBOUND_SHA:0:8} from ${{ inputs.loopbound_ref }}."
+
+      - name: Upload compiled Loopbound bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: loopbound-web-${{ github.run_id }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
   apk:
     name: ${{ inputs.variant }} APK
+    needs: [loopbound]
+    if: ${{ always() && (needs.loopbound.result == 'success' || needs.loopbound.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -160,6 +238,28 @@ jobs:
           # A PR build checks out the immutable head SHA resolved above. The workflow definition still comes
           # from `main`, but the source being compiled is exactly the PR revision named in the run.
           ref: ${{ steps.source.outputs.sha }}
+
+      - name: Download compiled Loopbound bundle
+        if: ${{ inputs.include_loopbound }}
+        uses: actions/download-artifact@v8
+        with:
+          name: loopbound-web-${{ github.run_id }}
+          path: app/src/main/assets/loopbound
+
+      - name: Verify staged Loopbound bundle
+        if: ${{ inputs.include_loopbound }}
+        env:
+          EXPECTED_LOOPBOUND_SHA: ${{ needs.loopbound.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test -f app/src/main/assets/loopbound/index.html
+          test -f app/src/main/assets/loopbound/BOOKWAVE_LOOPBOUND_VERSION
+          ACTUAL_LOOPBOUND_SHA=$(tr -d '\r\n' < app/src/main/assets/loopbound/BOOKWAVE_LOOPBOUND_VERSION)
+          if [ "$ACTUAL_LOOPBOUND_SHA" != "$EXPECTED_LOOPBOUND_SHA" ]; then
+            echo "::error::Loopbound bundle version marker does not match the build job."
+            exit 1
+          fi
+          echo "Staged Loopbound ${ACTUAL_LOOPBOUND_SHA:0:8} into BookWave assets."
 
       - uses: gradle/actions/wrapper-validation@v6
 
@@ -256,6 +356,8 @@ jobs:
           PR_NUMBER: ${{ steps.source.outputs.pr }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
           SOURCE_BRANCH: ${{ steps.source.outputs.branch }}
+          INCLUDE_LOOPBOUND: ${{ inputs.include_loopbound }}
+          LOOPBOUND_SHA: ${{ needs.loopbound.outputs.sha }}
         run: |
           set -euo pipefail
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -1)
@@ -277,6 +379,11 @@ jobs:
             echo "| Version | \`$NAME\` (code \`$CODE\`) |"
             echo "| Commit | \`${SOURCE_SHA:0:8}\` on \`$SOURCE_BRANCH\` |"
             echo "| Source | ${PR_NUMBER:+PR $PR_NUMBER · }\`$SOURCE_BRANCH\`, as the About tab reports it |"
+            if [ "$INCLUDE_LOOPBOUND" = "true" ]; then
+              echo "| Loopbound | \`${LOOPBOUND_SHA:0:8}\` from \`${{ inputs.loopbound_ref }}\` |"
+            else
+              echo "| Loopbound | not bundled |"
+            fi
             echo "| Checks | ${{ inputs.run_checks && 'verifyDebug passed' || 'not run — assembled only' }} |"
             echo
             # Asked of the artefact rather than inferred from whether a secret was set: the point is to
