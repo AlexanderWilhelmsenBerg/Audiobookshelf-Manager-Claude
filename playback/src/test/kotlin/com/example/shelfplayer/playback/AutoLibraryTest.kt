@@ -34,6 +34,22 @@ class AutoLibraryTest {
     }
 
     @Test
+    fun `a resumable book without cached progress uses the positionless book id`() {
+        assertEquals(
+            "book/tidewatch",
+            AutoLibrary.resumeId(LibraryItemId("tidewatch"), position = null),
+        )
+    }
+
+    @Test
+    fun `a resumable book with cached progress keeps that position in the id`() {
+        assertEquals(
+            "at/tidewatch/600000",
+            AutoLibrary.resumeId(LibraryItemId("tidewatch"), 10.minutes),
+        )
+    }
+
+    @Test
     fun `a positioned id resolves to the book and the position`() {
         val target = AutoLibrary.resolve("at/tidewatch/600000")
 
