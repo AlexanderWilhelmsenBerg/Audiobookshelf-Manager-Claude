@@ -214,10 +214,11 @@ internal fun List<PlaybackHistoryEntry>.canonicalStopHistory(): List<PlaybackHis
     val timerStops = filter { it.event == PlaybackEvent.SleepTimerExpired }
     if (timerStops.isEmpty()) return this
     return filterNot { candidate ->
-        candidate.event == PlaybackEvent.Pause && timerStops.any { timer ->
-            abs(candidate.at.toEpochMilli() - timer.at.toEpochMilli()) <= STOP_PAIR_WINDOW_MS &&
-                abs(candidate.to.inWholeMilliseconds - timer.to.inWholeMilliseconds) <= STOP_POSITION_WINDOW_MS
-        }
+        candidate.event == PlaybackEvent.Pause &&
+            timerStops.any { timer ->
+                abs(candidate.at.toEpochMilli() - timer.at.toEpochMilli()) <= STOP_PAIR_WINDOW_MS &&
+                    abs(candidate.to.inWholeMilliseconds - timer.to.inWholeMilliseconds) <= STOP_POSITION_WINDOW_MS
+            }
     }
 }
 
