@@ -203,18 +203,36 @@ internal sealed interface HistoryRowItem {
  * a check that led nowhere gets answered.
  */
 internal fun rowsFor(entries: List<PlaybackHistoryEntry>, zone: ZoneId = ZoneId.systemDefault()): List<HistoryRowItem> {
+    val visible = entries.filterNot { entry -> entry.isPauseDuplicatedBySleepExpiry(entries) }
     val rows = mutableListOf<HistoryRowItem>()
     var lastDay: LocalDate? = null
-    entries.forEachIndexed { index, entry ->
+    visible.forEachIndexed { index, entry ->
         if (entry.event.isServerCheck) return@forEachIndexed
         val day = entry.at.atZone(zone).toLocalDate()
         if (day != lastDay) {
             rows += HistoryRowItem.Day(day)
             lastDay = day
         }
-        rows += HistoryRowItem.Event(entry, check = checkFor(entry, entries, index))
+        rows += HistoryRowItem.Event(entry, check = checkFor(entry, visible, index))
     }
     return rows
+}
+
+/**
+ * A sleep timer calls `pause()` and then records `SleepTimerExpired`. The service also records the ordinary
+ * `Pause` produced by that same player transition. Both database rows are useful evidence, but drawing both
+ * makes one physical stop look like two unrelated stops.
+ *
+ * Keep the timer row because it carries the cause. Suppress only a Pause at essentially the same position
+ * and time; an ordinary pause elsewhere, or even at the same position minutes earlier, remains visible.
+ */
+private fun PlaybackHistoryEntry.isPauseDuplicatedBySleepExpiry(entries: List<PlaybackHistoryEntry>): Boolean {
+    if (event != PlaybackEvent.Pause) return false
+    return entries.any { candidate ->
+        candidate.event == PlaybackEvent.SleepTimerExpired &&
+            kotlin.math.abs(candidate.at.toEpochMilli() - at.toEpochMilli()) <= STOP_PAIRING_WINDOW &&
+            kotlin.math.abs((candidate.to - to).inWholeMilliseconds) <= STOP_POSITION_TOLERANCE_MS
+    }
 }
 
 /** The check written for [entry], if [entry] is a `Play` and one was written alongside it. */
@@ -441,6 +459,8 @@ private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(F
  * and still nowhere near the previous resume, which is the only thing a wrong pairing could reach.
  */
 private const val CHECK_PAIRING_WINDOW = 10_000L
+private const val STOP_PAIRING_WINDOW = 2_000L
+private const val STOP_POSITION_TOLERANCE_MS = 250L
 
 private const val WEIGHT_FILL = 1f
 
