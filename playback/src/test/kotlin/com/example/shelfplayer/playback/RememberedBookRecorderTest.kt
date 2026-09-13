@@ -5,8 +5,8 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Chapter
-import com.example.shelfplayer.core.model.playback.PlayableTrack
-import com.example.shelfplayer.core.model.playback.PlaybackSession
+import com.example.shelfplayer.core.model.library.PlayableTrack
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
