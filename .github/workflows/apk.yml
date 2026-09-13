@@ -18,9 +18,8 @@ run-name: "${{ inputs.pull_request != 'Use selected branch/ref' && format('Build
 # opened, closed or reopened. Fork PRs are intentionally omitted because this workflow can access signing
 # secrets and refuses cross-repository source.
 #
-# When the build finishes, the APK is on the run's summary page under **Artifacts**. Debug builds are uploaded
-# as the `.apk` file itself for one-tap device installation; release builds remain archived alongside their
-# separately retained R8 mapping.
+# When the build finishes, the APK is on the run's summary page under **Artifacts**. Phones can download it
+# directly from that page.
 #
 # ## Why `workflow_dispatch` only
 #
@@ -81,7 +80,6 @@ on:
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
           - "#149 — feature/bw-115-remembered-book"
-          - "#148 — chore/debug-apk-direct-artifact"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
