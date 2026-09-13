@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -24,6 +25,7 @@ class RememberedBookRecorderTest {
         )
 
         recorder.onPlaying(MediaItems.queueFor(session()).item)
+        runCurrent()
 
         assertEquals(BOOK, repository.valueFor(OWNER))
     }
