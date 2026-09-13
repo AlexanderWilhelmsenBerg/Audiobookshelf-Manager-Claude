@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -19,6 +20,7 @@ import kotlin.time.Duration.Companion.minutes
 @RunWith(RobolectricTestRunner::class)
 class RememberedBookRecorderTest {
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun `actual local playback remembers the owned book`() = runTest {
         val repository = FakeRememberedBooks()
