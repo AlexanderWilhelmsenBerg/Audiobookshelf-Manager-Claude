@@ -9,6 +9,7 @@ import java.time.ZonedDateTime
 import kotlin.test.assertEquals
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-003 — the history pane's day headings.
@@ -65,6 +66,57 @@ class HistoryRowsTest {
     fun `an empty history has no headings`() {
         assertEquals(emptyList(), rowsFor(emptyList(), OSLO))
     }
+
+    @Test
+    fun `sleep timer expiry renders one caused stop instead of a duplicate pause`() {
+        val stoppedAt = Instant.parse("2026-08-13T20:00:00Z")
+        val rows = rowsFor(
+            listOf(
+                event("timer", PlaybackEvent.SleepTimerExpired, stoppedAt.plusMillis(25), 20.minutes),
+                event("pause", PlaybackEvent.Pause, stoppedAt, 20.minutes),
+            ),
+            zone = OSLO,
+        )
+
+        assertEquals(
+            listOf("day-2026-08-13", "timer"),
+            rows.map { it.key },
+        )
+    }
+
+    @Test
+    fun `ordinary pause remains visible when no timer expiry caused it`() {
+        val stoppedAt = Instant.parse("2026-08-13T20:00:00Z")
+        val rows = rowsFor(
+            listOf(event("pause", PlaybackEvent.Pause, stoppedAt, 20.minutes)),
+            zone = OSLO,
+        )
+
+        assertEquals(listOf("day-2026-08-13", "pause"), rows.map { it.key })
+    }
+
+    @Test
+    fun `timer expiry does not hide a different pause`() {
+        val stoppedAt = Instant.parse("2026-08-13T20:00:00Z")
+        val rows = rowsFor(
+            listOf(
+                event("timer", PlaybackEvent.SleepTimerExpired, stoppedAt.plusMillis(25), 20.minutes),
+                event("pause", PlaybackEvent.Pause, stoppedAt, 20.minutes - 1.seconds),
+            ),
+            zone = OSLO,
+        )
+
+        assertEquals(listOf("day-2026-08-13", "timer", "pause"), rows.map { it.key })
+    }
+
+    private fun event(id: String, event: PlaybackEvent, at: Instant, to: Duration) = PlaybackHistoryEntry(
+        id = id,
+        event = event,
+        from = null,
+        to = to,
+        detail = null,
+        at = at,
+    )
 
     private fun at(local: String): Instant = ZonedDateTime.of(java.time.LocalDateTime.parse(local), OSLO).toInstant()
 
