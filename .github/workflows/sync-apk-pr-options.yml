@@ -14,7 +14,9 @@ on:
     branches:
       - main
     paths:
-      - '.github/workflows/apk.yml'
+      # Do not watch apk.yml itself: this workflow generates that file, and watching it causes
+      # every successful refresh to schedule a second no-op run. Generator/workflow changes still
+      # bootstrap automatically, and manual dispatch remains available.
       - '.github/workflows/sync-apk-pr-options.yml'
       - '.github/scripts/sync_apk_pr_options.py'
 
@@ -29,7 +31,8 @@ on:
 
 concurrency:
   group: sync-apk-pr-picker
-  cancel-in-progress: false
+  # The newest PR-list state wins; an older refresh is disposable once a newer event arrives.
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -111,7 +114,7 @@ jobs:
           git commit -m 'Refresh APK pull request choices'
 
           # `actions/checkout` did not persist GITHUB_TOKEN credentials, so gh installs the dedicated
-          # fine-grained token as Git's credential helper for this push. A PAT-authenticated workflow-file
-          # update can trigger this sync workflow once more; that second run sees no diff and exits.
+          # fine-grained token as Git's credential helper for this push. The generated apk.yml is not a
+          # trigger for this workflow, so a successful refresh does not recursively schedule a no-op run.
           gh auth setup-git
           git push origin HEAD:main
