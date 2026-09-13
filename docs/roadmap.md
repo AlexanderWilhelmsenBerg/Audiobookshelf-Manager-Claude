@@ -169,7 +169,7 @@ Start these only after playback ownership is stable enough that every surface ca
 
 - **#101** remains open technical cleanup. Delete stale playback data adapters only when current callers/tests prove they are truly retired; do not let cleanup destabilize the correctness chain.
 - **#132** remains open as the documentation follow-up that identified the stale committed-PR chain and superseded Android Auto experiment wording. This roadmap reconciliation addresses that canonical-roadmap portion; close the issue only when its acceptance criteria are actually satisfied by merged documentation.
-- Dependency/toolchain work follows the pinned version catalog, accepted ADRs and the current latest-stable compatibility documentation. **#135 is closed**, so it is not an active roadmap blocker or implementation wave.
+- **#135 / BW-DEP-01 is open** and is owned separately by the Build & Dependencies Agent. `docs/latest-stable-upgrade-plan.md` remains its detailed execution plan; dependency novelty does not outrank the correctness sequence above, and this documentation task does not execute any upgrade phase.
 
 ## Historical boundaries — completed, not active work
 
@@ -181,7 +181,7 @@ These are retained because they define ownership or explain why older roadmap wo
 - **PR #113 / issue #103 — merged/completed:** established the canonical documentation/roadmap authority. The old “committed PR chain” from that snapshot is no longer active.
 - **PR #131 — merged:** Codex/build compatibility preparation and staged dependency plan.
 - **PR #136 / issue #107 — merged/completed:** safe download recovery presentation state. #108/#109 now build on it.
-- **PR #137 — merged:** dependency compatibility inventory for #135. Issue #135 is now closed/completed and must not remain in the active queue.
+- **PR #137 — merged:** Phase 0 dependency compatibility inventory for #135 only. It changed documentation, not dependency/toolchain versions, and did not complete #135; the execution issue remains open under the Build & Dependencies Agent.
 - **PR #140 / issue #138 — merged/closed:** cold Media3 playback resumption now lets the first loaded-item Play pass through the existing shared freshness owner. Do not schedule #138 as active work or introduce another cold-resume algorithm.
 - **PR #146 / issue #142 — merged/completed:** shutdown now captures the final session snapshot before player detachment.
 - **PR #149 / issue #115 — merged/completed:** one durable per-profile, device-local remembered audiobook identity now owns which book this device remembers.
