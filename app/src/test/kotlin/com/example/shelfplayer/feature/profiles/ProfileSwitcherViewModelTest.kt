@@ -37,6 +37,7 @@ import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.domain.usecase.RemoveProfileUseCase
 import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
@@ -73,6 +74,7 @@ class ProfileSwitcherViewModelTest {
     private val libraries = StubLibraries()
     private val backgroundSync = RecordingBackgroundSync()
     private val preferences = FakePreferences()
+    private val rememberedBooks = FakeRememberedBooks()
     private val locks = FakeLocks()
 
     /** PRODUCT_SPEC 6.5.6 — what the restore asked the player to do, if anything. */
@@ -100,11 +102,12 @@ class ProfileSwitcherViewModelTest {
         ),
         RestoreProfilePlaybackUseCase(
             library = libraries,
+            rememberedBooks = rememberedBooks,
             player = startupPlayer,
             logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
         ),
         auth,
-        RemoveProfileUseCase(auth, backgroundSync, preferences),
+        RemoveProfileUseCase(auth, backgroundSync, preferences, rememberedBooks),
         locks,
     )
 
@@ -156,6 +159,8 @@ class ProfileSwitcherViewModelTest {
     fun `removing a profile removes only that one`() = runTest {
         profiles.setProfiles(listOf(ada, grace))
         profiles.setActive(ada.id)
+        rememberedBooks.remember(ada.id, LibraryItemId("ada-book"))
+        rememberedBooks.remember(grace.id, LibraryItemId("grace-book"))
         val viewModel = viewModel()
         val state = observed(viewModel)
 
@@ -163,6 +168,12 @@ class ProfileSwitcherViewModelTest {
 
         assertEquals(listOf(ada.id), auth.removedProfiles)
         assertEquals(listOf("grace"), state.value.profiles.map { it.profile.displayName })
+        assertNull(rememberedBooks.rememberedBook(ada.id), "removed profile must lose its remembered book")
+        assertEquals(
+            LibraryItemId("grace-book"),
+            rememberedBooks.rememberedBook(grace.id),
+            "removing one profile must not clear another profile's remembered book",
+        )
     }
 
     /** Removing the last profile is what sends the navigation graph back to onboarding. */
@@ -502,6 +513,7 @@ class ProfileSwitcherViewModelTest {
         profiles.setProfiles(listOf(ada, grace))
         profiles.setActive(ada.id)
         libraries.books = listOf(playedBook("half-finished"))
+        rememberedBooks.remember(grace.id, LibraryItemId("half-finished"))
 
         viewModel().onProfileSelected(grace.id)
 
@@ -522,6 +534,7 @@ class ProfileSwitcherViewModelTest {
         profiles.setProfiles(listOf(ada, grace))
         profiles.setActive(ada.id)
         libraries.books = listOf(playedBook("half-finished"))
+        rememberedBooks.remember(grace.id, LibraryItemId("half-finished"))
         auth.restoreStatus = SessionStatus.ReauthenticationRequired
 
         viewModel().onProfileSelected(grace.id)
@@ -535,6 +548,7 @@ class ProfileSwitcherViewModelTest {
         profiles.setProfiles(listOf(ada, grace))
         profiles.setActive(ada.id)
         libraries.books = listOf(playedBook("half-finished"))
+        rememberedBooks.remember(grace.id, LibraryItemId("half-finished"))
         profiles.refuseSwitches()
 
         viewModel().onProfileSelected(grace.id)
@@ -553,6 +567,7 @@ class ProfileSwitcherViewModelTest {
         profiles.setProfiles(listOf(ada, grace))
         profiles.setActive(ada.id)
         libraries.books = listOf(playedBook("half-finished"))
+        rememberedBooks.remember(grace.id, LibraryItemId("half-finished"))
         locks.setLocked(grace.id, passcode = PASSCODE)
         val viewModel = viewModel()
         viewModel.onProfileSelected(grace.id)
@@ -619,6 +634,22 @@ class ProfileSwitcherViewModelTest {
 
         override suspend fun play(bookId: LibraryItemId) {
             played += bookId
+        }
+    }
+
+    private class FakeRememberedBooks : RememberedBookRepository {
+        private val values = mutableMapOf<ProfileId, LibraryItemId>()
+
+        override suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? = values[profileId]
+
+        override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> {
+            values[profileId] = bookId
+            return AppResult.Success(Unit)
+        }
+
+        override suspend fun forget(profileId: ProfileId): AppResult<Unit> {
+            values.remove(profileId)
+            return AppResult.Success(Unit)
         }
     }
 

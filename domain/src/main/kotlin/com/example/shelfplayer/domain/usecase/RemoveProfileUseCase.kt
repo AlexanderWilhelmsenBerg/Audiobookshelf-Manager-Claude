@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import javax.inject.Inject
 
@@ -23,15 +24,17 @@ class RemoveProfileUseCase @Inject constructor(
     private val authRepository: AuthRepository,
     private val backgroundSync: BackgroundSync,
     private val preferences: PreferencesRepository,
+    private val rememberedBooks: RememberedBookRepository,
 ) {
     suspend operator fun invoke(profileId: ProfileId): AppResult<Unit> {
         backgroundSync.cancel(profileId)
-        // PRODUCT_SPEC SET-001 — the preferences go with it. They live in DataStore rather than in
-        // Room, so no foreign key removes them: without this the map grows a dead entry per removed
-        // account, and a profile id a server reissues would inherit the arrangement of the account it
-        // replaced. The result is deliberately not checked — a preference that outlives its profile is
-        // an untidy file, and failing the removal over it would leave the credential in place instead.
+        // PRODUCT_SPEC SET-001 / BW-PLAY-01 — device-local profile state goes with the account. These
+        // stores are outside Room, so no foreign key can clean them up. A server that later reissues the
+        // same stable profile id must not inherit either the removed account's preferences or its book.
+        // Cleanup failures deliberately do not block credential removal: stale local metadata is safer
+        // than leaving an account credential in place because a best-effort housekeeping write failed.
         preferences.forget(profileId)
+        rememberedBooks.forget(profileId)
         return authRepository.removeProfile(profileId)
     }
 }

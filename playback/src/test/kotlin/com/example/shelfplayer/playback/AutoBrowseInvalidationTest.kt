@@ -151,6 +151,7 @@ class AutoBrowseInvalidationTest {
         context = ApplicationProvider.getApplicationContext(),
         profiles = profiles,
         library = EmptyLibrary,
+        rememberedBooks = FakeRememberedBooks(),
         history = NoHistory,
         homeShelves = ObserveHomeShelvesUseCase(profiles, EmptyLibrary, UnconfinedTestDispatcher()),
         audioOutputs = FakeAutoOutputs(),

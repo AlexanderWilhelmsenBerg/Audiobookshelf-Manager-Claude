@@ -318,6 +318,10 @@ class AutoChapterProgressTest {
             context = ApplicationProvider.getApplicationContext(),
             profiles = profiles,
             library = library,
+            rememberedBooks = FakeRememberedBooks(
+                books.value.firstOrNull { it.progress?.isFinished == false }?.id,
+                PROFILE,
+            ),
             history = StubHistory(),
             homeShelves = ObserveHomeShelvesUseCase(profiles, library, UnconfinedTestDispatcher()),
             audioOutputs = FakeAutoOutputs(),
