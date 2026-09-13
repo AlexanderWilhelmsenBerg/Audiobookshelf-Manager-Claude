@@ -12,9 +12,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.auth.AccountProgress
-import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
-import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
@@ -39,7 +37,27 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 
-/** PRODUCT_SPEC AUTO-002 — a browser is never left showing another account's rows. */
+/**
+ * PRODUCT_SPEC 5.2 / ROUTE-001 — the car must be told when the tree it cached belongs to another account.
+ *
+ * ### The defect
+ *
+ * `onGetChildren` builds the browse tree on demand, which made it look self-updating. It is not. A browser
+ * fetches once and caches; Media3 re-asks only after `notifyChildrenChanged`, and nothing called it. A head
+ * unit therefore kept whatever it had loaded first — **including the previous profile's book titles after a
+ * switch**, in front of whoever else is in the car. That is a profile boundary rather than stale UI.
+ *
+ * ### What this covers, and what it cannot
+ *
+ * It covers the signal: that changing the active profile produces exactly one invalidation, and that
+ * ordinary re-emissions of the *same* profile produce none — a notification per library write would spend
+ * the car's binder on nothing.
+ *
+ * It cannot cover the delivery. `MediaLibrarySession.notifyChildrenChanged` needs a real session and a real
+ * connected browser, which is `:playback`'s absent instrumented tier and, past that, the Desktop Head Unit.
+ * `AutoBrowseInvalidationTest` proving the flow and a DHU run proving the car acts on it are two different
+ * jobs; only the first one runs here.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -172,36 +190,51 @@ class AutoBrowseInvalidationTest {
 
         /** Re-emits the same profile with a different unrelated field, as a permission refresh would. */
         fun touch() {
-            active.value = active.value?.copy(lastUsedAt = (active.value?.lastUsedAt ?: Instant.EPOCH).plusSeconds(1))
+            val current = active.value ?: return
+            active.value = current.copy(lastUsedAt = Instant.ofEpochMilli(1_000))
         }
 
         fun signOut() {
             active.value = null
         }
 
-        override fun observeActiveProfile(): Flow<Profile?> = active
-
         override fun observeProfiles(): Flow<List<Profile>> = flowOf(emptyList())
 
-        override suspend fun activeProfile(): Profile? = active.value
+        override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
 
-        override suspend fun profile(profileId: ProfileId): Profile? = active.value?.takeIf { it.id == profileId }
+        override fun observeActiveProfile(): Flow<Profile?> = active
 
-        override suspend fun switchTo(profileId: ProfileId): AppResult<Unit> = error("not used")
+        override suspend fun activeProfileId(): ProfileId? = active.value?.id
+
+        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+
+        companion object {
+            fun profileOf(id: ProfileId) = Profile(
+                id = id,
+                serverId = SERVER,
+                username = "demo",
+                displayName = "Demo listener",
+                role = ProfileRole.Listener,
+                requiresReauthentication = false,
+                lastUsedAt = null,
+                isFixture = false,
+            )
+        }
     }
 
     private object EmptyLibrary : LibraryRepository {
-        override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = emptyFlow()
+        override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = flowOf(emptyList())
 
-        override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> = emptyFlow()
+        override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> = flowOf(null)
 
-        override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> = emptyFlow()
+        override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> = flowOf(emptyList())
 
         override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = flowOf(emptyList())
 
-        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId): Flow<List<Chapter>> = emptyFlow()
+        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId): Flow<List<Chapter>> =
+            flowOf(emptyList())
 
-        override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = emptyFlow()
+        override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = flowOf(null)
 
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> = emptyFlow()
 
@@ -210,28 +243,12 @@ class AutoBrowseInvalidationTest {
         override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> = AppResult.Success(0)
 
         override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> =
-            AppResult.Success(progress.size)
+            AppResult.Success(0)
     }
 
     private companion object {
-        val PROFILE = ProfileId("profile-1")
-        val OTHER = ProfileId("profile-2")
-        val SERVER = ServerId("server-1")
-
-        fun profileOf(id: ProfileId) = Profile(
-            id = id,
-            server = Server(
-                id = SERVER,
-                displayName = "Test server",
-                baseUrl = "https://books.example",
-                detectedVersion = "2.29.0",
-                isFixture = false,
-            ),
-            userId = "user-${id.value}",
-            displayName = id.value,
-            role = ProfileRole.Listener,
-            createdAt = Instant.EPOCH,
-            lastUsedAt = Instant.EPOCH,
-        )
+        val SERVER = ServerId("srv_books")
+        val PROFILE = ProfileId("prf_ada")
+        val OTHER = ProfileId("prf_grace")
     }
 }
