@@ -72,6 +72,7 @@ class SleepTimerController @Inject constructor(
     private val shakes: ShakeDetector,
     private val sessionSync: SessionSyncCoordinator,
     private val history: PlaybackHistoryRepository,
+    private val stopHistoryCause: PlaybackStopHistoryCause,
     private val clock: AppClock,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
@@ -90,11 +91,9 @@ class SleepTimerController @Inject constructor(
     private var running: Running? = null
 
     private data class Running(
-        val sessionId: String?,
         val mode: SleepTimerMode,
-        /** Elapsed-realtime millis at which a fixed timer fires. Unused by end-of-chapter. */
         val deadlineElapsedMs: Long,
-        /** How many chapter boundaries past the current one an end-of-chapter timer is aiming at. */
+        val sessionId: String?,
         val chapterSkip: Int,
     )
 
@@ -146,104 +145,70 @@ class SleepTimerController @Inject constructor(
             )
         }
         if (running != null) finish(SleepTimerOutcome.Cancelled)
-
-        val bookId = current.currentMediaItem?.let(MediaItems::bookIdOf)
-        running = Running(
-            sessionId = bookId?.let { recordStarted(it, mode) },
+        val result = repository.start(mode)
+        if (result is AppResult.Failure) return@withContext result
+        val started = Running(
             mode = mode,
             deadlineElapsedMs = deadlineFor(mode),
+            sessionId = current.currentMediaItem?.let(MediaItems::bookIdOf)?.let { bookId ->
+                recordStarted(bookId, mode)
+            },
             chapterSkip = 0,
         )
-        // PRODUCT_SPEC PLAY-003 — the device report asked for this: a timer being set is a decision about
-        // the book, and the history is where an evening gets reconstructed. The length travels as the
-        // detail, because "sleep timer" on its own says nothing a listener can use.
-        running?.let { started -> record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(started)) }
-        startSensing()
-        startTicking()
-        publish()
-        AppResult.Success(Unit)
-    }
-
-    /**
-     * PRODUCT_SPEC PLAY-008 — "a notification action extends the timer by the configured amount".
-     *
-     * Adds to what is left rather than replacing it, which is what "extends" means and what makes a
-     * second press worth pressing.
-     */
-    fun extend() = adjust(restart = false)
-
-    /**
-     * ADR-0014 — a shake puts the timer back to its full length.
-     *
-     * The difference from [extend] shows on a timer nearly done: extending a thirty-minute timer with
-     * one minute left gives thirty-one minutes; restarting gives thirty. Restarting is what somebody
-     * fumbling for their phone in the dark means.
-     */
-    fun restart() = adjust(restart = true)
-
-    fun cancel() {
-        applicationScope.launch(mainDispatcher) { finish(SleepTimerOutcome.Cancelled) }
-    }
-
-    private fun adjust(restart: Boolean) {
-        applicationScope.launch(mainDispatcher) {
-            val current = running ?: return@launch
-            val next = when (val mode = current.mode) {
-                is SleepTimerMode.Fixed -> {
-                    val base = if (restart) Duration.ZERO else remainingOf(current)
-                    current.copy(
-                        deadlineElapsedMs =
-                        clock.elapsed().inWholeMilliseconds + (base + mode.length).inWholeMilliseconds,
-                    )
-                }
-
-                SleepTimerMode.EndOfChapter -> current.copy(chapterSkip = current.chapterSkip + 1)
-            }
-            // An end-of-chapter timer at the last chapter cannot reach further. Leaving it where it is
-            // — rather than cancelling, or silently becoming a fixed timer — is the honest answer: the
-            // book ends there, and so does the timer.
-            if (next.mode == SleepTimerMode.EndOfChapter && remainingToChapterEnd(next.chapterSkip) == null) {
-                logger.info(LogCategory.Playback, "The sleep timer is already at the last chapter")
-                return@launch
-            }
-            running = next
-            restorePlayerVolume()
-            next.sessionId?.let { id -> repository.recordRestarted(id) }
-            logger.info(
-                LogCategory.Playback,
-                if (restart) "The sleep timer was restarted" else "The sleep timer was extended",
-            )
-            // PRODUCT_SPEC PLAY-003 — the device report named this one specifically: *"the shake to extend
-            // won't give an event in history"*. Both routes land here, and both are recorded, because from
-            // the listener's side they are the same event — the timer moved and they want to know when.
-            record(PlaybackEvent.SleepTimerExtended, detail = remainingOf(next))
-            publish()
-        }
-    }
-
-    /** PRODUCT_SPEC PLAY-008 — sensing starts with a timer and only when the user opted in. */
-    private fun startSensing() {
-        if (!settings.shakeToRestart) return
-        shakes.start(::restart)
-    }
-
-    private fun startTicking() {
+        running = started
+        shakes.start { applicationScope.launch(mainDispatcher) { restart() } }
         ticker?.cancel()
         ticker = applicationScope.launch(mainDispatcher) {
             while (isActive && running != null) {
                 tick()
-                delay(TICK_MS)
+                delay(TICK_INTERVAL)
             }
         }
+        running?.let { currentRunning -> publish(remainingOf(currentRunning), isFading = false) }
+        running?.let { started -> record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(started)) }
+        AppResult.Success(Unit)
+    }
+
+    /** PRODUCT_SPEC PLAY-008 — extend by the configured amount, from the notification action. */
+    suspend fun extend(): AppResult<Unit> = withContext(mainDispatcher) {
+        val current = running ?: return@withContext AppResult.Failure(
+            AppError.Validation(summary = "No sleep timer is running."),
+        )
+        val amount = settings.extendBy
+        val next = when (current.mode) {
+            is SleepTimerMode.Fixed -> current.copy(deadlineElapsedMs = current.deadlineElapsedMs + amount.inWholeMilliseconds)
+            SleepTimerMode.EndOfChapter -> current.copy(chapterSkip = current.chapterSkip + 1)
+        }
+        running = next
+        repository.extend(amount)
+        publish(remainingOf(next), isFading = false)
+        record(PlaybackEvent.SleepTimerExtended, detail = remainingOf(next))
+        AppResult.Success(Unit)
     }
 
     /**
-     * One step of the countdown: recompute, fade, and stop at zero.
-     *
-     * Recomputed from the clock and the playback position every time rather than decremented. An
-     * end-of-chapter timer's remaining time moves with the playback speed, and a decrementing counter
-     * would drift from the moment the listener changed it.
+     * Product-owner choice — a shake **restarts** the configured timer rather than extending what is left.
      */
+    suspend fun restart(): AppResult<Unit> = withContext(mainDispatcher) {
+        val current = running ?: return@withContext AppResult.Failure(
+            AppError.Validation(summary = "No sleep timer is running."),
+        )
+        val next = when (current.mode) {
+            is SleepTimerMode.Fixed -> current.copy(deadlineElapsedMs = deadlineFor(current.mode))
+            SleepTimerMode.EndOfChapter -> current.copy(chapterSkip = current.chapterSkip + 1)
+        }
+        running = next
+        repository.restart()
+        publish(remainingOf(next), isFading = false)
+        AppResult.Success(Unit)
+    }
+
+    suspend fun cancel(): AppResult<Unit> = withContext(mainDispatcher) {
+        if (running == null) return@withContext AppResult.Success(Unit)
+        finish(SleepTimerOutcome.Cancelled)
+        AppResult.Success(Unit)
+    }
+
     private suspend fun tick() {
         val current = running ?: return
         val remaining = remainingOf(current)
@@ -251,9 +216,6 @@ class SleepTimerController @Inject constructor(
             expire()
             return
         }
-        // PLAY-008's fade is *optional*, and zero is how it is declined. `fadeVolume` would return full
-        // volume for a zero fade anyway; the guard is here so `isFading` cannot be reported true for a
-        // fade that is not happening, which is what the player's UI reads to show its fading state.
         val fade = settings.fadeLength
         player?.volume = if (fade > Duration.ZERO) SleepTimerMath.fadeVolume(remaining, fade) else FULL_VOLUME
         publish(remaining, isFading = fade > Duration.ZERO && remaining < fade)
@@ -273,31 +235,18 @@ class SleepTimerController @Inject constructor(
             "The sleep timer expired and paused playback",
             LogField.Public("mode", running?.mode?.let { it::class.simpleName }.orEmpty()),
         )
-        player?.pause()
-        record(PlaybackEvent.SleepTimerExpired)
+        val media = player
+        if (media?.playWhenReady == true) {
+            // #139 — PlaybackService remains the single owner of transport-end history. Mark this pause
+            // before asking Media3 to perform it so onPlayWhenReadyChanged writes SleepTimerExpired
+            // instead of a second unrelated Pause row for the same physical stop.
+            stopHistoryCause.markSleepTimerExpiry()
+        }
+        media?.pause()
         rewindAfterStop()
         finish(SleepTimerOutcome.Expired)
     }
 
-    /**
-     * PRODUCT_SPEC PLAY-008 / PLAY-009 — winds the book back after the timer stopped it.
-     *
-     * The owner asked for this by example: *"if I set on a sleep timer I can set rewind time for five
-     * minutes and it will rewind five minutes"*. Somebody who fell asleep does not know when they stopped
-     * following, only that it was a while before the timer fired — so the amount is theirs to choose and
-     * the app's job is to apply it exactly.
-     *
-     * **After the pause, not before.** Rewinding a playing book would be audible: five minutes of audio
-     * would start again and then stop. Paused first, moved second, and the listener finds the new position
-     * when they come back.
-     *
-     * Clamped to the start of the book, and **not** to the start of the chapter. Auto-rewind clamps to the
-     * chapter because a few seconds either side of a boundary is ambiguous; five minutes is not, and a
-     * listener who fell asleep across a chapter break wants the part they slept through, not the boundary.
-     *
-     * Off by default. A feature that moves a saved position without being asked is the one thing product
-     * priority 2 does not tolerate.
-     */
     private fun rewindAfterStop() {
         val amount = settings.rewindOnStop
         if (amount <= Duration.ZERO) return
@@ -315,15 +264,6 @@ class SleepTimerController @Inject constructor(
         record(PlaybackEvent.SleepTimerRewind, from = from, to = to)
     }
 
-    /**
-     * PRODUCT_SPEC PLAY-003 — a timer event, in the book's history.
-     *
-     * The device report that asked for this: *"starting sleep timer doesn't show"*. A timer is a decision
-     * about the book, and the history is where a listener looks to reconstruct an evening.
-     *
-     * Silent when there is no book. Everything here is a side effect of something that already happened,
-     * and none of it may prevent the timer from working (product priority 1).
-     */
     private fun record(event: PlaybackEvent, from: Duration? = null, to: Duration? = null, detail: Duration? = null) {
         val media = player ?: return
         val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf) ?: return
@@ -340,19 +280,10 @@ class SleepTimerController @Inject constructor(
         restorePlayerVolume()
         _state.value = SleepTimerState.Idle
         current.sessionId?.let { id -> repository.recordEnded(id, outcome) }
-        // PRODUCT_SPEC PLAY-004 — "sleep-timer stop" is one of the moments a position must reach the server.
-        // It is the moment that matters most of the list: a listener who fell asleep is not coming back to
-        // press anything, and the next thing this device does may be nothing at all for eight hours.
         sessionSync.request(SyncTrigger.SleepTimerStopped)
         sessionSync.drain()
     }
 
-    /**
-     * Volume back to full, always, on every path out of a timer.
-     *
-     * A cancelled fade that left the volume at `0.2` would be a listener whose book had gone quiet for
-     * no reason they could see and no control that fixed it.
-     */
     private fun restorePlayerVolume() {
         player?.volume = FULL_VOLUME
     }
@@ -368,7 +299,6 @@ class SleepTimerController @Inject constructor(
 
     private fun remainingToChapterEnd(skip: Int): Duration? {
         val current = player ?: return null
-        // ADR-0016 — the player's timeline *is* the book, so its position needs no conversion.
         return SleepTimerMath.remainingToChapterEnd(chapters, current.bookPosition(), skip)
     }
 
@@ -380,19 +310,9 @@ class SleepTimerController @Inject constructor(
     private suspend fun recordStarted(bookId: LibraryItemId, mode: SleepTimerMode): String? =
         when (val recorded = repository.recordStarted(bookId, mode)) {
             is AppResult.Success -> recorded.value
-            // A timer whose history could not be written still runs. The record is worth having and is
-            // not worth refusing to start a timer over (product priority 1).
             is AppResult.Failure -> null
         }
 
-    /**
-     * The settings, kept warm rather than read per tick.
-     *
-     * The fade is consulted once a second while a timer runs, and a DataStore read on each of those
-     * would be a file read a second for half an hour. Collecting once and holding the latest value
-     * costs one coroutine for the life of the process and is always at most one emission stale, which
-     * for "how long is the fade" is not a distinction anyone can hear.
-     */
     @Volatile
     private var settings: SleepTimerSettings = SleepTimerSettings.Default
 
@@ -408,7 +328,7 @@ class SleepTimerController @Inject constructor(
             _state.value = SleepTimerState.Idle
             return
         }
-        _state.value = SleepTimerState(
+        _state.value = SleepTimerState.Running(
             mode = current.mode,
             remaining = remaining ?: remainingOf(current),
             isFading = isFading,
@@ -416,8 +336,7 @@ class SleepTimerController @Inject constructor(
     }
 
     private companion object {
-        /** A countdown is read in minutes; a second is fine enough and is what the fade needs. */
-        val TICK_MS = 1.seconds.inWholeMilliseconds
+        val TICK_INTERVAL = 1.seconds
         const val FULL_VOLUME = 1f
     }
 }

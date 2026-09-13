@@ -57,20 +57,6 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 
-/**
- * PRODUCT_SPEC PLAY-003 — the history pane, populated from Audiobookshelf's own listening sessions.
- *
- * ### What the owner asked for, and the hole it fills
- *
- * *"Currently it only shows local events, but I want to have it populated from events from audiobookshelf
- * itself."* The remote rows that existed were **derived** — `LibrarySnapshotWriter.recordRemoteChange` diffs
- * stored progress against a sync — and that has two holes it cannot close: it needs a previous local row, so
- * a book listened to elsewhere and never played here produces nothing; and it sees only the endpoints, so
- * two sessions between syncs collapse into one.
- *
- * These cover the import that replaces the reconstruction, against a **real database** rather than a mocked
- * DAO, because three of the four properties are about what the table ends up holding.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -104,14 +90,6 @@ class ServerSessionHistoryTest {
     @After
     fun tearDown() = database.close()
 
-    // ------------------------------------------------------------------ the hole this closes
-
-    /**
-     * **A book this device has never played still gets a history row.**
-     *
-     * This is the case the derived remote history could not reach at all: with no local row to diff against,
-     * `recordRemoteChange` returned early and the pane stayed empty while the position had plainly moved.
-     */
     @Test
     fun `a session from another device becomes a history row`() = runTest {
         gateway.sessions = listOf(session(id = "s1", deviceId = OTHER_DEVICE))
@@ -120,124 +98,98 @@ class ServerSessionHistoryTest {
 
         val row = repository.observe(BOOK).first().single()
         assertEquals(PlaybackEvent.ServerSession, row.event)
-        assertEquals(2.hours, row.from, "where the session opened, which is where tapping the row returns")
+        assertEquals(2.hours, row.from)
         assertEquals(3.hours, row.to)
-        assertEquals(20.minutes, row.detail, "how much was actually listened, not the span")
-        assertEquals(STARTED_AT, row.at, "the server's own start time, not when the fetch noticed")
+        assertEquals(20.minutes, row.detail)
+        assertEquals(STARTED_AT, row.at)
     }
 
-    /**
-     * **Importing the same session twice is one row, not two.**
-     *
-     * The pane refreshes every time it is opened, so this is the ordinary path rather than an edge case. The
-     * row's key is derived from the session's own id, which is what makes the write idempotent — and is why
-     * persisting these needed no Room migration.
-     */
     @Test
     fun `the same session imported twice stays one row`() = runTest {
         gateway.sessions = listOf(session(id = "s1", deviceId = OTHER_DEVICE))
-
         repository.refreshServerSessions(BOOK)
         repository.refreshServerSessions(BOOK)
-
         assertEquals(1, repository.observe(BOOK).first().size)
     }
 
-    // ------------------------------------------------------------------ what is deliberately not imported
-
-    /**
-     * **This device's own sessions are not imported**, because the player already writes `Play` and `Pause`
-     * rows for them and a second account of the same listening is noise.
-     *
-     * Told apart by the per-install id the app sends when it opens a session, which is the only thing that
-     * distinguishes them — the server has no notion of "this client".
-     */
     @Test
     fun `a session from this device is not imported`() = runTest {
         gateway.sessions = listOf(session(id = "s1", deviceId = THIS_DEVICE))
-
         repository.refreshServerSessions(BOOK)
-
         assertTrue(repository.observe(BOOK).first().isEmpty())
     }
 
-    /**
-     * A session that listened to nothing is not a row.
-     *
-     * Opening a book and closing it leaves a zero-second session on the server, and "somebody listened for
-     * no time" is a line that costs a reader attention and tells them nothing.
-     */
     @Test
     fun `a session with nothing listened is not imported`() = runTest {
         gateway.sessions = listOf(session(id = "s1", deviceId = OTHER_DEVICE, listened = Duration.ZERO))
-
         repository.refreshServerSessions(BOOK)
-
         assertTrue(repository.observe(BOOK).first().isEmpty())
     }
 
-    /** The endpoint is account-wide, so another book's sessions must not land on this one. */
     @Test
     fun `another book's session is not imported`() = runTest {
         gateway.sessions = listOf(
             session(id = "s1", deviceId = OTHER_DEVICE, bookId = LibraryItemId("some-other-book")),
         )
-
         repository.refreshServerSessions(BOOK)
-
         assertTrue(repository.observe(BOOK).first().isEmpty())
     }
 
-    /**
-     * A session with **no** device id counts as another device's.
-     *
-     * The alternative drops a real session from a client that did not identify itself, and a duplicate row
-     * is a smaller loss than a missing one.
-     */
     @Test
     fun `a session with no device id is treated as another device's`() = runTest {
         gateway.sessions = listOf(session(id = "s1", deviceId = null))
-
         repository.refreshServerSessions(BOOK)
-
         assertEquals(1, repository.observe(BOOK).first().size)
     }
 
-    // ------------------------------------------------------------------ failure
-
-    /**
-     * **A failed refresh leaves the stored history alone**, rather than clearing it or surfacing an error.
-     *
-     * This is the offline case, and it is the argument for persisting rather than merging at read time: the
-     * rows imported by an earlier refresh are exactly what somebody wants to see when the network is gone.
-     */
     @Test
     fun `a failed fetch keeps what was already imported`() = runTest {
         gateway.sessions = listOf(session(id = "s1", deviceId = OTHER_DEVICE))
         repository.refreshServerSessions(BOOK)
-
         gateway.fails = true
         repository.refreshServerSessions(BOOK)
-
-        assertEquals(1, repository.observe(BOOK).first().size, "the imported row survives an outage")
+        assertEquals(1, repository.observe(BOOK).first().size)
     }
 
-    /** PRODUCT_SPEC 14.5 — nothing private reaches the log: no title, no device name, no book id. */
     @Test
     fun `the import logs counts and no private data`() = runTest {
         gateway.sessions = listOf(session(id = "s1", deviceId = OTHER_DEVICE))
-
         repository.refreshServerSessions(BOOK)
-
-        // `text` is the rendered line *after* redaction, which is what would actually be pasted into a
-        // support report — a stronger check than inspecting the fields before they are formatted.
         val rendered = sink.text
         for (secret in listOf(TITLE, OTHER_DEVICE_NAME, BOOK.value)) {
             assertTrue(secret !in rendered, "$secret reached the log")
         }
     }
 
-    // ------------------------------------------------------------------ fixtures
+    @Test
+    fun `a local pause persists without a server round trip`() = runTest {
+        gateway.fails = true
+        repository.record(
+            bookId = BOOK,
+            event = PlaybackEvent.Pause,
+            from = null,
+            to = 3.hours,
+            owner = profileId,
+        )
+        val row = repository.observe(BOOK).first().single()
+        assertEquals(PlaybackEvent.Pause, row.event)
+        assertEquals(3.hours, row.to)
+    }
+
+    @Test
+    fun `a sleep timer stop persists with its explicit cause`() = runTest {
+        gateway.fails = true
+        repository.record(
+            bookId = BOOK,
+            event = PlaybackEvent.SleepTimerExpired,
+            from = null,
+            to = 3.hours,
+            owner = profileId,
+        )
+        val row = repository.observe(BOOK).first().single()
+        assertEquals(PlaybackEvent.SleepTimerExpired, row.event)
+        assertEquals(3.hours, row.to)
+    }
 
     private fun session(id: String, deviceId: String?, bookId: LibraryItemId = BOOK, listened: Duration = 20.minutes) =
         ListeningSession(
@@ -258,138 +210,96 @@ class ServerSessionHistoryTest {
         deviceId = THIS_DEVICE,
         manufacturer = "fixture",
         model = "fixture",
-        sdkVersion = 34,
     )
 
     private suspend fun seedProfile() {
-        database.profileDao().upsertServer(
+        database.serverDao().upsert(
             ServerEntity(
-                serverId = SERVER,
-                displayName = "Demo",
-                baseUrl = "https://fixture.invalid",
-                detectedVersion = "fixture-0",
-                isFixture = true,
-                lastFetchedAt = 0,
-                authMethodsJson = "[]",
-                capabilitiesJson = "[]",
-                capabilitiesDetectedAt = null,
+                serverId = SERVER.value,
+                displayName = "Fixture Server",
+                normalizedBaseUrl = "https://example.invalid",
+                lastConnectedAt = 0,
             ),
         )
-        database.profileDao().upsertProfile(
+        database.profileDao().upsert(
             ProfileEntity(
                 profileId = profileId.value,
-                serverId = SERVER,
-                remoteUserId = null,
-                username = "demo",
-                displayName = "Demo listener",
-                role = "Listener",
-                requiresReauthentication = false,
-                lastUsedAt = null,
-                isFixture = true,
-                accessibleLibrariesJson = "[]",
-                hasAllLibraryAccess = true,
-                hasAllTagAccess = true,
-                canDownload = false,
+                serverId = SERVER.value,
+                userId = "user",
+                username = "fixture",
+                displayName = "Fixture",
+                role = ProfileRole.User.name,
+                permissionsJson = "[]",
+                permissionsHash = "hash",
+                createdAt = 0,
+                lastUsedAt = 0,
+                isLocked = false,
+                lockMode = null,
             ),
         )
     }
 
-    /** A gateway whose only working half is the session read this test is about. */
-    private class RecordingSessionGateway :
-        AudiobookshelfGateway,
-        PlaybackApi {
-        var sessions: List<ListeningSession> = emptyList()
-        var fails: Boolean = false
-
-        override val playback: PlaybackApi get() = this
-
-        override suspend fun listeningSessions(
-            profileId: ProfileId,
-            page: Int,
-            itemsPerPage: Int,
-        ): AppResult<List<ListeningSession>> = if (fails) {
-            AppResult.Failure(AppError.Network(summary = "No connection."))
-        } else {
-            AppResult.Success(sessions)
-        }
-
-        override suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
-            unused()
-        override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> =
-            unused()
-
-        override suspend fun syncSession(
-            profileId: ProfileId,
-            sessionId: String,
-            progress: SessionProgress,
-        ): AppResult<Unit> = unused()
-
-        override suspend fun closeSession(
-            profileId: ProfileId,
-            sessionId: String,
-            progress: SessionProgress,
-        ): AppResult<Unit> = unused()
-
-        override suspend fun syncOfflineSessions(
-            profileId: ProfileId,
-            sessions: List<OfflineSession>,
-        ): AppResult<List<OfflineSessionResult>> = unused()
-
-        override suspend fun setFinished(
-            profileId: ProfileId,
-            bookId: LibraryItemId,
-            isFinished: Boolean,
-            position: Duration,
-        ): AppResult<Unit> = unused()
-
-        override val auth: AuthApi get() = unused()
-        override val capabilities: CapabilityResolver get() = unused()
-        override val library: LibraryApi get() = unused()
-        override val bookmarks: BookmarkApi get() = unused()
-        override val downloads: DownloadApi get() = unused()
-        override val management: ManagementApi get() = unused()
-
-        private fun <T> unused(): T = error("not part of this test")
-    }
-
-    /** The active profile, without a database of profiles behind it. */
-    private class StubProfiles(private var active: ProfileId?) : ProfileRepository {
-        override fun observeProfiles(): Flow<List<Profile>> = flowOf(emptyList())
-
-        override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
-
-        override fun observeActiveProfile(): Flow<Profile?> = MutableStateFlow(
-            active?.let { id ->
-                Profile(
-                    id = id,
-                    serverId = ServerId(SERVER),
-                    username = "demo",
-                    displayName = "Demo listener",
-                    role = ProfileRole.Listener,
-                    requiresReauthentication = false,
-                    lastUsedAt = null,
-                    isFixture = true,
-                )
-            },
+    private class StubProfiles(private val profileId: ProfileId) : ProfileRepository {
+        private val profile = Profile(
+            id = profileId,
+            serverId = SERVER,
+            userId = "user",
+            username = "fixture",
+            displayName = "Fixture",
+            role = ProfileRole.User,
+            permissions = emptySet(),
+            permissionsHash = "hash",
+            createdAt = Instant.EPOCH,
+            lastUsedAt = Instant.EPOCH,
+            isLocked = false,
+            lockMode = null,
         )
-
-        override suspend fun activeProfileId(): ProfileId? = active
-
-        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
-            active = profileId
-            return AppResult.Success(Unit)
-        }
+        override fun observeProfiles(): Flow<List<Profile>> = flowOf(listOf(profile))
+        override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
+        override fun observeActiveProfile(): Flow<Profile?> = flowOf(profile)
+        override suspend fun activeProfileId(): ProfileId = profileId
+        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
     }
 
-    private companion object {
-        const val SERVER = "fixture-server"
-        const val THIS_DEVICE = "install-abc"
-        const val OTHER_DEVICE = "install-xyz"
-        const val OTHER_DEVICE_NAME = "Marisol's iPad"
-        const val TITLE = "The Salt Harbour"
-        val BOOK = LibraryItemId("book-salt-harbour")
+    private class RecordingSessionGateway : AudiobookshelfGateway {
+        var sessions: List<ListeningSession> = emptyList()
+        var fails = false
+        override val auth: AuthApi = noOp()
+        override val library: LibraryApi = noOp()
+        override val playback: PlaybackApi = object : PlaybackApi {
+            override suspend fun openSession(bookId: LibraryItemId): AppResult<PlaybackSession> = AppResult.Failure(AppError.Network())
+            override suspend fun listListeningSessions(profileId: ProfileId): AppResult<List<ListeningSession>> =
+                if (fails) AppResult.Failure(AppError.Network()) else AppResult.Success(sessions)
+            override suspend fun progress(bookId: LibraryItemId): AppResult<ServerProgress?> = AppResult.Success(null)
+            override suspend fun updateProgress(bookId: LibraryItemId, progress: SessionProgress): AppResult<Unit> = AppResult.Success(Unit)
+            override suspend fun syncOfflineSession(session: OfflineSession): AppResult<OfflineSessionResult> = AppResult.Failure(AppError.Network())
+        }
+        override val bookmarks: BookmarkApi = noOp()
+        override val downloads: DownloadApi = noOp()
+        override val management: ManagementApi = noOp()
+        override val capabilityResolver: CapabilityResolver = noOp()
 
-        /** A moment well before the test clock, so "the server's own time" is distinguishable. */
-        val STARTED_AT: Instant = Instant.ofEpochSecond(1_700_000_000)
+        @Suppress("UNCHECKED_CAST")
+        private inline fun <reified T> noOp(): T = Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ ->
+            when (method.returnType) {
+                java.lang.Boolean.TYPE -> false
+                java.lang.Integer.TYPE -> 0
+                java.lang.Long.TYPE -> 0L
+                java.lang.Float.TYPE -> 0f
+                java.lang.Double.TYPE -> 0.0
+                java.lang.Void.TYPE -> Unit
+                else -> null
+            }
+        } as T
+    }
+
+    companion object {
+        private val SERVER = ServerId("fixture-server")
+        private val BOOK = LibraryItemId("book")
+        private const val THIS_DEVICE = "this-device"
+        private const val OTHER_DEVICE = "other-device"
+        private const val OTHER_DEVICE_NAME = "Other device"
+        private const val TITLE = "Private title"
+        private val STARTED_AT = Instant.parse("2026-08-20T20:00:00Z")
     }
 }

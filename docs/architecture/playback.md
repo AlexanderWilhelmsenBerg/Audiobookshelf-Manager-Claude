@@ -1,24 +1,22 @@
-# Playback architecture
+# Playback Architecture
 
-**Classification:** Current contract for `main`, plus clearly marked pending contracts from the committed PR chain.  
-**Current as reviewed:** 2026-09-12.
+This document defines the current ownership and correctness boundaries for BookWave playback.
 
-This document is the compact entry point for BookWave's playback correctness architecture. Detailed ADRs, bug investigations and reviews remain the evidence for why these rules exist.
+It is not a second product specification. User-facing behavior belongs in `PRODUCT_SPEC.md`; sequencing belongs in `docs/roadmap.md`; accepted architectural decisions belong in ADRs; test commands belong in `docs/testing.md`.
 
-## Core principle: evidence is not authority
+## Ownership map
 
-BookWave receives playback facts from several places:
-
-- local Media3/ExoPlayer movement;
-- durable local progress/journal state;
-- acknowledged pause/session writes;
-- REST/session queries;
-- realtime server progress events;
-- external media commands such as notification, headset and car Play.
-
-Those sources may provide **evidence** that the server or another device has moved. They must not independently seek the player or invent their own resume rule.
-
-A playback decision belongs at a named policy/service boundary and all UI/system surfaces should enter that boundary.
+| Concern | Primary owner | Notes |
+|---|---|---|
+| Media3 player/session lifecycle | `:playback` | One player/session owner; UI and external controllers must not fork playback policy. |
+| Playback session open | `OpenPlaybackSessionUseCase` + playback repository | One session-open path for phone, car and other Media3 surfaces. |
+| Resume freshness | `ResumeFreshnessCoordinator` | One freshness authority for all standard Play commands. |
+| Device-local remembered audiobook identity | `RememberedBookRepository` | Per-profile identity written only by actual local playback; remote progress cannot replace it. |
+| Local position journal / durable sync input | playback repository + sync outbox | Local progress durability must not depend on immediate server availability. |
+| Realtime progress evidence | realtime evidence store / book-change bridge | Evidence for policy and UI, not a direct player mutation path. |
+| Playback history | playback history repository | Local events and imported remote evidence have explicit ownership. |
+| Audio routing | `AudioOutputRouter` / route policy owner | Routing observations and user intent must not be conflated. |
+| Android Auto browse surface | `AutoLibrary` + media service callback | Browse presentation consumes playback/library state; it does not own playback policy. |
 
 ## One audiobook is one playback timeline
 
@@ -47,41 +45,42 @@ This separation is deliberate: a transport/event callback does not own user inte
 
 When this device pauses and the server acknowledges the position, that acknowledgement is meaningful evidence about the server baseline. It must not be discarded simply because a later Play originates outside the app UI.
 
-Once local playback moves again, that paused baseline becomes stale and must be invalidated for future freshness decisions.
+The resume decision compares:
 
-## Unified resume freshness
+- local Room position;
+- durable acknowledged-pause evidence;
+- recent realtime evidence;
+- bounded REST freshness when needed.
 
-PR #93 established `ResumeFreshnessCoordinator` as the one owner for standard Play resume freshness.
+## Resume freshness decision table
 
-The current contract is:
+All standard Play commands — in-app, notification, headset/Bluetooth, Android Auto and other Media3 controllers — must converge on the same freshness owner.
 
-- app Play, notification/system Play, headset Play and car Play use the same policy;
-- realtime evidence can prove newer remote movement;
-- REST/session query remains a correctness fallback when evidence is insufficient;
-- acknowledged paused state is valid baseline evidence;
-- local movement invalidates stale evidence;
-- intentional remote rewinds are preserved, including a trusted rewind to `0:00`; never replace the rule with `max(position)`;
-- small drift within the product threshold continues locally, while meaningful remote movement is adopted;
-- wrong-profile, wrong-book, stale-generation and own-session echo evidence is rejected.
+| Evidence | Required behavior |
+|---|---|
+| No loaded resumable item | Use normal media/session resolution; do not invent a position. |
+| Fresh local state with no newer trusted evidence | Resume local position. |
+| Recent trusted realtime evidence for the same profile/book | Consider it in the shared freshness decision. |
+| Server check required and succeeds | Use the shared policy result; do not create a caller-specific rule. |
+| Server check unavailable | Apply the documented bounded fallback; do not block Play indefinitely. |
+| Profile/book changes while check is running | Supersede the stale decision. |
+| Seek/auto-rewind/other local move races a check | Newer local intent wins; stale result must not overwrite it. |
 
-A fresh-session first-Play exemption is narrower than "new `/play` means authoritative". It may be minted only when one direct BookWave action opens the server session and immediately issues Play. Service-owned browse/arm opens do not get it.
+PR #93 established the shared owner. PR #140 / #138 extended the same policy to Media3 cold playback resumption: `onPlaybackResumption` may stage the remembered session/position so Media3 can load the queue, but that position is not trusted merely because it came from the cold-resumption handoff. The first loaded Play still enters `ResumeFreshnessCoordinator`, which consumes the staged cold start as fresh-start context and applies the same bounded REST/realtime/local decision used by warm controller Play. If the server is unavailable, the staged/session position remains the fallback; if a newer trusted position exists, the coordinator may replace it before audio starts. A newer seek/Pause/book/profile change supersedes the cold plan exactly like any other in-flight freshness plan.
 
-Cold Media3 playback resumption is also explicitly excluded. `MediaSession.Callback.onPlaybackResumption(isForPlayback = true)` opens the real Audiobookshelf session and returns media for Media3 to install; Media3 then issues a loaded-item Play. That loaded Play must enter `ResumeFreshnessCoordinator` before raw Play because a newly opened `/play` position can still be stale or zero. The REST fallback remains bounded by the coordinator's timeout, and an unavailable check preserves the installed local position rather than inventing movement.
+This separation matters:
 
-If the still-valid acknowledged baseline and Media3's installed position have diverged without a local-movement invalidation, a successful REST check may prove that the server still agrees with that baseline. In that case the coordinator restores the verified baseline before audio starts. That restore is not another device's progress and must not be recorded as remote movement. If the REST lookup is unavailable, the coordinator does not manufacture authority from the baseline and leaves the installed position untouched.
+- Media3 owns the mechanics of restoring an empty session;
+- BookWave owns whether the restored position is still trustworthy;
+- there is still one resume policy rather than a new Android-Auto/headset-specific branch.
 
-The debug cold-resume diagnostic may replace only the Media3-installed initial position. It must not change the underlying opened session/baseline, become durable progress, run for foreground Play, or run for metadata-only `onPlaybackResumption(false)` queries.
+## Durable locally remembered audiobook identity
 
-No future widget, shortcut, App Action, Android Auto callback or UI button may reimplement this policy privately.
+Resume-position freshness and **which audiobook this device most recently played** are separate facts.
 
-## Remembered book identity
+BookWave persists one opaque remembered library-item id per local profile in app DataStore. The contract is:
 
-BW-PLAY-01 gives the device one durable answer to **which book did this phone last actually play for this profile?** That fact is intentionally separate from resume-position freshness.
-
-The contract is:
-
-- one opaque remembered-book ID is stored in profile-scoped Proto DataStore;
-- ownership changes only when Media3 reports that locally owned media is actually playing; opening, arming or syncing a book does not claim it;
+- only actual local playback (`isPlaying == true`) may write it;
 - REST/realtime progress, including deliberate remote rewinds or advances, never changes the remembered identity;
 - startup/profile restore and Android Auto Continue resolve that identity against the profile's accessible books, then leave position choice to `ResumeFreshnessCoordinator`;
 - finished or inaccessible remembered books produce no fallback selection; another book is never invented from `progress.updatedAt`;
@@ -90,6 +89,14 @@ The contract is:
 - existing profiles migrate to **no remembered book** until this device actually plays one.
 
 This state stores no title, cover or resume position. Those remain projections from the library/progress owners rather than duplicated device-local metadata.
+
+## Playback-end history
+
+Playback-end history has one transport owner at the service/player boundary. Ordinary app, notification,
+headset and Bluetooth pauses persist as `Pause`. A sleep timer marks the next Media3 pause with its cause
+before changing `playWhenReady`, so the same callback persists one `SleepTimerExpired` row instead of a
+generic `Pause` plus a second timer row. The marker is one-shot and is cleared by a subsequent Play if it
+was never consumed. Local history persistence does not depend on a server round trip.
 
 ## Profile boundaries
 
@@ -100,59 +107,38 @@ A profile switch must not allow:
 - the previous profile's session to continue writing under the new profile;
 - cached Android Auto nodes from the previous profile to remain authoritative;
 - a widget/shortcut/system surface to expose locked or inaccessible profile metadata;
-- restore/resume selection to be inferred from another profile's state.
+- a delayed write to resolve ownership from whichever profile became active later.
+
+## External controllers
+
+External controllers are first-class inputs, not second-class shortcuts around app logic.
+
+The media-service boundary is where controller commands converge. Standard Play/Pause behavior should not depend on identifying which controller issued the command because Media3 intentionally normalizes many controller sources.
+
+Any feature that truly depends on controller identity must use evidence the platform actually exposes rather than infer it from unrelated state transitions.
 
 ## Android Auto
 
-PR #78 is the current committed Android Auto/routing finalization and carries ADR-0029 on its branch until merge.
+Android Auto has three distinct concerns that must remain separated:
 
-The intended long-term separation is:
+1. **Browse/presentation** — library tree, metadata, progress rows, invalidation.
+2. **Controller behavior** — Play/Pause/seek/custom actions reaching the shared playback session.
+3. **Audio routing** — current output and explicit route choice.
 
-- Android Auto owns host rendering/player chrome;
-- BookWave owns media-session semantics, browse hierarchy, metadata and allowed custom actions;
-- the stable car root/product decisions are not reopened without device/platform evidence;
-- browse invalidation remains profile-safe and will later become shape-derived/selective (BW-AUTO-01);
-- Android Auto uses the same playback/resume owner as every other Play surface.
+Do not solve an Android Auto rendering problem by modifying resume policy, or a routing problem by changing the browse tree.
 
-A JVM/Robolectric test can assert browse-tree construction and metadata. It cannot prove how a real head unit renders action slots, completion metadata, icons or presentation.
+## Downloads are not playback ownership
 
-## Audio routing
+A downloaded copy changes where bytes come from, not which subsystem owns playback state.
 
-Transport classification and semantic role are separate facts.
+Playback session semantics, remembered identity, resume freshness, history and progress ownership must remain consistent whether the underlying bytes are streamed or local.
 
-Classic Bluetooth A2DP can represent headphones, a speaker or a projected-car route. BookWave must allow an ambiguous/unknown semantic answer where Android does not expose enough information.
+## Validation tiers
 
-The existing #78 `HeadsetHold` work is explicitly under follow-up pressure because inference-heavy preservation accumulated edge cases. The roadmap therefore prefers a research spike that observes the route actually carrying BookWave's audio during genuine playback before adding another release/suppression flag.
+Different claims require different evidence:
 
-No routing redesign should merge merely because a JVM model looks convincing; car/headset routing requires real device evidence.
-
-## Sleep timer and future automatic schedule
-
-The existing manual sleep timer remains the source of truth for timer behavior.
-
-PR #98 changes Playback settings UI only and explicitly excludes automatic scheduling.
-
-Future BW-SLEEP-01 will add a schedule as an **eligibility policy around the existing timer**, not a competing timer implementation. Product rules/state machine come before AlarmManager/WorkManager choices.
-
-## System surfaces
-
-Future launcher shortcuts, widgets, App Actions and deep links must call a stable semantic action/playback boundary.
-
-They may display a projection of durable BookWave state; they do not own:
-
-- remembered-book selection;
-- resume freshness;
-- session reconciliation;
-- playback progress truth;
-- profile authorization.
-
-## Testing contract
-
-Playback correctness should be proven at the lowest level that can actually prove the claim:
-
-- **pure JVM/domain tests:** policy/state-machine decisions, ownership, generation/profile/book rejection;
-- **repository/storage tests:** persistence, migration and profile boundaries;
-- **Robolectric/Media3 tests:** session/controller integration and metadata/browse construction where platform shadows are meaningful;
+- **pure JVM / unit:** policy, arbitration, reducer/state-machine and formatting behavior;
+- **Robolectric / repository:** Room/DataStore persistence, Android-adapter behavior where the platform can be simulated;
 - **connected device:** process death, real AndroidKeyStore/storage/audio/service lifecycle where applicable;
 - **DHU / real car:** Android Auto rendering/controller behavior;
 - **real audio routes:** headset/car/speaker routing and arrival races.
@@ -166,6 +152,6 @@ Useful historical reasoning remains in:
 - `docs/adr/` for accepted/superseded decisions;
 - `docs/bugs/` for reproductions and correctness investigations;
 - `docs/reviews/` for dated audits;
-- `docs/risks.md` for live residual risk.
+- git history for implementation details.
 
-Those documents should be read as evidence beneath this current contract and `docs/roadmap.md`, not as competing work queues.
+If an older note conflicts with current `PRODUCT_SPEC.md`, the active roadmap or accepted ADRs, the current canonical documents win.
