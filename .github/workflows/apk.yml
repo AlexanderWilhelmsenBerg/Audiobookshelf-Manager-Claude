@@ -79,6 +79,7 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
+          - "#152 — fix/bw-139-stop-history-v2"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
