@@ -18,8 +18,9 @@ run-name: "${{ inputs.pull_request != 'Use selected branch/ref' && format('Build
 # opened, closed or reopened. Fork PRs are intentionally omitted because this workflow can access signing
 # secrets and refuses cross-repository source.
 #
-# When the build finishes, the APK is on the run's summary page under **Artifacts**. Phones can download it
-# directly from that page.
+# When the build finishes, the APK is on the run's summary page under **Artifacts**. Debug builds are uploaded
+# as the `.apk` file itself for one-tap device installation; release builds remain archived alongside their
+# separately retained R8 mapping.
 #
 # ## Why `workflow_dispatch` only
 #
