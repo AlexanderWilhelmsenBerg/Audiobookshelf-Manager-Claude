@@ -63,7 +63,7 @@ The playback/lifecycle correctness chain that previously preceded this section i
 
 PR #78 and [ADR-0029](adr/0029-android-auto-is-a-stable-audiobook-surface.md) define the settled Android Auto product/routing baseline. PR #93 owns resume freshness across all Play surfaces. Do not resurrect the withdrawn secondary-slot experiment or the old inference-based car-arrival continuity implementation as roadmap work.
 
-Before implementing this lane, complete the playback/cold-start work above and perform one consolidated DHU/real-car evidence pass for #126/#127/#128.
+The playback/cold-start prerequisite is now satisfied. After the current live library/progress work above, perform one consolidated DHU/real-car evidence pass for #126/#127/#128 before implementation in this lane.
 
 ### Evidence pass — issues #126, #127 and #128
 
@@ -167,7 +167,7 @@ Start these only after playback ownership is stable enough that every surface ca
 
 ## Maintenance and non-sequencing backlog
 
-- **#101** remains open technical cleanup. Delete stale playback data adapters only when current callers/tests prove they are truly retired; do not let cleanup destabilize the correctness chain.
+- **#101** remains open low-risk display cleanup: centralize the existing `Series #sequence` label formatting shared by Android Auto browse rows and playback-session metadata without changing series ownership or ordering.
 - **#132** remains open as the documentation follow-up that identified the stale committed-PR chain and superseded Android Auto experiment wording. This roadmap reconciliation addresses that canonical-roadmap portion; close the issue only when its acceptance criteria are actually satisfied by merged documentation.
 - **#135 / BW-DEP-01 is open** and is owned separately by the Build & Dependencies Agent. `docs/latest-stable-upgrade-plan.md` remains its detailed execution plan; dependency novelty does not outrank the correctness sequence above, and this documentation task does not execute any upgrade phase.
 
