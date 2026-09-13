@@ -78,14 +78,15 @@ class RestoreProfilePlaybackUseCaseTest {
         assertTrue(player.armed.isEmpty())
     }
 
-    /** A book with no progress row was never playing, so there is nothing to come back to. */
+    /** A remembered identity survives even when the cached progress projection is temporarily absent. */
     @Test
-    fun `a book with no progress is not restored`() = runTest {
+    fun `a remembered book with no progress is restored paused`() = runTest {
         val library = FakeLibraryRepository(listOf(book("untouched")))
 
         useCase(library, rememberedId = LibraryItemId("untouched"))(TEST_PROFILE)
 
-        assertTrue(player.armed.isEmpty())
+        assertEquals(listOf(LibraryItemId("untouched")), player.armed)
+        assertTrue(player.played.isEmpty(), "restoring a profile must still remain paused")
     }
 
     /** An account with nothing played is silent rather than a failure — there is nothing wrong. */

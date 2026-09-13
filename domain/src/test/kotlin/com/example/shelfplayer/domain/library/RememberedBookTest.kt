@@ -43,6 +43,15 @@ class RememberedBookTest {
     }
 
     @Test
+    fun `a remembered book without cached progress remains the target`() {
+        val remembered = book("a")
+
+        val result = rememberedBook(listOf(remembered), LibraryItemId("a"))
+
+        assertEquals(LibraryItemId("a"), result?.id)
+    }
+
+    @Test
     fun `a finished remembered book is not resumed and no fallback is chosen`() {
         val finishedA = played("a", "2026-08-01T00:00:00Z", finished = true)
         val remoteB = played("b", "2026-09-12T00:00:00Z")

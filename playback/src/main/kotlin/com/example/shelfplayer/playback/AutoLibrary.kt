@@ -317,13 +317,13 @@ class AutoLibrary @Inject constructor(
 
     private suspend fun resumeRow(): List<MediaItem> {
         val book = lastPlayed() ?: return emptyList()
-        val progress = book.progress ?: return emptyList()
+        val progress = book.progress
         return listOf(
             playable(
-                id = "$AT_PREFIX${book.id.value}/${progress.position.inWholeMilliseconds}",
+                id = resumeId(book.id, progress?.position),
                 title = book.title,
                 subtitle = bookSubtitle(book),
-                extras = completionExtras(progress.fractionComplete.toDouble()),
+                extras = progress?.let { completionExtras(it.fractionComplete.toDouble()) },
             ),
         )
     }
@@ -622,6 +622,10 @@ class AutoLibrary @Inject constructor(
 
     companion object {
         data class Target(val bookId: LibraryItemId, val startAt: Duration?)
+
+        internal fun resumeId(bookId: LibraryItemId, position: Duration?): String =
+            position?.let { "$AT_PREFIX${bookId.value}/${it.inWholeMilliseconds}" }
+                ?: "$BOOK_PREFIX${bookId.value}"
 
         fun resolve(mediaId: String): Target? = when {
             mediaId.startsWith(BOOK_PREFIX) -> Target(LibraryItemId(mediaId.removePrefix(BOOK_PREFIX)), null)
