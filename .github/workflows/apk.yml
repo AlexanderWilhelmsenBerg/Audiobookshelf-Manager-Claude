@@ -79,6 +79,7 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
+          - "#149 — feature/bw-115-remembered-book"
           - "#148 — chore/debug-apk-direct-artifact"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
