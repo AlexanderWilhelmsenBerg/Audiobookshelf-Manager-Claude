@@ -31,6 +31,7 @@ import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -70,7 +71,7 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
                 flowOf(emptyList())
             } else {
                 history.observe(profile.id.value, EntityKey.of(profile.serverId.value, bookId.value), limit)
-                    .map { rows -> rows.map(PlaybackHistoryEntity::toDomain) }
+                    .map { rows -> rows.map(PlaybackHistoryEntity::toDomain).canonicalStopHistory() }
             }
         }
 
@@ -196,6 +197,32 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
         history.clear(profileId.value, EntityKey.of(profile.serverId, bookId.value))
     }
 }
+
+/**
+ * Issue #139 — presents one end marker for the one physical stop caused by a sleep timer.
+ *
+ * The timer and Media3 transport callback deliberately remain independent persistence producers. A timer
+ * expiry therefore leaves both a generic [PlaybackEvent.Pause] and the more useful
+ * [PlaybackEvent.SleepTimerExpired] marker in durable storage. The repository is the shared projection used
+ * by both the phone History sheet and Android Auto, so it hides only the redundant generic marker here.
+ *
+ * Matching is deliberately narrow: the events must land within one second of each other and at effectively
+ * the same book position. This tolerates the two application-scope writes being scheduled in either order
+ * without collapsing an ordinary pause that merely happened near a timer event.
+ */
+internal fun List<PlaybackHistoryEntry>.canonicalStopHistory(): List<PlaybackHistoryEntry> {
+    val timerStops = filter { it.event == PlaybackEvent.SleepTimerExpired }
+    if (timerStops.isEmpty()) return this
+    return filterNot { candidate ->
+        candidate.event == PlaybackEvent.Pause && timerStops.any { timer ->
+            abs(candidate.at.toEpochMilli() - timer.at.toEpochMilli()) <= STOP_PAIR_WINDOW_MS &&
+                abs(candidate.to.inWholeMilliseconds - timer.to.inWholeMilliseconds) <= STOP_POSITION_WINDOW_MS
+        }
+    }
+}
+
+private const val STOP_PAIR_WINDOW_MS = 1_000L
+private const val STOP_POSITION_WINDOW_MS = 1_000L
 
 /**
  * The namespace for a history row derived from a server session id.
