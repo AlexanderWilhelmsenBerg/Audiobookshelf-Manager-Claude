@@ -405,14 +405,38 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload the APK
+      # upload-artifact v7 can upload one file directly instead of wrapping it in a ZIP. Give the
+      # debug APK a descriptive filename first because direct uploads use the filename as the artifact name.
+      - name: Prepare the debug APK for direct download
+        if: ${{ inputs.variant == 'debug' }}
+        id: debug_artifact
+        env:
+          SOURCE_APK: ${{ steps.version.outputs.apk }}
+          LABEL: ${{ steps.version.outputs.label }}
+        run: |
+          set -euo pipefail
+          TARGET="bookwave-debug-${LABEL}.apk"
+          cp "$SOURCE_APK" "$TARGET"
+          echo "apk=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the debug APK
+        if: ${{ inputs.variant == 'debug' }}
         uses: actions/upload-artifact@v7
         with:
-          name: bookwave-${{ inputs.variant }}-${{ steps.version.outputs.label }}
-          path: ${{ steps.version.outputs.apk }}
+          path: ${{ steps.debug_artifact.outputs.apk }}
+          archive: false
           if-no-files-found: error
           # Long enough to still be there when a device test is remembered a fortnight later, short enough
           # not to accumulate 27 MB per curious run forever.
+          retention-days: 30
+
+      - name: Upload the release APK
+        if: ${{ inputs.variant == 'release' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: bookwave-release-${{ steps.version.outputs.label }}
+          path: ${{ steps.version.outputs.apk }}
+          if-no-files-found: error
           retention-days: 30
 
       # R8's mapping is the only thing that makes a release stack trace readable, and it is regenerated on
