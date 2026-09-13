@@ -5,10 +5,8 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
 
-internal class FakeRememberedBooks(
-    remembered: LibraryItemId? = null,
-    profileId: ProfileId = DEFAULT_PROFILE,
-) : RememberedBookRepository {
+internal class FakeRememberedBooks(remembered: LibraryItemId? = null, profileId: ProfileId = DEFAULT_PROFILE) :
+    RememberedBookRepository {
     private val values = mutableMapOf<ProfileId, LibraryItemId>()
 
     init {

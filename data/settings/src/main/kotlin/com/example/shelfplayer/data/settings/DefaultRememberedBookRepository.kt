@@ -30,22 +30,19 @@ class DefaultRememberedBookRepository @Inject constructor(
      */
     private val writeGate = Mutex()
 
-    override suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? =
-        settings.rememberedBook(profileId)
+    override suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? = settings.rememberedBook(profileId)
 
-    override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
-        writeGate.withLock {
-            resultOf(onError = ::storeFailure) {
-                settings.setRememberedBook(profileId, bookId)
-            }
+    override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> = writeGate.withLock {
+        resultOf(onError = ::storeFailure) {
+            settings.setRememberedBook(profileId, bookId)
         }
+    }
 
-    override suspend fun forget(profileId: ProfileId): AppResult<Unit> =
-        writeGate.withLock {
-            resultOf(onError = ::storeFailure) {
-                settings.clearRememberedBook(profileId)
-            }
+    override suspend fun forget(profileId: ProfileId): AppResult<Unit> = writeGate.withLock {
+        resultOf(onError = ::storeFailure) {
+            settings.clearRememberedBook(profileId)
         }
+    }
 
     private fun storeFailure(throwable: Throwable): AppError {
         logger.warn(

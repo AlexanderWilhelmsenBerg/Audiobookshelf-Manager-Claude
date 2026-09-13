@@ -18,13 +18,11 @@ import javax.inject.Singleton
  * therefore cannot claim ownership, and REST/realtime progress has no path to this write.
  */
 @Singleton
-class RememberedBookRecorder private constructor(
-    private val record: (ProfileId, LibraryItemId) -> Unit,
-) {
+class RememberedBookRecorder private constructor(private val record: (ProfileId, LibraryItemId) -> Unit) {
     @Inject
     constructor(
         rememberedBooks: RememberedBookRepository,
-        @param:ApplicationScope applicationScope: CoroutineScope,
+        @ApplicationScope applicationScope: CoroutineScope,
     ) : this(
         record = { profileId, bookId ->
             // Start the DataStore update before returning to the main-thread callback. Profile deletion can

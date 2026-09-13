@@ -115,15 +115,13 @@ class RestoreProfilePlaybackUseCaseTest {
         assertEquals(listOf(OTHER), library.accessibleBooksRequestedFor)
     }
 
-    private fun useCase(
-        library: FakeLibraryRepository,
-        rememberedId: LibraryItemId? = null,
-    ) = RestoreProfilePlaybackUseCase(
-        library = library,
-        rememberedBooks = FakeRememberedBooks(rememberedId),
-        player = player,
-        logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
-    )
+    private fun useCase(library: FakeLibraryRepository, rememberedId: LibraryItemId? = null) =
+        RestoreProfilePlaybackUseCase(
+            library = library,
+            rememberedBooks = FakeRememberedBooks(rememberedId),
+            player = player,
+            logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
+        )
 
     private fun playedBook(id: String, at: String, finished: Boolean = false): Book {
         val base = book(id)
@@ -141,9 +139,7 @@ class RestoreProfilePlaybackUseCaseTest {
         )
     }
 
-    private class FakeRememberedBooks(
-        private val rememberedId: LibraryItemId?,
-    ) : RememberedBookRepository {
+    private class FakeRememberedBooks(private val rememberedId: LibraryItemId?) : RememberedBookRepository {
         override suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? = rememberedId
 
         override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
