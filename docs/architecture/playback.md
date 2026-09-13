@@ -85,6 +85,7 @@ The contract is:
 - REST/realtime progress, including deliberate remote rewinds or advances, never changes the remembered identity;
 - startup/profile restore and Android Auto Continue resolve that identity against the profile's accessible books, then leave position choice to `ResumeFreshnessCoordinator`;
 - finished or inaccessible remembered books produce no fallback selection; another book is never invented from `progress.updatedAt`;
+- a temporarily missing cached progress projection does not erase a valid remembered identity: Android Auto may expose the remembered book as `book/<id>` and let the shared session opener supply the authoritative start position;
 - profile deletion clears the remembered identity, and per-profile writes/clears are serialized so a delayed playback write cannot recreate deleted state;
 - existing profiles migrate to **no remembered book** until this device actually plays one.
 
