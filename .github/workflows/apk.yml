@@ -79,6 +79,7 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
+          - "#150 — fix/bw-141-auto-cold-remembered-media"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
