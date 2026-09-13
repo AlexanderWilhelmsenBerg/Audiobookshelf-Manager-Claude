@@ -79,7 +79,6 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
-          - "#149 — feature/bw-115-remembered-book"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
