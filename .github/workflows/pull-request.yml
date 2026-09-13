@@ -10,6 +10,10 @@ on:
     branches: [main]
   push:
     branches: [main]
+    # Opening/closing a PR regenerates only the Build APK dropdown. That generated commit has
+    # already been validated as workflow YAML and does not need the full Android verification lane.
+    paths-ignore:
+      - '.github/workflows/apk.yml'
   workflow_dispatch:
 
 concurrency:
@@ -118,10 +122,7 @@ jobs:
           cache-provider: basic
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: Check formatting
-        run: ./gradlew ktlintCheck
-
-      # PRODUCT_SPEC 16.5 — ktlintCheck, detekt with type resolution, Android Lint, unit tests,
+      # PRODUCT_SPEC 16.5 — verifyDebug already includes ktlintCheck, detekt with type resolution,
       # Room schema verification and the debug assembly, in one command.
       #
       # `--continue` reports every independent failure instead of stopping at the first. The gate is
