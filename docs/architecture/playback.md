@@ -74,20 +74,21 @@ The debug cold-resume diagnostic may replace only the Media3-installed initial p
 
 No future widget, shortcut, App Action, Android Auto callback or UI button may reimplement this policy privately.
 
-## Remembered book identity — roadmap item BW-PLAY-01
+## Remembered book identity
 
-Current `main` still derives the "last played" unfinished book from server-backed progress recency. That is not the same fact as **which book this phone last listened to**.
+BW-PLAY-01 gives the device one durable answer to **which book did this phone last actually play for this profile?** That fact is intentionally separate from resume-position freshness.
 
-The planned contract after #93 is:
+The contract is:
 
-- one durable local remembered-book ID per profile;
-- updated only from unambiguous local playback ownership;
-- survives process death, startup, offline operation and profile switching;
-- remote progress/realtime timestamps do not change the remembered identity;
-- the remembered **book** and resume **position freshness** remain separate decisions;
-- migration does not invent ownership from server `updatedAt` values.
+- one opaque remembered-book ID is stored in profile-scoped Proto DataStore;
+- ownership changes only when Media3 reports that locally owned media is actually playing; opening, arming or syncing a book does not claim it;
+- REST/realtime progress, including deliberate remote rewinds or advances, never changes the remembered identity;
+- startup/profile restore and Android Auto Continue resolve that identity against the profile's accessible books, then leave position choice to `ResumeFreshnessCoordinator`;
+- finished or inaccessible remembered books produce no fallback selection; another book is never invented from `progress.updatedAt`;
+- profile deletion clears the remembered identity, and per-profile writes/clears are serialized so a delayed playback write cannot recreate deleted state;
+- existing profiles migrate to **no remembered book** until this device actually plays one.
 
-Until BW-PLAY-01 lands, documentation/system-surface work must not describe server progress recency as a durable local-ownership contract.
+This state stores no title, cover or resume position. Those remain projections from the library/progress owners rather than duplicated device-local metadata.
 
 ## Profile boundaries
 
