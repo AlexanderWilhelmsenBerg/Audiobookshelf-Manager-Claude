@@ -10,10 +10,13 @@ import com.example.shelfplayer.core.model.library.PlaybackSession
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.minutes
 
+@RunWith(RobolectricTestRunner::class)
 class RememberedBookRecorderTest {
 
     @Test
