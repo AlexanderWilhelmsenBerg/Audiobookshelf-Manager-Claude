@@ -1,8 +1,11 @@
 # ADR-0011: Stay on API 36 until detekt supports AGP 9
 
-- **Status:** Accepted
+- **Status:** Superseded
+- **Superseded by:** ADR-0030
 - **Date:** 2026-08-07
 - **Requirements:** PRODUCT_SPEC 16.1, 16.3, 20
+
+> Historical decision retained for context. ADR-0030 now governs the build-foundation and platform-targeting boundaries.
 
 ## Context
 
