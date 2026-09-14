@@ -4,18 +4,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false
 
 jobs:
   verify:
-    name: Print KSP verification entries
+    name: Materialize KSP verification metadata
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: chore/bw-dep-01-ksp-2-3-12-phase2a
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -29,24 +32,56 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
-      - name: Resolve KSP and write verification metadata
-        run: ./gradlew :core:database:kspDebugKotlin --rerun-tasks --write-verification-metadata sha256
+      - name: Resolve KSP and capture verification metadata
+        run: |
+          cp gradle/verification-metadata.xml /tmp/verification-metadata.before.xml
+          ./gradlew :core:database:kspDebugKotlin --rerun-tasks --write-verification-metadata sha256
 
-      - name: Print only KSP 2.3.12 verification blocks
+      - name: Keep only generated KSP 2.3.12 entries
         run: |
           python - <<'PY'
           import re
+          import xml.etree.ElementTree as ET
           from pathlib import Path
-          text = Path('gradle/verification-metadata.xml').read_text()
-          blocks = re.findall(
-              r'      <component group="com\.google\.devtools\.ksp"[^>]*version="2\.3\.12">.*?      </component>',
-              text,
-              flags=re.S,
-          )
-          if not blocks:
-              raise SystemExit('No KSP 2.3.12 verification blocks found')
-          print('\n'.join(blocks))
+
+          generated = Path('gradle/verification-metadata.xml').read_text()
+          original = Path('/tmp/verification-metadata.before.xml').read_text()
+          names = [
+              'com.google.devtools.ksp.gradle.plugin',
+              'symbol-processing-aa-embeddable',
+              'symbol-processing-api',
+              'symbol-processing-common-deps',
+              'symbol-processing-gradle-plugin',
+          ]
+
+          result = original
+          for name in names:
+              block_pattern = re.compile(
+                  r'      <component group="com\.google\.devtools\.ksp" name="' + re.escape(name) +
+                  r'" version="2\.3\.12">.*?      </component>',
+                  re.S,
+              )
+              matches = block_pattern.findall(generated)
+              if len(matches) != 1:
+                  raise SystemExit(f'Expected one generated KSP 2.3.12 block for {name}, found {len(matches)}')
+              if matches[0] in result:
+                  continue
+              old_pattern = re.compile(
+                  r'(      <component group="com\.google\.devtools\.ksp" name="' + re.escape(name) +
+                  r'" version="2\.3\.11">.*?      </component>)',
+                  re.S,
+              )
+              result, count = old_pattern.subn(r'\1\n' + matches[0], result, count=1)
+              if count != 1:
+                  raise SystemExit(f'Could not place KSP 2.3.12 block for {name}')
+
+          Path('gradle/verification-metadata.xml').write_text(result)
+          ET.parse('gradle/verification-metadata.xml')
+          if result.count('version="2.3.12"') != 5:
+              raise SystemExit('Unexpected number of KSP 2.3.12 components in final metadata')
           PY
+          git diff --check
+          git diff -- gradle/verification-metadata.xml
 
       - name: Room schema is committed and current
         run: |
@@ -56,3 +91,12 @@ jobs:
             echo "$changes"
             exit 1
           fi
+
+      - name: Commit generated metadata to clean branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gradle/verification-metadata.xml
+          git diff --cached --quiet && { echo "::error::No verification metadata change produced"; exit 1; }
+          git commit -m "chore(deps): trust KSP 2.3.12 artifacts"
+          git push origin HEAD:chore/bw-dep-01-ksp-2-3-12-phase2a
