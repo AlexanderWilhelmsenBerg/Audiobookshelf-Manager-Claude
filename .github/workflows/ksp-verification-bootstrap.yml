@@ -31,6 +31,9 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
+      - name: Configure runner Android SDK
+        run: printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
+
       - name: Check local environment
         run: ./scripts/check-local-environment.sh
 
@@ -49,7 +52,7 @@ jobs:
       - name: Commit generated verification metadata
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+AlexanderWilhelmsenBerg@users.noreply.github.com"
           git add gradle/verification-metadata.xml
           if git diff --cached --quiet; then
             echo "Verification metadata is already current."
