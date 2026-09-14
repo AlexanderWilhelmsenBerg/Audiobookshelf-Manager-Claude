@@ -132,6 +132,7 @@ jobs:
         run: ./gradlew --write-verification-metadata sha256 resolveAndLockAll --refresh-dependencies
 
       - name: Print generated verification metadata diff
+        if: always()
         run: git diff -- gradle/verification-metadata.xml
 
       # Gradle only prints lint's first finding on the console. The full text report is what makes a
