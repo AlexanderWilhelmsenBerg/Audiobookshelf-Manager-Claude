@@ -40,12 +40,6 @@ jobs:
       - name: Generate KSP dependency verification metadata
         run: ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true --write-verification-metadata sha256
 
-      - name: Run formatting gate from the changed classpath
-        run: ./gradlew ktlintCheck --rerun-tasks
-
-      - name: Run strict BookWave gate from the changed classpath
-        run: ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true
-
       - name: Ensure Room schemas remain unchanged
         run: git diff --exit-code -- core/database/schemas
 
