@@ -79,7 +79,6 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
-          - "#155 — chore/bw-dep-01-ksp-2-3-12-current"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
