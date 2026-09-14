@@ -1,25 +1,38 @@
 # BW-DEP-01 Phase 0 compatibility inventory
 
-**Classification:** Current investigation snapshot — re-resolve before every implementation phase.  
-**Issue:** #135 (`BW-DEP-01`).  
-**Measured:** 2026-09-10.  
-**Repository base:** `main` at `a28a5666fa3148ae77a0b6fdc57788a962ac6d2f`.  
-**Scope:** inventory and compatibility evidence only; this document changes no dependency, SDK, JDK, build-tool or CI version.
+**Classification:** Current investigation snapshot with staged execution updates — re-resolve before every implementation phase.
+**Issue:** #135 (`BW-DEP-01`).
+**Measured:** 2026-09-10; execution refresh 2026-09-14.
+**Repository base for the current execution slice:** `main` at `4be0daf0f988fd93a09b134df2c24333facbf69c`.
+**Scope:** compatibility evidence plus staged execution status; each actual upgrade remains a narrow, independently verified slice.
 
 `gradle/libs.versions.toml` remains the pinned source of truth for what BookWave actually builds with. This
 page records what was current upstream on the measurement date and why many individually newer stable
 versions are **not** yet an approved BookWave combination. It is not permission to bulk-update the catalog.
 
-## Phase 0 decision
+## Phase 0 decision and execution refresh
 
-**Phase 1 is still blocked by ADR-0011.** The newest stable detekt line remains `1.23.8`; detekt 2 remains
-alpha. ADR-0011 requires a stable detekt release that can preserve BookWave's AGP-9 type-resolution gate,
-or a separately accepted superseding ADR. Neither condition exists on this snapshot date.
+ADR-0011 is superseded by ADR-0030. The safety requirement did not disappear: BookWave still requires a
+stable, mandatory, type-aware static-analysis gate and will not adopt a detekt alpha merely to unlock a newer
+build foundation. What changed is the architecture boundary. The build foundation, compiler/tooling stack,
+`compileSdk` and `targetSdk` are now separate migration axes.
 
-That gate has a wider effect than AGP alone. The newest Compose, AndroidX Hilt and several Compose-facing
-AndroidX lines have moved to API 37 / AGP 9-era compilation, while Dagger/Hilt `2.59+` makes AGP 9 a
-requirement for users of the Hilt Gradle plugin. Those stable releases are real, but they are not currently
-BookWave-approved upgrades.
+The final Phase 1 foundation switch therefore remains gated until a mutually supported stable stack can
+preserve the complete verification contract, but **Phase 1A readiness work may proceed now** on the current
+production foundation. Platform targeting no longer blocks build-readiness work, and a future build-foundation
+migration will not automatically raise `targetSdk`.
+
+The newest Compose, AndroidX Hilt and several Compose-facing AndroidX lines have moved to API 37 / AGP 9-era
+compilation, while Dagger/Hilt `2.59+` makes AGP 9 a requirement for users of the Hilt Gradle plugin. Those
+stable releases are real, but they remain separate later-phase upgrades rather than reasons to weaken the
+quality gate.
+
+### 2026-09-14 Phase 2A execution
+
+KSP `2.3.12` was released as a stable patch and raises its minimum supported AGP to `8.12.0`, exactly
+BookWave's current AGP baseline. That makes it an independently safe compiler-tooling slice while the broader
+foundation remains gated. The upgrade changes no Room schema and adds only the generated strict dependency
+verification entries for the new KSP artifacts.
 
 The individually newest Gradle, AGP and Kotlin releases also do not form one fully supported tuple:
 
@@ -48,16 +61,16 @@ must still re-resolve this frontier when Phase 1 actually opens; these numbers a
 
 | Component | BookWave current | Newest stable observed | Official compatibility / finding | Phase 0 disposition |
 | --- | --- | --- | --- | --- |
-| Gradle wrapper | `8.14.3` | `9.7.1` | Gradle 9.7.1 can run on JVM 17–26. Kotlin 2.4.20's fully supported ceiling is Gradle 9.7.0. | **Blocked with Phase 1.** Do not jump to 9.7.1 merely because it is individually latest. |
-| Android Gradle Plugin | `8.12.0` | `9.4.0` | AGP 9.4 supports up to API 37; minimum/default Gradle is 9.6.0; JDK minimum/default is 17; default Build Tools is 36.0.0. | **Blocked by ADR-0011.** |
+| Gradle wrapper | `8.14.3` | `9.7.1` | Gradle 9.7.1 can run on JVM 17–26. Kotlin 2.4.20's fully supported ceiling is Gradle 9.7.0. | **Phase 1B gated by ADR-0030.** Do not jump to 9.7.1 merely because it is individually latest. |
+| Android Gradle Plugin | `8.12.0` | `9.4.0` | AGP 9.4 supports up to API 37; minimum/default Gradle is 9.6.0; JDK minimum/default is 17; default Build Tools is 36.0.0. | **Phase 1B gated by ADR-0030 verification invariant; Phase 1A readiness may proceed.** |
 | Kotlin / KGP | `2.2.0` | `2.4.20` | KGP 2.4.20 fully supports Gradle 7.6.3–9.7.0 and AGP 8.5.2–9.3.1. KGP 2.2.0–2.2.10 lists AGP only through 8.10.0, so BookWave's current AGP 8.12/Kotlin 2.2 combination is repository-proven but outside JetBrains' fully-supported matrix. | **Deferred with Phase 1/2.** Re-resolve with AGP rather than treating Kotlin independently. |
-| KSP | `2.3.11` | `2.3.11` | Current stable KSP release. | **Current.** |
-| detekt | `1.23.8` | `1.23.8` stable | detekt 2 is still alpha; `2.0.0-alpha.6` is built against Kotlin 2.4.10, Gradle 9.6.1 and AGP 9.3.1, but prereleases are excluded. | **Current stable line; Phase-1 gate remains closed.** |
+| KSP | `2.3.12` | `2.3.12` | Stable 2026-09-09; minimum supported AGP is 8.12.0, matching BookWave. | **Current after Phase 2A.** |
+| detekt | `1.23.8` | `1.23.8` stable | detekt 2 is still alpha; `2.0.0-alpha.6` demonstrates modern-toolchain compatibility, but prereleases are excluded from the production quality gate. | **Current stable line; Phase 1B remains gated by ADR-0030.** |
 | Kover | `0.9.9` | `0.9.9` | Current Gradle Plugin Portal stable. | **Current.** |
 | ktlint Gradle plugin | `12.3.0` | `14.2.0` | Plugin 13.1+ added Gradle 9 support; 14.2.0 is current stable. | **Deferred to Phase 2.** |
 | ktlint engine | `1.5.0` | `1.8.0` | 1.8.0 is current stable. | **Deferred to Phase 2** with plugin/detekt rule compatibility. |
 | protobuf Gradle plugin | `0.9.5` | `0.10.0` | 0.10.0 is current stable on the Gradle Plugin Portal. | **Deferred to Phase 2 / paired protobuf work.** |
-| `compileSdk` / `targetSdk` | `36` / `36` | API 37 released | AGP 9.4 supports API 37; Compose 1.12 requires compileSdk 37 and AGP 9. | **Blocked by ADR-0011.** No target/compile 37 in Phase 0. |
+| `compileSdk` / `targetSdk` | `36` / `36` | API 37 released | AGP 9.4 supports API 37; Compose 1.12 requires compileSdk 37 and AGP 9. | **Independent Phase 3 axes under ADR-0030; targetSdk remains a dedicated behavioral migration.** |
 | SDK Build Tools | `36.0.0` | `36.0.0` for current AGP 9.4 default | AGP 9.4 still lists 36.0.0 as its default Build Tools version. | **Current for the measured frontier.** |
 | Android command-line tools | build `15859902` in Codex | build `15859902` | Android Developers' current download page serves build 15859902 and publishes the same Linux SHA-256 that BookWave pins. | **Current.** Re-probe in Phase 8. |
 | Platform Tools | installed via `sdkmanager` without a repository version pin | `37.0.1` listed | Android recommends obtaining the latest package through SDK Manager. The 37.0.1 revision is listed in current release notes; channel presentation has varied across localized docs, so Phase 8 must re-probe rather than invent a repository pin here. | **Phase 8 finding only.** |
@@ -69,9 +82,10 @@ must still re-resolve this frontier when Phase 1 actually opens; these numbers a
 | Combination | Status | Meaning |
 | --- | --- | --- |
 | Gradle `9.7.1` + AGP `9.4.0` + Kotlin `2.4.20` | **Not fully supported as one tuple** | Each is individually stable, but KGP 2.4.20's published ceiling is Gradle 9.7.0 and AGP 9.3.1. |
-| Gradle `9.7.0` + AGP `9.3.1` + Kotlin `2.4.20` | **Inside the current published compatibility intersection** | Useful Phase-0 frontier evidence only. ADR-0011 still prevents BookWave adopting it now. |
+| Gradle `9.7.0` + AGP `9.3.1` + Kotlin `2.4.20` | **Inside the current published compatibility intersection** | Useful dated frontier evidence only. ADR-0030 still requires a stable type-aware analysis gate before the final foundation switch. |
 | Gradle `8.14.3` + AGP `8.12.0` + Kotlin `2.2.0` + detekt `1.23.8` | **BookWave current/proven baseline** | This is what `main` verifies today. JetBrains' KGP table does not call the AGP 8.12 + Kotlin 2.2.0 pairing fully supported (its ceiling is AGP 8.10.0), so do not mislabel repository evidence as upstream support. |
-| Any AGP 9 / API 37 BookWave foundation | **Not approved yet** | Requires the ADR-0011 gate or a superseding accepted ADR, followed by fresh compatibility resolution and the ADR-0010 locking retry. |
+| Any next-generation AGP BookWave foundation | **Not approved yet** | Requires ADR-0030's stable verification invariant, fresh compatibility resolution and the ADR-0010 locking retry. |
+| API 37 compile/target migration | **Separate from the foundation** | `compileSdk` may move when useful and supported; `targetSdk` requires its own behavioral/device acceptance under ADR-0030. |
 
 ## Android and platform libraries
 
@@ -87,7 +101,7 @@ re-resolved at the start of Phase 3/4/7 rather than copied forward from this doc
 | Lifecycle | `2.10.0` | `2.11.0` | **Deferred/blocked Phase 3** because BookWave consumes Compose-facing lifecycle artifacts; re-resolve after API/AGP foundation. |
 | Navigation Compose | `2.9.8` | `2.10.1` | **Deferred/blocked Phase 3** with Compose/API 37 foundation. |
 | AndroidX Hilt | `1.3.0` | `1.4.0` | **Blocked.** 1.4's Compose artifacts use compileSdk 37 and require at least AGP 9.2.0; Phase 3. |
-| Dagger/Hilt | `2.58` | `2.60.1` | **Blocked.** Dagger 2.59 made AGP 9 a requirement for Hilt Gradle plugin users. `2.58` is therefore the newest BookWave-allowed Hilt plugin line under ADR-0011. |
+| Dagger/Hilt | `2.58` | `2.60.1` | **Blocked.** Dagger 2.59 made AGP 9 a requirement for Hilt Gradle plugin users. `2.58` is therefore the newest BookWave-allowed Hilt plugin line on the current production foundation. |
 | Room 2.x | `2.7.2` | `2.8.5` | **High-risk Phase 4A.** Persistence/schema/migration/process-death evidence required. |
 | Room 3 | not used | `3.0.3` | **Separate architecture migration if ever chosen.** It is a distinct generation, not a routine Room 2 version bump. |
 | DataStore | `1.1.7` | `1.2.1` | **High-risk Phase 4A** with persistence/process-death evidence. |
@@ -153,7 +167,7 @@ be confused with the catalog's no-dynamic-version rule.
 
 ## Already-current stable dependencies
 
-On this measurement date, no upgrade work is required for: KSP `2.3.11`, detekt's stable line `1.23.8`,
+After the 2026-09-14 Phase 2A slice, no upgrade work is required for: KSP `2.3.12`, detekt's stable line `1.23.8`,
 Kover `0.9.9`, AndroidX Annotation `1.10.0`, WorkManager `2.11.2`, Media3 `1.11.0`, UI Automator `2.4.0`,
 AndroidX Test Core `1.7.0`, AndroidX Test ext JUnit `1.3.0`, AndroidX Test Runner `1.7.0`, JUnit `4.13.2`,
 Turbine `1.2.1`, Android command-line-tools build `15859902`, and Codex Gitleaks `8.30.1`.
@@ -180,7 +194,9 @@ These are not candidates for a catch-all dependency PR:
 - ADR-0006's strict checksum verification is active and remains required.
 - ADR-0010 intentionally defers dependency locking after a real variant-resolution failure. Locking is not a
   forgotten setup step; Phase 1 retries it on the later Gradle/AGP foundation.
-- ADR-0011 is still the controlling AGP/API gate and excludes detekt alpha releases.
+- ADR-0011 is superseded by ADR-0030. ADR-0030 keeps the stable type-aware analysis invariant, excludes
+  prerelease analysis tooling as a shortcut, and decouples the build foundation from `compileSdk` /
+  `targetSdk`.
 - `AGENTS.md`, issue #135 and `docs/latest-stable-upgrade-plan.md` identify the staged latest-stable plan as
   current dependency-migration guidance. `README.md`, `docs/README.md` and `docs/roadmap.md` still contain
   links describing `docs/dependency-upgrade-plan.md` as the active child plan. That older plan includes
@@ -249,6 +265,7 @@ These were re-checked on 2026-09-10. Release pages are evidence for this dated s
 ## Phase handoff rules
 
 At the start of every later phase, repeat the relevant upstream resolution. In particular, do **not** carry
-forward today's Gradle `9.7.0` / AGP `9.3.1` / Kotlin `2.4.20` intersection as a promised target. Phase 1
-starts only when ADR-0011's explicit gate is satisfied or superseded, and its first engineering act is to
-recompute the frontier and retry ADR-0010 dependency locking with the repository's full gate intact.
+forward today's Gradle `9.7.0` / AGP `9.3.1` / Kotlin `2.4.20` intersection as a promised target. Phase 1A
+readiness may proceed on the current production foundation. Phase 1B starts only when ADR-0030's stable
+type-aware verification invariant can be satisfied; its first engineering act is to recompute the frontier and
+retry ADR-0010 dependency locking with the repository's full gate intact.

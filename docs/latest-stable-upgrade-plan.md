@@ -1,8 +1,8 @@
 # Latest-stable toolchain and dependency upgrade plan
 
-Status: planned; not an implementation checklist for PR #131 itself.
+Status: execution in progress under #135; PR #131 remains preparation only.
 
-Snapshot date: 2026-09-08.
+Snapshot date: 2026-09-08. Execution status refreshed 2026-09-14.
 
 ## Goal
 
@@ -18,12 +18,12 @@ a preview.
 `gradle/libs.versions.toml` remains the application dependency source of truth. Dynamic versions and `+`
 remain forbidden.
 
-## Baseline established by PR #131
+## Baseline established by PR #131 and current execution
 
 - Gradle wrapper: 8.14.3.
 - Android Gradle Plugin: 8.12.0.
 - Kotlin: 2.2.0.
-- KSP: 2.3.11.
+- KSP: 2.3.12 after the first narrow Phase 2 execution slice.
 - compileSdk / targetSdk: 36 / 36.
 - Codex runtime: JDK 21.
 - Android command-line tools: build 15859902.
@@ -43,7 +43,7 @@ These are evidence for planning, not permanent pins:
 | --- | ---: | ---: | --- |
 | Gradle | 8.14.3 | 9.7.1 | Phase 1 |
 | Kotlin | 2.2.0 | 2.4.20 | Phase 2 |
-| KSP | 2.3.11 | 2.3.11 | Already current; re-check with Kotlin upgrade |
+| KSP | 2.3.12 | 2.3.12 | Phase 2A completed in the current execution slice; re-check with Kotlin upgrade |
 | detekt | 1.23.8 | 1.23.8 | Already current |
 | Kover | 0.9.9 | 0.9.9 | Already current |
 | ktlint Gradle plugin | 12.3.0 | 14.2.0 | Phase 2 |
@@ -93,19 +93,40 @@ Exit criteria:
 
 ## Phase 1 — Gradle and Android build foundation
 
-Upgrade the build foundation before libraries. Compiler and Android plugin upgrades should not be debugged
-on top of an old wrapper.
+ADR-0030 separates the build foundation from `compileSdk` and `targetSdk`. Phase 1 therefore has two
+execution steps: readiness work that can be done on the current production foundation, followed by the final
+foundation switch when BookWave can preserve its mandatory stable, type-aware static-analysis gate. A detekt
+alpha is not adopted merely to unlock newer build tools.
 
-1. Upgrade Gradle 8.14.3 to the latest stable Gradle (9.7.1 at this snapshot).
-2. Run wrapper validation and inspect the Gradle 9 upgrade warnings.
-3. Fix deprecated Gradle APIs in `build-logic` rather than enabling compatibility flags indefinitely.
-4. Upgrade Android Gradle Plugin 8.12.0 to the latest stable AGP available when this phase starts.
-5. Apply AGP migration changes separately from Kotlin changes where possible.
+### Phase 1A — foundation readiness on the current production stack
+
+1. Audit `build-logic` for deprecated Gradle and Android Gradle Plugin APIs and migrate any usage whose stable
+   public replacement is already available on the current foundation.
+2. Confirm convention plugins use public Android DSL / variant APIs rather than implementation types.
+3. Audit module/package uniqueness and other known next-foundation defaults before changing the foundation.
+4. Map the Kotlin Android plugin wiring that will change when the selected future AGP foundation uses built-in
+   Kotlin support; do not enable prerelease compatibility shims on `main`.
+5. Re-resolve compatibility for Hilt, Room, KSP, Kover, ktlint, protobuf and detekt and record blockers without
+   dragging their independent upgrades into the foundation PR.
+6. Run the current build with deprecation reporting and remove safe, already-actionable build deprecations.
+
+Readiness work must leave the accepted production toolchain and mandatory verification strength intact.
+
+### Phase 1B — final foundation switch
+
+Start only when a mutually supported stable build/compiler stack can retain BookWave's mandatory type-aware
+static-analysis gate. Re-resolve the exact latest-stable compatibility frontier immediately before editing;
+do not carry a dated tuple from this document forward as a promised target.
+
+1. Upgrade the Gradle wrapper to the selected stable foundation.
+2. Run wrapper validation and inspect upgrade warnings.
+3. Upgrade Android Gradle Plugin to the selected mutually supported stable release.
+4. Apply the required stable DSL / built-in Kotlin migration without permanent compatibility opt-outs.
+5. Retry ADR-0010 dependency locking as part of this build-foundation change.
 6. Re-run Android Lint and inspect changes in severity/default rule sets.
 7. Validate signing configuration, packaging, generated BuildConfig/resources, Room/KSP task wiring and APK
    identity.
-8. Do not raise compileSdk/targetSdk yet unless the selected AGP requires it; platform behavior belongs in
-   Phase 3.
+8. Keep `compileSdk` and `targetSdk` independent; platform/API behavior belongs in Phase 3 under ADR-0030.
 
 Required verification:
 
@@ -124,7 +145,7 @@ gate**, not the highest one that can launch Gradle.
 Upgrade together only where compiler compatibility requires it:
 
 - Kotlin 2.2.0 -> latest stable (2.4.20 at this snapshot).
-- KSP 2.3.11 -> latest stable compatible KSP; it is already current at this snapshot.
+- KSP 2.3.12 is current after Phase 2A; re-check compatibility when Kotlin moves.
 - ktlint Gradle plugin 12.3.0 -> latest stable (14.2.0 at this snapshot).
 - ktlint 1.5.0 -> latest stable (1.8.0 at this snapshot).
 - detekt 1.23.8 -> latest stable; currently already current.
@@ -287,7 +308,7 @@ Every current version key is assigned below so nothing silently falls outside th
 | --- | ---: | --- |
 | androidGradlePlugin | 8.12.0 | Phase 1 |
 | kotlin | 2.2.0 | Phase 2 |
-| ksp | 2.3.11 | Phase 2; already latest in snapshot |
+| ksp | 2.3.12 | Phase 2A complete; re-check with compiler migration |
 | detekt | 1.23.8 | Phase 2; already latest in snapshot |
 | kover | 0.9.9 | Phase 2; already latest in snapshot |
 | ktlintGradle | 12.3.0 | Phase 2 |
