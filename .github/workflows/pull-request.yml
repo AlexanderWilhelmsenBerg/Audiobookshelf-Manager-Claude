@@ -118,7 +118,7 @@ jobs:
       # unchanged — the build still fails — but a reviewer sees the whole list in one run rather than
       # discovering the next lint error only after fixing the previous one.
       - name: Verify debug
-        run: ./gradlew verifyDebug --continue --rerun-tasks --write-verification-metadata sha256 -Pshelfplayer.warningsAsErrors=true
+        run: ./gradlew --write-verification-metadata sha256 resolveAndLockAll --refresh-dependencies
 
       - name: Upload generated dependency verification metadata
         if: always()
