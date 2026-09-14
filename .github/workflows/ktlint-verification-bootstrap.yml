@@ -15,7 +15,7 @@ jobs:
     name: Generate ktlint plugin verification metadata
     if: github.head_ref == 'chore/bw-dep-01-ktlint-plugin-14-2-0'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -33,8 +33,8 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
-      - name: Resolve ktlint configuration and write verification metadata
-        run: ./gradlew :app:dependencies --configuration ktlint --write-verification-metadata sha256
+      - name: Resolve build plugins and write verification metadata
+        run: ./gradlew help --write-verification-metadata sha256
 
       - name: Commit generated verification metadata
         shell: bash
