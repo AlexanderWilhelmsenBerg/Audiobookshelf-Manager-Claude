@@ -33,9 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v6
+      # PRODUCT_SPEC 18.1 — verifies gradle-wrapper.jar against the known-good checksums, which is
+      # the mitigation for a malicious wrapper jar being committed.
+      - uses: gradle/actions/wrapper-validation@v6
 
   secret-scan:
     name: Secret scan
@@ -45,42 +45,53 @@ jobs:
         with:
           fetch-depth: 0
 
+      # PRODUCT_SPEC 15 / 18.8 — no production secrets in the repository.
+      #
+      # The binary is installed from a pinned release rather than through the marketplace action,
+      # which is licence-gated for organizations; a scan that silently stops running is worse than
+      # no scan, because the badge still says green.
       - name: Install gitleaks
         env:
-          GITLEAKS_VERSION: '8.24.0'
+          GITLEAKS_VERSION: 8.24.0
         run: |
-          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz gitleaks
-          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
 
-      - name: Run gitleaks
-        run: gitleaks git --redact --no-banner --verbose
+      - name: Scan working tree and history
+        run: gitleaks detect --source . --redact --verbose --no-banner
 
-  room-schema-immutability:
+  schema-immutability:
     name: Committed Room schemas are immutable
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Reject edits to committed Room schemas
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      # PRODUCT_SPEC 13.1 / 22.11 — the check the "Room schema is committed and current" step below cannot
+      # make, and the one that would have prevented a real crash.
+      #
+      # That step compares the *exported* schema against the committed one, so it catches a schema somebody
+      # forgot to commit. It says nothing about a committed schema being **changed**, because once the change
+      # is committed the working tree is clean and the step is green.
+      #
+      # On 2026-08-14 version 14 shipped in build 0.9.2, the next commit removed a column and left the version
+      # at 14 on the reasoning that 14 "had not shipped", and the owner's phone would not start: Room stores
+      # each version's identity hash in `room_master_table`, compares it on open, and has no migration to a
+      # hash that changed underneath it. Fresh installs and every migration test starting from an older
+      # version are unaffected, which is exactly what makes it easy to ship.
+      #
+      # A modified file under `schemas/` is therefore always wrong. Adding one — a new version — is the only
+      # correct way to change the database.
+      - name: No committed schema may be modified
         run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "Not a pull request; nothing to compare."
-            exit 0
-          fi
-
-          base="$BASE_SHA"
-          changes="$({
-            git diff --name-status "$base"...HEAD -- core/database/schemas
-          } || true)"
-
-          modified="$(printf '%s\n' "$changes" | awk '$1 != "A" { print }')"
+          base="origin/${{ github.base_ref }}"
+          modified="$(git diff --diff-filter=MD --name-only "$base"...HEAD -- core/database/schemas)"
           if [ -n "$modified" ]; then
-            echo "::error::A committed Room schema was modified or deleted."
+            echo "::error::A committed Room schema was modified or deleted. Bump the database version instead."
             echo "$modified"
             echo
             echo "A schema that has been built into an APK is a fact about somebody's phone. Room compares its"
@@ -120,14 +131,8 @@ jobs:
       - name: Verify debug
         run: ./gradlew --write-verification-metadata sha256 resolveAndLockAll --refresh-dependencies
 
-      - name: Upload generated dependency verification metadata
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: generated-verification-metadata
-          path: gradle/verification-metadata.xml
-          if-no-files-found: error
-          retention-days: 1
+      - name: Print generated verification metadata diff
+        run: git diff -- gradle/verification-metadata.xml
 
       # Gradle only prints lint's first finding on the console. The full text report is what makes a
       # lint failure diagnosable from the log alone, without downloading an artifact.
