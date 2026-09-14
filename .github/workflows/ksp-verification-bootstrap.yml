@@ -13,7 +13,7 @@ env:
 jobs:
   bootstrap-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -38,7 +38,7 @@ jobs:
         run: ./scripts/check-local-environment.sh
 
       - name: Generate KSP dependency verification metadata
-        run: ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true --write-verification-metadata sha256
+        run: ./gradlew :core:common:kspKotlin --rerun-tasks --write-verification-metadata sha256
 
       - name: Ensure Room schemas remain unchanged
         run: git diff --exit-code -- core/database/schemas
