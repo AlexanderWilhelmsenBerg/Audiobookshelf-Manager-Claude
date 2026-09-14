@@ -81,10 +81,11 @@ gap is that the failure reads as "unverified artifact" rather than "version drif
 
 ## When to revisit
 
-At the **Gradle 9 / AGP 9 upgrade**, which is coming with the move to `compileSdk 37`. The divergence is
-in how the two resolutions select variants, and a major version of both tools is the most likely place
-for it to change. `scripts/update-dependency-locks.sh` is kept for that retry: it encodes the real-build
-procedure that attempt 2 established, which is correct and worth not rediscovering.
+At the next major **Gradle / Android Gradle Plugin build-foundation migration**. ADR-0030 deliberately
+decouples that migration from `compileSdk` and `targetSdk`; dependency locking is a build-resolution concern,
+not a platform-targeting concern. A major build-foundation change remains the meaningful point for the
+variant-resolution behavior to change. `scripts/update-dependency-locks.sh` is kept for that retry: it
+encodes the real-build procedure that attempt 2 established, which is correct and worth not rediscovering.
 
 The retry is a fifteen-minute experiment — activate locking, run the script, run `verifyDebug` with no
 write flags — and this ADR records exactly what "it worked" would look like.
