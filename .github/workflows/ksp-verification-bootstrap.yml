@@ -38,7 +38,7 @@ jobs:
         run: ./scripts/check-local-environment.sh
 
       - name: Generate KSP dependency verification metadata
-        run: ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true --write-verification-metadata sha256
+        run: ./gradlew help --write-verification-metadata sha256 --refresh-dependencies
 
       - name: Run formatting gate from the changed classpath
         run: ./gradlew ktlintCheck --rerun-tasks
@@ -52,7 +52,7 @@ jobs:
       - name: Commit generated verification metadata
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+AlexanderWilhelmsenBerg@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add gradle/verification-metadata.xml
           if git diff --cached --quiet; then
             echo "Verification metadata is already current."
