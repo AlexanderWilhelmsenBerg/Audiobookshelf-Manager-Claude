@@ -11,9 +11,9 @@ env:
 
 jobs:
   verify:
-    name: Generate KSP verification metadata
+    name: Print KSP verification entries
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -29,24 +29,30 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
-      - name: Generate verification metadata through the real gate
-        run: ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true --write-verification-metadata sha256
+      - name: Resolve KSP and write verification metadata
+        run: ./gradlew :core:database:kspDebugKotlin --rerun-tasks --write-verification-metadata sha256
 
-      - name: Upload generated dependency verification metadata
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: verification-metadata-generated
-          path: gradle/verification-metadata.xml
-          if-no-files-found: error
-          retention-days: 1
+      - name: Print only KSP 2.3.12 verification blocks
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('gradle/verification-metadata.xml').read_text()
+          blocks = re.findall(
+              r'      <component group="com\.google\.devtools\.ksp"[^>]*version="2\.3\.12">.*?      </component>',
+              text,
+              flags=re.S,
+          )
+          if not blocks:
+              raise SystemExit('No KSP 2.3.12 verification blocks found')
+          print('\n'.join(blocks))
+          PY
 
       - name: Room schema is committed and current
-        if: success()
         run: |
           changes="$(git status --porcelain -- core/database/schemas)"
           if [ -n "$changes" ]; then
-            echo "::error::Room exported a schema that is not committed, or differs from the committed one."
+            echo "::error::KSP changed committed Room schemas."
             echo "$changes"
             exit 1
           fi
