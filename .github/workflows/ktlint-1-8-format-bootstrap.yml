@@ -20,6 +20,57 @@ jobs:
         with:
           ref: chore/bw-dep-01-ktlint-engine-1-8-0
 
+      - name: Repair app non-attached KDocs identified by ktlint 1.8
+        shell: python
+        run: |
+          from pathlib import Path
+
+          replacements = {
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/book/BookViewModel.kt'): [
+                  ('    /**\n     * PRODUCT_SPEC PLAY-004 — "marking finished is explicit", including un-marking it.', '    /*\n     * PRODUCT_SPEC PLAY-004 — "marking finished is explicit", including un-marking it.'),
+                  ('/**\n * PRODUCT_SPEC LIB-004 / PLAY-003 — what the overflow menu can show, beyond the book.', '/*\n * PRODUCT_SPEC LIB-004 / PLAY-003 — what the overflow menu can show, beyond the book.'),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/downloads/DownloadsViewModel.kt'): [
+                  ('    /** PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */', '    /* PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */'),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/home/HomeScreen.kt'): [
+                  ('/** PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */', '/* PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */'),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/home/HomeShelvesUi.kt'): [
+                  ('/** PLAY-001 / PRODUCT_SPEC 21 — a full touch target even when the visible circle reads as an overlay. */', '/* PLAY-001 / PRODUCT_SPEC 21 — a full touch target even when the visible circle reads as an overlay. */'),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/home/HomeViewModel.kt'): [
+                  ('    /**\n     * Only the visible axis is collected.', '    /*\n     * Only the visible axis is collected.'),
+                  ('    /**\n     * PRODUCT_SPEC LIB-002 / 6.3 — the network came back, so try again.', '    /*\n     * PRODUCT_SPEC LIB-002 / 6.3 — the network came back, so try again.'),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/onboarding/SignInViewModel.kt'): [
+                  ('    /**\n     * PRODUCT_SPEC AUTH-001 / 6.1 — the servers this device already knows.', '    /*\n     * PRODUCT_SPEC AUTH-001 / 6.1 — the servers this device already knows.'),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/player/SleepTimerLabels.kt'): [
+                  ("/**\n * PRODUCT_SPEC PLAY-008 — how a timer's numbers and outcomes read.", "/*\n * PRODUCT_SPEC PLAY-008 — how a timer's numbers and outcomes read."),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/settings/SettingsDiagnostics.kt'): [
+                  ('/**\n * PRODUCT_SPEC SET-002 / SYNC-001 — the rows both settings tabs are built from.', '/*\n * PRODUCT_SPEC SET-002 / SYNC-001 — the rows both settings tabs are built from.'),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/settings/SettingsScreen.kt'): [
+                  ('/**\n * The tabs, in the order they appear.', '/*\n * The tabs, in the order they appear.'),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/settings/SettingsSyncDiagnostics.kt'): [
+                  ('/**\n * One check.', '/*\n * One check.'),
+              ],
+              Path('app/src/main/kotlin/com/example/shelfplayer/feature/settings/SettingsViewModel.kt'): [
+                  ('    /**\n     * PRODUCT_SPEC ROUTE-002 — the output devices this app has seen, and what each may do.', '    /*\n     * PRODUCT_SPEC ROUTE-002 — the output devices this app has seen, and what each may do.'),
+              ],
+          }
+
+          for path, edits in replacements.items():
+              text = path.read_text()
+              for old, new in edits:
+                  if old not in text:
+                      raise SystemExit(f'Expected ktlint migration target not found in {path}: {old!r}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text)
+
       - name: Set up JDK 17
         uses: actions/setup-java@v6
         with:
@@ -31,19 +82,6 @@ jobs:
         with:
           cache-provider: basic
           cache-read-only: true
-
-      - name: Repair final known non-attached KDoc identified by ktlint 1.8
-        shell: python
-        run: |
-          from pathlib import Path
-
-          path = Path('core/database/src/main/kotlin/com/example/shelfplayer/core/database/entity/Entities.kt')
-          old = '/**\n * PRODUCT_SPEC 13 — the Phase 0 subset of the conceptual schema.'
-          new = '/*\n * PRODUCT_SPEC 13 — the Phase 0 subset of the conceptual schema.'
-          text = path.read_text()
-          if old not in text:
-              raise SystemExit(f'Expected ktlint migration target not found in {path}: {old!r}')
-          path.write_text(text.replace(old, new, 1))
 
       - name: Apply ktlint 1.8 formatter
         shell: bash
@@ -64,5 +102,5 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'style: complete ktlint 1.8 formatting migration'
+          git commit -m 'style: repair app ktlint 1.8 KDocs'
           git push origin HEAD:chore/bw-dep-01-ktlint-engine-1-8-0
