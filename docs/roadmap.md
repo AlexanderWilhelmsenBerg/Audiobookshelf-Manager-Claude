@@ -168,8 +168,7 @@ Start these only after playback ownership is stable enough that every surface ca
 ## Maintenance and non-sequencing backlog
 
 - **#101** remains open low-risk display cleanup: centralize the existing `Series #sequence` label formatting shared by Android Auto browse rows and playback-session metadata without changing series ownership or ordering.
-- **#132** remains open as the documentation follow-up that identified the stale committed-PR chain and superseded Android Auto experiment wording. This roadmap reconciliation addresses that canonical-roadmap portion; close the issue only when its acceptance criteria are actually satisfied by merged documentation.
-- **#135 / BW-DEP-01 is open** and is owned separately by the Build & Dependencies Agent. `docs/latest-stable-upgrade-plan.md` remains its detailed execution plan; dependency novelty does not outrank the correctness sequence above, and this documentation task does not execute any upgrade phase.
+- **#135 / BW-DEP-01 is open** and is owned separately by the Build & Dependencies Agent. `docs/latest-stable-upgrade-plan.md` remains its detailed execution plan. Isolated migration slices have already landed through PRs #154–#158; the issue stays open until the staged migration is complete. Dependency novelty does not outrank the correctness sequence above.
 
 ## Historical boundaries — completed, not active work
 
@@ -189,6 +188,7 @@ These are retained because they define ownership or explain why older roadmap wo
 - **PR #152 / issue #139 — merged/completed:** History projects one clear stop marker for sleep-timer expiry while preserving ordinary Pause semantics.
 - **PR #143 — merged after #140:** Loopbound/manual-APK build packaging only; it did not implement the correctness issues that followed.
 - **PR #144 — merged:** reconciled the canonical roadmap with the repository state at that time and retired the already-settled Android Auto secondary-slot experiment from future work.
+- **PR #153 / issue #132 — merged/completed:** refreshed the roadmap after the playback correctness chain completed and closed the documentation-reconciliation follow-up. Do not restore #132 as active backlog.
 - **Issue #104 — completed:** download/offline recovery audit; its concrete child issues now own implementation.
 
 ## Last — iOS, deliberately after Android correctness
