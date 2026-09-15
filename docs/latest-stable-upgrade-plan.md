@@ -37,6 +37,7 @@ Completed staged slices under #135:
 | #161 | AndroidX Activity | 1.12.4 | 1.13.0 | 2026-09-15 |
 | #162 | Gradle wrapper | 8.14.3 | 8.14.5 | 2026-09-15 |
 | #163 | AndroidX Room | 2.7.2 | 2.8.5 | 2026-09-15 |
+| #164 | kotlinx.serialization | 1.8.1 | 1.9.0 | 2026-09-15 |
 
 The Codex compatibility probe from 2026-09-08 remains relevant evidence: the environment bootstrap succeeds
 on JDK 21, 22, 23 and 24, but the complete `verifyDebug` gate succeeds only on JDK 21. Therefore JDK 21
@@ -223,10 +224,11 @@ WorkManager/DataStore requirements:
 
 ## Phase 5 — Kotlin runtime, serialization and network stack
 
-**Status: active in compatibility-sized slices.** The current Kotlin 2.2.0 foundation can take
-kotlinx.serialization 1.9.0 independently because that stable release is based on Kotlin 2.2.0. Stable
-kotlinx.serialization 1.10.0 moved to Kotlin 2.3.0 and 1.11.0 is based on Kotlin 2.3.20, so those later
-releases remain behind the compiler/build-foundation re-resolution rather than being forced into this slice.
+**Status: active in compatibility-sized slices.** kotlinx.serialization 1.9.0 landed in PR #164 as the newest
+stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line. The next independent runtime probe is
+kotlinx.coroutines 1.11.0: upstream builds it with Kotlin 2.2.20, so BookWave must prove compatibility on Kotlin
+2.2.0 through the full rerun gate rather than assuming patch-level compiler compatibility. Stable
+kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.
 
 Upgrade deliberately from the current values to the compatible stable targets recorded in `/version-control.md`.
 This phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,

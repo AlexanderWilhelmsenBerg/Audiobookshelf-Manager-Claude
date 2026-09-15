@@ -4,7 +4,7 @@
 > CI actions and auxiliary build tooling.
 
 **Last full stable-version check:** 2026-09-15  
-**Repository baseline checked:** `main` at `72cabb1e36d8597eaf6f303e159f0c88615f395c`
+**Repository baseline checked:** `main` at `05d87933d313209c34e5ebafd684edf36be92f57`
 **Upgrade roadmap:** [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md)  
 **Primary migration issue:** #135 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration`
 
@@ -94,7 +94,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 
 | Version-catalog key / component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
-| `kotlinxCoroutines` | 1.10.2 | 1.11.0 | ⬆️ Phase 5 runtime update with cancellation/concurrency regression coverage. | 5 | 2026-09-15 | [kotlinx.coroutines releases](https://github.com/Kotlin/kotlinx.coroutines/releases) |
+| `kotlinxCoroutines` | 1.11.0 | 1.11.0 | ✅ Latest stable reached in the active Phase 5 slice after cancellation/concurrency regression coverage. Upstream 1.11.0 is built with Kotlin 2.2.20; BookWave remains on Kotlin 2.2.0 pending the gated compiler migration, so the full BookWave gate is required evidence for this compatibility slice. | 5 | 2026-09-15 | [kotlinx.coroutines releases](https://github.com/Kotlin/kotlinx.coroutines/releases) |
 | `kotlinxSerialization` | 1.9.0 | 1.11.0 | 🎯 1.9.0 is the newest stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line. Upstream 1.10.0 moved to Kotlin 2.3.0 and 1.11.0 is based on Kotlin 2.3.20, so those remain compiler-gated until Phase 1/2 re-resolves Kotlin. | 5 | 2026-09-15 | [kotlinx.serialization releases](https://github.com/Kotlin/kotlinx.serialization/releases) |
 | `okhttp` | 4.12.0 | 5.5.0 | 🔁 Major network-stack migration; keep contract/TLS/WebSocket/download tests green. | 5 | 2026-09-15 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |
 | `protobuf` | 4.31.1 | 4.36.1 (Protobuf 36.1) | ⬆️ Phase 5 runtime/protoc update with serialization compatibility checks. | 5 | 2026-09-15 | [Protobuf releases](https://github.com/protocolbuffers/protobuf/releases) |
@@ -162,6 +162,7 @@ Append to this table whenever a tracked migration slice merges. The live tables 
 | 2026-09-15 | #161 | AndroidX Activity | 1.12.4 | 1.13.0 | ✅ Latest stable reached |
 | 2026-09-15 | #162 | Gradle wrapper | 8.14.3 | 8.14.5 | 🎯 Latest stable release in the accepted 8.14 maintenance line; Gradle 9 remains gated |
 | 2026-09-15 | #163 | AndroidX Room | 2.7.2 | 2.8.5 | 🎯 Latest stable target; schema/version unchanged |
+| 2026-09-15 | #164 | kotlinx.serialization | 1.8.1 | 1.9.0 | 🎯 Latest stable compatible with the current Kotlin 2.2.0 compiler line |
 
 ## Update discipline for future PRs
 
