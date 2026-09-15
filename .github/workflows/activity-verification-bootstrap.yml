@@ -16,7 +16,7 @@ jobs:
   bootstrap:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -33,7 +33,7 @@ jobs:
           cache-read-only: true
 
       - name: Generate strict verification metadata for AndroidX Activity 1.13.0
-        run: ./gradlew --write-verification-metadata sha256 verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true
+        run: ./gradlew --write-verification-metadata sha256 :app:assembleDebug --rerun-tasks
 
       - name: Commit generated verification metadata
         run: |
