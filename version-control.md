@@ -4,7 +4,7 @@
 > CI actions and auxiliary build tooling.
 
 **Last full stable-version check:** 2026-09-15  
-**Repository baseline checked:** `main` at `b4b7a38c82c26ede61322aac7ff2d1beb4c36a41`
+**Repository baseline checked:** `main` at `50027ac5eb6b727477132ef291fb8adc8b22c1d2`
 **Upgrade roadmap:** [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md)  
 **Primary migration issue:** #135 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration`
 
@@ -67,12 +67,12 @@ This file is the quick answer to **“what version are we on, what is the newest
 | --- | --- | --- | --- | --- | --- | --- |
 | `androidxActivity` | 1.13.0 | 1.13.0 | ✅ Current; merged in PR #161 after full CI and focused device smoke passed. It resolves Core/Core-KTX 1.18.0 transitively on the current API-36 foundation. | 3 | 2026-09-15 | [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity) |
 | `androidxAnnotation` | 1.10.0 | 1.10.0 | ✅ Current. | 3 | 2026-09-15 | [AndroidX versions](https://developer.android.com/jetpack/androidx/versions) |
-| `androidxCore` | 1.17.0 direct pin; 1.18.0 resolved via Activity 1.13.0 | 1.19.0 | ⬆️ PR #161 proved the resolved Core 1.18.0 graph on BookWave's compileSdk 36. Keep the explicit direct-pin move to stable 1.19.0 as the next separate Phase 3 AndroidX slice. | 3 | 2026-09-15 | [Core releases](https://developer.android.com/jetpack/androidx/releases/core) |
+| `androidxCore` | 1.17.0 direct pin; 1.18.0 resolved via Activity 1.13.0 | 1.19.0 | ⛔ Published Core 1.19.0 consumer requirements need compileSdk 37 and AGP 9.1+, so the explicit pin stays put until the ADR-0011 platform/build-foundation gate clears. | 3 | 2026-09-15 | [Core releases](https://developer.android.com/jetpack/androidx/releases/core) |
 | `androidxDatastore` | 1.2.1 | 1.2.1 | ✅ Current; merged in PR #154. | 4 | 2026-09-15 | [DataStore releases](https://developer.android.com/jetpack/androidx/releases/datastore) |
 | `androidxHiltNavigationCompose` | 1.3.0 | 1.4.0 | ⛔ Compose artifacts in 1.4.0 use compileSdk 37 and require AGP 9.2+, so this follows the API 37/AGP gate. | 3 | 2026-09-15 | [AndroidX Hilt releases](https://developer.android.com/jetpack/androidx/releases/hilt) |
 | `androidxLifecycle` | 2.10.0 | 2.11.0 | ⛔ Lifecycle 2.11 Compose artifacts compile against API 37 and require AGP 9.2+, so this follows the ADR-0011 platform/build-foundation gate. | 3 | 2026-09-15 | [Lifecycle releases](https://developer.android.com/jetpack/androidx/releases/lifecycle) |
 | `androidxNavigation` | 2.9.8 | 2.10.1 | ⛔ Navigation Compose 2.10 moved its Compose compileSdk to API 37/AGP 9.2+, so this follows the platform gate. | 3 | 2026-09-15 | [Navigation releases](https://developer.android.com/jetpack/androidx/releases/navigation) |
-| `androidxRoom` | 2.7.2 | 2.8.5 | 🔁 Persistence migration with schema/migration verification; keep separate from unrelated library bumps. | 4 | 2026-09-15 | [Room releases](https://developer.android.com/jetpack/androidx/releases/room) |
+| `androidxRoom` | 2.8.5 | 2.8.5 | 🎯 Latest stable target in the active Room-only Phase 4 slice. Room 2.8 raises Android minSdk to 23 and the Room Gradle Plugin floor to AGP 8.4; BookWave minSdk 26 / AGP 8.12 remain compatible. Preserve all committed schemas and prove the database/migration suite unchanged. | 4 | 2026-09-15 | [Room releases](https://developer.android.com/jetpack/androidx/releases/room) |
 | `androidxTestCore` | 1.7.0 | 1.7.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
 | `androidxTestExt` | 1.3.0 | 1.3.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
 | `androidxTestRunner` | 1.7.0 | 1.7.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
@@ -86,7 +86,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 
 | Version-catalog key / component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
-| `hilt` (Dagger/Hilt) | 2.58 | 2.60.1 | ⬆️ Dedicated Phase 4 DI upgrade after compiler/platform compatibility is established. | 4 | 2026-09-15 | [Dagger releases](https://github.com/google/dagger/releases) |
+| `hilt` (Dagger/Hilt) | 2.58 | 2.60.1 | ⛔ Dagger/Hilt 2.59+ makes AGP 9 a requirement when the Hilt Gradle plugin is used, so 2.60.1 follows the ADR-0011 build-foundation gate. | 4 | 2026-09-15 | [Dagger releases](https://github.com/google/dagger/releases) |
 | `hiltExt` (AndroidX Hilt) | 1.3.0 | 1.4.0 | ⛔ Same AndroidX Hilt API 37/AGP 9.2+ gate as navigation-compose. | 3/4 | 2026-09-15 | [AndroidX Hilt releases](https://developer.android.com/jetpack/androidx/releases/hilt) |
 | `javaxInject` | 1 | 1 | ✅ Current/canonical legacy `javax.inject` artifact; reassess only as part of the Hilt/DI migration. | 5 compatibility | 2026-09-15 | [Maven Central](https://central.sonatype.com/artifact/javax.inject/javax.inject) |
 
@@ -161,6 +161,7 @@ Append to this table whenever a tracked migration slice merges. The live tables 
 | 2026-09-15 | #158 | Protobuf Gradle plugin | 0.9.5 | 0.10.0 | ✅ Latest stable reached |
 | 2026-09-15 | #161 | AndroidX Activity | 1.12.4 | 1.13.0 | ✅ Latest stable reached |
 | 2026-09-15 | #162 | Gradle wrapper | 8.14.3 | 8.14.5 | 🎯 Latest stable release in the accepted 8.14 maintenance line; Gradle 9 remains gated |
+| 2026-09-15 | #163 | AndroidX Room | 2.7.2 | 2.8.5 | 🎯 Latest stable target; schema/version unchanged |
 
 ## Update discipline for future PRs
 

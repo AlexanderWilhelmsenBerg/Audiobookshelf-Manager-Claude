@@ -35,6 +35,7 @@ Completed staged slices under #135:
 | #157 | ktlint engine | 1.5.0 | 1.8.0 | 2026-09-15 |
 | #158 | Protobuf Gradle plugin | 0.9.5 | 0.10.0 | 2026-09-15 |
 | #161 | AndroidX Activity | 1.12.4 | 1.13.0 | 2026-09-15 |
+| #162 | Gradle wrapper | 8.14.3 | 8.14.5 | 2026-09-15 |
 
 The Codex compatibility probe from 2026-09-08 remains relevant evidence: the environment bootstrap succeeds
 on JDK 21, 22, 23 and 24, but the complete `verifyDebug` gate succeeds only on JDK 21. Therefore JDK 21
@@ -157,14 +158,15 @@ coverage threshold silently reduced.
 
 ## Phase 3 — Android platform, Compose and general AndroidX
 
-**Status: partially active.** The AGP 9 / API 37 portion remains gated by ADR-0011, but independent AndroidX
-releases may proceed as narrow slices only when the current API-36 gates prove compatibility. PR #161 merged
-AndroidX Activity 1.13.0 after full CI and focused device smoke passed; that slice also proved the transitively resolved
-Core/Core-KTX 1.18.0 graph on BookWave's compileSdk 36. The next independent AndroidX slice is the explicit Core
-direct-pin move to stable 1.19.0. Activity 1.14 remains prerelease and is excluded.
+**Status: partially active, with the remaining known updates platform-gated.** PR #161 merged AndroidX Activity
+1.13.0 after full CI and focused device smoke passed; that slice also proved the transitively resolved
+Core/Core-KTX 1.18.0 graph on BookWave's compileSdk 36. Re-resolution before this slice found stable Core 1.19.0
+requires compileSdk 37 and AGP 9.1+, so the explicit Core pin must not move independently on the current
+API-36 / AGP-8 foundation. Activity 1.14 remains prerelease and is excluded.
 
-Lifecycle 2.11 Compose artifacts compile against API 37 and require AGP 9.2+, so Lifecycle now follows the same
-ADR-0011 platform/build-foundation gate rather than remaining an independent Phase-3 bump.
+Lifecycle 2.11 Compose artifacts compile against API 37 and require AGP 9.2+. Core 1.19.0, Lifecycle 2.11,
+Navigation 2.10, AndroidX Hilt 1.4 and the larger Compose/platform move therefore remain behind the same
+ADR-0011 platform/build-foundation gate.
 
 Resolve the latest stable Android SDK, Compose BOM and AndroidX releases from `/version-control.md` at
 execution time. This phase owns:
@@ -187,9 +189,14 @@ behavior, notifications and process recreation.
 ## Phase 4 — persistence, background work and playback
 
 Upgrade these in separate PRs because each owns user state or long-running behavior. DataStore reached the
-latest stable release in PR #154; do not manufacture another DataStore change while the ledger shows it
-current. Remaining ownership includes Room, WorkManager, Media3 and Dagger/Hilt whenever their rows are
-outdated.
+latest stable release in PR #154; WorkManager and Media3 are also current in the live ledger. With the remaining
+independent Phase-3 paths gated, Room 2.8.5 is the next executable dependency axis.
+
+Room 2.8 raises Android minSdk from 21 to 23 and the Room Gradle Plugin minimum AGP from 8.1 to 8.4;
+BookWave minSdk 26 / AGP 8.12 satisfy both floors. This dependency/compiler upgrade does not itself justify
+changing the BookWave database version or rewriting committed schemas.
+
+Dagger/Hilt 2.59+ requires AGP 9 when the Hilt Gradle plugin is used, so Hilt 2.60.1 remains behind ADR-0011.
 
 Room requirements:
 
