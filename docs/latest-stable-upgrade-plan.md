@@ -110,7 +110,9 @@ on top of an old wrapper.
 6. Re-run Android Lint and inspect changes in severity/default rule sets.
 7. Validate signing configuration, packaging, generated BuildConfig/resources, Room/KSP task wiring and APK
    identity.
-8. Do not raise compileSdk/targetSdk yet unless the selected AGP requires it; platform behavior belongs in
+8. Retry dependency locking under ADR-0010 on the new Gradle/AGP foundation; do not weaken the strict
+   dependency-verification policy from ADR-0006 to make locking work.
+9. Do not raise compileSdk/targetSdk yet unless the selected AGP requires it; platform behavior belongs in
    Phase 3.
 
 Required verification:
