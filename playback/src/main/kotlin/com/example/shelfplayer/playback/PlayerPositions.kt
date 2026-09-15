@@ -5,7 +5,7 @@ import androidx.media3.common.Player
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
-/**
+/*
  * ADR-0016 — reading a book's position and length off the player.
  *
  * Since a book is one timeline window, both are simply what the player says. These exist for the one thing

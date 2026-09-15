@@ -154,6 +154,7 @@ class HomeViewModel @Inject constructor(
      * book list is not paying to group 490 books into series, authors and genres — and a user on the
      * shelves is not paying to sort the flat list either.
      */
+
     /**
      * PRODUCT_SPEC LIB-002 / 16.2 — whether the other three axes are worth keeping loaded.
      *
@@ -219,7 +220,9 @@ class HomeViewModel @Inject constructor(
         }
 
         HomeAxis.Series -> groupedSeries().map { HomeContent.OfSeries(it) }
+
         HomeAxis.Authors -> groups(BookGroupKind.Author).map { HomeContent.OfGroups(it) }
+
         HomeAxis.Genres -> groups(BookGroupKind.Genre).map { HomeContent.OfGroups(it) }
     }
 
@@ -279,9 +282,11 @@ class HomeViewModel @Inject constructor(
             isRefreshing = refresh.inFlight,
             syncStatus = when {
                 refresh.inFlight -> SyncStatus.Syncing
+
                 // A failure from the user's own refresh outranks the persisted state, the same way the
                 // error field does: it is the newer fact and the one they are waiting on.
                 refresh.lastError != null -> SyncStatus.Failed
+
                 // The persisted state comes next, because it is the only record of a sync this process
                 // did not start — one abandoned by an earlier launch, or one another screen began.
                 //
@@ -290,7 +295,9 @@ class HomeViewModel @Inject constructor(
                 // Labelling a populated library "not synchronized yet" would be the app contradicting
                 // what the user is looking at.
                 syncState != null && syncState.status != SyncStatus.NeverSynced -> syncState.status
+
                 loaded?.hasRows == true -> SyncStatus.Succeeded
+
                 else -> SyncStatus.NeverSynced
             },
             // A live error from the user's own refresh wins: it is the newer fact, and it is the one they
@@ -685,6 +692,7 @@ class HomeViewModel @Inject constructor(
      */
     private fun serverStatusOf(isOnline: Boolean, refresh: RefreshState, syncState: SyncState?): ServerStatus = when {
         !isOnline -> ServerStatus.Unknown
+
         refresh.lastError != null -> if (refresh.lastError.isReachability()) {
             ServerStatus.Unreachable
         } else {
@@ -694,10 +702,12 @@ class HomeViewModel @Inject constructor(
         }
 
         refresh.lastAttemptSucceeded -> ServerStatus.Reachable
+
         syncState?.status == SyncStatus.Failed ->
             if (syncState.lastError?.isReachability() == true) ServerStatus.Unreachable else ServerStatus.Reachable
 
         syncState?.lastSuccessfulSyncAt != null -> ServerStatus.Reachable
+
         else -> ServerStatus.Unknown
     }
 

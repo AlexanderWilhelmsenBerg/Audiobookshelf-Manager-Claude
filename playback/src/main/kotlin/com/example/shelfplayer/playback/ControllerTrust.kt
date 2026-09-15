@@ -143,6 +143,7 @@ internal object ControllerTrust {
      */
     fun withheldPlayerCommands(access: ControllerAccess): List<Int> = when (access) {
         ControllerAccess.LibraryAndPlayback -> emptyList()
+
         ControllerAccess.PlaybackOnly -> listOf(
             Player.COMMAND_SET_MEDIA_ITEM,
             Player.COMMAND_CHANGE_MEDIA_ITEMS,

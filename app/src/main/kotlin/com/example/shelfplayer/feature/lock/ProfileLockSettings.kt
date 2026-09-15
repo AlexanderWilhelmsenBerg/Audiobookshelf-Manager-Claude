@@ -240,6 +240,7 @@ private fun BiometricRow(availability: BiometricAvailability, enabled: Boolean, 
 /** Each outcome says which one it was, because "it did not work" is not an answer somebody can act on. */
 private fun LockSettingsMessage.messageRes(): Int = when (this) {
     LockSettingsMessage.Saved -> R.string.settings_passcode_saved
+
     is LockSettingsMessage.Invalid -> when (reason) {
         PasscodeRejection.Length -> R.string.settings_passcode_length_error
         PasscodeRejection.NotDigits -> R.string.settings_passcode_digits_error
@@ -247,6 +248,7 @@ private fun LockSettingsMessage.messageRes(): Int = when (this) {
     }
 
     LockSettingsMessage.WrongCurrent -> R.string.settings_passcode_wrong_current
+
     LockSettingsMessage.Failed -> R.string.settings_passcode_failed
 }
 

@@ -35,7 +35,9 @@ internal object AutoStartDecision {
 
     fun decide(policy: DevicePolicy, isProfileLocked: Boolean): AutoStartAction = when (policy) {
         DevicePolicy.Never -> AutoStartAction.None
+
         DevicePolicy.AutoPlay -> if (isProfileLocked) AutoStartAction.Suppressed else AutoStartAction.ArmAndPlay
+
         DevicePolicy.ArmOnly, DevicePolicy.Ask ->
             if (isProfileLocked) AutoStartAction.Suppressed else AutoStartAction.Arm
     }

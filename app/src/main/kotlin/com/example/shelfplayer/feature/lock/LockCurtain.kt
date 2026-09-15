@@ -226,6 +226,7 @@ internal fun FailureText(failure: UnlockFailure) {
         }
 
         UnlockFailure.Exhausted -> stringResource(R.string.lock_exhausted)
+
         UnlockFailure.Unreadable -> stringResource(R.string.lock_unreadable)
     }
     Text(

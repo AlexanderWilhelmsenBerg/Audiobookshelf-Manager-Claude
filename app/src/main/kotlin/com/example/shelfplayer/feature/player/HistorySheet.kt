@@ -134,6 +134,7 @@ fun HistorySheet(
                     items(rowsFor(entries), key = { it.key }) { row ->
                         when (row) {
                             is HistoryRowItem.Day -> DayHeading(row.date)
+
                             is HistoryRowItem.Event -> HistoryRow(
                                 entry = row.entry,
                                 check = row.check,
@@ -398,26 +399,42 @@ private fun PlaybackEvent.labelRes(): Int = when (this) {
 @Suppress("CyclomaticComplexMethod")
 private fun PlaybackEvent.icon(): ImageVector = when (this) {
     PlaybackEvent.Seek -> Icons.Filled.FastForward
+
     PlaybackEvent.Skip -> Icons.Filled.FastForward
+
     PlaybackEvent.Chapter -> Icons.AutoMirrored.Filled.MenuBook
+
     PlaybackEvent.AutoRewind -> Icons.Filled.Replay
+
     PlaybackEvent.SleepTimerRewind -> Icons.Filled.Replay
+
     PlaybackEvent.Resume -> Icons.Filled.PlayArrow
+
     PlaybackEvent.Play -> Icons.Filled.PlayArrow
+
     PlaybackEvent.Pause -> Icons.Filled.Pause
+
     PlaybackEvent.SleepTimerStarted -> Icons.Filled.Bedtime
+
     PlaybackEvent.SleepTimerExtended -> Icons.Filled.Bedtime
+
     PlaybackEvent.SleepTimerExpired -> Icons.Filled.Bedtime
+
     PlaybackEvent.RemoteProgress -> Icons.Filled.CloudSync
+
     PlaybackEvent.RemoteFinished -> Icons.Filled.CloudDone
+
     // A different cloud from RemoteProgress's: that row says a position arrived, this one says somebody
     // sat and listened on another device, which is a different thing to read at a glance.
     PlaybackEvent.ServerSession -> Icons.Filled.CloudDownload
+
     // Never drawn in the leading slot: `rowsFor` folds these into the Play row they belong to, where
     // `checkIcon` draws them small and trailing. The branches exist because this `when` is the compile-time
     // net — see the comment above it — and because the fold is a rendering rule that could change.
     PlaybackEvent.ServerCheckAhead -> Icons.Filled.Cloud
+
     PlaybackEvent.ServerCheckCurrent -> Icons.Filled.Cloud
+
     PlaybackEvent.ServerCheckUnavailable -> Icons.Filled.CloudOff
 }
 

@@ -83,8 +83,11 @@ internal object PlaybackFailureReport {
             // rate limit are both the server declining to hand over this book, on a connection that plainly
             // worked. Same shape as the `localFile` evidence above — the fact decides, not the band.
             serverAnswered(errorCode, httpStatus) -> report(Message.ServerCannotDeliver)
+
             errorCode in IO_BAND -> report(Message.ServerUnreachable)
+
             errorCode in LOCAL_MEDIA_BANDS -> report(Message.FileNotPlayable)
+
             // `ERROR_CODE_UNSPECIFIED`, `REMOTE_ERROR`, `BEHIND_LIVE_WINDOW`, `FAILED_RUNTIME_CHECK` and
             // anything Media3 adds later. **Silence is the honest answer**: there is no sentence that is
             // true of an unknown failure, and the review above is what a confident wrong one looks like.

@@ -176,6 +176,7 @@ private fun ClockSkewRow(skew: ClockSkew?, modifier: Modifier = Modifier) {
  * The icon and the colour both carry the state, and neither is the only carrier: the content description says
  * it in words, because a colour-only distinction fails the accessibility rule PRODUCT_SPEC 3.2 sets.
  */
+
 /**
  * PRODUCT_SPEC 3.2 — yes/no as words, not as a colour or a tick alone.
  *

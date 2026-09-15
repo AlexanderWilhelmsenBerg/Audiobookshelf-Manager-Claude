@@ -624,6 +624,7 @@ class PlaybackService : MediaLibraryService() {
                     resumeLoadedCurrent()
                 }
             }
+
             is ResumeFreshnessDecision.Adopt -> {
                 val outcome = resumeFreshness.withCurrentPlan(plan) {
                     recordFreshnessCheck(plan)
@@ -1654,6 +1655,7 @@ class PlaybackService : MediaLibraryService() {
             // property a `runCatching` here would not have.
             when (val outcome = resultOf { block() }) {
                 is AppResult.Success -> settable.set(outcome.value)
+
                 is AppResult.Failure -> {
                     /*
                      * PRODUCT_SPEC 14.4 / 14.5 — the code *and* what threw.
@@ -2137,11 +2139,14 @@ class PlaybackService : MediaLibraryService() {
             scope.launch {
                 when (CarConnection.decide(devices, lock, clock.now())) {
                     AutoStartAction.ArmAndPlay -> startLastBook(current, play = true)
+
                     AutoStartAction.Arm -> startLastBook(current, play = false)
+
                     AutoStartAction.Suppressed -> logger.info(
                         LogCategory.Playback,
                         "A car connected while the account was locked; nothing started",
                     )
+
                     AutoStartAction.None -> Unit
                 }
             }
@@ -2235,9 +2240,13 @@ class PlaybackService : MediaLibraryService() {
             }
             when (customCommand.customAction) {
                 NotificationButtons.ACTION_EXTEND_SLEEP_TIMER -> sleepTimer.extend()
+
                 NotificationButtons.ACTION_SKIP_BACK -> skipBy(-skips.back)
+
                 NotificationButtons.ACTION_SKIP_FORWARD -> skipBy(skips.forward)
+
                 NotificationButtons.ACTION_ADD_BOOKMARK -> bookmarkHere()
+
                 NotificationButtons.ACTION_SELECT_CAR_OUTPUT -> {
                     headsetHold.releaseToCar(audioOutputs.outputs.value, audioOutputs.selectedId.value)
                     audioOutputs.select(AudioOutputRoles.carTarget(audioOutputs.outputs.value))
@@ -2247,6 +2256,7 @@ class PlaybackService : MediaLibraryService() {
                     AudioOutputRoles
                         .nextHeadset(audioOutputs.outputs.value, audioOutputs.selectedId.value)
                         ?.let(audioOutputs::select)
+
                 else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))

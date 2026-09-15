@@ -346,11 +346,16 @@ class AutoLibrary @Inject constructor(
 
     suspend fun item(mediaId: String, now: NowPlaying?): MediaItem? = when {
         mediaId == ROOT -> root()
+
         mediaId == RECENT_ROOT -> recentRoot()
+
         mediaId.startsWith(TAB_PREFIX) ->
             (children(ROOT, now) + children(TAB_LIBRARY, now)).firstOrNull { it.mediaId == mediaId }
+
         mediaId.startsWith(SERIES_PREFIX) -> seriesNodes().firstOrNull { it.mediaId == mediaId }
+
         mediaId.startsWith(AUTHOR_PREFIX) -> authorNodes().firstOrNull { it.mediaId == mediaId }
+
         else -> resolve(mediaId)?.let { target -> books().firstOrNull { it.id == target.bookId }?.let(::bookItem) }
     }
 
@@ -451,10 +456,12 @@ class AutoLibrary @Inject constructor(
                 MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
                 MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_NOT_PLAYED,
             )
+
             fraction >= FULLY_PLAYED -> putInt(
                 MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
                 MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_FULLY_PLAYED,
             )
+
             else -> {
                 putInt(
                     MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
@@ -629,12 +636,14 @@ class AutoLibrary @Inject constructor(
 
         fun resolve(mediaId: String): Target? = when {
             mediaId.startsWith(BOOK_PREFIX) -> Target(LibraryItemId(mediaId.removePrefix(BOOK_PREFIX)), null)
+
             mediaId.startsWith(AT_PREFIX) -> {
                 val rest = mediaId.removePrefix(AT_PREFIX)
                 val cut = rest.lastIndexOf('/')
                 val millis = rest.substring(cut + 1).toLongOrNull()
                 if (cut <= 0 || millis == null) null else Target(LibraryItemId(rest.take(cut)), millis.milliseconds)
             }
+
             else -> null
         }
 

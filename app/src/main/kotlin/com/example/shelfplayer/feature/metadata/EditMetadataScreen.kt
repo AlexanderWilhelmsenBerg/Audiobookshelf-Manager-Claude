@@ -124,9 +124,11 @@ fun EditMetadataScreen(onBack: () -> Unit, viewModel: EditMetadataViewModel = hi
     ) { padding ->
         when {
             state.isLoading -> Column(Modifier.fillMaxSize().padding(padding)) { CircularProgressIndicator() }
+
             state.isMissing -> Column(Modifier.fillMaxSize().padding(padding)) {
                 Text(stringResource(R.string.edit_metadata_missing), Modifier.padding(16.dp))
             }
+
             else -> EditMetadataForm(state, viewModel, Modifier.padding(padding))
         }
     }
@@ -567,10 +569,12 @@ private fun supportingTextFor(error: BookMetadataError?, isChanged: Boolean): (@
     error != null -> {
         { Text(errorTextOf(error), color = MaterialTheme.colorScheme.error) }
     }
+
     // PRODUCT_SPEC MGR-001 — "dirty fields are tracked", and tracking it invisibly would help nobody.
     isChanged -> {
         { Text(stringResource(R.string.edit_metadata_changed)) }
     }
+
     else -> null
 }
 

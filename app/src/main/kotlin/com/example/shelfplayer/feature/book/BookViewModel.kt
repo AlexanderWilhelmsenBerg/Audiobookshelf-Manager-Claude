@@ -195,6 +195,7 @@ class BookViewModel @Inject constructor(
      * they were. Marking finished ignores it — the repository moves the position to the end of the book,
      * which is the only position a finished book can honestly report.
      */
+
     /**
      * PRODUCT_SPEC MGR-005 — remove the item from the server's database, after the screen confirmed it.
      *
@@ -206,6 +207,7 @@ class BookViewModel @Inject constructor(
         viewModelScope.launch {
             _message.value = when (val removed = server.removeFromServer(bookId, alsoRemoveDownload)) {
                 is AppResult.Failure -> BookMessage.Failed(removed.error.summary)
+
                 // Said out loud. This is the one action on this screen whose effect the user cannot see by
                 // looking — the book leaves the shelf either way — so "did that work" has to be answerable
                 // without opening the server.
@@ -245,6 +247,7 @@ class BookViewModel @Inject constructor(
             _embed.value = EmbedStatus.Requesting
             when (val asked = server.embedMetadata(bookId)) {
                 is AppResult.Failure -> _embed.value = EmbedStatus.Failed(asked.error.summary)
+
                 is AppResult.Success -> {
                     // Both outcomes are "the server is working on it". `AlreadyRunning` is not an error:
                     // somebody — possibly this user on another device — already started it, and the honest
@@ -275,7 +278,9 @@ class BookViewModel @Inject constructor(
         val verdicts = server.embedTasks.outcomes(profileId, bookId).map { state ->
             when (state) {
                 is EmbedTaskState.Failed -> EmbedStatus.ServerFailed(state.hasServerError)
+
                 EmbedTaskState.Finished -> EmbedStatus.Finished
+
                 // `task_started`, which the request already reported. Filtered out by the `first` below
                 // rather than dropped here, so that the mapping stays a total function.
                 EmbedTaskState.Running -> EmbedStatus.Running
@@ -394,6 +399,7 @@ class BookViewModel @Inject constructor(
  * @property webUrl this item in the server's own web client, or `null` when the server's address is not
  *   known — which is the state of a profile that has been signed out.
  */
+
 /**
  * PRODUCT_SPEC MGR-005 — what to tell the user after an action that reached the network.
  *

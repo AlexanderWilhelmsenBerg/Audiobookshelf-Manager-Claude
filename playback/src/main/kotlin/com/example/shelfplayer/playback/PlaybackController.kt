@@ -204,10 +204,12 @@ class PlaybackController @Inject constructor(
             val media = connect() ?: return@launch
             when {
                 media.isPlaying -> media.pause()
+
                 media.needsPreparing() -> {
                     media.prepare()
                     media.play()
                 }
+
                 else -> media.play()
             }
         }
@@ -577,6 +579,7 @@ data class PlaybackUiState(
     val fractionComplete: Float
         get() = when {
             duration.inWholeMilliseconds <= 0L -> 0f
+
             else -> (position.inWholeMilliseconds.toDouble() / duration.inWholeMilliseconds)
                 .coerceIn(0.0, 1.0)
                 .toFloat()

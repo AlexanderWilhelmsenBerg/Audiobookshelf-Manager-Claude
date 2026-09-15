@@ -380,6 +380,7 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
         when (decision) {
             is ResumeFreshnessDecision.Current ->
                 if (decision.source == FreshnessEvidenceSource.LocalUnverified) "unverified" else "local"
+
             is ResumeFreshnessDecision.Adopt -> when {
                 acknowledged == null -> "adopt"
                 decision.position > acknowledged.position -> "forward"

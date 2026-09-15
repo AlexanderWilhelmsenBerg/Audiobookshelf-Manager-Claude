@@ -147,7 +147,9 @@ private fun BookProgressLine(book: Book, modifier: Modifier = Modifier) {
         Text(
             text = when {
                 progress == null -> stringResource(R.string.book_length, book.duration.readable())
+
                 progress.isFinished -> stringResource(R.string.book_finished_of, book.duration.readable())
+
                 else -> stringResource(
                     R.string.book_position,
                     progress.position.readable(),

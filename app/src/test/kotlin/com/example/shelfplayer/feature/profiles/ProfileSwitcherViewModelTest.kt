@@ -236,6 +236,7 @@ class ProfileSwitcherViewModelTest {
      * made the first version of these tests fragile: the number of intermediate states a combine produces
      * is an implementation detail, while the state the user ends up looking at is the requirement.
      */
+
     /**
      * AUTH-005 — a locked account says so before it is tapped.
      *

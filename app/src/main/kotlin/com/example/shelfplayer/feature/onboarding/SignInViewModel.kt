@@ -118,6 +118,7 @@ class SignInViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = authRepository.probeServer(state.value.serverUrl)) {
                 is AppResult.Failure -> state.update { it.copy(isBusy = false, error = result.error) }
+
                 is AppResult.Success -> state.update { current ->
                     // PRODUCT_SPEC 24.4 / ADR-0024 — the version floor, enforced before a password is
                     // typed.
@@ -180,6 +181,7 @@ class SignInViewModel @Inject constructor(
                     // The password is dropped on both paths. A failed sign-in keeps the username, because
                     // the likely mistake is the password and retyping both is a needless annoyance.
                     is AppResult.Failure -> it.copy(isBusy = false, password = "", error = result.error)
+
                     is AppResult.Success -> it.copy(
                         isBusy = false,
                         password = "",

@@ -458,6 +458,7 @@ private val SHELF_CARD_WIDTH = 160.dp
 private val SHELF_CARD_CORNER_RADIUS = 8.dp
 
 /** PLAY-001 / PRODUCT_SPEC 21 — a full touch target even when the visible circle reads as an overlay. */
+
 /**
  * The play control on a shelf card.
  *

@@ -115,9 +115,12 @@ class ProfileLockViewModel @Inject constructor(
     private fun report(result: AppResult<Unit>) {
         _message.value = when {
             result is AppResult.Success -> LockSettingsMessage.Saved
+
             result is AppResult.Failure && result.error is AppError.Validation ->
                 LockSettingsMessage.Invalid(PasscodeRejection.Length)
+
             result is AppResult.Failure && result.error is AppError.Security -> LockSettingsMessage.WrongCurrent
+
             else -> LockSettingsMessage.Failed
         }
     }

@@ -164,6 +164,7 @@ class EditMetadataViewModel @Inject constructor(
             is AppResult.Failure -> _uiState.update {
                 it.copy(isSaving = false, errorSummary = result.error.summary)
             }
+
             is AppResult.Success -> {
                 // Not `adopt`: a cover change must not discard the metadata the user is part-way through
                 // typing. Only the cover and the baseline's identity moved.
@@ -214,6 +215,7 @@ class EditMetadataViewModel @Inject constructor(
                 is AppResult.Failure -> _uiState.update {
                     it.copy(isMatching = false, errorSummary = found.error.summary)
                 }
+
                 is AppResult.Success -> _uiState.update {
                     it.copy(isMatching = false, candidates = found.value)
                 }
@@ -285,6 +287,7 @@ class EditMetadataViewModel @Inject constructor(
                 is AppResult.Failure -> _uiState.update {
                     it.copy(isScanning = false, errorSummary = scanned.error.summary)
                 }
+
                 is AppResult.Success -> _uiState.update {
                     it.copy(isScanning = false, scanResult = scanned.value)
                 }
@@ -337,6 +340,7 @@ class EditMetadataViewModel @Inject constructor(
                 is AppResult.Failure -> _uiState.update {
                     it.copy(isSaving = false, errorSummary = fresh.error.summary)
                 }
+
                 is AppResult.Success -> adopt(fresh.value)
             }
         }
@@ -373,6 +377,7 @@ class EditMetadataViewModel @Inject constructor(
                     onSaveFailed(profile, reloaded.error)
                     return@launch
                 }
+
                 is AppResult.Success -> BookMetadataEdit.of(reloaded.value)
             }
             val conflicts = if (overwrite) emptySet() else state.conflictsAgainst(latest)
@@ -384,6 +389,7 @@ class EditMetadataViewModel @Inject constructor(
 
             when (val saved = metadata.save(profile, bookId, state.form, state.changed)) {
                 is AppResult.Failure -> onSaveFailed(profile, saved.error)
+
                 is AppResult.Success -> {
                     val book = saved.value.book
                     if (book == null) {

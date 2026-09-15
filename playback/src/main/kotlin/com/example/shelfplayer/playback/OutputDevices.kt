@@ -75,6 +75,7 @@ object OutputDevices {
         -> DeviceKind.Speaker
 
         AudioDeviceInfo.TYPE_HEARING_AID -> DeviceKind.HearingAid
+
         AudioDeviceInfo.TYPE_BUS -> DeviceKind.Car
 
         AudioDeviceInfo.TYPE_USB_DEVICE,
@@ -106,6 +107,7 @@ object OutputDevices {
 
         // A2DP alone cannot honestly distinguish AirPods from a dashboard or a Bluetooth speaker.
         AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> AudioOutputRole.Ambiguous
+
         else -> AudioOutputRole.Other
     }
 

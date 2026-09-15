@@ -380,6 +380,7 @@ class SleepTimerController @Inject constructor(
     private suspend fun recordStarted(bookId: LibraryItemId, mode: SleepTimerMode): String? =
         when (val recorded = repository.recordStarted(bookId, mode)) {
             is AppResult.Success -> recorded.value
+
             // A timer whose history could not be written still runs. The record is worth having and is
             // not worth refusing to start a timer over (product priority 1).
             is AppResult.Failure -> null

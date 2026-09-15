@@ -81,6 +81,7 @@ internal class PlaybackRecovery(private val maxAttempts: Int = MAX_ATTEMPTS) {
             PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
             PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
             -> false
+
             else -> error.errorCode in IO_ERROR_RANGE
         }
     }
