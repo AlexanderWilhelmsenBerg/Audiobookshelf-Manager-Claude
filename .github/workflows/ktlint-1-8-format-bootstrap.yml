@@ -32,57 +32,18 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
-      - name: Repair remaining non-attached KDocs identified by ktlint 1.8
+      - name: Repair final known non-attached KDoc identified by ktlint 1.8
         shell: python
         run: |
           from pathlib import Path
 
-          replacements = {
-              Path('app/src/test/kotlin/com/example/shelfplayer/a11y/AccessibilityAssertions.kt'): [
-                  (
-                      '/**\n * PRODUCT_SPEC §51 / 2.10 — the two accessibility properties that can be checked without a device.',
-                      '/*\n * PRODUCT_SPEC §51 / 2.10 — the two accessibility properties that can be checked without a device.',
-                  ),
-              ],
-              Path('app/src/test/kotlin/com/example/shelfplayer/feature/profiles/ProfileSwitcherViewModelTest.kt'): [
-                  (
-                      '    /**\n     * Keeps the `WhileSubscribed` state flow hot and returns it.',
-                      '    /*\n     * Keeps the `WhileSubscribed` state flow hot and returns it.',
-                  ),
-                  (
-                      '    /**\n     * The switcher does not read the library; it only causes an account sync as a side effect of a',
-                      '    /*\n     * The switcher does not read the library; it only causes an account sync as a side effect of a',
-                  ),
-              ],
-              Path('app/src/test/kotlin/com/example/shelfplayer/feature/settings/SettingsScreenTest.kt'): [
-                  (
-                      '    /**\n     * The tab in the row, not the section heading that happens to share its wording.',
-                      '    /*\n     * The tab in the row, not the section heading that happens to share its wording.',
-                  ),
-              ],
-              Path('app/src/test/kotlin/com/example/shelfplayer/feature/settings/SettingsViewModelTest.kt'): [
-                  (
-                      '/**\n * PRODUCT_SPEC PLAY-008 — the sleep timer\'s settings and history, in memory.',
-                      '/*\n * PRODUCT_SPEC PLAY-008 — the sleep timer\'s settings and history, in memory.',
-                  ),
-                  (
-                      '/** PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox\'s readings, as the About tab receives them. */',
-                      '/* PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox\'s readings, as the About tab receives them. */',
-                  ),
-                  (
-                      '/**\n * PRODUCT_SPEC SET-003 — a package manager that records rather than one that exists.',
-                      '/*\n * PRODUCT_SPEC SET-003 — a package manager that records rather than one that exists.',
-                  ),
-              ],
-          }
-
-          for path, edits in replacements.items():
-              text = path.read_text()
-              for old, new in edits:
-                  if old not in text:
-                      raise SystemExit(f'Expected ktlint migration target not found in {path}: {old!r}')
-                  text = text.replace(old, new, 1)
-              path.write_text(text)
+          path = Path('core/database/src/main/kotlin/com/example/shelfplayer/core/database/entity/Entities.kt')
+          old = '/**\n * PRODUCT_SPEC 13 — the Phase 0 subset of the conceptual schema.'
+          new = '/*\n * PRODUCT_SPEC 13 — the Phase 0 subset of the conceptual schema.'
+          text = path.read_text()
+          if old not in text:
+              raise SystemExit(f'Expected ktlint migration target not found in {path}: {old!r}')
+          path.write_text(text.replace(old, new, 1))
 
       - name: Apply ktlint 1.8 formatter
         shell: bash
@@ -103,5 +64,5 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'style: finish ktlint 1.8 formatting migration'
+          git commit -m 'style: complete ktlint 1.8 formatting migration'
           git push origin HEAD:chore/bw-dep-01-ktlint-engine-1-8-0
