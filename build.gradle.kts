@@ -16,14 +16,14 @@ plugins {
     id("shelfplayer.quality")
 }
 
-/**
+/*
  * PRODUCT_SPEC 16.5 — the single verification command for agents and CI.
  *
  * `verifyDebug` fans out to every module's own `verifyDebug`, which runs ktlint, detekt with type
  * resolution, Android Lint, unit tests and the debug assembly. Room schema verification is attached
  * by `:core:database`.
  */
-/**
+/*
  * PRODUCT_SPEC 17.3 — the coverage gate runs with the rest of them, or it is a report nobody reads.
  *
  * Attached to the root `verifyDebug` rather than to each module's, because the aggregate report is a
@@ -47,7 +47,7 @@ tasks.named("verifyDebug") {
     )
 }
 
-/**
+/*
  * PRODUCT_SPEC 16.1 — dependency locking.
  *
  * Run `./gradlew resolveAndLockAll --write-locks` (or `scripts/update-dependency-locks.sh`) to
@@ -90,7 +90,7 @@ tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
 
-/**
+/*
  * PRODUCT_SPEC 17.3 — coverage thresholds, over the code the requirement is about.
  *
  * ### Execution data from everywhere, a report about domain and core
