@@ -1,0 +1,50 @@
+name: Room 2.8.5 verification bootstrap
+
+on:
+  push:
+    branches:
+      - chore/bw-dep-01-room-2-8-5
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chore/bw-dep-01-room-2-8-5
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Generate Room verification metadata and run required gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew ktlintCheck --rerun-tasks --write-verification-metadata sha256
+          ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true --write-verification-metadata sha256
+
+          schema_changes="$(git status --porcelain -- core/database/schemas)"
+          if [ -n "$schema_changes" ]; then
+            echo "::error::Room dependency upgrade changed committed database schemas."
+            echo "$schema_changes"
+            exit 1
+          fi
+
+      - name: Commit generated verification metadata and remove bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/room-2-8-5-bootstrap.yml
+          git add gradle/verification-metadata.xml .github/workflows/room-2-8-5-bootstrap.yml
+          git diff --cached --check
+          git commit -m "chore(deps): pin Room 2.8.5 verification metadata"
+          git push
