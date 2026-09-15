@@ -2,7 +2,7 @@ package com.example.shelfplayer.core.network.api
 
 import kotlinx.serialization.Serializable
 
-/**
+/*
  * Wire types for `GET /api/me/listening-sessions`, captured against Audiobookshelf 2.36.0 on 2026-08-27.
  *
  * PRODUCT_SPEC 9.3: these never leave `:core:network`. The fixture is `me-listening-sessions.json` and

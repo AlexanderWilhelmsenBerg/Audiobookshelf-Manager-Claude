@@ -229,7 +229,7 @@ internal object LibraryMapper {
         )
     }
 
-    /**
+    /*
      * Every reason an item cannot be stored, in one place.
      *
      * `null` means the item is usable. The list is short on purpose: a metadata field the server happens

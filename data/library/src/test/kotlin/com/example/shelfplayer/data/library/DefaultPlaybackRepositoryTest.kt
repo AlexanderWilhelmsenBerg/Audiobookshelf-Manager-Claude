@@ -763,7 +763,7 @@ class DefaultPlaybackRepositoryTest {
         }
     }
 
-    /** The active profile, without a database of profiles behind it. */
+    /* The active profile, without a database of profiles behind it. */
     // ------------------------------------------- PRODUCT_SPEC 6.5, whose row a write lands on
 
     /**

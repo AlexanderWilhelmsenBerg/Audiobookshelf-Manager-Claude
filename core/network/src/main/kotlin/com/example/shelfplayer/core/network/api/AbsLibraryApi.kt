@@ -511,7 +511,7 @@ internal class AbsLibraryApi @Inject constructor(
         data class Unreachable(val error: AppError) : ItemOutcome
     }
 
-    /**
+    /*
      * The running tally of one library's sweep, including when to stop.
      *
      * PRODUCT_SPEC 14.3 versus the N+1: a retry budget per item is right for a library where one request

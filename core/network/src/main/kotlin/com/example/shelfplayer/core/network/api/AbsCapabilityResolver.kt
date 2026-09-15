@@ -79,7 +79,7 @@ internal class AbsCapabilityResolver @Inject constructor(
         }
     }
 
-    /**
+    /*
      * PRODUCT_SPEC SYNC-001 — "missing expected fields produce a typed compatibility error rather than
      * a crash".
      *

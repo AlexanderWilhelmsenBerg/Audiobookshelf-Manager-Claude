@@ -66,7 +66,7 @@ internal interface PlaybackService {
         @Body request: LocalSessionBatchDto,
     ): Response<LocalSessionBatchResponseDto>
 
-    /**
+    /*
      * PRODUCT_SPEC PLAY-004 — "marking finished is explicit". This is the explicit route.
      *
      * Not a session endpoint. A session says "somebody listened from here to here"; this states a fact about

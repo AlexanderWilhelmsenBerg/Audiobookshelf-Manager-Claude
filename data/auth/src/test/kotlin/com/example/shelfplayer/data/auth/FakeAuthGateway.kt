@@ -195,7 +195,7 @@ internal class FakeAuthGateway :
         ): AppResult<List<ListeningSession>> = unsupported()
     }
 
-    /** PRODUCT_SPEC 11.1 — not part of the auth tests; every method says so rather than pretending. */
+    /* PRODUCT_SPEC 11.1 — not part of the auth tests; every method says so rather than pretending. */
 
     /**
      * PRODUCT_SPEC DL-001 — not exercised by this test, and refusing rather than pretending.

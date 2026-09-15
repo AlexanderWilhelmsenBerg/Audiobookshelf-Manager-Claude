@@ -79,7 +79,7 @@ class DownloadPathsTest {
             val component = DownloadPaths.component(raw)
 
             assertTrue(
-                component.all { it.isLetterOrDigit() && it.code < 0x80 || it in "._-" },
+                component.all { (it.isLetterOrDigit() && it.code < 0x80) || it in "._-" },
                 "produced a character outside the alphabet for ${raw.map(Char::code)}",
             )
             assertFalse(component in setOf("", ".", ".."), "produced a reserved name for ${raw.map(Char::code)}")

@@ -2,7 +2,7 @@ package com.example.shelfplayer.core.network.api
 
 import kotlinx.serialization.Serializable
 
-/**
+/*
  * Wire types for the bookmark routes, verified against Audiobookshelf 2.36.0 on 2026-08-13.
  *
  * PRODUCT_SPEC 9.3: these never leave `:core:network`. The fixtures are `bookmark-create.json`,

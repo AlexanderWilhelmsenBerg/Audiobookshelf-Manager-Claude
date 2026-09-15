@@ -51,7 +51,7 @@ interface PlaybackSettingsRepository {
 
     suspend fun setHousekeeping(housekeeping: DownloadHousekeeping): AppResult<Unit>
 
-    /**
+    /*
      * PRODUCT_SPEC ROUTE-001 / ROUTE-002 — whether connecting to a car starts the last book.
      *
      * Off unless explicitly chosen. ROUTE-002 will replace this with a policy per device; one global switch
