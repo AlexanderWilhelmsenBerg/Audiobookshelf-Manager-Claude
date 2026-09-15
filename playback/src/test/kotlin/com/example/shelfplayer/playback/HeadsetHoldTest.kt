@@ -16,14 +16,14 @@ class HeadsetHoldTest {
     private val car = output("car", "Car audio", DeviceKind.Car, AudioOutputRole.Car)
     private val speaker = output("speaker:phone", "Phone speaker", DeviceKind.Speaker, AudioOutputRole.Speaker)
 
-    /**
+    /*
      * The case the class exists to prevent, reached from the other direction.
      *
      * On API 33+ an idle BookWave still sees the platform's media route, so connected earbuds look active
      * with no book loaded. Remembering them means a car arriving pins the player to a headset in a pocket,
      * and Android Auto then auto-plays into it.
      */
-    /**
+    /*
      * An explicit *Car* press has to outlive the memory.
      *
      * Without [HeadsetHold.forget] the ambiguous-route guard keeps the earbuds across the dashboard becoming
@@ -35,11 +35,12 @@ class HeadsetHoldTest {
      * R-103), so it is re-adopted on the next observation — and re-pinning the route to the dashboard is
      * where the listener just asked to be, which makes it harmless rather than a second defect.
      */
-    /**
+    /*
      * A definite `TYPE_BUS` car is not a headset candidate, so narrowing to the active *headset* before
      * lifting the release meant the route reaching such a car never lifted it. The listener's next Headset
      * press was then refused for the rest of the session and nothing could be preserved on a reconnect.
      */
+
     /**
      * A release must not outlive the book it belonged to.
      *

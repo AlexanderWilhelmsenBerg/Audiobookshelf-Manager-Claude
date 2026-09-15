@@ -165,12 +165,13 @@ class SettingsScreenTest {
         tab("About").assertIsSelected()
     }
 
-    /**
+    /*
      * The tab in the row, not the section heading that happens to share its wording.
      *
      * "Server" and "Appearance" are each both a tab and a heading on the tab they select, so a text-only
      * matcher finds two nodes and fails before it can assert anything. The role is what separates them.
      */
+
     /**
      * A tab, found by its **name** whether that name is its text or its icon's description.
      *

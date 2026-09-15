@@ -45,15 +45,24 @@ interface Redactor {
 class DefaultRedactor @Inject constructor(private val policy: RedactionPolicy) : Redactor {
     override fun render(field: LogField): String = when (field) {
         is LogField.Public -> field.value
+
         is LogField.Millis -> "${field.value}ms"
+
         is LogField.Count -> field.value.toString()
+
         is LogField.Secret -> REDACTED
+
         is LogField.Identifier -> digest(field.value)
+
         is LogField.Username -> digest(field.value)
+
         is LogField.FilePath -> redactPath(field.value)
+
         is LogField.Url -> redactUrl(field.value)
+
         is LogField.ServerHost ->
             if (policy.includeServerHost) field.value else digest(field.value)
+
         is LogField.MediaTitle ->
             if (policy.includeMediaTitles) field.value else digest(field.value)
     }

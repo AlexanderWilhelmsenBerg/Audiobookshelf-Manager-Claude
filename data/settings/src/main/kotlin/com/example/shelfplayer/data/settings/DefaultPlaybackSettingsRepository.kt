@@ -165,6 +165,7 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
         withContext(ioDispatcher) {
             when (val resolved = resultOf(onError = ::storeFailure) { activeProfile() }) {
                 is AppResult.Failure -> resolved
+
                 is AppResult.Success -> {
                     val profile = resolved.value
                         ?: return@withContext AppResult.Failure(AppError.Authentication())

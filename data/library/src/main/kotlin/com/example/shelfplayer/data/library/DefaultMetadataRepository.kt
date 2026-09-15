@@ -78,6 +78,7 @@ class DefaultMetadataRepository @Inject constructor(
     private fun decodeOrForget(entity: MetadataDraftEntity): BookMetadataEdit? =
         when (val decoded = drafts.decode(entity.payload)) {
             is AppResult.Success -> decoded.value
+
             is AppResult.Failure -> {
                 logger.warn(
                     LogCategory.Sync,
@@ -123,6 +124,7 @@ class DefaultMetadataRepository @Inject constructor(
     ): AppResult<MetadataSaveResult> = withContext(ioDispatcher) {
         when (val saved = gateway.management.updateMetadata(profileId, bookId, edit, changed)) {
             is AppResult.Failure -> saved
+
             is AppResult.Success -> {
                 val snapshot = saved.value.book
                 val book = snapshot?.let { store(profileId, it) } ?: library.observeBook(profileId, bookId).first()
@@ -164,6 +166,7 @@ class DefaultMetadataRepository @Inject constructor(
         withContext(ioDispatcher) {
             when (val scanned = gateway.management.scanItem(profileId, bookId)) {
                 is AppResult.Failure -> scanned
+
                 is AppResult.Success -> {
                     val snapshot = scanned.value.book
                     if (snapshot != null) {
@@ -190,6 +193,7 @@ class DefaultMetadataRepository @Inject constructor(
         withContext(ioDispatcher) {
             when (val removed = gateway.management.removeFromDatabase(profileId, bookId)) {
                 is AppResult.Failure -> removed
+
                 is AppResult.Success -> {
                     markDeleted(profileId, bookId)
                     AppResult.Success(Unit)

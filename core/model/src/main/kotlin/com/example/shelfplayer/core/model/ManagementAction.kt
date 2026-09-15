@@ -114,22 +114,29 @@ data class ManagementPermissions(
     /** `null` when the action is available. */
     fun blockOn(action: ManagementAction): ManagementBlock? = when (action) {
         ManagementAction.EditMetadata -> permission(canUpdate)
+
         // Both grants, and in this order: the server checks the method gate first and the upload grant
         // second, so an account with upload but not update is refused for the update it lacks.
         ManagementAction.ChangeCover -> permission(canUpdate && canUpload)
+
         ManagementAction.RemoveCover -> permission(canDelete)
+
         ManagementAction.MatchMetadata -> capability(ServerCapability.MatchProvider) ?: permission(canUpdate)
+
         ManagementAction.ScanItem,
         ManagementAction.ScanLibrary,
         // MGR-007 joins the scans rather than the grants: the server gates all three on the account type.
         ManagementAction.EmbedMetadata,
         -> permission(profileRole == ProfileRole.Admin)
+
         ManagementAction.RemoveFromDatabase -> permission(canDelete)
+
         // The capability is checked first and is never confirmed, so this always answers `Capability`.
         // Written as a chain anyway: if a server ever does confirm it, the grant becomes the next gate
         // without this branch needing to be reasoned about again.
         ManagementAction.DeleteSourceFiles ->
             capability(ServerCapability.SourceFileDelete) ?: permission(canDelete)
+
         ManagementAction.ManageUsers -> permission(profileRole == ProfileRole.Admin)
     }
 

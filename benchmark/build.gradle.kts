@@ -7,7 +7,7 @@ plugins {
     id("shelfplayer.quality")
 }
 
-/**
+/*
  * PRODUCT_SPEC 17.3 / ADR-0025 — the four numbers, measured on hardware.
  *
  * ### Why this is a `com.android.test` module

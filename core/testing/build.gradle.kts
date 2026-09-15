@@ -2,7 +2,7 @@ plugins {
     id("shelfplayer.jvm.library")
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.1 — shared test utilities.
  *
  * This is a JVM module so that `:domain` and `:core:model` (which must never see Android) can use

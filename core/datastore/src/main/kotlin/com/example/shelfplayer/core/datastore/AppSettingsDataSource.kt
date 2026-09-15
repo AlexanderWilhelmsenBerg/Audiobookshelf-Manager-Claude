@@ -345,8 +345,10 @@ class AppSettingsDataSource @Inject constructor(
             // and zero was already spoken for by the never-chosen convention every other field here uses.
             fadeLength = when {
                 stored.sleepTimerFadeSeconds < 0 -> Duration.ZERO
+
                 stored.sleepTimerFadeSeconds > 0 ->
                     stored.sleepTimerFadeSeconds.seconds.coerceIn(SleepTimerSettings.FadeRange)
+
                 else -> SleepTimerSettings.Default.fadeLength
             },
             shakeToRestart = stored.sleepTimerShakeToRestart,
@@ -407,6 +409,7 @@ class AppSettingsDataSource @Inject constructor(
             buffer = BufferPreset.byNameOrDefault(stored.bufferPreset.takeIf(String::isNotBlank)),
             focusBehaviour = when (stored.focusBehaviour) {
                 StoredFocusBehaviour.FOCUS_BEHAVIOUR_DUCK -> FocusBehaviour.Duck
+
                 // The zero value and anything a newer build wrote. Both mean pause, which is the option
                 // that cannot surprise anybody.
                 StoredFocusBehaviour.FOCUS_BEHAVIOUR_PAUSE,
@@ -415,7 +418,9 @@ class AppSettingsDataSource @Inject constructor(
             },
             startupMode = when (stored.startupMode) {
                 StoredStartupMode.STARTUP_MODE_RESTORE_PAUSED -> StartupMode.RestorePaused
+
                 StoredStartupMode.STARTUP_MODE_RESUME_ON_OPEN -> StartupMode.ResumeOnOpen
+
                 // ROUTE-003: "App launch alone never starts playback by default." An unset field and an
                 // unknown one both land here, so no upgrade path can produce a build that plays on open.
                 StoredStartupMode.STARTUP_MODE_ON_MEDIA_COMMAND,
@@ -516,7 +521,7 @@ class AppSettingsDataSource @Inject constructor(
         dataStore.updateData { current -> current.toBuilder().setBufferPreset(preset.name).build() }
     }
 
-    /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */
+    /* PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */
 
     /**
      * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — which categories may spend cellular data.
@@ -627,10 +632,15 @@ class AppSettingsDataSource @Inject constructor(
         // number a newer build wrote and this one has never heard of — it genuinely is "some other device".
         kind = when (kind) {
             StoredDeviceKind.DEVICE_KIND_WIRED -> DeviceKind.Wired
+
             StoredDeviceKind.DEVICE_KIND_BLUETOOTH -> DeviceKind.Bluetooth
+
             StoredDeviceKind.DEVICE_KIND_CAR -> DeviceKind.Car
+
             StoredDeviceKind.DEVICE_KIND_HEARING_AID -> DeviceKind.HearingAid
+
             StoredDeviceKind.DEVICE_KIND_SPEAKER -> DeviceKind.Speaker
+
             StoredDeviceKind.DEVICE_KIND_OTHER,
             StoredDeviceKind.DEVICE_KIND_UNSPECIFIED,
             StoredDeviceKind.UNRECOGNIZED,
@@ -638,8 +648,11 @@ class AppSettingsDataSource @Inject constructor(
         },
         policy = when (policy) {
             StoredDevicePolicy.DEVICE_POLICY_NEVER -> DevicePolicy.Never
+
             StoredDevicePolicy.DEVICE_POLICY_AUTO_PLAY -> DevicePolicy.AutoPlay
+
             StoredDevicePolicy.DEVICE_POLICY_ASK -> DevicePolicy.Ask
+
             // `ARM_ONLY`, the unset zero value, and a policy written by a newer build all land on the
             // product default. That is the point of the proto's ordering, and it fails safe: an unknown
             // policy readies a book rather than starting one.

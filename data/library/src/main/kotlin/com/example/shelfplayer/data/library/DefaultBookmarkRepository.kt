@@ -126,6 +126,7 @@ class DefaultBookmarkRepository @Inject constructor(
             bookmarkDao.upsert(listOf(stored.copy(isPendingDelete = true, hasUnsyncedChanges = true)))
             when (val removed = gateway.bookmarks.remove(profileId, bookId, seconds.seconds)) {
                 is AppResult.Failure -> AppResult.Failure(removed.error)
+
                 is AppResult.Success -> {
                     bookmarkDao.deleteById(idFor(profileId, bookKey, seconds))
                     logger.info(LogCategory.Playback, "A bookmark was removed")
@@ -217,6 +218,7 @@ class DefaultBookmarkRepository @Inject constructor(
         seconds: Long,
     ): AppResult<Unit> = when (remote) {
         is AppResult.Failure -> AppResult.Failure(remote.error)
+
         is AppResult.Success -> {
             bookmarkDao.find(profileId.value, bookKey, seconds)?.let { stored ->
                 bookmarkDao.upsert(listOf(stored.copy(hasUnsyncedChanges = false)))

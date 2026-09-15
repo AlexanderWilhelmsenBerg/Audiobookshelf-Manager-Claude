@@ -40,12 +40,13 @@ internal interface AuthService {
     @POST("auth/refresh")
     suspend fun refresh(@Header("x-refresh-token") refreshToken: String): Response<RefreshResponseDto>
 
-    /**
+    /*
      * Exchanges a stored token for the current user and permissions on a cold start.
      *
      * A `401` here is the signal that `AUTH-004` acts on: the stored token is no longer good, and the
      * profile is marked as requiring reauthentication rather than being silently signed out.
      */
+
     /**
      * PRODUCT_SPEC SYNC-001 — the websocket capability, probed rather than assumed.
      *

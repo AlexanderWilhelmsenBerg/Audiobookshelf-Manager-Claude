@@ -105,6 +105,7 @@ class DefaultCapabilityRepository @Inject constructor(
 
         when (val resolved = gateway.capabilities.resolve(serverId, server.baseUrl, accessToken)) {
             is AppResult.Failure -> resolved
+
             is AppResult.Success -> {
                 persist(resolved.value, detectedAt = clock.now().toEpochMilli())
                 logger.info(

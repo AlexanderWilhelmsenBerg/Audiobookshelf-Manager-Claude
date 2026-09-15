@@ -51,6 +51,7 @@ class ServerUsersViewModel @Inject constructor(private val users: ServerUserRepo
                 is AppResult.Failure -> _uiState.update {
                     it.copy(isLoading = false, errorSummary = listed.error.summary)
                 }
+
                 is AppResult.Success -> _uiState.update {
                     it.copy(isLoading = false, users = listed.value)
                 }

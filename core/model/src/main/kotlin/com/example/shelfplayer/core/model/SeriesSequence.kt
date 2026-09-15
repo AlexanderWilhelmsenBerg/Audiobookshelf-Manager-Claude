@@ -31,8 +31,10 @@ sealed interface SeriesSequence : Comparable<SeriesSequence> {
         if (rank != 0) return rank
         return when {
             this is Numeric && other is Numeric -> value.compareTo(other.value)
+
             this is Unparsed && other is Unparsed ->
                 raw.compareTo(other.raw, ignoreCase = true)
+
             else -> 0
         }
     }

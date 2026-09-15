@@ -395,6 +395,7 @@ class DefaultPlaybackRepository @Inject constructor(
         val profileId = profileRepository.activeProfileId() ?: return@withContext ExternalSessionCheck.Unavailable
         when (val remote = gateway.playback.serverProgress(profileId, bookId)) {
             is AppResult.Failure -> ExternalSessionCheck.Unavailable
+
             is AppResult.Success -> outcomeOf(remote.value, baseline.position).also { outcome ->
                 logger.info(
                     LogCategory.Sync,

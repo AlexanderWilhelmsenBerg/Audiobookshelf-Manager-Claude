@@ -79,6 +79,7 @@ fun Book.inGroup(kind: BookGroupKind, key: String): Boolean = keysFor(kind).any 
  */
 private fun Book.keysFor(kind: BookGroupKind): List<Pair<String, String>> = when (kind) {
     BookGroupKind.Author -> authors.map { it.id.value to it.name }
+
     BookGroupKind.Genre ->
         genres
             .filter(String::isNotBlank)

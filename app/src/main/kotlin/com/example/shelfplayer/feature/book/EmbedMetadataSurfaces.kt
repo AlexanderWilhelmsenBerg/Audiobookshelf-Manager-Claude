@@ -132,12 +132,18 @@ private val EmbedStatus.isWorking: Boolean
 @Composable
 private fun EmbedStatus.text(): String = when (this) {
     EmbedStatus.Idle -> ""
+
     EmbedStatus.Requesting -> stringResource(R.string.book_embed_requesting)
+
     EmbedStatus.Running -> stringResource(R.string.book_embed_running)
+
     EmbedStatus.Finished -> stringResource(R.string.book_embed_finished)
+
     is EmbedStatus.Failed -> summary
+
     is EmbedStatus.ServerFailed -> stringResource(
         if (hasServerError) R.string.book_embed_server_failed else R.string.book_embed_server_failed_silent,
     )
+
     EmbedStatus.Unknown -> stringResource(R.string.book_embed_unknown)
 }

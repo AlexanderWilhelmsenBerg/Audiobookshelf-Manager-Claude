@@ -183,38 +183,48 @@ class ResumeFreshnessPlayerTest {
         ) { _, method, args ->
             when (method.name) {
                 "getApplicationLooper" -> Looper.getMainLooper()
+
                 "getMediaItemCount" -> mediaItemCount
+
                 "getPlayWhenReady" -> playWhenReady
+
                 "setPlayWhenReady" -> {
                     playWhenReady = args?.firstOrNull() as? Boolean ?: false
                     record("delegate:play=$playWhenReady")
                     Unit
                 }
+
                 "seekTo" -> {
                     record("delegate:seek")
                     Unit
                 }
+
                 "setMediaItems" -> {
                     mediaItemCount = (args?.firstOrNull() as? List<*>)?.size ?: mediaItemCount
                     record("delegate:setMedia")
                     Unit
                 }
+
                 "replaceMediaItem", "replaceMediaItems" -> {
                     record("delegate:replace")
                     Unit
                 }
+
                 "addMediaItems" -> {
                     record("delegate:add")
                     Unit
                 }
+
                 "removeMediaItems" -> {
                     record("delegate:remove")
                     Unit
                 }
+
                 "stop" -> {
                     record("delegate:stop")
                     Unit
                 }
+
                 else -> defaultValue(method.returnType)
             }
         } as Player

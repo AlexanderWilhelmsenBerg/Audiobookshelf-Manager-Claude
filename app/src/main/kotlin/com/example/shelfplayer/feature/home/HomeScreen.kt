@@ -649,7 +649,8 @@ private fun GenreEditChangeSummary(request: GenreEditRequest) {
     }
 }
 
-/** PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */
+/* PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */
+
 /**
  * PRODUCT_SPEC 16.2 — the axes as pages, kept in step with the axis the view model holds.
  *
@@ -1214,8 +1215,10 @@ private fun AxisContent(
                     val profile = uiState.profile
                     val disabledReason = when {
                         uiState.isOffline -> stringResource(R.string.genre_edit_offline)
+
                         profile?.requiresReauthentication == true ->
                             stringResource(R.string.genre_edit_reauthentication)
+
                         else -> null
                     }
                     GroupCard(
@@ -1386,12 +1389,16 @@ private fun ShelfHeader(uiState: HomeUiState, modifier: Modifier = Modifier) {
 @Composable
 private fun HomeUiState.syncStatusLabel(): String = when (syncStatus) {
     SyncStatus.Syncing -> stringResource(R.string.home_sync_running)
+
     SyncStatus.Failed -> stringResource(R.string.home_sync_failed)
+
     SyncStatus.NeverSynced -> stringResource(R.string.home_sync_never)
+
     // The count follows the active browse scope. A search narrows it; a shelf preview retains the
     // uncapped Room source count rather than claiming its card limit is the whole library.
     SyncStatus.Succeeded ->
         pluralStringResource(R.plurals.home_library_books, visibleBookCount, visibleBookCount)
+
     // PRODUCT_SPEC LIB-001 — a sync that could not reach some items says so rather than claiming a clean
     // run. The count is still what is on screen; the caveat is that it is not all of it.
     SyncStatus.PartiallySucceeded ->
@@ -1408,6 +1415,7 @@ private val HomeUiState.visibleBookCount: Int
         }
 
         HomeAxis.Series -> series.asSequence().flatMap { it.books.asSequence() }.distinctBookCount()
+
         HomeAxis.Authors, HomeAxis.Genres ->
             groups.asSequence().flatMap { it.books.asSequence() }.distinctBookCount()
     }

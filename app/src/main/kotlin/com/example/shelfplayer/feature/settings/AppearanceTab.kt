@@ -625,9 +625,13 @@ private fun AccentScheme.label(themes: List<BackgroundTheme>): String = when {
 @Composable
 private fun GlassTint.label(themes: List<BackgroundTheme>): String = when (this) {
     GlassTint.White -> stringResource(R.string.settings_tint_white)
+
     GlassTint.Warm -> stringResource(R.string.settings_tint_warm)
+
     GlassTint.Cool -> stringResource(R.string.settings_tint_cool)
+
     GlassTint.FollowAccent -> stringResource(R.string.settings_tint_accent)
+
     else -> {
         val accent = accentKey?.let { key -> AccentScheme.all(themes).firstOrNull { it.key == key } }
         accent?.label(themes) ?: stringResource(R.string.settings_accent_theme)

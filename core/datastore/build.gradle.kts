@@ -8,7 +8,7 @@ android {
     namespace = "com.example.shelfplayer.core.datastore"
 }
 
-/**
+/*
  * PRODUCT_SPEC SET-001 — settings live in Proto DataStore.
  *
  * Proto rather than Preferences because PRODUCT_SPEC SET-001 also requires versioned, tested
@@ -61,7 +61,7 @@ protobuf {
     }
 }
 
-/**
+/*
  * KSP compiles the same source set the protobuf plugin generates into, so the ordering has to be
  * declared. Without this, Gradle reports an implicit-dependency error between `kspDebugKotlin` and
  * `generateDebugProto` — the kind of failure that only shows up on a clean CI checkout.

@@ -50,6 +50,7 @@ class ListenedTime {
         val since = playingSince
         when {
             isPlaying && since == null -> playingSince = at
+
             !isPlaying && since != null -> {
                 accumulated += (at - since).coerceAtLeast(Duration.ZERO)
                 playingSince = null

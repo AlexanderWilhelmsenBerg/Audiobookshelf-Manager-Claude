@@ -108,7 +108,9 @@ class DefaultAppearanceRepository @Inject constructor(
 /** Legacy proto brightness used only when an install predates `app_theme_key`. */
 private fun ThemeMode.asAppTheme(): AppTheme = when (this) {
     ThemeMode.THEME_MODE_LIGHT -> AppTheme.Light
+
     ThemeMode.THEME_MODE_DARK -> AppTheme.Dark
+
     ThemeMode.THEME_MODE_SYSTEM,
     ThemeMode.THEME_MODE_UNSPECIFIED,
     ThemeMode.UNRECOGNIZED,

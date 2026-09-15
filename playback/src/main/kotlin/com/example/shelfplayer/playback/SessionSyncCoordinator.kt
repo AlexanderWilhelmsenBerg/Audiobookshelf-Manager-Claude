@@ -313,7 +313,9 @@ class SessionSyncCoordinator @Inject constructor(
     private fun Logger.debugFailure(message: String, trigger: SyncTrigger, error: AppError) {
         val thrown = when (error) {
             is AppError.Network -> error.cause
+
             is AppError.Unknown -> error.cause
+
             is AppError.ApiCompatibility,
             is AppError.Authentication,
             is AppError.Authorization,

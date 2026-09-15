@@ -55,6 +55,7 @@ data class MediaProgress(
     val fractionComplete: Float
         get() = when {
             duration.inWholeMilliseconds <= 0L -> 0f
+
             else -> (position.inWholeMilliseconds.toDouble() / duration.inWholeMilliseconds)
                 .coerceIn(0.0, 1.0)
                 .toFloat()

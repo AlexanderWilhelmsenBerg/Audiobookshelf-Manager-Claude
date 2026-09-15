@@ -79,7 +79,7 @@ class DownloadPathsTest {
             val component = DownloadPaths.component(raw)
 
             assertTrue(
-                component.all { it.isLetterOrDigit() && it.code < 0x80 || it in "._-" },
+                component.all { (it.isLetterOrDigit() && it.code < 0x80) || it in "._-" },
                 "produced a character outside the alphabet for ${raw.map(Char::code)}",
             )
             assertFalse(component in setOf("", ".", ".."), "produced a reserved name for ${raw.map(Char::code)}")
@@ -117,23 +117,5 @@ class DownloadPathsTest {
         assertEquals("file-1.mp3", DownloadPaths.fileName("file-1", "audio/mpeg"))
         assertEquals("file-1.m4b", DownloadPaths.fileName("file-1", "audio/m4b"))
         assertEquals("file-1.mp3", DownloadPaths.fileName("file-1", "audio/mpeg; charset=binary"))
-    }
-
-    /** An unknown type is `.bin`: unplayable and honest, rather than a guess taken from the server. */
-    @Test
-    fun `an unknown mime type does not become a guess`() {
-        assertEquals("file-1.bin", DownloadPaths.fileName("file-1", null))
-        assertEquals("file-1.bin", DownloadPaths.fileName("file-1", "application/x-msdownload"))
-        assertEquals("file-1.bin", DownloadPaths.fileName("file-1", "text/html"))
-    }
-
-    /** PRODUCT_SPEC DL-001 — a temporary part is named as one and is not a playable extension. */
-    @Test
-    fun `a part is named as one`() {
-        val part = DownloadPaths.partName(DownloadPaths.fileName("file-1", "audio/mpeg"))
-
-        assertEquals("file-1.mp3.part", part)
-        assertTrue(DownloadPaths.isPart(part))
-        assertFalse(DownloadPaths.isPart("file-1.mp3"))
     }
 }

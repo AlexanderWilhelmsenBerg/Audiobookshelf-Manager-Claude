@@ -136,6 +136,7 @@ class DefaultSleepTimerRepository @Inject constructor(
     override suspend fun recordRestarted(sessionId: String): AppResult<Unit> = withContext(ioDispatcher) {
         when (val found = resultOf(onError = ::storeFailure) { sleepTimerDao.find(sessionId) }) {
             is AppResult.Failure -> found
+
             is AppResult.Success -> {
                 val existing = found.value ?: return@withContext AppResult.Failure(missingSession())
                 resultOf(onError = ::storeFailure) {
@@ -149,6 +150,7 @@ class DefaultSleepTimerRepository @Inject constructor(
         withContext(ioDispatcher) {
             when (val found = resultOf(onError = ::storeFailure) { sleepTimerDao.find(sessionId) }) {
                 is AppResult.Failure -> found
+
                 is AppResult.Success -> {
                     val existing = found.value ?: return@withContext AppResult.Failure(missingSession())
                     if (existing.endedAt != null) return@withContext AppResult.Success(Unit)

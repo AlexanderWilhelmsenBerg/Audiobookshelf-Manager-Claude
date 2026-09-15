@@ -30,8 +30,11 @@ internal object SkipIcons {
 
     fun back(interval: Duration): ImageVector = when (interval.inWholeSeconds) {
         FIVE -> Icons.Filled.Replay5
+
         TEN -> Icons.Filled.Replay10
+
         THIRTY -> Icons.Filled.Replay30
+
         // A plain double-arrow rather than a wrong number. Not a mirrored `Replay30`: the owner reported
         // exactly that once and the "30" rendered backwards.
         else -> Icons.Filled.FastRewind

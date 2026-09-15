@@ -16,10 +16,14 @@ data class CoverCandidate(val mimeType: String, val sizeBytes: Long, val width: 
     /** `null` when the image can be uploaded. */
     fun rejection(): CoverRejection? = when {
         mimeType.lowercase() !in SUPPORTED_TYPES -> CoverRejection.UnsupportedType
+
         // A decode that produced no dimensions is a decode that failed, whatever the extension claimed.
         width <= 0 || height <= 0 -> CoverRejection.NotAnImage
+
         sizeBytes > MAX_BYTES -> CoverRejection.TooLarge
+
         width < MIN_EDGE || height < MIN_EDGE -> CoverRejection.TooSmall
+
         else -> null
     }
 

@@ -346,7 +346,7 @@ interface CapabilityResolver {
     ): AppResult<ServerCapabilities>
 }
 
-/**
+/*
  * PRODUCT_SPEC 23 — "Get current user and permissions" is [AuthApi.currentAccount], and there is no
  * separate `AccountApi`.
  *

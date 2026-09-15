@@ -79,7 +79,9 @@ internal object AuthMapper {
      */
     fun toAccountState(user: UserDto?): AppResult<AccountState> = when {
         user == null -> AppResult.Failure(missingField("user"))
+
         user.username.isNullOrBlank() -> AppResult.Failure(missingField("user.username"))
+
         !user.isActive || user.isLocked -> AppResult.Failure(
             AppError.Authorization(summary = "This account has been disabled on the server."),
         )
@@ -187,8 +189,11 @@ internal object AuthMapper {
      */
     private fun rejectionFor(user: UserDto?): AppError? = when {
         user == null -> missingField("user")
+
         accessTokenOf(user) == null -> missingField("user.accessToken")
+
         user.username.isNullOrBlank() -> missingField("user.username")
+
         !user.isActive || user.isLocked ->
             AppError.Authorization(summary = "This account has been disabled on the server.")
 

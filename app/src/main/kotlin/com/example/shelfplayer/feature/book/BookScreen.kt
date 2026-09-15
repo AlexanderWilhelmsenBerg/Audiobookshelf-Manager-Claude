@@ -176,6 +176,7 @@ fun BookScreen(
                     Text(
                         text = when (uiState) {
                             is BookUiState.Loaded -> uiState.book.title
+
                             BookUiState.Loading,
                             BookUiState.Missing,
                             -> stringResource(R.string.home_title)

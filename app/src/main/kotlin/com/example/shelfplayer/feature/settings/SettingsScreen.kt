@@ -698,12 +698,13 @@ private fun LibraryRow(
     }
 }
 
-/**
+/*
  * The tabs, in the order they appear. `ordinal` is the selected index, so the order is the order.
  *
  * Sleep sits between them deliberately: it is the only tab with a preference somebody changes more than
  * once, and About is a place you arrive at rather than pass through.
  */
+
 /**
  * PRODUCT_SPEC ROUTE-002 — what happens when each known device connects.
  *

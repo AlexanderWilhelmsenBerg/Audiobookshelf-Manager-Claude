@@ -457,7 +457,8 @@ private val SHELF_CARD_WIDTH = 160.dp
 /** Slightly squarer than the Material card default while keeping the cover's top corners visibly softened. */
 private val SHELF_CARD_CORNER_RADIUS = 8.dp
 
-/** PLAY-001 / PRODUCT_SPEC 21 — a full touch target even when the visible circle reads as an overlay. */
+/* PLAY-001 / PRODUCT_SPEC 21 — a full touch target even when the visible circle reads as an overlay. */
+
 /**
  * The play control on a shelf card.
  *

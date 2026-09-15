@@ -500,13 +500,14 @@ class SettingsViewModelTest {
     }
 }
 
-/**
+/*
  * PRODUCT_SPEC PLAY-008 — the sleep timer's settings and history, in memory.
  *
  * A fake rather than a mock, per PRODUCT_SPEC 17.1. It stores what it is told, so a test can assert
  * that the ViewModel wrote what the user asked for rather than that a method was called.
  */
-/** PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox's readings, as the About tab receives them. */
+/* PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox's readings, as the About tab receives them. */
+
 /** PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls, as the Playback tab receives them. */
 internal class FakePlaybackSettings : PlaybackSettingsRepository {
     private val controls = MutableStateFlow(PlaybackSettings.Default)
@@ -657,13 +658,14 @@ internal class FakeSleepTimers : SleepTimerRepository {
     override suspend fun closeOrphanedSessions(): AppResult<Int> = AppResult.Success(0)
 }
 
-/**
+/*
  * PRODUCT_SPEC SET-003 — a package manager that records rather than one that exists.
  *
  * `AndroidLauncherIcons` is tested against the real merged manifest in `LauncherIconsTest`; what this
  * ViewModel has to get right is different — that it re-reads the state rather than assuming its own
  * write landed — so [refuse] gives it a device that says no.
  */
+
 /** PRODUCT_SPEC ROUTE-002 — the known-device store, recording what the screen asked it to change. */
 internal class FakeDevices : DeviceRepository {
     private val stored = MutableStateFlow<List<KnownDevice>>(emptyList())

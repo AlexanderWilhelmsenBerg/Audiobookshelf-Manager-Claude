@@ -131,6 +131,7 @@ class DownloadsViewModel @Inject constructor(
             val profileId = profiles.activeProfileId() ?: return@launch
             when (val removed = files.remove(profileId, serverId, bookId)) {
                 is AppResult.Failure -> _message.value = removed.error.summary
+
                 is AppResult.Success -> if (!removed.value) {
                     // The honest report. Somebody else on this device still wants the book, so nothing was
                     // freed — and a silent success would leave the user wondering why the number did not
@@ -162,7 +163,8 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
-    /** PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */
+    /* PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */
+
     /**
      * PRODUCT_SPEC DL-001 — pause a running download, or resume a paused one.
      *

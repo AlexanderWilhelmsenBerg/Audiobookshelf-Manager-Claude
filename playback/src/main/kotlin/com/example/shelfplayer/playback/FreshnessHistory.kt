@@ -17,6 +17,7 @@ internal fun ResumeFreshnessPlan.serverCheckHistoryEvent(): PlaybackEvent? {
             FreshnessEvidenceSource.LocalUnverified -> PlaybackEvent.ServerCheckUnavailable
             FreshnessEvidenceSource.Realtime -> null
         }
+
         is ResumeFreshnessDecision.Current -> when (value.source) {
             FreshnessEvidenceSource.LocalUnverified -> PlaybackEvent.ServerCheckUnavailable
             FreshnessEvidenceSource.Rest, FreshnessEvidenceSource.RestoredBaseline -> PlaybackEvent.ServerCheckCurrent

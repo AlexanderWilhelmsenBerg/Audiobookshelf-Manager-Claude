@@ -9,7 +9,7 @@ dependencies {
     api(projects.core.model)
 }
 
-/**
+/*
  * PRODUCT_SPEC 17.3 — "security ... policies: 90%".
  *
  * In this phase the security policy is **redaction**: which fields may reach a log and which may not,

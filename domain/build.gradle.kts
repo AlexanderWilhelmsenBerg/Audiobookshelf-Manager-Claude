@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.kover)
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.3 — the domain layer depends only on `:core:model` and `:core:common`.
  *
  * It is a JVM module on purpose: policy that decides what to download, when to sync and which

@@ -39,6 +39,7 @@ class SessionRestorer @Inject constructor(
         val profileId = profileRepository.activeProfileId() ?: return null
         val status = when (val result = authRepository.restoreSession(profileId)) {
             is AppResult.Success -> result.value
+
             // A profile id that no longer resolves to a saved profile — removed on another screen,
             // or a settings file that outlived its database. Reported as needing sign-in rather than
             // retried, because there is nothing to retry.

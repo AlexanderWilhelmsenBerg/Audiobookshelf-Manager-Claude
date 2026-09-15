@@ -6,7 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/**
+/*
  * PRODUCT_SPEC 13 — the Phase 0 subset of the conceptual schema.
  *
  * Every remote entity carries `serverId` + `remoteId` alongside its derived key column

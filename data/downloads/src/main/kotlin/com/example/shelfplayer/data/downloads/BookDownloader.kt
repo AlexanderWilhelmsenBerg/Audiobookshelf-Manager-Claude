@@ -135,6 +135,7 @@ class BookDownloader @Inject constructor(
         }
         return when (fetched) {
             is AppResult.Success -> destination?.toURI()?.toString()
+
             is AppResult.Failure -> {
                 logger.info(LogCategory.Sync, "A book was downloaded without its cover, which is not a failure")
                 null

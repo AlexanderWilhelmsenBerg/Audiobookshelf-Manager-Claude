@@ -100,7 +100,6 @@ fun SignInScreen(uiState: SignInUiState, actions: SignInActions, modifier: Modif
             ) {
                 when (uiState.stage) {
                     SignInStage.Address -> AddressStage(uiState = uiState, actions = actions)
-
                     SignInStage.Credentials -> CredentialsStage(uiState = uiState, actions = actions)
                 }
 

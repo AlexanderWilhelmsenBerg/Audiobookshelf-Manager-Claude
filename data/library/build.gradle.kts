@@ -11,7 +11,7 @@ android {
     namespace = "com.example.shelfplayer.data.library"
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.3 — data modules implement domain repository interfaces.
  *
  * `:core:database` and `:core:network` are `implementation` dependencies, so entities and gateway

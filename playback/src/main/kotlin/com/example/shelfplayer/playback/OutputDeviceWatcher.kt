@@ -171,6 +171,7 @@ class OutputDeviceWatcher @Inject constructor(
                     logger.log(device, "A device connected and its policy is to start playing")
                     actions.armAndPlay()
                 }
+
                 // `Ask` arms as well, and the paused media session is what puts a resume control in the shade —
                 // which is the notification action ROUTE-002 asks for, using the session the app already has
                 // rather than a second notification competing with it.

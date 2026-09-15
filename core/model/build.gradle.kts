@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kover)
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.3 — the model layer has no dependencies at all.
  *
  * Keeping `:core:model` on the plain Kotlin/JVM plugin means an accidental `import android.*` in a

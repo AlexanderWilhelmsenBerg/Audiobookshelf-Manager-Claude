@@ -16,7 +16,7 @@ internal class HeadsetHold {
     var remembered: String? = null
         private set
 
-    /**
+    /*
      * Takes a freshly published output list.
      *
      * [hasMedia] is whether BookWave is holding a book at all; with none, there is no "headset the book was
@@ -27,6 +27,7 @@ internal class HeadsetHold {
      * it. That is the race projected Android Auto creates: AirPods were active, then the dashboard becomes
      * active before `onConnect`. Definite wired/BLE/hearing-aid headsets can always replace the memory.
      */
+
     /**
      * The headset an explicit *Car* press gave up, refused until the route has actually left it.
      *

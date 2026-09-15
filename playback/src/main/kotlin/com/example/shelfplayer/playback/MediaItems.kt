@@ -78,7 +78,7 @@ object MediaItems {
     /** A book plus where to start it. */
     data class Queue(val item: MediaItem, val startPositionMs: Long)
 
-    /**
+    /*
      * Builds the item for [session], positioned at the resume point the server reported.
      *
      * Excluded tracks are dropped rather than skipped at playback time (PLAY-003): a source that does not
@@ -87,6 +87,7 @@ object MediaItems {
      * The start position needs no conversion any more — it is a book position and the player's timeline is the
      * book, which is the whole point of ADR-0016.
      */
+
     /**
      * A tappable link from the player's description line to a browse node.
      *

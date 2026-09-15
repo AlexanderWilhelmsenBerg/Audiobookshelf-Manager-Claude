@@ -184,7 +184,9 @@ internal fun Modifier.appBackdrop(flat: Boolean, theme: BackgroundTheme? = null)
     val base = if (theme != null) Color(theme.ground.base) else scheme.surface
     val brush = when {
         theme != null -> null
+
         flat -> Brush.verticalGradient(listOf(base, base))
+
         else -> Brush.verticalGradient(
             listOf(
                 blend(scheme.primary, base, TOP_ACCENT_WEIGHT),

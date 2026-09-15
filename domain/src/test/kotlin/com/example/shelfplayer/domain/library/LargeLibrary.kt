@@ -107,6 +107,7 @@ internal object LargeLibrary {
             // "listen again" and "discover" each have candidates and none of them has all of them.
             progress = when {
                 progressState < IN_PROGRESS_SHARE -> progress(index, finished = false, random = random)
+
                 progressState < IN_PROGRESS_SHARE + FINISHED_SHARE ->
                     progress(index, finished = true, random = random)
 

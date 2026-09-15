@@ -11,7 +11,7 @@ android {
     namespace = "com.example.shelfplayer.core.database"
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.3 — Room entities never leave this module.
  *
  * `:data:*` maps entities to `:core:model` types; nothing in `:domain` or `:app` can name an
@@ -30,7 +30,7 @@ dependencies {
     testImplementation(libs.androidx.room.testing)
 }
 
-/**
+/*
  * PRODUCT_SPEC 16.5 — `verifyDebug` depends on Room schema verification.
  *
  * The exported schema is the reviewable artifact behind PRODUCT_SPEC 13.1's ban on destructive
