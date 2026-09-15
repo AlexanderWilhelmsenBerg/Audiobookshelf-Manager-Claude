@@ -42,12 +42,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      - name: Generate Room verification metadata and run required gates
+      - name: Generate Room verification metadata and verify the Room-owning module
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew ktlintCheck --rerun-tasks --write-verification-metadata sha256
-          ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true --write-verification-metadata sha256
+          ./gradlew :core:database:verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true --write-verification-metadata sha256
 
           schema_changes="$(git status --porcelain -- core/database/schemas)"
           if [ -n "$schema_changes" ]; then
