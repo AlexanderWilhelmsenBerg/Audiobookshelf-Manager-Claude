@@ -1,0 +1,120 @@
+name: Ktlint 1.8 final repair
+
+on:
+  push:
+    branches:
+      - chore/bw-dep-01-ktlint-engine-1-8-0
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Apply exact ktlint 1.8 compatibility repairs
+        shell: python
+        run: |
+          from pathlib import Path
+
+          replacements = {
+              "core/model/src/test/kotlin/com/example/shelfplayer/core/model/download/DownloadPathsTest.kt": [
+                  (
+                      'component.all { it.isLetterOrDigit() && it.code < 0x80 || it in "._-" }',
+                      'component.all { (it.isLetterOrDigit() && it.code < 0x80) || it in "._-" }',
+                  ),
+              ],
+              "core/network/src/main/kotlin/com/example/shelfplayer/core/network/api/AbsCapabilityResolver.kt": [
+                  ('    /**\n     * PRODUCT_SPEC SYNC-001 — "missing expected fields produce a typed compatibility error rather than',
+                   '    /*\n     * PRODUCT_SPEC SYNC-001 — "missing expected fields produce a typed compatibility error rather than'),
+              ],
+              "core/network/src/main/kotlin/com/example/shelfplayer/core/network/api/AbsLibraryApi.kt": [
+                  ('    /**\n     * The running tally of one library\'s sweep, including when to stop.',
+                   '    /*\n     * The running tally of one library\'s sweep, including when to stop.'),
+              ],
+              "core/network/src/main/kotlin/com/example/shelfplayer/core/network/api/AuthService.kt": [
+                  ('    /**\n     * Exchanges a stored token for the current user and permissions on a cold start.',
+                   '    /*\n     * Exchanges a stored token for the current user and permissions on a cold start.'),
+              ],
+              "core/network/src/main/kotlin/com/example/shelfplayer/core/network/api/BookmarkDtos.kt": [
+                  ('/**\n * Wire types for the bookmark routes, verified against Audiobookshelf 2.36.0 on 2026-08-13.',
+                   '/*\n * Wire types for the bookmark routes, verified against Audiobookshelf 2.36.0 on 2026-08-13.'),
+              ],
+              "core/network/src/main/kotlin/com/example/shelfplayer/core/network/api/LibraryMapper.kt": [
+                  ('    /**\n     * Every reason an item cannot be stored, in one place.',
+                   '    /*\n     * Every reason an item cannot be stored, in one place.'),
+              ],
+              "core/network/src/main/kotlin/com/example/shelfplayer/core/network/api/ListeningSessionDtos.kt": [
+                  ('/**\n * Wire types for `GET /api/me/listening-sessions`, captured against Audiobookshelf 2.36.0 on 2026-08-27.',
+                   '/*\n * Wire types for `GET /api/me/listening-sessions`, captured against Audiobookshelf 2.36.0 on 2026-08-27.'),
+              ],
+              "core/network/src/main/kotlin/com/example/shelfplayer/core/network/api/PlaybackService.kt": [
+                  ('    /**\n     * PRODUCT_SPEC PLAY-004 — "marking finished is explicit". This is the explicit route.',
+                   '    /*\n     * PRODUCT_SPEC PLAY-004 — "marking finished is explicit". This is the explicit route.'),
+              ],
+              "core/network/src/main/kotlin/com/example/shelfplayer/core/network/gateway/AudiobookshelfGateway.kt": [
+                  ('/**\n * PRODUCT_SPEC 23 — "Get current user and permissions" is [AuthApi.currentAccount], and there is no',
+                   '/*\n * PRODUCT_SPEC 23 — "Get current user and permissions" is [AuthApi.currentAccount], and there is no'),
+              ],
+              "data/auth/src/test/kotlin/com/example/shelfplayer/data/auth/FakeAuthGateway.kt": [
+                  ('    /** PRODUCT_SPEC 11.1 — not part of the auth tests; every method says so rather than pretending. */',
+                   '    /* PRODUCT_SPEC 11.1 — not part of the auth tests; every method says so rather than pretending. */'),
+              ],
+              "data/library/src/test/kotlin/com/example/shelfplayer/data/library/DefaultPlaybackRepositoryTest.kt": [
+                  ('    /** The active profile, without a database of profiles behind it. */',
+                   '    /* The active profile, without a database of profiles behind it. */'),
+              ],
+              "data/library/src/test/kotlin/com/example/shelfplayer/data/library/DefaultSessionSyncRepositoryTest.kt": [
+                  ('        /** PRODUCT_SPEC 11.1 — not part of these tests; every method reports so rather than pretending. */',
+                   '        /* PRODUCT_SPEC 11.1 — not part of these tests; every method reports so rather than pretending. */'),
+              ],
+          }
+
+          for filename, pairs in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              for old, new in pairs:
+                  if old in text:
+                      text = text.replace(old, new, 1)
+                  elif new not in text:
+                      raise SystemExit(f"Expected migration target not found in {filename}: {old!r}")
+              path.write_text(text)
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Run exhaustive formatter
+        id: format
+        shell: bash
+        run: |
+          set +e
+          ./gradlew ktlintFormat --rerun-tasks --continue
+          status=$?
+          echo "code=${status}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Commit mechanical repairs
+        shell: bash
+        run: |
+          git add '**/*.kt' '*.gradle.kts' '**/*.gradle.kts'
+          if git diff --cached --quiet; then
+            echo 'No formatting changes generated.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'style: finish ktlint 1.8 migration'
+          git push origin HEAD:chore/bw-dep-01-ktlint-engine-1-8-0
+
+      - name: Propagate formatter result
+        shell: bash
+        run: exit '${{ steps.format.outputs.code }}'
