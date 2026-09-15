@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - chore/bw-dep-01-ktlint-engine-1-8-0
+    paths:
+      - .github/workflows/ktlint-1-8-finalize.yml
 
 permissions:
   contents: write
 
 jobs:
   finalize:
-    if: github.event.head_commit.message == 'ci: run ktlint 1.8 finalizer'
     name: Apply and verify ktlint 1.8 migration
     runs-on: ubuntu-latest
     steps:
