@@ -1,8 +1,10 @@
 # Latest-stable toolchain and dependency upgrade plan
 
-Status: planned; not an implementation checklist for PR #131 itself.
+Status: active staged migration under issue #135.
 
-Snapshot date: 2026-09-08.
+Roadmap last reconciled: 2026-09-15.
+
+Live current/latest version state: [`/version-control.md`](../version-control.md).
 
 ## Goal
 
@@ -18,42 +20,40 @@ a preview.
 `gradle/libs.versions.toml` remains the application dependency source of truth. Dynamic versions and `+`
 remain forbidden.
 
-## Baseline established by PR #131
+## Current migration progress
 
-- Gradle wrapper: 8.14.3.
-- Android Gradle Plugin: 8.12.0.
-- Kotlin: 2.2.0.
-- KSP: 2.3.11.
-- compileSdk / targetSdk: 36 / 36.
-- Codex runtime: JDK 21.
-- Android command-line tools: build 15859902.
-- Android Build Tools: 36.0.0.
-- gitleaks: 8.30.1.
+PR #131 established the original upgrade foundation. The numerical current/latest state now lives only in
+[`/version-control.md`](../version-control.md) so this roadmap cannot silently drift from `main`.
 
-The Codex compatibility probe on 2026-09-08 is important evidence: the environment bootstrap succeeds on
-JDK 21, 22, 23 and 24, but the complete `verifyDebug` gate succeeds only on JDK 21. Therefore JDK 21 is the
-newest **fully verified** Codex runtime for the current stack. A newer JDK must be re-probed after the build
-toolchain migration rather than selected from Gradle's Java-compatibility table alone.
+Completed staged slices under #135:
 
-## Latest-stable snapshot already verified while writing this plan
+| PR | Component | From | To | Merged |
+| --- | --- | ---: | ---: | --- |
+| #154 | AndroidX DataStore | 1.1.7 | 1.2.1 | 2026-09-14 |
+| #155 | KSP | 2.3.11 | 2.3.12 | 2026-09-14 |
+| #156 | ktlint Gradle plugin | 12.3.0 | 14.2.0 | 2026-09-15 |
+| #157 | ktlint engine | 1.5.0 | 1.8.0 | 2026-09-15 |
+| #158 | Protobuf Gradle plugin | 0.9.5 | 0.10.0 | 2026-09-15 |
 
-These are evidence for planning, not permanent pins:
+The Codex compatibility probe from 2026-09-08 remains relevant evidence: the environment bootstrap succeeds
+on JDK 21, 22, 23 and 24, but the complete `verifyDebug` gate succeeds only on JDK 21. Therefore JDK 21
+remains the newest **fully verified** Codex runtime until the build foundation is migrated and the matrix is
+re-run.
 
-| Component | Current | Latest stable verified 2026-09-08 | Action |
-| --- | ---: | ---: | --- |
-| Gradle | 8.14.3 | 9.7.1 | Phase 1 |
-| Kotlin | 2.2.0 | 2.4.20 | Phase 2 |
-| KSP | 2.3.11 | 2.3.11 | Already current; re-check with Kotlin upgrade |
-| detekt | 1.23.8 | 1.23.8 | Already current |
-| Kover | 0.9.9 | 0.9.9 | Already current |
-| ktlint Gradle plugin | 12.3.0 | 14.2.0 | Phase 2 |
-| ktlint | 1.5.0 | 1.8.0 | Phase 2 |
-| gitleaks | 8.30.1 | 8.30.1 | Already current |
+## Live latest-stable ledger
 
-The exact latest stable AGP, AndroidX, Compose, Hilt, Media3 and Maven-library versions must be resolved
-again from Google's Android release pages / Google Maven and Maven Central at the start of their phase.
-Those ecosystems move independently and should not be frozen here merely to make the roadmap look more
-precise.
+[`/version-control.md`](../version-control.md) is the canonical repository-wide ledger for:
+
+- every version key in `gradle/libs.versions.toml`;
+- the Gradle wrapper, Android SDK levels/tools and JDK lanes;
+- every GitHub Action family used by BookWave;
+- Gitleaks and other pinned CI/security tooling;
+- the Node/npm runtime used by the APK/Loopbound workflow; and
+- the Python runtime plus NumPy/Pillow used by launcher-asset generation.
+
+The ledger records current version, latest stable version, last-checked date, phase, compatibility status and
+authoritative source. It must be updated in the same PR as every tracked version change. This document owns
+**sequencing, gates and validation requirements**, not a second copy of live version numbers.
 
 ## Migration rules
 
@@ -71,15 +71,21 @@ precise.
 11. Do not combine application feature work with these upgrade PRs unless the upgrade itself requires the
     compatibility change.
 12. After the migration reaches latest stable, add automation that keeps it there with small grouped PRs.
+13. Every tracked version-changing PR must update `/version-control.md` in the same PR, including its
+    current version, latest-stable re-check date/status and the merged-history row where applicable.
+14. Keep numerical live state out of this roadmap except where a historical version is needed to explain a
+    migration. `/version-control.md` is the canonical live version ledger.
 
 ## Phase 0 — inventory and reproducible version discovery
 
-Purpose: prove what is actually out of date before changing anything.
+**Status: complete; maintained continuously through `/version-control.md`.**
 
-- Inventory every version key in `gradle/libs.versions.toml`.
+Purpose: prove what is actually out of date before changing anything and keep that evidence current.
+
+- Inventory every version key in `gradle/libs.versions.toml` and keep it represented in `/version-control.md`.
 - Inventory `gradle-wrapper.properties`.
 - Inventory all `uses:` entries under `.github/workflows/`.
-- Inventory versions pinned in `scripts/codex/`, release scripts and other shell/PowerShell tooling.
+- Inventory versions pinned in `scripts/codex/`, release scripts and other shell/PowerShell tooling, plus repo-owned Node and Python tooling.
 - Resolve stable releases from authoritative sources and record the date/source in the implementation PR.
 - Reject prereleases automatically when generating the report.
 - Run the existing dependency/licence report and SBOM before the first change so later diffs are explainable.
@@ -96,15 +102,17 @@ Exit criteria:
 Upgrade the build foundation before libraries. Compiler and Android plugin upgrades should not be debugged
 on top of an old wrapper.
 
-1. Upgrade Gradle 8.14.3 to the latest stable Gradle (9.7.1 at this snapshot).
+1. Upgrade the Gradle wrapper to the latest stable version recorded in `/version-control.md`.
 2. Run wrapper validation and inspect the Gradle 9 upgrade warnings.
 3. Fix deprecated Gradle APIs in `build-logic` rather than enabling compatibility flags indefinitely.
-4. Upgrade Android Gradle Plugin 8.12.0 to the latest stable AGP available when this phase starts.
+4. Upgrade Android Gradle Plugin to the latest mutually compatible stable AGP recorded in `/version-control.md`.
 5. Apply AGP migration changes separately from Kotlin changes where possible.
 6. Re-run Android Lint and inspect changes in severity/default rule sets.
 7. Validate signing configuration, packaging, generated BuildConfig/resources, Room/KSP task wiring and APK
    identity.
-8. Do not raise compileSdk/targetSdk yet unless the selected AGP requires it; platform behavior belongs in
+8. Retry dependency locking under ADR-0010 on the new Gradle/AGP foundation; do not weaken the strict
+   dependency-verification policy from ADR-0006 to make locking work.
+9. Do not raise compileSdk/targetSdk yet unless the selected AGP requires it; platform behavior belongs in
    Phase 3.
 
 Required verification:
@@ -121,15 +129,17 @@ gate**, not the highest one that can launch Gradle.
 
 ## Phase 2 — Kotlin, KSP and code-quality plugins
 
-Upgrade together only where compiler compatibility requires it:
+**Status: partially complete.** Safe independent slices have already landed for KSP (#155), the ktlint Gradle
+plugin (#156), the ktlint engine (#157) and the Protobuf Gradle plugin (#158). Kover and stable detekt are
+already current in the live ledger. Kotlin/compiler migration remains pending and must respect ADR-0011.
 
-- Kotlin 2.2.0 -> latest stable (2.4.20 at this snapshot).
-- KSP 2.3.11 -> latest stable compatible KSP; it is already current at this snapshot.
-- ktlint Gradle plugin 12.3.0 -> latest stable (14.2.0 at this snapshot).
-- ktlint 1.5.0 -> latest stable (1.8.0 at this snapshot).
-- detekt 1.23.8 -> latest stable; currently already current.
-- Kover 0.9.9 -> latest stable; currently already current.
-- protobuf Gradle plugin 0.9.5 -> latest stable.
+Re-resolve and upgrade only the still-outdated components shown in `/version-control.md`, grouping them only
+where compiler compatibility requires it. In particular:
+
+- Kotlin remains a dedicated compiler migration.
+- KSP must be re-checked whenever Kotlin moves even when KSP is already current.
+- detekt must remain on a stable release; the AGP 9/API 37 gate is not satisfied by a detekt alpha.
+- Kover, ktlint tooling and Protobuf Gradle plugin should not be churned when the ledger already shows them current.
 
 Check compiler opt-ins, Compose compiler configuration, Kotlin language/API levels, KSP generated sources,
 detekt baselines, formatting changes and coverage thresholds. Formatting-rule changes should be isolated in
@@ -140,19 +150,16 @@ coverage threshold silently reduced.
 
 ## Phase 3 — Android platform, Compose and general AndroidX
 
-Resolve the latest stable Android SDK and AndroidX releases at execution time.
+Resolve the latest stable Android SDK, Compose BOM and AndroidX releases from `/version-control.md` at
+execution time. This phase owns:
 
-- compileSdk 36 -> latest stable SDK supported by stable AGP.
-- targetSdk 36 -> latest stable target SDK in a dedicated behavioral review.
-- minSdk stays 26 unless a product decision explicitly changes device support.
-- Compose BOM 2025.06.01 -> latest stable Compose BOM.
-- `androidxActivity` 1.12.4 -> latest stable.
-- `androidxAnnotation` 1.10.0 -> latest stable.
-- `androidxCore` 1.17.0 -> latest stable.
-- `androidxLifecycle` 2.10.0 -> latest stable.
-- `androidxNavigation` 2.9.8 -> latest stable.
-- `androidxHiltNavigationCompose` 1.3.0 -> latest stable.
-- `hiltExt` / AndroidX Hilt 1.3.0 -> latest stable.
+- compileSdk and targetSdk (while minSdk remains a product-support decision);
+- Compose BOM;
+- Activity, Annotation, Core, Lifecycle and Navigation; and
+- AndroidX Hilt / Hilt Navigation Compose.
+
+ADR-0011 currently gates the API 37/AGP 9 move. AndroidX/Compose releases that themselves require API 37 or
+AGP 9.2+ stay behind that same gate rather than being forced through independently.
 
 Treat targetSdk as an Android behavior migration, not a number bump. Review foreground-service,
 notifications, media playback, storage/file access, background work, edge-to-edge/insets and Android Auto
@@ -163,13 +170,10 @@ behavior, notifications and process recreation.
 
 ## Phase 4 — persistence, background work and playback
 
-Upgrade these in separate PRs because each owns user state or long-running behavior:
-
-- DataStore 1.1.7 -> latest stable.
-- Room 2.7.2 -> latest stable.
-- WorkManager 2.11.2 -> latest stable.
-- Media3 1.11.0 -> latest stable.
-- Dagger/Hilt 2.58 -> latest stable.
+Upgrade these in separate PRs because each owns user state or long-running behavior. DataStore reached the
+latest stable release in PR #154; do not manufacture another DataStore change while the ledger shows it
+current. Remaining ownership includes Room, WorkManager, Media3 and Dagger/Hilt whenever their rows are
+outdated.
 
 Room requirements:
 
@@ -195,16 +199,11 @@ WorkManager/DataStore requirements:
 
 ## Phase 5 — Kotlin runtime, serialization and network stack
 
-Upgrade deliberately because several likely jumps cross major versions:
-
-- kotlinx-coroutines 1.10.2 -> latest stable.
-- kotlinx-serialization 1.8.1 -> latest stable.
-- OkHttp 4.12.0 -> latest stable.
-- Retrofit 2.11.0 -> latest stable.
-- retrofit2-kotlinx-serialization-converter 1.0.0 -> latest stable or replace it if the modern Retrofit stack
-  has a better maintained first-party path.
-- protobuf 4.31.1 -> latest stable.
-- javax.inject 1 -> latest stable / retain if still canonical for Hilt compatibility.
+Upgrade deliberately from the current values to the stable targets recorded in `/version-control.md`. This
+phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,
+Protobuf runtime/protoc and `javax.inject` compatibility. Several jumps cross major versions. The archived
+Jake Wharton Retrofit serialization converter should be treated as a migration to Retrofit's maintained
+first-party path, not as a version bump that does not exist.
 
 For each networking major upgrade:
 
@@ -220,41 +219,37 @@ shape.
 
 ## Phase 6 — images and visual effects
 
-- Coil 2.7.0 -> latest stable; treat a move to a newer major as a migration, especially cache/request APIs.
-- Haze 1.6.10 -> latest stable.
+Upgrade Coil and Haze to the stable targets recorded in `/version-control.md`. Treat the Coil major-version
+move as an explicit migration, especially around cache/request APIs; exclude Haze prereleases from the
+latest-stable lane.
 
 Test cover loading, offline cached covers, scrolling performance, memory behavior, placeholders/errors,
 theme changes and Android Auto artwork. Do not accept a visual upgrade that regresses offline behavior.
 
 ## Phase 7 — Android test and JVM test stack
 
-Upgrade:
-
-- AndroidX Test Core 1.7.0 -> latest stable.
-- AndroidX Test Ext JUnit 1.3.0 -> latest stable.
-- AndroidX Test Runner 1.7.0 -> latest stable.
-- AndroidX Benchmark 1.3.4 -> latest stable.
-- UI Automator 2.4.0 -> latest stable.
-- Robolectric 4.15.1 -> latest stable.
-- Turbine 1.2.1 -> latest stable.
-- JUnit 4.13.2 -> latest stable JUnit 4 if one exists; a JUnit 5/6 migration is a separate architecture
-  decision, not a disguised dependency bump.
+Upgrade only the outdated stable rows in `/version-control.md`. This phase owns AndroidX Test Core, Ext
+JUnit, Runner, Benchmark, UI Automator, Robolectric, Turbine and JUnit 4. A JUnit 5/6 migration remains a
+separate architecture decision rather than a disguised dependency bump.
 
 Run JVM, Robolectric and connected tests. Regenerate/re-validate macrobenchmark or baseline-profile assets
 only if the tool upgrade requires it; never overwrite them as incidental noise.
 
 ## Phase 8 — CI, Codex, SDK and security tooling
 
-- Android command-line tools build 15859902 -> latest stable command-line-tools package.
-- Android Build Tools 36.0.0 -> latest stable required by the selected Android platform/AGP.
-- platform-tools -> latest stable through sdkmanager.
-- gitleaks 8.30.1 -> latest stable; it is already current at this snapshot.
-- all GitHub Actions under `.github/workflows/` -> latest stable supported major/release.
-- re-check `actions/checkout`, `actions/setup-java`, `actions/upload-artifact`, Gradle Actions and wrapper
-  validation usage and release notes.
-- update pinned checksums whenever a downloaded binary changes.
-- keep release/upload signing secrets out of ordinary Codex environments.
-- keep `BOOKWAVE_DEBUG_KEYSTORE_BASE64` as the only optional Codex signing secret.
+Use the live ledger to reconcile the complete non-application tooling surface:
+
+- Android command-line tools, Build Tools and Platform Tools;
+- GitHub Actions (`checkout`, `setup-java`, `setup-node`, upload/download artifact, Gradle setup and wrapper validation);
+- the known Gitleaks divergence between Codex and the PR workflow;
+- the Node/npm runtime used by the APK/Loopbound workflow;
+- the previously untracked Python runtime plus NumPy/Pillow launcher-asset requirements; and
+- downloaded-binary checksums whenever a pinned binary changes.
+
+Keep release/upload signing secrets out of ordinary Codex environments and keep
+`BOOKWAVE_DEBUG_KEYSTORE_BASE64` as the only optional Codex signing secret. Review mutable aliases
+(`ubuntu-latest`, major action tags and SDK-manager moving packages) explicitly rather than treating them as
+exact pins.
 
 After the upgraded build stack is green, re-run the modern-JDK compatibility matrix and update
 `CODEX_ENV_JAVA_VERSION` to the highest fully passing stable JDK.
@@ -266,66 +261,69 @@ archaeological expedition.
 
 Recommended policy:
 
-- enable Renovate or equivalent for Gradle version catalogs, wrapper, GitHub Actions and pinned tool
-  versions;
+- enable Renovate or equivalent for Gradle version catalogs, wrapper, GitHub Actions, pinned tool
+  versions and the Python requirements file;
 - stable releases only by default;
 - patch/minor updates can be grouped by ecosystem where tests provide confidence;
 - major updates get individual PRs;
 - Kotlin + compiler/KSP compatibility updates may be grouped intentionally;
 - AndroidX/Compose groups should remain small enough to diagnose regressions;
 - never auto-merge major updates;
-- run the normal gate plus the Codex compatibility canary for build-tool changes.
+- run the normal gate plus the Codex compatibility canary for build-tool changes;
+- require dependency/tooling PRs to update `/version-control.md`; add a lightweight CI guard if practical so
+  a changed tracked pin cannot silently leave the ledger stale.
 
 A monthly dependency-health issue/report is enough; there is no value in notification confetti for every
 transitive patch.
 
-## Complete version-catalog inventory
+## Complete version-catalog phase ownership
 
-Every current version key is assigned below so nothing silently falls outside the roadmap.
+Every version key remains assigned so nothing silently falls outside the roadmap. **Current and latest stable
+versions are intentionally not duplicated here; see `/version-control.md`.**
 
-| Version key | Current | Phase / treatment |
-| --- | ---: | --- |
-| androidGradlePlugin | 8.12.0 | Phase 1 |
-| kotlin | 2.2.0 | Phase 2 |
-| ksp | 2.3.11 | Phase 2; already latest in snapshot |
-| detekt | 1.23.8 | Phase 2; already latest in snapshot |
-| kover | 0.9.9 | Phase 2; already latest in snapshot |
-| ktlintGradle | 12.3.0 | Phase 2 |
-| ktlint | 1.5.0 | Phase 2 |
-| protobufPlugin | 0.9.5 | Phase 2 |
-| compileSdk | 36 | Phase 3 |
-| minSdk | 26 | Preserve unless product decision changes |
-| targetSdk | 36 | Phase 3 behavioral migration |
-| androidxActivity | 1.12.4 | Phase 3 |
-| androidxAnnotation | 1.10.0 | Phase 3 |
-| androidxCore | 1.17.0 | Phase 3 |
-| androidxDatastore | 1.1.7 | Phase 4 |
-| androidxHiltNavigationCompose | 1.3.0 | Phase 3 |
-| androidxLifecycle | 2.10.0 | Phase 3 |
-| androidxNavigation | 2.9.8 | Phase 3 |
-| androidxRoom | 2.7.2 | Phase 4 |
-| androidxTestCore | 1.7.0 | Phase 7 |
-| androidxTestExt | 1.3.0 | Phase 7 |
-| androidxTestRunner | 1.7.0 | Phase 7 |
-| androidxBenchmark | 1.3.4 | Phase 7 |
-| androidxUiAutomator | 2.4.0 | Phase 7 |
-| androidxWork | 2.11.2 | Phase 4 |
-| composeBom | 2025.06.01 | Phase 3 |
-| media3 | 1.11.0 | Phase 4 |
-| hilt | 2.58 | Phase 4 |
-| hiltExt | 1.3.0 | Phase 3/4 |
-| javaxInject | 1 | Phase 5 compatibility review |
-| kotlinxCoroutines | 1.10.2 | Phase 5 |
-| kotlinxSerialization | 1.8.1 | Phase 5 |
-| okhttp | 4.12.0 | Phase 5 |
-| protobuf | 4.31.1 | Phase 5 |
-| retrofit | 2.11.0 | Phase 5 |
-| retrofitKotlinxSerialization | 1.0.0 | Phase 5 |
-| coil | 2.7.0 | Phase 6 |
-| haze | 1.6.10 | Phase 6 |
-| junit4 | 4.13.2 | Phase 7 |
-| robolectric | 4.15.1 | Phase 7 |
-| turbine | 1.2.1 | Phase 7 |
+| Version key | Phase / treatment |
+| --- | --- |
+| androidGradlePlugin | Phase 1 |
+| kotlin | Phase 2 |
+| ksp | Phase 2; re-check with every Kotlin move |
+| detekt | Phase 2 and ADR-0011 compatibility gate |
+| kover | Phase 2 |
+| ktlintGradle | Phase 2 |
+| ktlint | Phase 2 |
+| protobufPlugin | Phase 2 |
+| compileSdk | Phase 3 |
+| minSdk | Preserve unless product decision changes |
+| targetSdk | Phase 3 behavioral migration |
+| androidxActivity | Phase 3 |
+| androidxAnnotation | Phase 3 |
+| androidxCore | Phase 3 |
+| androidxDatastore | Phase 4 |
+| androidxHiltNavigationCompose | Phase 3 |
+| androidxLifecycle | Phase 3 |
+| androidxNavigation | Phase 3 |
+| androidxRoom | Phase 4 |
+| androidxTestCore | Phase 7 |
+| androidxTestExt | Phase 7 |
+| androidxTestRunner | Phase 7 |
+| androidxBenchmark | Phase 7 |
+| androidxUiAutomator | Phase 7 |
+| androidxWork | Phase 4 |
+| composeBom | Phase 3 |
+| media3 | Phase 4 |
+| hilt | Phase 4 |
+| hiltExt | Phase 3/4 |
+| javaxInject | Phase 5 compatibility review |
+| kotlinxCoroutines | Phase 5 |
+| kotlinxSerialization | Phase 5 |
+| okhttp | Phase 5 |
+| protobuf | Phase 5 |
+| retrofit | Phase 5 |
+| retrofitKotlinxSerialization | Phase 5; migrate away from archived converter when appropriate |
+| coil | Phase 6 |
+| haze | Phase 6 |
+| junit4 | Phase 7 |
+| robolectric | Phase 7 |
+| turbine | Phase 7 |
 
 ## Per-PR merge gate
 
@@ -338,7 +336,9 @@ Every upgrade PR must state:
 - tests added or changed;
 - exact verification run;
 - device/manual tests required before merge;
-- known follow-ups deliberately excluded.
+- known follow-ups deliberately excluded;
+- `/version-control.md` updated with the new current version, a fresh stable-version check/date and status;
+- completed-history row appended when the PR is part of #135.
 
 Minimum automated gate after any dependency or build-tool change:
 
@@ -355,7 +355,8 @@ merge.
 
 The migration is complete when:
 
-- every catalog key is on the latest stable compatible release or has a documented reason not to be;
+- every catalog key and repository-owned tool/runtime row in `/version-control.md` is on the latest stable
+  compatible release or has a documented reason not to be;
 - Gradle, AGP, Kotlin and KSP are on mutually supported current stable releases;
 - compileSdk/targetSdk are current stable Android levels with behavior changes reviewed;
 - GitHub Actions and Codex-side tools are current stable;
@@ -364,4 +365,5 @@ The migration is complete when:
 - Room schema/migration tests are green;
 - connected tests are green;
 - Android Auto/playback/download/offline smoke tests pass;
-- dependency automation is enabled to keep the repository near-current continuously.
+- dependency automation is enabled to keep the repository near-current continuously;
+- `/version-control.md` remains the maintained quick-status ledger rather than becoming another historical snapshot.
