@@ -9,7 +9,7 @@ android {
     namespace = "com.example.shelfplayer.playback"
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.2 / PLAY-001 — the media service and everything that owns the player.
  *
  * ### Why this is its own module

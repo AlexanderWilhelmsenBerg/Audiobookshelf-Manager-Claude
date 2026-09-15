@@ -9,7 +9,7 @@ android {
     namespace = "com.example.shelfplayer.data.downloads"
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.3 / EPIC DL — downloads and the offline manifest.
  *
  * Its own module rather than more of `:data:library`, for two reasons that are both about blast radius.
