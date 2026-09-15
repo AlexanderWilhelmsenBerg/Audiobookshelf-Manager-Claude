@@ -4,7 +4,7 @@
 > CI actions and auxiliary build tooling.
 
 **Last full stable-version check:** 2026-09-15  
-**Repository baseline checked:** `main` at `50027ac5eb6b727477132ef291fb8adc8b22c1d2`
+**Repository baseline checked:** `main` at `72cabb1e36d8597eaf6f303e159f0c88615f395c`
 **Upgrade roadmap:** [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md)  
 **Primary migration issue:** #135 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration`
 
@@ -95,7 +95,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 | Version-catalog key / component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
 | `kotlinxCoroutines` | 1.10.2 | 1.11.0 | ⬆️ Phase 5 runtime update with cancellation/concurrency regression coverage. | 5 | 2026-09-15 | [kotlinx.coroutines releases](https://github.com/Kotlin/kotlinx.coroutines/releases) |
-| `kotlinxSerialization` | 1.8.1 | 1.11.0 | ⬆️ Phase 5; 1.12.0-RC is excluded as prerelease. | 5 | 2026-09-15 | [kotlinx.serialization releases](https://github.com/Kotlin/kotlinx.serialization/releases) |
+| `kotlinxSerialization` | 1.9.0 | 1.11.0 | 🎯 1.9.0 is the newest stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line. Upstream 1.10.0 moved to Kotlin 2.3.0 and 1.11.0 is based on Kotlin 2.3.20, so those remain compiler-gated until Phase 1/2 re-resolves Kotlin. | 5 | 2026-09-15 | [kotlinx.serialization releases](https://github.com/Kotlin/kotlinx.serialization/releases) |
 | `okhttp` | 4.12.0 | 5.5.0 | 🔁 Major network-stack migration; keep contract/TLS/WebSocket/download tests green. | 5 | 2026-09-15 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |
 | `protobuf` | 4.31.1 | 4.36.1 (Protobuf 36.1) | ⬆️ Phase 5 runtime/protoc update with serialization compatibility checks. | 5 | 2026-09-15 | [Protobuf releases](https://github.com/protocolbuffers/protobuf/releases) |
 | `retrofit` | 2.11.0 | 3.0.0 | 🔁 Major network-stack migration, preferably coordinated with OkHttp/converter evidence but not hidden in an unrelated PR. | 5 | 2026-09-15 | [Retrofit changelog](https://github.com/square/retrofit/blob/trunk/CHANGELOG.md) |

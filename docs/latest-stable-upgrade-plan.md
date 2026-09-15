@@ -36,6 +36,7 @@ Completed staged slices under #135:
 | #158 | Protobuf Gradle plugin | 0.9.5 | 0.10.0 | 2026-09-15 |
 | #161 | AndroidX Activity | 1.12.4 | 1.13.0 | 2026-09-15 |
 | #162 | Gradle wrapper | 8.14.3 | 8.14.5 | 2026-09-15 |
+| #163 | AndroidX Room | 2.7.2 | 2.8.5 | 2026-09-15 |
 
 The Codex compatibility probe from 2026-09-08 remains relevant evidence: the environment bootstrap succeeds
 on JDK 21, 22, 23 and 24, but the complete `verifyDebug` gate succeeds only on JDK 21. Therefore JDK 21
@@ -222,8 +223,13 @@ WorkManager/DataStore requirements:
 
 ## Phase 5 — Kotlin runtime, serialization and network stack
 
-Upgrade deliberately from the current values to the stable targets recorded in `/version-control.md`. This
-phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,
+**Status: active in compatibility-sized slices.** The current Kotlin 2.2.0 foundation can take
+kotlinx.serialization 1.9.0 independently because that stable release is based on Kotlin 2.2.0. Stable
+kotlinx.serialization 1.10.0 moved to Kotlin 2.3.0 and 1.11.0 is based on Kotlin 2.3.20, so those later
+releases remain behind the compiler/build-foundation re-resolution rather than being forced into this slice.
+
+Upgrade deliberately from the current values to the compatible stable targets recorded in `/version-control.md`.
+This phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,
 Protobuf runtime/protoc and `javax.inject` compatibility. Several jumps cross major versions. The archived
 Jake Wharton Retrofit serialization converter should be treated as a migration to Retrofit's maintained
 first-party path, not as a version bump that does not exist.
