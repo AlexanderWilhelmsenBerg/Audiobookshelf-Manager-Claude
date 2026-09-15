@@ -8,11 +8,13 @@ Live current/latest version state: [`/version-control.md`](../version-control.md
 
 ## Goal
 
-Move the whole repository to the latest **compatible stable** toolchain, Android platform and direct
-dependencies without creating one dependency bomb or dropping the existing lint/test/security gates.
+Move BookWave from its current pinned stack to the latest stable release of every build tool, Android
+platform dependency, application library, test library, CI action and Codex-side tool without turning the
+migration into one unreviewable dependency bomb.
 
-"Latest" means the latest mutually compatible stable release at migration time. Alpha, beta, RC, milestone,
-preview, EAP, dev and snapshot releases are out of scope unless a separate ADR explicitly approves one as
+The destination is **latest stable at the time each phase starts**, not merely the version written in this
+document. Before every phase, resolve versions again from the authoritative release source and exclude
+alpha, beta, RC, milestone, preview, EAP, dev and snapshot builds unless a separate PR explicitly opts into
 a preview.
 
 `gradle/libs.versions.toml` remains the application dependency source of truth. Dynamic versions and `+`
@@ -55,19 +57,17 @@ authoritative source. It must be updated in the same PR as every tracked version
 
 ## Migration rules
 
-1. Every migration phase starts from current `main`, not from a long-lived upgrade branch.
-2. Re-resolve every "latest stable" version immediately before the phase starts.
-3. Prefer stable releases from authoritative upstream sources over aggregator websites or remembered versions.
-4. Check compatibility before changing pins; do not independently maximize Gradle, AGP and Kotlin if their
-   supported ranges do not intersect.
-5. Keep one compatibility axis or safe phase per PR where practical so regressions are diagnosable.
-6. Update checksums/verification metadata in the same PR as any new artifact.
-7. Run the complete repository gate after every classpath-changing phase; no "it compiled locally" exception.
-8. Never weaken lint, detekt type resolution, warnings-as-errors, dependency verification, SBOM, Room schema
-   checks or security scans to make an upgrade pass.
-9. Any Room schema change must be intentional and represented by a new committed schema; never edit an old
-   schema in place.
-10. Preserve Android API contracts and Audiobookshelf fixtures across networking/runtime upgrades.
+1. One compatibility axis per PR where practical.
+2. Every phase starts from freshly updated `main` after the previous phase merges.
+3. No preview dependencies in a latest-stable migration.
+4. Never suppress a warning, lint rule, compiler error or test merely to make an upgrade green without
+   understanding the behavior change.
+5. A dependency upgrade that changes runtime semantics gets regression tests before or with the upgrade.
+6. Room schema files are immutable once committed; migrations are explicit.
+7. Networking upgrades must keep captured Audiobookshelf contracts green.
+8. Playback/Media3 upgrades require device and Android Auto testing, not only JVM tests.
+9. UI/Compose upgrades require device smoke testing for navigation, insets, theming and accessibility.
+10. After any classpath-changing PR, run the verification gate with `--rerun-tasks` before merge.
 11. Do not combine application feature work with these upgrade PRs unless the upgrade itself requires the
     compatibility change.
 12. After the migration reaches latest stable, add automation that keeps it there with small grouped PRs.
@@ -89,14 +89,13 @@ Purpose: prove what is actually out of date before changing anything and keep th
 - Resolve stable releases from authoritative sources and record the date/source in the implementation PR.
 - Reject prereleases automatically when generating the report.
 - Run the existing dependency/licence report and SBOM before the first change so later diffs are explainable.
-- Record migration notes from Gradle, AGP, Kotlin, AndroidX, Media3, Hilt, Room, WorkManager, OkHttp, Retrofit,
-  Coil and CI tooling release notes.
+- Record known migration notes for every major-version jump before editing the catalog.
 
 Exit criteria:
 
-- every pin has a target stable version or an explicit "already latest" result;
-- compatibility blockers are documented before implementation;
-- the migration is split into the reviewable phases below.
+- one current-to-target inventory exists;
+- every versioned component belongs to a later phase;
+- normal CI is green on the untouched baseline.
 
 ## Phase 1 — Gradle and Android build foundation
 
@@ -121,21 +120,12 @@ Required verification:
 ```bash
 ./gradlew ktlintCheck --rerun-tasks
 ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true
+./gradlew :app:assembleDebug
 ```
 
-After the Gradle/AGP foundation is green, re-run the Codex JDK matrix and choose the highest stable JDK that
-passes **environment setup and the complete BookWave gate**. A JDK that merely launches Gradle is not enough.
-Until then, `CODEX_ENV_JAVA_VERSION=21` remains the compatibility baseline.
-
-### Accepted compatibility gate — ADR-0011
-
-Do **not** execute the AGP 9 / API 37 migration yet. Accepted ADR-0011 requires a **stable** detekt 2.x
-release that preserves the required type-resolution gate; detekt 2.x is still pre-release at the current
-snapshot. Re-check this at execution time rather than assuming the blocker still exists forever.
-
-This means the "latest stable" target for the build foundation is currently **not** "pick the largest Gradle,
-AGP and Kotlin numbers independently." The next foundation attempt must choose the newest mutually compatible
-stable set that also preserves the accepted quality gates.
+Then run the Codex JDK probe again. Test every currently relevant stable JDK from 21 through the newest JDK
+supported by the upgraded Gradle/AGP combination. Select the **highest JDK that passes the whole BookWave
+gate**, not the highest one that can launch Gradle.
 
 ## Phase 2 — Kotlin, KSP and code-quality plugins
 
@@ -153,8 +143,10 @@ where compiler compatibility requires it. In particular:
 
 Check compiler opt-ins, Compose compiler configuration, Kotlin language/API levels, KSP generated sources,
 detekt baselines, formatting changes and coverage thresholds. Formatting-rule changes should be isolated in
-their own commit if they generate broad source churn. Do not accept a formatting, lint, detekt or coverage
-threshold silently reduced.
+a mechanical commit where possible so semantic review remains readable.
+
+Exit criteria: full verification green with `--rerun-tasks`, no unexplained generated-source changes, and no
+coverage threshold silently reduced.
 
 ## Phase 3 — Android platform, Compose and general AndroidX
 
@@ -189,24 +181,25 @@ outdated.
 
 Room requirements:
 
-- inspect Room release notes and compiler/KSP compatibility;
-- preserve exported schemas;
-- add migrations for every schema change;
-- run migration tests from all supported historical schema versions;
-- test upgrade with a real populated database where practical.
+- preserve every committed schema;
+- export and review the new schema;
+- add migration tests for any database format change;
+- test upgrade from a realistic existing BookWave database.
 
 Media3 requirements:
 
-- test local and streamed playback;
-- test background/foreground transitions, notification controls, headset buttons and audio focus;
-- test Android Auto/DHU where supported;
-- verify progress/session events did not change under the new player version.
+- regression-test play/pause/seek/progress sync;
+- test audio focus and route changes;
+- test notification/media session controls;
+- test Bluetooth/headset behavior;
+- test Android Auto with DHU and a real car when available;
+- verify resume after process death and reconnect.
 
 WorkManager/DataStore requirements:
 
-- test process death, constraints, retry/backoff and user switching;
-- verify no persisted state silently resets;
-- keep DataStore protobuf compatibility explicit.
+- background retries and constraints remain correct;
+- no ownership/profile data crosses accounts;
+- stored grants/settings survive upgrade unchanged unless intentionally migrated.
 
 ## Phase 5 — Kotlin runtime, serialization and network stack
 
@@ -218,16 +211,15 @@ first-party path, not as a version bump that does not exist.
 
 For each networking major upgrade:
 
-- run every captured Audiobookshelf contract fixture;
-- verify auth interceptors and redaction;
-- verify websocket connect/reconnect and cancellation;
-- verify streaming/download Range handling;
-- verify custom retry/error mapping;
-- inspect TLS, proxy and timeout defaults;
-- do not change DTO/domain mapping merely to satisfy a new converter unless the server contract requires it.
+- keep all captured Audiobookshelf contract fixtures green;
+- verify unknown JSON fields remain tolerated;
+- verify required-field failures remain typed compatibility errors;
+- verify TLS validation remains strict;
+- verify WebSocket/realtime lifecycle behavior;
+- run download/resume tests and progress/session sync tests.
 
-The network-stack migration should have an explicit rollback point because a "green compile" does not prove
-self-hosted reverse proxies and long-lived websocket behavior.
+Do not change API behavior merely to satisfy a new converter without a contract test proving the server
+shape.
 
 ## Phase 6 — images and visual effects
 
@@ -266,9 +258,10 @@ exact pins.
 After the upgraded build stack is green, re-run the modern-JDK compatibility matrix and update
 `CODEX_ENV_JAVA_VERSION` to the highest fully passing stable JDK.
 
-## Phase 9 — staying-current automation
+## Phase 9 — automate staying current
 
-The final state should make future upgrades boring instead of turning each one into an archaeological expedition.
+Once the repository is at latest stable, add dependency automation so this does not become a yearly
+archaeological expedition.
 
 Recommended policy:
 
@@ -340,9 +333,10 @@ versions are intentionally not duplicated here; see `/version-control.md`.**
 
 Every upgrade PR must state:
 
-- the upstream stable versions checked and the date;
-- the compatibility assumptions used;
-- source/API migrations required;
+- old version(s);
+- new stable version(s) and authoritative source/date;
+- migration notes reviewed;
+- source changes required and why;
 - tests added or changed;
 - exact verification run;
 - device/manual tests required before merge;
@@ -357,10 +351,11 @@ Minimum automated gate after any dependency or build-tool change:
 ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true
 ```
 
-Run connected tests when Android/runtime behavior or instrumentation-sensitive APIs changed. Run device,
-Android Auto/DHU or playback smoke tests where the acceptance claim cannot be proved on the JVM.
+For changes affecting APK/runtime behavior also assemble and device-test. For Room, Media3, WorkManager,
+DataStore, targetSdk and Android Auto changes, the relevant manual/instrumented test is mandatory before
+merge.
 
-## Migration completion criteria
+## Desired end state
 
 The migration is complete when:
 
@@ -369,9 +364,8 @@ The migration is complete when:
 - Gradle, AGP, Kotlin and KSP are on mutually supported current stable releases;
 - compileSdk/targetSdk are current stable Android levels with behavior changes reviewed;
 - GitHub Actions and Codex-side tools are current stable;
-- dependency verification is clean;
-- the dependency/licence report and SBOM are clean;
-- vulnerability scanning is clean;
+- the highest fully verified modern JDK is the Codex baseline;
+- `verifyDebug --rerun-tasks` is green;
 - Room schema/migration tests are green;
 - connected tests are green;
 - Android Auto/playback/download/offline smoke tests pass;
