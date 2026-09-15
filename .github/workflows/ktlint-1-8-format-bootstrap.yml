@@ -20,25 +20,18 @@ jobs:
         with:
           ref: chore/bw-dep-01-ktlint-engine-1-8-0
 
-      - name: Repair playback-test non-attached KDocs identified by ktlint 1.8
+      - name: Repair datastore non-attached KDoc identified by ktlint 1.8
         shell: python
         run: |
           from pathlib import Path
 
-          path = Path('playback/src/test/kotlin/com/example/shelfplayer/playback/HeadsetHoldTest.kt')
-          markers = [
-              '     * The case the class exists to prevent, reached from the other direction.',
-              '     * An explicit *Car* press has to outlive the memory.',
-              '     * A definite `TYPE_BUS` car is not a headset candidate, so narrowing to the active *headset* before',
-          ]
+          path = Path('core/datastore/src/main/kotlin/com/example/shelfplayer/core/datastore/AppSettingsDataSource.kt')
+          old = '    /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */'
+          new = '    /* PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */'
           text = path.read_text()
-          for marker in markers:
-              old = '    /**\n' + marker
-              new = '    /*\n' + marker
-              if old not in text:
-                  raise SystemExit(f'Expected ktlint migration target not found in {path}: {marker!r}')
-              text = text.replace(old, new, 1)
-          path.write_text(text)
+          if old not in text:
+              raise SystemExit(f'Expected ktlint migration target not found in {path}')
+          path.write_text(text.replace(old, new, 1))
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -52,11 +45,11 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
-      - name: Apply ktlint 1.8 formatter
+      - name: Apply ktlint 1.8 formatter across all modules
         shell: bash
         run: |
           set +e
-          ./gradlew ktlintFormat --rerun-tasks
+          ./gradlew ktlintFormat --rerun-tasks --continue
           status=$?
           echo "ktlintFormat exit code: ${status}"
           exit 0
@@ -71,5 +64,5 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'style: repair playback test ktlint 1.8 KDocs'
+          git commit -m 'style: repair remaining ktlint 1.8 formatting'
           git push origin HEAD:chore/bw-dep-01-ktlint-engine-1-8-0
