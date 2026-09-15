@@ -4,7 +4,7 @@
 > CI actions and auxiliary build tooling.
 
 **Last full stable-version check:** 2026-09-15  
-**Repository baseline checked:** `main` at `411fb175eaee8b8e4980980972bdd8a4a75c2ef4`  
+**Repository baseline checked:** `main` at `3e8fcbb3c26887f2307762dc41f8ebb145ebe1b5`  
 **Upgrade roadmap:** [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md)  
 **Primary migration issue:** #135 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration`
 
@@ -65,7 +65,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 
 | Version-catalog key / component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
-| `androidxActivity` | 1.12.4 | 1.13.0 | ⬆️ Update in the Phase 3 AndroidX/Compose slice. | 3 | 2026-09-15 | [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity) |
+| `androidxActivity` | 1.13.0 | 1.13.0 | ✅ Current; stable 1.13.0 keeps BookWave on the API 36-compatible lane while 1.14 remains prerelease. | 3 | 2026-09-15 | [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity) |
 | `androidxAnnotation` | 1.10.0 | 1.10.0 | ✅ Current. | 3 | 2026-09-15 | [AndroidX versions](https://developer.android.com/jetpack/androidx/versions) |
 | `androidxCore` | 1.17.0 | 1.19.0 | ⬆️ Update in Phase 3. | 3 | 2026-09-15 | [Core releases](https://developer.android.com/jetpack/androidx/releases/core) |
 | `androidxDatastore` | 1.2.1 | 1.2.1 | ✅ Current; merged in PR #154. | 4 | 2026-09-15 | [DataStore releases](https://developer.android.com/jetpack/androidx/releases/datastore) |
