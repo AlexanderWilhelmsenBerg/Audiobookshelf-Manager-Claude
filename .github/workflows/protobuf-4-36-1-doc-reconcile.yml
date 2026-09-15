@@ -16,8 +16,8 @@ jobs:
         with:
           fetch-depth: 0
       - name: Reconcile migration ledger and roadmap
-        shell: python
         run: |
+          python <<'PY'
           from pathlib import Path
 
           vc = Path('version-control.md')
@@ -57,6 +57,7 @@ compiler/build-foundation re-resolution.'''
               raise SystemExit('Expected Phase 5 status block not found')
           text = text.replace(old, new)
           plan.write_text(text)
+          PY
       - name: Commit reconciliation and remove helper
         run: |
           git config user.name 'github-actions[bot]'
