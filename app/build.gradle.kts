@@ -13,7 +13,7 @@ android {
         buildConfig = true
     }
 
-    /**
+    /*
      * PRODUCT_SPEC SET-002 / ADR-0022 — the language setting is why this is off.
      *
      * An app bundle splits resources by language by default and Play installs only the device's own. An
@@ -29,7 +29,7 @@ android {
     }
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.2 / ADR-0002 — Phase 0 hosts the `feature:*` code as packages inside `:app`.
  *
  * The package boundaries from PRODUCT_SPEC 16.4 are respected (`feature.home`, `feature.library`,
@@ -88,7 +88,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
-/**
+/*
  * PRODUCT_SPEC 17.1 — the rendered UI tier runs on the debug variant, and only there.
  *
  * `ui-test-manifest` is what declares the `ComponentActivity` that `createComposeRule` launches, and it

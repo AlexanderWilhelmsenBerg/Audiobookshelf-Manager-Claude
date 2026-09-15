@@ -9,7 +9,7 @@ android {
     namespace = "com.example.shelfplayer.data.auth"
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.3 / `docs/architecture/module-boundaries.md` — the module reserved for
  * AUTH-001…AUTH-004.
  *
