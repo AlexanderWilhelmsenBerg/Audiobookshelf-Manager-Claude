@@ -1,0 +1,60 @@
+name: Activity documentation reconciliation
+
+on:
+  push:
+    branches:
+      - chore/bw-dep-01-activity-1-13-0
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Reconcile live version documentation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          ledger = Path('version-control.md')
+          text = ledger.read_text()
+          text = text.replace(
+              '`gradle/libs.versions.toml` remains the source of truth for Gradle/Maven pins. This file mirrors those pins for planning/status visibility.',
+              '`gradle/libs.versions.toml` remains the source of truth for direct Gradle/Maven pins. This file mirrors those pins for planning/status visibility; when Gradle conflict resolution ships a newer transitive version than the direct pin, record both explicitly.',
+          )
+          text = text.replace(
+              '| `androidxActivity` | 1.13.0 | 1.13.0 | ✅ Current; stable 1.13.0 keeps BookWave on the API 36-compatible lane while 1.14 remains prerelease. | 3 | 2026-09-15 | [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity) |',
+              '| `androidxActivity` | 1.13.0 | 1.13.0 | ✅ Latest stable target in #161. It resolves Core/Core-KTX 1.18.0 transitively; merge only after the existing compileSdk 36 gates prove that graph is compatible. | 3 | 2026-09-15 | [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity) |',
+          )
+          text = text.replace(
+              '| `androidxCore` | 1.17.0 | 1.19.0 | ⬆️ Update in Phase 3. | 3 | 2026-09-15 | [Core releases](https://developer.android.com/jetpack/androidx/releases/core) |',
+              '| `androidxCore` | 1.17.0 direct pin; 1.18.0 resolved via Activity 1.13.0 | 1.19.0 | ⬆️ Direct pin remains behind. Core 1.18.0 is compiled with API 36.1; #161 must prove it is consumable by BookWave\'s compileSdk 36 before merge. Keep the explicit Core 1.19.0 move as a separate Phase 3 slice. | 3 | 2026-09-15 | [Core releases](https://developer.android.com/jetpack/androidx/releases/core) |',
+          )
+          ledger.write_text(text)
+
+          plan = Path('docs/latest-stable-upgrade-plan.md')
+          text = plan.read_text()
+          text = text.replace(
+              '**Status: partially active.** The AGP 9 / API 37 portion remains gated by ADR-0011, but independent AndroidX\nreleases that remain compatible with the current API-36 foundation may proceed as narrow slices. PR #161\nupgrades AndroidX Activity from 1.12.4 to stable 1.13.0; the 1.14 line remains prerelease and is excluded.',
+              '**Status: partially active.** The AGP 9 / API 37 portion remains gated by ADR-0011, but independent AndroidX\nreleases may proceed as narrow slices only when the current API-36 gates prove compatibility. PR #161 targets\nAndroidX Activity 1.13.0 and resolves Core/Core-KTX 1.18.0 transitively; Core 1.18.0 is compiled with API 36.1,\nso the existing compileSdk 36 verification gate is authoritative. Activity 1.14 remains prerelease and is excluded.',
+          )
+          plan.write_text(text)
+
+      - name: Commit reconciliation
+        run: |
+          if git diff --quiet -- version-control.md docs/latest-stable-upgrade-plan.md; then
+            echo "::error::No documentation reconciliation was produced."
+            exit 1
+          fi
+          git diff -- version-control.md docs/latest-stable-upgrade-plan.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version-control.md docs/latest-stable-upgrade-plan.md
+          git commit -m "docs: record Activity transitive compatibility"
+          git push
