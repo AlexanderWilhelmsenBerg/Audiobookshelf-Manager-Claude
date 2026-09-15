@@ -149,7 +149,7 @@ class HomeViewModel @Inject constructor(
         .distinctUntilChanged()
         .flatMapLatest { libraryId -> browse.shelves(libraryId) }
 
-    /**
+    /*
      * Only the visible axis is collected. `flatMapLatest` cancels the others, so a user looking at the
      * book list is not paying to group 490 books into series, authors and genres — and a user on the
      * shelves is not paying to sort the flat list either.
@@ -354,7 +354,7 @@ class HomeViewModel @Inject constructor(
      */
     private val syncAttemptedFor = mutableSetOf<ProfileId>()
 
-    /**
+    /*
      * PRODUCT_SPEC LIB-002 / 6.3 — the network came back, so try again.
      *
      * A device run asked for this in as many words: "when getting connectability when the server goes

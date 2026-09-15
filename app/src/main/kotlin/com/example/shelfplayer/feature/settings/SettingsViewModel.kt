@@ -130,7 +130,7 @@ class SettingsViewModel @Inject constructor(
     private val session: SessionTools,
 ) : ViewModel() {
 
-    /**
+    /*
      * PRODUCT_SPEC ROUTE-002 — the output devices this app has seen, and what each may do.
      *
      * Its own flow rather than a sixth source in [uiState]'s `combine`, which is already nesting to stay

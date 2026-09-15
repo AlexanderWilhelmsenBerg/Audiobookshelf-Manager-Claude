@@ -8,7 +8,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import kotlin.time.Duration
 
-/**
+/*
  * PRODUCT_SPEC PLAY-008 — how a timer's numbers and outcomes read.
  *
  * Kept together, and out of the composables that use them, because the same three labels appear on the

@@ -170,7 +170,7 @@ private fun ClockSkewRow(skew: ClockSkew?, modifier: Modifier = Modifier) {
     }
 }
 
-/**
+/*
  * One check.
  *
  * The icon and the colour both carry the state, and neither is the only carrier: the content description says

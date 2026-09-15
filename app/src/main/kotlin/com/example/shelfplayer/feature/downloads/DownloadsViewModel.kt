@@ -163,7 +163,7 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
-    /** PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */
+    /* PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */
 
     /**
      * PRODUCT_SPEC DL-001 — pause a running download, or resume a paused one.

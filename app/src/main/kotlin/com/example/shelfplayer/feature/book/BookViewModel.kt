@@ -188,7 +188,7 @@ class BookViewModel @Inject constructor(
         _message.value = null
     }
 
-    /**
+    /*
      * PRODUCT_SPEC PLAY-004 — "marking finished is explicit", including un-marking it.
      *
      * The position comes from the row rather than from the caller, so un-marking leaves the listener where
@@ -393,7 +393,7 @@ class BookViewModel @Inject constructor(
     }
 }
 
-/**
+/*
  * PRODUCT_SPEC LIB-004 / PLAY-003 — what the overflow menu can show, beyond the book.
  *
  * @property webUrl this item in the server's own web client, or `null` when the server's address is not

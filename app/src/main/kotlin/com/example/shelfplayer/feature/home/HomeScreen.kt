@@ -649,7 +649,7 @@ private fun GenreEditChangeSummary(request: GenreEditRequest) {
     }
 }
 
-/** PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */
+/* PRODUCT_SPEC LIB-002 — the four browse axes, one tap apart. */
 
 /**
  * PRODUCT_SPEC 16.2 — the axes as pages, kept in step with the axis the view model holds.

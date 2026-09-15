@@ -20,7 +20,7 @@ import com.example.shelfplayer.core.model.StorageDiagnostics
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
 import com.example.shelfplayer.domain.usecase.ServerDiagnostics
 
-/**
+/*
  * PRODUCT_SPEC SET-002 / SYNC-001 — the rows both settings tabs are built from.
  *
  * Split from `SettingsScreen.kt` so neither file is a wall: that one owns the layout and the one

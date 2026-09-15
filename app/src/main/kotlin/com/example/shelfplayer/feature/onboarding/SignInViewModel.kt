@@ -63,7 +63,7 @@ class SignInViewModel @Inject constructor(
         ),
     )
 
-    /**
+    /*
      * PRODUCT_SPEC AUTH-001 / 6.1 — the servers this device already knows.
      *
      * Typing a host on a phone keyboard is the worst part of adding a second account, and the app already

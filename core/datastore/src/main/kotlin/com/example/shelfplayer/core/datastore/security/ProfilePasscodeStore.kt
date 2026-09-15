@@ -274,6 +274,7 @@ class ProfilePasscodeStore @Inject constructor(
 
         private fun verdictFor(failures: Int): PasscodeVerdict = when {
             failures >= MAX_FAILURES -> PasscodeVerdict.Exhausted
+
             else -> PasscodeVerdict.Wrong(
                 remainingBeforeBackoff = (FREE_ATTEMPTS - failures).coerceAtLeast(0),
                 backoff = backoffFor(failures),
