@@ -10,7 +10,7 @@ detekt = "1.23.8"
 kover = "0.9.9"
 ktlintGradle = "14.2.0"
 ktlint = "1.8.0"
-protobufPlugin = "0.9.5"
+protobufPlugin = "0.10.0"
 
 # SDK levels (PRODUCT_SPEC 4)
 compileSdk = "36"
