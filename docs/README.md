@@ -47,13 +47,10 @@ Every planning or investigation document should be readable as one of these stat
 - Keep useful investigation/history, but mark it historical/completed and stop presenting it as future work.
 - If an ADR is superseded, preserve it and explicitly name the superseding ADR.
 
-## Current committed implementation chain
+## Current implementation sequence
 
-The current near-term implementation chain is tracked in [`roadmap.md`](roadmap.md). At the time this index was created it is:
+The live implementation sequence exists **only** in [`roadmap.md`](roadmap.md). Do not copy its numbered
+queue into this index: completed PRs move quickly, and a duplicated snapshot becomes stale documentation.
 
-1. PR #78 — Android Auto/routing finalization
-2. PR #93 — unified resume freshness
-3. PR #86 — Appearance inline controls
-4. PR #98 — Playback settings UI refresh
-
-Those PRs are committed near-term work, not invitations for competing implementations in planning branches.
+Use the roadmap for active ordering, GitHub issues/PRs for execution state, and the historical sections of the
+roadmap plus [`archive/`](archive/) for completed boundaries.
