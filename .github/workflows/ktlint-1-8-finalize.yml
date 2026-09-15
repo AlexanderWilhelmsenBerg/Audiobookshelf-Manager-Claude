@@ -1,19 +1,20 @@
 name: Ktlint 1.8 final migration
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - chore/bw-dep-01-ktlint-engine-1-8-0
 
 permissions:
   contents: write
 
 jobs:
   finalize:
+    if: github.event.head_commit.message == 'ci: run ktlint 1.8 finalizer'
     name: Apply and verify ktlint 1.8 migration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: chore/bw-dep-01-ktlint-engine-1-8-0
 
       - name: Apply remaining non-autocorrectable ktlint 1.8 compatibility edits
         shell: python
