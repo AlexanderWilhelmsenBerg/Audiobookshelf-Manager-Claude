@@ -40,6 +40,7 @@ class HeadsetHoldTest {
      * lifting the release meant the route reaching such a car never lifted it. The listener's next Headset
      * press was then refused for the rest of the session and nothing could be preserved on a reconnect.
      */
+
     /**
      * A release must not outlive the book it belonged to.
      *

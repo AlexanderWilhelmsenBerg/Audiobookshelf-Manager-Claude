@@ -7,7 +7,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.unit.dp
 
-/**
+/*
  * PRODUCT_SPEC §51 / 2.10 — the two accessibility properties that can be checked without a device.
  *
  * ### Why an assertion over the whole tree, and not one per control

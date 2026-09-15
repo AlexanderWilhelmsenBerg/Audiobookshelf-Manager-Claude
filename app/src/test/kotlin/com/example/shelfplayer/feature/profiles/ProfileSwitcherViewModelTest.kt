@@ -229,7 +229,7 @@ class ProfileSwitcherViewModelTest {
         auth.releaseRestore()
     }
 
-    /**
+    /*
      * Keeps the `WhileSubscribed` state flow hot and returns it.
      *
      * Without a collector the flow never leaves its initial value, and counting emissions instead is what
@@ -495,7 +495,7 @@ class ProfileSwitcherViewModelTest {
         }
     }
 
-    /**
+    /*
      * The switcher does not read the library; it only causes an account sync as a side effect of a
      * switch. Everything here fails loudly rather than returning empty, so a test that starts depending
      * on the library cannot pass by accident — [writeProgress] is the one call the switch really makes.

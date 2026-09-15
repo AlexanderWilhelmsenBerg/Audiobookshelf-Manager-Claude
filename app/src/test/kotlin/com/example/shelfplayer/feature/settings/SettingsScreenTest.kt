@@ -165,7 +165,7 @@ class SettingsScreenTest {
         tab("About").assertIsSelected()
     }
 
-    /**
+    /*
      * The tab in the row, not the section heading that happens to share its wording.
      *
      * "Server" and "Appearance" are each both a tab and a heading on the tab they select, so a text-only
