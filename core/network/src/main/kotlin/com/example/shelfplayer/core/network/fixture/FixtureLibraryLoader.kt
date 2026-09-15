@@ -48,6 +48,7 @@ class FixtureLibraryLoader @Inject constructor() {
 
     private fun validate(result: AppResult<FixtureLibraryDocument>): AppResult<FixtureLibraryDocument> = when (result) {
         is AppResult.Failure -> result
+
         is AppResult.Success -> when {
             result.value.schemaVersion != SUPPORTED_SCHEMA_VERSION -> AppResult.Failure(
                 AppError.ApiCompatibility(
@@ -55,12 +56,14 @@ class FixtureLibraryLoader @Inject constructor() {
                     missingField = "schemaVersion=${result.value.schemaVersion}",
                 ),
             )
+
             result.value.libraries.isEmpty() -> AppResult.Failure(
                 AppError.ApiCompatibility(
                     summary = "The bundled demo library contains no libraries.",
                     missingField = "libraries",
                 ),
             )
+
             else -> result
         }
     }

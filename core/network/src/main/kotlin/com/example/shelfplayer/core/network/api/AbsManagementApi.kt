@@ -79,6 +79,7 @@ internal class AbsManagementApi @Inject constructor(
 
         return when (val sent = send(connection, bookId, edit, changed)) {
             is AppResult.Failure -> AppResult.Failure(sent.error)
+
             is AppResult.Success -> {
                 // The count is what is logged, never which fields or what they now say. A field *name*
                 // describes the software; the values are the user's library (PRODUCT_SPEC 14.5).
@@ -93,6 +94,7 @@ internal class AbsManagementApi @Inject constructor(
                 // changes the server has accepted, which is the worst possible thing to be wrong about.
                 when (val refreshed = library.fetchBook(profileId, bookId)) {
                     is AppResult.Success -> AppResult.Success(MetadataSaveOutcome(refreshed.value))
+
                     is AppResult.Failure -> {
                         logger.warn(
                             LogCategory.Sync,
@@ -122,6 +124,7 @@ internal class AbsManagementApi @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 val response = transport.value
                 if (response.isSuccessful) {
@@ -143,6 +146,7 @@ internal class AbsManagementApi @Inject constructor(
 
         return when (val sent = send(connection, bookId, image)) {
             is AppResult.Failure -> AppResult.Failure(sent.error)
+
             is AppResult.Success -> {
                 // The byte count describes the request, not the image's contents (PRODUCT_SPEC 14.5).
                 logger.info(LogCategory.Sync, "Uploaded a new cover", LogField.Count("bytes", image.bytes.size))
@@ -165,10 +169,12 @@ internal class AbsManagementApi @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 val response = transport.value
                 when {
                     !response.isSuccessful -> AppResult.Failure(errors.fromStatus(response.code()))
+
                     // A `200` whose body says `success: false` has never been observed, and reporting it as
                     // a failure is the safe reading: an upload the user cannot see is better reported than
                     // assumed.
@@ -176,6 +182,7 @@ internal class AbsManagementApi @Inject constructor(
                         summary = "The server accepted the image but did not confirm it was stored.",
                         missingField = "success",
                     ).asFailure()
+
                     else -> AppResult.Success(Unit)
                 }
             }
@@ -194,6 +201,7 @@ internal class AbsManagementApi @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 // The body is `text/plain "OK"` and is deliberately not read. The status is the answer;
                 // parsing the word would invent a contract the server does not offer.
@@ -226,6 +234,7 @@ internal class AbsManagementApi @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 val response = transport.value
                 if (response.isSuccessful) {
@@ -249,6 +258,7 @@ internal class AbsManagementApi @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 val response = transport.value
                 if (response.isSuccessful) {
@@ -336,6 +346,7 @@ internal class AbsManagementApi @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 val response = transport.value
                 if (response.isSuccessful) {
@@ -375,6 +386,7 @@ internal class AbsManagementApi @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 // `text/plain "OK"`, deliberately not read. The status is the whole answer.
                 transport.value.body()?.close()
@@ -397,6 +409,7 @@ internal class AbsManagementApi @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 val response = transport.value
                 if (response.isSuccessful) {
@@ -483,6 +496,7 @@ internal class AbsManagementApi @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 transport.value.body()?.close()
                 if (transport.value.isSuccessful) {

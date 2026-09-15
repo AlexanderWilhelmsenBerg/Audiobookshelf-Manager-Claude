@@ -130,12 +130,16 @@ internal class AbsRealtimeConnection @Inject constructor(
                 }
 
                 IncomingFrame.Ping -> webSocket.send(EngineIoFrames.PONG_FRAME)
+
                 IncomingFrame.NamespaceConnected -> Unit
+
                 IncomingFrame.Closed -> onClosed()
+
                 is IncomingFrame.Event -> {
                     if (frame.name == INIT_EVENT) authenticated = true
                     handle(frame)?.let(onEvent)
                 }
+
                 null -> Unit
             }
         }
@@ -179,8 +183,11 @@ internal class AbsRealtimeConnection @Inject constructor(
         }
 
         USER_UPDATED_EVENT -> frame.body?.let(::accountChanged)
+
         USER_ITEM_PROGRESS_UPDATED_EVENT -> frame.body?.let(::progressChanged)
+
         TASK_STARTED_EVENT, TASK_FINISHED_EVENT -> frame.body?.let(::taskChanged)
+
         else -> null
     }
 

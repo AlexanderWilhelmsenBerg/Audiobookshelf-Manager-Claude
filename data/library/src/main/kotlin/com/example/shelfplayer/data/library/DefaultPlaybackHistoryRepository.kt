@@ -155,6 +155,7 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
                 )
                 return@withContext
             }
+
             is AppResult.Success -> fetched.value
         }
         val thisDevice = device.describe().deviceId

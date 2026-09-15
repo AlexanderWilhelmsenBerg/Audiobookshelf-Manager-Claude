@@ -63,6 +63,7 @@ class RefreshLibraryUseCase @Inject constructor(
     private suspend fun renewAndRetry(profileId: ProfileId, original: AppResult.Failure): AppResult<Int> =
         when (authRepository.renewSession(profileId).statusOrNull()) {
             SessionStatus.Active -> libraryRepository.refresh(profileId)
+
             // A renewal that could not even be attempted — an unsaved profile — is reported as the
             // original authentication failure, which is the one the caller can act on.
             SessionStatus.ReauthenticationRequired, null -> original

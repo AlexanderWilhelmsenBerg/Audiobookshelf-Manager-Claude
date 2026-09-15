@@ -77,7 +77,9 @@ object DownloadRecoveryPolicy {
             } else {
                 DownloadRecoveryState.Failed
             }
+
             DownloadState.Paused -> DownloadRecoveryState.Paused
+
             DownloadState.Queued,
             DownloadState.Running,
             DownloadState.Failed,
@@ -92,9 +94,13 @@ object DownloadRecoveryPolicy {
 
     private fun DownloadExecutionEvidence?.toActiveRecoveryState(): DownloadRecoveryState? = when (this) {
         DownloadExecutionEvidence.Queued -> DownloadRecoveryState.Queued
+
         DownloadExecutionEvidence.Running -> DownloadRecoveryState.Running
+
         DownloadExecutionEvidence.Waiting -> DownloadRecoveryState.Waiting
+
         DownloadExecutionEvidence.Retrying -> DownloadRecoveryState.Retrying
+
         DownloadExecutionEvidence.Finished,
         DownloadExecutionEvidence.Cancelled,
         null,

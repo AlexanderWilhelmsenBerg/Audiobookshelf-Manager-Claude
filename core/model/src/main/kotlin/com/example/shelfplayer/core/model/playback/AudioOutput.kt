@@ -53,7 +53,10 @@ private val DeviceKind.defaultOutputRole: AudioOutputRole
         -> AudioOutputRole.Headset
 
         DeviceKind.Car -> AudioOutputRole.Car
+
         DeviceKind.Speaker -> AudioOutputRole.Speaker
+
         DeviceKind.Bluetooth -> AudioOutputRole.Ambiguous
+
         DeviceKind.Other -> AudioOutputRole.Other
     }

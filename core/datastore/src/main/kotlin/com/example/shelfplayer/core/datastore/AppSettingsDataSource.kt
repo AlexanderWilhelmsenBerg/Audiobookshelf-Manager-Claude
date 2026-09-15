@@ -521,7 +521,7 @@ class AppSettingsDataSource @Inject constructor(
         dataStore.updateData { current -> current.toBuilder().setBufferPreset(preset.name).build() }
     }
 
-    /** PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */
+    /* PRODUCT_SPEC ROUTE-001 / ROUTE-002 — auto-play when a car connects. Off unless explicitly chosen. */
 
     /**
      * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — which categories may spend cellular data.

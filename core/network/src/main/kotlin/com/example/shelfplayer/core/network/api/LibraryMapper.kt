@@ -236,6 +236,7 @@ internal object LibraryMapper {
      * not to have is normal and maps to `null`, while these five are what a stored, browsable, playable
      * book cannot exist without.
      */
+
     /**
      * The parts of a [Book] both responses describe the same way.
      *
@@ -317,9 +318,13 @@ internal object LibraryMapper {
 
     private fun rejectionFor(dto: LibraryItemDto): AppError? = when {
         dto.id.isNullOrBlank() -> missingField("id")
+
         dto.media == null -> missingField("media")
+
         dto.media.metadata == null -> missingField("media.metadata")
+
         dto.media.metadata.title.isNullOrBlank() -> missingField("media.metadata.title")
+
         // `null` — not empty — means the response was minified, which is a caller error rather than a
         // server problem: an item fetched without `expanded=1` cannot be stored, and storing it with an
         // empty track list would produce a book that browses but cannot play.

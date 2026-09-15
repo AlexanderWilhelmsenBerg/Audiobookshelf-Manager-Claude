@@ -223,8 +223,11 @@ class DefaultProfileLockRepository @Inject constructor(
             }
 
             is PasscodeVerdict.Wrong -> UnlockFailure.Wrong(verdict.remainingBeforeBackoff)
+
             is PasscodeVerdict.BackingOff -> UnlockFailure.BackingOff(verdict.remainingMillis.milliseconds)
+
             PasscodeVerdict.Exhausted -> UnlockFailure.Exhausted
+
             PasscodeVerdict.Unreadable -> UnlockFailure.Unreadable
         }
     }

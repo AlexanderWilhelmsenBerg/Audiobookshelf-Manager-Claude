@@ -78,6 +78,7 @@ internal interface PlaybackService {
      * `scripts/capture-contracts.sh`, which writes `{"currentTime":…,"isFinished":…}` and reads the stored
      * progress straight back.
      */
+
     /**
      * PRODUCT_SPEC SYNC-002 — what the server currently holds for one book.
      *

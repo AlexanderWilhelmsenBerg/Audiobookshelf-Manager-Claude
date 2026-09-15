@@ -62,6 +62,7 @@ internal class AbsCapabilityResolver @Inject constructor(
         }
         return when (transport) {
             is AppResult.Failure -> AppResult.Failure(transport.error)
+
             is AppResult.Success -> {
                 val response = transport.value
                 if (!response.isSuccessful) {
@@ -87,6 +88,7 @@ internal class AbsCapabilityResolver @Inject constructor(
      * captive portal would record a fiction. A missing `serverVersion` is *not* an error — the model
      * already carries it as nullable, because a server that does not report one is still a server.
      */
+
     /**
      * PRODUCT_SPEC SYNC-001 — the one capability this handshake can now actually confirm.
      *

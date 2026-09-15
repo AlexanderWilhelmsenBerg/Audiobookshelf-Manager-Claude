@@ -129,11 +129,14 @@ class DefaultLibraryRepository @Inject constructor(
             val keys = scope?.allowedLibraryKeys()
             when {
                 scope == null -> flowOf(emptyList())
+
                 keys == null -> withProgress(
                     profileId,
                     libraryDao.observeBooksOnServer(profileId.value, scope.serverId.value),
                 )
+
                 keys.isEmpty() -> flowOf(emptyList())
+
                 else -> withProgress(profileId, libraryDao.observeBooksIn(profileId.value, keys))
             }
         }

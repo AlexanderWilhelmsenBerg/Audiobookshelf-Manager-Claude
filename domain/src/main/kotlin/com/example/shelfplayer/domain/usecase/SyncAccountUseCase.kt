@@ -102,6 +102,7 @@ class SyncAccountUseCase @Inject constructor(
         profileId: ProfileId,
     ): AppResult<Int> = when (this) {
         is AppResult.Failure -> AppResult.Failure(error)
+
         is AppResult.Success -> {
             bookmarkRepository.writeAccountBookmarks(profileId, value.bookmarks)
             libraryRepository.writeProgress(profileId, value.progress)

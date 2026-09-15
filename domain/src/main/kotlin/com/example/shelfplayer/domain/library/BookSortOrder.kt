@@ -75,18 +75,24 @@ fun sortBooks(books: List<Book>, order: BookSortOrder): List<Book> {
         // tie-break then orders them among themselves by title.
         BookSortOrder.LastPlayed ->
             compareByDescending<Book> { it.progress?.updatedAt ?: Instant.MIN }.then(tieBreak)
+
         BookSortOrder.TitleAscending -> tieBreak
+
         BookSortOrder.TitleDescending ->
             compareByDescending<Book> { it.title.lowercase() }.then(compareBy { it.id.value })
+
         BookSortOrder.AuthorAscending ->
             compareBy<Book> { it.authors.firstOrNull()?.name?.lowercase().orEmpty() }.then(tieBreak)
+
         BookSortOrder.RecentlyUpdated ->
             compareByDescending<Book> { it.remoteUpdatedAt ?: it.lastFetchedAt }.then(tieBreak)
+
         // `Instant.MIN` for a book whose added date was never fetched, so it sorts last rather than
         // first. Substituting `lastFetchedAt` would put every pre-upgrade row at the top of "recently
         // added", which is the opposite of what the shelf claims.
         BookSortOrder.RecentlyAdded ->
             compareByDescending<Book> { it.addedAt ?: Instant.MIN }.then(tieBreak)
+
         BookSortOrder.SeriesSequenceAscending ->
             compareBy<Book> { it.primarySequence() }.then(tieBreak)
     }

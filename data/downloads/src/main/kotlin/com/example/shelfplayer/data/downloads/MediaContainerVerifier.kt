@@ -72,6 +72,7 @@ class AndroidMediaContainerVerifier @Inject constructor(private val logger: Logg
 
         return when (readable) {
             is AppResult.Success -> readable.value
+
             is AppResult.Failure -> {
                 logger.debug(
                     LogCategory.Sync,

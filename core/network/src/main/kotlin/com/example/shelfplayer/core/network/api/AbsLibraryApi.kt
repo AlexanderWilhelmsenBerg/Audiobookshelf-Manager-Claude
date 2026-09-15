@@ -150,6 +150,7 @@ internal class AbsLibraryApi @Inject constructor(
         val target = Target(connection, libraryId, service, bearer)
         when (val catalogue = catalogue(target, fetchedAt, onCatalogueBatch)) {
             is AppResult.Failure -> catalogue
+
             is AppResult.Success -> {
                 logger.info(
                     LogCategory.Sync,
@@ -291,6 +292,7 @@ internal class AbsLibraryApi @Inject constructor(
             val rows = LibraryMapper.toCatalogueSnapshots(target.connection.serverId, target.libraryId, body, fetchedAt)
             when (val accepted = collected.accept(body, rows.size)) {
                 is AppResult.Failure -> return accepted
+
                 is AppResult.Success -> {
                     // Before a single item is expanded. This is the whole of P1-31: one round trip, and
                     // the user has a library — now one round trip regardless of how large that library is.
@@ -522,6 +524,7 @@ internal class AbsLibraryApi @Inject constructor(
      * data and no correctness. Any success resets the count, because a library with a few scattered bad
      * items is a different situation from a library behind a dead server.
      */
+
     /**
      * Everything an item fetch needs that does not vary per item.
      *
@@ -585,6 +588,7 @@ internal class AbsLibraryApi @Inject constructor(
                 )
 
                 ids.size == expectedTotal -> null
+
                 body.results.isNullOrEmpty() -> catalogueCompatibility(
                     "The server stopped listing items before reaching its catalogue total.",
                     "results",

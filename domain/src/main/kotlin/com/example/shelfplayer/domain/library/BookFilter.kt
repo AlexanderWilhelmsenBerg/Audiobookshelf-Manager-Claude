@@ -42,6 +42,7 @@ enum class BookFilter {
 
 fun filterBooks(books: List<Book>, filter: BookFilter): List<Book> = when (filter) {
     BookFilter.All -> books
+
     BookFilter.ContinueListening -> books.filter { book ->
         book.progress?.let { !it.isFinished } == true
     }

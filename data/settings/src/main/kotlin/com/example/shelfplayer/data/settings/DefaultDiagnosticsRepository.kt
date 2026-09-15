@@ -88,6 +88,7 @@ class DefaultDiagnosticsRepository @Inject constructor(
     /** `null` means "every library on this server", which is a different thing from "none". */
     private fun accessibleLibraryKeys(profile: ProfileEntity): List<String>? = when {
         profile.hasAllLibraryAccess -> null
+
         else -> StringListConverters.toStringList(profile.accessibleLibrariesJson)
             .filter(String::isNotBlank)
             .map { EntityKey.of(profile.serverId, it) }

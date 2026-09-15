@@ -83,9 +83,11 @@ enum class ProfileRole {
          */
         fun ofAccountType(type: String): ProfileRole = when (type.lowercase()) {
             "root", "admin" -> Admin
+
             // `user` is the ordinary account. What it may actually *do* comes from its permissions, so it
             // starts here and the grants decide; there is no server type that means "editor".
             "user", "guest", "" -> Listener
+
             else -> Listener
         }
     }

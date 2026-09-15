@@ -78,8 +78,10 @@ class BulkEditGenresUseCase @Inject constructor(
             )
         return when {
             profile.id != profileId -> profileChangedFailure()
+
             profile.requiresReauthentication ->
                 AppResult.Failure(AppError.Authentication(summary = "Sign in again before editing genres."))
+
             else -> authorizeUpdate(profile)
         }
     }
@@ -118,11 +120,14 @@ class BulkEditGenresUseCase @Inject constructor(
                     updated += 1
                     if (outcome.isLocalCopyStale) locallyStale += 1
                 }
+
                 BookGenreEditOutcome.Unchanged -> unchanged += 1
+
                 is BookGenreEditOutcome.Failed -> {
                     failures += outcome.failure
                     if (outcome.shouldStop) stopReason = outcome.failure.error
                 }
+
                 is BookGenreEditOutcome.Stopped -> stopReason = outcome.reason
             }
             index += 1
@@ -202,6 +207,7 @@ class BulkEditGenresUseCase @Inject constructor(
             )
         ) {
             is AppResult.Success -> BookGenreEditOutcome.Updated(saved.value.isLocalCopyStale)
+
             is AppResult.Failure -> {
                 // MGR-001: a failed write remains an explicit draft, never an unattended retry queue.
                 // Check both boundaries once more after the network suspension: a profile switch must
@@ -248,10 +254,13 @@ class BulkEditGenresUseCase @Inject constructor(
             auth.refreshPermissions(profileId)
             true
         }
+
         is AppError.Authentication -> true
+
         // One lost connection must not produce one request and one recovery draft for every cached book.
         // Server errors include 429, so this also respects Retry-After without special-casing one status.
         is AppError.Network, is AppError.Timeout, is AppError.Server -> true
+
         is AppError.ApiCompatibility,
         is AppError.Canceled,
         is AppError.Conflict,
@@ -381,8 +390,10 @@ private fun keyOf(value: String): String = value.lowercase(Locale.ROOT)
 private fun ManagementBlock.asGenreEditError(): AppError = when (this) {
     ManagementBlock.Permission ->
         AppError.Authorization(summary = "This account is not allowed to update book metadata.")
+
     ManagementBlock.Offline ->
         AppError.Network(summary = "Connect to the server before editing genres.")
+
     ManagementBlock.Capability ->
         AppError.ApiCompatibility(summary = "This server has not confirmed metadata editing support.")
 }

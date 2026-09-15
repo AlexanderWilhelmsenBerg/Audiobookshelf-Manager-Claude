@@ -42,6 +42,7 @@ class RemoveFromDatabaseUseCase @Inject constructor(
 
         return when (val removed = metadata.removeFromDatabase(profile.id, bookId)) {
             is AppResult.Failure -> removed
+
             is AppResult.Success -> {
                 // Deliberately not propagated. See the class comment: the server's copy is already gone.
                 if (alsoRemoveDownload) removeDownload(bookId)
