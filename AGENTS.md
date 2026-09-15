@@ -310,10 +310,12 @@ Maintenance: bash scripts/codex/maintenance.sh
 
 JDK 21 is deliberate. A compatibility matrix run on 2026-09-08 proved that the complete BookWave gate
 passes on JDK 21. JDK 22, 23 and 24 all prepared the same Codex environment successfully but failed
-`verifyDebug` with the current Gradle 8.14.3 / AGP 8.12.0 / Kotlin 2.2.0 stack. BookWave still targets Java
-17 bytecode, while normal GitHub CI stays on JDK 17 to exercise the minimum supported runtime. Re-probe
-newer JDKs after the staged build-tool migration in `docs/latest-stable-upgrade-plan.md`; do not infer
-compatibility merely because Gradle itself starts.
+`verifyDebug` on the then-current Gradle 8.14.3 / AGP 8.12.0 / Kotlin 2.2.0 stack. BookWave now keeps the
+Gradle 8.14 line on its latest maintenance patch, but that does not by itself promote the JDK baseline: Gradle
+8.14.x officially runs through Java 24, Java 25 requires Gradle 9.1+, and Java 26 requires Gradle 9.4+.
+BookWave still targets Java 17 bytecode, while normal GitHub CI stays on JDK 17 to exercise the minimum
+supported runtime. Re-probe newer JDKs after the staged build-tool migration in
+`docs/latest-stable-upgrade-plan.md`; do not infer compatibility merely because Gradle itself starts.
 
 The bootstrap pins the current stable Android command-line tools, installs only the Android SDK packages
 this repository actually needs (`platforms;android-36`, `build-tools;36.0.0`, and `platform-tools`), and

@@ -34,6 +34,7 @@ Completed staged slices under #135:
 | #156 | ktlint Gradle plugin | 12.3.0 | 14.2.0 | 2026-09-15 |
 | #157 | ktlint engine | 1.5.0 | 1.8.0 | 2026-09-15 |
 | #158 | Protobuf Gradle plugin | 0.9.5 | 0.10.0 | 2026-09-15 |
+| #161 | AndroidX Activity | 1.12.4 | 1.13.0 | 2026-09-15 |
 
 The Codex compatibility probe from 2026-09-08 remains relevant evidence: the environment bootstrap succeeds
 on JDK 21, 22, 23 and 24, but the complete `verifyDebug` gate succeeds only on JDK 21. Therefore JDK 21
@@ -99,11 +100,15 @@ Exit criteria:
 
 ## Phase 1 — Gradle and Android build foundation
 
+**Status: major foundation gated; Gradle 8 maintenance remains executable.** ADR-0011 still blocks the Gradle 9 / AGP 9
+foundation, but it does not justify leaving the accepted Gradle 8.14 line on an obsolete patch. BookWave therefore
+tracks the latest stable 8.14.x maintenance release independently while the major foundation gate remains in force.
+
 Upgrade the build foundation before libraries. Compiler and Android plugin upgrades should not be debugged
 on top of an old wrapper.
 
-1. Upgrade the Gradle wrapper to the latest stable version recorded in `/version-control.md`.
-2. Run wrapper validation and inspect the Gradle 9 upgrade warnings.
+1. Keep the current accepted Gradle major/minor line on its latest stable maintenance release while ADR-0011 blocks the major foundation; when the gate clears, re-resolve the latest mutually compatible Gradle/AGP tuple from `/version-control.md`.
+2. Run wrapper validation and inspect Gradle upgrade warnings.
 3. Fix deprecated Gradle APIs in `build-logic` rather than enabling compatibility flags indefinitely.
 4. Upgrade Android Gradle Plugin to the latest mutually compatible stable AGP recorded in `/version-control.md`.
 5. Apply AGP migration changes separately from Kotlin changes where possible.
@@ -123,9 +128,11 @@ Required verification:
 ./gradlew :app:assembleDebug
 ```
 
-Then run the Codex JDK probe again. Test every currently relevant stable JDK from 21 through the newest JDK
+Then run the Codex JDK probe again. Test every currently relevant stable/LTS JDK from 21 through the newest JDK
 supported by the upgraded Gradle/AGP combination. Select the **highest JDK that passes the whole BookWave
-gate**, not the highest one that can launch Gradle.
+gate**, not the highest one that can launch Gradle. As of 2026-09-15, Gradle 8.14.x officially runs through Java 24;
+Java 25 requires Gradle 9.1+ and Java 26 requires Gradle 9.4+, so the current JDK 21 Codex baseline should not be
+promoted merely because a newer JDK exists.
 
 ## Phase 2 — Kotlin, KSP and code-quality plugins
 
@@ -151,9 +158,13 @@ coverage threshold silently reduced.
 ## Phase 3 — Android platform, Compose and general AndroidX
 
 **Status: partially active.** The AGP 9 / API 37 portion remains gated by ADR-0011, but independent AndroidX
-releases may proceed as narrow slices only when the current API-36 gates prove compatibility. PR #161 targets
-AndroidX Activity 1.13.0 and resolves Core/Core-KTX 1.18.0 transitively; Core 1.18.0 is compiled with API 36.1,
-so the existing compileSdk 36 verification gate is authoritative. Activity 1.14 remains prerelease and is excluded.
+releases may proceed as narrow slices only when the current API-36 gates prove compatibility. PR #161 merged
+AndroidX Activity 1.13.0 after full CI and focused device smoke passed; that slice also proved the transitively resolved
+Core/Core-KTX 1.18.0 graph on BookWave's compileSdk 36. The next independent AndroidX slice is the explicit Core
+direct-pin move to stable 1.19.0. Activity 1.14 remains prerelease and is excluded.
+
+Lifecycle 2.11 Compose artifacts compile against API 37 and require AGP 9.2+, so Lifecycle now follows the same
+ADR-0011 platform/build-foundation gate rather than remaining an independent Phase-3 bump.
 
 Resolve the latest stable Android SDK, Compose BOM and AndroidX releases from `/version-control.md` at
 execution time. This phase owns:
@@ -257,7 +268,9 @@ Keep release/upload signing secrets out of ordinary Codex environments and keep
 exact pins.
 
 After the upgraded build stack is green, re-run the modern-JDK compatibility matrix and update
-`CODEX_ENV_JAVA_VERSION` to the highest fully passing stable JDK.
+`CODEX_ENV_JAVA_VERSION` to the highest fully passing supported stable/LTS JDK. Do not move the Codex baseline
+from JDK 21 to a short-lived newer feature release merely to increase the version number; as of 2026-09-15 Java 25
+requires Gradle 9.1+ to run Gradle and Java 26 requires Gradle 9.4+.
 
 ## Phase 9 — automate staying current
 
