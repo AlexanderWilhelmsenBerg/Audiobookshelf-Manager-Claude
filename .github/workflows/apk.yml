@@ -79,7 +79,6 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
-          - "#161 — chore/bw-dep-01-activity-1-13-0"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
