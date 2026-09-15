@@ -10,7 +10,7 @@ android {
     namespace = "com.example.shelfplayer.core.network"
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.3 — network DTOs never leave this module.
  *
  * The gateway interfaces expose `:core:model` types and `AppResult`; nothing in `:domain`, `:data`
