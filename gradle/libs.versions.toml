@@ -8,7 +8,7 @@ ksp = "2.3.12"
 detekt = "1.23.8"
 # PRODUCT_SPEC 17.3 — coverage thresholds. Kover reads Kotlin's own coverage, so no JaCoCo agent.
 kover = "0.9.9"
-ktlintGradle = "12.3.0"
+ktlintGradle = "14.2.0"
 ktlint = "1.5.0"
 protobufPlugin = "0.9.5"
 
