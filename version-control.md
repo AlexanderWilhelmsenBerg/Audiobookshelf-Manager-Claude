@@ -17,7 +17,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 - A full dependency-health review should refresh every row and the **Last full stable-version check** date.
 - **Latest stable** excludes alpha, beta, RC, milestone, preview, EAP, dev and snapshot builds.
 - **Latest stable is not automatically the approved next version.** Compatibility gates and migration notes still apply.
-- `gradle/libs.versions.toml` remains the source of truth for Gradle/Maven pins. This file mirrors those pins for planning/status visibility.
+- `gradle/libs.versions.toml` remains the source of truth for direct Gradle/Maven pins. This file mirrors those pins for planning/status visibility; when Gradle conflict resolution ships a newer transitive version than the direct pin, record both explicitly.
 - Direct repository-owned versions are tracked here. Transitive Maven artifacts are not individually listed; Gradle dependency verification, the dependency report/SBOM and vulnerability scanning cover that surface.
 - Mutable aliases such as `actions/checkout@v7`, `ubuntu-latest`, `platform-tools`, and container `:latest` tags are called out explicitly instead of pretending the repository pins an exact version.
 
@@ -65,9 +65,9 @@ This file is the quick answer to **“what version are we on, what is the newest
 
 | Version-catalog key / component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
-| `androidxActivity` | 1.13.0 | 1.13.0 | ✅ Current; stable 1.13.0 keeps BookWave on the API 36-compatible lane while 1.14 remains prerelease. | 3 | 2026-09-15 | [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity) |
+| `androidxActivity` | 1.13.0 | 1.13.0 | ✅ Latest stable target in #161. It resolves Core/Core-KTX 1.18.0 transitively; merge only after the existing compileSdk 36 gates prove that graph is compatible. | 3 | 2026-09-15 | [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity) |
 | `androidxAnnotation` | 1.10.0 | 1.10.0 | ✅ Current. | 3 | 2026-09-15 | [AndroidX versions](https://developer.android.com/jetpack/androidx/versions) |
-| `androidxCore` | 1.17.0 | 1.19.0 | ⬆️ Update in Phase 3. | 3 | 2026-09-15 | [Core releases](https://developer.android.com/jetpack/androidx/releases/core) |
+| `androidxCore` | 1.17.0 direct pin; 1.18.0 resolved via Activity 1.13.0 | 1.19.0 | ⬆️ Direct pin remains behind. Core 1.18.0 is compiled with API 36.1; #161 must prove it is consumable by BookWave's compileSdk 36 before merge. Keep the explicit Core 1.19.0 move as a separate Phase 3 slice. | 3 | 2026-09-15 | [Core releases](https://developer.android.com/jetpack/androidx/releases/core) |
 | `androidxDatastore` | 1.2.1 | 1.2.1 | ✅ Current; merged in PR #154. | 4 | 2026-09-15 | [DataStore releases](https://developer.android.com/jetpack/androidx/releases/datastore) |
 | `androidxHiltNavigationCompose` | 1.3.0 | 1.4.0 | ⛔ Compose artifacts in 1.4.0 use compileSdk 37 and require AGP 9.2+, so this follows the API 37/AGP gate. | 3 | 2026-09-15 | [AndroidX Hilt releases](https://developer.android.com/jetpack/androidx/releases/hilt) |
 | `androidxLifecycle` | 2.10.0 | 2.11.0 | ⬆️ Phase 3 AndroidX/Compose compatibility slice. | 3 | 2026-09-15 | [Lifecycle releases](https://developer.android.com/jetpack/androidx/releases/lifecycle) |

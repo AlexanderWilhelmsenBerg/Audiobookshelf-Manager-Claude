@@ -151,8 +151,9 @@ coverage threshold silently reduced.
 ## Phase 3 — Android platform, Compose and general AndroidX
 
 **Status: partially active.** The AGP 9 / API 37 portion remains gated by ADR-0011, but independent AndroidX
-releases that remain compatible with the current API-36 foundation may proceed as narrow slices. PR #161
-upgrades AndroidX Activity from 1.12.4 to stable 1.13.0; the 1.14 line remains prerelease and is excluded.
+releases may proceed as narrow slices only when the current API-36 gates prove compatibility. PR #161 targets
+AndroidX Activity 1.13.0 and resolves Core/Core-KTX 1.18.0 transitively; Core 1.18.0 is compiled with API 36.1,
+so the existing compileSdk 36 verification gate is authoritative. Activity 1.14 remains prerelease and is excluded.
 
 Resolve the latest stable Android SDK, Compose BOM and AndroidX releases from `/version-control.md` at
 execution time. This phase owns:
