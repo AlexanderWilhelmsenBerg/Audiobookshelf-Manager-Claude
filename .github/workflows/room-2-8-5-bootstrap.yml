@@ -15,6 +15,25 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: chore/bw-dep-01-room-2-8-5
+          fetch-depth: 0
+
+      - name: Restore current main catalog and apply only the Room pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git show FETCH_HEAD:gradle/libs.versions.toml > gradle/libs.versions.toml
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("gradle/libs.versions.toml")
+          text = path.read_text()
+          old = 'androidxRoom = "2.7.2"'
+          new = 'androidxRoom = "2.8.5"'
+          if text.count(old) != 1:
+              raise SystemExit(f"Expected exactly one {old!r} in current main catalog")
+          path.write_text(text.replace(old, new))
+          PY
+          git diff --check -- gradle/libs.versions.toml
 
       - uses: actions/setup-java@v6
         with:
@@ -44,7 +63,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm .github/workflows/room-2-8-5-bootstrap.yml
-          git add gradle/verification-metadata.xml .github/workflows/room-2-8-5-bootstrap.yml
+          git add gradle/libs.versions.toml gradle/verification-metadata.xml .github/workflows/room-2-8-5-bootstrap.yml
           git diff --cached --check
           git commit -m "chore(deps): pin Room 2.8.5 verification metadata"
           git push
