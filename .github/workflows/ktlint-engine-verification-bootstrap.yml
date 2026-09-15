@@ -1,0 +1,56 @@
+name: Ktlint engine verification bootstrap
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/ktlint-engine-verification-bootstrap.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    name: Generate ktlint 1.8.0 verification metadata
+    if: github.head_ref == 'chore/bw-dep-01-ktlint-engine-1-8-0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Resolve ktlint 1.8.0 and write verification metadata
+        shell: bash
+        run: |
+          set +e
+          ./gradlew ktlintCheck --write-verification-metadata sha256 --rerun-tasks
+          status=$?
+          echo "ktlint bootstrap exit code: ${status}"
+          exit 0
+
+      - name: Commit generated verification metadata
+        shell: bash
+        run: |
+          git add gradle/verification-metadata.xml
+          if git diff --cached --quiet; then
+            echo 'No verification metadata changes were generated.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore(deps): trust ktlint 1.8.0 artifacts'
+          git push origin HEAD:${{ github.head_ref }}
