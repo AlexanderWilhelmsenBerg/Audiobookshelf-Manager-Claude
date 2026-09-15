@@ -32,36 +32,46 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
-      - name: Repair non-attached KDocs identified by ktlint 1.8
+      - name: Repair remaining non-attached KDocs identified by ktlint 1.8
         shell: python
         run: |
           from pathlib import Path
 
           replacements = {
-              Path('playback/src/main/kotlin/com/example/shelfplayer/playback/HeadsetHold.kt'): [
+              Path('app/src/test/kotlin/com/example/shelfplayer/a11y/AccessibilityAssertions.kt'): [
                   (
-                      '    /**\n     * Takes a freshly published output list.',
-                      '    /*\n     * Takes a freshly published output list.',
-                  ),
-                  (
-                      '     */\n    /**\n     * The headset an explicit *Car* press gave up',
-                      '     */\n\n    /**\n     * The headset an explicit *Car* press gave up',
+                      '/**\n * PRODUCT_SPEC §51 / 2.10 — the two accessibility properties that can be checked without a device.',
+                      '/*\n * PRODUCT_SPEC §51 / 2.10 — the two accessibility properties that can be checked without a device.',
                   ),
               ],
-              Path('playback/src/main/kotlin/com/example/shelfplayer/playback/MediaItems.kt'): [
+              Path('app/src/test/kotlin/com/example/shelfplayer/feature/profiles/ProfileSwitcherViewModelTest.kt'): [
                   (
-                      '    /**\n     * Builds the item for [session], positioned at the resume point the server reported.',
-                      '    /*\n     * Builds the item for [session], positioned at the resume point the server reported.',
+                      '    /**\n     * Keeps the `WhileSubscribed` state flow hot and returns it.',
+                      '    /*\n     * Keeps the `WhileSubscribed` state flow hot and returns it.',
                   ),
                   (
-                      "     */\n    /**\n     * A tappable link from the player's description line to a browse node.",
-                      "     */\n\n    /**\n     * A tappable link from the player's description line to a browse node.",
+                      '    /**\n     * The switcher does not read the library; it only causes an account sync as a side effect of a',
+                      '    /*\n     * The switcher does not read the library; it only causes an account sync as a side effect of a',
                   ),
               ],
-              Path('playback/src/main/kotlin/com/example/shelfplayer/playback/PlayerPositions.kt'): [
+              Path('app/src/test/kotlin/com/example/shelfplayer/feature/settings/SettingsScreenTest.kt'): [
                   (
-                      "/**\n * ADR-0016 — reading a book's position and length off the player.",
-                      "/*\n * ADR-0016 — reading a book's position and length off the player.",
+                      '    /**\n     * The tab in the row, not the section heading that happens to share its wording.',
+                      '    /*\n     * The tab in the row, not the section heading that happens to share its wording.',
+                  ),
+              ],
+              Path('app/src/test/kotlin/com/example/shelfplayer/feature/settings/SettingsViewModelTest.kt'): [
+                  (
+                      '/**\n * PRODUCT_SPEC PLAY-008 — the sleep timer\'s settings and history, in memory.',
+                      '/*\n * PRODUCT_SPEC PLAY-008 — the sleep timer\'s settings and history, in memory.',
+                  ),
+                  (
+                      '/** PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox\'s readings, as the About tab receives them. */',
+                      '/* PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox\'s readings, as the About tab receives them. */',
+                  ),
+                  (
+                      '/**\n * PRODUCT_SPEC SET-003 — a package manager that records rather than one that exists.',
+                      '/*\n * PRODUCT_SPEC SET-003 — a package manager that records rather than one that exists.',
                   ),
               ],
           }
@@ -93,5 +103,5 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'style: apply ktlint 1.8 formatting'
+          git commit -m 'style: finish ktlint 1.8 formatting migration'
           git push origin HEAD:chore/bw-dep-01-ktlint-engine-1-8-0
