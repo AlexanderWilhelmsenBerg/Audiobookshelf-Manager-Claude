@@ -79,7 +79,7 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
-          - "#159 — docs/cleanup-stale-documentation-v2"
+          - "#160 — docs/version-control-ledger"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
