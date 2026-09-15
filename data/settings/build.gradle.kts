@@ -12,7 +12,7 @@ android {
     namespace = "com.example.shelfplayer.data.settings"
 }
 
-/**
+/*
  * PRODUCT_SPEC 9.3 / SET-001, SET-002 — the module reserved for EPIC SET.
  *
  * It holds what the settings screen reads. Today that is the storage diagnostics (SET-002,
