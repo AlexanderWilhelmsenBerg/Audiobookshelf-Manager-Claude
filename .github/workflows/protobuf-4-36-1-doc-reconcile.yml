@@ -42,17 +42,8 @@ jobs:
           row = '| #165 | kotlinx.coroutines | 1.10.2 | 1.11.0 | 2026-09-15 |'
           if row not in text:
               text = text.replace(marker, marker + '\n' + row)
-          old = '''**Status: active in compatibility-sized slices.** kotlinx.serialization 1.9.0 landed in PR #164 as the newest
-stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line. The next independent runtime probe is
-kotlinx.coroutines 1.11.0: upstream builds it with Kotlin 2.2.20, so BookWave must prove compatibility on Kotlin
-2.2.0 through the full rerun gate rather than assuming patch-level compiler compatibility. Stable
-kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.'''
-          new = '''**Status: active in compatibility-sized slices.** kotlinx.serialization 1.9.0 landed in PR #164 as the newest
-stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line, and kotlinx.coroutines 1.11.0 landed in
-PR #165 after the full rerun gate proved it compatible with BookWave’s Kotlin 2.2.0 build despite upstream building
-it with Kotlin 2.2.20. PR #166 is the next independent slice, moving the matched Protobuf Java/Kotlin-lite runtime
-and protoc from 4.31.1 / 31.1 to 4.36.1 / 36.1. Stable kotlinx.serialization 1.10.0+ remains behind the
-compiler/build-foundation re-resolution.'''
+          old = '**Status: active in compatibility-sized slices.** kotlinx.serialization 1.9.0 landed in PR #164 as the newest\nstable release aligned with BookWave’s current Kotlin 2.2.0 compiler line. The next independent runtime probe is\nkotlinx.coroutines 1.11.0: upstream builds it with Kotlin 2.2.20, so BookWave must prove compatibility on Kotlin\n2.2.0 through the full rerun gate rather than assuming patch-level compiler compatibility. Stable\nkotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.'
+          new = '**Status: active in compatibility-sized slices.** kotlinx.serialization 1.9.0 landed in PR #164 as the newest\nstable release aligned with BookWave’s current Kotlin 2.2.0 compiler line, and kotlinx.coroutines 1.11.0 landed in\nPR #165 after the full rerun gate proved it compatible with BookWave’s Kotlin 2.2.0 build despite upstream building\nit with Kotlin 2.2.20. PR #166 is the next independent slice, moving the matched Protobuf Java/Kotlin-lite runtime\nand protoc from 4.31.1 / 31.1 to 4.36.1 / 36.1. Stable kotlinx.serialization 1.10.0+ remains behind the\ncompiler/build-foundation re-resolution.'
           if old not in text:
               raise SystemExit('Expected Phase 5 status block not found')
           text = text.replace(old, new)
