@@ -53,32 +53,28 @@ jobs:
 
           plan = Path('docs/latest-stable-upgrade-plan.md')
           text = plan.read_text()
-          room_row = '| #162 | Gradle wrapper | 8.14.3 | 8.14.5 | 2026-09-15 |'
-          if '| #163 | AndroidX Room | 2.7.2 | 2.8.5 | 2026-09-15 |' not in text:
-              if room_row not in text:
+          wrapper_row = '| #162 | Gradle wrapper | 8.14.3 | 8.14.5 | 2026-09-15 |'
+          room_row = '| #163 | AndroidX Room | 2.7.2 | 2.8.5 | 2026-09-15 |'
+          if room_row not in text:
+              if wrapper_row not in text:
                   raise SystemExit('expected completed-slices insertion point not found')
-              text = text.replace(room_row, room_row + '\n| #163 | AndroidX Room | 2.7.2 | 2.8.5 | 2026-09-15 |', 1)
-          old_phase = '''## Phase 5 — Kotlin runtime, serialization and network stack
-
-Upgrade deliberately from the current values to the stable targets recorded in `/version-control.md`. This
-phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,
-Protobuf runtime/protoc and `javax.inject` compatibility. Several jumps cross major versions. The archived
-Jake Wharton Retrofit serialization converter should be treated as a migration to Retrofit's maintained
-first-party path, not as a version bump that does not exist.
-'''
-          new_phase = '''## Phase 5 — Kotlin runtime, serialization and network stack
-
-**Status: active in compatibility-sized slices.** The current Kotlin 2.2.0 foundation can take
-kotlinx.serialization 1.9.0 independently because that stable release is based on Kotlin 2.2.0. Stable
-kotlinx.serialization 1.10.0 moved to Kotlin 2.3.0 and 1.11.0 is based on Kotlin 2.3.20, so those later
-releases remain behind the compiler/build-foundation re-resolution rather than being forced into this slice.
-
-Upgrade deliberately from the current values to the compatible stable targets recorded in `/version-control.md`.
-This phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,
-Protobuf runtime/protoc and `javax.inject` compatibility. Several jumps cross major versions. The archived
-Jake Wharton Retrofit serialization converter should be treated as a migration to Retrofit's maintained
-first-party path, not as a version bump that does not exist.
-'''
+              text = text.replace(wrapper_row, wrapper_row + '\n' + room_row, 1)
+          old_phase = ('## Phase 5 — Kotlin runtime, serialization and network stack\n\n'
+                       'Upgrade deliberately from the current values to the stable targets recorded in `/version-control.md`. This\n'
+                       'phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,\n'
+                       'Protobuf runtime/protoc and `javax.inject` compatibility. Several jumps cross major versions. The archived\n'
+                       "Jake Wharton Retrofit serialization converter should be treated as a migration to Retrofit's maintained\n"
+                       'first-party path, not as a version bump that does not exist.\n')
+          new_phase = ('## Phase 5 — Kotlin runtime, serialization and network stack\n\n'
+                       '**Status: active in compatibility-sized slices.** The current Kotlin 2.2.0 foundation can take\n'
+                       'kotlinx.serialization 1.9.0 independently because that stable release is based on Kotlin 2.2.0. Stable\n'
+                       'kotlinx.serialization 1.10.0 moved to Kotlin 2.3.0 and 1.11.0 is based on Kotlin 2.3.20, so those later\n'
+                       'releases remain behind the compiler/build-foundation re-resolution rather than being forced into this slice.\n\n'
+                       'Upgrade deliberately from the current values to the compatible stable targets recorded in `/version-control.md`.\n'
+                       'This phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,\n'
+                       'Protobuf runtime/protoc and `javax.inject` compatibility. Several jumps cross major versions. The archived\n'
+                       "Jake Wharton Retrofit serialization converter should be treated as a migration to Retrofit's maintained\n"
+                       'first-party path, not as a version bump that does not exist.\n')
           if old_phase not in text:
               raise SystemExit('expected Phase 5 text not found')
           plan.write_text(text.replace(old_phase, new_phase, 1))
