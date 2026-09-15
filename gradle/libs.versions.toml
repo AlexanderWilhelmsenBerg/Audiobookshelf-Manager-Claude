@@ -18,7 +18,7 @@ minSdk = "26"
 targetSdk = "36"
 
 # AndroidX / Jetpack
-androidxActivity = "1.12.4"
+androidxActivity = "1.13.0"
 androidxAnnotation = "1.10.0"
 androidxCore = "1.17.0"
 androidxDatastore = "1.2.1"
