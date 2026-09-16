@@ -4,7 +4,7 @@
 > CI actions and auxiliary build tooling.
 
 **Last full stable-version check:** 2026-09-15  
-**Repository baseline checked:** `main` at `615444e0f7bb671a32bdba4d4158694646e3357f`
+**Repository baseline checked:** `main` at `5ba6f7a079259fc4101cf69dc832e53286f1cf34`
 **Upgrade roadmap:** [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md)  
 **Primary migration issue:** #135 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration`
 
@@ -98,8 +98,8 @@ This file is the quick answer to **“what version are we on, what is the newest
 | `kotlinxSerialization` | 1.9.0 | 1.11.0 | 🎯 1.9.0 is the newest stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line. Upstream 1.10.0 moved to Kotlin 2.3.0 and 1.11.0 is based on Kotlin 2.3.20, so those remain compiler-gated until Phase 1/2 re-resolves Kotlin. | 5 | 2026-09-15 | [kotlinx.serialization releases](https://github.com/Kotlin/kotlinx.serialization/releases) |
 | `okhttp` | 4.12.0 | 5.5.0 | 🔁 Major network-stack migration deliberately left out of the converter-retirement slice; keep contract/TLS/WebSocket/download tests green when it moves. | 5 | 2026-09-16 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |
 | `protobuf` | 4.36.1 | 4.36.1 (Protobuf 36.1) | ✅ Latest stable reached in merged PR #166 with matched Java/Kotlin-lite runtime and protoc. The focused Proto DataStore suite and full classpath rerun gate are the compatibility evidence; the reported 36.1 Bazel prebuilt-tool integrity issue is outside BookWave's Gradle/Maven protoc path. | 5 | 2026-09-16 | [Protobuf releases](https://github.com/protocolbuffers/protobuf/releases) |
-| `retrofit` | 2.11.0 | 3.0.0 | 🔁 Major migration remains a later independent slice. Retrofit 2.12.0 is also stable, while 3.0.0 is the current stable frontier and keeps forward binary compatibility with 2.x; the converter-retirement slice intentionally holds core at 2.11.0. | 5 | 2026-09-16 | [Retrofit changelog](https://github.com/square/retrofit/blob/trunk/CHANGELOG.md) |
-| Retrofit kotlinx.serialization converter | 2.11.0 (first-party; tracks `retrofit`) | 3.0.0 (first-party; tracks Retrofit) | ✅ Archived Jake Wharton 1.0.0 artifact retired in this Phase 5 slice. Retrofit imported that converter unchanged in 2.10.0, so the maintained Square artifact can replace it independently of the Retrofit 3 / OkHttp 5 migrations. | 5 | 2026-09-16 | [Retrofit changelog](https://github.com/square/retrofit/blob/trunk/CHANGELOG.md) |
+| `retrofit` | 3.0.0 | 3.0.0 | ✅ Latest stable target in the active Retrofit-only Phase 5 slice. Upstream states that Retrofit 3.x maintains forward binary compatibility with 2.x and 3.0.0 moves Retrofit’s OkHttp baseline to 4.12, which BookWave already uses directly; OkHttp 5 remains a separate later migration. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |
+| Retrofit kotlinx.serialization converter | 3.0.0 (first-party; tracks `retrofit`) | 3.0.0 (first-party; tracks Retrofit) | ✅ Archived Jake Wharton 1.0.0 artifact was retired in merged PR #167. The active Retrofit 3 slice keeps the first-party converter aligned with Retrofit core at 3.0.0; OkHttp remains pinned separately at 4.12.0. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |
 
 ## Images and visual effects
 
@@ -165,6 +165,7 @@ Append to this table whenever a tracked migration slice merges. The live tables 
 | 2026-09-15 | #164 | kotlinx.serialization | 1.8.1 | 1.9.0 | 🎯 Latest stable compatible with the current Kotlin 2.2.0 compiler line |
 | 2026-09-15 | #165 | kotlinx.coroutines | 1.10.2 | 1.11.0 | ✅ Latest stable reached after full cancellation/concurrency rerun coverage on Kotlin 2.2.0 |
 | 2026-09-16 | #166 | Protobuf runtime/protoc | 4.31.1 / 31.1 | 4.36.1 / 36.1 | ✅ Latest stable reached; application source and committed schemas unchanged |
+| 2026-09-16 | #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | ✅ Archived converter retired; first-party converter adopted without changing Retrofit or OkHttp major versions |
 
 ## Update discipline for future PRs
 
