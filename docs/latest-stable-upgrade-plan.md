@@ -2,7 +2,7 @@
 
 Status: active staged migration under issue #135.
 
-Roadmap last reconciled: 2026-09-15.
+Roadmap last reconciled: 2026-09-16.
 
 Live current/latest version state: [`/version-control.md`](../version-control.md).
 
@@ -42,6 +42,7 @@ Completed staged slices under #135:
 | #166 | Protobuf runtime/protoc | 4.31.1 / 31.1 | 4.36.1 / 36.1 | 2026-09-16 |
 | #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | 2026-09-16 |
 | #168 | Retrofit core + first-party converter | 2.11.0 | 3.0.0 | 2026-09-16 |
+| #169 | OkHttp family | 4.12.0 | 5.4.0 | 2026-09-16 |
 
 The Codex compatibility probe from 2026-09-08 remains relevant evidence: the environment bootstrap succeeds
 on JDK 21, 22, 23 and 24, but the complete `verifyDebug` gate succeeds only on JDK 21. Therefore JDK 21
@@ -194,15 +195,17 @@ behavior, notifications and process recreation.
 
 ## Phase 4 — persistence, background work and playback
 
-Upgrade these in separate PRs because each owns user state or long-running behavior. DataStore reached the
-latest stable release in PR #154; WorkManager and Media3 are also current in the live ledger. With the remaining
-independent Phase-3 paths gated, Room 2.8.5 is the next executable dependency axis.
+**Status: complete at the current compatible frontier.** DataStore reached 1.2.1 in PR #154 and Room reached
+2.8.5 in PR #163 without changing the BookWave database version or committed schemas. WorkManager and Media3
+are also current in the live ledger. No further independently executable Phase-4 dependency update is identified
+on the current API-36 / AGP-8 foundation.
 
 Room 2.8 raises Android minSdk from 21 to 23 and the Room Gradle Plugin minimum AGP from 8.1 to 8.4;
-BookWave minSdk 26 / AGP 8.12 satisfy both floors. This dependency/compiler upgrade does not itself justify
-changing the BookWave database version or rewriting committed schemas.
+BookWave minSdk 26 / AGP 8.12 satisfy both floors. Future Room upgrades must continue to preserve the same
+schema and migration discipline below.
 
-Dagger/Hilt 2.59+ requires AGP 9 when the Hilt Gradle plugin is used, so Hilt 2.60.1 remains behind ADR-0011.
+Dagger/Hilt 2.59+ requires AGP 9 when the Hilt Gradle plugin is used, so Hilt 2.60.1 remains behind ADR-0011
+and does not keep Phase 4 open.
 
 Room requirements:
 
@@ -228,25 +231,32 @@ WorkManager/DataStore requirements:
 
 ## Phase 5 — Kotlin runtime, serialization and network stack
 
-**Status: active in compatibility-sized slices.** kotlinx.serialization 1.9.0 landed in PR #164 as the newest
-stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line, kotlinx.coroutines 1.11.0 landed in PR #165
-after the full rerun gate proved it compatible with BookWave’s Kotlin 2.2.0 build despite upstream building it with
-Kotlin 2.2.20, and PR #166 moved the matched Protobuf Java/Kotlin-lite runtime and protoc to 4.36.1 / 36.1.
+**Status: complete at the current mutually compatible stable frontier.** kotlinx.serialization 1.9.0 landed in
+PR #164 as the newest stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line; kotlinx.coroutines
+1.11.0 landed in PR #165 after the full rerun gate proved it compatible with BookWave’s Kotlin 2.2.0 build despite
+upstream building it with Kotlin 2.2.20; and PR #166 moved the matched Protobuf Java/Kotlin-lite runtime and protoc
+to 4.36.1 / 36.1.
 
-PR #167 retired the archived Jake Wharton Retrofit kotlinx.serialization converter, and PR #168 then upgraded
-Retrofit core plus its first-party converter to 3.0.0 while deliberately holding OkHttp at 4.12.0. The next
-independent network slice moves the shared OkHttp family to 5.4.0, the newest stable release whose Android artifact
-still compiles against API 36. OkHttp 5.5.0 raises `okhttp-android` to compileSdk 37, so it remains behind ADR-0011
-together with BookWave’s API 37 / AGP 9 foundation. OkHttp 5 keeps stable 4.x APIs binary and behaviorally compatible,
-while the 5.x line changes transport/runtime behavior such as enabling Happy Eyeballs by default. Keep the legacy
-`okhttp3.mockwebserver` compatibility artifact for this slice; moving tests to `mockwebserver3` is a separate
-API/package migration. Stable kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.
+PR #167 retired the archived Jake Wharton Retrofit kotlinx.serialization converter, PR #168 upgraded Retrofit core
+plus its first-party converter to 3.0.0, and PR #169 independently moved the shared OkHttp family from 4.12.0 to
+5.4.0. The #169 contract-capture and full CI passed, and the project owner reported the required test/smoke pass before
+merge, satisfying the network-major compatibility evidence required by this plan. OkHttp 5.5.0 raises
+`okhttp-android` to compileSdk 37, so it remains behind ADR-0011 together with BookWave’s API 37 / AGP 9
+foundation. Stable kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.
 
-Upgrade deliberately from the current values to the compatible stable targets recorded in `/version-control.md`.
+The remaining Phase-5 compatibility review is also closed: `javax.inject:javax.inject:1` is still the canonical
+legacy artifact used by BookWave and has no newer migration target. Reassess it only as part of a future Hilt/DI
+foundation change rather than manufacturing a dependency-only PR. The legacy `okhttp3.mockwebserver` compatibility
+artifact remains intentionally aligned with OkHttp 5.4.0; moving tests to `mockwebserver3` is a separate API/package
+migration and is not required to close this phase.
+
+There is therefore no further independently executable Phase-5 migration on the current foundation. Reopen this
+phase only when the Phase-1/2/3 platform/compiler gate changes or a new compatible stable runtime/network release
+appears. The next executable dependency lane is Phase 6.
+
 This phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,
-Protobuf runtime/protoc and `javax.inject` compatibility. Several jumps cross major versions. The archived
-Jake Wharton Retrofit serialization converter should be treated as a migration to Retrofit's maintained
-first-party path, not as a version bump that does not exist.
+Protobuf runtime/protoc and `javax.inject` compatibility. Future changes in these components must retain the same
+compatibility-sized slicing and validation requirements below.
 
 For each networking major upgrade:
 
