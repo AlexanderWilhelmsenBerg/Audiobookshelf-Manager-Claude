@@ -1,0 +1,73 @@
+name: Stage OkHttp 5.4 migration
+
+on:
+  push:
+    branches:
+      - chore/bw-dep-01-okhttp-5-4-0
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chore/bw-dep-01-okhttp-5-4-0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Apply OkHttp 5.4 pin
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('gradle/libs.versions.toml')
+          text = path.read_text()
+          old = 'okhttp = "4.12.0"'
+          new = 'okhttp = "5.4.0"'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one OkHttp 4.12.0 pin, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+
+      - name: Resolve graph and generate strict verification metadata
+        shell: bash
+        run: |
+          ./gradlew :core:network:dependencies --configuration debugRuntimeClasspath --write-verification-metadata sha256 > /tmp/network-runtime.txt
+          ./gradlew :core:network:dependencies --configuration debugUnitTestRuntimeClasspath --write-verification-metadata sha256 > /tmp/network-test.txt
+          ./gradlew :playback:dependencies --configuration debugRuntimeClasspath --write-verification-metadata sha256 > /tmp/playback-runtime.txt
+          ./gradlew :data:downloads:dependencies --configuration debugUnitTestRuntimeClasspath --write-verification-metadata sha256 > /tmp/downloads-test.txt
+          grep -F 'com.squareup.okhttp3:okhttp:5.4.0' /tmp/network-runtime.txt
+          grep -F 'com.squareup.retrofit2:retrofit:3.0.0' /tmp/network-runtime.txt
+          grep -F 'com.squareup.okhttp3:mockwebserver:5.4.0' /tmp/network-test.txt
+          grep -F 'com.squareup.okhttp3:okhttp:5.4.0' /tmp/playback-runtime.txt
+          grep -F 'com.squareup.okhttp3:mockwebserver:5.4.0' /tmp/downloads-test.txt
+
+      - name: Focused network-major verification
+        run: ./gradlew :core:network:testDebugUnitTest :data:downloads:testDebugUnitTest :playback:testDebugUnitTest --rerun-tasks -Pshelfplayer.warningsAsErrors=true
+
+      - name: Commit migration slice
+        shell: bash
+        run: |
+          git diff --quiet -- gradle/libs.versions.toml gradle/verification-metadata.xml && {
+            echo 'Expected OkHttp migration changes were not produced.'
+            exit 1
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add gradle/libs.versions.toml gradle/verification-metadata.xml
+          git commit -m 'chore(deps): upgrade OkHttp to 5.4.0'
+          git push origin HEAD:chore/bw-dep-01-okhttp-5-4-0
