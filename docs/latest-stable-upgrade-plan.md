@@ -39,6 +39,7 @@ Completed staged slices under #135:
 | #163 | AndroidX Room | 2.7.2 | 2.8.5 | 2026-09-15 |
 | #164 | kotlinx.serialization | 1.8.1 | 1.9.0 | 2026-09-15 |
 | #165 | kotlinx.coroutines | 1.10.2 | 1.11.0 | 2026-09-15 |
+| #166 | Protobuf runtime/protoc | 4.31.1 / 31.1 | 4.36.1 / 36.1 | 2026-09-16 |
 
 The Codex compatibility probe from 2026-09-08 remains relevant evidence: the environment bootstrap succeeds
 on JDK 21, 22, 23 and 24, but the complete `verifyDebug` gate succeeds only on JDK 21. Therefore JDK 21
@@ -226,11 +227,15 @@ WorkManager/DataStore requirements:
 ## Phase 5 — Kotlin runtime, serialization and network stack
 
 **Status: active in compatibility-sized slices.** kotlinx.serialization 1.9.0 landed in PR #164 as the newest
-stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line, and kotlinx.coroutines 1.11.0 landed in
-PR #165 after the full rerun gate proved it compatible with BookWave’s Kotlin 2.2.0 build despite upstream building
-it with Kotlin 2.2.20. PR #166 is the next independent slice, moving the matched Protobuf Java/Kotlin-lite runtime
-and protoc from 4.31.1 / 31.1 to 4.36.1 / 36.1. Stable kotlinx.serialization 1.10.0+ remains behind the
-compiler/build-foundation re-resolution.
+stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line, kotlinx.coroutines 1.11.0 landed in PR #165
+after the full rerun gate proved it compatible with BookWave’s Kotlin 2.2.0 build despite upstream building it with
+Kotlin 2.2.20, and PR #166 moved the matched Protobuf Java/Kotlin-lite runtime and protoc to 4.36.1 / 36.1.
+
+The archived Jake Wharton Retrofit kotlinx.serialization converter is retired as its own compatibility-sized axis:
+use Retrofit’s maintained first-party `converter-kotlinx-serialization` artifact at the same 2.11.0 version as
+Retrofit core while deliberately holding Retrofit and OkHttp major versions fixed. Retrofit imported that converter
+unchanged in 2.10.0, so this isolates dependency ownership/coordinates from the later Retrofit 3 and OkHttp 5
+migrations. Stable kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.
 
 Upgrade deliberately from the current values to the compatible stable targets recorded in `/version-control.md`.
 This phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,
@@ -353,7 +358,6 @@ versions are intentionally not duplicated here; see `/version-control.md`.**
 | okhttp | Phase 5 |
 | protobuf | Phase 5 |
 | retrofit | Phase 5 |
-| retrofitKotlinxSerialization | Phase 5; migrate away from archived converter when appropriate |
 | coil | Phase 6 |
 | haze | Phase 6 |
 | junit4 | Phase 7 |
