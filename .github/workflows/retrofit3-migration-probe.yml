@@ -1,0 +1,120 @@
+name: Stage Retrofit 3 migration
+
+on:
+  push:
+    branches:
+      - chore/bw-dep-01-retrofit-3-0-0-clean
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chore/bw-dep-01-retrofit-3-0-0-clean
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Apply narrow Retrofit 3 slice
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          catalog = Path('gradle/libs.versions.toml')
+          text = catalog.read_text()
+          old = 'retrofit = "2.11.0"'
+          new = 'retrofit = "3.0.0"'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one {old!r}, found {text.count(old)}')
+          catalog.write_text(text.replace(old, new, 1))
+
+          vc = Path('version-control.md')
+          lines = vc.read_text().splitlines()
+          out = []
+          inserted_167 = any('| #167 |' in line for line in lines)
+          for line in lines:
+              if line.startswith('**Repository baseline checked:**'):
+                  line = '**Repository baseline checked:** `main` at `5ba6f7a079259fc4101cf69dc832e53286f1cf34`'
+              elif line.startswith('| `retrofit` |'):
+                  line = '| `retrofit` | 3.0.0 | 3.0.0 | ✅ Latest stable target in the active Retrofit-only Phase 5 slice. Upstream states that Retrofit 3.x maintains forward binary compatibility with 2.x and 3.0.0 moves Retrofit’s OkHttp baseline to 4.12, which BookWave already uses directly; OkHttp 5 remains a separate later migration. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |'
+              elif line.startswith('| Retrofit kotlinx.serialization converter |'):
+                  line = '| Retrofit kotlinx.serialization converter | 3.0.0 (first-party; tracks `retrofit`) | 3.0.0 (first-party; tracks Retrofit) | ✅ Archived Jake Wharton 1.0.0 artifact was retired in merged PR #167. The active Retrofit 3 slice keeps the first-party converter aligned with Retrofit core at 3.0.0; OkHttp remains pinned separately at 4.12.0. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |'
+              out.append(line)
+              if line.startswith('| 2026-09-16 | #166 |') and not inserted_167:
+                  out.append('| 2026-09-16 | #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | ✅ Archived converter retired; first-party converter adopted without changing Retrofit or OkHttp major versions |')
+                  inserted_167 = True
+          if not inserted_167:
+              raise SystemExit('Could not reconcile #167 completed history')
+          vc.write_text('\n'.join(out) + '\n')
+
+          plan = Path('docs/latest-stable-upgrade-plan.md')
+          lines = plan.read_text().splitlines()
+          out = []
+          inserted_167 = any(line.startswith('| #167 |') for line in lines)
+          i = 0
+          replaced_phase = False
+          while i < len(lines):
+              line = lines[i]
+              out.append(line)
+              if line.startswith('| #166 | Protobuf runtime/protoc |') and not inserted_167:
+                  out.append('| #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | 2026-09-16 |')
+                  inserted_167 = True
+              if line.startswith('The archived Jake Wharton Retrofit kotlinx.serialization converter is retired as its own compatibility-sized axis:'):
+                  out.pop()
+                  replacement = [
+                      'PR #167 retired the archived Jake Wharton Retrofit kotlinx.serialization converter in favor of Retrofit’s',
+                      'maintained first-party `converter-kotlinx-serialization` artifact while holding Retrofit core at 2.11.0 and OkHttp',
+                      'at 4.12.0. The next independent network slice upgrades Retrofit core and its first-party converter together from',
+                      '2.11.0 to 3.0.0 while deliberately keeping OkHttp at 4.12.0. Retrofit 3.0.0’s release notes state that 3.x maintains',
+                      'forward binary compatibility with 2.x and that its material dependency change is moving Retrofit’s OkHttp baseline',
+                      'to 4.12, which BookWave already uses directly. OkHttp 5 therefore remains a separate later risk axis. Stable',
+                      'kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.',
+                  ]
+                  out.extend(replacement)
+                  i += 1
+                  while i < len(lines) and not lines[i].endswith('compiler/build-foundation re-resolution.'):
+                      i += 1
+                  replaced_phase = True
+              i += 1
+          if not inserted_167 or not replaced_phase:
+              raise SystemExit(f'Plan reconciliation failed: inserted_167={inserted_167}, replaced_phase={replaced_phase}')
+          plan.write_text('\n'.join(out) + '\n')
+          PY
+
+          git diff -- gradle/libs.versions.toml docs/latest-stable-upgrade-plan.md version-control.md
+
+      - name: Generate strict verification metadata and prove dependency graph
+        shell: bash
+        run: |
+          ./gradlew :core:network:dependencies --configuration debugRuntimeClasspath --write-verification-metadata sha256 | tee /tmp/retrofit3-deps.txt
+          grep -F 'com.squareup.retrofit2:retrofit:3.0.0' /tmp/retrofit3-deps.txt
+          grep -F 'com.squareup.retrofit2:converter-kotlinx-serialization:3.0.0' /tmp/retrofit3-deps.txt
+          grep -F 'com.squareup.okhttp3:okhttp:4.12.0' /tmp/retrofit3-deps.txt
+
+      - name: Commit migration slice
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gradle/libs.versions.toml gradle/verification-metadata.xml docs/latest-stable-upgrade-plan.md version-control.md
+          git diff --cached --quiet && {
+            echo 'Expected migration changes were not produced.'
+            exit 1
+          }
+          git commit -m 'chore(deps): upgrade Retrofit to 3.0.0'
+          git push origin HEAD:chore/bw-dep-01-retrofit-3-0-0-clean
