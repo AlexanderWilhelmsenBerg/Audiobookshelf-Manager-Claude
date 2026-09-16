@@ -51,15 +51,25 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
                 }
 
                 is RealtimeEvent.ProgressChanged -> {
-                    logger.info(LogCategory.Sync, "Applying a realtime progress update")
+                    logger.info(LogCategory.Sync, "Realtime progress event received")
                     // One row through the exact same conflict boundary as REST. In particular, an
                     // unsynced local position cannot be overwritten by a socket echo or another device.
                     val result = libraryRepository.writeProgress(profileId, listOf(event.progress))
-                    // Only a row the conflict boundary actually accepted may become resume evidence.
-                    // A stale push or one blocked by unsynced local listening is not allowed to bypass
-                    // that protection merely because it arrived over a low-latency transport.
-                    if (result is AppResult.Success && result.value > 0) {
-                        progressEvidence.record(profileId, event.progress, event.sessionId)
+                    when {
+                        result is AppResult.Success && result.value > 0 -> {
+                            logger.info(LogCategory.Sync, "Realtime progress update accepted")
+                            // Only a row the conflict boundary actually accepted may become resume evidence.
+                            progressEvidence.record(profileId, event.progress, event.sessionId)
+                        }
+
+                        result is AppResult.Success -> {
+                            // Zero writes is deliberate conflict/visibility rejection, not a transport miss.
+                            logger.info(LogCategory.Sync, "Realtime progress update rejected by conflict boundary")
+                        }
+
+                        else -> {
+                            logger.info(LogCategory.Sync, "Realtime progress update could not be applied")
+                        }
                     }
                 }
 
