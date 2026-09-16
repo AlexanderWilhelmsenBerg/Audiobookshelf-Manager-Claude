@@ -4,7 +4,7 @@
 > CI actions and auxiliary build tooling.
 
 **Last full stable-version check:** 2026-09-15  
-**Repository baseline checked:** `main` at `5fb0e5b5f944adc4b9c98f7ac0eff89efcdee666`
+**Repository baseline checked:** `main` at `4f4461d79933f34d716067e8ffe60ef0f7fdc49b`
 **Upgrade roadmap:** [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md)  
 **Primary migration issue:** #135 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration`
 
@@ -88,18 +88,20 @@ This file is the quick answer to **“what version are we on, what is the newest
 | --- | --- | --- | --- | --- | --- | --- |
 | `hilt` (Dagger/Hilt) | 2.58 | 2.60.1 | ⛔ Dagger/Hilt 2.59+ makes AGP 9 a requirement when the Hilt Gradle plugin is used, so 2.60.1 follows the ADR-0011 build-foundation gate. | 4 | 2026-09-15 | [Dagger releases](https://github.com/google/dagger/releases) |
 | `hiltExt` (AndroidX Hilt) | 1.3.0 | 1.4.0 | ⛔ Same AndroidX Hilt API 37/AGP 9.2+ gate as navigation-compose. | 3/4 | 2026-09-15 | [AndroidX Hilt releases](https://developer.android.com/jetpack/androidx/releases/hilt) |
-| `javaxInject` | 1 | 1 | ✅ Current/canonical legacy `javax.inject` artifact; reassess only as part of the Hilt/DI migration. | 5 compatibility | 2026-09-15 | [Maven Central](https://central.sonatype.com/artifact/javax.inject/javax.inject) |
+| `javaxInject` | 1 | 1 | ✅ Phase-5 compatibility review complete: current/canonical legacy `javax.inject` artifact with no version migration identified. Reassess only as part of the Hilt/DI migration. | 5 compatibility | 2026-09-16 | [Maven Central](https://central.sonatype.com/artifact/javax.inject/javax.inject) |
 
 ## Kotlin runtime, serialization and network stack
 
 | Version-catalog key / component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
-| `kotlinxCoroutines` | 1.11.0 | 1.11.0 | ✅ Latest stable reached in the active Phase 5 slice after cancellation/concurrency regression coverage. Upstream 1.11.0 is built with Kotlin 2.2.20; BookWave remains on Kotlin 2.2.0 pending the gated compiler migration, so the full BookWave gate is required evidence for this compatibility slice. | 5 | 2026-09-15 | [kotlinx.coroutines releases](https://github.com/Kotlin/kotlinx.coroutines/releases) |
-| `kotlinxSerialization` | 1.9.0 | 1.11.0 | 🎯 1.9.0 is the newest stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line. Upstream 1.10.0 moved to Kotlin 2.3.0 and 1.11.0 is based on Kotlin 2.3.20, so those remain compiler-gated until Phase 1/2 re-resolves Kotlin. | 5 | 2026-09-15 | [kotlinx.serialization releases](https://github.com/Kotlin/kotlinx.serialization/releases) |
-| `okhttp` | 5.4.0 | 5.5.0 | 🎯 5.4.0 is the latest stable compatible with BookWave’s accepted API-36 / AGP-8 foundation. Upstream 5.4.0 builds `okhttp-android` with compileSdk 36; 5.5.0 raises it to compileSdk 37 and is therefore gated by ADR-0011. Preserve TLS, auth, WebSocket, download/resume and Media3 streaming contracts; keep the MockWebServer package migration separate. | 5 | 2026-09-16 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |
+| `kotlinxCoroutines` | 1.11.0 | 1.11.0 | ✅ Phase 5 complete at latest stable after cancellation/concurrency regression coverage. Upstream 1.11.0 is built with Kotlin 2.2.20; BookWave remains on Kotlin 2.2.0 pending the gated compiler migration. | 5 | 2026-09-16 | [kotlinx.coroutines releases](https://github.com/Kotlin/kotlinx.coroutines/releases) |
+| `kotlinxSerialization` | 1.9.0 | 1.11.0 | 🎯 Phase 5 complete at the current compiler-compatible frontier. 1.9.0 is the newest stable release aligned with BookWave’s Kotlin 2.2.0 compiler line; 1.10.0+ remains gated until Phase 1/2 re-resolves Kotlin. The 1.12.0-RC prerelease is excluded. | 5 | 2026-09-16 | [kotlinx.serialization releases](https://github.com/Kotlin/kotlinx.serialization/releases) |
+| `okhttp` | 5.4.0 | 5.5.0 | 🎯 Phase 5 complete at the latest stable compatible with BookWave’s accepted API-36 / AGP-8 foundation; merged PR #169 supplied contract-capture and CI evidence, with the required test/smoke pass reported before merge. OkHttp 5.5.0 raises `okhttp-android` to compileSdk 37 and remains gated by ADR-0011. Keep the MockWebServer package migration separate. | 5 | 2026-09-16 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |
 | `protobuf` | 4.36.1 | 4.36.1 (Protobuf 36.1) | ✅ Latest stable reached in merged PR #166 with matched Java/Kotlin-lite runtime and protoc. The focused Proto DataStore suite and full classpath rerun gate are the compatibility evidence; the reported 36.1 Bazel prebuilt-tool integrity issue is outside BookWave's Gradle/Maven protoc path. | 5 | 2026-09-16 | [Protobuf releases](https://github.com/protocolbuffers/protobuf/releases) |
-| `retrofit` | 3.0.0 | 3.0.0 | ✅ Latest stable reached in merged PR #168. Retrofit 3 remains on its stable API while the independent OkHttp 5 slice supplies the newer binary/behaviorally compatible HTTP engine. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |
-| Retrofit kotlinx.serialization converter | 3.0.0 (first-party; tracks `retrofit`) | 3.0.0 (first-party; tracks Retrofit) | ✅ First-party converter aligned with Retrofit 3.0.0 in merged PR #168; no converter source change is part of the independent OkHttp 5 slice. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |
+| `retrofit` | 3.0.0 | 3.0.0 | ✅ Phase 5 complete at latest stable in merged PR #168; PR #169 then upgraded the independent OkHttp engine to its current compatible frontier. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |
+| Retrofit kotlinx.serialization converter | 3.0.0 (first-party; tracks `retrofit`) | 3.0.0 (first-party; tracks Retrofit) | ✅ Phase 5 complete: first-party converter aligned with Retrofit 3.0.0 in merged PR #168; the archived third-party converter remains retired. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |
+
+> **Phase 5 reconciled 2026-09-16:** no compatible stable migration remains unexecuted on the current foundation. `kotlinxSerialization` and OkHttp intentionally stop at their compiler/platform-compatible frontiers, while `javaxInject` has no version migration. Resume this phase only when those gates change or a new compatible stable release appears; Phase 6 is the next executable dependency lane.
 
 ## Images and visual effects
 
@@ -167,6 +169,7 @@ Append to this table whenever a tracked migration slice merges. The live tables 
 | 2026-09-16 | #166 | Protobuf runtime/protoc | 4.31.1 / 31.1 | 4.36.1 / 36.1 | ✅ Latest stable reached; application source and committed schemas unchanged |
 | 2026-09-16 | #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | ✅ Archived converter retired; first-party converter adopted without changing Retrofit or OkHttp major versions |
 | 2026-09-16 | #168 | Retrofit core + first-party converter | 2.11.0 | 3.0.0 | ✅ Latest stable reached; OkHttp intentionally held at 4.12.0 for the next independent network-major slice |
+| 2026-09-16 | #169 | OkHttp family | 4.12.0 | 5.4.0 | 🎯 Latest stable compatible with API 36 / AGP 8; 5.5.0 remains ADR-0011/platform-gated |
 
 ## Update discipline for future PRs
 
