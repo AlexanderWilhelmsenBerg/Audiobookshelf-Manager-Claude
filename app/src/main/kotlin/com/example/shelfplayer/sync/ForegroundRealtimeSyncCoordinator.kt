@@ -40,7 +40,7 @@ class ForegroundRealtimeSyncCoordinator internal constructor(
     @Inject
     constructor(
         profiles: ProfileRepository,
-        @param:ApplicationScope applicationScope: CoroutineScope,
+        @ApplicationScope applicationScope: CoroutineScope,
         observeRealtime: ObserveRealtimeUpdatesUseCase,
         reconcile: SyncAccountUseCase,
         logger: Logger,
