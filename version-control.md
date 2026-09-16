@@ -4,7 +4,7 @@
 > CI actions and auxiliary build tooling.
 
 **Last full stable-version check:** 2026-09-15  
-**Repository baseline checked:** `main` at `5ba6f7a079259fc4101cf69dc832e53286f1cf34`
+**Repository baseline checked:** `main` at `920f7194aee0533b22ae2cf7aa9e7f58a4a23e15`
 **Upgrade roadmap:** [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md)  
 **Primary migration issue:** #135 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration`
 
