@@ -7,12 +7,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Turns Android activity starts/stops into one process-foreground signal for realtime synchronization.
+ * PRODUCT_SPEC SYNC-002 / SYNC-003 — translates process foreground/background into realtime ownership.
  *
- * This mirrors [com.example.shelfplayer.lock.ProcessLockWatcher]'s activity-counter mechanism so BookWave
- * does not add a lifecycle-process dependency solely to observe a fact Android already exposes. A
- * configuration change is not a trip to the background, and multiple activities still represent one
- * foreground process.
+ * This mirrors the app's existing process-lock watcher rather than adding a new lifecycle dependency. A
+ * configuration change is deliberately ignored so rotating/recreating an activity does not churn the socket.
  */
 @Singleton
 class ProcessRealtimeSyncWatcher @Inject constructor(
@@ -25,14 +23,14 @@ class ProcessRealtimeSyncWatcher @Inject constructor(
     }
 
     override fun onActivityStarted(activity: Activity) {
-        if (startedActivities++ == 0) coordinator.onForegrounded()
+        val wasBackground = startedActivities == 0
+        startedActivities++
+        if (wasBackground) coordinator.onForegrounded()
     }
 
     override fun onActivityStopped(activity: Activity) {
-        if (activity.isChangingConfigurations) return
-        if (startedActivities == 0) return
-        startedActivities--
-        if (startedActivities == 0) coordinator.onBackgrounded()
+        startedActivities = (startedActivities - 1).coerceAtLeast(0)
+        if (startedActivities == 0 && !activity.isChangingConfigurations) coordinator.onBackgrounded()
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
