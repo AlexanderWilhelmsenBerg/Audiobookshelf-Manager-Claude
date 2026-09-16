@@ -1,0 +1,131 @@
+name: Stage OkHttp 5 migration
+
+on:
+  push:
+    branches:
+      - chore/bw-dep-01-okhttp-5-5-0
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chore/bw-dep-01-okhttp-5-5-0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Apply narrow OkHttp 5 slice
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          catalog = Path('gradle/libs.versions.toml')
+          text = catalog.read_text()
+          old = 'okhttp = "4.12.0"'
+          new = 'okhttp = "5.5.0"'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one {old!r}, found {text.count(old)}')
+          catalog.write_text(text.replace(old, new))
+
+          plan = Path('docs/latest-stable-upgrade-plan.md')
+          text = plan.read_text()
+          row167 = '| #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | 2026-09-16 |'
+          row168 = '| #168 | Retrofit core + first-party converter | 2.11.0 | 3.0.0 | 2026-09-16 |'
+          if row168 not in text:
+              if text.count(row167) != 1:
+                  raise SystemExit('Could not locate the #167 completed-slice row exactly once')
+              text = text.replace(row167, row167 + '\n' + row168)
+          old_phase = '''PR #167 retired the archived Jake Wharton Retrofit kotlinx.serialization converter in favor of Retrofit’s
+          maintained first-party `converter-kotlinx-serialization` artifact while holding Retrofit core at 2.11.0 and OkHttp
+          at 4.12.0. The next independent network slice upgrades Retrofit core and its first-party converter together from
+          2.11.0 to 3.0.0 while deliberately keeping OkHttp at 4.12.0. Retrofit 3.0.0’s release notes state that 3.x maintains
+          forward binary compatibility with 2.x and that its material dependency change is moving Retrofit’s OkHttp baseline
+          to 4.12, which BookWave already uses directly. OkHttp 5 therefore remains a separate later risk axis. Stable
+          kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.'''.replace('          ', '')
+          new_phase = '''PR #167 retired the archived Jake Wharton Retrofit kotlinx.serialization converter, and PR #168 then
+          upgraded Retrofit core plus its first-party converter to 3.0.0 while deliberately holding OkHttp at 4.12.0. The
+          next independent network slice moves the shared OkHttp family to stable 5.5.0. OkHttp 5 remains binary and
+          behavioral compatible with the stable 4.x API surface used by Retrofit 3, but it changes transport/runtime behavior:
+          Android and JVM artifacts are selected through Gradle module metadata and Happy Eyeballs is enabled by default.
+          Keep the legacy `okhttp3.mockwebserver` compatibility artifact for this slice unless verification proves a migration
+          is required; moving tests to `mockwebserver3` is a separate API/package migration. Stable kotlinx.serialization
+          1.10.0+ remains behind the compiler/build-foundation re-resolution.'''.replace('          ', '')
+          if old_phase not in text:
+              raise SystemExit('Could not locate the pre-OkHttp Phase 5 paragraph')
+          plan.write_text(text.replace(old_phase, new_phase))
+
+          ledger = Path('version-control.md')
+          text = ledger.read_text()
+          import re
+          text, n = re.subn(r'\*\*Repository baseline checked:\*\* `main` at `[0-9a-f]{40}`',
+                            '**Repository baseline checked:** `main` at `19b8274162465a652e3068fe9e2fe4c7a50fe3bc`', text, count=1)
+          if n != 1:
+              raise SystemExit('Could not refresh repository baseline exactly once')
+          old_okhttp = '| `okhttp` | 4.12.0 | 5.5.0 | 🔁 Major network-stack migration deliberately left out of the converter-retirement slice; keep contract/TLS/WebSocket/download tests green when it moves. | 5 | 2026-09-16 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |'
+          new_okhttp = '| `okhttp` | 5.5.0 | 5.5.0 | 🎯 Latest stable target in the active OkHttp-only Phase 5 slice. OkHttp 5 keeps stable 4.x APIs binary/behaviorally compatible, while Gradle selects the Android/JVM variant and Happy Eyeballs becomes default transport behavior. Preserve TLS, auth, WebSocket, download/resume and Media3 streaming contracts; keep MockWebServer package migration separate unless required. | 5 | 2026-09-16 | [OkHttp 5.5.0 changelog](https://square.github.io/okhttp/changelogs/changelog/) |'
+          if text.count(old_okhttp) != 1:
+              raise SystemExit('Could not locate the OkHttp ledger row exactly once')
+          text = text.replace(old_okhttp, new_okhttp)
+          old_retrofit = '| `retrofit` | 3.0.0 | 3.0.0 | ✅ Latest stable target in the active Retrofit-only Phase 5 slice. Upstream states that Retrofit 3.x maintains forward binary compatibility with 2.x and 3.0.0 moves Retrofit’s OkHttp baseline to 4.12, which BookWave already uses directly; OkHttp 5 remains a separate later migration. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |'
+          new_retrofit = '| `retrofit` | 3.0.0 | 3.0.0 | ✅ Latest stable reached in merged PR #168. Retrofit 3 remains on its stable API while the independent OkHttp 5 slice supplies the newer binary/behaviorally compatible HTTP engine. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |'
+          if text.count(old_retrofit) != 1:
+              raise SystemExit('Could not locate the Retrofit ledger row exactly once')
+          text = text.replace(old_retrofit, new_retrofit)
+          old_converter = '| Retrofit kotlinx.serialization converter | 3.0.0 (first-party; tracks `retrofit`) | 3.0.0 (first-party; tracks Retrofit) | ✅ Archived Jake Wharton 1.0.0 artifact was retired in merged PR #167. The active Retrofit 3 slice keeps the first-party converter aligned with Retrofit core at 3.0.0; OkHttp remains pinned separately at 4.12.0. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |'
+          new_converter = '| Retrofit kotlinx.serialization converter | 3.0.0 (first-party; tracks `retrofit`) | 3.0.0 (first-party; tracks Retrofit) | ✅ First-party converter aligned with Retrofit 3.0.0 in merged PR #168; no converter source change is part of the independent OkHttp 5 slice. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |'
+          if text.count(old_converter) != 1:
+              raise SystemExit('Could not locate the converter ledger row exactly once')
+          text = text.replace(old_converter, new_converter)
+          history167 = '| 2026-09-16 | #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | ✅ Archived converter retired; first-party converter adopted without changing Retrofit or OkHttp major versions |'
+          history168 = '| 2026-09-16 | #168 | Retrofit core + first-party converter | 2.11.0 | 3.0.0 | ✅ Latest stable reached; OkHttp intentionally held at 4.12.0 for the next independent network-major slice |'
+          if history168 not in text:
+              if text.count(history167) != 1:
+                  raise SystemExit('Could not locate #167 history row exactly once')
+              text = text.replace(history167, history167 + '\n' + history168)
+          ledger.write_text(text)
+          PY
+
+      - name: Resolve graph and generate strict verification metadata
+        shell: bash
+        run: |
+          ./gradlew :core:network:dependencies --configuration debugRuntimeClasspath --write-verification-metadata sha256 > /tmp/network-runtime.txt
+          ./gradlew :core:network:dependencies --configuration debugUnitTestRuntimeClasspath --write-verification-metadata sha256 > /tmp/network-test.txt
+          ./gradlew :playback:dependencies --configuration debugRuntimeClasspath --write-verification-metadata sha256 > /tmp/playback-runtime.txt
+          ./gradlew :data:downloads:dependencies --configuration debugUnitTestRuntimeClasspath --write-verification-metadata sha256 > /tmp/downloads-test.txt
+          grep -F 'com.squareup.okhttp3:okhttp:5.5.0' /tmp/network-runtime.txt
+          grep -F 'com.squareup.retrofit2:retrofit:3.0.0' /tmp/network-runtime.txt
+          grep -F 'com.squareup.okhttp3:mockwebserver:5.5.0' /tmp/network-test.txt
+          grep -F 'com.squareup.okhttp3:okhttp:5.5.0' /tmp/playback-runtime.txt
+          grep -F 'com.squareup.okhttp3:mockwebserver:5.5.0' /tmp/downloads-test.txt
+
+      - name: Focused network-major verification
+        run: ./gradlew :core:network:testDebugUnitTest :data:downloads:testDebugUnitTest :playback:testDebugUnitTest --rerun-tasks -Pshelfplayer.warningsAsErrors=true
+
+      - name: Commit migration slice
+        shell: bash
+        run: |
+          git diff --quiet -- gradle/libs.versions.toml gradle/verification-metadata.xml docs/latest-stable-upgrade-plan.md version-control.md && {
+            echo 'Expected OkHttp migration changes were not produced.'
+            exit 1
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add gradle/libs.versions.toml gradle/verification-metadata.xml docs/latest-stable-upgrade-plan.md version-control.md
+          git commit -m 'chore(deps): upgrade OkHttp to 5.5.0'
+          git push origin HEAD:chore/bw-dep-01-okhttp-5-5-0
