@@ -44,7 +44,7 @@ javaxInject = "1"
 # Networking / serialization
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.9.0"
-okhttp = "4.12.0"
+okhttp = "5.4.0"
 protobuf = "4.36.1"
 retrofit = "3.0.0"
 
