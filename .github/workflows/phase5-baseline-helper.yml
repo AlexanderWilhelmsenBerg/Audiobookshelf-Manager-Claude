@@ -1,0 +1,34 @@
+name: Refresh Phase 5 reconciliation baseline
+
+on:
+  push:
+    branches:
+      - docs/bw-dep-01-phase5-reconciliation
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-baseline:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Refresh ledger baseline
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('version-control.md')
+          text = path.read_text()
+          old = '**Repository baseline checked:** `main` at `4f4461d79933f34d716067e8ffe60ef0f7fdc49b`'
+          new = '**Repository baseline checked:** `main` at `8292bf2d8e3916f34faea898113e00d282f30e6b`'
+          if old not in text:
+              raise SystemExit('expected old baseline not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version-control.md
+          git commit -m "docs: refresh Phase 5 reconciliation baseline"
+          git push
