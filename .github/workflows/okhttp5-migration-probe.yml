@@ -34,11 +34,14 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
+          target = '5.4.0'
 
           catalog = Path('gradle/libs.versions.toml')
           text = catalog.read_text()
           old = 'okhttp = "4.12.0"'
-          new = 'okhttp = "5.5.0"'
+          new = f'okhttp = "{target}"'
           if text.count(old) != 1:
               raise SystemExit(f'Expected exactly one {old!r}, found {text.count(old)}')
           catalog.write_text(text.replace(old, new))
@@ -52,33 +55,33 @@ jobs:
                   raise SystemExit('Could not locate the #167 completed-slice row exactly once')
               text = text.replace(row167, row167 + '\n' + row168)
           old_phase = '''PR #167 retired the archived Jake Wharton Retrofit kotlinx.serialization converter in favor of Retrofit’s
-          maintained first-party `converter-kotlinx-serialization` artifact while holding Retrofit core at 2.11.0 and OkHttp
-          at 4.12.0. The next independent network slice upgrades Retrofit core and its first-party converter together from
-          2.11.0 to 3.0.0 while deliberately keeping OkHttp at 4.12.0. Retrofit 3.0.0’s release notes state that 3.x maintains
-          forward binary compatibility with 2.x and that its material dependency change is moving Retrofit’s OkHttp baseline
-          to 4.12, which BookWave already uses directly. OkHttp 5 therefore remains a separate later risk axis. Stable
-          kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.'''.replace('          ', '')
+maintained first-party `converter-kotlinx-serialization` artifact while holding Retrofit core at 2.11.0 and OkHttp
+at 4.12.0. The next independent network slice upgrades Retrofit core and its first-party converter together from
+2.11.0 to 3.0.0 while deliberately keeping OkHttp at 4.12.0. Retrofit 3.0.0’s release notes state that 3.x maintains
+forward binary compatibility with 2.x and that its material dependency change is moving Retrofit’s OkHttp baseline
+to 4.12, which BookWave already uses directly. OkHttp 5 therefore remains a separate later risk axis. Stable
+kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.'''
           new_phase = '''PR #167 retired the archived Jake Wharton Retrofit kotlinx.serialization converter, and PR #168 then
-          upgraded Retrofit core plus its first-party converter to 3.0.0 while deliberately holding OkHttp at 4.12.0. The
-          next independent network slice moves the shared OkHttp family to stable 5.5.0. OkHttp 5 remains binary and
-          behavioral compatible with the stable 4.x API surface used by Retrofit 3, but it changes transport/runtime behavior:
-          Android and JVM artifacts are selected through Gradle module metadata and Happy Eyeballs is enabled by default.
-          Keep the legacy `okhttp3.mockwebserver` compatibility artifact for this slice unless verification proves a migration
-          is required; moving tests to `mockwebserver3` is a separate API/package migration. Stable kotlinx.serialization
-          1.10.0+ remains behind the compiler/build-foundation re-resolution.'''.replace('          ', '')
+upgraded Retrofit core plus its first-party converter to 3.0.0 while deliberately holding OkHttp at 4.12.0. The
+next independent network slice moves the shared OkHttp family to 5.4.0, the newest stable OkHttp release whose
+Android artifact still compiles against API 36. OkHttp 5.5.0 raises `okhttp-android` to compileSdk 37, so it remains
+behind ADR-0011 together with BookWave’s API 37 / AGP 9 foundation. OkHttp 5 keeps stable 4.x APIs binary and
+behaviorally compatible, while the 5.x line changes transport/runtime behavior such as enabling Happy Eyeballs by
+default. Keep the legacy `okhttp3.mockwebserver` compatibility artifact for this slice unless verification proves a
+migration is required; moving tests to `mockwebserver3` is a separate API/package migration. Stable
+kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.'''
           if old_phase not in text:
               raise SystemExit('Could not locate the pre-OkHttp Phase 5 paragraph')
           plan.write_text(text.replace(old_phase, new_phase))
 
           ledger = Path('version-control.md')
           text = ledger.read_text()
-          import re
           text, n = re.subn(r'\*\*Repository baseline checked:\*\* `main` at `[0-9a-f]{40}`',
                             '**Repository baseline checked:** `main` at `19b8274162465a652e3068fe9e2fe4c7a50fe3bc`', text, count=1)
           if n != 1:
               raise SystemExit('Could not refresh repository baseline exactly once')
           old_okhttp = '| `okhttp` | 4.12.0 | 5.5.0 | 🔁 Major network-stack migration deliberately left out of the converter-retirement slice; keep contract/TLS/WebSocket/download tests green when it moves. | 5 | 2026-09-16 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |'
-          new_okhttp = '| `okhttp` | 5.5.0 | 5.5.0 | 🎯 Latest stable target in the active OkHttp-only Phase 5 slice. OkHttp 5 keeps stable 4.x APIs binary/behaviorally compatible, while Gradle selects the Android/JVM variant and Happy Eyeballs becomes default transport behavior. Preserve TLS, auth, WebSocket, download/resume and Media3 streaming contracts; keep MockWebServer package migration separate unless required. | 5 | 2026-09-16 | [OkHttp 5.5.0 changelog](https://square.github.io/okhttp/changelogs/changelog/) |'
+          new_okhttp = '| `okhttp` | 5.4.0 | 5.5.0 | 🎯 5.4.0 is the latest stable compatible with BookWave’s accepted API-36 / AGP-8 foundation. Upstream 5.4.0 builds `okhttp-android` with compileSdk 36; 5.5.0 raises it to compileSdk 37 and is therefore gated by ADR-0011. Preserve TLS, auth, WebSocket, download/resume and Media3 streaming contracts; keep MockWebServer package migration separate unless required. | 5 | 2026-09-16 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |'
           if text.count(old_okhttp) != 1:
               raise SystemExit('Could not locate the OkHttp ledger row exactly once')
           text = text.replace(old_okhttp, new_okhttp)
@@ -108,11 +111,11 @@ jobs:
           ./gradlew :core:network:dependencies --configuration debugUnitTestRuntimeClasspath --write-verification-metadata sha256 > /tmp/network-test.txt
           ./gradlew :playback:dependencies --configuration debugRuntimeClasspath --write-verification-metadata sha256 > /tmp/playback-runtime.txt
           ./gradlew :data:downloads:dependencies --configuration debugUnitTestRuntimeClasspath --write-verification-metadata sha256 > /tmp/downloads-test.txt
-          grep -F 'com.squareup.okhttp3:okhttp:5.5.0' /tmp/network-runtime.txt
+          grep -F 'com.squareup.okhttp3:okhttp:5.4.0' /tmp/network-runtime.txt
           grep -F 'com.squareup.retrofit2:retrofit:3.0.0' /tmp/network-runtime.txt
-          grep -F 'com.squareup.okhttp3:mockwebserver:5.5.0' /tmp/network-test.txt
-          grep -F 'com.squareup.okhttp3:okhttp:5.5.0' /tmp/playback-runtime.txt
-          grep -F 'com.squareup.okhttp3:mockwebserver:5.5.0' /tmp/downloads-test.txt
+          grep -F 'com.squareup.okhttp3:mockwebserver:5.4.0' /tmp/network-test.txt
+          grep -F 'com.squareup.okhttp3:okhttp:5.4.0' /tmp/playback-runtime.txt
+          grep -F 'com.squareup.okhttp3:mockwebserver:5.4.0' /tmp/downloads-test.txt
 
       - name: Focused network-major verification
         run: ./gradlew :core:network:testDebugUnitTest :data:downloads:testDebugUnitTest :playback:testDebugUnitTest --rerun-tasks -Pshelfplayer.warningsAsErrors=true
@@ -127,5 +130,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add gradle/libs.versions.toml gradle/verification-metadata.xml docs/latest-stable-upgrade-plan.md version-control.md
-          git commit -m 'chore(deps): upgrade OkHttp to 5.5.0'
+          git commit -m 'chore(deps): upgrade OkHttp to 5.4.0'
           git push origin HEAD:chore/bw-dep-01-okhttp-5-5-0
