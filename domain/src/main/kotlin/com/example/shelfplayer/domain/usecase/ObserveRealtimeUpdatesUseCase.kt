@@ -37,7 +37,7 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
      * Home may still call this until that constructor/call-site cleanup lands with its next owned change,
      * but it no longer owns synchronization and therefore must not open a socket.
      */
-    suspend operator fun invoke(profileId: ProfileId) {
+    operator fun invoke(profileId: ProfileId) {
         logger.info(LogCategory.Sync, "Screen realtime request ignored; process owner is authoritative")
     }
 
