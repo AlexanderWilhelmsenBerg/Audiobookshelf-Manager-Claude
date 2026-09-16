@@ -13,9 +13,8 @@ import javax.inject.Singleton
  * configuration change is deliberately ignored so rotating/recreating an activity does not churn the socket.
  */
 @Singleton
-class ProcessRealtimeSyncWatcher @Inject constructor(
-    private val coordinator: ForegroundRealtimeSyncCoordinator,
-) : Application.ActivityLifecycleCallbacks {
+class ProcessRealtimeSyncWatcher @Inject constructor(private val coordinator: ForegroundRealtimeSyncCoordinator) :
+    Application.ActivityLifecycleCallbacks {
     private var startedActivities = 0
 
     fun attach(application: Application) {
