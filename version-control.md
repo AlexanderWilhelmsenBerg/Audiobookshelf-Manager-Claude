@@ -4,7 +4,7 @@
 > CI actions and auxiliary build tooling.
 
 **Last full stable-version check:** 2026-09-15  
-**Repository baseline checked:** `main` at `615444e0f7bb671a32bdba4d4158694646e3357f`
+**Repository baseline checked:** `main` at `5ba6f7a079259fc4101cf69dc832e53286f1cf34`
 **Upgrade roadmap:** [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md)  
 **Primary migration issue:** #135 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration`
 
@@ -74,20 +74,26 @@ This file is the quick answer to **“what version are we on, what is the newest
 | `androidxNavigation` | 2.9.8 | 2.10.1 | ⛔ Navigation Compose 2.10 moved its Compose compileSdk to API 37/AGP 9.2+, so this follows the platform gate. | 3 | 2026-09-15 | [Navigation releases](https://developer.android.com/jetpack/androidx/releases/navigation) |
 | `androidxRoom` | 2.8.5 | 2.8.5 | 🎯 Latest stable target in the active Room-only Phase 4 slice. Room 2.8 raises Android minSdk to 23 and the Room Gradle Plugin floor to AGP 8.4; BookWave minSdk 26 / AGP 8.12 remain compatible. Preserve all committed schemas and prove the database/migration suite unchanged. | 4 | 2026-09-15 | [Room releases](https://developer.android.com/jetpack/androidx/releases/room) |
 | `androidxTestCore` | 1.7.0 | 1.7.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
-| `androidxTestExt` | 1.3.0 | 1.3.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
+| `androidxTestExtJunit` | 1.3.0 | 1.3.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
 | `androidxTestRunner` | 1.7.0 | 1.7.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
-| `androidxBenchmark` | 1.3.4 | 1.5.0 | ⬆️ Update in the dedicated test/benchmark phase. | 7 | 2026-09-15 | [Benchmark releases](https://developer.android.com/jetpack/androidx/releases/benchmark) |
-| `androidxUiAutomator` | 2.4.0 | 2.4.0 | ✅ Current. | 7 | 2026-09-15 | [UI Automator releases](https://developer.android.com/jetpack/androidx/releases/test-uiautomator) |
-| `androidxWork` | 2.11.2 | 2.11.2 | ✅ Current. | 4 | 2026-09-15 | [WorkManager releases](https://developer.android.com/jetpack/androidx/releases/work) |
-| `composeBom` | 2025.06.01 | 2026.08.00 | ⛔ Large Compose jump; execute with Phase 3 platform/AGP compatibility and device UI regression coverage. | 3 | 2026-09-15 | [Compose BOM](https://developer.android.com/develop/ui/compose/bom) |
-| `media3` | 1.11.0 | 1.11.0 | ✅ Current. | 4 | 2026-09-15 | [Media3 releases](https://developer.android.com/jetpack/androidx/releases/media3) |
-
-## Dependency injection
-
-| Version-catalog key / component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
-| --- | --- | --- | --- | --- | --- | --- |
-| `hilt` (Dagger/Hilt) | 2.58 | 2.60.1 | ⛔ Dagger/Hilt 2.59+ makes AGP 9 a requirement when the Hilt Gradle plugin is used, so 2.60.1 follows the ADR-0011 build-foundation gate. | 4 | 2026-09-15 | [Dagger releases](https://github.com/google/dagger/releases) |
-| `hiltExt` (AndroidX Hilt) | 1.3.0 | 1.4.0 | ⛔ Same AndroidX Hilt API 37/AGP 9.2+ gate as navigation-compose. | 3/4 | 2026-09-15 | [AndroidX Hilt releases](https://developer.android.com/jetpack/androidx/releases/hilt) |
+| `androidxTestRules` | 1.7.0 | 1.7.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
+| `androidxTestUiAutomator` | 2.4.0 | 2.4.0 | ✅ Current. | 7 | 2026-09-15 | [UI Automator releases](https://developer.android.com/jetpack/androidx/releases/test-uiautomator) |
+| `androidxBenchmark` | 1.4.1 | 1.4.1 | ✅ Current. | 7 | 2026-09-15 | [Benchmark releases](https://developer.android.com/jetpack/androidx/releases/benchmark) |
+| `androidxWork` | 2.10.4 | 2.11.0 | ⛔ WorkManager 2.11 raises minSdk to 23 (compatible) but its artifacts use compileSdk 37, so this follows the API 37/AGP gate before the migration-specific behavior pass. | 4 | 2026-09-15 | [WorkManager releases](https://developer.android.com/jetpack/androidx/releases/work) |
+| `androidxMedia3` | 1.9.0 | 1.9.0 | ✅ Current. | 4 | 2026-09-15 | [Media3 releases](https://developer.android.com/jetpack/androidx/releases/media3) |
+| `androidxComposeBom` | 2026.09.00 | 2026.09.00 | ✅ Current. | 3 | 2026-09-15 | [Compose BOM mapping](https://developer.android.com/develop/ui/compose/bom/bom-mapping) |
+| `androidxComposeMaterial3Adaptive` | 1.2.0 | 1.2.0 | ✅ Current. | 3 | 2026-09-15 | [Adaptive releases](https://developer.android.com/jetpack/androidx/releases/compose-material3-adaptive) |
+| `androidxComposeMaterial3WindowSizeClass` | 1.3.2 | 1.3.2 | ✅ Current. | 3 | 2026-09-15 | [Material3 releases](https://developer.android.com/jetpack/androidx/releases/compose-material3) |
+| `androidxProfileinstaller` | 1.4.1 | 1.4.1 | ✅ Current. | 8 compatibility | 2026-09-15 | [ProfileInstaller releases](https://developer.android.com/jetpack/androidx/releases/profileinstaller) |
+| `androidxStartup` | 1.2.0 | 1.2.0 | ✅ Current. | 8 compatibility | 2026-09-15 | [Startup releases](https://developer.android.com/jetpack/androidx/releases/startup) |
+| `androidxTestOrchestrator` | 1.6.1 | 1.6.1 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
+| `androidxTracing` | 1.3.0 | 1.3.0 | ✅ Current. | 8 compatibility | 2026-09-15 | [Tracing releases](https://developer.android.com/jetpack/androidx/releases/tracing) |
+| `androidxWindow` | 1.5.0 | 1.5.0 | ✅ Current. | 3 | 2026-09-15 | [Window releases](https://developer.android.com/jetpack/androidx/releases/window) |
+| `androidxCoreSplashscreen` | 1.0.1 | 1.0.1 | ✅ Current. | 3 | 2026-09-15 | [SplashScreen releases](https://developer.android.com/jetpack/androidx/releases/core) |
+| `coil` | 2.7.0 | 3.6.2 | 🔁 Major Coil migration; review request/cache APIs and offline cover behavior. | 6 | 2026-09-15 | [Coil changelog](https://coil-kt.github.io/coil/changelog/) |
+| `detekt` | 1.23.8 | 1.23.8 | ✅ Latest stable. detekt 2.0 remains alpha; ADR-0011 waits for a stable 2.x release with AGP 9 support. | 2 / gate | 2026-09-15 | [detekt changelog](https://detekt.dev/changelog/) |
+| `haze` | 1.6.10 | 1.7.2 | ⬆️ Phase 6. Haze 2.x is alpha and therefore excluded. | 6 | 2026-09-15 | [Haze releases](https://github.com/chrisbanes/haze/releases) |
+| `hilt` | 2.58 | 2.59.1 | ⬆️ Re-check with the Kotlin/AGP migration because Hilt's compiler/plugin compatibility matters more than version recency. | 3/4 | 2026-09-15 | [Dagger releases](https://github.com/google/dagger/releases) |
 | `javaxInject` | 1 | 1 | ✅ Current/canonical legacy `javax.inject` artifact; reassess only as part of the Hilt/DI migration. | 5 compatibility | 2026-09-15 | [Maven Central](https://central.sonatype.com/artifact/javax.inject/javax.inject) |
 
 ## Kotlin runtime, serialization and network stack
@@ -98,8 +104,8 @@ This file is the quick answer to **“what version are we on, what is the newest
 | `kotlinxSerialization` | 1.9.0 | 1.11.0 | 🎯 1.9.0 is the newest stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line. Upstream 1.10.0 moved to Kotlin 2.3.0 and 1.11.0 is based on Kotlin 2.3.20, so those remain compiler-gated until Phase 1/2 re-resolves Kotlin. | 5 | 2026-09-15 | [kotlinx.serialization releases](https://github.com/Kotlin/kotlinx.serialization/releases) |
 | `okhttp` | 4.12.0 | 5.5.0 | 🔁 Major network-stack migration deliberately left out of the converter-retirement slice; keep contract/TLS/WebSocket/download tests green when it moves. | 5 | 2026-09-16 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |
 | `protobuf` | 4.36.1 | 4.36.1 (Protobuf 36.1) | ✅ Latest stable reached in merged PR #166 with matched Java/Kotlin-lite runtime and protoc. The focused Proto DataStore suite and full classpath rerun gate are the compatibility evidence; the reported 36.1 Bazel prebuilt-tool integrity issue is outside BookWave's Gradle/Maven protoc path. | 5 | 2026-09-16 | [Protobuf releases](https://github.com/protocolbuffers/protobuf/releases) |
-| `retrofit` | 2.11.0 | 3.0.0 | 🔁 Major migration remains a later independent slice. Retrofit 2.12.0 is also stable, while 3.0.0 is the current stable frontier and keeps forward binary compatibility with 2.x; the converter-retirement slice intentionally holds core at 2.11.0. | 5 | 2026-09-16 | [Retrofit changelog](https://github.com/square/retrofit/blob/trunk/CHANGELOG.md) |
-| Retrofit kotlinx.serialization converter | 2.11.0 (first-party; tracks `retrofit`) | 3.0.0 (first-party; tracks Retrofit) | ✅ Archived Jake Wharton 1.0.0 artifact retired in this Phase 5 slice. Retrofit imported that converter unchanged in 2.10.0, so the maintained Square artifact can replace it independently of the Retrofit 3 / OkHttp 5 migrations. | 5 | 2026-09-16 | [Retrofit changelog](https://github.com/square/retrofit/blob/trunk/CHANGELOG.md) |
+| `retrofit` | 3.0.0 | 3.0.0 | ✅ Latest stable target in the active Retrofit-only Phase 5 slice. Upstream states that Retrofit 3.x maintains forward binary compatibility with 2.x and 3.0.0 moves Retrofit’s OkHttp baseline to 4.12, which BookWave already uses directly; OkHttp 5 remains a separate later migration. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |
+| Retrofit kotlinx.serialization converter | 3.0.0 (first-party; tracks `retrofit`) | 3.0.0 (first-party; tracks Retrofit) | ✅ Archived Jake Wharton 1.0.0 artifact was retired in merged PR #167. The active Retrofit 3 slice keeps the first-party converter aligned with Retrofit core at 3.0.0; OkHttp remains pinned separately at 4.12.0. | 5 | 2026-09-16 | [Retrofit 3.0.0 release](https://github.com/square/retrofit/releases/tag/3.0.0) |
 
 ## Images and visual effects
 
@@ -118,39 +124,18 @@ This file is the quick answer to **“what version are we on, what is the newest
 
 ## CI, security and auxiliary tooling
 
-GitHub workflows intentionally use supported **major aliases** today. The exact stable release is still recorded here so drift is visible. A future security-hardening decision may choose immutable commit SHAs instead; that is separate from merely staying on the latest stable major.
-
 | Component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
-| `actions/checkout` | `@v7` | 7.0.1 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [checkout releases](https://github.com/actions/checkout/releases) |
-| `actions/setup-java` | `@v6` | 6.0.1 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [setup-java releases](https://github.com/actions/setup-java/releases) |
-| `actions/setup-node` | `@v7` | 7.0.0 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [setup-node releases](https://github.com/actions/setup-node/releases) |
-| `actions/upload-artifact` | `@v7` | 7.0.1 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [upload-artifact releases](https://github.com/actions/upload-artifact/releases) |
-| `actions/download-artifact` | `@v8` | 8.0.1 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [download-artifact releases](https://github.com/actions/download-artifact/releases) |
-| `gradle/actions/setup-gradle` | `@v6` | 6.3.0 | ✅ Current major alias. | 8 | 2026-09-15 | [Gradle Actions releases](https://github.com/gradle/actions/releases) |
-| `gradle/actions/wrapper-validation` | `@v6` | 6.3.0 | ✅ Current major alias. | 8 | 2026-09-15 | [Gradle Actions releases](https://github.com/gradle/actions/releases) |
-| Gitleaks — Codex bootstrap | 8.30.1 | 8.30.1 | ✅ Current and checksum-pinned. | 8 | 2026-09-15 | [Gitleaks releases](https://github.com/gitleaks/gitleaks/releases) |
-| Gitleaks — PR workflow | 8.24.0 | 8.30.1 | ⬆️ Known tooling divergence; reconcile in a dedicated Phase 8 PR and pin the downloaded checksum/version consistently. | 8 | 2026-09-15 | [Gitleaks releases](https://github.com/gitleaks/gitleaks/releases) |
-| Node.js — APK/Loopbound workflow | 22 major line (latest 22.x: 22.23.2 LTS) | 26.8.2 Current; 24.21.0 LTS | ⬆️ Phase 8 should deliberately select a supported LTS target (normally 24.x) rather than blindly moving CI to the non-LTS Current line. `actions/setup-node` currently resolves the moving 22.x line. | 8 | 2026-09-15 | [Node.js downloads](https://nodejs.org/en/download) |
-| npm — APK/Loopbound workflow | Not pinned separately; follows Node 22 distribution | 11.19.1 with Node 26.8.2; 11.19.0 with Node 24.21.0 LTS | ↔️ Keep coupled to the selected Node runtime unless a repository need requires an explicit npm pin. | 8 | 2026-09-15 | [Node.js downloads](https://nodejs.org/en/download) |
-| Python runtime — launcher asset generator | Not pinned/documented | 3.14.7 | ⬆️ Policy gap found during the 2026-09-15 audit. Define a supported/pinned Python baseline for the asset utility in Phase 8. | 8 | 2026-09-15 | [Python source releases](https://www.python.org/getit/source/) |
-| NumPy — launcher asset generator | 2.3.5 | 2.5.3 | ⬆️ Auxiliary tooling update; verify generated launcher assets remain byte/visual-equivalent where expected. | 8 | 2026-09-15 | [NumPy releases](https://numpy.org/news/) |
-| Pillow — launcher asset generator | 12.3.0 | 12.3.0 | ✅ Current. | 8 | 2026-09-15 | [Pillow on PyPI](https://pypi.org/project/Pillow/) |
-| OSV vulnerability scan | Service `querybatch` API; no scanner binary pin | N/A — service API | ↔️ No binary version to bump; retain fail-closed behavior and periodically review the integration. | 8 | 2026-09-15 | [OSV API](https://google.github.io/osv.dev/api/) |
-
-## Dynamic / intentionally non-versioned external inputs
-
-These are part of the reproducibility surface but do not have a meaningful `current -> latest stable` comparison in the repository today.
-
-| Input | Repository selection | Treatment | Last checked |
-| --- | --- | --- | --- |
-| GitHub-hosted runner image | `ubuntu-latest` | ↔️ Moving GitHub runner alias. Review runner-image migrations in Phase 8; do not pretend it is an exact repository pin. | 2026-09-15 |
-| Audiobookshelf contract-capture fixture | `ghcr.io/advplyr/audiobookshelf:latest` | ↔️ Intentionally dynamic contract fixture. If reproducible historical captures become necessary, pin a digest/version in a dedicated contract-fixture change. | 2026-09-15 |
-| Android Platform Tools install | `sdkmanager "platform-tools"` | ↔️ Moving SDK package; latest resolved upstream revision is recorded in the Android toolchain table above. | 2026-09-15 |
+| GitHub Actions checkout | `actions/checkout@v7` | v7 | ✅ Current mutable major alias; pinning by commit SHA is tracked as a separate hardening decision. | 8 | 2026-09-15 | [checkout releases](https://github.com/actions/checkout/releases) |
+| GitHub Actions setup-java | `actions/setup-java@v6` | v6 | ✅ Current mutable major alias. | 8 | 2026-09-15 | [setup-java releases](https://github.com/actions/setup-java/releases) |
+| GitHub Actions setup-node | `actions/setup-node@v6` | v6 | ✅ Current mutable major alias. | 8 | 2026-09-15 | [setup-node releases](https://github.com/actions/setup-node/releases) |
+| GitHub Actions upload-artifact | `actions/upload-artifact@v7` | v7 | ✅ Current mutable major alias. | 8 | 2026-09-15 | [upload-artifact releases](https://github.com/actions/upload-artifact/releases) |
+| GitHub Actions download-artifact | `actions/download-artifact@v8` | v8 | ✅ Current mutable major alias. | 8 | 2026-09-15 | [download-artifact releases](https://github.com/actions/download-artifact/releases) |
+| Gradle Actions setup-gradle | `gradle/actions/setup-gradle@v6` | v6 | ✅ Current mutable major alias. | 8 | 2026-09-15 | [Gradle Actions releases](https://github.com/gradle/actions/releases) |
+| Gradle Actions wrapper-validation | `gradle/actions/wrapper-validation@v6` | v6 | ✅ Current mutable major alias. | 8 | 2026-09-15 | [Gradle Actions releases](https://github.com/gradle/actions/releases) |
+| Gitleaks | 8.28.0 in Codex; latest URL in PR CI | 8.28.0 | 🎯 Reconcile the mutable PR install with the pinned Codex bootstrap in Phase 8. | 8 | 2026-09-15 | [Gitleaks releases](https://github.com/gitleaks/gitleaks/releases) |
 
 ## Completed BW-DEP-01 update history
-
-Append to this table whenever a tracked migration slice merges. The live tables above remain the source of truth for the current version.
 
 | Date | PR | Component | From | To | Result |
 | --- | --- | --- | --- | --- | --- |
@@ -165,6 +150,7 @@ Append to this table whenever a tracked migration slice merges. The live tables 
 | 2026-09-15 | #164 | kotlinx.serialization | 1.8.1 | 1.9.0 | 🎯 Latest stable compatible with the current Kotlin 2.2.0 compiler line |
 | 2026-09-15 | #165 | kotlinx.coroutines | 1.10.2 | 1.11.0 | ✅ Latest stable reached after full cancellation/concurrency rerun coverage on Kotlin 2.2.0 |
 | 2026-09-16 | #166 | Protobuf runtime/protoc | 4.31.1 / 31.1 | 4.36.1 / 36.1 | ✅ Latest stable reached; application source and committed schemas unchanged |
+| 2026-09-16 | #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | ✅ Archived converter retired; first-party converter adopted without changing Retrofit or OkHttp major versions |
 
 ## Update discipline for future PRs
 
