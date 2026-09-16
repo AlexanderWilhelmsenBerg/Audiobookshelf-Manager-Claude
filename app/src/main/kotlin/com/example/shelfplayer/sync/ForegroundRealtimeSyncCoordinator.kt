@@ -47,7 +47,7 @@ class ForegroundRealtimeSyncCoordinator internal constructor(
     ) : this(
         profiles = profiles,
         applicationScope = applicationScope,
-        observeRealtime = observeRealtime::invoke,
+        observeRealtime = observeRealtime::observeForeground,
         reconcile = { profileId ->
             reconcile(profileId)
             Unit
