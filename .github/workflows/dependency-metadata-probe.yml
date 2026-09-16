@@ -1,0 +1,33 @@
+name: Dependency metadata probe
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  converter-verification-metadata:
+    if: github.head_ref == 'chore/bw-dep-01-first-party-retrofit-serialization'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Generate candidate verification metadata
+        run: |
+          ./gradlew :core:network:dependencies --configuration debugRuntimeClasspath --write-verification-metadata sha256
+          echo "--- gradle/verification-metadata.xml diff ---"
+          git diff -- gradle/verification-metadata.xml

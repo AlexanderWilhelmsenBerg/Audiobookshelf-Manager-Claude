@@ -3,7 +3,7 @@ package com.example.shelfplayer.core.network.api
 import com.example.shelfplayer.core.network.di.AuthenticatedClient
 import com.example.shelfplayer.core.network.di.DownloadStreamingClient
 import com.example.shelfplayer.core.network.di.UnauthenticatedClient
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
