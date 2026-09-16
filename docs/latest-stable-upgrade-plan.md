@@ -41,6 +41,7 @@ Completed staged slices under #135:
 | #165 | kotlinx.coroutines | 1.10.2 | 1.11.0 | 2026-09-15 |
 | #166 | Protobuf runtime/protoc | 4.31.1 / 31.1 | 4.36.1 / 36.1 | 2026-09-16 |
 | #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | 2026-09-16 |
+| #168 | Retrofit core + first-party converter | 2.11.0 | 3.0.0 | 2026-09-16 |
 
 The Codex compatibility probe from 2026-09-08 remains relevant evidence: the environment bootstrap succeeds
 on JDK 21, 22, 23 and 24, but the complete `verifyDebug` gate succeeds only on JDK 21. Therefore JDK 21
@@ -232,13 +233,14 @@ stable release aligned with BookWave’s current Kotlin 2.2.0 compiler line, kot
 after the full rerun gate proved it compatible with BookWave’s Kotlin 2.2.0 build despite upstream building it with
 Kotlin 2.2.20, and PR #166 moved the matched Protobuf Java/Kotlin-lite runtime and protoc to 4.36.1 / 36.1.
 
-PR #167 retired the archived Jake Wharton Retrofit kotlinx.serialization converter in favor of Retrofit’s
-maintained first-party `converter-kotlinx-serialization` artifact while holding Retrofit core at 2.11.0 and OkHttp
-at 4.12.0. The next independent network slice upgrades Retrofit core and its first-party converter together from
-2.11.0 to 3.0.0 while deliberately keeping OkHttp at 4.12.0. Retrofit 3.0.0’s release notes state that 3.x maintains
-forward binary compatibility with 2.x and that its material dependency change is moving Retrofit’s OkHttp baseline
-to 4.12, which BookWave already uses directly. OkHttp 5 therefore remains a separate later risk axis. Stable
-kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.
+PR #167 retired the archived Jake Wharton Retrofit kotlinx.serialization converter, and PR #168 then upgraded
+Retrofit core plus its first-party converter to 3.0.0 while deliberately holding OkHttp at 4.12.0. The next
+independent network slice moves the shared OkHttp family to 5.4.0, the newest stable release whose Android artifact
+still compiles against API 36. OkHttp 5.5.0 raises `okhttp-android` to compileSdk 37, so it remains behind ADR-0011
+together with BookWave’s API 37 / AGP 9 foundation. OkHttp 5 keeps stable 4.x APIs binary and behaviorally compatible,
+while the 5.x line changes transport/runtime behavior such as enabling Happy Eyeballs by default. Keep the legacy
+`okhttp3.mockwebserver` compatibility artifact for this slice; moving tests to `mockwebserver3` is a separate
+API/package migration. Stable kotlinx.serialization 1.10.0+ remains behind the compiler/build-foundation re-resolution.
 
 Upgrade deliberately from the current values to the compatible stable targets recorded in `/version-control.md`.
 This phase owns kotlinx-coroutines, kotlinx-serialization, OkHttp, Retrofit, the Kotlin serialization converter,
