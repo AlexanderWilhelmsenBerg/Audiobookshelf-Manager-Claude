@@ -32,7 +32,7 @@ import javax.inject.Singleton
 @Singleton
 class ForegroundRealtimeSyncCoordinator internal constructor(
     private val profiles: ProfileRepository,
-    @ApplicationScope private val applicationScope: CoroutineScope,
+    @param:ApplicationScope private val applicationScope: CoroutineScope,
     private val observeRealtime: suspend (ProfileId) -> Unit,
     private val reconcile: suspend (ProfileId) -> Unit,
     private val logger: Logger,
@@ -40,7 +40,7 @@ class ForegroundRealtimeSyncCoordinator internal constructor(
     @Inject
     constructor(
         profiles: ProfileRepository,
-        @ApplicationScope applicationScope: CoroutineScope,
+        @param:ApplicationScope applicationScope: CoroutineScope,
         observeRealtime: ObserveRealtimeUpdatesUseCase,
         reconcile: SyncAccountUseCase,
         logger: Logger,
