@@ -33,8 +33,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v6
+      - name: Validate Gradle wrapper JAR
+        run: |
+          set -euo pipefail
+          distribution_url="$(grep '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2- | sed 's/\\:/:/g')"
+          wrapper_version="$(printf '%s\n' "$distribution_url" | sed -E 's#.*gradle-([0-9][0-9A-Za-z.+-]*)-(bin|all)\.zip.*#\1#')"
+          if [ -z "$wrapper_version" ] || [ "$wrapper_version" = "$distribution_url" ]; then
+            echo "::error::Could not determine Gradle wrapper version from $distribution_url"
+            exit 1
+          fi
+          expected="$(curl -fsSL "https://services.gradle.org/distributions/gradle-${wrapper_version}-wrapper.jar.sha256" | tr -d '[:space:]')"
+          actual="$(sha256sum gradle/wrapper/gradle-wrapper.jar | awk '{print $1}')"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Gradle wrapper JAR checksum mismatch for Gradle $wrapper_version"
+            echo "expected=$expected"
+            echo "actual=$actual"
+            exit 1
+          fi
+          echo "Gradle $wrapper_version wrapper JAR verified: $actual"
 
       - name: Install runner prerequisites
         run: |
