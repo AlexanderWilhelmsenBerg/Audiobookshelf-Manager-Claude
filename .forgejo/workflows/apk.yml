@@ -1,0 +1,347 @@
+name: Build APK
+
+run-name: "${{ inputs.pull_request != 'Use selected branch/ref' && format('Build {0} APK · {1}', inputs.variant, inputs.pull_request) || format('Build {0} APK · {1}', inputs.variant, forgejo.ref_name) }}"
+
+# Forgejo-native on-demand APK workflow. The GitHub workflow remains untouched as fallback.
+#
+# Pull requests are resolved through the Forgejo API to an immutable head SHA before checkout.
+# Same-repository source is required because this manual workflow can use signing secrets.
+#
+# Loopbound is cloned from Forgejo only. While alexander/Loopbound is public, no token is needed.
+# If Loopbound becomes private, set LOOPBOUND_READ_TOKEN to a Forgejo token/Authorized Integration
+# with read access to that repository.
+#
+# Signing secrets are optional during migration. Debug builds work without them, but a generated
+# debug key is ephemeral. Release builds are unsigned until the four release signing secrets exist.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: 'Open pull request to build'
+        type: choice
+        required: true
+        default: 'Use selected branch/ref'
+        options:
+          # BEGIN GENERATED OPEN PR OPTIONS
+          - "Use selected branch/ref"
+          # END GENERATED OPEN PR OPTIONS
+      variant:
+        description: 'Which build to produce'
+        type: choice
+        required: true
+        default: debug
+        options:
+          - debug
+          - release
+      run_checks:
+        description: 'Run verifyDebug before building'
+        type: boolean
+        default: false
+      include_loopbound:
+        description: 'Embed the Loopbound game bundle'
+        type: boolean
+        default: true
+      loopbound_ref:
+        description: 'Loopbound branch, tag, or commit to embed'
+        type: string
+        required: true
+        default: 'main'
+
+concurrency:
+  group: ${{ forgejo.workflow }}-${{ inputs.pull_request == 'Use selected branch/ref' && forgejo.ref || inputs.pull_request }}-${{ inputs.variant }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2
+
+jobs:
+  loopbound:
+    name: Loopbound web bundle
+    if: ${{ inputs.include_loopbound }}
+    runs-on: linux-amd64
+    timeout-minutes: 20
+    outputs:
+      sha: ${{ steps.bundle.outputs.sha }}
+    steps:
+      - name: Install Loopbound prerequisites
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git
+          rm -rf /var/lib/apt/lists/*
+          node --version
+          npm --version
+
+      - name: Check out Loopbound from Forgejo
+        env:
+          LOOPBOUND_REF: ${{ inputs.loopbound_ref }}
+          LOOPBOUND_READ_TOKEN: ${{ secrets.LOOPBOUND_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo_url="${FORGEJO_SERVER_URL}/alexander/Loopbound.git"
+          work="$RUNNER_TEMP/loopbound"
+          rm -rf "$work"
+          git init "$work"
+          git -C "$work" remote add origin "$repo_url"
+
+          if [ -n "${LOOPBOUND_READ_TOKEN:-}" ]; then
+            if ! git -C "$work" -c "http.extraHeader=Authorization: token ${LOOPBOUND_READ_TOKEN}" fetch --depth=1 origin "$LOOPBOUND_REF"; then
+              echo "::error::Could not read alexander/Loopbound from Forgejo with LOOPBOUND_READ_TOKEN."
+              exit 1
+            fi
+          else
+            if ! git -C "$work" fetch --depth=1 origin "$LOOPBOUND_REF"; then
+              echo "::error::Could not read alexander/Loopbound anonymously. If the repository is private, configure LOOPBOUND_READ_TOKEN in BookWave's Forgejo Actions secrets."
+              exit 1
+            fi
+          fi
+          git -C "$work" checkout --detach FETCH_HEAD
+
+      - name: Validate, test and build Loopbound
+        id: bundle
+        env:
+          LOOPBOUND_REF: ${{ inputs.loopbound_ref }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/loopbound"
+          npm ci
+          npm run validate:content
+          npm test
+          npm run build
+          LOOPBOUND_SHA="$(git rev-parse HEAD)"
+          test -f dist/index.html
+          printf '%s\n' "$LOOPBOUND_SHA" > dist/BOOKWAVE_LOOPBOUND_VERSION
+          echo "sha=$LOOPBOUND_SHA" >> "$FORGEJO_OUTPUT"
+          echo "Built Loopbound ${LOOPBOUND_SHA:0:8} from $LOOPBOUND_REF."
+
+      - name: Upload compiled Loopbound bundle
+        uses: actions/upload-artifact@v3
+        with:
+          name: loopbound-web-${{ forgejo.run_id }}
+          path: ${{ runner.temp }}/loopbound/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  apk:
+    name: ${{ inputs.variant }} APK
+    needs: [loopbound]
+    if: ${{ always() && (needs.loopbound.result == 'success' || needs.loopbound.result == 'skipped') }}
+    runs-on: linux-amd64
+    timeout-minutes: 60
+    steps:
+      - name: Install source-resolution prerequisites
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl git jq
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Resolve build source
+        id: source
+        env:
+          REQUESTED_PR: ${{ inputs.pull_request }}
+        run: |
+          set -euo pipefail
+
+          if [ "${REQUESTED_PR:-Use selected branch/ref}" != "Use selected branch/ref" ]; then
+            number_part="${REQUESTED_PR%% *}"
+            requested_number="${number_part#\#}"
+            if ! [[ "$requested_number" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Invalid pull request selection: $REQUESTED_PR"
+              exit 1
+            fi
+
+            pr_json="$(curl -fsS \
+              -H "Authorization: token $FORGEJO_TOKEN" \
+              -H 'Accept: application/json' \
+              "$FORGEJO_API_URL/repos/$FORGEJO_REPOSITORY/pulls/$requested_number")"
+
+            number="$(jq -r '.number // .index // empty' <<<"$pr_json")"
+            branch="$(jq -r '.head.ref // empty' <<<"$pr_json")"
+            sha="$(jq -r '.head.sha // empty' <<<"$pr_json")"
+            head_repo="$(jq -r '.head.repo.full_name // empty' <<<"$pr_json")"
+
+            if [ -z "$number" ] || [ -z "$branch" ] || [ -z "$sha" ]; then
+              echo "::error::Forgejo did not return complete source information for PR #$requested_number."
+              exit 1
+            fi
+            if [ "$head_repo" != "$FORGEJO_REPOSITORY" ]; then
+              echo "::error::PR #$number comes from $head_repo, not $FORGEJO_REPOSITORY. Refusing privileged fork source."
+              exit 1
+            fi
+
+            echo "pr=$number" >> "$FORGEJO_OUTPUT"
+            echo "branch=$branch" >> "$FORGEJO_OUTPUT"
+            echo "sha=$sha" >> "$FORGEJO_OUTPUT"
+            echo "Resolved Forgejo PR #$number -> $branch @ ${sha:0:8}."
+          else
+            echo "pr=" >> "$FORGEJO_OUTPUT"
+            echo "branch=$FORGEJO_REF_NAME" >> "$FORGEJO_OUTPUT"
+            echo "sha=$FORGEJO_SHA" >> "$FORGEJO_OUTPUT"
+            echo "Using selected Forgejo ref $FORGEJO_REF_NAME @ ${FORGEJO_SHA:0:8}."
+          fi
+
+      - name: Check out exact BookWave source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download compiled Loopbound bundle
+        if: ${{ inputs.include_loopbound }}
+        uses: actions/download-artifact@v3
+        with:
+          name: loopbound-web-${{ forgejo.run_id }}
+          path: app/src/main/assets/loopbound
+
+      - name: Verify staged Loopbound bundle
+        if: ${{ inputs.include_loopbound }}
+        env:
+          EXPECTED_LOOPBOUND_SHA: ${{ needs.loopbound.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test -f app/src/main/assets/loopbound/index.html
+          test -f app/src/main/assets/loopbound/BOOKWAVE_LOOPBOUND_VERSION
+          actual="$(tr -d '\r\n' < app/src/main/assets/loopbound/BOOKWAVE_LOOPBOUND_VERSION)"
+          test "$actual" = "$EXPECTED_LOOPBOUND_SHA" || { echo "::error::Loopbound bundle SHA mismatch."; exit 1; }
+          echo "Staged Loopbound ${actual:0:8}."
+
+      - name: Validate Gradle wrapper JAR
+        run: |
+          set -euo pipefail
+          distribution_url="$(grep '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2- | sed 's/\\:/:/g')"
+          wrapper_version="$(printf '%s\n' "$distribution_url" | sed -E 's#.*gradle-([0-9][0-9A-Za-z.+-]*)-(bin|all)\.zip.*#\1#')"
+          expected="$(curl -fsSL "https://services.gradle.org/distributions/gradle-${wrapper_version}-wrapper.jar.sha256" | tr -d '[:space:]')"
+          actual="$(sha256sum gradle/wrapper/gradle-wrapper.jar | awk '{print $1}')"
+          test "$actual" = "$expected" || { echo "::error::Gradle wrapper JAR checksum mismatch."; exit 1; }
+
+      - name: Install Android build prerequisites
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl git jq openjdk-17-jdk-headless python3 unzip
+          rm -rf /var/lib/apt/lists/*
+          JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$FORGEJO_ENV"
+          echo "$JAVA_HOME/bin" >> "$FORGEJO_PATH"
+
+      - name: Prepare BookWave Android environment
+        env:
+          BOOKWAVE_CODEX_PREWARM: light
+          BOOKWAVE_DEBUG_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          export BOOKWAVE_ANDROID_SDK_ROOT="$HOME/.bookwave/android-sdk"
+          bash scripts/codex/setup.sh
+          echo "ANDROID_HOME=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
+          echo "$HOME/.bookwave/android-sdk/cmdline-tools/latest/bin" >> "$FORGEJO_PATH"
+          echo "$HOME/.bookwave/android-sdk/platform-tools" >> "$FORGEJO_PATH"
+          echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
+
+      - name: Verify debug
+        if: ${{ inputs.run_checks }}
+        run: ./gradlew verifyDebug --max-workers=2 -Pshelfplayer.warningsAsErrors=true
+
+      - name: Stage the debug keystore
+        id: debugkey
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_DEBUG_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.bookwave"
+          if [ -n "${DEBUG_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
+            echo "source=debug-secret" >> "$FORGEJO_OUTPUT"
+          elif [ -n "${UPLOAD_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
+            echo "source=upload-key" >> "$FORGEJO_OUTPUT"
+          else
+            echo "source=generated" >> "$FORGEJO_OUTPUT"
+            echo "No stable debug keystore configured; this run will use an ephemeral generated key."
+          fi
+
+      - name: Stage the release signing keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "path=" >> "$FORGEJO_OUTPUT"
+            echo "No release signing keystore configured; release builds remain unsigned."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "path=$RUNNER_TEMP/upload.jks" >> "$FORGEJO_OUTPUT"
+
+      - name: Assemble requested APK
+        env:
+          BOOKWAVE_PR: ${{ steps.source.outputs.pr }}
+          BOOKWAVE_COMMIT: ${{ steps.source.outputs.sha }}
+          BOOKWAVE_BRANCH: ${{ steps.source.outputs.branch }}
+          BOOKWAVE_RUN_NUMBER: ${{ forgejo.run_number }}
+          BOOKWAVE_SIGNING_STORE_FILE: ${{ steps.keystore.outputs.path }}
+          BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          BOOKWAVE_SIGNING_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          BOOKWAVE_SIGNING_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
+          BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_STORE_PASSWORD || '' }}
+          BOOKWAVE_DEBUG_KEY_ALIAS: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_KEY_ALIAS || '' }}
+          BOOKWAVE_DEBUG_KEY_PASSWORD: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_KEY_PASSWORD || '' }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.variant }}" = "release" ]; then
+            ./gradlew :app:assembleRelease --max-workers=2
+          else
+            ./gradlew :app:assembleDebug --max-workers=2
+          fi
+
+      - name: Identify built APK
+        id: version
+        env:
+          PR_NUMBER: ${{ steps.source.outputs.pr }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -1)"
+          APK="$(find app/build/outputs/apk -name '*.apk' | head -1)"
+          test -n "$APK"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          NAME="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$BADGING" | head -1)"
+          CODE="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<<"$BADGING" | head -1)"
+          label="$NAME-$CODE${PR_NUMBER:+-pr$PR_NUMBER}"
+          echo "apk=$APK" >> "$FORGEJO_OUTPUT"
+          echo "label=$label" >> "$FORGEJO_OUTPUT"
+          echo "Built ${{ inputs.variant }} APK $label from ${SOURCE_SHA:0:8}."
+
+      - name: Stage APK artifact
+        id: artifact
+        env:
+          SOURCE_APK: ${{ steps.version.outputs.apk }}
+          LABEL: ${{ steps.version.outputs.label }}
+        run: |
+          set -euo pipefail
+          target="bookwave-${{ inputs.variant }}-${LABEL}.apk"
+          cp "$SOURCE_APK" "$target"
+          echo "path=$target" >> "$FORGEJO_OUTPUT"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: bookwave-${{ inputs.variant }}-${{ steps.version.outputs.label }}
+          path: ${{ steps.artifact.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload R8 mapping
+        if: ${{ inputs.variant == 'release' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: bookwave-release-mapping-${{ steps.version.outputs.label }}
+          path: app/build/outputs/mapping/release/**
+          if-no-files-found: warn
+          retention-days: 30
