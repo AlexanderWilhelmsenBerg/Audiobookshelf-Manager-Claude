@@ -11,11 +11,16 @@
 # eight seconds of digital silence with metadata and two chapters attached, and the cover is a flat
 # rectangle of one colour. Between them that is enough for the scanner to produce a complete item.
 #
-# Usage: seed-contract-media.sh <media-dir> [image]
+# Usage:
+#   seed-contract-media.sh <media-dir> [image]
+#   seed-contract-media.sh docker-volume:<name> [image]
+#
+# The docker-volume form is for containerized CI runners. It keeps the existing local/GitHub path mode
+# unchanged while allowing the job and the runner's container engine to share a throwaway named volume.
 
 set -euo pipefail
 
-MEDIA_DIR="${1:?usage: seed-contract-media.sh <media-dir> [image]}"
+MEDIA_TARGET="${1:?usage: seed-contract-media.sh <media-dir|docker-volume:name> [image]}"
 IMAGE="${2:-ghcr.io/advplyr/audiobookshelf:2.36.0}"
 
 BOOK_DIR="Marisol Holt/The Salt Harbour"
@@ -40,18 +45,31 @@ MULTI_DIR="Marisol Holt/The Tidewatch Cycle"
 MULTI_ONE="01 - Tidewatch.mp3"
 MULTI_TWO="02 - Tidewatch.mp3"
 
-mkdir -p "$MEDIA_DIR/$BOOK_DIR" "$MEDIA_DIR/$MULTI_DIR"
+if [[ "$MEDIA_TARGET" == docker-volume:* ]]; then
+  MEDIA_MOUNT="${MEDIA_TARGET#docker-volume:}"
+  if [[ ! "$MEDIA_MOUNT" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+    echo "invalid docker volume name: $MEDIA_MOUNT" >&2
+    exit 2
+  fi
+  MEDIA_DISPLAY="docker volume $MEDIA_MOUNT"
+else
+  MEDIA_DIR="$MEDIA_TARGET"
+  MEDIA_MOUNT="$MEDIA_DIR"
+  MEDIA_DISPLAY="$MEDIA_DIR"
 
-if [ -s "$MEDIA_DIR/$BOOK_DIR/$TRACK" ] && [ -s "$MEDIA_DIR/$BOOK_DIR/$COVER" ] &&
-  [ -s "$MEDIA_DIR/$MULTI_DIR/$MULTI_TWO" ]; then
-  echo "  media already present at $MEDIA_DIR/$BOOK_DIR" >&2
-  exit 0
+  mkdir -p "$MEDIA_DIR/$BOOK_DIR" "$MEDIA_DIR/$MULTI_DIR"
+
+  if [ -s "$MEDIA_DIR/$BOOK_DIR/$TRACK" ] && [ -s "$MEDIA_DIR/$BOOK_DIR/$COVER" ] &&
+    [ -s "$MEDIA_DIR/$MULTI_DIR/$MULTI_TWO" ]; then
+    echo "  media already present at $MEDIA_DIR/$BOOK_DIR" >&2
+    exit 0
+  fi
 fi
 
 # `-t` sits with the *output* options on purpose. As an input option after `-i anullsrc` it applies to
 # the next input — the metadata file — and the silence generator then runs unbounded, which produces a
 # multi-gigabyte file instead of an eight-second one.
-docker run --rm -v "$MEDIA_DIR:/media" --entrypoint sh "$IMAGE" -c '
+docker run --rm -v "$MEDIA_MOUNT:/media" --entrypoint sh "$IMAGE" -c '
   set -e
   printf "%s\n" \
     ";FFMETADATA1" \
@@ -101,6 +119,6 @@ docker run --rm -v "$MEDIA_DIR:/media" --entrypoint sh "$IMAGE" -c '
   chmod -R a+rw /media
 '
 
-echo "  seeded $MEDIA_DIR/$BOOK_DIR/$TRACK" >&2
-echo "  seeded $MEDIA_DIR/$BOOK_DIR/$COVER" >&2
-echo "  seeded $MEDIA_DIR/$MULTI_DIR (two files, 6s + 4s)" >&2
+echo "  seeded $MEDIA_DISPLAY/$BOOK_DIR/$TRACK" >&2
+echo "  seeded $MEDIA_DISPLAY/$BOOK_DIR/$COVER" >&2
+echo "  seeded $MEDIA_DISPLAY/$MULTI_DIR (two files, 6s + 4s)" >&2
