@@ -19,9 +19,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The self-hosted runner shares its host with other homelab workloads. Keep the
-  # original 5 GiB heap limit and bound worker parallelism for predictable execution.
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2
+  # The self-hosted runner has a tighter memory envelope than GitHub's hosted runner.
+  # Keep the same checks, but bound Gradle heap and worker concurrency so Android lint,
+  # dexing and Kotlin compilation do not compete for the whole job-container cgroup.
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=1
 
 jobs:
   wrapper-validation:
@@ -153,7 +154,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
       - name: Verify debug
-        run: ./gradlew verifyDebug --continue --max-workers=2 -Pshelfplayer.warningsAsErrors=true
+        run: ./gradlew verifyDebug --continue --max-workers=1 -Pshelfplayer.warningsAsErrors=true
 
       - name: Print lint reports
         if: failure()
@@ -252,7 +253,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
       - name: Resolve dependencies for the debug variant
-        run: ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=2 > dependency-report.txt
+        run: ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=1 > dependency-report.txt
 
       - name: Upload dependency report
         uses: actions/upload-artifact@v3
@@ -267,6 +268,15 @@ jobs:
     runs-on: linux-amd64
     timeout-minutes: 90
     steps:
+      - name: Report runner capacity
+        run: |
+          set -euo pipefail
+          echo "logical_cpus=$(nproc)"
+          grep -E '^(MemTotal|MemAvailable):' /proc/meminfo || true
+          printf 'cgroup_memory_max='; cat /sys/fs/cgroup/memory.max 2>/dev/null || echo unavailable
+          printf 'cgroup_cpu_max='; cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo unavailable
+          df -h / || true
+
       - name: Check out BookWave
         uses: actions/checkout@v6
 
@@ -304,7 +314,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
       - name: Rerun ktlint gate
-        run: ./gradlew ktlintCheck --rerun-tasks --max-workers=2
+        run: ./gradlew ktlintCheck --rerun-tasks --max-workers=1
 
       - name: Rerun full BookWave gate
-        run: ./gradlew verifyDebug --continue --rerun-tasks --max-workers=2 -Pshelfplayer.warningsAsErrors=true
+        run: ./gradlew verifyDebug --continue --rerun-tasks --max-workers=1 -Pshelfplayer.warningsAsErrors=true
