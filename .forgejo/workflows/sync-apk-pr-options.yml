@@ -33,7 +33,23 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      # The migration PR itself can trigger pull_request_target before these files exist on main.
+      # Treat that as a clean bootstrap skip. Once this workflow is merged, the guard becomes true
+      # and every later PR open/close/reopen performs the normal refresh.
+      - name: Check synchronizer bootstrap state
+        id: bootstrap
+        run: |
+          set -euo pipefail
+          if [ -f .forgejo/workflows/apk.yml ] && [ -f .forgejo/scripts/sync_apk_pr_options.py ]; then
+            echo "ready=true" >> "$FORGEJO_OUTPUT"
+            echo "Forgejo APK picker synchronizer is present on trusted main."
+          else
+            echo "ready=false" >> "$FORGEJO_OUTPUT"
+            echo "::notice::Forgejo APK picker synchronizer is not on main yet; skipping this bootstrap event."
+          fi
+
       - name: Install picker prerequisites
+        if: ${{ steps.bootstrap.outputs.ready == 'true' }}
         run: |
           set -euo pipefail
           apt-get update
@@ -41,6 +57,7 @@ jobs:
           rm -rf /var/lib/apt/lists/*
 
       - name: Read current Forgejo pull requests
+        if: ${{ steps.bootstrap.outputs.ready == 'true' }}
         run: |
           set -euo pipefail
           curl -fsS \
@@ -56,9 +73,11 @@ jobs:
           fi
 
       - name: Regenerate Build APK choices
+        if: ${{ steps.bootstrap.outputs.ready == 'true' }}
         run: python3 .forgejo/scripts/sync_apk_pr_options.py "$RUNNER_TEMP/open-prs.json"
 
       - name: Validate generated workflow contract
+        if: ${{ steps.bootstrap.outputs.ready == 'true' }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -79,6 +98,7 @@ jobs:
           PY
 
       - name: Publish picker update as review branch and PR
+        if: ${{ steps.bootstrap.outputs.ready == 'true' }}
         env:
           PICKER_BRANCH: mcp/apk-pr-picker
         run: |
