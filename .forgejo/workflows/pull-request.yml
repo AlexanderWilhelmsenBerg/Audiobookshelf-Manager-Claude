@@ -34,7 +34,7 @@ concurrency:
 env:
   # Runner-specific limits. Keep the repository's diagnostics/encoding flags while
   # bounding Gradle and Kotlin memory independently on the self-hosted runner.
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4 -Dorg.gradle.project.kotlin.daemon.jvmargs=-Xmx2g
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=6 -Dorg.gradle.project.kotlin.daemon.jvmargs=-Xmx2g
   JAVA_TOOL_OPTIONS: -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
   GRADLE_WRAPPER_JAR_SHA256: 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
   GITLEAKS_VERSION: 8.30.1
@@ -259,7 +259,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
       - name: Verify debug
-        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --continue --max-workers=4 -Pshelfplayer.warningsAsErrors=true
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --continue --max-workers=6 -Pshelfplayer.warningsAsErrors=true
 
       - name: Print lint reports
         if: failure()
@@ -362,7 +362,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
       - name: Resolve dependencies for the debug variant
-        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=4 > dependency-report.txt
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=6 > dependency-report.txt
 
       - name: Upload dependency report
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
@@ -428,4 +428,4 @@ jobs:
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
       - name: Rerun full BookWave gate
-        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --continue --rerun-tasks --max-workers=4 -Pshelfplayer.warningsAsErrors=true
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --continue --rerun-tasks --max-workers=6 -Pshelfplayer.warningsAsErrors=true
