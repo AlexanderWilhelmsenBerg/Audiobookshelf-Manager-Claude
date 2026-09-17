@@ -1,7 +1,8 @@
 name: Main
 
-# Forgejo-native main-branch gate. The GitHub workflow remains untouched as fallback.
-# This preserves the current release checks while using the proven self-hosted runner setup.
+# Forgejo-native main-branch release gate. The GitHub workflow remains untouched as fallback.
+# pull-request.yml already verifies every push to main, so this workflow avoids repeating
+# the same expensive debug gate on push while keeping scheduled/manual runs self-contained.
 
 on:
   push:
@@ -17,7 +18,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2
+  # Four workers is the measured sweet spot on the self-hosted Forgejo runner.
+  # Keep release/R8 heap headroom while bounding Kotlin independently.
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4 -Dorg.gradle.project.kotlin.daemon.jvmargs=-Xmx2g
+  JAVA_TOOL_OPTIONS: -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+  GRADLE_WRAPPER_JAR_SHA256: 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
 
 jobs:
   release-checks:
@@ -25,68 +30,103 @@ jobs:
     runs-on: linux-amd64
     timeout-minutes: 90
     steps:
-      - name: Check out BookWave
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Validate Gradle wrapper JAR
+      - name: Report runner capacity
         run: |
           set -euo pipefail
+          echo "logical_cpus=$(nproc)"
+          grep -E '^(MemTotal|MemAvailable):' /proc/meminfo || true
+          printf 'cgroup_memory_max='; cat /sys/fs/cgroup/memory.max 2>/dev/null || echo unavailable
+          printf 'cgroup_cpu_max='; cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo unavailable
+          df -h / || true
+
+      - name: Check out BookWave
+        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate pinned Gradle wrapper
+        run: |
+          set -euo pipefail
+
           distribution_url="$(grep '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2- | sed 's/\\:/:/g')"
-          wrapper_version="$(printf '%s\n' "$distribution_url" | sed -E 's#.*gradle-([0-9][0-9A-Za-z.+-]*)-(bin|all)\.zip.*#\1#')"
-          if [ -z "$wrapper_version" ] || [ "$wrapper_version" = "$distribution_url" ]; then
-            echo "::error::Could not determine Gradle wrapper version from $distribution_url"
+          distribution_sha="$(grep '^distributionSha256Sum=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2-)"
+
+          if ! printf '%s' "$distribution_sha" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "::error::gradle-wrapper.properties must pin distributionSha256Sum."
             exit 1
           fi
-          expected="$(curl -fsSL "https://services.gradle.org/distributions/gradle-${wrapper_version}-wrapper.jar.sha256" | tr -d '[:space:]')"
+
           actual="$(sha256sum gradle/wrapper/gradle-wrapper.jar | awk '{print $1}')"
-          test "$actual" = "$expected" || { echo "::error::Gradle wrapper JAR checksum mismatch"; exit 1; }
-          echo "Gradle $wrapper_version wrapper JAR verified: $actual"
+          if [ "$actual" != "$GRADLE_WRAPPER_JAR_SHA256" ]; then
+            echo "::error::Gradle wrapper JAR checksum mismatch."
+            echo "distribution=$distribution_url"
+            echo "expected=$GRADLE_WRAPPER_JAR_SHA256"
+            echo "actual=$actual"
+            echo "A wrapper upgrade must update this pinned digest after independent verification."
+            exit 1
+          fi
+
+          echo "Gradle wrapper JAR verified: $actual"
+          echo "Gradle distribution is SHA-pinned: $distribution_sha"
 
       - name: Install runner prerequisites
         run: |
           set -euo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates curl git jq openjdk-17-jdk-headless python3 unzip
+            ca-certificates \
+            curl \
+            git \
+            jq \
+            openjdk-17-jdk-headless \
+            python3 \
+            unzip
           rm -rf /var/lib/apt/lists/*
+
           JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
           echo "JAVA_HOME=$JAVA_HOME" >> "$FORGEJO_ENV"
           echo "$JAVA_HOME/bin" >> "$FORGEJO_PATH"
+          java -version
 
       - name: Prepare BookWave Android environment
         env:
           BOOKWAVE_CODEX_PREWARM: light
-          BOOKWAVE_DEBUG_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           export BOOKWAVE_ANDROID_SDK_ROOT="$HOME/.bookwave/android-sdk"
-          bash scripts/codex/setup.sh
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
+            BOOKWAVE_CODEX_PREWARM="$BOOKWAVE_CODEX_PREWARM" \
+            BOOKWAVE_ANDROID_SDK_ROOT="$BOOKWAVE_ANDROID_SDK_ROOT" \
+            bash scripts/codex/setup.sh
+
           echo "ANDROID_HOME=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
           echo "ANDROID_SDK_ROOT=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
           echo "$HOME/.bookwave/android-sdk/cmdline-tools/latest/bin" >> "$FORGEJO_PATH"
           echo "$HOME/.bookwave/android-sdk/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
+      # pull-request.yml already runs normal verifyDebug on every push to main.
+      # Scheduled/manual release gates still verify from scratch so they stand alone.
       - name: Verify debug
-        run: ./gradlew verifyDebug --max-workers=2 -Pshelfplayer.warningsAsErrors=true
+        if: ${{ forgejo.event_name != 'push' }}
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --continue --max-workers=4 -Pshelfplayer.warningsAsErrors=true
 
       - name: Release lint
-        run: ./gradlew :app:lintRelease --max-workers=2 -Pshelfplayer.warningsAsErrors=true
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:lintRelease --max-workers=4 -Pshelfplayer.warningsAsErrors=true
 
       - name: Software Bill of Materials
-        run: ./gradlew :app:sbom --max-workers=2
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:sbom --max-workers=4
 
       - name: Dependency vulnerability scan
-        run: ./scripts/vulnerability-scan.sh
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./scripts/vulnerability-scan.sh
 
       - name: Assemble release (unsigned)
-        run: ./gradlew :app:assembleRelease --max-workers=2 -Pshelfplayer.warningsAsErrors=true
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:assembleRelease --max-workers=4 -Pshelfplayer.warningsAsErrors=true
 
       - name: Upload mapping and SBOM
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: release-supply-chain
           path: |
@@ -97,7 +137,7 @@ jobs:
 
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: main-quality-reports
           path: |
