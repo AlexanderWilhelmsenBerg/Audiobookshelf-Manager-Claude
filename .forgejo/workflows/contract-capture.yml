@@ -1,24 +1,28 @@
 name: Contract capture
 
 # Forgejo-native Audiobookshelf contract capture. GitHub fallback remains untouched.
-# The current Forgejo runner does not expose Docker inside jobs yet; the explicit
-# preflight below turns that runner capability into a clear failure instead of a
-# misleading application failure.
+#
+# This workflow is deliberately manual-only. Contract capture needs controlled access to the
+# self-hosted runner's container engine so it can launch a disposable Audiobookshelf instance.
+# Keeping that capability out of automatic pull-request execution reduces both runner load and
+# the security blast radius. Run it explicitly when network contracts need to be refreshed or
+# verified against a chosen Audiobookshelf image.
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'core/network/**'
-      - 'scripts/capture-contracts.sh'
-      - 'scripts/seed-contract-media.sh'
-      - '.forgejo/workflows/contract-capture.yml'
   workflow_dispatch:
     inputs:
       server_image:
         description: Audiobookshelf image to capture against
         required: false
         default: ghcr.io/advplyr/audiobookshelf:latest
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ forgejo.workflow }}-${{ forgejo.ref }}
+  cancel-in-progress: false
 
 jobs:
   capture:
@@ -27,63 +31,121 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out BookWave
-        uses: actions/checkout@v6
+        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
 
       - name: Install capture prerequisites
         run: |
           set -euo pipefail
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl jq python3
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            docker.io \
+            jq \
+            python3
           rm -rf /var/lib/apt/lists/*
 
-      - name: Require Docker-capable runner
+      - name: Verify runner container-engine access
         run: |
           set -euo pipefail
-          if ! command -v docker >/dev/null 2>&1; then
-            echo "::error::Contract capture requires Docker, but the Forgejo job environment has no docker client."
-            echo "::error::Enable Docker access for the Forgejo runner before using this workflow."
-            exit 1
-          fi
-          if ! docker info >/dev/null 2>&1; then
-            echo "::error::Docker is installed but the Forgejo job cannot reach a Docker daemon."
-            exit 1
-          fi
-          docker version
 
-      - name: Start Audiobookshelf
+          # CT520 intentionally exposes its Podman Docker-compatible UNIX socket to job containers.
+          # Forgejo Runner normally exports DOCKER_HOST for this configuration; retain safe fallbacks
+          # for the two socket locations used by Docker/Podman installations.
+          if [ -z "${DOCKER_HOST:-}" ]; then
+            if [ -S /run/podman/podman.sock ]; then
+              DOCKER_HOST=unix:///run/podman/podman.sock
+            elif [ -S /var/run/docker.sock ]; then
+              DOCKER_HOST=unix:///var/run/docker.sock
+            else
+              echo "::error::The Forgejo job has no container-engine socket."
+              exit 1
+            fi
+            export DOCKER_HOST
+            echo "DOCKER_HOST=$DOCKER_HOST" >> "$FORGEJO_ENV"
+          fi
+
+          docker version
+          docker info >/dev/null
+
+          # Jobs run in an isolated runner-created network. Attach the disposable server to that
+          # same network so the job can reach it by DNS name without publishing a host port.
+          job_container="${HOSTNAME:?HOSTNAME is required to identify the Forgejo job container}"
+          job_network="$(docker inspect "$job_container" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' | head -n1)"
+          if [ -z "$job_network" ]; then
+            echo "::error::Could not determine the Forgejo job network from container $job_container."
+            exit 1
+          fi
+          echo "CONTRACT_JOB_NETWORK=$job_network" >> "$FORGEJO_ENV"
+          echo "runner_job_network=$job_network"
+
+      - name: Prepare disposable contract server
         env:
           REQUESTED_SERVER_IMAGE: ${{ inputs.server_image }}
         run: |
           set -euo pipefail
+
           SERVER_IMAGE="${REQUESTED_SERVER_IMAGE:-ghcr.io/advplyr/audiobookshelf:latest}"
-          WORK_TEMP="${RUNNER_TEMP:-/tmp}/bookwave-contracts"
-          mkdir -p "$WORK_TEMP/abs/config" "$WORK_TEMP/abs/metadata" "$WORK_TEMP/abs/audiobooks" "$WORK_TEMP/captured"
-          docker rm -f audiobookshelf >/dev/null 2>&1 || true
-          docker run -d --name audiobookshelf \
-            -p 13378:80 \
-            -v "$WORK_TEMP/abs/config:/config" \
-            -v "$WORK_TEMP/abs/metadata:/metadata" \
-            -v "$WORK_TEMP/abs/audiobooks:/audiobooks" \
+          RUN_KEY="${FORGEJO_RUN_ID:-manual}-${FORGEJO_RUN_ATTEMPT:-1}"
+          CONTRACT_CONTAINER="bookwave-contract-abs-$RUN_KEY"
+          CONTRACT_CONFIG_VOLUME="bookwave-contract-config-$RUN_KEY"
+          CONTRACT_METADATA_VOLUME="bookwave-contract-metadata-$RUN_KEY"
+          CONTRACT_MEDIA_VOLUME="bookwave-contract-media-$RUN_KEY"
+          CONTRACT_WORK_TEMP="$FORGEJO_WORKSPACE/.ci-contract-capture"
+          CONTRACT_BASE_URL="http://audiobookshelf:80"
+
+          rm -rf "$CONTRACT_WORK_TEMP"
+          mkdir -p "$CONTRACT_WORK_TEMP/captured"
+
+          docker volume create "$CONTRACT_CONFIG_VOLUME" >/dev/null
+          docker volume create "$CONTRACT_METADATA_VOLUME" >/dev/null
+          docker volume create "$CONTRACT_MEDIA_VOLUME" >/dev/null
+
+          chmod +x scripts/seed-contract-media.sh
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
+            ./scripts/seed-contract-media.sh "docker-volume:$CONTRACT_MEDIA_VOLUME" "$SERVER_IMAGE"
+
+          docker rm -f "$CONTRACT_CONTAINER" >/dev/null 2>&1 || true
+          docker run -d --name "$CONTRACT_CONTAINER" \
+            --network "$CONTRACT_JOB_NETWORK" \
+            --network-alias audiobookshelf \
+            -v "$CONTRACT_CONFIG_VOLUME:/config" \
+            -v "$CONTRACT_METADATA_VOLUME:/metadata" \
+            -v "$CONTRACT_MEDIA_VOLUME:/audiobooks" \
             "$SERVER_IMAGE"
-          echo "SERVER_IMAGE=$SERVER_IMAGE" >> "$FORGEJO_ENV"
-          echo "CONTRACT_WORK_TEMP=$WORK_TEMP" >> "$FORGEJO_ENV"
+
+          {
+            echo "SERVER_IMAGE=$SERVER_IMAGE"
+            echo "CONTRACT_CONTAINER=$CONTRACT_CONTAINER"
+            echo "CONTRACT_CONFIG_VOLUME=$CONTRACT_CONFIG_VOLUME"
+            echo "CONTRACT_METADATA_VOLUME=$CONTRACT_METADATA_VOLUME"
+            echo "CONTRACT_MEDIA_VOLUME=$CONTRACT_MEDIA_VOLUME"
+            echo "CONTRACT_WORK_TEMP=$CONTRACT_WORK_TEMP"
+            echo "CONTRACT_BASE_URL=$CONTRACT_BASE_URL"
+          } >> "$FORGEJO_ENV"
 
       - name: Record the server version under test
         run: |
           set -euo pipefail
+          ready=false
           for _ in $(seq 1 60); do
-            if curl -sSf --max-time 3 http://localhost:13378/healthcheck >/dev/null 2>&1; then break; fi
+            if curl -sSf --max-time 3 "$CONTRACT_BASE_URL/healthcheck" >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
             sleep 2
           done
-          curl -sSf http://localhost:13378/status | tee /tmp/status.json
+          if [ "$ready" != true ]; then
+            echo "::error::Audiobookshelf did not become healthy within 120 seconds."
+            docker logs "$CONTRACT_CONTAINER" 2>&1 | tail -200 || true
+            exit 1
+          fi
+
+          curl -sSf "$CONTRACT_BASE_URL/status" | tee /tmp/status.json
           echo
           docker image inspect "$SERVER_IMAGE" --format 'digest={{index .RepoDigests 0}}' || true
-
-      - name: Seed the media the scan needs
-        run: |
-          set -euo pipefail
-          chmod +x scripts/seed-contract-media.sh
-          ./scripts/seed-contract-media.sh "$CONTRACT_WORK_TEMP/abs/audiobooks" "$SERVER_IMAGE"
 
       - name: Capture contracts
         env:
@@ -91,7 +153,9 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x scripts/capture-contracts.sh
-          ./scripts/capture-contracts.sh http://localhost:13378 "$CONTRACT_WORK_TEMP/captured"
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
+            CONTRACT_MEDIA_PATH="$CONTRACT_MEDIA_PATH" \
+            ./scripts/capture-contracts.sh "$CONTRACT_BASE_URL" "$CONTRACT_WORK_TEMP/captured"
 
       - name: Fixtures carry no credentials
         run: |
@@ -167,17 +231,23 @@ jobs:
 
       - name: Upload captured contracts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: captured-contracts
-          path: ${{ env.CONTRACT_WORK_TEMP }}/captured/**
+          path: .ci-contract-capture/captured/**
           if-no-files-found: warn
           retention-days: 14
 
       - name: Server log on failure
         if: failure()
-        run: docker logs audiobookshelf 2>&1 | tail -100 || true
+        run: docker logs "$CONTRACT_CONTAINER" 2>&1 | tail -200 || true
 
-      - name: Stop Audiobookshelf
+      - name: Clean up disposable contract server
         if: always()
-        run: docker rm -f audiobookshelf >/dev/null 2>&1 || true
+        run: |
+          set +e
+          [ -n "${CONTRACT_CONTAINER:-}" ] && docker rm -f "$CONTRACT_CONTAINER" >/dev/null 2>&1
+          [ -n "${CONTRACT_CONFIG_VOLUME:-}" ] && docker volume rm -f "$CONTRACT_CONFIG_VOLUME" >/dev/null 2>&1
+          [ -n "${CONTRACT_METADATA_VOLUME:-}" ] && docker volume rm -f "$CONTRACT_METADATA_VOLUME" >/dev/null 2>&1
+          [ -n "${CONTRACT_MEDIA_VOLUME:-}" ] && docker volume rm -f "$CONTRACT_MEDIA_VOLUME" >/dev/null 2>&1
+          exit 0
