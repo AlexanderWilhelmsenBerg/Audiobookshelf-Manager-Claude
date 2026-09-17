@@ -19,7 +19,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false
+  # The self-hosted runner shares its host with other homelab workloads. Bound Gradle
+  # parallelism so coroutine/timing-sensitive tests are not starved by a cold full graph.
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2
 
 jobs:
   verify:
@@ -28,6 +30,15 @@ jobs:
     timeout-minutes: 90
 
     steps:
+      - name: Report runner capacity
+        run: |
+          set -euo pipefail
+          echo "logical_cpus=$(nproc)"
+          grep -E '^(MemTotal|MemAvailable):' /proc/meminfo || true
+          printf 'cgroup_memory_max='; cat /sys/fs/cgroup/memory.max 2>/dev/null || echo unavailable
+          printf 'cgroup_cpu_max='; cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo unavailable
+          df -h / || true
+
       - name: Check out BookWave
         uses: actions/checkout@v6
         with:
@@ -105,7 +116,7 @@ jobs:
           echo "No committed Room schema was modified."
 
       - name: Verify debug
-        run: ./gradlew verifyDebug --continue -Pshelfplayer.warningsAsErrors=true
+        run: ./gradlew verifyDebug --continue --max-workers=2 -Pshelfplayer.warningsAsErrors=true
 
       - name: Print lint reports on failure
         if: failure()
@@ -129,7 +140,7 @@ jobs:
           fi
 
       - name: Resolve dependency and licence report
-        run: ./gradlew :app:dependencies --configuration debugRuntimeClasspath > dependency-report.txt
+        run: ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=2 > dependency-report.txt
 
       - name: Upload Room schemas
         if: always()
@@ -174,5 +185,5 @@ jobs:
       - name: Classpath rerun acceptance
         if: ${{ forgejo.event_name == 'pull_request' || forgejo.event_name == 'workflow_dispatch' }}
         run: |
-          ./gradlew ktlintCheck --rerun-tasks
-          ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true
+          ./gradlew ktlintCheck --rerun-tasks --max-workers=2
+          ./gradlew verifyDebug --continue --rerun-tasks --max-workers=2 -Pshelfplayer.warningsAsErrors=true
