@@ -1,0 +1,183 @@
+name: Contract capture
+
+# Forgejo-native Audiobookshelf contract capture. GitHub fallback remains untouched.
+# The current Forgejo runner does not expose Docker inside jobs yet; the explicit
+# preflight below turns that runner capability into a clear failure instead of a
+# misleading application failure.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'core/network/**'
+      - 'scripts/capture-contracts.sh'
+      - 'scripts/seed-contract-media.sh'
+      - '.forgejo/workflows/contract-capture.yml'
+  workflow_dispatch:
+    inputs:
+      server_image:
+        description: Audiobookshelf image to capture against
+        required: false
+        default: ghcr.io/advplyr/audiobookshelf:latest
+
+jobs:
+  capture:
+    name: Capture Audiobookshelf contracts
+    runs-on: linux-amd64
+    timeout-minutes: 30
+    steps:
+      - name: Check out BookWave
+        uses: actions/checkout@v6
+
+      - name: Install capture prerequisites
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl jq python3
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Require Docker-capable runner
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "::error::Contract capture requires Docker, but the Forgejo job environment has no docker client."
+            echo "::error::Enable Docker access for the Forgejo runner before using this workflow."
+            exit 1
+          fi
+          if ! docker info >/dev/null 2>&1; then
+            echo "::error::Docker is installed but the Forgejo job cannot reach a Docker daemon."
+            exit 1
+          fi
+          docker version
+
+      - name: Start Audiobookshelf
+        env:
+          REQUESTED_SERVER_IMAGE: ${{ inputs.server_image }}
+        run: |
+          set -euo pipefail
+          SERVER_IMAGE="${REQUESTED_SERVER_IMAGE:-ghcr.io/advplyr/audiobookshelf:latest}"
+          WORK_TEMP="${RUNNER_TEMP:-/tmp}/bookwave-contracts"
+          mkdir -p "$WORK_TEMP/abs/config" "$WORK_TEMP/abs/metadata" "$WORK_TEMP/abs/audiobooks" "$WORK_TEMP/captured"
+          docker rm -f audiobookshelf >/dev/null 2>&1 || true
+          docker run -d --name audiobookshelf \
+            -p 13378:80 \
+            -v "$WORK_TEMP/abs/config:/config" \
+            -v "$WORK_TEMP/abs/metadata:/metadata" \
+            -v "$WORK_TEMP/abs/audiobooks:/audiobooks" \
+            "$SERVER_IMAGE"
+          echo "SERVER_IMAGE=$SERVER_IMAGE" >> "$FORGEJO_ENV"
+          echo "CONTRACT_WORK_TEMP=$WORK_TEMP" >> "$FORGEJO_ENV"
+
+      - name: Record the server version under test
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 60); do
+            if curl -sSf --max-time 3 http://localhost:13378/healthcheck >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -sSf http://localhost:13378/status | tee /tmp/status.json
+          echo
+          docker image inspect "$SERVER_IMAGE" --format 'digest={{index .RepoDigests 0}}' || true
+
+      - name: Seed the media the scan needs
+        run: |
+          set -euo pipefail
+          chmod +x scripts/seed-contract-media.sh
+          ./scripts/seed-contract-media.sh "$CONTRACT_WORK_TEMP/abs/audiobooks" "$SERVER_IMAGE"
+
+      - name: Capture contracts
+        env:
+          CONTRACT_MEDIA_PATH: /audiobooks
+        run: |
+          set -euo pipefail
+          chmod +x scripts/capture-contracts.sh
+          ./scripts/capture-contracts.sh http://localhost:13378 "$CONTRACT_WORK_TEMP/captured"
+
+      - name: Fixtures carry no credentials
+        run: |
+          python3 - "$CONTRACT_WORK_TEMP/captured" <<'PY'
+          import json, pathlib, re, sys
+
+          SECRET_KEYS = {"token", "accessToken", "refreshToken", "refresh_token",
+                         "access_token", "password", "pash", "authToken", "apiKey"}
+          JWT = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.")
+          problems = []
+
+          def walk(node, key, where):
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      walk(v, k, where)
+              elif isinstance(node, list):
+                  for v in node:
+                      walk(v, key, where)
+              elif isinstance(node, str):
+                  if key in SECRET_KEYS and not node.startswith("<redacted"):
+                      problems.append(f"{where}: {key!r} still holds a value")
+                  if JWT.search(node):
+                      problems.append(f"{where}: {key!r} looks like a JWT")
+
+          files = sorted(pathlib.Path(sys.argv[1]).rglob("*.json"))
+          if not files:
+              raise SystemExit("::error::No fixtures were captured.")
+          for path in files:
+              walk(json.loads(path.read_text()), None, path.name)
+          if problems:
+              for problem in problems:
+                  print(f"::error::{problem}")
+              raise SystemExit(1)
+          print(f"No credential-shaped values in {len(files)} captured fixtures.")
+          PY
+
+      - name: Compare against committed fixtures
+        run: |
+          set -euo pipefail
+          committed=core/network/src/test/resources/contracts
+          captured="$CONTRACT_WORK_TEMP/captured"
+          if [ ! -d "$committed" ]; then
+            echo "::notice::No committed contracts yet — review the captured-contracts artifact."
+            exit 0
+          fi
+
+          drifted=""
+          while IFS= read -r file; do
+            if [ -f "$committed/$file" ]; then
+              diff -u "$committed/$file" "$captured/$file" || drifted="$drifted $file"
+            fi
+          done < <(cd "$captured" && find . -name '*.json' | sort)
+
+          skipped="$(comm -23 <(cd "$committed" && find . -name '*.json' | sort) <(cd "$captured" && find . -name '*.json' | sort))"
+          [ -z "$skipped" ] || { echo "::notice::Not captured this run:"; echo "$skipped"; }
+
+          added="$(comm -13 <(cd "$committed" && find . -name '*.json' | sort) <(cd "$captured" && find . -name '*.json' | sort))"
+          if [ -n "$added" ]; then
+            echo "::notice::New capture targets:"
+            echo "$added"
+            for file in $added; do
+              echo "===== $file ====="
+              head -c 20000 "$captured/$file"
+              echo
+            done
+          fi
+
+          if [ -n "$drifted" ]; then
+            echo "::error::Captured contracts differ from committed fixtures:$drifted"
+            exit 1
+          fi
+          echo "Every captured fixture matches what is committed."
+
+      - name: Upload captured contracts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: captured-contracts
+          path: ${{ env.CONTRACT_WORK_TEMP }}/captured/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Server log on failure
+        if: failure()
+        run: docker logs audiobookshelf 2>&1 | tail -100 || true
+
+      - name: Stop Audiobookshelf
+        if: always()
+        run: docker rm -f audiobookshelf >/dev/null 2>&1 || true
