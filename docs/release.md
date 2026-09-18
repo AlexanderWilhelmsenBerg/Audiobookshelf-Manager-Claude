@@ -198,14 +198,19 @@ verifies v2, and an explicit `enableV1Signing = true` was tried, observed to be 
 
 ## The pipeline today
 
-`.github/workflows/pull-request.yml` — Gradle wrapper validation, secret scan, `verifyDebug` with
-warnings-as-errors, Room schema diff, debug APK, dependency report.
+Forgejo is the active CI path. `.forgejo/workflows/pull-request.yml` is deliberately **manual-only** so
+branch updates do not spend runner time before a change is ready for acceptance. Its preflight still validates
+the wrapper, scans secrets and protects committed Room schemas. The expensive Android gate runs exactly once:
+ordinary changes use `verifyDebug`; build/classpath changes use `verifyDebug --rerun-tasks` for R-31. The
+dependency/licence report is generated in that same warmed job instead of bootstrapping a second Android job.
+The manual form also has a force-rerun switch when a reviewer wants the strongest path regardless of the diff.
 
-`.github/workflows/main.yml` — the above plus release lint and an unsigned release assembly. It stays
-unsigned deliberately: it is push-triggered, and `PRODUCT_SPEC 18` allows signing only in a workflow
-somebody starts on purpose.
+`.forgejo/workflows/main.yml` runs the release-side checks after a fast-forward merge: release lint, SBOM,
+vulnerability scan and an unsigned release assembly. Scheduled/manual main runs also execute `verifyDebug`
+so they remain standalone health checks. Push-main does not repeat the already-accepted PR debug gate.
 
-`.github/workflows/contract-capture.yml` — captures response shapes from a real server on demand
+The `.github/workflows/*` workflows remain the GitHub fallback while the Forgejo migration settles.
+`.github/workflows/contract-capture.yml` captures response shapes from a real server on demand
 (`PRODUCT_SPEC 22.5`).
 
 `verifyDebug` itself fans out to every module: ktlint, detekt with type resolution, Android Lint with
