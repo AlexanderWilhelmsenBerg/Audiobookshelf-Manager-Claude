@@ -248,14 +248,64 @@ jobs:
           echo "JAVA_HOME=$JAVA_HOME" >> "$FORGEJO_ENV"
           echo "$JAVA_HOME/bin" >> "$FORGEJO_PATH"
 
+      - name: Stage shared BookWave signing keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${KEYSTORE_BASE64:-}" ] || missing+=("BOOKWAVE_SIGNING_KEYSTORE_BASE64")
+          [ -n "${STORE_PASSWORD:-}" ] || missing+=("BOOKWAVE_SIGNING_STORE_PASSWORD")
+          [ -n "${KEY_ALIAS:-}" ] || missing+=("BOOKWAVE_SIGNING_KEY_ALIAS")
+          [ -n "${KEY_PASSWORD:-}" ] || missing+=("BOOKWAVE_SIGNING_KEY_PASSWORD")
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::Build APK requires one stable signing identity for both debug and release."
+            printf '::error::Missing secret: %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+          path="$RUNNER_TEMP/bookwave-signing.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$path"
+          test -s "$path" || { echo "::error::Decoded signing keystore is empty."; exit 1; }
+
+          signer="$(keytool -list -v -keystore "$path" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" \
+            | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$signer" || { echo "::error::Could not read the signing certificate fingerprint."; exit 1; }
+
+          echo "path=$path" >> "$FORGEJO_OUTPUT"
+          echo "signer=$signer" >> "$FORGEJO_OUTPUT"
+          echo "Signing identity: ${signer:0:16}…"
+
       - name: Prepare BookWave Android environment
         env:
           BOOKWAVE_CODEX_PREWARM: light
-          BOOKWAVE_DEBUG_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_DEBUG_KEYSTORE_BASE64 }}
+          BOOKWAVE_DEBUG_KEYSTORE: ${{ steps.keystore.outputs.path }}
+          BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          BOOKWAVE_DEBUG_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          BOOKWAVE_DEBUG_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
+          BOOKWAVE_SIGNING_STORE_FILE: ${{ steps.keystore.outputs.path }}
+          BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          BOOKWAVE_SIGNING_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          BOOKWAVE_SIGNING_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           export BOOKWAVE_ANDROID_SDK_ROOT="$HOME/.bookwave/android-sdk"
-          bash scripts/codex/setup.sh
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
+            BOOKWAVE_CODEX_PREWARM="$BOOKWAVE_CODEX_PREWARM" \
+            BOOKWAVE_ANDROID_SDK_ROOT="$BOOKWAVE_ANDROID_SDK_ROOT" \
+            BOOKWAVE_DEBUG_KEYSTORE="$BOOKWAVE_DEBUG_KEYSTORE" \
+            BOOKWAVE_DEBUG_STORE_PASSWORD="$BOOKWAVE_DEBUG_STORE_PASSWORD" \
+            BOOKWAVE_DEBUG_KEY_ALIAS="$BOOKWAVE_DEBUG_KEY_ALIAS" \
+            BOOKWAVE_DEBUG_KEY_PASSWORD="$BOOKWAVE_DEBUG_KEY_PASSWORD" \
+            BOOKWAVE_SIGNING_STORE_FILE="$BOOKWAVE_SIGNING_STORE_FILE" \
+            BOOKWAVE_SIGNING_STORE_PASSWORD="$BOOKWAVE_SIGNING_STORE_PASSWORD" \
+            BOOKWAVE_SIGNING_KEY_ALIAS="$BOOKWAVE_SIGNING_KEY_ALIAS" \
+            BOOKWAVE_SIGNING_KEY_PASSWORD="$BOOKWAVE_SIGNING_KEY_PASSWORD" \
+            bash scripts/codex/setup.sh
           echo "ANDROID_HOME=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
           echo "ANDROID_SDK_ROOT=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
           echo "$HOME/.bookwave/android-sdk/cmdline-tools/latest/bin" >> "$FORGEJO_PATH"
@@ -264,41 +314,16 @@ jobs:
 
       - name: Verify debug
         if: ${{ inputs.run_checks }}
-        run: ./gradlew verifyDebug --max-workers=4 -Pshelfplayer.warningsAsErrors=true
-
-      - name: Stage the debug keystore
-        id: debugkey
         env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_DEBUG_KEYSTORE_BASE64 }}
-          UPLOAD_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.bookwave"
-          if [ -n "${DEBUG_KEYSTORE_BASE64:-}" ]; then
-            printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
-            echo "source=debug-secret" >> "$FORGEJO_OUTPUT"
-          elif [ -n "${UPLOAD_KEYSTORE_BASE64:-}" ]; then
-            printf '%s' "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
-            echo "source=upload-key" >> "$FORGEJO_OUTPUT"
-          else
-            echo "source=generated" >> "$FORGEJO_OUTPUT"
-            echo "No stable debug keystore configured; this run will use an ephemeral generated key."
-          fi
-
-      - name: Stage the release signing keystore
-        id: keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
-        run: |
-          set -euo pipefail
-          if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "path=" >> "$FORGEJO_OUTPUT"
-            echo "No release signing keystore configured; release builds remain unsigned."
-            exit 0
-          fi
-          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-          echo "path=$RUNNER_TEMP/upload.jks" >> "$FORGEJO_OUTPUT"
-
+          BOOKWAVE_DEBUG_KEYSTORE: ${{ steps.keystore.outputs.path }}
+          BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          BOOKWAVE_DEBUG_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          BOOKWAVE_DEBUG_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
+          BOOKWAVE_SIGNING_STORE_FILE: ${{ steps.keystore.outputs.path }}
+          BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          BOOKWAVE_SIGNING_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          BOOKWAVE_SIGNING_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --max-workers=4 -Pshelfplayer.warningsAsErrors=true
       - name: Assemble requested APK
         env:
           BOOKWAVE_PR: ${{ steps.source.outputs.pr }}
