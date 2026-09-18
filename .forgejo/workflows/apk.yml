@@ -249,9 +249,8 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}-${{ steps.source.outputs.sha }}
+          key: bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
           restore-keys: |
-            bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
             bookwave-gradle-trusted-v1-
 
       - name: Report Gradle cache restore
