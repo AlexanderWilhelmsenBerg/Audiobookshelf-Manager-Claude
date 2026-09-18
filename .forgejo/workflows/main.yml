@@ -85,9 +85,8 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}-${{ forgejo.sha }}
+          key: bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
           restore-keys: |
-            bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
             bookwave-gradle-trusted-v1-
 
       - name: Report Gradle cache restore
@@ -140,7 +139,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}-${{ forgejo.sha }}
+          key: bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
 
       - name: Upload mapping and SBOM
         if: always()
