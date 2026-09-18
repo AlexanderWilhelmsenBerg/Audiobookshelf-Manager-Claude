@@ -45,8 +45,31 @@ class ObserveRealtimeUpdatesUseCaseTest {
             },
         )
 
-        useCase(TEST_PROFILE)
+        useCase.observeForeground(TEST_PROFILE)
 
         assertEquals(listOf(listOf(progress)), repository.progressWritten)
+    }
+
+    @Test
+    fun `legacy screen invocation does not open a second realtime collector`() = runTest {
+        var collections = 0
+        val realtime = object : RealtimeUpdates {
+            override val status = MutableStateFlow(RealtimeStatus.Idle)
+            override fun events(profileId: ProfileId): Flow<RealtimeEvent> {
+                collections++
+                return flowOf()
+            }
+        }
+        val useCase = ObserveRealtimeUpdatesUseCase(
+            realtime = realtime,
+            libraryRepository = FakeLibraryRepository(),
+            logger = object : Logger {
+                override fun log(event: LogEvent) = Unit
+            },
+        )
+
+        useCase(TEST_PROFILE)
+
+        assertEquals(0, collections)
     }
 }

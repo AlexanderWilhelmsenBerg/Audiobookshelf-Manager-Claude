@@ -16,6 +16,7 @@ import com.example.shelfplayer.domain.usecase.ApplyStartupModeUseCase
 import com.example.shelfplayer.domain.usecase.CleanUpDownloadsUseCase
 import com.example.shelfplayer.lock.ProcessLockWatcher
 import com.example.shelfplayer.playback.AutoLibrary
+import com.example.shelfplayer.sync.ProcessRealtimeSyncWatcher
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -111,6 +112,13 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var lockWatcher: ProcessLockWatcher
 
+    /**
+     * PRODUCT_SPEC LIB-001 / SYNC-002 — owns one realtime progress connection for the active profile
+     * while the application process is foregrounded, independent of any screen/ViewModel lifetime.
+     */
+    @Inject
+    lateinit var realtimeSyncWatcher: ProcessRealtimeSyncWatcher
+
     /** PRODUCT_SPEC 14.4 — persists one sanitized fatal-process envelope before Android terminates us. */
     @Inject
     lateinit var crashReporter: CrashReporter
@@ -123,6 +131,7 @@ class ShelfPlayerApplication :
         crashReporter.install()
         logger.info(LogCategory.App, "Application started")
         lockWatcher.attach(this)
+        realtimeSyncWatcher.attach(this)
         // ApplicationExitInfo is a system-service read, so it does not belong on Application.onCreate's
         // main thread. The uncaught-exception handler above is already active while this runs.
         applicationScope.launch {
