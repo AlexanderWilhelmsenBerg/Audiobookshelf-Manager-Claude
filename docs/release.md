@@ -209,6 +209,35 @@ The manual form also has a force-rerun switch when a reviewer wants the stronges
 vulnerability scan and an unsigned release assembly. Scheduled/manual main runs also execute `verifyDebug`
 so they remain standalone health checks. Push-main does not repeat the already-accepted PR debug gate.
 
+### Dedicated Forgejo Android CI image
+
+The Android-heavy Forgejo jobs use the repository-owned BookWave CI image instead of rebuilding their
+toolchain on every run. The current human tag is
+`forgejo.homebord.org/alexander/bookwave-ci:android36-jdk17-v1`; workflow consumers deliberately pin the
+immutable digest
+`sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85`.
+That image was published from source commit `65c7928fabad759bf3c666c9a76a4e3030932687` and is also retained as
+`sha-65c7928fabad`.
+
+`.forgejo/workflows/build-ci-image.yml` is manual-only. It builds and self-checks the image, and publishing
+requires the protected `BOOKWAVE_PACKAGE_TOKEN` repository secret. The image contract is Node 22, JDK 17,
+Android command-line tools build 15859902, platform-tools, Android platform 36, build-tools 36.0.0, and
+gitleaks 8.30.1. All downloaded image inputs that are not supplied by Debian are checksum-pinned.
+
+Forgejo Runner reaches Forgejo itself over an internal HTTP service URL while jobs consume packages through
+the canonical TLS host. Large OCI uploads through the external reverse-proxy path returned HTTP 502 during
+validation, so the publish step derives Forgejo's direct service endpoint from `FORGEJO_SERVER_URL` and
+uses it only for the layer upload. It then resolves both the human tag and source-SHA tag back through
+`forgejo.homebord.org` and requires their digests to match. This keeps the workaround repository-local;
+CT520's Podman/runner configuration does not need an insecure-registry exception or any other change.
+
+Only Android-heavy jobs use the image: pull-request `verifyDebug`, main `release-checks`, and the Android
+`apk` job. Policy classification, Gradle wrapper validation, Room-schema checks, secret scanning, and the
+Loopbound web build remain on the ordinary runner. Those Android jobs still run `scripts/codex/setup.sh`,
+but with `BOOKWAVE_ANDROID_SDK_MODE=preinstalled`; setup verifies the exact SDK contract and must not
+download or mutate Android packages. Persistent Gradle caching is intentionally a separate follow-up and is
+not part of this image slice.
+
 The `.github/workflows/*` workflows remain the GitHub fallback while the Forgejo migration settles.
 `.github/workflows/contract-capture.yml` captures response shapes from a real server on demand
 (`PRODUCT_SPEC 22.5`).
