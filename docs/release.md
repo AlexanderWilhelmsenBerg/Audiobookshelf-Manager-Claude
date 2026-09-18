@@ -259,7 +259,10 @@ The cache namespace enforces a trust boundary:
 - pull-request verification is restore-only and can consume the default branch's
   `bookwave-gradle-trusted-v1-` cache, but never publishes branch-controlled cache state;
 - main `release-checks` is the sole writer and publishes `bookwave-gradle-trusted-v1-` only when
-  `forgejo.ref == 'refs/heads/main'`, with one archive per Gradle configuration hash;
+  `forgejo.ref == 'refs/heads/main'`, with one archive per Gradle configuration hash. On a main push where
+  that exact key is missing, it runs one normal `verifyDebug` to seed trusted debug outputs before the
+  release checks finish and the cache is saved; ordinary source-only merges with an exact hit keep skipping
+  the duplicate PR verification;
 - the signing-capable APK job is restore-only and may read the trusted namespace only when the workflow
   itself is dispatched from `main`, before signing secrets are staged. A feature-branch dispatch builds
   cold; to build a PR with cache, dispatch **Build APK** from `main` and enter that PR number.
