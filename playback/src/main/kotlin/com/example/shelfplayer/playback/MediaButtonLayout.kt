@@ -29,8 +29,7 @@ internal object MediaButtonLayout {
         skipActions: List<CommandButton>,
         overflowActions: List<CommandButton>,
         carBound: Boolean,
-    ): List<CommandButton> =
-        if (carBound) {
+    ): List<CommandButton> = if (carBound) {
             outputActions + skipActions + overflowActions
         } else {
             skipActions + outputActions + overflowActions
