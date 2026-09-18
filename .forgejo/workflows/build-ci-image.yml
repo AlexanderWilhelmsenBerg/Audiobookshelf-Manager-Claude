@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm "$LOCAL_IMAGE" bookwave-ci-verify
-          docker run --rm "$LOCAL_IMAGE" bash -lc 'node --version && java -version && sdkmanager --version && gitleaks version'
+          docker run --rm "$LOCAL_IMAGE" bash -c 'node --version && java -version && sdkmanager --version && gitleaks version'
 
       - name: Publish image
         if: ${{ inputs.publish }}
