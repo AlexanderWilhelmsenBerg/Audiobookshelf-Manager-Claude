@@ -14,13 +14,16 @@
 # Usage:
 #   seed-contract-media.sh <media-dir> [image]
 #   seed-contract-media.sh docker-volume:<name> [image]
+#   seed-contract-media.sh docker-container:<name> [image]
 #
-# The docker-volume form is for containerized CI runners. It keeps the existing local/GitHub path mode
-# unchanged while allowing the job and the runner's container engine to share a throwaway named volume.
+# The docker-volume form is retained for callers that intentionally share a named volume. The
+# docker-container form generates the fixture in the writable layer of a stopped throwaway container;
+# a containerized CI client can then export it with `docker cp` without relying on host paths or
+# cross-container volume semantics.
 
 set -euo pipefail
 
-MEDIA_TARGET="${1:?usage: seed-contract-media.sh <media-dir|docker-volume:name> [image]}"
+MEDIA_TARGET="${1:?usage: seed-contract-media.sh <media-dir|docker-volume:name|docker-container:name> [image]}"
 IMAGE="${2:-ghcr.io/advplyr/audiobookshelf:2.36.0}"
 
 BOOK_DIR="Marisol Holt/The Salt Harbour"
@@ -45,12 +48,24 @@ MULTI_DIR="Marisol Holt/The Tidewatch Cycle"
 MULTI_ONE="01 - Tidewatch.mp3"
 MULTI_TWO="02 - Tidewatch.mp3"
 
-if [[ "$MEDIA_TARGET" == docker-volume:* ]]; then
+DOCKER_RUN_ARGS=()
+
+if [[ "$MEDIA_TARGET" == docker-container:* ]]; then
+  SEED_CONTAINER="${MEDIA_TARGET#docker-container:}"
+  if [[ ! "$SEED_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+    echo "invalid docker container name: $SEED_CONTAINER" >&2
+    exit 2
+  fi
+  docker rm -f "$SEED_CONTAINER" >/dev/null 2>&1 || true
+  DOCKER_RUN_ARGS=(--name "$SEED_CONTAINER")
+  MEDIA_DISPLAY="docker container $SEED_CONTAINER:/media"
+elif [[ "$MEDIA_TARGET" == docker-volume:* ]]; then
   MEDIA_MOUNT="${MEDIA_TARGET#docker-volume:}"
   if [[ ! "$MEDIA_MOUNT" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
     echo "invalid docker volume name: $MEDIA_MOUNT" >&2
     exit 2
   fi
+  DOCKER_RUN_ARGS=(--rm -v "$MEDIA_MOUNT:/media")
   MEDIA_DISPLAY="docker volume $MEDIA_MOUNT"
 else
   MEDIA_DIR="$MEDIA_TARGET"
@@ -64,12 +79,14 @@ else
     echo "  media already present at $MEDIA_DIR/$BOOK_DIR" >&2
     exit 0
   fi
+
+  DOCKER_RUN_ARGS=(--rm -v "$MEDIA_MOUNT:/media")
 fi
 
 # `-t` sits with the *output* options on purpose. As an input option after `-i anullsrc` it applies to
 # the next input — the metadata file — and the silence generator then runs unbounded, which produces a
 # multi-gigabyte file instead of an eight-second one.
-docker run --rm -v "$MEDIA_MOUNT:/media" --entrypoint sh "$IMAGE" -c '
+docker run "${DOCKER_RUN_ARGS[@]}" --entrypoint sh "$IMAGE" -c '
   set -e
   mkdir -p "/media/'\"$BOOK_DIR\"'" "/media/'\"$MULTI_DIR\"'"
   printf "%s\n" \
