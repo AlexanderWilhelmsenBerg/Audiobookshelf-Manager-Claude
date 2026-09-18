@@ -346,24 +346,62 @@ jobs:
             env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:assembleDebug --max-workers=4
           fi
 
-      - name: Identify built APK
+      - name: Identify and verify built APK
         id: version
         env:
           PR_NUMBER: ${{ steps.source.outputs.pr }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SOURCE_BRANCH: ${{ steps.source.outputs.branch }}
+          EXPECTED_SIGNER: ${{ steps.keystore.outputs.signer }}
         run: |
           set -euo pipefail
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
           APK="$(find app/build/outputs/apk -name '*.apk' | head -1)"
           test -n "$APK"
           BADGING="$("$AAPT" dump badging "$APK")"
-          NAME="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$BADGING" | head -1)"
-          CODE="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<<"$BADGING" | head -1)"
+          NAME="$(sed -n "s/.*versionName='\([^\']*\)'.*/\1/p" <<<"$BADGING" | head -1)"
+          CODE="$(sed -n "s/.*versionCode='\([^\']*\)'.*/\1/p" <<<"$BADGING" | head -1)"
+          PKG="$(sed -n "s/^package: name='\([^\']*\)'.*/\1/p" <<<"$BADGING" | head -1)"
+          SIGNER="$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null \
+            | sed -n 's/.*certificate SHA-256 digest: //p' | head -1 \
+            | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+
+          test -n "$NAME" && test -n "$CODE" && test -n "$PKG" || {
+            echo "::error::Could not read APK identity from $APK."
+            exit 1
+          }
+          test -n "$SIGNER" || { echo "::error::Built APK is unsigned."; exit 1; }
+          test "$SIGNER" = "$EXPECTED_SIGNER" || {
+            echo "::error::Built APK signer does not match the configured BookWave signing keystore."
+            echo "expected=${EXPECTED_SIGNER:0:16}…"
+            echo "actual=${SIGNER:0:16}…"
+            exit 1
+          }
+
           label="$NAME-$CODE${PR_NUMBER:+-pr$PR_NUMBER}"
           echo "apk=$APK" >> "$FORGEJO_OUTPUT"
           echo "label=$label" >> "$FORGEJO_OUTPUT"
+          echo "package=$PKG" >> "$FORGEJO_OUTPUT"
+          echo "signer=$SIGNER" >> "$FORGEJO_OUTPUT"
           echo "Built ${{ inputs.variant }} APK $label from ${SOURCE_SHA:0:8}."
+          echo "Package: $PKG"
+          echo "Signer: ${SIGNER:0:16}… (matches configured keystore)"
 
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+          if [ -n "$summary" ]; then
+            {
+              echo "### ${{ inputs.variant }} APK"
+              echo
+              echo "| | |"
+              echo "| --- | --- |"
+              echo "| Package | \`$PKG\` |"
+              echo "| Version | \`$NAME\` (code \`$CODE\`) |"
+              echo "| Commit | \`${SOURCE_SHA:0:8}\` on \`$SOURCE_BRANCH\` |"
+              echo "| Signer | \`${SIGNER:0:16}…\` |"
+              echo "| Checks | ${{ inputs.run_checks && 'verifyDebug passed' || 'not run — assembled only' }} |"
+            } >> "$summary"
+          fi
       - name: Stage APK artifact
         id: artifact
         env:
