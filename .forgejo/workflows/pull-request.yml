@@ -252,9 +252,8 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}-${{ forgejo.sha }}
+          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}
           restore-keys: |
-            bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}
             bookwave-gradle-pr-v1-
             bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
             bookwave-gradle-trusted-v1-
@@ -331,7 +330,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}-${{ forgejo.sha }}
+          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}
 
       - name: Upload dependency report
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
