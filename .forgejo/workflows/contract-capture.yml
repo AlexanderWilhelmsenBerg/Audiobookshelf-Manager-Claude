@@ -7,6 +7,10 @@ name: Contract capture
 # Keeping that capability out of automatic pull-request execution reduces both runner load and
 # the security blast radius. Run it explicitly when network contracts need to be refreshed or
 # verified against a chosen Audiobookshelf image.
+#
+# The default is pinned to the server version represented by the committed fixtures. Use the manual
+# server_image input to probe latest or another version deliberately; upstream drift should not make an
+# unrelated migration PR fail merely because the floating latest tag moved.
 
 on:
   workflow_dispatch:
@@ -14,7 +18,7 @@ on:
       server_image:
         description: Audiobookshelf image to capture against
         required: false
-        default: ghcr.io/advplyr/audiobookshelf:latest
+        default: ghcr.io/advplyr/audiobookshelf:2.36.0
         type: string
 
 permissions:
@@ -87,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          SERVER_IMAGE="${REQUESTED_SERVER_IMAGE:-ghcr.io/advplyr/audiobookshelf:latest}"
+          SERVER_IMAGE="${REQUESTED_SERVER_IMAGE:-ghcr.io/advplyr/audiobookshelf:2.36.0}"
           RUN_KEY="${FORGEJO_RUN_ID:-manual}-${FORGEJO_RUN_ATTEMPT:-1}"
           CONTRACT_CONTAINER="bookwave-contract-abs-$RUN_KEY"
           CONTRACT_CONFIG_VOLUME="bookwave-contract-config-$RUN_KEY"
