@@ -142,6 +142,81 @@ class DownloadsViewModelTest {
     }
 
     @Test
+    fun `running recovery action pauses and does not enqueue`() = runTest {
+        val scheduler = TrackingScheduler()
+        val viewModel = viewModel(scheduler)
+        val bookId = LibraryItemId("tidewatch")
+
+        viewModel.onRecoveryAction(bookId, DownloadRecoveryState.Running)
+
+        assertEquals(listOf(bookId), downloads.paused)
+        assertEquals(listOf(bookId), scheduler.cancelled)
+        assertEquals(emptyList(), downloads.requested)
+        assertEquals(emptyList(), scheduler.enqueued)
+    }
+
+    @Test
+    fun `paused recovery action resumes through the checked download path`() = runTest {
+        val scheduler = TrackingScheduler()
+        val bookId = LibraryItemId("tidewatch")
+        downloads.emit(listOf(offlineBook("tidewatch", state = DownloadState.Paused)))
+        val viewModel = viewModel(scheduler)
+
+        viewModel.onRecoveryAction(bookId, DownloadRecoveryState.Paused)
+
+        assertEquals(emptyList(), downloads.paused)
+        assertEquals(listOf(bookId), downloads.requested)
+        assertEquals(listOf(bookId), scheduler.enqueued)
+    }
+
+    /**
+     * BW-DL-03's regression guard: a terminal failure is Retry, never a synthetic Pause transition.
+     * The same DownloadBookUseCase path as Resume retains the existing manifest/file rows and re-checks
+     * authorization/free space before this fake scheduler sees an enqueue.
+     */
+    @Test
+    fun `failed recovery action retries and never calls pause`() = runTest {
+        val scheduler = TrackingScheduler()
+        val bookId = LibraryItemId("tidewatch")
+        downloads.emit(
+            listOf(
+                offlineBook(
+                    id = "tidewatch",
+                    state = DownloadState.Failed,
+                    failureSummary = SAFE_FAILURE,
+                ),
+            ),
+        )
+        val viewModel = viewModel(scheduler)
+
+        viewModel.onRecoveryAction(bookId, DownloadRecoveryState.Failed)
+
+        assertEquals(emptyList(), downloads.paused, "Failed must never call PauseDownloadUseCase")
+        assertEquals(emptyList(), scheduler.cancelled, "Failed must never cancel work as a pause")
+        assertEquals(listOf(bookId), downloads.requested)
+        assertEquals(listOf(bookId), scheduler.enqueued)
+    }
+
+    @Test
+    fun `states without a manual recovery action call neither use case`() = runTest {
+        val scheduler = TrackingScheduler()
+        val viewModel = viewModel(scheduler)
+        val bookId = LibraryItemId("tidewatch")
+
+        listOf(
+            DownloadRecoveryState.Complete,
+            DownloadRecoveryState.Queued,
+            DownloadRecoveryState.Waiting,
+            DownloadRecoveryState.Retrying,
+        ).forEach { state -> viewModel.onRecoveryAction(bookId, state) }
+
+        assertEquals(emptyList(), downloads.paused)
+        assertEquals(emptyList(), downloads.requested)
+        assertEquals(emptyList(), scheduler.cancelled)
+        assertEquals(emptyList(), scheduler.enqueued)
+    }
+
+    @Test
     fun `reports the total the downloads occupy`() = runTest {
         downloads.emit(listOf(offlineBook("tidewatch"), offlineBook("harrow")))
 
@@ -245,29 +320,60 @@ class DownloadsViewModelTest {
         assertNull(viewModel.message.value)
     }
 
-    private fun viewModel() = DownloadsViewModel(
+    private fun viewModel(scheduler: TrackingScheduler = TrackingScheduler()) = DownloadsViewModel(
         downloads = downloads,
         files = files,
         verification = verification,
         profiles = FakeProfiles(),
         locations = locations,
-        // The pause pair is constructed against the same fakes. `PauseDownloadUseCaseTest` in `:domain` is
-        // where the transitions are asserted; here they exist so the screen has something to call.
-        pauseDownload = PauseDownloadUseCase(FakeProfiles(), downloads, InertScheduler),
-        downloadBook = DownloadBookUseCase(FakeProfiles(), InertAssets, downloads, InertScheduler),
+        // The real use cases are intentionally kept in this ViewModel test: #18 is about routing the row's
+        // presentation state to exactly one of them, not about replacing that seam with a mock.
+        pauseDownload = PauseDownloadUseCase(FakeProfiles(), downloads, scheduler),
+        downloadBook = DownloadBookUseCase(FakeProfiles(), ActionAssets, downloads, scheduler),
         library = library,
     )
 
-    /** Neither half of the pause pair is under test here, so neither is allowed to reach anything real. */
-    private object InertScheduler : DownloadScheduler {
-        override suspend fun enqueue(serverId: ServerId, itemId: LibraryItemId, category: TrafficCategory) = Unit
+    private class TrackingScheduler : DownloadScheduler {
+        val enqueued = mutableListOf<LibraryItemId>()
+        val cancelled = mutableListOf<LibraryItemId>()
 
-        override suspend fun cancel(serverId: ServerId, itemId: LibraryItemId) = Unit
+        override suspend fun enqueue(
+            profileId: ProfileId,
+            serverId: ServerId,
+            itemId: LibraryItemId,
+            category: TrafficCategory,
+        ) {
+            enqueued += itemId
+        }
+
+        override suspend fun cancel(serverId: ServerId, itemId: LibraryItemId) {
+            cancelled += itemId
+        }
     }
 
-    private object InertAssets : BookAssetSource {
+    /** One ordinary asset is enough to let DownloadBookUseCase reach its repository/scheduler checks. */
+    private object ActionAssets : BookAssetSource {
         override suspend fun assetsFor(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookAssets> =
-            AppResult.Success(BookAssets(files = emptyList(), coverUrl = null, estimatedBytes = 0))
+            AppResult.Success(
+                BookAssets(
+                    files = listOf(
+                        OfflineFile(
+                            remoteFileId = "${bookId.value}-1",
+                            index = 0,
+                            uri = "",
+                            state = DownloadState.Queued,
+                            expectedBytes = 1_024,
+                            downloadedBytes = 0,
+                            mimeType = "audio/mpeg",
+                            duration = null,
+                            eTag = null,
+                            lastModified = null,
+                        ),
+                    ),
+                    coverUrl = null,
+                    estimatedBytes = 1_024,
+                ),
+            )
     }
 
     private val locations = FakeLocations()
@@ -370,6 +476,9 @@ class DownloadsViewModelTest {
     private class FakeDownloads : DownloadRepository {
         private val stored = MutableStateFlow<List<OfflineBook>>(emptyList())
         val pinned = mutableListOf<Pair<LibraryItemId, Boolean>>()
+        val requested = mutableListOf<LibraryItemId>()
+        val paused = mutableListOf<LibraryItemId>()
+        val queued = mutableListOf<LibraryItemId>()
 
         fun emit(books: List<OfflineBook>) {
             stored.value = books
@@ -391,7 +500,11 @@ class DownloadsViewModelTest {
             itemId: LibraryItemId,
             profileId: ProfileId,
             files: List<OfflineFile>,
-        ): AppResult<OfflineBook> = notUsed()
+        ): AppResult<OfflineBook> {
+            requested += itemId
+            val existing = stored.value.firstOrNull { it.serverId == serverId && it.itemId == itemId }
+            return existing?.let { AppResult.Success(it) } ?: notUsed()
+        }
 
         override suspend fun updateFile(
             serverId: ServerId,
@@ -408,11 +521,15 @@ class DownloadsViewModelTest {
         override suspend fun markFailed(serverId: ServerId, itemId: LibraryItemId, summary: String): AppResult<Unit> =
             AppResult.Success(Unit)
 
-        override suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> =
-            AppResult.Success(Unit)
+        override suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> {
+            paused += itemId
+            return AppResult.Success(Unit)
+        }
 
-        override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> =
-            AppResult.Success(Unit)
+        override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> {
+            queued += itemId
+            return AppResult.Success(Unit)
+        }
 
         override suspend fun setPinned(
             serverId: ServerId,
@@ -498,6 +615,7 @@ class DownloadsViewModelTest {
                 requiresReauthentication = false,
                 lastUsedAt = Instant.EPOCH,
                 isFixture = false,
+                canDownload = true,
             ),
         )
 
