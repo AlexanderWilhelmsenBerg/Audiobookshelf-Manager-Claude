@@ -93,7 +93,6 @@ jobs:
           CONTRACT_SEED_CONTAINER="bookwave-contract-seed-$RUN_KEY"
           CONTRACT_CONFIG_VOLUME="bookwave-contract-config-$RUN_KEY"
           CONTRACT_METADATA_VOLUME="bookwave-contract-metadata-$RUN_KEY"
-          CONTRACT_MEDIA_VOLUME="bookwave-contract-media-$RUN_KEY"
           CONTRACT_WORK_TEMP="$FORGEJO_WORKSPACE/.ci-contract-capture"
           CONTRACT_BASE_URL="http://audiobookshelf:80"
 
@@ -106,27 +105,20 @@ jobs:
             echo "CONTRACT_SEED_CONTAINER=$CONTRACT_SEED_CONTAINER"
             echo "CONTRACT_CONFIG_VOLUME=$CONTRACT_CONFIG_VOLUME"
             echo "CONTRACT_METADATA_VOLUME=$CONTRACT_METADATA_VOLUME"
-            echo "CONTRACT_MEDIA_VOLUME=$CONTRACT_MEDIA_VOLUME"
             echo "CONTRACT_WORK_TEMP=$CONTRACT_WORK_TEMP"
             echo "CONTRACT_BASE_URL=$CONTRACT_BASE_URL"
           } >> "$FORGEJO_ENV"
 
           docker volume create "$CONTRACT_CONFIG_VOLUME" >/dev/null
           docker volume create "$CONTRACT_METADATA_VOLUME" >/dev/null
-          docker volume create "$CONTRACT_MEDIA_VOLUME" >/dev/null
 
           chmod +x scripts/seed-contract-media.sh
           env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
-            ./scripts/seed-contract-media.sh "docker-volume:$CONTRACT_MEDIA_VOLUME" "$SERVER_IMAGE"
+            ./scripts/seed-contract-media.sh "docker-container:$CONTRACT_SEED_CONTAINER" "$SERVER_IMAGE"
 
-          # Bridge the fixture through the Docker client instead of mounting the same named volume into
-          # Audiobookshelf. With Forgejo Runner -> Docker CLI -> Podman API, the latter looked valid but
-          # Audiobookshelf observed an empty /audiobooks. docker cp streams through the client, so this
-          # does not depend on host paths or cross-container named-volume resolution.
-          docker rm -f "$CONTRACT_SEED_CONTAINER" >/dev/null 2>&1 || true
-          docker create --name "$CONTRACT_SEED_CONTAINER" \
-            -v "$CONTRACT_MEDIA_VOLUME:/media" \
-            --entrypoint sh "$SERVER_IMAGE" -c 'true' >/dev/null
+          # The seed helper intentionally leaves a stopped throwaway container whose own writable layer
+          # contains /media. Export that through the Docker client, then discard the seed container.
+          # This avoids host bind paths and avoids Podman's cross-container named-volume edge cases.
           docker cp "$CONTRACT_SEED_CONTAINER:/media/." "$CONTRACT_WORK_TEMP/media"
           docker rm -f "$CONTRACT_SEED_CONTAINER" >/dev/null
           if ! find "$CONTRACT_WORK_TEMP/media" -type f -print -quit | grep -q .; then
@@ -276,5 +268,4 @@ jobs:
           [ -n "${CONTRACT_SEED_CONTAINER:-}" ] && docker rm -f "$CONTRACT_SEED_CONTAINER" >/dev/null 2>&1
           [ -n "${CONTRACT_CONFIG_VOLUME:-}" ] && docker volume rm -f "$CONTRACT_CONFIG_VOLUME" >/dev/null 2>&1
           [ -n "${CONTRACT_METADATA_VOLUME:-}" ] && docker volume rm -f "$CONTRACT_METADATA_VOLUME" >/dev/null 2>&1
-          [ -n "${CONTRACT_MEDIA_VOLUME:-}" ] && docker volume rm -f "$CONTRACT_MEDIA_VOLUME" >/dev/null 2>&1
           exit 0
