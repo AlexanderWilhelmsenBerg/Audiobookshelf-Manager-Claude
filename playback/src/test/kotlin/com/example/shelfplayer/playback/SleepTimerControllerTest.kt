@@ -264,8 +264,7 @@ class SleepTimerControllerTest {
     }
 
     private class FakePlaybackHistoryRepository : PlaybackHistoryRepository {
-        override fun observe(bookId: LibraryItemId, limit: Int): Flow<List<PlaybackHistoryEntry>> =
-            flowOf(emptyList())
+        override fun observe(bookId: LibraryItemId, limit: Int): Flow<List<PlaybackHistoryEntry>> = flowOf(emptyList())
 
         override suspend fun record(
             bookId: LibraryItemId,
