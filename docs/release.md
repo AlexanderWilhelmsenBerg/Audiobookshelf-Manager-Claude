@@ -248,17 +248,18 @@ Gradle directory. The cache action is pinned to commit
 `org.gradle.caching=true`. Workspace `build/` directories are deliberately not cached.
 
 `scripts/ci/gradle-cache-key.sh` hashes the tracked Gradle configuration inputs (Gradle Kotlin DSL files,
-`build-logic`, `gradle/`, and `gradle.properties`). Each successful commit gets an immutable cache
-snapshot. A later commit first restores the nearest snapshot with the same configuration hash, then may
-publish its own snapshot. This lets Gradle reuse verified dependencies and task outputs while its normal task
-input fingerprints remain authoritative for source changes.
+`build-logic`, `gradle/`, and `gradle.properties`). Each Gradle configuration hash gets one immutable cache
+snapshot per trust namespace. Source-only commits reuse that snapshot instead of creating another full archive;
+a new archive is created only when tracked Gradle/build inputs change (or the namespace version is deliberately
+bumped). This bounds runner disk growth while letting Gradle reuse verified dependencies and any compatible
+task outputs; Gradle's normal task input fingerprints remain authoritative for source changes.
 
 The cache namespaces enforce a trust boundary:
 
 - pull-request verification restores the trusted default-branch cache when useful, but writes only the
-  branch-scoped `bookwave-gradle-pr-v1-` namespace;
+  branch-scoped `bookwave-gradle-pr-v1-` namespace, with one archive per Gradle configuration hash;
 - main `release-checks` writes the `bookwave-gradle-trusted-v1-` namespace only when
-  `forgejo.ref == 'refs/heads/main'`;
+  `forgejo.ref == 'refs/heads/main'`, again with one archive per Gradle configuration hash;
 - the signing-capable APK job is restore-only and may read the trusted namespace only when the workflow
   itself is dispatched from `main`, before signing secrets are staged. A feature-branch dispatch builds
   cold; to build a PR with cache, dispatch **Build APK** from `main` and enter that PR number.
