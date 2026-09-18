@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,7 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ForegroundRealtimeSyncCoordinatorTest {
     @Test
     fun `foreground owns exactly one collector independent of Home`() = runTest {
