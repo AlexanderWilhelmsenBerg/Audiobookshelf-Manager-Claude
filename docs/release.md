@@ -259,8 +259,9 @@ The cache namespaces enforce a trust boundary:
   branch-scoped `bookwave-gradle-pr-v1-` namespace;
 - main `release-checks` writes the `bookwave-gradle-trusted-v1-` namespace only when
   `forgejo.ref == 'refs/heads/main'`;
-- the signing-capable APK job is restore-only and reads only the trusted namespace, before signing secrets
-  are staged.
+- the signing-capable APK job is restore-only and may read the trusted namespace only when the workflow
+  itself is dispatched from `main`, before signing secrets are staged. A feature-branch dispatch builds
+  cold; to build a PR with cache, dispatch **Build APK** from `main` and enter that PR number.
 
 This separation prevents repository-controlled PR code from creating a cache later consumed by a
 secret-bearing signing job. Cache misses are valid and fall back to a normal cold Gradle run; the cache is a
