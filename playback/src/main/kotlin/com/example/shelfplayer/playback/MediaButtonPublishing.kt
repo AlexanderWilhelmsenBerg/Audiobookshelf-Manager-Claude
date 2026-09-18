@@ -51,10 +51,7 @@ internal object MediaButtonPublishing {
             published = State(outputButtons, carBound)
         }
 
-        private data class State(
-            val outputButtons: OutputButtons,
-            val carBound: Boolean,
-        )
+        private data class State(val outputButtons: OutputButtons, val carBound: Boolean)
     }
 
     /**
