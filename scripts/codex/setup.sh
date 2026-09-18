@@ -135,6 +135,10 @@ if [[ -n "${BOOKWAVE_DEBUG_KEYSTORE_BASE64:-}" ]]; then
         base64 --decode > "$HOME/.bookwave/debug.keystore"
     chmod 600 "$HOME/.bookwave/debug.keystore"
     printf 'Restored the stable BookWave debug keystore.\n'
+elif [[ -n "${BOOKWAVE_DEBUG_KEYSTORE:-}" ]]; then
+    [[ -f "$BOOKWAVE_DEBUG_KEYSTORE" ]] ||
+        fail "BOOKWAVE_DEBUG_KEYSTORE points at a missing file: $BOOKWAVE_DEBUG_KEYSTORE"
+    printf 'Using the explicitly configured BookWave debug keystore.\n'
 elif [[ -f "$HOME/.bookwave/debug.keystore" ]]; then
     printf 'Stable BookWave debug keystore is already present.\n'
 else

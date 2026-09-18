@@ -44,11 +44,11 @@ that encodes nothing:
 
 | | |
 | --- | --- |
-| **`versionName`** | `0.9.6.1`. The product version, hand-bumped, and only when the product moves. It carries no per-build fact, so there is nothing in it to go stale. |
-| **`versionCode`** | `BASE_VERSION_CODE` (1000) **+ the workflow run number**. `apk.yml` passes `BOOKWAVE_RUN_NUMBER`; GitHub increments it on every run of that file regardless of branch, and never decreases it. Builds therefore sort by when they were built, which is the order a device is asked to install them in. |
+| **`versionName`** | `0.10.6.1`. The product version, hand-bumped for the Forgejo migration while preserving the existing suffix. It carries no per-build fact, so there is nothing in it to go stale. |
+| **`versionCode`** | `BASE_VERSION_CODE` (2000) **+ the workflow run number**. `apk.yml` passes `BOOKWAVE_RUN_NUMBER`; Forgejo increments it on every run of that workflow. The floor was raised during the Forgejo migration because the new CI system starts a fresh run-number sequence. |
 | **Which pull request** | `BOOKWAVE_PR` and `BOOKWAVE_BRANCH`, shown as the **Source** row in Settings → About: `PR 67 · fix/playback-session-renewal`. Also in the artefact's name and in the debug console's pasted report. |
 | **The commit** | `BOOKWAVE_COMMIT`, shown as the **Build** row beside the build type. |
-| **A local build** | No run number, so code `1000` and branch `local`. It will not install over a CI build; `-Pbookwave.versionCode=N` is the way round that. |
+| **A local build** | No run number, so code `2000` and branch `local`. It will not install over a later CI build; `-Pbookwave.versionCode=N` is the way round that. |
 
 Why any of this was needed at all: the hand-incremented pair went stale exactly as R-04 predicted. The name
 sat at `0.9.6-auto-shelves` for nine builds once, and had reached dozens of pull requests at
@@ -56,9 +56,9 @@ sat at `0.9.6-auto-shelves` for nine builds once, and had reached dozens of pull
 window names the wrong build, and a tester holding two APKs cannot tell them apart.
 
 **Two things still make codes go backwards, and one edit fixes both.** A local build falls back to the floor;
-and the run number restarts at 1 if `apk.yml` is renamed or replaced, because GitHub counts per workflow
-file. Raise `BASE_VERSION_CODE` past the highest code already installed — it is round and sparse so that the
-fix is a one-digit edit. The same edit is what a Play upload needs if its predecessor used a higher code:
+and the run number restarts when the workflow moves to a new CI counter. The Forgejo migration is one such
+restart, so the floor moved from 1000 to 2000. Raise `BASE_VERSION_CODE` past the highest code already
+installed whenever that happens again. The same edit is what a Play upload needs if its predecessor used a higher code:
 Play requires a strictly increasing code and its refusal of a reused code is permanent, which is the one
 part of the original decision that no scheme softens.
 
@@ -101,24 +101,29 @@ properties. It never overwrites an existing key; it can explicitly adopt and ver
 & .\scripts\device-test\06-create-signing-key.ps1
 ```
 
-### In the Build APK workflow
+### In the Forgejo Build APK workflow
 
-Set four repository secrets and choose the `release` variant:
+Set these four Forgejo repository secrets:
 
 | Secret | Value |
 | --- | --- |
-| `BOOKWAVE_SIGNING_KEYSTORE_BASE64` | `base64 -w0 ~/.bookwave/upload.jks` |
+| `BOOKWAVE_SIGNING_KEYSTORE_BASE64` | base64 of the upload/signing keystore |
 | `BOOKWAVE_SIGNING_STORE_PASSWORD` | the keystore password |
-| `BOOKWAVE_SIGNING_KEY_ALIAS` | `upload` |
+| `BOOKWAVE_SIGNING_KEY_ALIAS` | the configured alias |
 | `BOOKWAVE_SIGNING_KEY_PASSWORD` | the key password |
 
-The run summary reports signed or unsigned by asking `apksigner` about the artefact, not by checking
-whether a secret was set.
+The Forgejo **Build APK** workflow is manual-only and deliberately uses this same signing identity for both
+the debug and release APKs. Debug remains a separate install because its application ID is
+`org.homebord.bookwave.debug`; the shared certificate only makes the signing identity stable. The workflow
+fails if any of the four secrets is absent and verifies the certificate fingerprint from the finished APK
+against the staged keystore before uploading the artefact.
 
-### The debug build has its own key, and the upload key must not be it
+### Local debug builds still default to their own stable key
 
-**Set nothing.** The debug build signs itself with a stable key at `~/.bookwave/debug.keystore`, created by
-the build on first use, and the four values above have nothing to do with it.
+Outside the protected Forgejo Build APK workflow, the debug build still defaults to
+`~/.bookwave/debug.keystore`. `DebugSigning.kt` also supports an explicit
+`BOOKWAVE_DEBUG_KEYSTORE` plus credentials; Forgejo uses that supported override to point debug at the
+same external upload key as release.
 
 That is a change from what this section used to say. The four inputs used to sign the debug build as well,
 on the reasoning that a stable key turns `adb install -r` into an upgrade — the sign-in, the passcode, the
@@ -139,8 +144,9 @@ uninstall the arrangement existed to prevent. A tester reported having to uninst
 
 `bookwave.signing.debug.stable=false` opts out and restores AGP's own behaviour.
 `bookwave.signing.debug.keystore` (or `BOOKWAVE_DEBUG_KEYSTORE`) points it somewhere else — which is how a
-second machine or a runner shares one key. The Build APK workflow reads
-`BOOKWAVE_DEBUG_KEYSTORE_BASE64` for exactly that.
+second machine or a runner shares one key. The legacy GitHub Build APK workflow can restore a dedicated
+`BOOKWAVE_DEBUG_KEYSTORE_BASE64`; the Forgejo Build APK workflow instead sets `BOOKWAVE_DEBUG_KEYSTORE`
+to the protected upload/signing keystore so debug and release deliberately share the same signer there.
 
 Measured on 2026-08-30: the generated `~/.bookwave/debug.keystore` and the APK built from it both report
 `aa5fd8f7…`, matching the `~/.android/debug.keystore` it was copied from — so adoption does what it claims
@@ -154,8 +160,9 @@ across machines:
 | No key, build 1 (generated keystore deleted between builds, as a fresh runner has none) | `e005ff57…` |
 | No key, build 2 | `aa5fd8f7…` — **different**, hence the uninstall |
 
-The `benchmark` variant follows the debug key automatically: it pins `signingConfigs.debug`, and this
-changes that config rather than the build type, so it stays installable on a machine with no upload key.
+The `benchmark` variant follows the debug signing config automatically. In ordinary local builds that is
+the local stable debug key; in the protected Forgejo APK workflow the explicit debug-keystore override points
+the config at the shared signing key.
 
 ### An unsigned release now says so, while it is building
 
