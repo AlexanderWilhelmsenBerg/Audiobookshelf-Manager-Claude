@@ -109,20 +109,19 @@ private fun Project.intInput(property: String, env: String): Int? = stringInput(
  * per-build fact in here to fall out of date. Which build this is comes from the code and the About tab's
  * **Source** row instead.
  */
-private const val VERSION_NAME = "0.9.6.1"
+private const val VERSION_NAME = "0.10.6.1"
 
 /**
  * The floor every build's code clears, and the one number to raise when codes need to jump.
  *
- * `1000` was chosen to sit clearly above the codes the two earlier schemes emitted — 40 from the
- * hand-incremented one, and 67 to 72 from the pull-request one, which are installed on test devices. A
- * build from this scheme therefore installs over anything either of them produced.
+ * `2000` is the post-Forgejo migration floor. The old GitHub `apk.yml` workflow had already consumed
+ * its own run-number sequence above the original 1000 floor; Forgejo starts a new per-workflow counter, so
+ * keeping 1000 would make freshly built APKs look like downgrades to Android even though they are newer.
  *
- * Raise it — to `2000`, say — if the run number ever restarts, or before a Play upload whose predecessor
- * used a higher code. It is deliberately round and deliberately sparse so that raising it is a one-digit
- * edit rather than an arithmetic problem.
+ * Raise this floor again if the workflow run number ever restarts, or before a Play upload whose predecessor
+ * used a higher code. It is deliberately round and sparse so the correction is an explicit migration step.
  */
-private const val BASE_VERSION_CODE = 1000
+private const val BASE_VERSION_CODE = 2000
 
 /** What a build with no pull request reports in `PULL_REQUEST`, and what the About row tests against. */
 private const val NO_PULL_REQUEST = "none"
