@@ -222,7 +222,9 @@ That image was published from source commit `65c7928fabad759bf3c666c9a76a4e30309
 `.forgejo/workflows/build-ci-image.yml` is manual-only. It builds and self-checks the image, and publishing
 requires the protected `BOOKWAVE_PACKAGE_TOKEN` repository secret. The image contract is Node 22, JDK 17,
 Android command-line tools build 15859902, platform-tools, Android platform 36, build-tools 36.0.0, and
-gitleaks 8.30.1. All downloaded image inputs that are not supplied by Debian are checksum-pinned.
+gitleaks 8.30.1. The manually downloaded Android command-line-tools and gitleaks archives are
+SHA-256 pinned; Android SDK packages themselves are installed by `sdkmanager`, and the Node base follows
+the declared `node:22-bookworm` tag.
 
 Forgejo Runner reaches Forgejo itself over an internal HTTP service URL while jobs consume packages through
 the canonical TLS host. Large OCI uploads through the external reverse-proxy path returned HTTP 502 during
