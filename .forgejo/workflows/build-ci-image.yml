@@ -80,9 +80,11 @@ jobs:
           # The runner talks to Forgejo through an internal HTTP service URL, but OCI clients
           # must use the canonical TLS registry endpoint that is reachable from job containers.
           registry="forgejo.homebord.org"
-          # Push large layers directly to the Forgejo service on the runner network. This avoids
-          # proxy/tunnel upload limits while keeping the published/pulled package name canonical.
-          publish_registry="192.168.40.51:3000"
+          # FORGEJO_SERVER_URL is the runner's direct Forgejo service endpoint. Use it only for
+          # large layer uploads; consumers and verification always use the canonical TLS registry.
+          publish_registry="${FORGEJO_SERVER_URL#https://}"
+          publish_registry="${publish_registry#http://}"
+          publish_registry="${publish_registry%/}"
           owner="${FORGEJO_REPOSITORY%%/*}"
           local_image="bookwave-ci:${FORGEJO_RUN_ID}"
           remote_image="$registry/$owner/bookwave-ci:$REQUESTED_TAG"
