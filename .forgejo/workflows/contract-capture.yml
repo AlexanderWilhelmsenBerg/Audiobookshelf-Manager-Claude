@@ -96,7 +96,7 @@ jobs:
           CONTRACT_BASE_URL="http://audiobookshelf:80"
 
           rm -rf "$CONTRACT_WORK_TEMP"
-          mkdir -p "$CONTRACT_WORK_TEMP/captured" "$CONTRACT_WORK_TEMP/media"
+          mkdir -p "$CONTRACT_WORK_TEMP/captured"
 
           {
             echo "SERVER_IMAGE=$SERVER_IMAGE"
@@ -110,19 +110,6 @@ jobs:
           docker volume create "$CONTRACT_CONFIG_VOLUME" >/dev/null
           docker volume create "$CONTRACT_METADATA_VOLUME" >/dev/null
 
-          chmod +x scripts/seed-contract-media.sh
-          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
-            ./scripts/seed-contract-media.sh docker-tar "$SERVER_IMAGE" \
-            > "$CONTRACT_WORK_TEMP/media.tar"
-          tar -C "$CONTRACT_WORK_TEMP/media" -xf "$CONTRACT_WORK_TEMP/media.tar"
-          rm -f "$CONTRACT_WORK_TEMP/media.tar"
-          if ! find "$CONTRACT_WORK_TEMP/media" -type f -print -quit | grep -q .; then
-            echo "::error::The generated contract-media tar stream was empty."
-            exit 1
-          fi
-          echo "Staged contract media:"
-          find "$CONTRACT_WORK_TEMP/media" -maxdepth 4 -type f -print | sort
-
           docker rm -f "$CONTRACT_CONTAINER" >/dev/null 2>&1 || true
           docker run -d --name "$CONTRACT_CONTAINER" \
             --network "$CONTRACT_JOB_NETWORK" \
@@ -130,10 +117,17 @@ jobs:
             -v "$CONTRACT_CONFIG_VOLUME:/config" \
             -v "$CONTRACT_METADATA_VOLUME:/metadata" \
             "$SERVER_IMAGE"
-          docker exec "$CONTRACT_CONTAINER" mkdir -p /audiobooks
-          docker cp "$CONTRACT_WORK_TEMP/media/." "$CONTRACT_CONTAINER:/audiobooks/"
+
+          chmod +x scripts/seed-contract-media.sh
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
+            ./scripts/seed-contract-media.sh "docker-exec:$CONTRACT_CONTAINER" "$SERVER_IMAGE"
+
           echo "Audiobookshelf media tree:"
-          docker exec "$CONTRACT_CONTAINER" find /audiobooks -maxdepth 4 -type f -print
+          docker exec "$CONTRACT_CONTAINER" find /audiobooks -maxdepth 4 -type f -print | sort
+          if ! docker exec "$CONTRACT_CONTAINER" sh -c 'find /audiobooks -type f -print -quit | grep -q .'; then
+            echo "::error::Audiobookshelf still has no contract media after in-container seeding."
+            exit 1
+          fi
 
 
       - name: Record the server version under test
