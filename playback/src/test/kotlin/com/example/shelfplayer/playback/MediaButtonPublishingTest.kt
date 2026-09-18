@@ -66,7 +66,6 @@ class MediaButtonPublishingTest {
         assertEquals(listOf(buttons, buttons), seen)
     }
 
-
     @Test
     fun `publication tracker reacts to the first bind and final unbind without storms`() {
         val tracker = MediaButtonPublishing.Tracker()
