@@ -237,8 +237,34 @@ Only Android-heavy jobs use the image: pull-request `verifyDebug`, main `release
 `apk` job. Policy classification, Gradle wrapper validation, Room-schema checks, secret scanning, and the
 Loopbound web build remain on the ordinary runner. Those Android jobs still run `scripts/codex/setup.sh`,
 but with `BOOKWAVE_ANDROID_SDK_MODE=preinstalled`; setup verifies the exact SDK contract and must not
-download or mutate Android packages. Persistent Gradle caching is intentionally a separate follow-up and is
-not part of this image slice.
+download or mutate Android packages.
+
+### Forgejo Gradle cache
+
+Forgejo Android jobs persist Gradle state through the runner's Actions cache rather than a host-mounted
+Gradle directory. The cache action is pinned to commit
+`0057852bfaa89a56745cba8c7296529d2fc39830` (actions/cache v4.3.0). The cached paths are
+`~/.gradle/caches` and `~/.gradle/wrapper`, which includes Gradle's existing local build cache because
+`org.gradle.caching=true`. Workspace `build/` directories are deliberately not cached.
+
+`scripts/ci/gradle-cache-key.sh` hashes the tracked Gradle configuration inputs (Gradle Kotlin DSL files,
+`build-logic`, `gradle/`, and `gradle.properties`). Each successful commit gets an immutable cache
+snapshot. A later commit first restores the nearest snapshot with the same configuration hash, then may
+publish its own snapshot. This lets Gradle reuse verified dependencies and task outputs while its normal task
+input fingerprints remain authoritative for source changes.
+
+The cache namespaces enforce a trust boundary:
+
+- pull-request verification restores the trusted default-branch cache when useful, but writes only the
+  branch-scoped `bookwave-gradle-pr-v1-` namespace;
+- main `release-checks` writes the `bookwave-gradle-trusted-v1-` namespace only when
+  `forgejo.ref == 'refs/heads/main'`;
+- the signing-capable APK job is restore-only and reads only the trusted namespace, before signing secrets
+  are staged.
+
+This separation prevents repository-controlled PR code from creating a cache later consumed by a
+secret-bearing signing job. Cache misses are valid and fall back to a normal cold Gradle run; the cache is a
+performance layer, never a correctness prerequisite.
 
 The `.github/workflows/*` workflows remain the GitHub fallback while the Forgejo migration settles.
 `.github/workflows/contract-capture.yml` captures response shapes from a real server on demand
