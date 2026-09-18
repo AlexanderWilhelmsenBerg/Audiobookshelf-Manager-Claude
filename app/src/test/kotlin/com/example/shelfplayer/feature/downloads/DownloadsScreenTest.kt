@@ -1,5 +1,8 @@
 package com.example.shelfplayer.feature.downloads
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -53,10 +56,10 @@ class DownloadsScreenTest {
 
     @Test
     fun `queued waiting retrying and complete rows expose no recovery action`() {
-        var state = DownloadRecoveryState.Queued
+        var recoveryState by mutableStateOf(DownloadRecoveryState.Queued)
         compose.setContent {
             DownloadsScreen(
-                uiState = state(state),
+                uiState = state(recoveryState),
                 onRemove = { _, _ -> },
                 onPinnedChanged = { _, _, _ -> },
                 onRecoveryAction = { _, _ -> },
@@ -71,7 +74,7 @@ class DownloadsScreenTest {
             DownloadRecoveryState.Retrying,
             DownloadRecoveryState.Complete,
         ).forEach { next ->
-            state = next
+            recoveryState = next
             compose.waitForIdle()
             compose.onNodeWithContentDescription("Pause this download").assertDoesNotExist()
             compose.onNodeWithContentDescription("Resume this download").assertDoesNotExist()
