@@ -334,15 +334,16 @@ jobs:
           BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
           BOOKWAVE_SIGNING_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
           BOOKWAVE_SIGNING_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
-          BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_STORE_PASSWORD || '' }}
-          BOOKWAVE_DEBUG_KEY_ALIAS: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_KEY_ALIAS || '' }}
-          BOOKWAVE_DEBUG_KEY_PASSWORD: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_KEY_PASSWORD || '' }}
+          BOOKWAVE_DEBUG_KEYSTORE: ${{ steps.keystore.outputs.path }}
+          BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          BOOKWAVE_DEBUG_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          BOOKWAVE_DEBUG_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           if [ "${{ inputs.variant }}" = "release" ]; then
-            ./gradlew :app:assembleRelease --max-workers=4
+            env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:assembleRelease --max-workers=4
           else
-            ./gradlew :app:assembleDebug --max-workers=4
+            env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:assembleDebug --max-workers=4
           fi
 
       - name: Identify built APK
