@@ -15,15 +15,17 @@
 #   seed-contract-media.sh <media-dir> [image]
 #   seed-contract-media.sh docker-volume:<name> [image]
 #   seed-contract-media.sh docker-container:<name> [image]
+#   seed-contract-media.sh docker-tar [image]
 #
 # The docker-volume form is retained for callers that intentionally share a named volume. The
-# docker-container form generates the fixture in the writable layer of a stopped throwaway container;
-# a containerized CI client can then export it with `docker cp` without relying on host paths or
-# cross-container volume semantics.
+# docker-container form generates the fixture in the writable layer of a stopped throwaway container.
+# The docker-tar form is preferred for remote/containerized CI: it generates the fixture and streams a
+# tar archive to stdout from the same running container, avoiding host paths, named-volume sharing and
+# stopped-container copy semantics.
 
 set -euo pipefail
 
-MEDIA_TARGET="${1:?usage: seed-contract-media.sh <media-dir|docker-volume:name|docker-container:name> [image]}"
+MEDIA_TARGET="${1:?usage: seed-contract-media.sh <media-dir|docker-volume:name|docker-container:name|docker-tar> [image]}"
 IMAGE="${2:-ghcr.io/advplyr/audiobookshelf:2.36.0}"
 
 BOOK_DIR="Marisol Holt/The Salt Harbour"
@@ -50,7 +52,10 @@ MULTI_TWO="02 - Tidewatch.mp3"
 
 DOCKER_RUN_ARGS=()
 
-if [[ "$MEDIA_TARGET" == docker-container:* ]]; then
+if [[ "$MEDIA_TARGET" == docker-tar ]]; then
+  DOCKER_RUN_ARGS=(--rm -e BOOKWAVE_EXPORT_MEDIA_TAR=1)
+  MEDIA_DISPLAY="docker tar stream"
+elif [[ "$MEDIA_TARGET" == docker-container:* ]]; then
   SEED_CONTAINER="${MEDIA_TARGET#docker-container:}"
   if [[ ! "$SEED_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
     echo "invalid docker container name: $SEED_CONTAINER" >&2
@@ -135,6 +140,9 @@ docker run "${DOCKER_RUN_ARGS[@]}" --entrypoint sh "$IMAGE" -c '
     -frames:v 1 \
     "/media/'"$MULTI_DIR"'/'"$COVER"'"
   chmod -R a+rw /media
+  if [ "${BOOKWAVE_EXPORT_MEDIA_TAR:-0}" = 1 ]; then
+    tar -C /media -cf - .
+  fi
 '
 
 echo "  seeded $MEDIA_DISPLAY/$BOOK_DIR/$TRACK" >&2
