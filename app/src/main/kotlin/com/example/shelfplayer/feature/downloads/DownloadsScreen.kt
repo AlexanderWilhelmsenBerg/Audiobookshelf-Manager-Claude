@@ -341,27 +341,10 @@ private fun DownloadRowItem(
                 },
             )
         }
-        // BW-DL-03 / #18 — a recovery control exists only when the presentation state owns a concrete
-        // listener action. In particular Failed is Retry, never a disguised Pause; queued/waiting/retrying
-        // stay actionless until #19 supplies and projects WorkManager execution evidence.
-        row.recoveryState.rowAction()?.let { action ->
-            IconButton(onClick = onRecoveryAction) {
-                Icon(
-                    imageVector = when (action) {
-                        DownloadRecoveryAction.Pause -> Icons.Filled.Pause
-                        DownloadRecoveryAction.Resume -> Icons.Filled.PlayArrow
-                        DownloadRecoveryAction.Retry -> Icons.Filled.Refresh
-                    },
-                    contentDescription = stringResource(
-                        when (action) {
-                            DownloadRecoveryAction.Pause -> R.string.downloads_pause
-                            DownloadRecoveryAction.Resume -> R.string.downloads_resume
-                            DownloadRecoveryAction.Retry -> R.string.downloads_retry
-                        },
-                    ),
-                )
-            }
-        }
+        DownloadRecoveryActionButton(
+            recoveryState = row.recoveryState,
+            onClick = onRecoveryAction,
+        )
         IconToggleButton(checked = row.isPinned, onCheckedChange = onPinnedChanged) {
             Icon(
                 imageVector = Icons.Filled.PushPin,
@@ -377,6 +360,30 @@ private fun DownloadRowItem(
                 contentDescription = stringResource(R.string.downloads_remove),
             )
         }
+    }
+}
+
+/**
+ * BW-DL-03 / #18 — the row's one recovery affordance, isolated so adding recovery states does not turn
+ * [DownloadRowItem] into a branch-heavy policy owner. The state-to-action decision still lives in
+ * [DownloadRecoveryState.rowAction], shared with the ViewModel.
+ */
+@Composable
+private fun DownloadRecoveryActionButton(
+    recoveryState: com.example.shelfplayer.domain.download.DownloadRecoveryState,
+    onClick: () -> Unit,
+) {
+    val action = recoveryState.rowAction() ?: return
+    val (icon, description) = when (action) {
+        DownloadRecoveryAction.Pause -> Icons.Filled.Pause to R.string.downloads_pause
+        DownloadRecoveryAction.Resume -> Icons.Filled.PlayArrow to R.string.downloads_resume
+        DownloadRecoveryAction.Retry -> Icons.Filled.Refresh to R.string.downloads_retry
+    }
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = icon,
+            contentDescription = stringResource(description),
+        )
     }
 }
 
