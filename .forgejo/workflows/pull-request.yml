@@ -252,14 +252,17 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}
+          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}-${{ forgejo.sha }}
           restore-keys: |
+            bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}
             bookwave-gradle-pr-v1-
             bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
             bookwave-gradle-trusted-v1-
 
       - name: Report Gradle cache restore
-        run: echo "gradle_cache_hit=${{ steps.gradle_cache.outputs.cache-hit }}"
+        run: |
+          echo "gradle_cache_hit=${{ steps.gradle_cache.outputs.cache-hit }}"
+          echo "gradle_cache_matched_key=${{ steps.gradle_cache.outputs.cache-matched-key }}"
 
       - name: Prepare BookWave Android environment
         env:
@@ -328,7 +331,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}
+          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}-${{ forgejo.sha }}
 
       - name: Upload dependency report
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
