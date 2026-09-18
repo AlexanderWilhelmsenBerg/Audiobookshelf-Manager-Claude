@@ -222,6 +222,9 @@ class PlaybackService : MediaLibraryService() {
      */
     private var outputButtons: OutputButtons = OutputButtons.None
 
+    /** Issue #38 — car binding changes media-button priority even when the visible output actions do not. */
+    private val mediaButtonPublishing = MediaButtonPublishing.Tracker()
+
     /**
      * PRODUCT_SPEC PLAY-002 / ROUTE-002 — whether this book has actually made sound in this process.
      *
@@ -1090,12 +1093,16 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun republishOutputButtons() {
         val outputs = audioOutputs.outputs.value
+        val carBound = carConnections.isConnected()
         val next = AudioOutputRoles.buttons(
             outputs = outputs,
             selectedId = audioOutputs.selectedId.value,
-            carConnected = carConnections.isConnected(),
+            carConnected = carBound,
         )
-        if (next == outputButtons) return
+        if (!mediaButtonPublishing.needsPublish(next, carBound)) {
+            outputButtons = next
+            return
+        }
         outputButtons = next
         logOutputState(outputs, next)
         publishMediaButtons()
@@ -1273,13 +1280,16 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun publishMediaButtons() {
         val current = session ?: return
+        val carBound = carConnections.isConnected()
+        val buttons = mediaButtons(carBound)
         MediaButtonPublishing.publish(
-            buttons = mediaButtons(),
+            buttons = buttons,
             toAllControllers = current::setMediaButtonPreferences,
             toNotificationController = current.mediaNotificationControllerInfo?.let { controller ->
-                { buttons -> current.setMediaButtonPreferences(controller, buttons) }
+                { published -> current.setMediaButtonPreferences(controller, published) }
             },
         )
+        mediaButtonPublishing.markPublished(outputButtons, carBound)
     }
 
     /**
@@ -1299,7 +1309,8 @@ class PlaybackService : MediaLibraryService() {
      * `MediaButtonSlotConversionTest` runs the real conversion over this list in all four states and
      * asserts that invariant.
      */
-    private fun mediaButtons(): List<CommandButton> = MediaButtonLayout.inPriorityOrder(
+    private fun mediaButtons(carBound: Boolean = carConnections.isConnected()): List<CommandButton> =
+        MediaButtonLayout.inPriorityOrder(
         outputActions = outputCommandButtons(),
         skipActions = listOf(
             skipButton(
@@ -1324,6 +1335,7 @@ class PlaybackService : MediaLibraryService() {
             ),
         ),
         overflowActions = listOfNotNull(sleepTimerButton()),
+        carBound = carBound,
     )
 
     /** PRODUCT_SPEC PLAY-008 — the running timer's remaining minutes, or `null` when no timer is set. */
