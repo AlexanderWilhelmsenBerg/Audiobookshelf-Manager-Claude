@@ -1293,50 +1293,44 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * PRODUCT_SPEC PLAY-002 / PLAY-007 — every button, in the order that decides who gets the car's bar.
+     * PRODUCT_SPEC PLAY-002 / PLAY-007 — the shared system-media layout.
      *
-     * **List order is the mechanism, not a style choice.** Pass 1 of
-     * `CommandButton.getCustomLayoutFromMediaButtonPreferences` walks this list and gives a contested slot
-     * to the *first* enabled button whose chain names it, so the output actions are emitted before the
-     * skips in order to win the two primary positions. The owner asked for exactly that trade after a
-     * device run: *"I need them more than seek forward and back."*
+     * Android Auto and API-33+ System UI consume the same media-button preferences, so issue #38 switches
+     * priority from the actual car-controller binding state instead of pretending the surfaces can receive
+     * simultaneous independent layouts. With no car bound, skips lead. While a car is bound, Car/Headset
+     * lead when those actions are available.
      *
-     * **The back slot is never left empty, and that is a safety property rather than tidiness.** When no
-     * button holds it, Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS`, and this app has no
-     * `ForwardingPlayer` intercepting it — so a head unit's *previous* would reach `Player.seekToPrevious`
-     * and restart a thirty-four-hour book, the defect `NotificationButtons` exists to prevent. Car takes
-     * the slot when it is shown and skip back takes it when Car is not, so one of them always does.
-     * `MediaButtonSlotConversionTest` runs the real conversion over this list in all four states and
-     * asserts that invariant.
+     * SLOT_BACK remains occupied in both states. Vacating it lets Media3 expose raw Previous again, which
+     * can reach Player.seekToPrevious() and restart this single-window audiobook.
      */
     private fun mediaButtons(carBound: Boolean = carConnections.isConnected()): List<CommandButton> =
         MediaButtonLayout.inPriorityOrder(
-        outputActions = outputCommandButtons(),
-        skipActions = listOf(
-            skipButton(
-                icon = NotificationButtons.backIcon(skips.back),
-                action = NotificationButtons.ACTION_SKIP_BACK,
-                label = resources.getQuantityString(
-                    R.plurals.player_notification_skip_back,
-                    skips.back.inWholeSeconds.toInt(),
-                    skips.back.inWholeSeconds.toInt(),
+            outputActions = outputCommandButtons(),
+            skipActions = listOf(
+                skipButton(
+                    icon = NotificationButtons.backIcon(skips.back),
+                    action = NotificationButtons.ACTION_SKIP_BACK,
+                    label = resources.getQuantityString(
+                        R.plurals.player_notification_skip_back,
+                        skips.back.inWholeSeconds.toInt(),
+                        skips.back.inWholeSeconds.toInt(),
+                    ),
+                    slot = CommandButton.SLOT_BACK,
                 ),
-                slot = CommandButton.SLOT_BACK,
-            ),
-            skipButton(
-                icon = NotificationButtons.forwardIcon(skips.forward),
-                action = NotificationButtons.ACTION_SKIP_FORWARD,
-                label = resources.getQuantityString(
-                    R.plurals.player_notification_skip_forward,
-                    skips.forward.inWholeSeconds.toInt(),
-                    skips.forward.inWholeSeconds.toInt(),
+                skipButton(
+                    icon = NotificationButtons.forwardIcon(skips.forward),
+                    action = NotificationButtons.ACTION_SKIP_FORWARD,
+                    label = resources.getQuantityString(
+                        R.plurals.player_notification_skip_forward,
+                        skips.forward.inWholeSeconds.toInt(),
+                        skips.forward.inWholeSeconds.toInt(),
+                    ),
+                    slot = CommandButton.SLOT_FORWARD,
                 ),
-                slot = CommandButton.SLOT_FORWARD,
             ),
-        ),
-        overflowActions = listOfNotNull(sleepTimerButton()),
-        carBound = carBound,
-    )
+            overflowActions = listOfNotNull(sleepTimerButton()),
+            carBound = carBound,
+        )
 
     /** PRODUCT_SPEC PLAY-008 — the running timer's remaining minutes, or `null` when no timer is set. */
     private fun sleepTimerButton(): CommandButton? =
@@ -1347,16 +1341,16 @@ class PlaybackService : MediaLibraryService() {
     /**
      * PRODUCT_SPEC PLAY-002 — the car button and the headset button, or as many of them as apply.
      *
-     * **These hold the car's two app-claimable bar positions, by the owner's decision.** Android Auto
+     * **These hold the car's two app-claimable bar positions while a car controller is bound.** Android Auto
      * reserves the *previous* and *next* positions and hands them to an app's custom actions when the app
      * does not advertise those transport commands — which BookWave does not, because a book is one timeline
      * window (ADR-0016). Two earlier attempts asked for the secondary slots instead; a device run showed
      * the bar unchanged, because the legacy conversion a car is served by branches on the back, forward and
      * overflow slots and on nothing else. So these now name the real primary slots.
      *
-     * The cost is deliberate and was chosen after a device run: **skip back and skip forward move to the
-     * overflow menu**, on the car *and* on the phone's system media controls, which read the same single
-     * layout. `docs/risks.md` R-109 records the trade and that the owner accepted it.
+     * Issue #38 narrows the original trade: the skips move to overflow only while a car controller is
+     * actually bound. When no car is bound the same shared layout is reordered so skips reclaim the phone's
+     * compact slots; Car/Headset remain available in overflow where Media3 supports it.
      *
      * Absent rather than disabled when there is nothing to act on. A head unit draws a disabled custom
      * action as a grey square with no explanation, and a driver cannot ask it why; one fewer button is a
