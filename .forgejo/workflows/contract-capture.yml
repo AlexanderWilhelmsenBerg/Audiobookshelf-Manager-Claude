@@ -99,6 +99,16 @@ jobs:
           rm -rf "$CONTRACT_WORK_TEMP"
           mkdir -p "$CONTRACT_WORK_TEMP/captured"
 
+          {
+            echo "SERVER_IMAGE=$SERVER_IMAGE"
+            echo "CONTRACT_CONTAINER=$CONTRACT_CONTAINER"
+            echo "CONTRACT_CONFIG_VOLUME=$CONTRACT_CONFIG_VOLUME"
+            echo "CONTRACT_METADATA_VOLUME=$CONTRACT_METADATA_VOLUME"
+            echo "CONTRACT_MEDIA_VOLUME=$CONTRACT_MEDIA_VOLUME"
+            echo "CONTRACT_WORK_TEMP=$CONTRACT_WORK_TEMP"
+            echo "CONTRACT_BASE_URL=$CONTRACT_BASE_URL"
+          } >> "$FORGEJO_ENV"
+
           docker volume create "$CONTRACT_CONFIG_VOLUME" >/dev/null
           docker volume create "$CONTRACT_METADATA_VOLUME" >/dev/null
           docker volume create "$CONTRACT_MEDIA_VOLUME" >/dev/null
@@ -116,15 +126,6 @@ jobs:
             -v "$CONTRACT_MEDIA_VOLUME:/audiobooks" \
             "$SERVER_IMAGE"
 
-          {
-            echo "SERVER_IMAGE=$SERVER_IMAGE"
-            echo "CONTRACT_CONTAINER=$CONTRACT_CONTAINER"
-            echo "CONTRACT_CONFIG_VOLUME=$CONTRACT_CONFIG_VOLUME"
-            echo "CONTRACT_METADATA_VOLUME=$CONTRACT_METADATA_VOLUME"
-            echo "CONTRACT_MEDIA_VOLUME=$CONTRACT_MEDIA_VOLUME"
-            echo "CONTRACT_WORK_TEMP=$CONTRACT_WORK_TEMP"
-            echo "CONTRACT_BASE_URL=$CONTRACT_BASE_URL"
-          } >> "$FORGEJO_ENV"
 
       - name: Record the server version under test
         run: |
@@ -240,7 +241,10 @@ jobs:
 
       - name: Server log on failure
         if: failure()
-        run: docker logs "$CONTRACT_CONTAINER" 2>&1 | tail -200 || true
+        run: |
+          if [ -n "${CONTRACT_CONTAINER:-}" ]; then
+            docker logs "$CONTRACT_CONTAINER" 2>&1 | tail -200 || true
+          fi
 
       - name: Clean up disposable contract server
         if: always()
