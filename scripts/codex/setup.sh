@@ -213,31 +213,40 @@ log "Gradle wrapper"
 
 PREWARM="${BOOKWAVE_CODEX_PREWARM:-full}"
 
-if [[ "$PREWARM" == "full" ]]; then
-    log "Pre-warming BookWave verification graph"
+case "$PREWARM" in
+    full)
+        log "Pre-warming BookWave verification graph"
 
-    set +e
-    ./gradlew ktlintCheck
-    KTLINT_STATUS=$?
+        set +e
+        ./gradlew ktlintCheck
+        KTLINT_STATUS=$?
 
-    ./gradlew verifyDebug --continue -Pshelfplayer.warningsAsErrors=true
-    VERIFY_STATUS=$?
-    set -e
+        ./gradlew verifyDebug --continue -Pshelfplayer.warningsAsErrors=true
+        VERIFY_STATUS=$?
+        set -e
 
-    # A Room/KSP task can export a schema. Environment preparation must not hand the agent source-tree
-    # changes that did not exist when the task started.
-    git restore --worktree -- core/database/schemas 2>/dev/null || true
-    git clean -fd -- core/database/schemas >/dev/null 2>&1 || true
+        # A Room/KSP task can export a schema. Environment preparation must not hand the agent source-tree
+        # changes that did not exist when the task started.
+        git restore --worktree -- core/database/schemas 2>/dev/null || true
+        git clean -fd -- core/database/schemas >/dev/null 2>&1 || true
 
-    if (( KTLINT_STATUS != 0 || VERIFY_STATUS != 0 )); then
-        printf '%s\n' \
-            'WARNING: the branch did not pass the complete pre-warm.' \
-            'The environment is still usable; the failing build may be exactly what Codex was asked to repair.'
-    fi
-else
-    log "Light Gradle pre-warm"
-    ./gradlew help >/dev/null
-fi
+        if (( KTLINT_STATUS != 0 || VERIFY_STATUS != 0 )); then
+            printf '%s\n' \
+                'WARNING: the branch did not pass the complete pre-warm.' \
+                'The environment is still usable; the failing build may be exactly what Codex was asked to repair.'
+        fi
+        ;;
+    light)
+        log "Light Gradle pre-warm"
+        ./gradlew help >/dev/null
+        ;;
+    none)
+        log "Skipping Gradle pre-warm"
+        ;;
+    *)
+        fail "BOOKWAVE_CODEX_PREWARM must be one of: full, light, none (got: $PREWARM)"
+        ;;
+esac
 
 log "BookWave Codex environment ready"
 printf '%s\n' \

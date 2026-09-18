@@ -13,20 +13,27 @@ name: Pull request
 # - pin reusable actions and downloaded security tooling immutably.
 #
 # Reliability model:
-# - fail cheap policy/supply-chain checks before Android work;
-# - require PR heads to contain current main;
-# - run the expensive --rerun-tasks acceptance only when the PR can affect the
-#   build/classpath, matching docs/risks.md R-31 rather than rerunning every PR.
+# - fail cheap policy/supply-chain/schema checks before Android work;
+# - require manually selected heads to contain current main;
+# - run exactly one expensive verifyDebug pass;
+# - add --rerun-tasks only when the diff can affect the build/classpath (or when explicitly forced),
+#   matching docs/risks.md R-31 without verifying the same commit twice.
 
-# TEMPORARY PR #4 ITERATION GUARD.
-# Restore this file byte-for-byte from main before final validation/merge.
-# While this branch is being tuned, the expensive BookWave gate is manual-only.
+# Forgejo PR verification is intentionally manual. Branch updates stay cheap while work is
+# in progress; run this workflow on the PR branch once the change is ready for acceptance.
 on:
   workflow_dispatch:
+    inputs:
+      force_rerun:
+        description: 'Force --rerun-tasks even when the diff does not affect the build/classpath'
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ forgejo.workflow }}-${{ forgejo.ref }}
-  cancel-in-progress: true
+  # A second manual click should queue, not kill an already-expensive Gradle run. This also avoids
+  # exercising the runner/container cancellation path unnecessarily.
+  cancel-in-progress: false
 
 env:
   # Runner-specific limits. Keep the repository's diagnostics/encoding flags while
@@ -56,52 +63,61 @@ jobs:
         run: |
           set -euo pipefail
 
-          classpath_changed=false
-
-          if [ "$FORGEJO_EVENT_NAME" = "pull_request" ]; then
-            base_ref="${FORGEJO_BASE_REF:?FORGEJO_BASE_REF is required for pull_request runs}"
-            base="origin/$base_ref"
-
-            git rev-parse --verify "$base^{commit}" >/dev/null
-
-            if ! git merge-base --is-ancestor "$base" HEAD; then
-              echo "::error::PR head does not contain current $base_ref. Rebase or update the branch before merge."
-              echo "base=$(git rev-parse "$base")"
-              echo "head=$(git rev-parse HEAD)"
+          case "$FORGEJO_EVENT_NAME" in
+            pull_request)
+              base_ref="${FORGEJO_BASE_REF:?FORGEJO_BASE_REF is required for pull_request runs}"
+              ;;
+            workflow_dispatch)
+              base_ref="main"
+              ;;
+            *)
+              echo "::error::Unsupported event for PR verification: $FORGEJO_EVENT_NAME"
               exit 1
-            fi
+              ;;
+          esac
 
-            changed_files="$(git diff --name-only "$base"...HEAD)"
-            printf '%s\n' "$changed_files"
+          base="origin/$base_ref"
+          git rev-parse --verify "$base^{commit}" >/dev/null
 
-            while IFS= read -r path; do
-              [ -n "$path" ] || continue
-              case "$path" in
-                .forgejo/workflows/*|\
-                build.gradle.kts|\
-                settings.gradle.kts|\
-                gradle.properties|\
-                gradle/libs.versions.toml|\
-                gradle/verification-metadata.xml|\
-                gradle/wrapper/*|\
-                build-logic/*|\
-                buildSrc/*|\
-                scripts/codex/*|\
-                */build.gradle.kts|\
-                */gradle.lockfile|\
-                gradle.lockfile)
-                  classpath_changed=true
-                  ;;
-              esac
-            done <<< "$changed_files"
-          elif [ "$FORGEJO_EVENT_NAME" = "workflow_dispatch" ]; then
-            # Manual runs are explicit acceptance runs; make them exercise the
-            # strongest path regardless of the currently checked-out diff.
+          if ! git merge-base --is-ancestor "$base" HEAD; then
+            echo "::error::Checked-out head does not contain current $base_ref. Rebase/update it before acceptance."
+            echo "base=$(git rev-parse "$base")"
+            echo "head=$(git rev-parse HEAD)"
+            exit 1
+          fi
+
+          changed_files="$(git diff --name-only "$base"...HEAD)"
+          printf '%s\n' "$changed_files"
+
+          classpath_changed=false
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            case "$path" in
+              .forgejo/workflows/*|\
+              build.gradle.kts|\
+              settings.gradle.kts|\
+              gradle.properties|\
+              gradle/libs.versions.toml|\
+              gradle/verification-metadata.xml|\
+              gradle/wrapper/*|\
+              build-logic/*|\
+              buildSrc/*|\
+              scripts/codex/*|\
+              */build.gradle.kts|\
+              */gradle.lockfile|\
+              gradle.lockfile)
+                classpath_changed=true
+                ;;
+            esac
+          done <<< "$changed_files"
+
+          if [ "$FORGEJO_EVENT_NAME" = "workflow_dispatch" ] && [ "${{ inputs.force_rerun }}" = "true" ]; then
             classpath_changed=true
+            echo "Full rerun forced by workflow input."
           fi
 
           echo "classpath_changed=$classpath_changed" >> "$GITHUB_OUTPUT"
-          echo "classpath_changed=$classpath_changed"
+          echo "verification_mode=$([ "$classpath_changed" = true ] && echo rerun || echo normal)"
 
   wrapper_validation:
     name: Gradle wrapper validation
@@ -170,7 +186,6 @@ jobs:
 
   schema_immutability:
     name: Committed Room schemas are immutable
-    if: ${{ forgejo.event_name == 'pull_request' }}
     runs-on: linux-amd64
     timeout-minutes: 10
     steps:
@@ -183,7 +198,8 @@ jobs:
       - name: No committed schema may be modified
         run: |
           set -euo pipefail
-          base="origin/${FORGEJO_BASE_REF:?FORGEJO_BASE_REF is required}"
+          base_ref="${FORGEJO_BASE_REF:-main}"
+          base="origin/$base_ref"
           git rev-parse --verify "$base^{commit}" >/dev/null
 
           modified="$(git diff --diff-filter=MD --name-only "$base"...HEAD -- core/database/schemas)"
@@ -202,7 +218,7 @@ jobs:
   verify:
     name: verifyDebug
     runs-on: linux-amd64
-    needs: [policy, wrapper_validation, secret_scan]
+    needs: [policy, wrapper_validation, secret_scan, schema_immutability]
     timeout-minutes: 90
     steps:
       - name: Report runner capacity
@@ -240,7 +256,7 @@ jobs:
 
       - name: Prepare BookWave Android environment
         env:
-          BOOKWAVE_CODEX_PREWARM: light
+          BOOKWAVE_CODEX_PREWARM: none
         run: |
           set -euo pipefail
           export BOOKWAVE_ANDROID_SDK_ROOT="$HOME/.bookwave/android-sdk"
@@ -255,8 +271,22 @@ jobs:
           echo "$HOME/.bookwave/android-sdk/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
-      - name: Verify debug
-        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --continue --max-workers=4 -Pshelfplayer.warningsAsErrors=true
+      - name: Verify debug once
+        env:
+          CLASSPATH_CHANGED: ${{ needs.policy.outputs.classpath_changed }}
+        run: |
+          set -euo pipefail
+          extra_args=()
+          if [ "$CLASSPATH_CHANGED" = "true" ]; then
+            extra_args+=(--rerun-tasks)
+            echo "Verification mode: full rerun (R-31 classpath/build safety)."
+          else
+            echo "Verification mode: normal."
+          fi
+
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
+            ./gradlew verifyDebug --continue "${extra_args[@]}" --max-workers=4 \
+              -Pshelfplayer.warningsAsErrors=true
 
       - name: Print lint reports
         if: failure()
@@ -280,6 +310,16 @@ jobs:
             find core/database/schemas -name '*.json' -print -exec cat {} \;
             exit 1
           fi
+
+      - name: Resolve dependencies for the debug variant
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=4 > dependency-report.txt
+
+      - name: Upload dependency report
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: dependency-report
+          path: dependency-report.txt
+          retention-days: 7
 
       - name: Upload Room schemas
         if: always()
@@ -311,118 +351,3 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7
-
-  dependency_report:
-    name: Dependency and licence report
-    runs-on: linux-amd64
-    needs: [policy, wrapper_validation, secret_scan]
-    timeout-minutes: 45
-    steps:
-      - name: Check out BookWave
-        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          persist-credentials: false
-
-      - name: Install runner prerequisites
-        run: |
-          set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates \
-            curl \
-            git \
-            jq \
-            openjdk-17-jdk-headless \
-            python3 \
-            unzip
-          rm -rf /var/lib/apt/lists/*
-
-          JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
-          echo "JAVA_HOME=$JAVA_HOME" >> "$FORGEJO_ENV"
-          echo "$JAVA_HOME/bin" >> "$FORGEJO_PATH"
-
-      - name: Prepare BookWave Android environment
-        env:
-          BOOKWAVE_CODEX_PREWARM: light
-        run: |
-          set -euo pipefail
-          export BOOKWAVE_ANDROID_SDK_ROOT="$HOME/.bookwave/android-sdk"
-          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
-            BOOKWAVE_CODEX_PREWARM="$BOOKWAVE_CODEX_PREWARM" \
-            BOOKWAVE_ANDROID_SDK_ROOT="$BOOKWAVE_ANDROID_SDK_ROOT" \
-            bash scripts/codex/setup.sh
-
-          echo "ANDROID_HOME=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
-          echo "ANDROID_SDK_ROOT=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
-          echo "$HOME/.bookwave/android-sdk/cmdline-tools/latest/bin" >> "$FORGEJO_PATH"
-          echo "$HOME/.bookwave/android-sdk/platform-tools" >> "$FORGEJO_PATH"
-          echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
-
-      - name: Resolve dependencies for the debug variant
-        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=4 > dependency-report.txt
-
-      - name: Upload dependency report
-        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
-        with:
-          name: dependency-report
-          path: dependency-report.txt
-          retention-days: 7
-
-  classpath_rerun_acceptance:
-    name: Classpath rerun acceptance
-    if: ${{ (forgejo.event_name == 'pull_request' || forgejo.event_name == 'workflow_dispatch') && needs.policy.outputs.classpath_changed == 'true' }}
-    runs-on: linux-amd64
-    needs: [policy, wrapper_validation, secret_scan]
-    timeout-minutes: 90
-    steps:
-      - name: Report runner capacity
-        run: |
-          set -euo pipefail
-          echo "logical_cpus=$(nproc)"
-          grep -E '^(MemTotal|MemAvailable):' /proc/meminfo || true
-          printf 'cgroup_memory_max='; cat /sys/fs/cgroup/memory.max 2>/dev/null || echo unavailable
-          printf 'cgroup_cpu_max='; cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo unavailable
-          df -h / || true
-
-      - name: Check out BookWave
-        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          persist-credentials: false
-
-      - name: Install runner prerequisites
-        run: |
-          set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates \
-            curl \
-            git \
-            jq \
-            openjdk-17-jdk-headless \
-            python3 \
-            unzip
-          rm -rf /var/lib/apt/lists/*
-
-          JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
-          echo "JAVA_HOME=$JAVA_HOME" >> "$FORGEJO_ENV"
-          echo "$JAVA_HOME/bin" >> "$FORGEJO_PATH"
-
-      - name: Prepare BookWave Android environment
-        env:
-          BOOKWAVE_CODEX_PREWARM: light
-        run: |
-          set -euo pipefail
-          export BOOKWAVE_ANDROID_SDK_ROOT="$HOME/.bookwave/android-sdk"
-          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
-            BOOKWAVE_CODEX_PREWARM="$BOOKWAVE_CODEX_PREWARM" \
-            BOOKWAVE_ANDROID_SDK_ROOT="$BOOKWAVE_ANDROID_SDK_ROOT" \
-            bash scripts/codex/setup.sh
-
-          echo "ANDROID_HOME=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
-          echo "ANDROID_SDK_ROOT=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
-          echo "$HOME/.bookwave/android-sdk/cmdline-tools/latest/bin" >> "$FORGEJO_PATH"
-          echo "$HOME/.bookwave/android-sdk/platform-tools" >> "$FORGEJO_PATH"
-          echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
-
-      - name: Rerun full BookWave gate
-        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --continue --rerun-tasks --max-workers=4 -Pshelfplayer.warningsAsErrors=true

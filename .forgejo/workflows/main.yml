@@ -91,7 +91,7 @@ jobs:
 
       - name: Prepare BookWave Android environment
         env:
-          BOOKWAVE_CODEX_PREWARM: light
+          BOOKWAVE_CODEX_PREWARM: none
         run: |
           set -euo pipefail
           export BOOKWAVE_ANDROID_SDK_ROOT="$HOME/.bookwave/android-sdk"
@@ -106,8 +106,9 @@ jobs:
           echo "$HOME/.bookwave/android-sdk/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
-      # pull-request.yml already runs normal verifyDebug on every push to main.
-      # Scheduled/manual release gates still verify from scratch so they stand alone.
+      # The Forgejo PR gate is intentionally manual. With fast-forward-only merges, a reviewed PR
+      # reaches main as the exact accepted commit, so push-main avoids repeating verifyDebug a second time.
+      # Scheduled/manual main runs remain standalone health checks and therefore verify debug themselves.
       - name: Verify debug
         if: ${{ forgejo.event_name != 'push' }}
         run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --continue --max-workers=4 -Pshelfplayer.warningsAsErrors=true

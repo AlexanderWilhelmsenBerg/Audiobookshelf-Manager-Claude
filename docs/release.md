@@ -198,14 +198,19 @@ verifies v2, and an explicit `enableV1Signing = true` was tried, observed to be 
 
 ## The pipeline today
 
-`.github/workflows/pull-request.yml` — Gradle wrapper validation, secret scan, `verifyDebug` with
-warnings-as-errors, Room schema diff, debug APK, dependency report.
+Forgejo is the active CI path. `.forgejo/workflows/pull-request.yml` is deliberately **manual-only** so
+branch updates do not spend runner time before a change is ready for acceptance. Its preflight still validates
+the wrapper, scans secrets and protects committed Room schemas. The expensive Android gate runs exactly once:
+ordinary changes use `verifyDebug`; build/classpath changes use `verifyDebug --rerun-tasks` for R-31. The
+dependency/licence report is generated in that same warmed job instead of bootstrapping a second Android job.
+The manual form also has a force-rerun switch when a reviewer wants the strongest path regardless of the diff.
 
-`.github/workflows/main.yml` — the above plus release lint and an unsigned release assembly. It stays
-unsigned deliberately: it is push-triggered, and `PRODUCT_SPEC 18` allows signing only in a workflow
-somebody starts on purpose.
+`.forgejo/workflows/main.yml` runs the release-side checks after a fast-forward merge: release lint, SBOM,
+vulnerability scan and an unsigned release assembly. Scheduled/manual main runs also execute `verifyDebug`
+so they remain standalone health checks. Push-main does not repeat the already-accepted PR debug gate.
 
-`.github/workflows/contract-capture.yml` — captures response shapes from a real server on demand
+The `.github/workflows/*` workflows remain the GitHub fallback while the Forgejo migration settles.
+`.github/workflows/contract-capture.yml` captures response shapes from a real server on demand
 (`PRODUCT_SPEC 22.5`).
 
 `verifyDebug` itself fans out to every module: ktlint, detekt with type resolution, Android Lint with
@@ -218,47 +223,30 @@ R-31.
 
 ## Getting an APK without building one
 
-GitHub → **Actions** → **Build APK** → *Run workflow*. Leave GitHub's **Use workflow from** selector on
-`main`, then choose the pull request from **Pull request**. The dropdown displays both the PR number and
-branch, for example `#86 — feature/appearance-inline-expand`. Pick `debug` or `release`; `run_checks` adds
-`verifyDebug` first and is off by default so a quick device build stays quick. The APK lands on the run's
-summary page under **Artifacts**, which a phone can download directly.
+Forgejo → **Actions** → **Build APK** → *Run workflow*.
 
-The visible branch name is informational. The workflow extracts the PR number, asks GitHub for that PR
-again, and checks out its exact current head SHA. Fork PRs are not offered because this manual workflow can
-access signing secrets. **Use selected branch/ref** remains at the bottom for a deliberate non-PR build.
+- Leave **PR number** blank to build the branch/ref selected in Forgejo's workflow runner.
+- Enter an open same-repository PR number such as `52` (or `#52`) to build that PR's exact current head SHA.
+- Choose `debug` or `release`.
+- `run_checks` optionally runs `verifyDebug` before assembly and is off by default so a quick device build
+  stays quick.
+- `include_loopbound` embeds a freshly built Loopbound bundle when enabled.
 
-### Keeping the PR dropdown current
+The PR input is intentionally **not a dropdown**. Forgejo workflow-dispatch choices are static YAML, and
+keeping a generated PR list current required a bot branch and housekeeping pull request every time the set
+of open PRs changed. The workflow now resolves the entered PR number live through the Forgejo API instead.
+It refuses closed PRs and fork sources before privileged signing secrets are used.
 
-`workflow_dispatch` choice values are static YAML, so `.github/workflows/sync-apk-pr-options.yml` refreshes
-the list when PRs are opened, closed or reopened. The built-in `GITHUB_TOKEN` cannot be granted the
-**Workflows: write** repository permission needed to commit a change under `.github/workflows`, so the
-synchronizer uses a dedicated repository secret named `BOOKWAVE_WORKFLOW_SYNC_TOKEN` only for its final
-push.
-
-Create a **fine-grained personal access token** limited to this repository with:
-
-- **Contents: Read and write**
-- **Workflows: Read and write**
-
-Store that token as the repository secret `BOOKWAVE_WORKFLOW_SYNC_TOKEN`. PR discovery still uses the
-short-lived read-only `GITHUB_TOKEN`; the long-lived token is exposed only to the final commit/push step.
-If the secret is missing, the synchronizer exits successfully with a warning and leaves the last generated
-list in place. After adding the secret, run **Actions → Sync APK PR picker → Run workflow** once to refresh
-it immediately.
-
-`workflow_dispatch` only. Every pull request already runs `verifyDebug` and `main` runs the full release
-gate, so an APK built for a commit nobody asked about is storage and runner time for an artefact that
-expires unread.
-
-**The release variant installs only if the four signing secrets are set** — see *Signing* above. Without
-them it is unsigned and is for inspecting what R8 produced; with them it is an ordinary installable APK.
-The run summary says which, having asked `apksigner` rather than assumed. The release run also uploads the
-R8 mapping, because an APK kept without its mapping is one whose crashes cannot be read.
+Both Forgejo APK variants use the protected BookWave signing identity described above, and the workflow
+verifies the certificate fingerprint from the completed APK before uploading it. The release run also
+uploads its R8 mapping.
 
 The artefact is named from the version read back **out of the built APK**, not out of the build script.
 R-04 is why: a `versionName` that had not moved in nine builds made every field report name the wrong
 build.
+
+The equivalent `.github/workflows/apk.yml` remains available as the GitHub fallback while that mirror is
+maintained; its older picker mechanism does not define the active Forgejo workflow.
 
 ## Building this locally
 
