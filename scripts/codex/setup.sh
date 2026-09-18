@@ -81,8 +81,16 @@ CMDLINE_DIR="$SDK_ROOT/cmdline-tools/latest"
 CMDLINE_MARKER="$CMDLINE_DIR/.bookwave-commandline-tools-build"
 CMDLINE_INSTALLED=""
 [[ -f "$CMDLINE_MARKER" ]] && CMDLINE_INSTALLED="$(cat "$CMDLINE_MARKER")"
+ANDROID_SDK_MODE="${BOOKWAVE_ANDROID_SDK_MODE:-manage}"
+
+case "$ANDROID_SDK_MODE" in
+    manage|preinstalled) ;;
+    *) fail "BOOKWAVE_ANDROID_SDK_MODE must be manage or preinstalled (got: $ANDROID_SDK_MODE)" ;;
+esac
 
 if [[ "$CMDLINE_INSTALLED" != "$ANDROID_CMDLINE_TOOLS_BUILD" ]]; then
+    [[ "$ANDROID_SDK_MODE" != "preinstalled" ]] ||
+        fail "Preinstalled Android SDK has command-line tools build ${CMDLINE_INSTALLED:-missing}; expected $ANDROID_CMDLINE_TOOLS_BUILD."
     printf 'Installing Android command-line tools build %s...\n' "$ANDROID_CMDLINE_TOOLS_BUILD"
 
     TMP="$(mktemp -d)"
@@ -109,16 +117,28 @@ SDKMANAGER="$CMDLINE_DIR/bin/sdkmanager"
 
 "$SDKMANAGER" --version
 
-# sdkmanager may terminate `yes` with SIGPIPE after the final licence prompt; that is harmless.
-yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null 2>&1 || true
+if [[ "$ANDROID_SDK_MODE" == "preinstalled" ]]; then
+    [[ -x "$SDK_ROOT/platform-tools/adb" ]] ||
+        fail "Preinstalled Android SDK is missing platform-tools/adb."
+    [[ -f "$SDK_ROOT/platforms/android-36/android.jar" ]] ||
+        fail "Preinstalled Android SDK is missing platforms;android-36."
+    [[ -x "$SDK_ROOT/build-tools/36.0.0/aapt2" ]] ||
+        fail "Preinstalled Android SDK is missing build-tools;36.0.0/aapt2."
+    [[ -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]] ||
+        fail "Preinstalled Android SDK is missing build-tools;36.0.0/apksigner."
+    printf 'Using verified preinstalled Android SDK; sdkmanager network access is disabled for this setup run.\n'
+else
+    # sdkmanager may terminate `yes` with SIGPIPE after the final licence prompt; that is harmless.
+    yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null 2>&1 || true
 
-# These are the versions BookWave itself pins. Installing newer platforms/build-tools as decoration
-# would consume cache and network without changing the build.
-"$SDKMANAGER" \
-    --sdk_root="$SDK_ROOT" \
-    "platform-tools" \
-    "platforms;android-36" \
-    "build-tools;36.0.0"
+    # These are the versions BookWave itself pins. Installing newer platforms/build-tools as decoration
+    # would consume cache and network without changing the build.
+    "$SDKMANAGER" \
+        --sdk_root="$SDK_ROOT" \
+        "platform-tools" \
+        "platforms;android-36" \
+        "build-tools;36.0.0"
+fi
 
 printf 'sdk.dir=%s\n' "$SDK_ROOT" > local.properties
 
@@ -253,5 +273,6 @@ printf '%s\n' \
     "Java: ${JAVA_MAJOR}" \
     "Android SDK: ${ANDROID_SDK_ROOT}" \
     "Android command-line tools build: ${ANDROID_CMDLINE_TOOLS_BUILD}" \
+    "Android SDK mode: ${ANDROID_SDK_MODE}" \
     "gitleaks: ${GITLEAKS_VERSION}" \
     "Pre-warm: ${PREWARM}"
