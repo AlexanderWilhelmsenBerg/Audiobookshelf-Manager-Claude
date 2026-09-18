@@ -237,6 +237,30 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Compute Gradle cache key
+        id: gradle_cache_key
+        run: |
+          set -euo pipefail
+          echo "hash=$(bash scripts/ci/gradle-cache-key.sh)" >> "$FORGEJO_OUTPUT"
+
+      # Pull-request jobs are cache read-only. Forgejo exposes default-branch caches to
+      # feature branches, so PRs can benefit from Main without publishing branch-controlled state.
+      - name: Restore trusted Gradle cache
+        id: gradle_cache
+        uses: https://data.forgejo.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
+          restore-keys: |
+            bookwave-gradle-trusted-v1-
+
+      - name: Report Gradle cache restore
+        run: |
+          echo "gradle_cache_hit=${{ steps.gradle_cache.outputs.cache-hit }}"
+          echo "gradle_cache_matched_key=${{ steps.gradle_cache.outputs.cache-matched-key }}"
+
       - name: Prepare BookWave Android environment
         env:
           BOOKWAVE_CODEX_PREWARM: none

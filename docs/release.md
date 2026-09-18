@@ -237,8 +237,41 @@ Only Android-heavy jobs use the image: pull-request `verifyDebug`, main `release
 `apk` job. Policy classification, Gradle wrapper validation, Room-schema checks, secret scanning, and the
 Loopbound web build remain on the ordinary runner. Those Android jobs still run `scripts/codex/setup.sh`,
 but with `BOOKWAVE_ANDROID_SDK_MODE=preinstalled`; setup verifies the exact SDK contract and must not
-download or mutate Android packages. Persistent Gradle caching is intentionally a separate follow-up and is
-not part of this image slice.
+download or mutate Android packages.
+
+### Forgejo Gradle cache
+
+Forgejo Android jobs persist Gradle state through the runner's Actions cache rather than a host-mounted
+Gradle directory. The cache action is pinned to commit
+`0057852bfaa89a56745cba8c7296529d2fc39830` (actions/cache v4.3.0). The cached paths are
+`~/.gradle/caches` and `~/.gradle/wrapper`, which includes Gradle's existing local build cache because
+`org.gradle.caching=true`. Workspace `build/` directories are deliberately not cached.
+
+`scripts/ci/gradle-cache-key.sh` hashes the tracked Gradle configuration inputs (Gradle Kotlin DSL files,
+`build-logic`, `gradle/`, `gradle.properties`, and Gradle lockfiles). Each Gradle configuration hash gets one immutable cache
+snapshot per trust namespace. Source-only commits reuse that snapshot instead of creating another full archive;
+a new archive is created only when tracked Gradle/build inputs change (or the namespace version is deliberately
+bumped). This bounds runner disk growth while letting Gradle reuse verified dependencies and any compatible
+task outputs; Gradle's normal task input fingerprints remain authoritative for source changes.
+
+The cache namespace enforces a trust boundary:
+
+- pull-request verification is restore-only and can consume the default branch's
+  `bookwave-gradle-trusted-v1-` cache, but never publishes branch-controlled cache state;
+- main `release-checks` is the sole writer and publishes `bookwave-gradle-trusted-v1-` only when
+  `forgejo.ref == 'refs/heads/main'`, with one archive per Gradle configuration hash. On a main push where
+  that exact key is missing, it runs one normal `verifyDebug` to seed trusted debug outputs before the
+  release checks finish and the cache is saved; ordinary source-only merges with an exact hit keep skipping
+  the duplicate PR verification;
+- the signing-capable APK job is restore-only and may read the trusted namespace only when the workflow
+  itself is dispatched from `main`, before signing secrets are staged. A feature-branch dispatch builds
+  cold; to build a PR with cache, dispatch **Build APK** from `main` and enter that PR number.
+
+This separation follows Gradle's default CI recommendation that non-default branches read shared cache state
+without writing their own entries. It prevents repository-controlled PR code from creating a cache later
+consumed by a secret-bearing signing job and avoids branch caches consuming runner disk. Cache misses are
+valid and fall back to a normal cold Gradle run; the cache is a performance layer, never a correctness
+prerequisite.
 
 The `.github/workflows/*` workflows remain the GitHub fallback while the Forgejo migration settles.
 `.github/workflows/contract-capture.yml` captures response shapes from a real server on demand
