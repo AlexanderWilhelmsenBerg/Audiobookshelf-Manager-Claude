@@ -33,9 +33,9 @@ interface ShakeSource {
  * no timer is active".
  *
  * That sentence is the whole design. [start] registers the listener and [stop] unregisters it, and the
- * only caller is `SleepTimerController`, which calls them at exactly the moments a timer begins and
- * ends. There is no "enabled" flag inside this class that could leave a sensor running while the
- * feature is off — an unregistered listener costs nothing, which a flag does not guarantee.
+ * only owner is `SleepTimerController`, which reconciles those calls from the conjunction of an active
+ * timer and the persisted opt-in. There is no "enabled" flag inside this class that could leave a sensor
+ * running while the feature is off — an unregistered listener costs nothing, which a flag does not guarantee.
  *
  * ### What counts as a shake
  *
