@@ -112,7 +112,13 @@ jobs:
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
       # The Forgejo PR gate is intentionally manual. With fast-forward-only merges, a reviewed PR
-      # reaches main as the exact accepted commit, so push-main avoids repeating verifyDebug a second time.
+      # reaches main as the exact accepted commit, so ordinary push-main runs do not repeat verifyDebug.
+      # The exception is a trusted-cache miss after Gradle/build inputs change: main runs one normal
+      # verifyDebug to seed reusable debug outputs before publishing the new trusted cache generation.
+      - name: Seed trusted debug Gradle cache
+        if: ${{ forgejo.event_name == 'push' && forgejo.ref == 'refs/heads/main' && steps.gradle_cache.outputs.cache-hit != 'true' }}
+        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --continue --max-workers=4 -Pshelfplayer.warningsAsErrors=true
+
       # Scheduled/manual main runs remain standalone health checks and therefore verify debug themselves.
       - name: Verify debug
         if: ${{ forgejo.event_name != 'push' }}
