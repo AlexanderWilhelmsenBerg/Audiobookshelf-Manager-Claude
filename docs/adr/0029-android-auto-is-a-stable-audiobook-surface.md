@@ -86,11 +86,20 @@ The live Media3 item keeps the title unchanged. Its visible artist/byline become
 
 Android Auto decides how that metadata is laid out. BookWave cannot make the car player inherit the phone's background theme, place a custom shadow behind the cover, or draw a bespoke metadata panel beside it. Those are host-rendered surfaces.
 
-### 7. Do not break the phone notification to chase car-only action placement
+### 7. One shared layout follows actual car-controller binding
 
-Media3's legacy compatibility state is shared by hosts that include the media notification and some Android Auto implementations. BookWave can publish custom actions and preferred slots, but cannot reliably demand a car-only layout on every head unit.
+Media3's compatibility state is shared by Android Auto and modern system media controls, so BookWave still
+cannot publish two simultaneous layouts. Issue #38 instead changes the ordering of that one layout from the
+state that matters: whether a car controller is actually bound.
 
-The Android Auto browse/navigation design therefore excludes sleep and bookmark as destinations and prioritises the Car/Headset actions. Existing phone-notification behaviour is not removed merely to make a particular head unit hide an action it may source from the shared legacy state.
+With no car bound, skip back and skip forward lead and occupy the primary compact slots. While a car is
+bound, Car and Headset lead and take those slots when available. Displaced actions keep overflow as their
+fallback. The switch uses `CarConnections.isConnected()`; a merely present car-like audio route does not
+change phone-button priority.
+
+The back slot remains occupied in every supported state. That is a safety invariant: leaving it vacant lets
+Media3 expose raw Previous again, which can reach `Player.seekToPrevious()` and restart a single-window
+audiobook.
 
 ### 8. The current output is shown by lighting an action, because nothing else on the player can show it
 
