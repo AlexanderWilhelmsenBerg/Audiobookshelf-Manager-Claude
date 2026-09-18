@@ -358,8 +358,8 @@ class RecentBookHydrationTest {
         override suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> {
             targetedFetches += bookId.value
             if (bookId.value in failedTargetedFetches) return AppResult.Failure(AppError.Network())
-            return byId[bookId.value]?.let(AppResult::Success)
-                ?: AppResult.Failure(AppError.NotFound())
+            return byId[bookId.value]?.let { snapshot -> AppResult.Success(snapshot) }
+                ?: AppResult.Failure(AppError.Server(statusCode = 404))
         }
 
         override suspend fun listBooks(
