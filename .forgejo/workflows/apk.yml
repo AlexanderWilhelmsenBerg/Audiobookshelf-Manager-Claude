@@ -242,6 +242,7 @@ jobs:
       # Signing workflows are restore-only. They never consume PR-written caches and never publish
       # a cache after repository-controlled code has run with signing material available.
       - name: Restore trusted Gradle cache
+        if: ${{ forgejo.ref == 'refs/heads/main' }}
         id: gradle_cache
         uses: https://data.forgejo.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
@@ -254,6 +255,7 @@ jobs:
             bookwave-gradle-trusted-v1-
 
       - name: Report Gradle cache restore
+        if: ${{ forgejo.ref == 'refs/heads/main' }}
         run: |
           echo "gradle_cache_hit=${{ steps.gradle_cache.outputs.cache-hit }}"
           echo "gradle_cache_matched_key=${{ steps.gradle_cache.outputs.cache-matched-key }}"
