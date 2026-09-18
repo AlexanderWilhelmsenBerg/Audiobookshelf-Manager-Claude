@@ -166,16 +166,23 @@ class DownloadsViewModel @Inject constructor(
     /* PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */
 
     /**
-     * PRODUCT_SPEC DL-001 — pause a running download, or resume a paused one.
+     * BW-DL-03 / #18 — execute only the recovery action owned by the row's presentation state.
      *
-     * Resuming goes through [DownloadBookUseCase] rather than straight to the scheduler, and deliberately:
-     * that use case re-checks the download grant and the free space before enqueueing anything. A download
-     * paused a week ago is being started afresh as far as those two questions are concerned — the account
-     * may have lost the permission, and the disk that had room then may not now.
+     * Running is the sole state allowed to pause. Paused and terminal Failed both go through
+     * [DownloadBookUseCase], which preserves an existing manifest/file rows while re-checking the active
+     * profile's download permission and current free space. Queued, Waiting, Retrying and Complete expose
+     * no row action in this slice; BW-DL-04 / #19 will add transient execution evidence without turning it
+     * into another durable state owner.
      */
-    fun onPauseToggled(bookId: LibraryItemId, shouldPause: Boolean) {
+    fun onRecoveryAction(bookId: LibraryItemId, recoveryState: DownloadRecoveryState) {
+        val action = recoveryState.rowAction() ?: return
         viewModelScope.launch {
-            val result = if (shouldPause) pauseDownload(bookId) else downloadBook(bookId)
+            val result = when (action) {
+                DownloadRecoveryAction.Pause -> pauseDownload(bookId)
+                DownloadRecoveryAction.Resume,
+                DownloadRecoveryAction.Retry,
+                -> downloadBook(bookId)
+            }
             if (result is AppResult.Failure) _message.value = result.error.summary
         }
     }
@@ -224,6 +231,30 @@ class DownloadsViewModel @Inject constructor(
             "Removed from your downloads. The files stayed, because another profile on this device also " +
                 "downloaded this book."
     }
+}
+
+/** The concrete listener action, if any, for a BW-DL-02 recovery state. */
+internal enum class DownloadRecoveryAction {
+    Pause,
+    Resume,
+    Retry,
+}
+
+/**
+ * BW-DL-03 / #18 — one exhaustive mapping keeps ViewModel routing and Compose semantics from disagreeing.
+ *
+ * WorkManager-owned waiting/retry evidence is representable already, but remains actionless until #19
+ * supplies that evidence. Complete is likewise actionless.
+ */
+internal fun DownloadRecoveryState.rowAction(): DownloadRecoveryAction? = when (this) {
+    DownloadRecoveryState.Running -> DownloadRecoveryAction.Pause
+    DownloadRecoveryState.Paused -> DownloadRecoveryAction.Resume
+    DownloadRecoveryState.Failed -> DownloadRecoveryAction.Retry
+    DownloadRecoveryState.Complete,
+    DownloadRecoveryState.Queued,
+    DownloadRecoveryState.Waiting,
+    DownloadRecoveryState.Retrying,
+    -> null
 }
 
 /**
