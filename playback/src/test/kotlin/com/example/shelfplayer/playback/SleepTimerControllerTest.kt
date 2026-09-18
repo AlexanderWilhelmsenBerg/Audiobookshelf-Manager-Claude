@@ -225,9 +225,8 @@ class SleepTimerControllerTest {
         }
     }
 
-    private class FakeSleepTimerRepository(
-        private val settings: Flow<SleepTimerSettings>,
-    ) : SleepTimerRepository {
+    private class FakeSleepTimerRepository(private val settings: Flow<SleepTimerSettings>) :
+        SleepTimerRepository {
         var started = 0
             private set
         var restarted = 0
@@ -265,10 +264,8 @@ class SleepTimerControllerTest {
     }
 
     private class FakePlaybackHistoryRepository : PlaybackHistoryRepository {
-        override fun observe(
-            bookId: LibraryItemId,
-            limit: Int,
-        ): Flow<List<PlaybackHistoryEntry>> = flowOf(emptyList())
+        override fun observe(bookId: LibraryItemId, limit: Int): Flow<List<PlaybackHistoryEntry>> =
+            flowOf(emptyList())
 
         override suspend fun record(
             bookId: LibraryItemId,
