@@ -136,6 +136,12 @@ jobs:
       - name: Assemble release (unsigned)
         run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:assembleRelease --max-workers=4 -Pshelfplayer.warningsAsErrors=true
 
+      - name: Report Gradle cache footprint
+        if: ${{ always() }}
+        run: |
+          du -sh "$HOME/.gradle/caches" 2>/dev/null || true
+          du -sh "$HOME/.gradle/wrapper" 2>/dev/null || true
+
       # Only the default branch may publish the trusted namespace. A manually dispatched
       # feature branch can restore it, but can never create a cache later consumed by secret-bearing jobs.
       - name: Save trusted Gradle cache
