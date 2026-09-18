@@ -77,9 +77,9 @@ jobs:
             exit 1
           fi
 
-          registry="${FORGEJO_SERVER_URL#https://}"
-          registry="${registry#http://}"
-          registry="${registry%/}"
+          # The runner talks to Forgejo through an internal HTTP service URL, but OCI clients
+          # must use the canonical TLS registry endpoint that is reachable from job containers.
+          registry="forgejo.homebord.org"
           owner="${FORGEJO_REPOSITORY%%/*}"
           local_image="bookwave-ci:${FORGEJO_RUN_ID}"
           remote_image="$registry/$owner/bookwave-ci:$REQUESTED_TAG"
