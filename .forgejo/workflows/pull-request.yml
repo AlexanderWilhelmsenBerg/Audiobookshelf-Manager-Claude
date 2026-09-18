@@ -13,10 +13,11 @@ name: Pull request
 # - pin reusable actions and downloaded security tooling immutably.
 #
 # Reliability model:
-# - fail cheap policy/supply-chain checks before Android work;
-# - require PR heads to contain current main;
-# - run the expensive --rerun-tasks acceptance only when the PR can affect the
-#   build/classpath, matching docs/risks.md R-31 rather than rerunning every PR.
+# - fail cheap policy/supply-chain/schema checks before Android work;
+# - require manually selected heads to contain current main;
+# - run exactly one expensive verifyDebug pass;
+# - add --rerun-tasks only when the diff can affect the build/classpath (or when explicitly forced),
+#   matching docs/risks.md R-31 without verifying the same commit twice.
 
 # Forgejo PR verification is intentionally manual. Branch updates stay cheap while work is
 # in progress; run this workflow on the PR branch once the change is ready for acceptance.
@@ -217,7 +218,7 @@ jobs:
   verify:
     name: verifyDebug
     runs-on: linux-amd64
-    needs: [policy, wrapper_validation, secret_scan]
+    needs: [policy, wrapper_validation, secret_scan, schema_immutability]
     timeout-minutes: 90
     steps:
       - name: Report runner capacity
