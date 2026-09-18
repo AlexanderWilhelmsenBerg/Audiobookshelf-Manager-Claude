@@ -243,19 +243,17 @@ jobs:
           set -euo pipefail
           echo "hash=$(bash scripts/ci/gradle-cache-key.sh)" >> "$FORGEJO_OUTPUT"
 
-      # PR verification writes only its branch-scoped PR namespace. Secret-bearing APK jobs
-      # never restore this namespace; they consume the main-only trusted namespace instead.
-      - name: Restore Gradle cache
+      # Pull-request jobs are cache read-only. Forgejo exposes default-branch caches to
+      # feature branches, so PRs can benefit from Main without publishing branch-controlled state.
+      - name: Restore trusted Gradle cache
         id: gradle_cache
         uses: https://data.forgejo.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}
+          key: bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
           restore-keys: |
-            bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
-            bookwave-gradle-pr-v1-
             bookwave-gradle-trusted-v1-
 
       - name: Report Gradle cache restore
@@ -322,15 +320,6 @@ jobs:
 
       - name: Resolve dependencies for the debug variant
         run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=4 > dependency-report.txt
-
-      - name: Save successful PR Gradle cache
-        if: ${{ success() && steps.gradle_cache.outputs.cache-hit != 'true' }}
-        uses: https://data.forgejo.org/actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: bookwave-gradle-pr-v1-${{ steps.gradle_cache_key.outputs.hash }}
 
       - name: Upload dependency report
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
