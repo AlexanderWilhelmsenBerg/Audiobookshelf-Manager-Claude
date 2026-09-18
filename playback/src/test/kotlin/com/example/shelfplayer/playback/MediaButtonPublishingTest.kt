@@ -66,6 +66,43 @@ class MediaButtonPublishingTest {
         assertEquals(listOf(buttons, buttons), seen)
     }
 
+
+    @Test
+    fun `publication tracker reacts to the first bind and final unbind without storms`() {
+        val tracker = MediaButtonPublishing.Tracker()
+        val outputs = OutputButtons(
+            showCar = true,
+            showHeadset = true,
+            headsetName = "Headset",
+        )
+
+        assertEquals(true, tracker.needsPublish(outputs, carBound = false))
+        tracker.markPublished(outputs, carBound = false)
+        assertEquals(false, tracker.needsPublish(outputs, carBound = false))
+
+        assertEquals(true, tracker.needsPublish(outputs, carBound = true))
+        tracker.markPublished(outputs, carBound = true)
+        assertEquals(false, tracker.needsPublish(outputs, carBound = true))
+
+        assertEquals(true, tracker.needsPublish(outputs, carBound = false))
+        tracker.markPublished(outputs, carBound = false)
+        assertEquals(false, tracker.needsPublish(outputs, carBound = false))
+    }
+
+    @Test
+    fun `publication tracker still reacts when the visible output actions change`() {
+        val tracker = MediaButtonPublishing.Tracker()
+        tracker.markPublished(OutputButtons.None, carBound = false)
+
+        val headsetAppeared = OutputButtons(
+            showCar = false,
+            showHeadset = true,
+            headsetName = "Headset",
+        )
+
+        assertEquals(true, tracker.needsPublish(headsetAppeared, carBound = false))
+    }
+
     private fun button(): CommandButton = CommandButton.Builder(CommandButton.ICON_UNDEFINED)
         .setDisplayName("Car")
         .setSessionCommand(SessionCommand(NotificationButtons.ACTION_SELECT_CAR_OUTPUT, Bundle.EMPTY))
