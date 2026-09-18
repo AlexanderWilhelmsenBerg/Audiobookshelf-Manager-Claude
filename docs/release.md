@@ -248,7 +248,7 @@ Gradle directory. The cache action is pinned to commit
 `org.gradle.caching=true`. Workspace `build/` directories are deliberately not cached.
 
 `scripts/ci/gradle-cache-key.sh` hashes the tracked Gradle configuration inputs (Gradle Kotlin DSL files,
-`build-logic`, `gradle/`, and `gradle.properties`). Each Gradle configuration hash gets one immutable cache
+`build-logic`, `gradle/`, `gradle.properties`, and Gradle lockfiles). Each Gradle configuration hash gets one immutable cache
 snapshot per trust namespace. Source-only commits reuse that snapshot instead of creating another full archive;
 a new archive is created only when tracked Gradle/build inputs change (or the namespace version is deliberately
 bumped). This bounds runner disk growth while letting Gradle reuse verified dependencies and any compatible
