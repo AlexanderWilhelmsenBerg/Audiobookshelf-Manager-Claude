@@ -71,6 +71,7 @@ fi
 # multi-gigabyte file instead of an eight-second one.
 docker run --rm -v "$MEDIA_MOUNT:/media" --entrypoint sh "$IMAGE" -c '
   set -e
+  mkdir -p "/media/'\"$BOOK_DIR\"'" "/media/'\"$MULTI_DIR\"'"
   printf "%s\n" \
     ";FFMETADATA1" \
     "title=The Salt Harbour" \
