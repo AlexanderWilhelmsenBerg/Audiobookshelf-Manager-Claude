@@ -115,7 +115,7 @@ class ScreenAccessibilityScreenTest {
                 ),
                 onRemove = { _, _ -> },
                 onPinnedChanged = { _, _, _ -> },
-                onPauseToggled = { _, _ -> },
+                onRecoveryAction = { _, _ -> },
                 onVerify = {},
                 onNavigateUp = {},
             )
