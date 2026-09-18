@@ -30,6 +30,18 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate publish credential
+        if: ${{ inputs.publish }}
+        env:
+          PACKAGE_TOKEN: ${{ secrets.BOOKWAVE_PACKAGE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PACKAGE_TOKEN:-}" ]; then
+            echo "::error::Publishing requires repository secret BOOKWAVE_PACKAGE_TOKEN."
+            echo "::error::Create a Forgejo personal access token for the repository owner with write:package and store it as that Actions secret."
+            exit 1
+          fi
+
       - name: Install container client
         run: |
           set -euo pipefail
