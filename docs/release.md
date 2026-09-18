@@ -144,8 +144,9 @@ uninstall the arrangement existed to prevent. A tester reported having to uninst
 
 `bookwave.signing.debug.stable=false` opts out and restores AGP's own behaviour.
 `bookwave.signing.debug.keystore` (or `BOOKWAVE_DEBUG_KEYSTORE`) points it somewhere else — which is how a
-second machine or a runner shares one key. The Build APK workflow reads
-`BOOKWAVE_DEBUG_KEYSTORE_BASE64` for exactly that.
+second machine or a runner shares one key. The legacy GitHub Build APK workflow can restore a dedicated
+`BOOKWAVE_DEBUG_KEYSTORE_BASE64`; the Forgejo Build APK workflow instead sets `BOOKWAVE_DEBUG_KEYSTORE`
+to the protected upload/signing keystore so debug and release deliberately share the same signer there.
 
 Measured on 2026-08-30: the generated `~/.bookwave/debug.keystore` and the APK built from it both report
 `aa5fd8f7…`, matching the `~/.android/debug.keystore` it was copied from — so adoption does what it claims
