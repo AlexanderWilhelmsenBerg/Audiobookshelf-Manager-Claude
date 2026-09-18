@@ -211,15 +211,32 @@ jobs:
           test "$actual" = "$EXPECTED_LOOPBOUND_SHA" || { echo "::error::Loopbound bundle SHA mismatch."; exit 1; }
           echo "Staged Loopbound ${actual:0:8}."
 
-      - name: Validate Gradle wrapper JAR
+      - name: Validate pinned Gradle wrapper
         run: |
           set -euo pipefail
-          distribution_url="$(grep '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2- | sed 's/\\:/:/g')"
-          wrapper_version="$(printf '%s\n' "$distribution_url" | sed -E 's#.*gradle-([0-9][0-9A-Za-z.+-]*)-(bin|all)\.zip.*#\1#')"
-          expected="$(curl -fsSL "https://services.gradle.org/distributions/gradle-${wrapper_version}-wrapper.jar.sha256" | tr -d '[:space:]')"
+          distribution_sha="$(grep '^distributionSha256Sum=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2-)"
+          if ! printf '%s' "$distribution_sha" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "::error::gradle-wrapper.properties must pin distributionSha256Sum."
+            exit 1
+          fi
           actual="$(sha256sum gradle/wrapper/gradle-wrapper.jar | awk '{print $1}')"
-          test "$actual" = "$expected" || { echo "::error::Gradle wrapper JAR checksum mismatch."; exit 1; }
+          test "$actual" = "$GRADLE_WRAPPER_JAR_SHA256" || {
+            echo "::error::Gradle wrapper JAR checksum mismatch."
+            echo "expected=$GRADLE_WRAPPER_JAR_SHA256"
+            echo "actual=$actual"
+            exit 1
+          }
+          echo "Gradle wrapper JAR verified: $actual"
+          echo "Gradle distribution is SHA-pinned: $distribution_sha"
 
+      - name: Report runner capacity
+        run: |
+          set -euo pipefail
+          echo "logical_cpus=$(nproc)"
+          grep -E '^(MemTotal|MemAvailable):' /proc/meminfo || true
+          printf 'cgroup_memory_max='; cat /sys/fs/cgroup/memory.max 2>/dev/null || echo unavailable
+          printf 'cgroup_cpu_max='; cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo unavailable
+          df -h / || true
       - name: Install Android build prerequisites
         run: |
           set -euo pipefail
