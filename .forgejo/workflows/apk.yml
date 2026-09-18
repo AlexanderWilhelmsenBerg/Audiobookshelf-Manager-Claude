@@ -128,7 +128,7 @@ jobs:
     if: ${{ always() && (needs.loopbound.result == 'success' || needs.loopbound.result == 'skipped') }}
     runs-on: linux-amd64
     container:
-      image: forgejo.homebord.org/alexander/bookwave-ci@sha256:2b61f53f32ce1ebb414a09438b370544a3bc475ef2ad16754218b860c2fe7068
+      image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
     timeout-minutes: 60
     steps:
       - name: Resolve build source
