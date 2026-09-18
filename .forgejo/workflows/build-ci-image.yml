@@ -1,0 +1,150 @@
+name: Build BookWave CI image
+
+# Manual-only because publishing a job-runtime image is a supply-chain operation.
+# Validation can run without credentials; publishing requires BOOKWAVE_PACKAGE_TOKEN.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Push the validated image to the Forgejo container registry'
+        type: boolean
+        default: false
+      image_tag:
+        description: 'Registry tag when publishing'
+        type: string
+        required: true
+        default: 'android36-jdk17-v1'
+
+concurrency:
+  group: build-bookwave-ci-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and verify CI image
+    runs-on: linux-amd64
+    timeout-minutes: 30
+    steps:
+      - name: Check out BookWave
+        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
+      - name: Install container client
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates \
+            docker.io \
+            jq \
+            skopeo
+          rm -rf /var/lib/apt/lists/*
+
+          if docker info >/dev/null 2>&1; then
+            echo "Container engine reachable through ${DOCKER_HOST:-default Docker socket}."
+          elif [ -S /run/podman/podman.sock ]; then
+            echo "DOCKER_HOST=unix:///run/podman/podman.sock" >> "$FORGEJO_ENV"
+            export DOCKER_HOST=unix:///run/podman/podman.sock
+            docker info >/dev/null
+            echo "Container engine reachable through Podman API."
+          else
+            echo "::error::No Docker-compatible runner engine is reachable."
+            exit 1
+          fi
+          docker version
+
+      - name: Build image
+        id: image
+        env:
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$REQUESTED_TAG" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo "::error::Invalid OCI tag: $REQUESTED_TAG"
+            exit 1
+          fi
+
+          registry="${FORGEJO_SERVER_URL#https://}"
+          registry="${registry#http://}"
+          registry="${registry%/}"
+          owner="${FORGEJO_REPOSITORY%%/*}"
+          local_image="bookwave-ci:${FORGEJO_RUN_ID}"
+          remote_image="$registry/$owner/bookwave-ci:$REQUESTED_TAG"
+          sha_tag="sha-${FORGEJO_SHA:0:12}"
+          remote_sha_image="$registry/$owner/bookwave-ci:$sha_tag"
+
+          docker build --pull \
+            --file .forgejo/ci/bookwave-ci/Dockerfile \
+            --build-arg "SOURCE_REVISION=$FORGEJO_SHA" \
+            --tag "$local_image" \
+            .
+
+          echo "local=$local_image" >> "$FORGEJO_OUTPUT"
+          echo "remote=$remote_image" >> "$FORGEJO_OUTPUT"
+          echo "remote_sha=$remote_sha_image" >> "$FORGEJO_OUTPUT"
+          echo "registry=$registry" >> "$FORGEJO_OUTPUT"
+          echo "owner=$owner" >> "$FORGEJO_OUTPUT"
+
+      - name: Verify image contract
+        env:
+          LOCAL_IMAGE: ${{ steps.image.outputs.local }}
+        run: |
+          set -euo pipefail
+          docker run --rm "$LOCAL_IMAGE" bookwave-ci-verify
+          docker run --rm "$LOCAL_IMAGE" bash -lc 'node --version && java -version && sdkmanager --version && gitleaks version'
+
+      - name: Publish image
+        if: ${{ inputs.publish }}
+        id: publish
+        env:
+          PACKAGE_TOKEN: ${{ secrets.BOOKWAVE_PACKAGE_TOKEN }}
+          LOCAL_IMAGE: ${{ steps.image.outputs.local }}
+          REMOTE_IMAGE: ${{ steps.image.outputs.remote }}
+          REMOTE_SHA_IMAGE: ${{ steps.image.outputs.remote_sha }}
+          REGISTRY: ${{ steps.image.outputs.registry }}
+          OWNER: ${{ steps.image.outputs.owner }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PACKAGE_TOKEN:-}" ]; then
+            echo "::error::Publishing requires repository secret BOOKWAVE_PACKAGE_TOKEN."
+            echo "::error::Use a Forgejo personal access token belonging to $OWNER with package write access."
+            exit 1
+          fi
+
+          printf '%s' "$PACKAGE_TOKEN" | docker login "$REGISTRY" --username "$OWNER" --password-stdin
+          docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
+          docker tag "$LOCAL_IMAGE" "$REMOTE_SHA_IMAGE"
+          docker push "$REMOTE_IMAGE"
+          docker push "$REMOTE_SHA_IMAGE"
+
+          digest="$(skopeo inspect --creds "$OWNER:$PACKAGE_TOKEN" "docker://$REMOTE_IMAGE" | jq -r '.Digest // empty')"
+          test -n "$digest" || { echo "::error::Could not resolve pushed image digest."; exit 1; }
+          reference="${REMOTE_IMAGE%:*}@$digest"
+          echo "digest=$digest" >> "$FORGEJO_OUTPUT"
+          echo "reference=$reference" >> "$FORGEJO_OUTPUT"
+          echo "Published immutable reference: $reference"
+
+      - name: Build summary
+        if: always()
+        env:
+          PUBLISHED_REFERENCE: ${{ steps.publish.outputs.reference }}
+        run: |
+          set -euo pipefail
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+          [ -n "$summary" ] || exit 0
+          {
+            echo "### BookWave CI image"
+            echo
+            echo "- Source: \`${FORGEJO_SHA}\`"
+            echo "- Android command-line tools: \`15859902\`"
+            echo "- Android platform: \`36\`"
+            echo "- Android build-tools: \`36.0.0\`"
+            echo "- JDK: \`17\`"
+            echo "- Node: \`22\`"
+            if [ -n "${PUBLISHED_REFERENCE:-}" ]; then
+              echo "- Published: \`$PUBLISHED_REFERENCE\`"
+            else
+              echo "- Published: no (validation-only run)"
+            fi
+          } >> "$summary"
