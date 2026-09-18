@@ -194,7 +194,11 @@ GITLEAKS_CURRENT=""
 if [[ -x "$GITLEAKS_BIN" ]]; then
     GITLEAKS_CURRENT="$($GITLEAKS_BIN version 2>/dev/null | sed -n 's/.*\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' | head -1)"
 elif command -v gitleaks >/dev/null 2>&1; then
-    GITLEAKS_CURRENT="$(gitleaks version 2>/dev/null | sed -n 's/.*\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' | head -1)"
+    SYSTEM_GITLEAKS_BIN="$(command -v gitleaks)"
+    GITLEAKS_CURRENT="$("$SYSTEM_GITLEAKS_BIN" version 2>/dev/null | sed -n 's/.*\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' | head -1)"
+    if [[ "$GITLEAKS_CURRENT" == "$GITLEAKS_VERSION" ]]; then
+        GITLEAKS_BIN="$SYSTEM_GITLEAKS_BIN"
+    fi
 fi
 
 if [[ "$GITLEAKS_CURRENT" != "$GITLEAKS_VERSION" ]]; then
