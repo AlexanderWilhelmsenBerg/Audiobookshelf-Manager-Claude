@@ -6,7 +6,7 @@ cd "${1:-.}"
 files=()
 while IFS= read -r -d '' file; do
   case "$file" in
-    *.gradle.kts|build-logic/*|gradle/*|gradle.properties)
+    *.gradle.kts|build-logic/*|gradle/*|gradle.properties|gradle.lockfile|*/gradle.lockfile)
       files+=("$file")
       ;;
   esac
