@@ -15,6 +15,20 @@ import javax.inject.Singleton
 import kotlin.math.sqrt
 
 /**
+ * Sensor seam owned by the sleep-timer lifecycle.
+ *
+ * The concrete Android implementation is [ShakeDetector]; the interface keeps timer behavior testable
+ * without pretending a JVM test can produce real accelerometer events.
+ */
+interface ShakeSource {
+    val isSensing: Boolean
+
+    fun start(onShake: () -> Unit): Boolean
+
+    fun stop()
+}
+
+/**
  * PRODUCT_SPEC PLAY-008 — "optional shake-to-extend ... must not run motion sensing continuously when
  * no timer is active".
  *
@@ -38,20 +52,6 @@ import kotlin.math.sqrt
  * and some tablets have no accelerometer, and refusing to set a timer on them would be the feature
  * breaking a requirement it is optional to.
  */
-/**
- * Sensor seam owned by the sleep-timer lifecycle.
- *
- * The concrete Android implementation is [ShakeDetector]; the interface keeps timer behavior testable
- * without pretending a JVM test can produce real accelerometer events.
- */
-interface ShakeSource {
-    val isSensing: Boolean
-
-    fun start(onShake: () -> Unit): Boolean
-
-    fun stop()
-}
-
 @Singleton
 class ShakeDetector @Inject constructor(
     @param:ApplicationContext private val context: Context,
