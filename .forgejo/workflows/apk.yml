@@ -11,8 +11,10 @@ run-name: "${{ inputs.pull_request != 'Use selected branch/ref' && format('Build
 # If Loopbound becomes private, set LOOPBOUND_READ_TOKEN to a Forgejo token/Authorized Integration
 # with read access to that repository.
 #
-# Signing secrets are optional during migration. Debug builds work without them, but a generated
-# debug key is ephemeral. Release builds are unsigned until the four release signing secrets exist.
+# This is a privileged, manual-only build workflow. The four BookWave signing secrets are required.
+# The owner deliberately uses the same upload/signing keystore for both debug and release APKs here so
+# every APK produced by this workflow has a stable signer. Debug and release remain separate installs
+# because debug has its own applicationId suffix; sharing the certificate does not merge their identities.
 
 on:
   workflow_dispatch:
@@ -53,7 +55,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4 -Dorg.gradle.project.kotlin.daemon.jvmargs=-Xmx2g
+  GRADLE_WRAPPER_JAR_SHA256: 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
 
 jobs:
   loopbound:
@@ -116,7 +119,7 @@ jobs:
           echo "Built Loopbound ${LOOPBOUND_SHA:0:8} from $LOOPBOUND_REF."
 
       - name: Upload compiled Loopbound bundle
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: loopbound-web-${{ forgejo.run_id }}
           path: ${{ runner.temp }}/loopbound/dist/
@@ -183,7 +186,7 @@ jobs:
           fi
 
       - name: Check out exact BookWave source
-        uses: actions/checkout@v6
+        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
@@ -244,7 +247,7 @@ jobs:
 
       - name: Verify debug
         if: ${{ inputs.run_checks }}
-        run: ./gradlew verifyDebug --max-workers=2 -Pshelfplayer.warningsAsErrors=true
+        run: ./gradlew verifyDebug --max-workers=4 -Pshelfplayer.warningsAsErrors=true
 
       - name: Stage the debug keystore
         id: debugkey
@@ -295,9 +298,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ inputs.variant }}" = "release" ]; then
-            ./gradlew :app:assembleRelease --max-workers=2
+            ./gradlew :app:assembleRelease --max-workers=4
           else
-            ./gradlew :app:assembleDebug --max-workers=2
+            ./gradlew :app:assembleDebug --max-workers=4
           fi
 
       - name: Identify built APK
@@ -330,7 +333,7 @@ jobs:
           echo "path=$target" >> "$FORGEJO_OUTPUT"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: bookwave-${{ inputs.variant }}-${{ steps.version.outputs.label }}
           path: ${{ steps.artifact.outputs.path }}
@@ -339,7 +342,7 @@ jobs:
 
       - name: Upload R8 mapping
         if: ${{ inputs.variant == 'release' }}
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: bookwave-release-mapping-${{ steps.version.outputs.label }}
           path: app/build/outputs/mapping/release/**
