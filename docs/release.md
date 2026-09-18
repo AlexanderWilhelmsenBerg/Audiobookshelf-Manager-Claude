@@ -259,7 +259,9 @@ The cache namespaces enforce a trust boundary:
 - pull-request verification restores the trusted default-branch cache when useful, but writes only the
   branch-scoped `bookwave-gradle-pr-v1-` namespace, with one archive per Gradle configuration hash;
 - main `release-checks` writes the `bookwave-gradle-trusted-v1-` namespace only when
-  `forgejo.ref == 'refs/heads/main'`, again with one archive per Gradle configuration hash;
+  `forgejo.ref == 'refs/heads/main'`, again with one archive per Gradle configuration hash. A manual
+  branch-dispatched Main health check may fall back to that branch's PR cache for performance, but cannot
+  publish into the trusted namespace;
 - the signing-capable APK job is restore-only and may read the trusted namespace only when the workflow
   itself is dispatched from `main`, before signing secrets are staged. A feature-branch dispatch builds
   cold; to build a PR with cache, dispatch **Build APK** from `main` and enter that PR number.
