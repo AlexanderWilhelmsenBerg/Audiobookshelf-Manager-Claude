@@ -127,15 +127,10 @@ jobs:
     needs: [loopbound]
     if: ${{ always() && (needs.loopbound.result == 'success' || needs.loopbound.result == 'skipped') }}
     runs-on: linux-amd64
+    container:
+      image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
     timeout-minutes: 60
     steps:
-      - name: Install source-resolution prerequisites
-        run: |
-          set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl git jq
-          rm -rf /var/lib/apt/lists/*
-
       - name: Resolve build source
         id: source
         env:
@@ -238,17 +233,6 @@ jobs:
           printf 'cgroup_memory_max='; cat /sys/fs/cgroup/memory.max 2>/dev/null || echo unavailable
           printf 'cgroup_cpu_max='; cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo unavailable
           df -h / || true
-      - name: Install Android build prerequisites
-        run: |
-          set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates curl git jq openjdk-17-jdk-headless python3 unzip
-          rm -rf /var/lib/apt/lists/*
-          JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
-          echo "JAVA_HOME=$JAVA_HOME" >> "$FORGEJO_ENV"
-          echo "$JAVA_HOME/bin" >> "$FORGEJO_PATH"
-
       - name: Stage shared BookWave signing keystore
         id: keystore
         env:
@@ -284,6 +268,7 @@ jobs:
       - name: Prepare BookWave Android environment
         env:
           BOOKWAVE_CODEX_PREWARM: light
+          BOOKWAVE_ANDROID_SDK_MODE: preinstalled
           BOOKWAVE_DEBUG_KEYSTORE: ${{ steps.keystore.outputs.path }}
           BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
           BOOKWAVE_DEBUG_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
@@ -294,10 +279,9 @@ jobs:
           BOOKWAVE_SIGNING_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          export BOOKWAVE_ANDROID_SDK_ROOT="$HOME/.bookwave/android-sdk"
           env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
             BOOKWAVE_CODEX_PREWARM="$BOOKWAVE_CODEX_PREWARM" \
-            BOOKWAVE_ANDROID_SDK_ROOT="$BOOKWAVE_ANDROID_SDK_ROOT" \
+            BOOKWAVE_ANDROID_SDK_MODE="$BOOKWAVE_ANDROID_SDK_MODE" \
             BOOKWAVE_DEBUG_KEYSTORE="$BOOKWAVE_DEBUG_KEYSTORE" \
             BOOKWAVE_DEBUG_STORE_PASSWORD="$BOOKWAVE_DEBUG_STORE_PASSWORD" \
             BOOKWAVE_DEBUG_KEY_ALIAS="$BOOKWAVE_DEBUG_KEY_ALIAS" \
@@ -307,10 +291,10 @@ jobs:
             BOOKWAVE_SIGNING_KEY_ALIAS="$BOOKWAVE_SIGNING_KEY_ALIAS" \
             BOOKWAVE_SIGNING_KEY_PASSWORD="$BOOKWAVE_SIGNING_KEY_PASSWORD" \
             bash scripts/codex/setup.sh
-          echo "ANDROID_HOME=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
-          echo "ANDROID_SDK_ROOT=$HOME/.bookwave/android-sdk" >> "$FORGEJO_ENV"
-          echo "$HOME/.bookwave/android-sdk/cmdline-tools/latest/bin" >> "$FORGEJO_PATH"
-          echo "$HOME/.bookwave/android-sdk/platform-tools" >> "$FORGEJO_PATH"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$FORGEJO_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$FORGEJO_ENV"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$FORGEJO_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
       - name: Verify debug
