@@ -20,6 +20,8 @@ import com.example.shelfplayer.playback.NotificationAccessReader
 import com.example.shelfplayer.playback.PlaybackCredentialRenewer
 import com.example.shelfplayer.playback.PlayerFactory
 import com.example.shelfplayer.playback.RenewingDataSource
+import com.example.shelfplayer.playback.ShakeDetector
+import com.example.shelfplayer.playback.ShakeSource
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.Binds
 import dagger.Module
@@ -63,6 +65,10 @@ internal interface PlaybackModule {
     @Binds
     @Singleton
     fun bindsCarReadinessReader(impl: DefaultCarReadinessReader): CarReadinessReader
+
+    @Binds
+    @Singleton
+    fun bindsShakeSource(impl: ShakeDetector): ShakeSource
 
     /**
      * PRODUCT_SPEC PLAY-002 — the browse tree sees only the three methods it needs.

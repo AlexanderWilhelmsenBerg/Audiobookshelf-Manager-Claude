@@ -15,13 +15,27 @@ import javax.inject.Singleton
 import kotlin.math.sqrt
 
 /**
+ * Sensor seam owned by the sleep-timer lifecycle.
+ *
+ * The concrete Android implementation is [ShakeDetector]; the interface keeps timer behavior testable
+ * without pretending a JVM test can produce real accelerometer events.
+ */
+interface ShakeSource {
+    val isSensing: Boolean
+
+    fun start(onShake: () -> Unit): Boolean
+
+    fun stop()
+}
+
+/**
  * PRODUCT_SPEC PLAY-008 — "optional shake-to-extend ... must not run motion sensing continuously when
  * no timer is active".
  *
  * That sentence is the whole design. [start] registers the listener and [stop] unregisters it, and the
- * only caller is `SleepTimerController`, which calls them at exactly the moments a timer begins and
- * ends. There is no "enabled" flag inside this class that could leave a sensor running while the
- * feature is off — an unregistered listener costs nothing, which a flag does not guarantee.
+ * only owner is `SleepTimerController`, which reconciles those calls from the conjunction of an active
+ * timer and the persisted opt-in. There is no "enabled" flag inside this class that could leave a sensor
+ * running while the feature is off — an unregistered listener costs nothing, which a flag does not guarantee.
  *
  * ### What counts as a shake
  *
@@ -42,7 +56,7 @@ import kotlin.math.sqrt
 class ShakeDetector @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val logger: Logger,
-) {
+) : ShakeSource {
     private val sensors: SensorManager? =
         context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
 
@@ -50,7 +64,7 @@ class ShakeDetector @Inject constructor(
     private var lastShakeAt = 0L
 
     /** @return whether motion sensing actually started. `false` on a device with no accelerometer. */
-    fun start(onShake: () -> Unit): Boolean {
+    override fun start(onShake: () -> Unit): Boolean {
         stop()
         val manager = sensors ?: return false
         val accelerometer = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return false
@@ -71,7 +85,7 @@ class ShakeDetector @Inject constructor(
         return started
     }
 
-    fun stop() {
+    override fun stop() {
         val current = listener ?: return
         sensors?.unregisterListener(current)
         listener = null
@@ -80,7 +94,7 @@ class ShakeDetector @Inject constructor(
     }
 
     /** Whether sensing is running, so a caller can tell "shook" from "could not sense". */
-    val isSensing: Boolean get() = listener != null
+    override val isSensing: Boolean get() = listener != null
 
     private fun isShake(event: SensorEvent): Boolean {
         val values = event.values

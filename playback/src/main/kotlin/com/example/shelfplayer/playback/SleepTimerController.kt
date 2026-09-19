@@ -62,14 +62,13 @@ import kotlin.time.Duration.Companion.seconds
  *
  * ### Motion sensing is bounded by the timer
  *
- * [ShakeDetector.start] is called when a timer starts and [ShakeDetector.stop] when it ends, so there is
- * no state in which the accelerometer is registered and no timer is running — which is the second half
- * of PLAY-008's shake requirement and the half that is easy to get wrong.
+ * [reconcileSensing] derives registration from both the active timer and persisted opt-in. It keeps the
+ * accelerometer off with no timer while handling asynchronous settings delivery and active-timer changes.
  */
 @Singleton
 class SleepTimerController @Inject constructor(
     private val repository: SleepTimerRepository,
-    private val shakes: ShakeDetector,
+    private val shakes: ShakeSource,
     private val sessionSync: SessionSyncCoordinator,
     private val history: PlaybackHistoryRepository,
     private val clock: AppClock,
@@ -158,7 +157,7 @@ class SleepTimerController @Inject constructor(
         // the book, and the history is where an evening gets reconstructed. The length travels as the
         // detail, because "sleep timer" on its own says nothing a listener can use.
         running?.let { started -> record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(started)) }
-        startSensing()
+        reconcileSensing()
         startTicking()
         publish()
         AppResult.Success(Unit)
@@ -221,10 +220,19 @@ class SleepTimerController @Inject constructor(
         }
     }
 
-    /** PRODUCT_SPEC PLAY-008 — sensing starts with a timer and only when the user opted in. */
-    private fun startSensing() {
-        if (!settings.shakeToRestart) return
-        shakes.start(::restart)
+    /**
+     * PRODUCT_SPEC PLAY-008 — motion sensing exists exactly while both owners require it.
+     *
+     * The timer and persisted opt-in arrive independently. Previously the setting was checked once at timer
+     * start, so a late first settings emission left that timer with no listener, and mid-timer setting changes
+     * were ignored. Reconciliation is idempotent and main-dispatcher confined with [running].
+     */
+    private fun reconcileSensing() {
+        val shouldSense = running != null && settings.shakeToRestart
+        when {
+            shouldSense && !shakes.isSensing -> shakes.start(::restart)
+            !shouldSense && shakes.isSensing -> shakes.stop()
+        }
     }
 
     private fun startTicking() {
@@ -336,7 +344,7 @@ class SleepTimerController @Inject constructor(
         running = null
         ticker?.cancel()
         ticker = null
-        shakes.stop()
+        reconcileSensing()
         restorePlayerVolume()
         _state.value = SleepTimerState.Idle
         current.sessionId?.let { id -> repository.recordEnded(id, outcome) }
@@ -394,12 +402,14 @@ class SleepTimerController @Inject constructor(
      * costs one coroutine for the life of the process and is always at most one emission stale, which
      * for "how long is the fade" is not a distinction anyone can hear.
      */
-    @Volatile
     private var settings: SleepTimerSettings = SleepTimerSettings.Default
 
     init {
-        applicationScope.launch {
-            repository.observeSettings().collect { latest -> settings = latest }
+        applicationScope.launch(mainDispatcher) {
+            repository.observeSettings().collect { latest ->
+                settings = latest
+                reconcileSensing()
+            }
         }
     }
 
