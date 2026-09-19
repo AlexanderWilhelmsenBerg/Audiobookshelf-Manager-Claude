@@ -230,7 +230,7 @@ class SleepTimerController @Inject constructor(
         reconcileSensing()
         startTicking()
         publish()
-        scheduleNextStartBoundary()
+        scheduleScheduleBoundary()
         return AppResult.Success(Unit)
     }
 
@@ -441,15 +441,15 @@ class SleepTimerController @Inject constructor(
         // press anything, and the next thing this device does may be nothing at all for eight hours.
         sessionSync.request(SyncTrigger.SleepTimerStopped)
         sessionSync.drain()
-        scheduleNextStartBoundary()
+        scheduleScheduleBoundary()
     }
 
     /**
      * BW-SLEEP-01 — reconcile the civil eligibility window against the one timer owner.
      *
-     * The end boundary is intentionally absent from scheduling: it stops future creation simply because
-     * [SleepSchedulePolicy.currentOccurrence] becomes null. Nothing observes end in order to cancel or
-     * shorten a running timer. Only the next start matters while audio is already active.
+     * The schedule end is a cancellation boundary for an automatically-created timer, not a shortened
+     * sleep deadline: reaching it clears the automatic timer and leaves playback running. A manual timer
+     * has no [Running.automaticOccurrence], so the schedule can never cancel one the listener created.
      */
     private suspend fun reconcileSchedule(explicitPlay: Boolean = false) {
         scheduleBoundary?.cancel()
@@ -457,11 +457,25 @@ class SleepTimerController @Inject constructor(
         if (!playbackActive) return
 
         val schedule = settings.schedule
-        if (!schedule.enabled || schedule.start == schedule.end) return
+        val automatic = running?.automaticOccurrence
+        if (!schedule.enabled || schedule.start == schedule.end) {
+            if (automatic != null) finish(SleepTimerOutcome.Cancelled)
+            return
+        }
 
         val now = clock.now()
         val zone = zoneProvider.current()
         val occurrence = SleepSchedulePolicy.currentOccurrence(now, zone, schedule)
+
+        if (automatic != null) {
+            if (occurrence?.id != automatic) {
+                finish(SleepTimerOutcome.Cancelled)
+            } else {
+                scheduleScheduleBoundary(now = now, zone = zone)
+            }
+            return
+        }
+
         if (running == null && occurrence != null) {
             val suppressed = schedule.suppressedOccurrence == occurrence.id
             val replayRequired = schedule.replayRequiredOccurrence == occurrence.id
@@ -476,25 +490,36 @@ class SleepTimerController @Inject constructor(
                 return
             }
         }
-        scheduleNextStartBoundary(now = now, zone = zone)
+        scheduleScheduleBoundary(now = now, zone = zone)
     }
 
     /**
-     * Schedules only the next *start* while playback is active.
+     * While playback is alive, schedule the one civil boundary that can change schedule behavior next.
      *
-     * Coroutine delay does not wake a dead process; the playback service already owns this process while
-     * audio is active. Manual wall-clock/timezone changes cancel and recompute this delay through
-     * [onWallClockChanged].
+     * An active automatic timer watches its occurrence end, where it is cancelled without pausing playback.
+     * Otherwise only the next start matters. Coroutine delay cannot wake a dead process; it exists solely
+     * inside the already-running playback owner. Wall-clock/timezone changes cancel and recompute it.
      */
-    private fun scheduleNextStartBoundary(
+    private fun scheduleScheduleBoundary(
         now: java.time.Instant = clock.now(),
         zone: java.time.ZoneId = zoneProvider.current(),
     ) {
         scheduleBoundary?.cancel()
         scheduleBoundary = null
         if (!playbackActive) return
-        val next = SleepSchedulePolicy.nextStart(now, zone, settings.schedule) ?: return
-        val delayMillis = (next.toEpochMilli() - now.toEpochMilli()).coerceAtLeast(1L)
+
+        val schedule = settings.schedule
+        if (!schedule.enabled || schedule.start == schedule.end) return
+
+        val automatic = running?.automaticOccurrence
+        val occurrence = SleepSchedulePolicy.currentOccurrence(now, zone, schedule)
+        val boundary = if (automatic != null && occurrence?.id == automatic) {
+            occurrence.end
+        } else {
+            SleepSchedulePolicy.nextStart(now, zone, schedule)
+        } ?: return
+
+        val delayMillis = (boundary.toEpochMilli() - now.toEpochMilli()).coerceAtLeast(1L)
         scheduleBoundary = applicationScope.launch(mainDispatcher) {
             delay(delayMillis)
             reconcileSchedule()
