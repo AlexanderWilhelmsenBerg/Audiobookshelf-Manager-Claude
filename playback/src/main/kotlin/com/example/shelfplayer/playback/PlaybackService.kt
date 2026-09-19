@@ -2083,7 +2083,9 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
             if (controller.isCar()) {
-                val carArrived = carConnections.onConnected()
+                val carWasConnected = carConnections.isConnected()
+                carConnections.onConnected()
+                val carArrived = !carWasConnected
                 logger.info(
                     LogCategory.Playback,
                     "A car connected to the media session",
