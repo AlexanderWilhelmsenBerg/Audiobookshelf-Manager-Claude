@@ -6,28 +6,44 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Issue #36 — pairs the measured Android Auto audio-focus pause with one car arrival.
  *
- * The 2026-09-19 physical drive measured this sequence on the target setup:
+ * Two physical drives on 2026-09-19 measured the same mechanism on the target setup:
  *
  * 1. BookWave was actively playing through the #11-owned headset.
  * 2. Media3 set playWhenReady=false with AUDIO_FOCUS_LOSS.
- * 3. the first Android Auto controller bound two seconds later;
- * 4. #11 still owned and reasserted that same headset.
+ * 3. the first Android Auto controller bound a few seconds later;
+ * 4. Android could transiently remove/re-add that headset while the car was binding.
  *
- * This gate deliberately records only that measured mechanism. A noisy-route pause, a generic system pause,
- * or a merely connected headset is not enough. The pending pause also carries the #11 book generation and
- * output id, so changing books or choosing another output cannot revive stale evidence.
+ * The pause-time headset therefore becomes an immutable continuity target before live route evidence can
+ * flap. The target is still generation- and explicit-intent-bound, and the candidate is consumed only after
+ * the routing layer has secured that exact headset again.
  *
  * Not thread-safe by design: PlaybackService calls it from the player/main-thread boundary.
  */
 internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAULT_PAIRING_WINDOW) {
-    private data class Pending(val pausedAt: Duration, val generation: Long, val outputId: String)
+    internal data class Target(
+        val outputId: String,
+        val generation: Long,
+        val explicitSelectionSequence: Long,
+    )
+
+    private data class Pending(
+        val pausedAt: Duration,
+        val generation: Long,
+        val outputId: String,
+        val explicitSelectionSequence: Long,
+    )
 
     private var pending: Pending? = null
 
     /**
      * Records an AUDIO_FOCUS_LOSS only when #11 says the current book was actually heard in this headset.
      */
-    fun onAudioFocusLoss(at: Duration, heardRoute: RouteHeardOwnership.HeardRoute?, headsetId: String?) {
+    fun onAudioFocusLoss(
+        at: Duration,
+        heardRoute: RouteHeardOwnership.HeardRoute?,
+        headsetId: String?,
+        explicitSelectionSequence: Long,
+    ) {
         pending = heardRoute
             ?.takeIf { heard -> headsetId != null && heard.outputId == headsetId }
             ?.let { heard ->
@@ -35,6 +51,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
                     pausedAt = at,
                     generation = heard.generation,
                     outputId = heard.outputId,
+                    explicitSelectionSequence = explicitSelectionSequence,
                 )
             }
     }
@@ -45,44 +62,74 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     }
 
     /**
-     * Consumes one candidate on the first car arrival.
+     * Resolves the first car bind to the pause-time headset without consuming it yet.
      *
-     * An arrival consumes the candidate even when it refuses it. Waiting for a later route callback would
-     * turn "the car arrived while this exact ownership was current" into a weaker inference and could let a
-     * newer explicit choice be overridden.
+     * Routing may take a bounded moment because Android Auto can temporarily remove/re-add A2DP while it
+     * binds. Holding the candidate until that exact target is secured lets the service survive that flap
+     * without reconstructing ownership from live [RouteHeardOwnership.heardRoute].
+     */
+    fun targetForCarArrival(
+        arrivedAt: Duration,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+    ): Target? {
+        val candidate = pending ?: return null
+        val ageAtArrival = arrivedAt - candidate.pausedAt
+        val valid =
+            ageAtArrival >= Duration.ZERO &&
+                ageAtArrival <= pairingWindow &&
+                currentGeneration == candidate.generation &&
+                explicitSelectionSequence == candidate.explicitSelectionSequence
+        if (!valid) {
+            pending = null
+            return null
+        }
+        return Target(
+            outputId = candidate.outputId,
+            generation = candidate.generation,
+            explicitSelectionSequence = candidate.explicitSelectionSequence,
+        )
+    }
+
+    /** True only while the resolved target still belongs to the same pending listener/book context. */
+    fun isCurrent(
+        target: Target,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+    ): Boolean {
+        val candidate = pending ?: return false
+        return candidate.outputId == target.outputId &&
+            candidate.generation == target.generation &&
+            candidate.explicitSelectionSequence == target.explicitSelectionSequence &&
+            currentGeneration == target.generation &&
+            explicitSelectionSequence == target.explicitSelectionSequence
+    }
+
+    /**
+     * Consumes the candidate only after routing has secured the exact pause-time headset.
+     *
+     * A refusal also consumes it: one measured focus loss gets at most one first-car-arrival recovery.
      */
     fun resumeForCarArrival(
-        at: Duration,
-        heardRoute: RouteHeardOwnership.HeardRoute?,
+        target: Target,
+        currentGeneration: Long?,
         headsetId: String?,
+        explicitSelectionSequence: Long,
         resume: (String) -> Unit,
     ): Boolean {
-        val target = takeForCarArrival(at, heardRoute, headsetId) ?: return false
-        resume(target)
+        val valid = isCurrent(
+            target = target,
+            currentGeneration = currentGeneration,
+            explicitSelectionSequence = explicitSelectionSequence,
+        ) && headsetId == target.outputId
+        pending = null
+        if (!valid) return false
+        resume(target.outputId)
         return true
     }
 
-    private fun takeForCarArrival(
-        at: Duration,
-        heardRoute: RouteHeardOwnership.HeardRoute?,
-        headsetId: String?,
-    ): String? {
-        val candidate = pending
-        pending = null
-        if (candidate == null) return null
-
-        val age = at - candidate.pausedAt
-        val stillOwned =
-            heardRoute?.generation == candidate.generation &&
-                heardRoute.outputId == candidate.outputId &&
-                headsetId == candidate.outputId
-        return candidate.outputId.takeIf {
-            age >= Duration.ZERO && age <= pairingWindow && stillOwned
-        }
-    }
-
     private companion object {
-        /** The measured pause→first-bind interval was two seconds; six leaves bounded startup jitter. */
+        /** The measured pause→first-bind intervals were two and four seconds; six leaves bounded startup jitter. */
         val DEFAULT_PAIRING_WINDOW: Duration = 6.seconds
     }
 }
