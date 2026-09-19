@@ -39,6 +39,52 @@ class MediaButtonLayoutTest {
     }
 
     @Test
+    fun `active timer owns the phone forward compact slot while back skip remains essential`() {
+        val layout = convert(
+            MediaButtonLayout.inPriorityOrder(
+                outputActions = listOf(
+                    button("car", CommandButton.SLOT_BACK),
+                    button("headset", CommandButton.SLOT_FORWARD),
+                ),
+                skipActions = listOf(
+                    button("skipBack", CommandButton.SLOT_BACK),
+                    button("skipForward", CommandButton.SLOT_FORWARD),
+                ),
+                activeTimerActions = listOf(button("sleep 12m", CommandButton.SLOT_FORWARD)),
+                overflowActions = emptyList(),
+                carBound = false,
+            ),
+        )
+
+        assertEquals("skipBack", named(layout, CommandButton.SLOT_BACK))
+        assertEquals("sleep 12m", named(layout, CommandButton.SLOT_FORWARD))
+        assertTrue(layout.map { it.displayName.toString() }.contains("skipForward"))
+    }
+
+    @Test
+    fun `active timer keeps compact forward slot even while car outputs have priority`() {
+        val layout = convert(
+            MediaButtonLayout.inPriorityOrder(
+                outputActions = listOf(
+                    button("car", CommandButton.SLOT_BACK),
+                    button("headset", CommandButton.SLOT_FORWARD),
+                ),
+                skipActions = listOf(
+                    button("skipBack", CommandButton.SLOT_BACK),
+                    button("skipForward", CommandButton.SLOT_FORWARD),
+                ),
+                activeTimerActions = listOf(button("sleep 9m", CommandButton.SLOT_FORWARD)),
+                overflowActions = emptyList(),
+                carBound = true,
+            ),
+        )
+
+        assertEquals("car", named(layout, CommandButton.SLOT_BACK))
+        assertEquals("sleep 9m", named(layout, CommandButton.SLOT_FORWARD))
+        assertTrue(layout.map { it.displayName.toString() }.containsAll(listOf("headset", "skipBack", "skipForward")))
+    }
+
+    @Test
     fun `the car gets output actions first while a car controller is bound`() {
         val layout = convert(
             ordered(
