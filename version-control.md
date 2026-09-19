@@ -19,7 +19,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 - **Latest stable is not automatically the approved next version.** Compatibility gates and migration notes still apply.
 - `gradle/libs.versions.toml` remains the source of truth for direct Gradle/Maven pins. This file mirrors those pins for planning/status visibility; when Gradle conflict resolution ships a newer transitive version than the direct pin, record both explicitly.
 - Direct repository-owned versions are tracked here. Transitive Maven artifacts are not individually listed; Gradle dependency verification, the dependency report/SBOM and vulnerability scanning cover that surface.
-- Mutable aliases such as `actions/checkout@v7`, `ubuntu-latest`, `platform-tools`, and container `:latest` tags are called out explicitly instead of pretending the repository pins an exact version.
+- Mutable inputs such as the remaining `actions/download-artifact@v3` compatibility tag, `sdkmanager "platform-tools"`, and the CI image's rebuild base tag are called out explicitly instead of pretending the repository pins an exact version.
 
 ### Status legend
 
