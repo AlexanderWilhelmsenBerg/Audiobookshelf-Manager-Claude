@@ -1,7 +1,10 @@
 package com.example.shelfplayer.playback
 
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -212,6 +215,22 @@ class PlaybackService : MediaLibraryService() {
     private var skipWatch: Job? = null
     private var outputWatch: Job? = null
 
+    /**
+     * BW-SLEEP-01 — Media3 can ask for a cold playback resumption and then issue the Play itself.
+     *
+     * The next forwarding-player Play after that callback is deliberately not classified as an explicit
+     * replay for sleep-schedule purposes. A later ordinary controller Play is. This keeps process/lifecycle
+     * restoration from manufacturing the user intent required after an automatic timer has expired.
+     */
+    private var passiveResumptionPlayPending = false
+
+    /** Reconcile civil wall-clock changes only while this playback service already exists. */
+    private val wallClockChanges = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            sleepTimer.onWallClockChanged()
+        }
+    }
+
     /** The two inputs to the notification's own buttons. Main thread only, like everything that reads them. */
     private var skips: SkipIntervals = SkipIntervals.Default
     private var sleepTimerState: SleepTimerState = SleepTimerState.Idle
@@ -253,6 +272,7 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
+        registerWallClockChanges()
         // PRODUCT_SPEC PLAY-006 — the preset in force when this player is built. Read blocking on the
         // service's own creation rather than observed: a load control is a construction argument, and the
         // requirement is that a change applies to the *next* player rather than to this one.
@@ -413,6 +433,7 @@ class PlaybackService : MediaLibraryService() {
         resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
+        unregisterReceiver(wallClockChanges)
         audioOutputs.detach()
         journal?.cancel()
         sleepTimerWatch?.cancel()
@@ -601,38 +622,42 @@ class PlaybackService : MediaLibraryService() {
      * player.
      */
     private suspend fun handleFreshnessPlay() {
-        when (val prepared = resumeFreshness.preparePlay()) {
+        val explicit = !passiveResumptionPlayPending
+        passiveResumptionPlayPending = false
+        sleepTimer.onPlayRequest(explicit)
+        val requestedPlay = when (val prepared = resumeFreshness.preparePlay()) {
             ResumePlayPreparation.Bypass -> resumeLoadedCurrent()
-            ResumePlayPreparation.Superseded -> Unit
+            ResumePlayPreparation.Superseded -> false
             is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan)
         }
+        if (!requestedPlay) sleepTimer.onPlayRequest(explicit = false)
     }
 
-    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan) {
+    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan): Boolean =
         when (val decision = plan.decision) {
-            is ResumeFreshnessDecision.Current -> {
+            is ResumeFreshnessDecision.Current ->
                 resumeFreshness.withCurrentPlan(plan) {
                     recordFreshnessCheck(plan)
                     resumeLoadedCurrent()
-                }
-            }
+                } ?: false
 
             is ResumeFreshnessDecision.Adopt -> {
                 val outcome = resumeFreshness.withCurrentPlan(plan) {
                     recordFreshnessCheck(plan)
                     resumeAt(plan, decision.position)
-                } ?: return
+                } ?: return false
                 recordRemoteProgress(plan, outcome)
+                outcome == ResumeOutcome.Resumed
             }
         }
-    }
 
     /** The old direct Play behaviour, now used only after the shared freshness decision says to stay local. */
-    private suspend fun resumeLoadedCurrent() = withContext(mainDispatcher) {
-        val current = player ?: return@withContext
-        if (current.mediaItemCount == 0) return@withContext
+    private suspend fun resumeLoadedCurrent(): Boolean = withContext(mainDispatcher) {
+        val current = player ?: return@withContext false
+        if (current.mediaItemCount == 0) return@withContext false
         if (current.playbackState == Player.STATE_IDLE || current.playerError != null) current.prepare()
         current.play()
+        true
     }
 
     /** Records the REST check result independently of whether a later adopted seek succeeds. */
@@ -786,6 +811,8 @@ class PlaybackService : MediaLibraryService() {
             // The listening-time interval closes before the sync reads it, or a pause would report less
             // listening than happened.
             sessionSync.onPlayingChanged(isPlaying)
+            // BW-SLEEP-01 — service lifecycle reports playback; the controller owns schedule policy.
+            sleepTimer.onPlaybackChanged(isPlaying)
             if (isPlaying) {
                 // Audio is coming out, so whatever went wrong is over and the next failure starts from one.
                 recovery.onPlaying()
@@ -2104,7 +2131,12 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             isForPlayback: Boolean,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
-            if (isForPlayback) resumeForPlayback() else describeResumable()
+            if (isForPlayback) {
+                passiveResumptionPlayPending = true
+                resumeForPlayback()
+            } else {
+                describeResumable()
+            }
         }
 
         /** The `isForPlayback = true` half: open the book and hand back a queue Media3 immediately plays. */
@@ -2327,6 +2359,25 @@ class PlaybackService : MediaLibraryService() {
                 else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+    }
+
+    /**
+     * BW-SLEEP-01 — observe explicit wall-clock/timezone edits without creating a wakeup mechanism.
+     *
+     * A DST transition needs no broadcast: the next boundary was resolved to an Instant using zone rules
+     * before the delay was scheduled. These broadcasts cover the cases that invalidate that calculation
+     * while the service is alive.
+     */
+    private fun registerWallClockChanges() {
+        val filter = IntentFilter(Intent.ACTION_TIME_CHANGED).apply {
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(wallClockChanges, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(wallClockChanges, filter)
         }
     }
 
