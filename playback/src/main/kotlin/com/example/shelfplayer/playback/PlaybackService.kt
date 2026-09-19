@@ -784,6 +784,7 @@ class PlaybackService : MediaLibraryService() {
                 // Audio is coming out, so whatever went wrong is over and the next failure starts from one.
                 recovery.onPlaying()
                 // ROUTE-002 — real playback is the gate for creating route-heard evidence.
+                syncExplicitOutputIntent()
                 routeOwnership.onPlaybackObserved(audioOutputs.outputs.value)
                 // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
                 // longer a description of where this device is. See `ResumeBaseline.onLocalMove`.
@@ -1029,6 +1030,7 @@ class PlaybackService : MediaLibraryService() {
         outputWatch = scope.launch {
             launch {
                 combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, _) ->
+                    syncExplicitOutputIntent()
                     if ((player?.mediaItemCount ?: 0) == 0) {
                         routeOwnership.onQueueEmptied()
                     } else {
@@ -1039,15 +1041,20 @@ class PlaybackService : MediaLibraryService() {
             }
             launch {
                 audioOutputs.explicitSelection.collect { selection ->
-                    selection ?: return@collect
-                    routeOwnership.onExplicitSelection(
-                        outputId = selection.outputId,
-                        outputs = audioOutputs.outputs.value,
-                        isPlaying = player?.isPlaying == true,
-                    )
+                    if (selection != null) syncExplicitOutputIntent()
                 }
             }
         }
+    }
+
+    private fun syncExplicitOutputIntent() {
+        val selection = audioOutputs.explicitSelection.value ?: return
+        routeOwnership.onExplicitSelection(
+            outputId = selection.outputId,
+            outputs = audioOutputs.outputs.value,
+            isPlaying = player?.isPlaying == true,
+            selectionSequence = selection.sequence,
+        )
     }
 
     /**
@@ -1115,6 +1122,7 @@ class PlaybackService : MediaLibraryService() {
             routeOwnership.onQueueEmptied()
             return
         }
+        syncExplicitOutputIntent()
         val hold = routeOwnership.headsetForCar(audioOutputs.outputs.value) ?: return
         logger.info(
             LogCategory.Playback,
