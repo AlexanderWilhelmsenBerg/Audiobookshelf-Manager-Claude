@@ -129,27 +129,28 @@ The original device report was: *"when listening to something when android auto 
 
 The earlier `CarArrivalContinuity` experiment was deliberately removed after repeated review exposed unsafe inference, including a path that could resume onto the phone speaker. That implementation remains historical evidence only.
 
-A physical drive on **2026-09-19**, after #11 replaced `HeadsetHold` with generation-bound route-heard ownership, supplied the missing measurement:
+Two physical drives on **2026-09-19**, after #11 replaced `HeadsetHold` with generation-bound route-heard ownership, bounded the failure:
 
-- playback was continuously advancing through the headset;
-- at **15:37:25** Media3 logged `playWhenReady=false reason=audioFocusLoss`;
-- at **15:37:27** the first Android Auto controller bound;
-- #11 immediately reported that the current-generation book was held in the Bluetooth headset;
-- the owner physically confirmed that Android Auto connection no longer moved the audiobook out of the headset.
+- first drive: playback was advancing through the headset, Media3 logged `playWhenReady=false reason=audioFocusLoss` at **15:37:25**, and the first Android Auto controller bound at **15:37:27**;
+- second drive: Media3 again logged `audioFocusLoss` at **18:15:09**, the first Android Auto controller bound at **18:15:13**, and Android temporarily removed the Bluetooth output while BookWave was reasserting it;
+- during that second bind, `heardRoute` was correctly retired and `AudioOutputRouter` fell back to Automatic before the same Bluetooth device reappeared at **18:15:14**;
+- the #36 success log never appeared and playback remained paused until a later user request.
 
-The pause mechanism is therefore **audio-focus loss on this tested setup**, with a measured pause-to-first-bind interval of two seconds. The implementation for #36 deliberately does not generalize that result to `AUDIO_BECOMING_NOISY` or to every system pause.
+The measured pause mechanism is therefore **audio-focus loss on this tested setup**, not `AUDIO_BECOMING_NOISY`. The second drive also proves that live route evidence is not stable enough to rediscover the continuity target after Android Auto begins binding.
 
-The continuity decision is now narrow:
+The continuity decision is therefore:
 
-1. capture only an `AUDIO_FOCUS_LOSS` while #11 currently owns this book generation in a connected headset;
-2. discard the candidate on any newer Play, any other pause reason, a book/queue change, or a newer explicit output choice;
-3. let only the first 0→1 car-controller binding consume it, within a bounded six-second pairing window;
-4. require the exact same #11 generation/output ownership at consumption time;
-5. apply and settle that owned headset preference before calling `play()`.
+1. capture only an `AUDIO_FOCUS_LOSS` while #11 owns this book generation in a connected headset;
+2. store the pause-time book generation, headset id and explicit-output-selection sequence;
+3. pair it only with the first 0→1 car-controller binding, using the **bind timestamp** rather than later route-settle completion, within the bounded six-second window;
+4. treat that pause-time headset id as the immutable recovery target — do **not** rediscover it from live `heardRoute` after Android Auto starts mutating the device list;
+5. for at most two seconds, wait for that exact headset to be connected, reassert it, and retry the same target if a remove/re-add cleared BookWave's preference back to Automatic during settle;
+6. before every retry and again before resume, require the same loaded-book generation and explicit-selection sequence; after settle also require the target to remain a connected headset candidate and `selectedId` to still equal that target;
+7. only then consume the one-shot candidate and call the raw ExoPlayer's `play()`, allowing Media3's configured audio-focus manager to request focus again.
 
-A car appearing is never itself a destination. The phone speaker is never a continuity destination. A second controller binding during the same drive is not another arrival.
+A transient Android Auto device-list flap may therefore retire live `heardRoute` without invalidating an otherwise-matching candidate, but it never authorizes a different destination. If the exact headset does not return, if the preferred route falls back to Automatic and cannot be reasserted, or if any newer book/output/playback intent supersedes the candidate, BookWave remains paused. `AUDIO_BECOMING_NOISY`, the phone speaker and the car are never continuity targets.
 
-The same drive also recorded `audioFocusLoss` when stopping the car at 15:43:37. Because that event has no new car-arrival binding in the capture, it is evidence for a separate departure/lifecycle case and is not folded into #36's arrival policy.
+The first drive also recorded `audioFocusLoss` when stopping the car at 15:43:37. Because that event has no new car-arrival binding, it remains evidence for a separate departure/lifecycle case and is not folded into #36's arrival policy.
 
 
 ## Consequences
