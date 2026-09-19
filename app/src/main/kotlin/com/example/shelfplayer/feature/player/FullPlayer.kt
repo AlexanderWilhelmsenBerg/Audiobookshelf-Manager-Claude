@@ -120,10 +120,8 @@ fun FullPlayer(
                 .padding(horizontal = 24.dp),
         ) {
             TopBar(
-                timer = timer,
                 outputs = outputs,
                 onCollapse = actions.onCollapse,
-                onOpenSleepTimer = actions.onOpenSleepTimer,
             )
 
             // PRODUCT_SPEC PLAY-001 — the requirement is a notification with transport controls, and on
@@ -378,10 +376,8 @@ private fun SpeedAction(speed: PlaybackSpeed, onClick: () -> Unit, modifier: Mod
 
 @Composable
 private fun TopBar(
-    timer: SleepTimerState,
     outputs: OutputControls,
     onCollapse: () -> Unit,
-    onOpenSleepTimer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -399,7 +395,6 @@ private fun TopBar(
         // has already caught that row laying out four pixels tall at a doubled font scale. The top-right is
         // also where a listener looks for an output control, because that is where every other app puts one.
         AudioOutputAction(controls = outputs)
-        SleepTimerReadout(timer = timer, onClick = onOpenSleepTimer)
     }
 }
 
@@ -776,16 +771,7 @@ private fun SecondaryRow(
         )
         // PRODUCT_SPEC 11.1 — a tap opens the list, a long press keeps this spot. See the note above.
         BookmarkAction(onOpenBookmarks = actions.onOpenBookmarks, onAddBookmark = actions.onAddBookmark)
-        SecondaryAction(
-            icon = Icons.Filled.Bedtime,
-            description = if (timer.isActive) {
-                stringResource(R.string.sleep_timer_active, timer.remaining.asShortLabel())
-            } else {
-                stringResource(R.string.sleep_timer_open)
-            },
-            enabled = true,
-            onClick = actions.onOpenSleepTimer,
-        )
+        SleepTimerAction(timer = timer, onClick = actions.onOpenSleepTimer)
     }
 }
 
@@ -837,22 +823,36 @@ private fun SecondaryAction(
 }
 
 /**
- * PRODUCT_SPEC PLAY-008 — the countdown, at the top, when one is running.
+ * PLAY-008 / BW-SLEEP-01 — one sleep-timer control in one stable position.
  *
- * The *readout* rather than the control: the button in the secondary row is how a timer is set, and this
- * is where a listener glances to see how long is left. It renders nothing when no timer is running, so the
- * top bar is empty rather than carrying a second way to open the same sheet.
+ * Idle uses the familiar Bedtime glyph. Active replaces that presentation with the authoritative remaining
+ * time instead of adding a second readout elsewhere on the player. Both states invoke the same sheet action,
+ * and the active semantics include the spoken remaining time for TalkBack.
  */
 @Composable
-private fun SleepTimerReadout(timer: SleepTimerState, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    if (!timer.isActive) return
-    val activeLabel = stringResource(R.string.sleep_timer_active, timer.remaining.asShortLabel())
-    IconButton(onClick = onClick, modifier = modifier) {
-        Text(
-            text = timer.remaining.asCountdownLabel(),
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.semantics { contentDescription = activeLabel },
-        )
+private fun SleepTimerAction(timer: SleepTimerState, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val description = if (timer.isActive) {
+        stringResource(R.string.sleep_timer_active, timer.remaining.asShortLabel())
+    } else {
+        stringResource(R.string.sleep_timer_open)
+    }
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.semantics { contentDescription = description },
+    ) {
+        if (timer.isActive) {
+            Text(
+                text = timer.remaining.asCountdownLabel(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.Bedtime,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
