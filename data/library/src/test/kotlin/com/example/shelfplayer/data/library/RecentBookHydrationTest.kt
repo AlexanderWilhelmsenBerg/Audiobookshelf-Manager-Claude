@@ -28,8 +28,10 @@ import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.TestCoroutineScheduler
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -53,6 +55,7 @@ import kotlin.time.Duration.Companion.seconds
  * These are repository/Room tests rather than UI tests because the contract under test is exactly that
  * Room becomes useful early while the same full refresh remains authoritative afterwards.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class RecentBookHydrationTest {
@@ -64,15 +67,17 @@ class RecentBookHydrationTest {
     private lateinit var playbackApi: RecordingPlaybackApi
     private val profileId = ProfileId("fixture-profile")
     private val sink = RecordingLogSink()
+    private val testScheduler = TestCoroutineScheduler()
+    private val testDispatcher = UnconfinedTestDispatcher(testScheduler)
 
     @Before
-    fun setUp() = runTest {
+    fun setUp() = runTest(testDispatcher) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
             .allowMainThreadQueries()
             .build()
 
-        val dispatcher = Dispatchers.Unconfined
+        val dispatcher = testDispatcher
         val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
         baseGateway = FakeAudiobookshelfGateway(
             loader = FixtureLibraryLoader(),
@@ -114,7 +119,7 @@ class RecentBookHydrationTest {
     }
 
     @Test
-    fun `recent sessions are bounded deduplicated hydrated early and skipped by bulk expansion`() = runTest {
+    fun `recent sessions are bounded deduplicated hydrated early and skipped by bulk expansion`() = runTest(testDispatcher) {
         playbackApi.answer = AppResult.Success(
             listOf(
                 session(VOYAGE_ONE, "newest"),
@@ -151,7 +156,7 @@ class RecentBookHydrationTest {
     }
 
     @Test
-    fun `already-current recent candidates never make a targeted request`() = runTest {
+    fun `already-current recent candidates never make a targeted request`() = runTest(testDispatcher) {
         repository.refresh(profileId)
         libraryApi.clearRecording()
         playbackApi.clearRecording()
@@ -165,7 +170,7 @@ class RecentBookHydrationTest {
     }
 
     @Test
-    fun `local unsynced progress survives targeted hydration and the completed refresh`() = runTest {
+    fun `local unsynced progress survives targeted hydration and the completed refresh`() = runTest(testDispatcher) {
         repository.refresh(profileId)
         val bookKey = EntityKey.of(SERVER, VOYAGE_ONE)
         val local = assertNotNull(database.progressDao().findProgress(profileId.value, bookKey))
@@ -194,7 +199,7 @@ class RecentBookHydrationTest {
     }
 
     @Test
-    fun `history failure is isolated and the normal full refresh still completes`() = runTest {
+    fun `history failure is isolated and the normal full refresh still completes`() = runTest(testDispatcher) {
         playbackApi.answer = AppResult.Failure(AppError.Network())
 
         val result = repository.refresh(profileId)
@@ -206,7 +211,7 @@ class RecentBookHydrationTest {
     }
 
     @Test
-    fun `targeted hydration failure falls through to ordinary bulk expansion`() = runTest {
+    fun `targeted hydration failure falls through to ordinary bulk expansion`() = runTest(testDispatcher) {
         playbackApi.answer = AppResult.Success(listOf(session(VOYAGE_ONE, "recent")))
         libraryApi.failedTargetedFetches += VOYAGE_ONE
 
@@ -219,7 +224,7 @@ class RecentBookHydrationTest {
     }
 
     @Test
-    fun `hot set remains capped even if a server overfills the requested history page`() = runTest {
+    fun `hot set remains capped even if a server overfills the requested history page`() = runTest(testDispatcher) {
         playbackApi.answer = AppResult.Success(
             (1..10).map { session("hidden-$it", "s-$it") } + session(VOYAGE_ONE, "eleventh"),
         )
@@ -231,7 +236,7 @@ class RecentBookHydrationTest {
     }
 
     @Test
-    fun `catalogue admission blocks inaccessible libraries and tag-filtered candidates`() = runTest {
+    fun `catalogue admission blocks inaccessible libraries and tag-filtered candidates`() = runTest(testDispatcher) {
         database.profileDao().setAccountState(
             profileId = profileId.value,
             role = "Listener",
