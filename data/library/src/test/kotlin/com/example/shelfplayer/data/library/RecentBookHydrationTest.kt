@@ -119,41 +119,42 @@ class RecentBookHydrationTest {
     }
 
     @Test
-    fun `recent sessions are bounded deduplicated hydrated early and skipped by bulk expansion`() =
+    fun `recent sessions are bounded deduplicated hydrated early and skipped by bulk expansion`() {
         runTest(testDispatcher) {
-        playbackApi.answer = AppResult.Success(
-            listOf(
-                session(VOYAGE_ONE, "newest"),
-                session(VOYAGE_ONE, "duplicate"),
-                session("not-visible", "hidden"),
-                session(VOYAGE_TWO, "next"),
-            ),
-        )
-        var earlyBookSeen = false
-        libraryApi.afterCatalogue = { libraryId ->
-            if (libraryId == FICTION && !earlyBookSeen) {
-                val early = repository.observeBook(profileId, LibraryItemId(VOYAGE_ONE)).first()
-                earlyBookSeen = early?.progress != null &&
-                    database.libraryDao()
-                        .expandedBookStamps(profileId.value, EntityKey.of(SERVER, FICTION.value))
-                        .any { it.remoteId == VOYAGE_ONE }
+            playbackApi.answer = AppResult.Success(
+                listOf(
+                    session(VOYAGE_ONE, "newest"),
+                    session(VOYAGE_ONE, "duplicate"),
+                    session("not-visible", "hidden"),
+                    session(VOYAGE_TWO, "next"),
+                ),
+            )
+            var earlyBookSeen = false
+            libraryApi.afterCatalogue = { libraryId ->
+                if (libraryId == FICTION && !earlyBookSeen) {
+                    val early = repository.observeBook(profileId, LibraryItemId(VOYAGE_ONE)).first()
+                    earlyBookSeen = early?.progress != null &&
+                        database.libraryDao()
+                            .expandedBookStamps(profileId.value, EntityKey.of(SERVER, FICTION.value))
+                            .any { it.remoteId == VOYAGE_ONE }
+                }
             }
+
+            val result = repository.refresh(profileId)
+
+            assertIs<AppResult.Success<Int>>(result)
+            assertEquals(listOf(0 to 10), playbackApi.calls, "one captured-size history page")
+            assertEquals(
+                listOf(VOYAGE_ONE, VOYAGE_TWO),
+                libraryApi.targetedFetches,
+                "first occurrence wins and catalogue-invisible ids never become targeted requests",
+            )
+            assertTrue(earlyBookSeen, "targeted metadata/progress must reach Room before the bulk expansion callback")
+            assertFalse(VOYAGE_ONE in libraryApi.bulkExpandedIds)
+            assertFalse(VOYAGE_TWO in libraryApi.bulkExpandedIds)
+            assertNull(repository.observeBook(profileId, LibraryItemId("not-visible")).first())
+            assertEquals(7, repository.observeAccessibleBooks(profileId).first().size)
         }
-
-        val result = repository.refresh(profileId)
-
-        assertIs<AppResult.Success<Int>>(result)
-        assertEquals(listOf(0 to 10), playbackApi.calls, "one captured-size history page")
-        assertEquals(
-            listOf(VOYAGE_ONE, VOYAGE_TWO),
-            libraryApi.targetedFetches,
-            "first occurrence wins and catalogue-invisible ids never become targeted requests",
-        )
-        assertTrue(earlyBookSeen, "targeted metadata/progress must reach Room before the bulk expansion callback")
-        assertFalse(VOYAGE_ONE in libraryApi.bulkExpandedIds)
-        assertFalse(VOYAGE_TWO in libraryApi.bulkExpandedIds)
-        assertNull(repository.observeBook(profileId, LibraryItemId("not-visible")).first())
-        assertEquals(7, repository.observeAccessibleBooks(profileId).first().size)
     }
 
     @Test
