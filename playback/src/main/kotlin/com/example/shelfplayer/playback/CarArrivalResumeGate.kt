@@ -61,7 +61,18 @@ internal class CarArrivalResumeGate(
      * turn "the car arrived while this exact ownership was current" into a weaker inference and could let a
      * newer explicit choice be overridden.
      */
-    fun takeForCarArrival(
+    fun resumeForCarArrival(
+        at: Duration,
+        heardRoute: RouteHeardOwnership.HeardRoute?,
+        headsetId: String?,
+        resume: (String) -> Unit,
+    ): Boolean {
+        val target = takeForCarArrival(at, heardRoute, headsetId) ?: return false
+        resume(target)
+        return true
+    }
+
+    private fun takeForCarArrival(
         at: Duration,
         heardRoute: RouteHeardOwnership.HeardRoute?,
         headsetId: String?,
