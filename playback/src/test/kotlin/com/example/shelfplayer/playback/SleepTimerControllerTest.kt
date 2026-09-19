@@ -285,45 +285,45 @@ class SleepTimerControllerTest {
 
     @Test
     fun `manual cancellation survives recreation and resets next night`() = runTest {
-            val source = MutableStateFlow(
-                SleepTimerSettings.Default.copy(
-                    schedule = SleepTimerScheduleSettings.Default.copy(enabled = true),
-                ),
-            )
-            val repository = FakeSleepTimerRepository(source)
-            val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
-            val first = controller(repository, FakeShakeSource(), clock)
-            first.attach(player())
-            runCurrent()
-            first.onPlaybackChanged(isPlaying = true)
-            runCurrent()
-            assertTrue(first.state.value.isActive)
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                schedule = SleepTimerScheduleSettings.Default.copy(enabled = true),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
+        val first = controller(repository, FakeShakeSource(), clock)
+        first.attach(player())
+        runCurrent()
+        first.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertTrue(first.state.value.isActive)
 
-            first.cancel()
-            runCurrent()
-            val suppressed = assertNotNull(repository.suppressedOccurrence)
-            assertEquals(SleepTimerState.Idle, first.state.value)
+        first.cancel()
+        runCurrent()
+        val suppressed = assertNotNull(repository.suppressedOccurrence)
+        assertEquals(SleepTimerState.Idle, first.state.value)
 
-            first.onWallClockChanged()
-            runCurrent()
-            assertEquals(1, repository.started, "continuing playback must not recreate the cancelled timer")
+        first.onWallClockChanged()
+        runCurrent()
+        assertEquals(1, repository.started, "continuing playback must not recreate the cancelled timer")
 
-            first.attach(null)
-            val recreated = controller(repository, FakeShakeSource(), clock)
-            recreated.attach(player())
-            runCurrent()
-            recreated.onPlaybackChanged(isPlaying = true)
-            runCurrent()
-            assertEquals(SleepTimerState.Idle, recreated.state.value)
-            assertEquals(suppressed, repository.suppressedOccurrence)
+        first.attach(null)
+        val recreated = controller(repository, FakeShakeSource(), clock)
+        recreated.attach(player())
+        runCurrent()
+        recreated.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertEquals(SleepTimerState.Idle, recreated.state.value)
+        assertEquals(suppressed, repository.suppressedOccurrence)
 
-            clock.setWallClock(Instant.parse("2026-09-20T23:00:00Z"))
-            recreated.onWallClockChanged()
-            runCurrent()
-            assertTrue(recreated.state.value.isActive)
-            assertEquals(2, repository.started)
-            assertEquals(null, repository.suppressedOccurrence)
-        }
+        clock.setWallClock(Instant.parse("2026-09-20T23:00:00Z"))
+        recreated.onWallClockChanged()
+        runCurrent()
+        assertTrue(recreated.state.value.isActive)
+        assertEquals(2, repository.started)
+        assertEquals(null, repository.suppressedOccurrence)
+    }
 
     @Test
     fun `automatic expiry requires explicit replay before same occurrence can rearm`() = runTest {
