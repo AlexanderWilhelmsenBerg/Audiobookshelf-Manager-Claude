@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -73,7 +74,7 @@ fun DownloadsRoute(
         onMessageShown = viewModel::onMessageShown,
         onRemove = viewModel::onRemove,
         onPinnedChanged = viewModel::onPinnedChanged,
-        onPauseToggled = viewModel::onPauseToggled,
+        onRecoveryAction = viewModel::onRecoveryAction,
         onVerify = viewModel::onVerify,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -107,8 +108,11 @@ fun DownloadsScreen(
         com.example.shelfplayer.core.model.ServerId,
         Boolean,
     ) -> Unit,
-    /** PRODUCT_SPEC DL-001 — pause a running download, or resume a paused one. */
-    onPauseToggled: (com.example.shelfplayer.core.model.LibraryItemId, Boolean) -> Unit,
+    /** BW-DL-03 / #18 — execute the action implied by the row's recovery presentation state. */
+    onRecoveryAction: (
+        com.example.shelfplayer.core.model.LibraryItemId,
+        com.example.shelfplayer.domain.download.DownloadRecoveryState,
+    ) -> Unit,
     onVerify: () -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
@@ -196,7 +200,7 @@ fun DownloadsScreen(
                 DownloadRowItem(
                     row = row,
                     onPinnedChanged = { pinned -> onPinnedChanged(row.bookId, row.serverId, pinned) },
-                    onPauseToggled = { paused -> onPauseToggled(row.bookId, paused) },
+                    onRecoveryAction = { onRecoveryAction(row.bookId, row.recoveryState) },
                     onRemove = { confirming = row.bookId.value },
                 )
                 if (confirming == row.bookId.value) {
@@ -290,7 +294,7 @@ private fun StorageVolumePicker(volumes: List<StorageVolumeOption>, selected: St
 private fun DownloadRowItem(
     row: DownloadRow,
     onPinnedChanged: (Boolean) -> Unit,
-    onPauseToggled: (Boolean) -> Unit,
+    onRecoveryAction: () -> Unit,
     onRemove: () -> Unit,
 ) {
     Row(
@@ -337,19 +341,10 @@ private fun DownloadRowItem(
                 },
             )
         }
-        // PRODUCT_SPEC DL-001 — only for a book still being fetched. A completed download has nothing to
-        // pause, and a control that does nothing is worse than no control.
-        // BW-DL-03 / #108 owns correcting the Failed-row action; this slice deliberately leaves it unchanged.
-        if (!row.isComplete) {
-            IconButton(onClick = { onPauseToggled(!row.isPaused) }) {
-                Icon(
-                    imageVector = if (row.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                    contentDescription = stringResource(
-                        if (row.isPaused) R.string.downloads_resume else R.string.downloads_pause,
-                    ),
-                )
-            }
-        }
+        DownloadRecoveryActionButton(
+            recoveryState = row.recoveryState,
+            onClick = onRecoveryAction,
+        )
         IconToggleButton(checked = row.isPinned, onCheckedChange = onPinnedChanged) {
             Icon(
                 imageVector = Icons.Filled.PushPin,
@@ -365,6 +360,30 @@ private fun DownloadRowItem(
                 contentDescription = stringResource(R.string.downloads_remove),
             )
         }
+    }
+}
+
+/**
+ * BW-DL-03 / #18 — the row's one recovery affordance, isolated so adding recovery states does not turn
+ * [DownloadRowItem] into a branch-heavy policy owner. The state-to-action decision still lives in
+ * [DownloadRecoveryState.rowAction], shared with the ViewModel.
+ */
+@Composable
+private fun DownloadRecoveryActionButton(
+    recoveryState: com.example.shelfplayer.domain.download.DownloadRecoveryState,
+    onClick: () -> Unit,
+) {
+    val action = recoveryState.rowAction() ?: return
+    val (icon, description) = when (action) {
+        DownloadRecoveryAction.Pause -> Icons.Filled.Pause to R.string.downloads_pause
+        DownloadRecoveryAction.Resume -> Icons.Filled.PlayArrow to R.string.downloads_resume
+        DownloadRecoveryAction.Retry -> Icons.Filled.Refresh to R.string.downloads_retry
+    }
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = icon,
+            contentDescription = stringResource(description),
+        )
     }
 }
 

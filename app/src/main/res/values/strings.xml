@@ -474,6 +474,7 @@
     <string name="downloads_paused">Paused</string>
     <string name="downloads_pause">Pause this download</string>
     <string name="downloads_resume">Resume this download</string>
+    <string name="downloads_retry">Retry this download</string>
     <string name="downloads_pin">Keep this one, never delete it automatically</string>
     <string name="downloads_unpin">Stop keeping this one</string>
     <string name="downloads_remove">Remove this download</string>
