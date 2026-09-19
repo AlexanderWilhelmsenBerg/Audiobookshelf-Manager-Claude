@@ -35,6 +35,26 @@ import androidx.media3.session.CommandButton
 internal object MediaButtonPublishing {
 
     /**
+     * Tracks the last output/car-binding state that was actually published.
+     *
+     * The car-bound bit is intentionally part of the key even when [OutputButtons] is byte-for-byte the
+     * same: issue #38 changes list priority on that transition. Conversely, a second car controller binding
+     * while one is already bound must not cause another publish merely because onConnect fired again.
+     */
+    internal class Tracker {
+        private var published: State? = null
+
+        fun needsPublish(outputButtons: OutputButtons, carBound: Boolean): Boolean =
+            published != State(outputButtons, carBound)
+
+        fun markPublished(outputButtons: OutputButtons, carBound: Boolean) {
+            published = State(outputButtons, carBound)
+        }
+
+        private data class State(val outputButtons: OutputButtons, val carBound: Boolean)
+    }
+
+    /**
      * Publishes [buttons] everywhere they have to go, in the order they have to go.
      *
      * @param toAllControllers the whole-session publish; what Media3 controllers and the session's own

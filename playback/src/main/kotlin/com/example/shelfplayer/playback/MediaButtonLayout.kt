@@ -3,42 +3,35 @@ package com.example.shelfplayer.playback
 import androidx.media3.session.CommandButton
 
 /**
- * PRODUCT_SPEC PLAY-002 / PLAY-007 — the order the button list is published in, which is what decides who
- * gets the car's control bar.
+ * PRODUCT_SPEC PLAY-002 / PLAY-007 — the order the button list is published in.
  *
- * ### Order is a mechanism here, not a presentation detail
+ * Android Auto and API-33+ System UI read the same media-button preferences, so BookWave cannot publish one
+ * simultaneous layout for the car and another for the phone. It can, however, make the shared layout follow
+ * the state that matters: whether an Android Auto controller is actually bound.
  *
- * Android Auto is served by Media3's legacy stub, and
- * `CommandButton.getCustomLayoutFromMediaButtonPreferences` resolves a contested slot by walking the
- * published list and taking the **first** enabled button whose slot chain names it. So "the output actions
- * come before the skips" is the entire implementation of the owner's request after a device run: *"I need
- * them more than seek forward and back."* Reverse the two lines and the car silently goes back to showing
- * skips, with nothing failing to compile.
+ * - no car bound: skips lead, so the phone keeps skip back/forward in the compact slots;
+ * - car bound: output actions lead, so Car/Headset take those slots when present.
  *
- * ### Why this is a named function rather than the order of two statements
- *
- * Because it was the order of two statements, and a red-check proved that worthless: reverting the
- * ordering in `PlaybackService` broke **no test**, since the conversion tests build their own lists.
- * `docs/risks.md` R-100's shape again, and the third time on this branch that a policy was tested while its
- * wiring could change silently — `OutputActionIcons` exists for exactly the same reason.
- *
- * `MediaButtonLayoutTest` asserts the ordering *and* runs the real Media3 conversion over the result, so
- * the property that matters — an output action reaches the bar — fails a build when this changes.
+ * Every contender also names overflow as its fallback. Losing a contested slot therefore relocates a button
+ * instead of dropping it. [MediaButtonLayoutTest] runs this order through Media3's real legacy conversion.
  */
 internal object MediaButtonLayout {
 
     /**
-     * Publishes [outputActions] first so they win the two contested primary slots, then [skipActions] as
-     * the fallback occupants of whatever the outputs did not take, then [overflowActions].
+     * Orders the two contested groups from the actual car-controller binding state.
      *
-     * **A skip is never dropped by losing.** Every skip declares overflow as the second link in its chain,
-     * so a displaced one is relocated rather than discarded — pass 2 of the conversion emits a losing
-     * button only if its chain contains overflow. That is asserted, because without it the skips would
-     * vanish from every surface rather than move.
+     * [carBound] deliberately does not mean "a car-like audio route exists". A projected dashboard can be
+     * present as ordinary A2DP before or after Android Auto binds, while a phone notification should keep its
+     * skips until the car controller really owns the session surface.
      */
     fun inPriorityOrder(
         outputActions: List<CommandButton>,
         skipActions: List<CommandButton>,
         overflowActions: List<CommandButton>,
-    ): List<CommandButton> = outputActions + skipActions + overflowActions
+        carBound: Boolean,
+    ): List<CommandButton> = if (carBound) {
+        outputActions + skipActions + overflowActions
+    } else {
+        skipActions + outputActions + overflowActions
+    }
 }

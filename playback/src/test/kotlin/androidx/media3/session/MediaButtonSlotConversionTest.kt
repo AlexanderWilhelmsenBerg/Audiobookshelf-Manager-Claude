@@ -92,14 +92,14 @@ class MediaButtonSlotConversionTest {
     }
 
     /*
-     * The arrangement BookWave publishes after the owner's device run: the output actions lead the list and
-     * name the primary slots, the skips follow and accept overflow. "I need them more than seek forward and
-     * back." These four cases are the whole state space of showCar/showHeadset.
+     * The arrangement BookWave publishes while a car controller is bound: output actions lead the list and
+     * name the primary slots, while the skips follow and accept overflow. With no car bound issue #38 reverses
+     * those groups so the phone keeps its skips; the conversion mechanics are the same.
      */
 
     @Test
     fun `car and headset take the bar and the skips fall to overflow`() {
-        val layout = convert(bookwaveButtons(car = true, headset = true))
+        val layout = convert(bookwaveButtons(car = true, headset = true, carBound = true))
 
         assertEquals(
             listOf("car", "headset", "skipBack", "skipForward", "sleep"),
@@ -114,7 +114,7 @@ class MediaButtonSlotConversionTest {
     /** With no headset connected, skip forward keeps the position Headset would have taken. */
     @Test
     fun `only car shown leaves skip forward in the bar`() {
-        val layout = convert(bookwaveButtons(car = true, headset = false))
+        val layout = convert(bookwaveButtons(car = true, headset = false, carBound = true))
 
         assertEquals(CommandButton.SLOT_BACK, slotOf(layout, "car"))
         assertEquals(CommandButton.SLOT_FORWARD, slotOf(layout, "skipForward"))
@@ -123,7 +123,7 @@ class MediaButtonSlotConversionTest {
 
     @Test
     fun `only headset shown leaves skip back in the bar`() {
-        val layout = convert(bookwaveButtons(car = false, headset = true))
+        val layout = convert(bookwaveButtons(car = false, headset = true, carBound = true))
 
         assertEquals(CommandButton.SLOT_BACK, slotOf(layout, "skipBack"))
         assertEquals(CommandButton.SLOT_FORWARD, slotOf(layout, "headset"))
@@ -132,7 +132,7 @@ class MediaButtonSlotConversionTest {
     /** No output actions at all is the pre-change layout, unchanged. */
     @Test
     fun `neither output action shown restores the skips to both primary slots`() {
-        val layout = convert(bookwaveButtons(car = false, headset = false))
+        val layout = convert(bookwaveButtons(car = false, headset = false, carBound = true))
 
         assertEquals(CommandButton.SLOT_BACK, slotOf(layout, "skipBack"))
         assertEquals(CommandButton.SLOT_FORWARD, slotOf(layout, "skipForward"))
@@ -149,14 +149,26 @@ class MediaButtonSlotConversionTest {
      */
     @Test
     fun `something always holds the back slot, in every state`() {
-        listOf(true to true, true to false, false to true, false to false).forEach { (car, headset) ->
-            val layout = convert(bookwaveButtons(car = car, headset = headset))
+        listOf(false, true).forEach { carBound ->
+            listOf(true to true, true to false, false to true, false to false).forEach { (car, headset) ->
+                val layout = convert(bookwaveButtons(car = car, headset = headset, carBound = carBound))
 
-            assertTrue(
-                CommandButton.containsButtonForSlot(layout, CommandButton.SLOT_BACK),
-                "showCar=$car showHeadset=$headset left the back slot empty, which re-arms the restart bug",
-            )
+                assertTrue(
+                    CommandButton.containsButtonForSlot(layout, CommandButton.SLOT_BACK),
+                    "carBound=$carBound showCar=$car showHeadset=$headset left the back slot empty",
+                )
+            }
         }
+    }
+
+    @Test
+    fun `no car bound keeps the skips in both primary slots while outputs remain in overflow`() {
+        val layout = convert(bookwaveButtons(car = true, headset = true, carBound = false))
+
+        assertEquals(CommandButton.SLOT_BACK, slotOf(layout, "skipBack"))
+        assertEquals(CommandButton.SLOT_FORWARD, slotOf(layout, "skipForward"))
+        assertEquals(CommandButton.SLOT_OVERFLOW, slotOf(layout, "car"))
+        assertEquals(CommandButton.SLOT_OVERFLOW, slotOf(layout, "headset"))
     }
 
     /** A displaced skip is dropped, not relocated, without its overflow fallback — so it must keep one. */
@@ -172,13 +184,18 @@ class MediaButtonSlotConversionTest {
         assertEquals(listOf("car"), layout.map { it.displayName.toString() })
     }
 
-    /** BookWave's real list order, mirroring `PlaybackService.mediaButtons`. */
-    private fun bookwaveButtons(car: Boolean, headset: Boolean): List<CommandButton> = buildList {
-        if (car) add(custom("car", CommandButton.SLOT_BACK, CommandButton.SLOT_OVERFLOW))
-        if (headset) add(custom("headset", CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW))
-        add(custom("skipBack", CommandButton.SLOT_BACK, CommandButton.SLOT_OVERFLOW))
-        add(custom("skipForward", CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW))
-        add(custom("sleep", CommandButton.SLOT_OVERFLOW))
+    /** BookWave's real state-dependent list order, mirroring `PlaybackService.mediaButtons`. */
+    private fun bookwaveButtons(car: Boolean, headset: Boolean, carBound: Boolean): List<CommandButton> {
+        val outputs = buildList {
+            if (car) add(custom("car", CommandButton.SLOT_BACK, CommandButton.SLOT_OVERFLOW))
+            if (headset) add(custom("headset", CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW))
+        }
+        val skips = listOf(
+            custom("skipBack", CommandButton.SLOT_BACK, CommandButton.SLOT_OVERFLOW),
+            custom("skipForward", CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW),
+        )
+        val ordered = if (carBound) outputs + skips else skips + outputs
+        return ordered + custom("sleep", CommandButton.SLOT_OVERFLOW)
     }
 
     private fun slotOf(layout: List<CommandButton>, name: String): Int =

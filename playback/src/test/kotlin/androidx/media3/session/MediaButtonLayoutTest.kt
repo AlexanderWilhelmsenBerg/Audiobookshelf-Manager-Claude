@@ -11,45 +11,42 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * PRODUCT_SPEC PLAY-002 / PLAY-007 — the app's own button order, run through the car's real conversion.
- *
- * `MediaButtonSlotConversionTest` proves what Media3 does with a given order. This proves BookWave produces
- * that order — a distinction a red-check forced: reverting the ordering in `PlaybackService` broke nothing,
- * because the conversion tests build their own lists. Living in Media3's package so it can call the same
- * package-private conversion the legacy stub runs, rather than restating its behaviour.
+ * PRODUCT_SPEC PLAY-002 / PLAY-007 — BookWave's state-dependent button order, run through the exact
+ * package-private conversion Android Auto's legacy MediaSession path uses.
  */
 @OptIn(UnstableApi::class)
 @RunWith(RobolectricTestRunner::class)
 class MediaButtonLayoutTest {
 
     @Test
-    fun `the output actions are published before the skips`() {
-        val ordered = MediaButtonLayout.inPriorityOrder(
-            outputActions = listOf(button("car", CommandButton.SLOT_BACK)),
-            skipActions = listOf(button("skipBack", CommandButton.SLOT_BACK)),
-            overflowActions = listOf(overflow("sleep")),
+    fun `the phone keeps skips first when no car controller is bound`() {
+        val ordered = ordered(
+            outputs = listOf(
+                button("car", CommandButton.SLOT_BACK),
+                button("headset", CommandButton.SLOT_FORWARD),
+            ),
+            carBound = false,
         )
 
-        assertEquals(listOf("car", "skipBack", "sleep"), ordered.map { it.displayName.toString() })
+        assertEquals(
+            listOf("skipBack", "skipForward", "car", "headset", "sleep"),
+            ordered.map { it.displayName.toString() },
+        )
+        val layout = convert(ordered)
+        assertEquals("skipBack", named(layout, CommandButton.SLOT_BACK))
+        assertEquals("skipForward", named(layout, CommandButton.SLOT_FORWARD))
+        assertTrue(layout.map { it.displayName.toString() }.containsAll(listOf("car", "headset")))
     }
 
-    /**
-     * The property the owner actually asked for, asserted end to end: with BookWave's real arrangement, an
-     * output action — not a skip — is what the car puts in its control bar.
-     */
     @Test
-    fun `an output action reaches the car's bar and the skips fall to overflow`() {
+    fun `the car gets output actions first while a car controller is bound`() {
         val layout = convert(
-            MediaButtonLayout.inPriorityOrder(
-                outputActions = listOf(
+            ordered(
+                outputs = listOf(
                     button("car", CommandButton.SLOT_BACK),
                     button("headset", CommandButton.SLOT_FORWARD),
                 ),
-                skipActions = listOf(
-                    button("skipBack", CommandButton.SLOT_BACK),
-                    button("skipForward", CommandButton.SLOT_FORWARD),
-                ),
-                overflowActions = listOf(overflow("sleep")),
+                carBound = true,
             ),
         )
 
@@ -58,50 +55,46 @@ class MediaButtonLayoutTest {
         assertTrue(layout.map { it.displayName.toString() }.containsAll(listOf("skipBack", "skipForward")))
     }
 
-    /** With no output actions to show, the skips take the bar back — the pre-change layout, unchanged. */
     @Test
-    fun `the skips reclaim the bar when no output action is published`() {
-        val layout = convert(
-            MediaButtonLayout.inPriorityOrder(
-                outputActions = emptyList(),
-                skipActions = listOf(
-                    button("skipBack", CommandButton.SLOT_BACK),
-                    button("skipForward", CommandButton.SLOT_FORWARD),
-                ),
-                overflowActions = emptyList(),
-            ),
-        )
-
-        assertEquals("skipBack", named(layout, CommandButton.SLOT_BACK))
-        assertEquals("skipForward", named(layout, CommandButton.SLOT_FORWARD))
-    }
-
-    /** The anti-restart invariant, asserted against the app's own ordering rather than a synthetic list. */
-    @Test
-    fun `the back slot is occupied whichever output actions are published`() {
-        listOf(
+    fun `car binding and output visibility matrix keeps both skips available and the back slot occupied`() {
+        val outputStates = listOf(
             listOf(button("car", CommandButton.SLOT_BACK), button("headset", CommandButton.SLOT_FORWARD)),
             listOf(button("car", CommandButton.SLOT_BACK)),
             listOf(button("headset", CommandButton.SLOT_FORWARD)),
             emptyList(),
-        ).forEach { outputs ->
-            val layout = convert(
-                MediaButtonLayout.inPriorityOrder(
-                    outputActions = outputs,
-                    skipActions = listOf(
-                        button("skipBack", CommandButton.SLOT_BACK),
-                        button("skipForward", CommandButton.SLOT_FORWARD),
-                    ),
-                    overflowActions = emptyList(),
-                ),
-            )
+        )
 
-            assertTrue(
-                CommandButton.containsButtonForSlot(layout, CommandButton.SLOT_BACK),
-                "outputs=${outputs.map { it.displayName }} left the back slot empty, re-arming the restart bug",
-            )
+        listOf(false, true).forEach { carBound ->
+            outputStates.forEach { outputs ->
+                val layout = convert(ordered(outputs, carBound))
+                val names = layout.map { it.displayName.toString() }
+                val outputNames = outputs.map { it.displayName.toString() }
+
+                assertTrue("skipBack" in names, "carBound=$carBound outputs=$outputNames dropped skipBack")
+                assertTrue("skipForward" in names, "carBound=$carBound outputs=$outputNames dropped skipForward")
+                assertTrue(
+                    CommandButton.containsButtonForSlot(layout, CommandButton.SLOT_BACK),
+                    "carBound=$carBound outputs=$outputNames left SLOT_BACK empty and re-armed Previous",
+                )
+
+                val expectedBack = if (carBound && "car" in outputNames) "car" else "skipBack"
+                val expectedForward = if (carBound && "headset" in outputNames) "headset" else "skipForward"
+                assertEquals(expectedBack, named(layout, CommandButton.SLOT_BACK))
+                assertEquals(expectedForward, named(layout, CommandButton.SLOT_FORWARD))
+            }
         }
     }
+
+    private fun ordered(outputs: List<CommandButton>, carBound: Boolean): List<CommandButton> =
+        MediaButtonLayout.inPriorityOrder(
+            outputActions = outputs,
+            skipActions = listOf(
+                button("skipBack", CommandButton.SLOT_BACK),
+                button("skipForward", CommandButton.SLOT_FORWARD),
+            ),
+            overflowActions = listOf(overflow("sleep")),
+            carBound = carBound,
+        )
 
     private fun named(layout: List<CommandButton>, slot: Int): String =
         layout.first { it.slots.asList().single() == slot }.displayName.toString()
