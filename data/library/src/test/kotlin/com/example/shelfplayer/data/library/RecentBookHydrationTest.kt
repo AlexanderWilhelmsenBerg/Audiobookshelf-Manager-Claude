@@ -119,7 +119,8 @@ class RecentBookHydrationTest {
     }
 
     @Test
-    fun `recent sessions are bounded deduplicated hydrated early and skipped by bulk expansion`() = runTest(testDispatcher) {
+    fun `recent sessions are bounded deduplicated hydrated early and skipped by bulk expansion`() =
+        runTest(testDispatcher) {
         playbackApi.answer = AppResult.Success(
             listOf(
                 session(VOYAGE_ONE, "newest"),
