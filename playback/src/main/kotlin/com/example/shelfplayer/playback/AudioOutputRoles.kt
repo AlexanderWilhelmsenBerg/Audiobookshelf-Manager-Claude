@@ -22,9 +22,9 @@ internal object AudioOutputRoles {
      * built-in speaker came first, a connected dashboard or headset was invisible and both output glyphs
      * went dark, which is one of the ways a device run found the Car action never lighting.
      *
-     * Only speakers are demoted, deliberately. Ordering car ahead of headset would change which device
-     * `activeHeadset` reports while both are live, and that is exactly the fact `HeadsetHold` uses to stop
-     * a car stealing a book out of someone's ears.
+     * Only speakers are demoted, deliberately. Ordering car ahead of headset would change the presentation
+     * answer while both are live. Route-heard ownership does not consume this enumeration order; it keeps
+     * its own generation-bound evidence instead.
      */
     fun current(outputs: List<AudioOutput>, selectedId: String?): AudioOutput? {
         val active = outputs.filter(AudioOutput::isActive)
