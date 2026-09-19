@@ -412,10 +412,7 @@ class SleepTimerController @Inject constructor(
         applicationScope.launch { history.record(bookId, event, from, at, detail) }
     }
 
-    private suspend fun finish(
-        outcome: SleepTimerOutcome,
-        suppressAutomaticRearm: Boolean = false,
-    ) {
+    private suspend fun finish(outcome: SleepTimerOutcome, suppressAutomaticRearm: Boolean = false) {
         val current = running ?: return
         if (current.automaticOccurrence != null) {
             when {
@@ -508,10 +505,7 @@ class SleepTimerController @Inject constructor(
      * Policy memory is updated locally before the DataStore write so continuing playback cannot race a
      * slow disk write and rearm. The repository write makes the same fact survive service/process recreation.
      */
-    private suspend fun rememberScheduleRuntime(
-        suppressedOccurrence: String?,
-        replayRequiredOccurrence: String?,
-    ) {
+    private suspend fun rememberScheduleRuntime(suppressedOccurrence: String?, replayRequiredOccurrence: String?) {
         settings = settings.copy(
             schedule = settings.schedule.copy(
                 suppressedOccurrence = suppressedOccurrence,
