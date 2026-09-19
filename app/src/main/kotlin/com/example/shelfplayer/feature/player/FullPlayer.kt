@@ -375,11 +375,7 @@ private fun SpeedAction(speed: PlaybackSpeed, onClick: () -> Unit, modifier: Mod
 }
 
 @Composable
-private fun TopBar(
-    outputs: OutputControls,
-    onCollapse: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun TopBar(outputs: OutputControls, onCollapse: () -> Unit, modifier: Modifier = Modifier) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onCollapse) {
             Icon(
