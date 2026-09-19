@@ -1,18 +1,20 @@
 # BW-DEP-01 Phase 0 compatibility inventory
 
-**Classification:** Current investigation snapshot — re-resolve before every implementation phase.  
-**Issue:** #135 (`BW-DEP-01`).  
+**Classification:** Historical Phase-0 investigation snapshot — not live version state; re-resolve before every implementation phase.  
+**Issue:** Forgejo #42 (`BW-DEP-01`), migrated from GitHub #135.  
 **Measured:** 2026-09-10.  
 **Repository base:** `main` at `a28a5666fa3148ae77a0b6fdc57788a962ac6d2f`.  
 **Scope:** inventory and compatibility evidence only; this document changes no dependency, SDK, JDK, build-tool or CI version.
 
-`gradle/libs.versions.toml` remains the pinned source of truth for what BookWave actually builds with. This
-page records what was current upstream on the measurement date and why many individually newer stable
-versions are **not** yet an approved BookWave combination. It is not permission to bulk-update the catalog.
+`gradle/libs.versions.toml` remains the pinned source of truth for what BookWave actually builds with, and
+[`/version-control.md`](../version-control.md) is the live current/latest planning ledger. This page records
+what was current upstream on **2026-09-10** and why many individually newer stable versions were not then an
+approved BookWave combination. The version numbers and `BookWave current` cells below are historical evidence,
+not a description of current `main`, and they are not permission to bulk-update the catalog.
 
-## Phase 0 decision
+## Phase 0 decision at the 2026-09-10 snapshot
 
-**Phase 1 is still blocked by ADR-0011.** The newest stable detekt line remains `1.23.8`; detekt 2 remains
+**The major Phase-1 foundation was blocked by ADR-0011 at this snapshot, and that accepted gate remains controlling unless superseded.** The newest stable detekt line remains `1.23.8`; detekt 2 remains
 alpha. ADR-0011 requires a stable detekt release that can preserve BookWave's AGP-9 type-resolution gate,
 or a separately accepted superseding ADR. Neither condition exists on this snapshot date.
 
@@ -181,11 +183,10 @@ These are not candidates for a catch-all dependency PR:
 - ADR-0010 intentionally defers dependency locking after a real variant-resolution failure. Locking is not a
   forgotten setup step; Phase 1 retries it on the later Gradle/AGP foundation.
 - ADR-0011 is still the controlling AGP/API gate and excludes detekt alpha releases.
-- `AGENTS.md`, issue #135 and `docs/latest-stable-upgrade-plan.md` identify the staged latest-stable plan as
-  current dependency-migration guidance. `README.md`, `docs/README.md` and `docs/roadmap.md` still contain
-  links describing `docs/dependency-upgrade-plan.md` as the active child plan. That older plan includes
-  alternatives that ADR-0011 now rejects. Treat this as documentation-authority drift; do not use the older
-  plan to bypass the accepted ADR.
+- At this snapshot, `AGENTS.md`, then-GitHub issue #135 (now Forgejo #42) and `docs/latest-stable-upgrade-plan.md`
+  identified the staged latest-stable plan as current guidance while several index/roadmap links still pointed
+  at `docs/dependency-upgrade-plan.md`. That authority drift has since been reconciled: the older plan is
+  superseded/historical and must not be used to bypass ADR-0011.
 
 ## Authoritative upstream sources
 
