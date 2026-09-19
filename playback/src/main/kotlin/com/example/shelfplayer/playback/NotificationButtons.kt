@@ -95,7 +95,7 @@ internal object NotificationButtons {
     fun sleepTimerButton(timer: SleepTimerState, displayName: (Duration) -> CharSequence): CommandButton? {
         if (!timer.isActive) return null
         return CommandButton.Builder(CommandButton.ICON_UNDEFINED)
-            .setIconResId(R.drawable.ic_sleep_timer)
+            .setCustomIconResId(R.drawable.ic_sleep_timer)
             .setDisplayName(displayName(timer.remaining))
             .setSessionCommand(SessionCommand(ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
             .setSlots(CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW)
