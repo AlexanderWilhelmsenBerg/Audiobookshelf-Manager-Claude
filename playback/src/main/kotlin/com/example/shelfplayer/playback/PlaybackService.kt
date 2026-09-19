@@ -228,7 +228,7 @@ class PlaybackService : MediaLibraryService() {
     /**
      * PRODUCT_SPEC PLAY-002 / ROUTE-002 — one generation-bound owner for route-heard evidence.
      *
-     * Explicit listener output intent is fed through [AudioOutputRouter.explicitSelections]; Android route
+     * Explicit listener output intent is fed through [AudioOutputRouter.explicitSelection]; Android route
      * policy is observed only while this player is actually playing. See [RouteHeardOwnership].
      */
     private val routeOwnership = RouteHeardOwnership()
@@ -1038,9 +1038,10 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
             launch {
-                audioOutputs.explicitSelections.collect { selected ->
+                audioOutputs.explicitSelection.collect { selection ->
+                    selection ?: return@collect
                     routeOwnership.onExplicitSelection(
-                        outputId = selected,
+                        outputId = selection.outputId,
                         outputs = audioOutputs.outputs.value,
                         isPlaying = player?.isPlaying == true,
                     )
