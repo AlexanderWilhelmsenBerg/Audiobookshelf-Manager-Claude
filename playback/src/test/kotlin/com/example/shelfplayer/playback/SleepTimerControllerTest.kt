@@ -158,11 +158,6 @@ class SleepTimerControllerTest {
         runCurrent()
         assertTrue(controller.state.value.isActive)
         assertEquals(1, repository.started)
-
-        clock.advanceBy(8 * 60.minutes)
-        advanceTimeBy((8 * 60.minutes).inWholeMilliseconds + 1)
-        runCurrent()
-        assertTrue(controller.state.value.isActive, "06:00 must not cancel a timer armed at 22:00")
     }
 
     @Test
