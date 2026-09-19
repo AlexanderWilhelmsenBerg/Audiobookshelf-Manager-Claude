@@ -8,8 +8,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
-/** PRODUCT_SPEC PLAY-002 / ROUTE-002 — route-heard ownership for the currently loaded book. */
-class RouteHeardOwnershipTest {
+/**
+ * PRODUCT_SPEC PLAY-002 / ROUTE-002 — route-heard ownership for the currently loaded book.
+ *
+ * The historical filename predates issue #11; this class exercises [RouteHeardOwnership], not a HeadsetHold.
+ */
+class HeadsetHoldTest {
 
     private val budsA = output("bluetooth:buds-a", "Buds A")
     private val budsB = output("bluetooth:buds-b", "Buds B")
@@ -248,8 +252,7 @@ class RouteHeardOwnershipTest {
     ) = AudioOutput(id = id, displayName = name, kind = kind, role = role)
 }
 
-
-internal class RouteHeardOwnershipGenerationTest {
+class RouteHeardOwnershipGenerationTest {
     private val buds = output("bluetooth:buds", "Buds")
     private val wired = output(
         id = "wired",
@@ -298,7 +301,6 @@ internal class RouteHeardOwnershipGenerationTest {
         assertNull(owner.heardRoute)
         assertNull(owner.headsetForCar(listOf(buds, car)))
     }
-
 
     private fun output(
         id: String,
