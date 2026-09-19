@@ -166,9 +166,15 @@ fun SettingsRoute(
             onRewindOnStopChanged = viewModel::onSleepTimerRewindChanged,
         ),
         sleepScheduleActions = SleepScheduleSettingsActions(
-            onEnabledChanged = viewModel::onSleepScheduleEnabledChanged,
-            onStartChanged = viewModel::onSleepScheduleStartChanged,
-            onEndChanged = viewModel::onSleepScheduleEndChanged,
+            onEnabledChanged = { enabled ->
+                viewModel.onSleepScheduleChanged(uiState.sleepTimer.schedule.copy(enabled = enabled))
+            },
+            onStartChanged = { start ->
+                viewModel.onSleepScheduleChanged(uiState.sleepTimer.schedule.copy(start = start))
+            },
+            onEndChanged = { end ->
+                viewModel.onSleepScheduleChanged(uiState.sleepTimer.schedule.copy(end = end))
+            },
         ),
         playbackActions = PlaybackSettingsActions(
             onSpeedChanged = viewModel::onDefaultSpeedChanged,
