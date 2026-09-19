@@ -38,7 +38,7 @@ internal object SleepSchedulePolicy {
     fun nextStart(now: Instant, zone: ZoneId, settings: SleepTimerScheduleSettings): Instant? {
         if (!settings.enabled || settings.start == settings.end) return null
         val localDate = now.atZone(zone).toLocalDate()
-        return (0L..3L)
+        return (0L..LOOKAHEAD_DAYS)
             .asSequence()
             .map { localDate.plusDays(it) }
             .map { resolve(it, settings.start, zone, Boundary.Start).toInstant() }
@@ -58,12 +58,12 @@ internal object SleepSchedulePolicy {
     }
 
     private fun occurrenceId(startDate: LocalDate, settings: SleepTimerScheduleSettings): String = buildString {
-            append(startDate)
-            append('|')
-            append(settings.start.toSecondOfDay() / SECONDS_PER_MINUTE)
-            append('|')
-            append(settings.end.toSecondOfDay() / SECONDS_PER_MINUTE)
-        }
+        append(startDate)
+        append('|')
+        append(settings.start.toSecondOfDay() / SECONDS_PER_MINUTE)
+        append('|')
+        append(settings.end.toSecondOfDay() / SECONDS_PER_MINUTE)
+    }
 
     private fun resolve(date: LocalDate, time: java.time.LocalTime, zone: ZoneId, boundary: Boundary): ZonedDateTime {
         val local = LocalDateTime.of(date, time)
@@ -92,6 +92,7 @@ internal object SleepSchedulePolicy {
     private enum class Boundary { Start, End }
 
     private const val SECONDS_PER_MINUTE = 60
+    private const val LOOKAHEAD_DAYS = 3L
 }
 
 interface LocalZoneProvider {
