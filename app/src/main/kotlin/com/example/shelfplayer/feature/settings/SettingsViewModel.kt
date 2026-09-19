@@ -300,6 +300,21 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { sleepTimer.setRewindOnStop(length) }
     }
 
+    /** BW-SLEEP-01 — UI writes settings; playback remains the schedule policy owner. */
+    fun onSleepScheduleEnabledChanged(enabled: Boolean) {
+        viewModelScope.launch { sleepTimer.setScheduleEnabled(enabled) }
+    }
+
+    fun onSleepScheduleStartChanged(start: java.time.LocalTime) {
+        val current = uiState.value.sleepTimer.schedule
+        viewModelScope.launch { sleepTimer.setScheduleWindow(start = start, end = current.end) }
+    }
+
+    fun onSleepScheduleEndChanged(end: java.time.LocalTime) {
+        val current = uiState.value.sleepTimer.schedule
+        viewModelScope.launch { sleepTimer.setScheduleWindow(start = current.start, end = end) }
+    }
+
     /** PRODUCT_SPEC PLAY-007 — the speed a book uses when it has no override of its own. */
     fun onDefaultSpeedChanged(speed: PlaybackSpeed) {
         viewModelScope.launch { playbackSettings.setDefaultSpeed(speed) }
