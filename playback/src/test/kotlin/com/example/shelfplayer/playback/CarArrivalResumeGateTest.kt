@@ -10,9 +10,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
-/**
- * Issue #36 — the car may resume only the focus-loss pause tied to #11's current headset ownership.
- */
+/** Issue #36 — one measured focus loss may resume only its pause-time headset on the first car arrival. */
 class CarArrivalResumeGateTest {
     private val buds = output("bluetooth:buds", "Buds")
     private val speaker = output(
@@ -24,172 +22,169 @@ class CarArrivalResumeGateTest {
     private val car = output("car", "Car", DeviceKind.Car, AudioOutputRole.Car)
 
     @Test
-    fun `measured focus loss followed by car arrival resumes the owned headset`() {
+    fun `measured focus loss resolves and resumes the pause-time headset`() {
         val owner = heardOnBuds()
-        val gate = CarArrivalResumeGate()
+        val gate = armed(owner)
         var resumed: String? = null
 
-        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
+        val target = gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0)
+        assertEquals(buds.id, target?.outputId)
 
         assertTrue(
             gate.resumeForCarArrival(
-                12.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, car)),
+                target = requireNotNull(target),
+                currentGeneration = owner.currentGeneration,
+                headsetId = buds.id,
+                explicitSelectionSequence = 0,
             ) { resumed = it },
         )
         assertEquals(buds.id, resumed)
     }
 
     @Test
-    fun `a deliberate pause after focus loss cancels continuity`() {
+    fun `transient route evidence loss does not erase the captured target`() {
         val owner = heardOnBuds()
-        val gate = CarArrivalResumeGate()
-        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
+        val gate = armed(owner)
 
+        owner.onOutputsChanged(listOf(speaker), isPlaying = false)
+        assertNull(owner.heardRoute)
+
+        val target = gate.targetForCarArrival(14.seconds, owner.currentGeneration, 0)
+        assertEquals(buds.id, target?.outputId)
+        assertTrue(gate.isCurrent(requireNotNull(target), owner.currentGeneration, 0))
+    }
+
+    @Test
+    fun `a deliberate pause or play invalidation cancels continuity`() {
+        val owner = heardOnBuds()
+        val gate = armed(owner)
         gate.cancel()
 
+        assertNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
+    }
+
+    @Test
+    fun `newer explicit destination prevents even resolving the old target`() {
+        val owner = heardOnBuds()
+        val gate = armed(owner)
+
+        assertNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 1))
+    }
+
+    @Test
+    fun `newer explicit choice after target resolution prevents resume`() {
+        val owner = heardOnBuds()
+        val gate = armed(owner)
+        val target = requireNotNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
+
         assertFalse(
             gate.resumeForCarArrival(
-                12.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, car)),
+                target = target,
+                currentGeneration = owner.currentGeneration,
+                headsetId = buds.id,
+                explicitSelectionSequence = 1,
             ) { error("must not resume") },
         )
     }
 
     @Test
-    fun `phone speaker becoming the explicit destination blocks resume`() {
+    fun `another book generation cannot resolve the old target`() {
         val owner = heardOnBuds()
-        val gate = CarArrivalResumeGate()
-        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, speaker, car)))
+        val gate = armed(owner)
+        owner.onBookChanged(hasBook = true)
 
-        owner.onExplicitSelection(
-            outputId = speaker.id,
-            outputs = listOf(buds, speaker),
-            isPlaying = false,
-        )
+        assertNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
+    }
+
+    @Test
+    fun `wrong secured headset cannot consume a valid target`() {
+        val owner = heardOnBuds()
+        val gate = armed(owner)
+        val target = requireNotNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
 
         assertFalse(
             gate.resumeForCarArrival(
-                12.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, speaker, car)),
+                target = target,
+                currentGeneration = owner.currentGeneration,
+                headsetId = speaker.id,
+                explicitSelectionSequence = 0,
             ) { error("must not resume") },
         )
     }
 
     @Test
-    fun `car appearing never becomes the resume destination`() {
+    fun `pairing window is measured at first bind and not later route completion`() {
         val owner = heardOnBuds()
-        val gate = CarArrivalResumeGate()
+        val gate = armed(owner)
         var resumed: String? = null
-        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
 
-        owner.onOutputsChanged(listOf(buds, car.copy(isActive = true)), isPlaying = false)
-
+        val target = requireNotNull(gate.targetForCarArrival(15.seconds, owner.currentGeneration, 0))
         assertTrue(
             gate.resumeForCarArrival(
-                12.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, car)),
+                target = target,
+                currentGeneration = owner.currentGeneration,
+                headsetId = buds.id,
+                explicitSelectionSequence = 0,
             ) { resumed = it },
         )
         assertEquals(buds.id, resumed)
     }
 
     @Test
-    fun `stale route ownership from another book cannot resume`() {
+    fun `focus loss outside the first-bind window is discarded`() {
         val owner = heardOnBuds()
-        val gate = CarArrivalResumeGate()
-        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
+        val gate = armed(owner)
 
-        owner.onBookChanged(hasBook = true)
-
-        assertFalse(
-            gate.resumeForCarArrival(
-                12.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, car)),
-            ) { error("must not resume") },
-        )
+        assertNull(gate.targetForCarArrival(17.seconds, owner.currentGeneration, 0))
     }
 
     @Test
-    fun `a newer explicit headset choice outranks the paused route`() {
-        val other = output("wired:headset", "Wired", DeviceKind.Wired, AudioOutputRole.Headset)
-        val owner = heardOnBuds()
-        val gate = CarArrivalResumeGate()
-        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, other, car)))
-
-        owner.onExplicitSelection(
-            outputId = other.id,
-            outputs = listOf(buds, other),
-            isPlaying = false,
-        )
-
-        assertFalse(
-            gate.resumeForCarArrival(
-                12.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, other, car)),
-            ) { error("must not resume") },
-        )
-    }
-
-    @Test
-    fun `an old focus loss is not paired with a later car arrival`() {
-        val owner = heardOnBuds()
-        val gate = CarArrivalResumeGate()
-        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
-
-        assertFalse(
-            gate.resumeForCarArrival(
-                17.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, car)),
-            ) { error("must not resume") },
-        )
-    }
-
-    @Test
-    fun `a focus loss without heard headset ownership cannot create continuity`() {
+    fun `focus loss without heard headset ownership creates no target`() {
         val owner = RouteHeardOwnership().apply { onBookChanged(hasBook = true) }
         val gate = CarArrivalResumeGate()
-
-        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
-
-        assertFalse(
-            gate.resumeForCarArrival(
-                12.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, car)),
-            ) { error("must not resume") },
+        gate.onAudioFocusLoss(
+            10.seconds,
+            owner.heardRoute,
+            owner.headsetForCar(listOf(buds, car)),
+            explicitSelectionSequence = 0,
         )
+
+        assertNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
     }
 
     @Test
     fun `one focus loss can resume only once`() {
         val owner = heardOnBuds()
-        val gate = CarArrivalResumeGate()
+        val gate = armed(owner)
         var resumes = 0
-        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
+        val target = requireNotNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
 
         assertTrue(
             gate.resumeForCarArrival(
-                12.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, car)),
+                target = target,
+                currentGeneration = owner.currentGeneration,
+                headsetId = buds.id,
+                explicitSelectionSequence = 0,
             ) { resumes += 1 },
         )
         assertFalse(
             gate.resumeForCarArrival(
-                13.seconds,
-                owner.heardRoute,
-                owner.headsetForCar(listOf(buds, car)),
+                target = target,
+                currentGeneration = owner.currentGeneration,
+                headsetId = buds.id,
+                explicitSelectionSequence = 0,
             ) { resumes += 1 },
         )
         assertEquals(1, resumes)
+    }
+
+    private fun armed(owner: RouteHeardOwnership): CarArrivalResumeGate = CarArrivalResumeGate().also { gate ->
+        gate.onAudioFocusLoss(
+            10.seconds,
+            owner.heardRoute,
+            owner.headsetForCar(listOf(buds, car)),
+            explicitSelectionSequence = 0,
+        )
     }
 
     private fun heardOnBuds(): RouteHeardOwnership = RouteHeardOwnership().apply {
