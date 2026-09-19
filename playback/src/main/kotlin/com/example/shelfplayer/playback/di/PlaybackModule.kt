@@ -15,6 +15,7 @@ import com.example.shelfplayer.playback.CarReadinessReader
 import com.example.shelfplayer.playback.DefaultCarReadinessReader
 import com.example.shelfplayer.playback.DefaultNotificationAccessReader
 import com.example.shelfplayer.playback.DefaultPlayerFactory
+import com.example.shelfplayer.playback.LocalZoneProvider
 import com.example.shelfplayer.playback.MediaDataSource
 import com.example.shelfplayer.playback.NotificationAccessReader
 import com.example.shelfplayer.playback.PlaybackCredentialRenewer
@@ -22,7 +23,6 @@ import com.example.shelfplayer.playback.PlayerFactory
 import com.example.shelfplayer.playback.RenewingDataSource
 import com.example.shelfplayer.playback.ShakeDetector
 import com.example.shelfplayer.playback.ShakeSource
-import com.example.shelfplayer.playback.LocalZoneProvider
 import com.example.shelfplayer.playback.SystemLocalZoneProvider
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.Binds
