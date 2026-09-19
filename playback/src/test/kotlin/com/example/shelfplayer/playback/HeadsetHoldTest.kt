@@ -14,7 +14,6 @@ import kotlin.test.assertNull
  * The historical filename predates issue #11; this class exercises [RouteHeardOwnership], not a HeadsetHold.
  */
 class HeadsetHoldTest {
-
     private val budsA = output("bluetooth:buds-a", "Buds A")
     private val budsB = output("bluetooth:buds-b", "Buds B")
     private val dashboard = output("bluetooth:dashboard", "Dashboard")
