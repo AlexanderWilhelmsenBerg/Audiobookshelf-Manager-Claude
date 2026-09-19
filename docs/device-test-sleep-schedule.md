@@ -21,8 +21,11 @@ configured default sleep-timer length with the evidence.
   ordinary default timer must have armed without an alarm/worker wakeup path.
 - **Overnight/midnight:** configure an overnight window such as 22:00–06:00. Verify playback on both sides of
   midnight belongs to one eligible occurrence.
-- **Near the end:** begin playback shortly before the end boundary. The timer must receive its full configured
-  duration and continue past the end; the end boundary must not truncate or cancel it.
+- **Near the end:** with a 22:00–07:00 window and a 15-minute default, begin playback at 06:46. The ordinary
+  automatic timer must arm, then be cancelled at 07:00 while playback continues. It must not expire early,
+  pause playback, or create manual-cancellation suppression.
+- **Manual precedence at the end:** replace an automatic timer with a manual timer shortly before 07:00. The
+  manual timer must survive the schedule end unchanged.
 - **Manual cancel:** while an automatically-created timer is active, cancel it through the ordinary timer UI
   and keep playback running. It must not immediately rearm in the same occurrence.
 - **Service/process recreation while suppressed:** after the previous cancellation, recreate the activity and
