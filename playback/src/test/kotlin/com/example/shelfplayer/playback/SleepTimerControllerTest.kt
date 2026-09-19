@@ -152,6 +152,9 @@ class SleepTimerControllerTest {
             repository = FakeSessionSyncRepository(),
             baseline = ResumeBaseline(),
             clock = clock,
+            zoneProvider = object : LocalZoneProvider {
+                override fun current() = java.time.ZoneOffset.UTC
+            },
             logger = NO_OP_LOGGER,
             applicationScope = backgroundScope,
             mainDispatcher = dispatcher,
@@ -242,6 +245,18 @@ class SleepTimerControllerTest {
         override suspend fun setShakeToRestart(enabled: Boolean): AppResult<Unit> = AppResult.Success(Unit)
 
         override suspend fun setRewindOnStop(length: Duration): AppResult<Unit> = AppResult.Success(Unit)
+
+        override suspend fun setScheduleEnabled(enabled: Boolean): AppResult<Unit> = AppResult.Success(Unit)
+
+        override suspend fun setScheduleWindow(
+            start: java.time.LocalTime,
+            end: java.time.LocalTime,
+        ): AppResult<Unit> = AppResult.Success(Unit)
+
+        override suspend fun setScheduleRuntimeState(
+            suppressedOccurrence: String?,
+            replayRequiredOccurrence: String?,
+        ): AppResult<Unit> = AppResult.Success(Unit)
 
         override fun observeRecentSessions(limit: Int): Flow<List<SleepTimerSession>> = flowOf(emptyList())
 
