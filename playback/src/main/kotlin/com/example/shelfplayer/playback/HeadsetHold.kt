@@ -53,6 +53,15 @@ internal class RouteHeardOwnership {
     var heardRoute: HeardRoute? = null
         private set
 
+    /**
+     * Stable book-generation identity for policies that must survive transient Android route-list churn.
+     *
+     * Unlike [heardRoute], this does not disappear merely because a currently-owned output briefly drops out
+     * of AudioManager's live device list. It changes only at the actual book/queue ownership boundary.
+     */
+    val currentGeneration: Long?
+        get() = activeGeneration
+
     /** A Media3 item transition is the ownership boundary between loaded books. */
     fun onBookChanged(hasBook: Boolean) {
         heardRoute = null
