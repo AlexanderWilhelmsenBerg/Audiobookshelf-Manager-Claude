@@ -122,9 +122,13 @@ Transport classification and semantic role are separate facts.
 
 Classic Bluetooth A2DP can represent headphones, a speaker or a projected-car route. BookWave must allow an ambiguous/unknown semantic answer where Android does not expose enough information.
 
-The existing #78 `HeadsetHold` work is explicitly under follow-up pressure because inference-heavy preservation accumulated edge cases. The roadmap therefore prefers a research spike that observes the route actually carrying BookWave's audio during genuine playback before adding another release/suppression flag.
+Issue #11 replaces the inference-heavy `HeadsetHold` / `heardAudio` / release-state combination with one service-owned `RouteHeardOwnership`. Its route record is bound to the currently loaded Media3 book generation and is invalidated when the book changes or the queue empties.
 
-No routing redesign should merge merely because a JVM model looks convincing; car/headset routing requires real device evidence.
+The owner distinguishes explicit BookWave listener intent from weaker Android route-policy observation. Every explicit phone/Android Auto output choice enters through `AudioOutputRouter.select`; framework policy from `getAudioDevicesForAttributes` is considered only while BookWave playback is observed as running and is never described as proof of the exact AudioTrack sink. An explicit listener choice therefore outranks enumeration/order disagreement, and multiple ambiguous classic-A2DP routes never become ownership merely because one was listed first.
+
+Car-arrival preservation consumes only that generation-bound evidence. A policy reassertion is deliberately separate from a listener selection so preserving an already-heard headset cannot manufacture newer intent. Car still releases BookWave's preference to Automatic, Headset still targets only headset candidates, and classic A2DP remains semantically `Ambiguous`.
+
+JVM tests prove BookWave's ownership, generation and precedence rules. They do not prove Android's route observation corresponds to the exact BookWave track; physical headset/car/speaker acceptance remains required for that platform boundary.
 
 ## Sleep timer and future automatic schedule
 
