@@ -5,7 +5,9 @@ import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -22,16 +24,21 @@ class CarArrivalResumeGateTest {
     private val car = output("car", "Car", DeviceKind.Car, AudioOutputRole.Car)
 
     @Test
-    fun `measured focus loss followed by car arrival restores the owned headset`() {
+    fun `measured focus loss followed by car arrival resumes the owned headset`() {
         val owner = heardOnBuds()
         val gate = CarArrivalResumeGate()
+        var resumed: String? = null
 
         gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
 
-        assertEquals(
-            buds.id,
-            gate.takeForCarArrival(12.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car))),
+        assertTrue(
+            gate.resumeForCarArrival(
+                12.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, car)),
+            ) { resumed = it },
         )
+        assertEquals(buds.id, resumed)
     }
 
     @Test
@@ -42,7 +49,13 @@ class CarArrivalResumeGateTest {
 
         gate.cancel()
 
-        assertNull(gate.takeForCarArrival(12.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car))))
+        assertFalse(
+            gate.resumeForCarArrival(
+                12.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, car)),
+            ) { error("must not resume") },
+        )
     }
 
     @Test
@@ -57,27 +70,32 @@ class CarArrivalResumeGateTest {
             isPlaying = false,
         )
 
-        assertNull(
-            gate.takeForCarArrival(
+        assertFalse(
+            gate.resumeForCarArrival(
                 12.seconds,
                 owner.heardRoute,
                 owner.headsetForCar(listOf(buds, speaker, car)),
-            ),
+            ) { error("must not resume") },
         )
     }
 
     @Test
-    fun `car appearing does not become a resume destination`() {
+    fun `car appearing never becomes the resume destination`() {
         val owner = heardOnBuds()
         val gate = CarArrivalResumeGate()
+        var resumed: String? = null
         gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
 
         owner.onOutputsChanged(listOf(buds, car.copy(isActive = true)), isPlaying = false)
 
-        assertEquals(
-            buds.id,
-            gate.takeForCarArrival(12.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car))),
+        assertTrue(
+            gate.resumeForCarArrival(
+                12.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, car)),
+            ) { resumed = it },
         )
+        assertEquals(buds.id, resumed)
     }
 
     @Test
@@ -88,7 +106,13 @@ class CarArrivalResumeGateTest {
 
         owner.onBookChanged(hasBook = true)
 
-        assertNull(gate.takeForCarArrival(12.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car))))
+        assertFalse(
+            gate.resumeForCarArrival(
+                12.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, car)),
+            ) { error("must not resume") },
+        )
     }
 
     @Test
@@ -104,7 +128,13 @@ class CarArrivalResumeGateTest {
             isPlaying = false,
         )
 
-        assertNull(gate.takeForCarArrival(12.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, other, car))))
+        assertFalse(
+            gate.resumeForCarArrival(
+                12.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, other, car)),
+            ) { error("must not resume") },
+        )
     }
 
     @Test
@@ -113,7 +143,13 @@ class CarArrivalResumeGateTest {
         val gate = CarArrivalResumeGate()
         gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
 
-        assertNull(gate.takeForCarArrival(17.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car))))
+        assertFalse(
+            gate.resumeForCarArrival(
+                17.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, car)),
+            ) { error("must not resume") },
+        )
     }
 
     @Test
@@ -123,7 +159,37 @@ class CarArrivalResumeGateTest {
 
         gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
 
-        assertNull(gate.takeForCarArrival(12.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car))))
+        assertFalse(
+            gate.resumeForCarArrival(
+                12.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, car)),
+            ) { error("must not resume") },
+        )
+    }
+
+    @Test
+    fun `one focus loss can resume only once`() {
+        val owner = heardOnBuds()
+        val gate = CarArrivalResumeGate()
+        var resumes = 0
+        gate.onAudioFocusLoss(10.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, car)))
+
+        assertTrue(
+            gate.resumeForCarArrival(
+                12.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, car)),
+            ) { resumes += 1 },
+        )
+        assertFalse(
+            gate.resumeForCarArrival(
+                13.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, car)),
+            ) { resumes += 1 },
+        )
+        assertEquals(1, resumes)
     }
 
     private fun heardOnBuds(): RouteHeardOwnership = RouteHeardOwnership().apply {
