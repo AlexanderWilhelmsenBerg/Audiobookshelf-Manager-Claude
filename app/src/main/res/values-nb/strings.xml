@@ -374,7 +374,7 @@
 
     <string name="sleep_timer_history">Nylige sovetider</string>
     <string name="sleep_schedule_title">Automatisk sovetid om natten</string>
-    <string name="sleep_schedule_summary">Når avspilling er aktiv i dette tidsrommet, startes standard sovetid.</string>
+    <string name="sleep_schedule_summary">Når avspilling er aktiv i dette tidsrommet, startes standard sovetid. En automatisk sovetid som fortsatt går ved slutten av tidsrommet, avbrytes uten å pause avspillingen.</string>
     <string name="sleep_schedule_start">Tidsrommet starter</string>
     <string name="sleep_schedule_end">Tidsrommet slutter</string>
     <string name="sleep_schedule_empty_window">Start og slutt er like, så det automatiske tidsrommet er tomt.</string>
