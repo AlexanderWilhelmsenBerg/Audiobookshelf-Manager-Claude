@@ -249,7 +249,7 @@ class RouteHeardOwnershipTest {
 }
 
 
-private class RouteHeardOwnershipGenerationTest {
+internal class RouteHeardOwnershipGenerationTest {
     private val buds = output("bluetooth:buds", "Buds")
     private val wired = output(
         id = "wired",
