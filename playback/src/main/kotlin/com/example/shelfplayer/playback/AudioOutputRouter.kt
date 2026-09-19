@@ -21,8 +21,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -59,6 +62,15 @@ class AudioOutputRouter @Inject constructor(
 
     /** The chosen output id, or `null` for Automatic — let Android route. */
     val selectedId: StateFlow<String?> = _selectedId.asStateFlow()
+
+    /**
+     * Listener choices from every BookWave output surface.
+     *
+     * This is deliberately separate from [selectedId]: a repeated Car/Automatic press is still newer intent
+     * even when the value stays `null`, while a policy reassertion must not masquerade as listener intent.
+     */
+    private val _explicitSelections = MutableSharedFlow<String?>(extraBufferCapacity = 8)
+    internal val explicitSelections: SharedFlow<String?> = _explicitSelections.asSharedFlow()
 
     private var player: ExoPlayer? = null
     private var callback: AudioDeviceCallback? = null
@@ -98,6 +110,20 @@ class AudioOutputRouter @Inject constructor(
      * row silently doing nothing.
      */
     override fun select(id: String?) {
+        choose(id, explicit = true)
+    }
+
+    /**
+     * Reasserts already-owned routing when a car arrives.
+     *
+     * This is BookWave policy applying existing [RouteHeardOwnership] evidence, not a new listener choice, so
+     * it intentionally does not emit through [explicitSelections].
+     */
+    internal fun reassert(id: String) {
+        choose(id, explicit = false)
+    }
+
+    private fun choose(id: String?, explicit: Boolean) {
         if (id != null && id !in live) {
             logger.info(
                 LogCategory.Playback,
@@ -106,6 +132,7 @@ class AudioOutputRouter @Inject constructor(
             )
             return
         }
+        if (explicit) _explicitSelections.tryEmit(id)
         _selectedId.value = id
         publish()
         applicationScope.launch { apply(id) }
