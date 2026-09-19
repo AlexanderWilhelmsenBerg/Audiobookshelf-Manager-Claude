@@ -851,7 +851,6 @@ data class ServerTabInputs(
     val lockMessage: LockSettingsMessage? = null,
 )
 
-
 /** BW-SLEEP-01 — settings writes only; playback owns eligibility and timer creation. */
 data class SleepScheduleSettingsActions(
     val onEnabledChanged: (Boolean) -> Unit = {},
@@ -909,11 +908,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.sleepScheduleSection(
 }
 
 @Composable
-private fun SleepScheduleTimeRow(
-    title: String,
-    time: java.time.LocalTime,
-    onChanged: (java.time.LocalTime) -> Unit,
-) {
+private fun SleepScheduleTimeRow(title: String, time: java.time.LocalTime, onChanged: (java.time.LocalTime) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     androidx.compose.material3.ListItem(
         headlineContent = { androidx.compose.material3.Text(title) },
