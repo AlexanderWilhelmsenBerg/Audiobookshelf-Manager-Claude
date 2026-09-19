@@ -194,6 +194,40 @@ class SleepTimerControllerTest {
     }
 
     @Test
+    fun `automatic timer keeps its schedule-end cancellation while playback is paused`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                defaultLength = 15.minutes,
+                fadeLength = Duration.ZERO,
+                schedule = SleepTimerScheduleSettings.Default.copy(
+                    enabled = true,
+                    start = java.time.LocalTime.of(22, 0),
+                    end = java.time.LocalTime.of(7, 0),
+                ),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-20T06:46:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertTrue(controller.state.value.isActive)
+
+        controller.onPlaybackChanged(isPlaying = false)
+        runCurrent()
+
+        clock.advanceBy(14.minutes)
+        advanceTimeBy(14.minutes.inWholeMilliseconds + 1)
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(SleepTimerOutcome.Cancelled, repository.ended.last())
+    }
+
+    @Test
     fun `manual timer replacing automatic timer survives the schedule end`() = runTest {
         val source = MutableStateFlow(
             SleepTimerSettings.Default.copy(
