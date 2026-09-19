@@ -170,7 +170,7 @@ Start with [`docs/README.md`](docs/README.md). In particular:
 | Open/closed risks | [`docs/risks.md`](docs/risks.md) |
 | Current test guidance | [`docs/testing.md`](docs/testing.md) |
 | Server contract evidence | [`docs/api-compatibility.md`](docs/api-compatibility.md) |
-| Dependency-upgrade child plan | [`docs/dependency-upgrade-plan.md`](docs/dependency-upgrade-plan.md) |
+| Current staged dependency-upgrade plan | [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md) |
 | Historical phase material | [`docs/archive/`](docs/archive/) |
 | Dated investigations | [`docs/bugs/`](docs/bugs/) and [`docs/reviews/`](docs/reviews/) |
 
