@@ -49,6 +49,7 @@ internal class RouteHeardOwnership {
     private var nextGeneration = 0L
     private var activeGeneration: Long? = null
     private var listenerIntent: ListenerIntent = ListenerIntent.Unspecified
+    private var lastExplicitSelectionSequence = 0L
 
     var heardRoute: HeardRoute? = null
         private set
@@ -76,7 +77,11 @@ internal class RouteHeardOwnership {
         outputId: String?,
         outputs: List<AudioOutput>,
         isPlaying: Boolean,
+        selectionSequence: Long? = null,
     ) {
+        if (selectionSequence != null && selectionSequence <= lastExplicitSelectionSequence) return
+        if (selectionSequence != null) lastExplicitSelectionSequence = selectionSequence
+
         val generation = activeGeneration
         val previous = heardRoute?.takeIf { it.generation == generation }
 
