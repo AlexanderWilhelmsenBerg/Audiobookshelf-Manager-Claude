@@ -57,7 +57,13 @@ class CarArrivalResumeGateTest {
             isPlaying = false,
         )
 
-        assertNull(gate.takeForCarArrival(12.seconds, owner.heardRoute, owner.headsetForCar(listOf(buds, speaker, car))))
+        assertNull(
+            gate.takeForCarArrival(
+                12.seconds,
+                owner.heardRoute,
+                owner.headsetForCar(listOf(buds, speaker, car)),
+            ),
+        )
     }
 
     @Test
