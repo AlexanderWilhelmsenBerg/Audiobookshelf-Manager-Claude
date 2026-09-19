@@ -67,6 +67,7 @@ class MediaButtonLayoutTest {
         )
 
         assertEquals("12m", twelve.displayName.toString())
+        assertTrue(twelve.iconResId != 0, "compact state needs a visible sleep-timer glyph")
         assertEquals("9m", nine.displayName.toString(), "extension/ticks must republish from the new owner state")
         assertEquals(
             listOf(CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW),
