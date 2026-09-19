@@ -21,11 +21,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -69,8 +66,11 @@ class AudioOutputRouter @Inject constructor(
      * This is deliberately separate from [selectedId]: a repeated Car/Automatic press is still newer intent
      * even when the value stays `null`, while a policy reassertion must not masquerade as listener intent.
      */
-    private val _explicitSelections = MutableSharedFlow<String?>(extraBufferCapacity = 8)
-    internal val explicitSelections: SharedFlow<String?> = _explicitSelections.asSharedFlow()
+    internal data class ExplicitSelection(val sequence: Long, val outputId: String?)
+
+    private var nextExplicitSelectionSequence = 0L
+    private val _explicitSelection = MutableStateFlow<ExplicitSelection?>(null)
+    internal val explicitSelection: StateFlow<ExplicitSelection?> = _explicitSelection.asStateFlow()
 
     private var player: ExoPlayer? = null
     private var callback: AudioDeviceCallback? = null
@@ -117,7 +117,7 @@ class AudioOutputRouter @Inject constructor(
      * Reasserts already-owned routing when a car arrives.
      *
      * This is BookWave policy applying existing [RouteHeardOwnership] evidence, not a new listener choice, so
-     * it intentionally does not emit through [explicitSelections].
+     * it intentionally does not emit through [explicitSelection].
      */
     internal fun reassert(id: String) {
         choose(id, explicit = false)
@@ -132,7 +132,9 @@ class AudioOutputRouter @Inject constructor(
             )
             return
         }
-        if (explicit) _explicitSelections.tryEmit(id)
+        if (explicit) {
+            _explicitSelection.value = ExplicitSelection(++nextExplicitSelectionSequence, id)
+        }
         _selectedId.value = id
         publish()
         applicationScope.launch { apply(id) }
