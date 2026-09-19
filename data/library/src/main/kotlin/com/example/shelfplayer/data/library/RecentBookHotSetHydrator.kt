@@ -33,8 +33,7 @@ internal class RecentBookHotSetHydrator(
      * Session timestamps and positions are deliberately ignored; only the first occurrence of each item id
      * is retained. Failure is best-effort because the ordinary full refresh is still authoritative.
      */
-    suspend fun recentBookCandidates(profileId: ProfileId): List<LibraryItemId> =
-        when (
+    suspend fun recentBookCandidates(profileId: ProfileId): List<LibraryItemId> = when (
             val sessions = gateway.playback.listeningSessions(
                 profileId = profileId,
                 page = 0,
@@ -87,11 +86,13 @@ internal class RecentBookHotSetHydrator(
         if (recentBookIds.isEmpty() || catalogueBatch.isEmpty()) return
         val visibleNow = catalogueBatch.associateBy { it.book.id }
         for (bookId in recentBookIds) {
-            val preview = visibleNow[bookId] ?: continue
-            if (!attempted.add(bookId)) continue
-            val catalogueRevision = preview.book.remoteUpdatedAt?.toEpochMilli()
-            if (cached.isUpToDate(bookId, catalogueRevision)) continue
-            hydrateCandidate(profileId, library, bookId, cached, writeProgress)
+            val preview = visibleNow[bookId]
+            if (preview != null && attempted.add(bookId)) {
+                val catalogueRevision = preview.book.remoteUpdatedAt?.toEpochMilli()
+                if (!cached.isUpToDate(bookId, catalogueRevision)) {
+                    hydrateCandidate(profileId, library, bookId, cached, writeProgress)
+                }
+            }
         }
     }
 
