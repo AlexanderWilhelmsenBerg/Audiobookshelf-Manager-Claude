@@ -23,7 +23,6 @@ internal enum class RouteHeardEvidence {
 }
 
 internal class RouteHeardOwnership {
-
     data class HeardRoute(
         val generation: Long,
         val outputId: String,
@@ -170,8 +169,9 @@ internal class RouteHeardOwnership {
             previous == null || previousOutput == null -> false
             previous.outputId == candidate.id -> false
             previous.evidence == RouteHeardEvidence.ListenerSelectionWhilePlaying -> true
-            else -> previousOutput.isHeadsetCandidate &&
-                (candidate.role == AudioOutputRole.Car || candidate.role == AudioOutputRole.Ambiguous)
+            else ->
+                previousOutput.isHeadsetCandidate &&
+                    (candidate.role == AudioOutputRole.Car || candidate.role == AudioOutputRole.Ambiguous)
         }
     }
 
