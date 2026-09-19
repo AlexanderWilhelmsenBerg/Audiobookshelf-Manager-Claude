@@ -122,8 +122,12 @@ rather than copying playback policy.
    neither gets an independent socket or resume algorithm.
 3. **#25 — wired/Bluetooth headset automation.** Follow #23 and current routing ownership; physical headset
    acceptance is required.
-4. **#33 — scheduled automatic sleep.** Preserve one sleep-timer owner and test time windows, restart,
-   timezone/DST and manual precedence.
+4. **Forgejo PR #63 / #33 — scheduled automatic sleep.** Implementation is ready for review around the
+   existing sleep-timer owner: local same-day/overnight windows, persisted manual-cancel suppression,
+   explicit-replay handling after natural expiry, deterministic timezone/DST policy, full-player projection,
+   and expanded/compact media-control projection. A schedule-created timer still active at the window end is
+   cancelled without pausing playback; manual timers remain independent. Physical notification, screen-off,
+   Bluetooth and process/service acceptance remains required before the Android surface is considered proven.
 5. **#28 — Garmin evaluation/custom surface.** First validate the built-in Control Phone path. Add custom
    Garmin work only for a demonstrated gap.
 
