@@ -60,6 +60,18 @@ class AudioOutputRouter @Inject constructor(
     /** The chosen output id, or `null` for Automatic — let Android route. */
     val selectedId: StateFlow<String?> = _selectedId.asStateFlow()
 
+    /**
+     * Listener choices from every BookWave output surface.
+     *
+     * This is deliberately separate from [selectedId]: a repeated Car/Automatic press is still newer intent
+     * even when the value stays `null`, while a policy reassertion must not masquerade as listener intent.
+     */
+    internal data class ExplicitSelection(val sequence: Long, val outputId: String?)
+
+    private var nextExplicitSelectionSequence = 0L
+    private val explicitSelectionState = MutableStateFlow<ExplicitSelection?>(null)
+    internal val explicitSelection: StateFlow<ExplicitSelection?> = explicitSelectionState.asStateFlow()
+
     private var player: ExoPlayer? = null
     private var callback: AudioDeviceCallback? = null
 
@@ -98,6 +110,20 @@ class AudioOutputRouter @Inject constructor(
      * row silently doing nothing.
      */
     override fun select(id: String?) {
+        choose(id, explicit = true)
+    }
+
+    /**
+     * Reasserts already-owned routing when a car arrives.
+     *
+     * This is BookWave policy applying existing [RouteHeardOwnership] evidence, not a new listener choice, so
+     * it intentionally does not emit through [explicitSelection].
+     */
+    internal fun reassert(id: String) {
+        choose(id, explicit = false)
+    }
+
+    private fun choose(id: String?, explicit: Boolean) {
         if (id != null && id !in live) {
             logger.info(
                 LogCategory.Playback,
@@ -105,6 +131,9 @@ class AudioOutputRouter @Inject constructor(
                 LogField.Public("kind", kindOf(id)),
             )
             return
+        }
+        if (explicit) {
+            explicitSelectionState.value = ExplicitSelection(++nextExplicitSelectionSequence, id)
         }
         _selectedId.value = id
         publish()
