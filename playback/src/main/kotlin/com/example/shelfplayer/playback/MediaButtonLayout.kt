@@ -27,7 +27,7 @@ internal object MediaButtonLayout {
     fun inPriorityOrder(
         outputActions: List<CommandButton>,
         skipActions: List<CommandButton>,
-        activeTimerActions: List<CommandButton>,
+        activeTimerActions: List<CommandButton> = emptyList(),
         overflowActions: List<CommandButton>,
         carBound: Boolean,
     ): List<CommandButton> {
