@@ -226,29 +226,12 @@ class PlaybackService : MediaLibraryService() {
     private val mediaButtonPublishing = MediaButtonPublishing.Tracker()
 
     /**
-     * PRODUCT_SPEC PLAY-002 / ROUTE-002 — whether this book has actually made sound in this process.
+     * PRODUCT_SPEC PLAY-002 / ROUTE-002 — one generation-bound owner for route-heard evidence.
      *
-     * `mediaItemCount > 0` was standing in for "the book was being heard here", and arming breaks that
-     * proxy: `DevicePolicy.ArmOnly` is the **default**, and it deliberately loads the last book paused so a
-     * headset button starts it instantly. Under the old predicate, connecting earbuds armed a book, the
-     * platform's media route reported those earbuds as active, and a car arriving was then refused in favour
-     * of a headset that had never played — the *merely connected* case `HeadsetHold` exists to exclude.
-     *
-     * Set when audio starts and kept across a pause, because a book paused in a headset on the walk to the
-     * car is the case worth preserving. Cleared when the book changes or the queue empties.
+     * Explicit listener output intent is fed through [AudioOutputRouter.explicitSelections]; Android route
+     * policy is observed only while this player is actually playing. See [RouteHeardOwnership].
      */
-    private var heardAudio: Boolean = false
-
-    /**
-     * PRODUCT_SPEC PLAY-002 — which headset the book was last heard in.
-     *
-     * ADR-0029: preservation is routing behaviour with no user-facing preference, so there is no setting
-     * behind this — only the observed route.
-     *
-     * Stateful because the fact it holds outlives the moment it is needed; `HeadsetHold` explains why asking
-     * at car-connect time is too late.
-     */
-    private val headsetHold = HeadsetHold()
+    private val routeOwnership = RouteHeardOwnership()
 
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
@@ -800,14 +783,8 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) {
                 // Audio is coming out, so whatever went wrong is over and the next failure starts from one.
                 recovery.onPlaying()
-                // ROUTE-002 — the first proof this book is being heard, which is what the headset hold needs.
-                if (!heardAudio) {
-                    heardAudio = true
-                    // PLAY-002 — before the hold is fed, so the hold then remembers the headset this just
-                    // pinned rather than the one the selection disagreed with.
-                    startInRoutedHeadset()
-                    feedHeadsetHold()
-                }
+                // ROUTE-002 — real playback is the gate for creating route-heard evidence.
+                routeOwnership.onPlaybackObserved(audioOutputs.outputs.value)
                 // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
                 // longer a description of where this device is. See `ResumeBaseline.onLocalMove`.
                 resumeBaseline.onLocalMove()
@@ -891,11 +868,8 @@ class PlaybackService : MediaLibraryService() {
             // this fires for every book including one started from a car or by a media button, and the wait
             // to hear a book is the wait for *that* book.
             if (mediaItem != null) metrics.onItemPrepared()
-            // PRODUCT_SPEC PLAY-002 — a book arriving is the other half of what the headset hold watches;
-            // already-connected earbuds raise no device event, so without this the common order never
-            // registers a headset to preserve. A *new* book has been heard nowhere yet.
-            heardAudio = false
-            feedHeadsetHold()
+            // PRODUCT_SPEC PLAY-002 — route evidence belongs only to this loaded book generation.
+            routeOwnership.onBookChanged(mediaItem != null)
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
@@ -1046,43 +1020,33 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * PRODUCT_SPEC PLAY-002 — keeps the car's two output buttons matching what is connected.
+     * PRODUCT_SPEC PLAY-002 — observe Android route-policy changes and explicit listener intent separately.
      *
-     * Both flows, because the headset button reports the **route** and falls back to the **choice**, and
-     * either can move without the other: a headset disconnecting changes the route with no selection
-     * involved, and choosing an output changes the selection before the platform has acted on it.
-     *
-     * This is also the only place [headsetHold] is fed, and it is fed on **every** emission rather than only
-     * on a change — the hold is about which headset was in use a moment ago, so it has to see every moment.
+     * A repeated Automatic choice is newer intent even when [AudioOutputRouter.selectedId] stays null, while
+     * a framework route callback remains weaker evidence. Both paths feed the single [routeOwnership] owner.
      */
     private fun observeAudioOutputs() {
         outputWatch = scope.launch {
-            combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, selected) ->
-                feedHeadsetHold(outputs, selected)
-                // Republishing on every emission would rewrite the notification for a device change that
-                // does not touch either button, and Media3 pushes each set to every controller.
-                republishOutputButtons()
+            launch {
+                combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, _) ->
+                    if ((player?.mediaItemCount ?: 0) == 0) {
+                        routeOwnership.onQueueEmptied()
+                    } else {
+                        routeOwnership.onOutputsChanged(outputs, isPlaying = player?.isPlaying == true)
+                    }
+                    republishOutputButtons()
+                }
+            }
+            launch {
+                audioOutputs.explicitSelections.collect { selected ->
+                    routeOwnership.onExplicitSelection(
+                        outputId = selected,
+                        outputs = audioOutputs.outputs.value,
+                        isPlaying = player?.isPlaying == true,
+                    )
+                }
             }
         }
-    }
-
-    /**
-     * PRODUCT_SPEC PLAY-002 — the one place [headsetHold] is fed, from **two** triggers.
-     *
-     * Output changes alone are not enough. Earbuds that are already connected when a book is started produce
-     * no device event, so a collector watching only the output flows would never see the book arrive: the
-     * common order — connect earbuds, then press play — left nothing remembered and the car took the audio
-     * anyway. Loading a book is therefore the second trigger, and it is why this is a function rather than
-     * two lines inside the collector.
-     *
-     * Called on [mainDispatcher] from both, which is where Media3 requires the player read.
-     */
-    private fun feedHeadsetHold(
-        outputs: List<AudioOutput> = audioOutputs.outputs.value,
-        selectedId: String? = audioOutputs.selectedId.value,
-    ) {
-        val loaded = (player?.mediaItemCount ?: 0) > 0
-        headsetHold.observe(outputs, selectedId, hasMedia = loaded && heardAudio)
     }
 
     /**
@@ -1140,55 +1104,23 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * PRODUCT_SPEC PLAY-002 — *if play comes from a headset, start in that headset*, as far as that is knowable.
+     * PRODUCT_SPEC PLAY-002 — reassert only generation-bound headset evidence when a car controller arrives.
      *
-     * Runs at the first proof a book is being heard, which is the one moment the route is settled and the
-     * decision costs the play path nothing. [AudioOutputRoles.startTarget] holds the policy and the reason
-     * the pressing device itself cannot be identified.
-     *
-     * Deliberately **not** folded into [HeadsetHold]. That class answers "which headset was the book in a
-     * moment ago, so a car arriving does not steal it"; its trigger is a car binding and its output is a
-     * memory. This is a different trigger and an immediate selection, and keeping them apart leaves
-     * `HeadsetHold`'s already-subtle release state machine untouched. They compose as they stand: this runs
-     * first, so the hold then observes the headset just pinned.
-     */
-    private fun startInRoutedHeadset() {
-        val target = AudioOutputRoles.startTarget(
-            outputs = audioOutputs.outputs.value,
-            selectedId = audioOutputs.selectedId.value,
-            carConnected = carConnections.isConnected(),
-        ) ?: return
-        logger.info(
-            LogCategory.Playback,
-            "A book started in the headset already carrying the route",
-            LogField.Public("kind", target.substringBefore(':')),
-        )
-        audioOutputs.select(target)
-    }
-
-    /**
-     * PRODUCT_SPEC PLAY-002 — *Keep sound in the headset*, applied at the one moment it means anything.
-     *
-     * A no-op unless the book was already coming out of a headset that is still connected. The log line
-     * names the *kind* rather than the headset's advertised name (14.5).
-     *
-     * The queue is re-checked **here** rather than trusted from the memory. The collector that maintains it
-     * runs on output changes, and `PlaybackController.stop()` empties the queue without touching either
-     * output flow — so a memory set while a book was playing can outlive the book, and a car arriving would
-     * pin the route to earbuds nobody is listening to.
+     * A merely connected headset has no [RouteHeardOwnership.HeardRoute], and an emptied queue invalidates
+     * the generation before any routing preference can be reasserted.
      */
     private fun holdHeadsetAgainstCar() {
         if ((player?.mediaItemCount ?: 0) == 0) {
-            headsetHold.forget()
+            routeOwnership.onQueueEmptied()
             return
         }
-        val hold = headsetHold.holdOnCarArrival(audioOutputs.outputs.value) ?: return
+        val hold = routeOwnership.headsetForCar(audioOutputs.outputs.value) ?: return
         logger.info(
             LogCategory.Playback,
             "A car connected and the book was held in the headset",
             LogField.Public("kind", hold.substringBefore(':')),
         )
-        audioOutputs.select(hold)
+        audioOutputs.reassert(hold)
     }
 
     /**
@@ -2253,10 +2185,8 @@ class PlaybackService : MediaLibraryService() {
 
                 NotificationButtons.ACTION_ADD_BOOKMARK -> bookmarkHere()
 
-                NotificationButtons.ACTION_SELECT_CAR_OUTPUT -> {
-                    headsetHold.releaseToCar(audioOutputs.outputs.value, audioOutputs.selectedId.value)
+                NotificationButtons.ACTION_SELECT_CAR_OUTPUT ->
                     audioOutputs.select(AudioOutputRoles.carTarget(audioOutputs.outputs.value))
-                }
 
                 NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT ->
                     AudioOutputRoles
