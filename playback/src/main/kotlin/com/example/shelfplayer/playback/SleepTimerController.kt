@@ -154,8 +154,10 @@ class SleepTimerController @Inject constructor(
         applicationScope.launch(mainDispatcher) {
             playbackActive = isPlaying
             if (!isPlaying) {
-                scheduleBoundary?.cancel()
-                scheduleBoundary = null
+                nextPlaybackExplicit = false
+                // A schedule-created timer still has an end boundary even while playback is paused.
+                // No new timer may arm until actual playback becomes active again.
+                scheduleScheduleBoundary()
                 return@launch
             }
             val explicit = nextPlaybackExplicit
@@ -454,10 +456,12 @@ class SleepTimerController @Inject constructor(
     private suspend fun reconcileSchedule(explicitPlay: Boolean = false) {
         scheduleBoundary?.cancel()
         scheduleBoundary = null
-        if (!playbackActive) return
 
         val schedule = settings.schedule
         val automatic = running?.automaticOccurrence
+        // An already-created automatic timer must still be cancelled at the window end while paused.
+        // With no such timer, inactive playback is never a reason to create or schedule one.
+        if (!playbackActive && automatic == null) return
         if (!schedule.enabled || schedule.start == schedule.end) {
             if (automatic != null) finish(SleepTimerOutcome.Cancelled)
             return
@@ -506,7 +510,7 @@ class SleepTimerController @Inject constructor(
     ) {
         scheduleBoundary?.cancel()
         scheduleBoundary = null
-        if (!playbackActive) return
+        if (!playbackActive && running?.automaticOccurrence == null) return
 
         val schedule = settings.schedule
         if (!schedule.enabled || schedule.start == schedule.end) return
