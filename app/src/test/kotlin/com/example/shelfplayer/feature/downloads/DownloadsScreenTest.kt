@@ -82,10 +82,7 @@ class DownloadsScreenTest {
         }
     }
 
-    private fun render(
-        recoveryState: DownloadRecoveryState,
-        onRecovery: (DownloadRecoveryState) -> Unit = {},
-    ) {
+    private fun render(recoveryState: DownloadRecoveryState, onRecovery: (DownloadRecoveryState) -> Unit = {}) {
         compose.setContent {
             DownloadsScreen(
                 uiState = state(recoveryState),
