@@ -1430,7 +1430,8 @@ class PlaybackService : MediaLibraryService() {
                     slot = CommandButton.SLOT_FORWARD,
                 ),
             ),
-            overflowActions = listOfNotNull(sleepTimerButton()),
+            activeTimerActions = listOfNotNull(sleepTimerButton()),
+            overflowActions = emptyList(),
             carBound = carBound,
         )
 
