@@ -19,189 +19,186 @@ BookWave correctness work follows these standing rules:
 - keep Android correctness and ownership contracts ahead of iOS expansion;
 - when an issue body names an already-merged prerequisite, treat the merge as satisfied rather than preserving a stale blocker.
 
-## Now — live library and progress consistency
+## Now — Android correctness on current `main`
 
-The playback/lifecycle correctness chain that previously preceded this section is complete on `main`: #142, #115, #141 and #139 closed through PRs #146, #149, #150 and #152. The next correctness work is therefore the server-derived Room projection below. These items do **not** change which book the device remembers or where active playback resumes.
+The foreground realtime and recent-book hydration slices that previously led this roadmap are already on
+`main`: Forgejo PR #5 implemented issue #40, and PR #57 implemented and closed issue #41. Issue #40 is
+still open in the tracker even though its implementation merged; that tracker state is stale and must not
+cause the foreground-sync work to be recreated.
 
-### 1. Issue #133 — own one foreground realtime progress connection
+The active Android correctness work is now the remaining system/Android Auto behavior below. An open pull
+request is not completion: #34 and #35 remain active until their implementation is merged and the required
+device/host evidence is recorded.
 
-**User problem/value:** accepted progress changed in another Audiobookshelf client should appear in BookWave while the app is foregrounded, even when Home is not the visible screen.
+### 1. Issues #34 and #35 — Android Auto player state and History affordance
 
-**Owner/boundary:** exactly one realtime connection/collector for the active authenticated profile while BookWave is foregrounded. Events continue through `LibraryRepository.writeProgress(...)`; Room remains the UI source of truth and the existing conflict boundary remains authoritative.
+**#34 — Car selected state.** The issue remains open. Preserve ADR-0029's routing truth and prove on API 33+
+with the real projected host whether the state BookWave publishes is rendered as intended. Do not infer a
+host limitation before the app-side publication path is proven on the current build.
 
-**Prerequisites:** the playback/cold-start correctness chain (#142, #115, #141 and #139) is completed on `main` through PRs #146, #149, #150 and #152. PR #93 remains the shared resume-freshness owner.
+**#35 — History affordance.** The issue remains open. Media3's player queue/timeline is not a History
+navigation surface and must not be repurposed as one. Keep any player-to-History affordance within supported
+Media3 metadata/navigation contracts and verify what the projected host actually exposes.
 
-**Explicit non-goals:** no permanent background websocket; no direct seek of active playback from a socket event; no bypass of local-unsynced conflict protection; no second durable progress database.
+**Owner/boundary:** Android System & Auto, with Playback & Lifecycle review wherever playback truth or route
+ownership is touched.
 
-**Automated proof:** Home and non-Home foreground ownership, exactly one collector, profile A -> B cancellation, late A event isolation, background disconnect, foreground reconnect/reconciliation, accepted newer remote progress, rejected conflicting local-unsynced progress, and no player seek.
+**Sequence:** complete and accept these focused issues before starting another speculative Android Auto
+player workaround. Their current implementation is being reviewed separately; this roadmap does not mark
+them complete merely because a PR exists.
 
-**Device/platform acceptance:** while BookWave is foregrounded on multiple screens, change progress in the Audiobookshelf web client and verify Room/UI follows without a full library refresh.
+### 2. Issue #10 — make Android Auto browse invalidation shape-aware
 
-**Effort / risk:** Medium / Medium because lifecycle ownership and profile isolation are correctness boundaries.
+**User problem/value:** meaningful browse membership changes must refresh without stale profile content or
+N-full-library-read fan-out.
 
-**Sequence:** first active correctness slice.
+**Owner/boundary:** derive one profile-bound browse snapshot per invalidation sweep and compare actual
+shape/membership, including same-count/different-member cases.
 
-### 2. Issue #134 — hydrate a bounded recent-book hot set before bulk expansion
+**Prerequisites:** ADR-0029's stable browse/product structure is settled, and the route-ownership work in
+#11/#36 is already merged. Keep this slice independent of #34/#35 player rendering and of resume-freshness
+policy.
 
-**User problem/value:** on large libraries, a remotely recent book can remain unavailable or stale until expensive catalogue expansion reaches it, delaying the book a listener is most likely to use.
+**Non-goals:** no root redesign, routing redesign or independent resume-position owner.
 
-**Owner/boundary:** use a bounded, deduplicated set of recent IDs as priority hints, prove active-profile visibility, then hydrate through the existing targeted fetch path. The normal full refresh remains authoritative for complete visibility, deletion and reconciliation.
-
-**Prerequisites:** #133 first so foreground freshness ownership is settled. Keep the remembered-book owner established by PR #149 independent: recent server activity may improve Room/library usefulness but must never replace the device-local remembered book.
-
-**Explicit non-goals:** no second refresh architecture; no use of listening-session timestamps as another progress source; no assumption that a recent-session ID is permission evidence; no new `/api/me/items-in-progress` contract without a supported-server capture/fixture and compatibility proof.
-
-**Automated proof:** bounded request count, deduplication, item/tag visibility filtering, local-unsynced protection, skip already-current/current item work, no redundant later expansion, failure isolation, and final full-refresh reconciliation.
-
-**Device/platform acceptance:** on a realistically large library, advance/play another book in the web client, foreground BookWave, and verify that useful book becomes current/usable materially before bulk expansion completes.
-
-**Effort / risk:** Medium–High / Medium–High because latency optimization must not weaken profile visibility or conflict safety.
-
-**Sequence:** after #133.
-
-## Then — Android Auto and audio-routing hardening
-
-PR #78 and [ADR-0029](adr/0029-android-auto-is-a-stable-audiobook-surface.md) define the settled Android Auto product/routing baseline. PR #93 owns resume freshness across all Play surfaces. Do not resurrect the withdrawn secondary-slot experiment or the old inference-based car-arrival continuity implementation as roadmap work.
-
-The playback/cold-start prerequisite is now satisfied. After the current live library/progress work above, perform one consolidated DHU/real-car evidence pass for #126/#127/#128 before implementation in this lane.
-
-### Evidence pass — issues #126, #127 and #128
-
-**Value:** separate genuine BookWave defects from Android Auto host limitations before spending another implementation cycle on guesses.
-
-**Owner/boundary:** measure existing redaction-safe route/button diagnostics, actual host rendering, pause cause and timing. Test evidence and head-unit evidence must remain distinct.
-
-**Required evidence:**
-
-- **#128:** capture `PLAY_WHEN_READY_CHANGE_REASON_*`, whether the pause is becoming-noisy or audio-focus loss, interval to car binding, active/selected output before/after, headset preservation and prior deliberate-pause state.
-- **#126:** capture API level, car-bound state, route-known state, output roles/active output and computed `onCar`/`onHeadset`; change app code only if those facts prove an app-side state/publication defect.
-- **#127:** confirm what the projected host actually renders and whether the shipped description-link-to-History affordance appears/works. Do not turn Media3's player queue/timeline into History.
-
-**Effort / risk:** Small–Medium evidence effort / High risk of wasting work if skipped.
-
-### Issue #100 — replace inferred `HeadsetHold` with route-heard ownership
-
-**User problem/value:** a merely connected or formerly heard headset must not be resurrected after the listener deliberately moved playback elsewhere.
-
-**Owner/boundary:** one generation/book-bound record of the route actually carrying BookWave playback, with explicit listener output choice outranking inferred system-policy state until stronger evidence exists.
-
-**Prerequisites:** evidence pass; stable Step-2 ownership on `main`.
-
-**Non-goals:** do not relabel ambiguous classic A2DP as headset/car to simplify tests; do not add another sticky inference boolean; Car remains Automatic rather than a guessed dashboard endpoint.
-
-**Proof/acceptance:** pure precedence/generation/disconnect tests plus physical headset -> speaker -> car, merely-connected headset, explicit headset choice and multiple-candidate routing sequences.
-
-**Effort / risk:** Medium–High / High.
-
-**Sequence:** first Android Auto/routing implementation after evidence.
-
-### Issue #128 — preserve intentional headset playback when the car arrives
-
-**User problem/value:** connecting Android Auto must not stop a book that should continue through the headset.
-
-**Owner/boundary:** handle the measured pause cause using trustworthy route-heard ownership from #100 or equivalent current-main evidence.
-
-**Prerequisites:** #100 and measured pause cause/timing.
-
-**Non-goals:** never auto-resume onto phone speaker or car; never resume a deliberately paused book; do not restore the withdrawn `CarArrivalContinuity` implementation wholesale.
-
-**Proof/acceptance:** regression must fail when continuity handling is removed; physical headset + car sequence required.
-
-**Effort / risk:** Medium / High because an incorrect auto-resume is worse than remaining paused.
-
-### Issue #99 — make Android Auto browse invalidation shape-aware
-
-**User problem/value:** meaningful browse membership changes must refresh without stale profile content or N-full-library-read fan-out.
-
-**Owner/boundary:** one profile-bound browse snapshot per invalidation sweep; compare shape/membership, including same-count/different-member cases.
-
-**Prerequisites:** PR #78 is merged; preferably after routing work so `PlaybackService` changes do not overlap unnecessarily.
-
-**Non-goals:** no root redesign, routing redesign or resume-freshness policy.
-
-**Proof/acceptance:** one-snapshot orchestration, dynamic series/author nodes, Downloads, Recently added, Listen again, Discover, Continue, same-count membership changes and hard profile-switch invalidation; DHU/real host verifies visible refresh separately.
+**Proof/acceptance:** one-snapshot orchestration, dynamic series/author nodes, Downloads, Recently added,
+Listen again, Discover, Continue, same-count membership changes and hard profile-switch invalidation;
+DHU/real-host evidence verifies visible refresh separately from JVM proof.
 
 **Effort / risk:** Medium / Medium.
 
-### Issue #130 — phone-versus-car media-button priority
+### 3. Issue #6 — retest headset Back/Previous on the current media-button layout
 
-**User problem/value:** skip controls should remain primary on the phone, while Car/Headset deserve primary slots only while an Android Auto controller is actually bound.
+Issue #38 is complete through Forgejo PR #56, so the prerequisite media-button layout change is no longer a
+reason to defer #6. Retest the reported headset Previous/Back failure on current `main` first. If it still
+reproduces, map the system/headset action to BookWave's configured relative seek-back policy without
+changing notification/Android Auto slot policy or inventing a second seek owner.
 
-**Owner/boundary:** media-button layout based on real car-controller binding state, not presence of a car-like audio route.
+Physical headset acceptance is required because a JVM test can prove command mapping but not which transport
+command a particular headset actually sends.
 
-**Prerequisites:** settled Android Auto service path after the earlier routing work.
+## Merged implementation awaiting physical/device acceptance
 
-**Non-goals:** no secondary-slot experiment; keep `SLOT_BACK` occupied in every supported combination.
+These are **not active implementation slices** unless acceptance fails. Their code has merged; what remains
+is evidence that automated tests cannot supply:
 
-**Proof/acceptance:** layout matrix across car-bound/unbound and action visibility combinations; phone notification plus DHU/real-car confirmation.
-
-**Effort / risk:** Small–Medium / Medium.
-
-### Conditional closure — issues #126 and #127
-
-- **#126:** if BookWave computes and publishes the correct Car state but the projected host still ignores/caches/renders the icon indistinguishably, treat it as a measured host limitation. Do not accumulate workarounds merely to force a visual toggle.
-- **#127:** if projected Android Auto does not expose the History affordance, record the platform/product limitation and keep an honest browse/navigation path. Never fake History into Media3's queue or redefine `seekToDefaultPosition()` as navigation.
+- **#36 / Forgejo PR #60 — car-arrival headset continuity:** issue closed and the narrow
+  audio-focus-loss-to-first-car-bind gate is on `main`. `docs/risks.md` R-106 remains the acceptance
+  boundary until the repeat physical headset + car drive passes. Do not broaden it into generic
+  resume-after-focus-loss behavior.
+- **#38 / Forgejo PR #56 — phone/car media-button priority:** issue closed and the state-dependent layout is
+  on `main`; phone notification plus DHU/real-car rendering remains device/host evidence.
+- **#7 / Forgejo PR #58 — shake-to-extend lifecycle:** issue closed and the lifecycle/settings race is fixed;
+  deliberate-shake behavior still requires real accelerometer checks in foreground, background and screen-off
+  playback.
 
 ## Download reliability and recovery lane
 
-The audit (#104) is complete and BW-DL-02/#107 landed through PR #136. The active implementation sequence starts from the concrete recovery issues rather than reopening the audit.
+BW-DL-03 / **#18 is complete through Forgejo PR #55**. Do not recreate its Pause / Resume / Retry action
+mapping. The remaining sequence starts from the transient execution-state projection:
+
+1. **#19 — project WorkManager waiting/retry state into Downloads UX.** Distinguish automatic retry/waiting
+   from terminal failure while keeping WorkManager as transient execution truth. #18 is satisfied.
+2. **#22 — explicit discard-partial recovery.** Eligible after completed #18 and may proceed independently of
+   #19. It is secondary, destructive and confirmed; Retry/Resume preserves partials by default.
+3. **#29 — live queue/progress in Downloads and notifications.** Follow #19 so screen and notification states
+   share the same truthful execution/presentation model.
+4. **#20 — removable/secondary storage correctness.** Keep after the core recovery/execution model; physical
+   removable-storage evidence is required.
+5. **#21 — device-wide destructive removal semantics.** Do only after the physical-copy/profile-owner product
+   decision is explicit.
 
 This lane may proceed independently when it does not collide with playback/service ownership work.
 
-1. **#108 — correct Pause / Resume / Retry actions.** User value: each recovery row action must match what will actually happen. Depends on completed #107. Test the presentation-state/action matrix and verify partial data is preserved. **Effort/risk:** Small / Low–Medium.
-2. **#109 — project WorkManager waiting/retry state into Downloads UX.** User value: distinguish automatic retry/waiting from terminal failure. Depends on #107 and is recommended after #108. WorkManager remains transient execution truth; do not mirror it into Room. **Effort/risk:** Medium / Medium.
-3. **#112 — explicit discard-partial recovery.** Eligible after #108 and can proceed independently of #109. It is secondary, destructive and confirmed; Retry/Resume preserves partials by default. **Effort/risk:** Small–Medium / Medium.
-4. **#120 — live queue/progress in Downloads and notifications.** Depends on #107-#109 so screen/notification states share the same truthful presentation model. Test multiple active downloads, process recreation and privacy-safe notification behavior. **Effort/risk:** Medium / Medium.
-5. **#110 — removable/secondary storage correctness.** Keep after the core recovery/execution model so volume loss/return is expressed through stable ownership rather than another state machine. Physical removable-storage evidence is required. **Effort/risk:** High / High.
-6. **#111 — device-wide destructive removal semantics.** Do only after the physical-copy/profile-owner product decision is explicit. Destructive operations must not mistake one profile's request for permission to destroy another profile's usable device copy. **Effort/risk:** Medium–High / High.
-
 ## Android system surfaces
 
-Start these only after playback ownership is stable enough that every surface can delegate rather than copy policy.
+Start these after the active Android correctness work above so each surface delegates to settled owners
+rather than copying playback policy.
 
-1. **#114 — semantic Android action contract.** Establish stable actions/deep links that delegate Continue/resume to the remembered-book owner from PR #149 + the PR #93 resume-freshness owner. No credentials/server addresses in external intents. Test cold/warm launch, malformed/unauthorized IDs and delegation. **Effort/risk:** Medium / Low–Medium.
-2. **#117 — home-screen widget** and **#118 — Quick Settings tile.** Build as projections/controllers over #114 and existing durable owners; neither gets an independent socket or resume algorithm. Test process death, profile/privacy state and Android surface lifecycle. **Effort/risk:** Medium each.
-3. **#116 — wired/Bluetooth headset automation.** Follow #114 and the routing hardening where relevant so automation acts through settled playback/routing semantics rather than becoming another owner. Physical headset acceptance required. **Effort/risk:** Medium–High / High.
-4. **#124 — scheduled automatic sleep.** The #139 prerequisite is satisfied by merged PR #152; preserve one sleep-timer owner and test time windows, restart, timezone/DST and manual precedence. **Effort/risk:** Medium / Medium.
-5. **#119 — Garmin evaluation/custom surface.** First validate the built-in Control Phone path. Add custom Garmin work only for a demonstrated gap, using #114 where semantic actions are needed. **Effort/risk:** investigation first; implementation risk depends on evidence.
+1. **#23 — semantic Android action contract.** Define stable actions/deep links that delegate Continue/resume
+   to the existing remembered-book and resume-freshness owners. No credentials/server addresses in external
+   intents.
+2. **#26 — home-screen widget** and **#27 — Quick Settings tile.** Build as projections/controllers over #23;
+   neither gets an independent socket or resume algorithm.
+3. **#25 — wired/Bluetooth headset automation.** Follow #23 and current routing ownership; physical headset
+   acceptance is required.
+4. **#33 — scheduled automatic sleep.** Preserve one sleep-timer owner and test time windows, restart,
+   timezone/DST and manual precedence.
+5. **#28 — Garmin evaluation/custom surface.** First validate the built-in Control Phone path. Add custom
+   Garmin work only for a demonstrated gap.
 
 ## Maintenance and non-sequencing backlog
 
-- **#101** remains open low-risk display cleanup: centralize the existing `Series #sequence` label formatting shared by Android Auto browse rows and playback-session metadata without changing series ownership or ordering.
-- **#135 / BW-DEP-01 is open** and is owned separately by the Build & Dependencies Agent. `docs/latest-stable-upgrade-plan.md` remains its detailed execution plan. Isolated migration slices have already landed through PRs #154–#158; the issue stays open until the staged migration is complete. Dependency novelty does not outrank the correctness sequence above.
+- **#12** remains open low-risk display cleanup: centralize the existing `Series #sequence` label formatting
+  without changing series ownership or ordering.
+- **#42 / BW-DEP-01** is the Forgejo migration issue for the staged dependency program. The tracker currently
+  shows it closed even though the migration plan is not complete. Treat
+  `docs/latest-stable-upgrade-plan.md` as the detailed execution plan: Phases 4 and 5 are complete at the
+  current compatible frontier, **Phase 6 is the next executable dependency lane**, and the Gradle 9 / AGP 9 /
+  API 37 foundation remains gated by ADR-0011. Dependency novelty does not outrank the correctness sequence
+  above.
+- **#47–#50** are open UI/design audit or proposal work. Their source findings are useful evidence, but they
+  do not independently change this roadmap's ordering and several explicitly require rendered/device
+  validation before implementation scope is treated as settled.
+
+Tracker inconsistencies are not sequencing authority. In particular, #40 is still open despite merged PR #5,
+while #42 is closed despite an incomplete staged migration. Reconcile those tracker states separately rather
+than making roadmap readers infer work from open/closed badges alone.
 
 ## Historical boundaries — completed, not active work
 
-These are retained because they define ownership or explain why older roadmap wording must not return:
+These entries exist to prevent completed ownership work from being recreated:
 
-- **PR #78 — merged:** Android Auto/routing finalization and ADR-0029. The secondary-slot experiment and inference-heavy car-arrival continuity attempt are historical evidence, not future roadmap items.
-- **PR #93 — merged:** one shared resume-freshness owner: standard Media3 Play -> `ResumeFreshnessPlayer` -> `ResumeFreshnessCoordinator` -> service-owned player. Do not create parallel phone/headset/Android Auto position policy.
-- **PR #98 — merged:** playback settings UI refresh; automatic sleep scheduling remained intentionally separate as #124.
-- **PR #113 / issue #103 — merged/completed:** established the canonical documentation/roadmap authority. The old “committed PR chain” from that snapshot is no longer active.
-- **PR #131 — merged:** Codex/build compatibility preparation and staged dependency plan.
-- **PR #136 / issue #107 — merged/completed:** safe download recovery presentation state. #108/#109 now build on it.
-- **PR #137 — merged:** Phase 0 dependency compatibility inventory for #135 only. It changed documentation, not dependency/toolchain versions, and did not complete #135; the execution issue remains open under the Build & Dependencies Agent.
-- **PR #140 / issue #138 — merged/closed:** cold Media3 playback resumption now lets the first loaded-item Play pass through the existing shared freshness owner. Do not schedule #138 as active work or introduce another cold-resume algorithm.
-- **PR #146 / issue #142 — merged/completed:** shutdown now captures the final session snapshot before player detachment.
-- **PR #149 / issue #115 — merged/completed:** one durable per-profile, device-local remembered audiobook identity now owns which book this device remembers.
-- **PR #150 / issue #141 — merged/completed:** cold/background Android Auto can preserve and resolve remembered media without inventing a second playback-position owner.
-- **PR #152 / issue #139 — merged/completed:** History projects one clear stop marker for sleep-timer expiry while preserving ordinary Pause semantics.
-- **PR #143 — merged after #140:** Loopbound/manual-APK build packaging only; it did not implement the correctness issues that followed.
-- **PR #144 — merged:** reconciled the canonical roadmap with the repository state at that time and retired the already-settled Android Auto secondary-slot experiment from future work.
-- **PR #153 / issue #132 — merged/completed:** refreshed the roadmap after the playback correctness chain completed and closed the documentation-reconciliation follow-up. Do not restore #132 as active backlog.
-- **Issue #104 — completed:** download/offline recovery audit; its concrete child issues now own implementation.
+- **Forgejo PR #5 / issue #40 — merged:** one foreground realtime progress owner now lives at application
+  foreground lifecycle scope. The still-open issue is tracker drift, not active implementation.
+- **Forgejo PR #55 / issue #18 — merged/closed:** Pause / Resume / Retry download row actions are settled.
+- **Forgejo PR #56 / issue #38 — merged/closed:** phone skips versus car-bound output-action priority follows
+  actual car-controller binding.
+- **Forgejo PR #57 / issue #41 — merged/closed:** bounded recent-book hydration runs before ordinary full
+  expansion without replacing the authoritative refresh.
+- **Forgejo PR #58 / issue #7 — merged/closed:** shake-to-extend registration now follows active-timer +
+  persisted-setting state; physical sensor acceptance remains separate.
+- **Forgejo PR #59 / issue #11 — merged/closed:** generation-bound route-heard ownership replaced the
+  `HeadsetHold` inference stack. Do not reintroduce sticky inferred ownership.
+- **Forgejo PR #60 / issue #36 — merged/closed:** measured car-arrival audio-focus loss has a narrow continuity
+  gate tied to #11 ownership; generic focus-loss resumption remains out of scope.
+- **Pre-migration GitHub PR #78 — merged:** Android Auto/routing finalization and ADR-0029. The retired
+  whole-list output cycle and secondary-slot experiment are historical evidence, not future roadmap items.
+- **Pre-migration GitHub PR #93 — merged:** one shared resume-freshness owner. Do not create parallel
+  phone/headset/Android Auto position policy.
+- **Pre-migration GitHub PR #131 — merged:** established the staged latest-stable dependency plan.
+- **Pre-migration GitHub PR #136 / current Forgejo issue #17 — completed:** safe download recovery
+  presentation state is the foundation for the remaining download lane.
+- **Pre-migration GitHub PR #137 — merged:** Phase 0 dependency compatibility inventory only; it is historical
+  measurement evidence, not a second live version ledger.
+- **Pre-migration GitHub PR #149 / current Forgejo issue #24 — completed:** one durable per-profile,
+  device-local remembered audiobook identity owns which book this device remembers.
+- **Pre-migration GitHub PR #144 and #153 / current Forgejo issue #39 — completed documentation boundaries:**
+  earlier roadmap reconciliation snapshots are history; this file remains the live sequencing authority.
 
 ## Last — iOS, deliberately after Android correctness
 
-Do not pull iOS work forward to avoid Android lifecycle, routing, library or download correctness. Shared code is justified only where it preserves a proven behavioral contract without forcing shared UI or platform adapters.
+Do not pull iOS work forward to avoid Android lifecycle, routing, library or download correctness. Shared code
+is justified only where it preserves a proven behavioral contract without forcing shared UI or platform
+adapters.
 
-1. **#121 — narrow Kotlin Multiplatform portability spike.** Prove a small model/pure-domain slice on JVM + iOS simulator; no wholesale KMP conversion and no shared UI.
-2. **Native iOS shell and authentication.** SwiftUI shell, Audiobookshelf sign-in, secure credentials and profile/account switching; no playback yet.
-3. **Read-only library.** Books, authors, series, shelves, details, search, artwork and useful caching. Use this stage to re-evaluate whether shared code is actually reducing duplicated meaning.
-4. **Native Apple playback.** AVFoundation/native Apple audio session, background audio, Now Playing/remote commands, chapters/seek/speed/interruption handling.
-5. **Progress/session correctness.** Deliberately port BookWave's proven ownership, acknowledged progress, sync, resume freshness, intentional rewind and offline behavior as product contracts rather than Android implementation details.
-6. **Downloads/offline.** Native iOS storage/background transfer while preserving authorization versus physical-file ownership semantics.
-7. **Apple system integrations.** App Intents/Shortcuts, WidgetKit, Spotlight/Siri-facing actions where useful, all delegating to native/shared owners rather than duplicating playback policy.
-8. **#123 — purposeful Live Activity only where it solves a distinct user problem.** Ordinary audiobook playback already has system Now Playing.
-9. **#122 — CarPlay only after native playback and progress correctness are proven.** Build a platform-native CarPlay product surface; do not mechanically reproduce Android Auto.
-10. **Parity and polish.** Pursue value-based parity, accessibility, performance and platform fit only after the native correctness layers are trustworthy.
+1. **#30 — staged iOS foundation and selective KMP boundary.** Prove narrow portable model/pure-domain seams;
+   no wholesale KMP conversion and no shared UI.
+2. **Native iOS shell and authentication.** SwiftUI shell, Audiobookshelf sign-in, secure credentials and
+   profile/account switching; no playback yet.
+3. **Read-only library.** Books, authors, series, shelves, details, search, artwork and useful caching.
+4. **Native Apple playback.** AVFoundation/native Apple audio session, background audio, Now Playing/remote
+   commands, chapters/seek/speed/interruption handling.
+5. **Progress/session correctness.** Port BookWave's proven ownership, acknowledged progress, sync, resume
+   freshness, intentional rewind and offline behavior as product contracts rather than Android implementation
+   details.
+6. **Downloads/offline.** Native iOS storage/background transfer while preserving authorization versus
+   physical-file ownership semantics.
+7. **Apple system integrations.** App Intents/Shortcuts, WidgetKit, Spotlight/Siri-facing actions where useful,
+   all delegating to native/shared owners.
+8. **#32 — purposeful Live Activity only where it solves a distinct user problem.** Ordinary audiobook
+   playback already has system Now Playing.
+9. **#31 — CarPlay only after native playback and progress correctness are proven.** Build a platform-native
+   CarPlay product surface; do not mechanically reproduce Android Auto.
+10. **Parity and polish.** Pursue value-based parity, accessibility, performance and platform fit only after
+    the native correctness layers are trustworthy.

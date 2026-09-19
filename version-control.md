@@ -4,22 +4,22 @@
 > CI actions and auxiliary build tooling.
 
 **Last full stable-version check:** 2026-09-15  
-**Repository baseline checked:** `main` at `8292bf2d8e3916f34faea898113e00d282f30e6b`
+**Repository state reconciled:** `main` at `62ec15362ca613854c111bd660727675af3081cb` on 2026-09-19; release-version rows retain their own `Last checked` dates.  
 **Upgrade roadmap:** [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md)  
-**Primary migration issue:** #135 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration`
+**Primary migration issue:** Forgejo #42 — `[BW-DEP-01] Execute staged latest-stable toolchain and dependency migration` (migrated from GitHub #135; the tracker is currently closed while staged work remains)
 
 ## How to maintain this file
 
 This file is the quick answer to **“what version are we on, what is the newest stable version, and what is left to do?”**
 
-- Update this file in the **same PR** whenever a tracked version, runtime, SDK level, GitHub Action or pinned tool changes.
+- Update this file in the **same PR** whenever a tracked version, runtime, SDK level, Forgejo Actions workflow dependency or pinned tool changes.
 - Re-check the affected row against its authoritative upstream source on every version-changing PR and update **Last checked**.
 - A full dependency-health review should refresh every row and the **Last full stable-version check** date.
 - **Latest stable** excludes alpha, beta, RC, milestone, preview, EAP, dev and snapshot builds.
 - **Latest stable is not automatically the approved next version.** Compatibility gates and migration notes still apply.
 - `gradle/libs.versions.toml` remains the source of truth for direct Gradle/Maven pins. This file mirrors those pins for planning/status visibility; when Gradle conflict resolution ships a newer transitive version than the direct pin, record both explicitly.
 - Direct repository-owned versions are tracked here. Transitive Maven artifacts are not individually listed; Gradle dependency verification, the dependency report/SBOM and vulnerability scanning cover that surface.
-- Mutable aliases such as `actions/checkout@v7`, `ubuntu-latest`, `platform-tools`, and container `:latest` tags are called out explicitly instead of pretending the repository pins an exact version.
+- Mutable inputs such as the remaining `actions/download-artifact@v3` compatibility tag, `sdkmanager "platform-tools"`, and the CI image's rebuild base tag are called out explicitly instead of pretending the repository pins an exact version.
 
 ### Status legend
 
@@ -58,7 +58,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 | Android SDK Build Tools | 36.0.0 | 36.0.0 | ✅ Current/default stable toolset for the current/latest AGP documentation. | 8 | 2026-09-15 | [Build Tools release notes](https://developer.android.com/tools/releases/build-tools) |
 | Android command-line tools | build 15859902 | build 15859902 | ✅ Current pinned download/checksum. | 8 | 2026-09-15 | [Android Studio / command-line tools](https://developer.android.com/studio) |
 | Android Platform Tools | `sdkmanager "platform-tools"` (not exact-pinned) | 37.0.1 | ↔️ Dynamic. Phase 8 should decide whether to keep the SDK-manager moving package or record/pin a resolved revision. | 8 | 2026-09-15 | [Platform Tools release notes](https://developer.android.com/tools/releases/platform-tools) |
-| GitHub CI JDK | Temurin 17 major line | Temurin 26.0.2.1 | 🎯 Intentional minimum-runtime lane. Current 17.x security patch is 17.0.20.1; keep this lane while Java 17 remains the repository bytecode/minimum Gradle runtime baseline. | 8 | 2026-09-15 | [Adoptium CSPU](https://adoptium.net/news/2026/09/eclipse-temurin-8u504-110321-170201-210121-25041-26021-available) |
+| Forgejo Android CI JDK | OpenJDK 17.0.20.1 in the digest-pinned BookWave CI image | Temurin 26.0.2.1 was the latest stable family checked on 2026-09-15 | 🎯 Intentional Java-17 verification lane. Forgejo PR #53 moved Android-heavy jobs into the repository-owned immutable CI image; keep Java 17 while it remains the bytecode/minimum Gradle runtime baseline. | 8 | 2026-09-19 | [Gradle Java compatibility](https://docs.gradle.org/current/userguide/compatibility.html) |
 | Codex JDK | Temurin 21 major line | Temurin 26.0.2.1 | 🎯 JDK 21 is the newest fully verified BookWave baseline. Gradle 8.14.5 officially runs through Java 24; Java 25 requires Gradle 9.1+ and Java 26 requires Gradle 9.4+, so re-probe modern JDKs only after the gated build-foundation migration. | 8 | 2026-09-15 | [Gradle Java compatibility](https://docs.gradle.org/current/userguide/compatibility.html) |
 
 ## AndroidX, Jetpack and Compose
@@ -120,41 +120,43 @@ This file is the quick answer to **“what version are we on, what is the newest
 
 ## CI, security and auxiliary tooling
 
-GitHub workflows intentionally use supported **major aliases** today. The exact stable release is still recorded here so drift is visible. A future security-hardening decision may choose immutable commit SHAs instead; that is separate from merely staying on the latest stable major.
+The active automation surface is **Forgejo Actions under `.forgejo/workflows/`**. Forgejo PR #53 moved the
+Android-heavy jobs into a repository-owned CI image consumed by immutable digest, and PR #54 added a trusted
+Gradle-cache path. Where workflows reuse action implementations, this ledger records the exact ref actually
+present on `main`; a moving major tag must not be described as SHA-pinned.
 
 | Component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
-| `actions/checkout` | `@v7` | 7.0.1 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [checkout releases](https://github.com/actions/checkout/releases) |
-| `actions/setup-java` | `@v6` | 6.0.1 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [setup-java releases](https://github.com/actions/setup-java/releases) |
-| `actions/setup-node` | `@v7` | 7.0.0 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [setup-node releases](https://github.com/actions/setup-node/releases) |
-| `actions/upload-artifact` | `@v7` | 7.0.1 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [upload-artifact releases](https://github.com/actions/upload-artifact/releases) |
-| `actions/download-artifact` | `@v8` | 8.0.1 | ✅ Current major alias; Phase 8 should decide whether to SHA-pin. | 8 | 2026-09-15 | [download-artifact releases](https://github.com/actions/download-artifact/releases) |
-| `gradle/actions/setup-gradle` | `@v6` | 6.3.0 | ✅ Current major alias. | 8 | 2026-09-15 | [Gradle Actions releases](https://github.com/gradle/actions/releases) |
-| `gradle/actions/wrapper-validation` | `@v6` | 6.3.0 | ✅ Current major alias. | 8 | 2026-09-15 | [Gradle Actions releases](https://github.com/gradle/actions/releases) |
+| Forgejo checkout action | `data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803` | checkout 7.0.1 was the latest stable checked on 2026-09-15 | 🎯 Exact commit pin in all live Forgejo checkout steps; re-resolve the upstream release/commit mapping before changing it. | 8 | 2026-09-19 | [checkout releases](https://github.com/actions/checkout/releases) |
+| Forgejo cache action | v4.3.0 at `0057852bfaa89a56745cba8c7296529d2fc39830` | 4.3.0 at the PR #54 migration point | 🎯 Exact commit pin. PR verification/APK are restore-only; Main is the trusted writer. | 8 | 2026-09-19 | [actions/cache releases](https://github.com/actions/cache/releases) |
+| Forgejo upload-artifact action | `data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de` | upload-artifact 7.0.1 was the latest stable checked on 2026-09-15 | 🎯 Exact commit pin in live Forgejo upload steps; re-resolve before changing it. | 8 | 2026-09-19 | [upload-artifact releases](https://github.com/actions/upload-artifact/releases) |
+| APK download-artifact compatibility action | `actions/download-artifact@v3` in `.forgejo/workflows/apk.yml` | 8.0.1 was the latest stable checked on 2026-09-15 | ⬆️ Remaining Phase-8 workflow migration: replace the moving/old compatibility tag with a current Forgejo-compatible pinned ref after proving artifact interoperability. | 8 | 2026-09-19 | [download-artifact releases](https://github.com/actions/download-artifact/releases) |
+| BookWave Forgejo Android CI image | `forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85` | N/A — repository-owned runtime image | 🎯 Immutable runtime consumed by PR/Main/APK Android jobs. Rebuild/publish only through the manual image workflow and update consumers by reviewed digest. | 8 | 2026-09-19 | [CI image definition](.forgejo/ci/bookwave-ci/Dockerfile) |
+| Gitleaks — Forgejo PR workflow / CI image | 8.30.1 | 8.30.1 | ✅ Current at the last stable check. The old 8.24.0 PR-workflow divergence was removed during the Forgejo CI migration. | 8 | 2026-09-19 | [Gitleaks releases](https://github.com/gitleaks/gitleaks/releases) |
 | Gitleaks — Codex bootstrap | 8.30.1 | 8.30.1 | ✅ Current and checksum-pinned. | 8 | 2026-09-15 | [Gitleaks releases](https://github.com/gitleaks/gitleaks/releases) |
-| Gitleaks — PR workflow | 8.24.0 | 8.30.1 | ⬆️ Known tooling divergence; reconcile in a dedicated Phase 8 PR and pin the downloaded checksum/version consistently. | 8 | 2026-09-15 | [Gitleaks releases](https://github.com/gitleaks/gitleaks/releases) |
-| Node.js — APK/Loopbound workflow | 22 major line (latest 22.x: 22.23.2 LTS) | 26.8.2 Current; 24.21.0 LTS | ⬆️ Phase 8 should deliberately select a supported LTS target (normally 24.x) rather than blindly moving CI to the non-LTS Current line. `actions/setup-node` currently resolves the moving 22.x line. | 8 | 2026-09-15 | [Node.js downloads](https://nodejs.org/en/download) |
-| npm — APK/Loopbound workflow | Not pinned separately; follows Node 22 distribution | 11.19.1 with Node 26.8.2; 11.19.0 with Node 24.21.0 LTS | ↔️ Keep coupled to the selected Node runtime unless a repository need requires an explicit npm pin. | 8 | 2026-09-15 | [Node.js downloads](https://nodejs.org/en/download) |
-| Python runtime — launcher asset generator | Not pinned/documented | 3.14.7 | ⬆️ Policy gap found during the 2026-09-15 audit. Define a supported/pinned Python baseline for the asset utility in Phase 8. | 8 | 2026-09-15 | [Python source releases](https://www.python.org/getit/source/) |
+| Node.js — Forgejo CI image | 22.23.2 verified in the currently published image; rebuild source is `node:22-bookworm` | 26.8.2 Current; 24.21.0 LTS at the 2026-09-15 check | 🎯 Current jobs are frozen by image digest. Phase 8 should deliberately choose the next supported LTS and decide whether the rebuild base itself needs an immutable image pin. | 8 | 2026-09-19 | [Node.js downloads](https://nodejs.org/en/download) |
+| npm — Forgejo CI image | Follows the Node 22 image distribution | 11.19.1 with Node 26.8.2; 11.19.0 with Node 24.21.0 LTS at the 2026-09-15 check | ↔️ Keep coupled to the selected Node runtime unless a repository need requires an explicit npm pin. | 8 | 2026-09-19 | [Node.js downloads](https://nodejs.org/en/download) |
+| Python runtime — launcher asset generator | Not pinned/documented | 3.14.7 | ⬆️ Policy gap from the 2026-09-15 audit. Define a supported/pinned Python baseline for the asset utility in Phase 8. | 8 | 2026-09-15 | [Python source releases](https://www.python.org/getit/source/) |
 | NumPy — launcher asset generator | 2.3.5 | 2.5.3 | ⬆️ Auxiliary tooling update; verify generated launcher assets remain byte/visual-equivalent where expected. | 8 | 2026-09-15 | [NumPy releases](https://numpy.org/news/) |
 | Pillow — launcher asset generator | 12.3.0 | 12.3.0 | ✅ Current. | 8 | 2026-09-15 | [Pillow on PyPI](https://pypi.org/project/Pillow/) |
 | OSV vulnerability scan | Service `querybatch` API; no scanner binary pin | N/A — service API | ↔️ No binary version to bump; retain fail-closed behavior and periodically review the integration. | 8 | 2026-09-15 | [OSV API](https://google.github.io/osv.dev/api/) |
 
 ## Dynamic / intentionally non-versioned external inputs
 
-These are part of the reproducibility surface but do not have a meaningful `current -> latest stable` comparison in the repository today.
+These are part of the reproducibility surface but do not have a meaningful `current -> latest stable`
+comparison in the repository.
 
 | Input | Repository selection | Treatment | Last checked |
 | --- | --- | --- | --- |
-| GitHub-hosted runner image | `ubuntu-latest` | ↔️ Moving GitHub runner alias. Review runner-image migrations in Phase 8; do not pretend it is an exact repository pin. | 2026-09-15 |
-| Audiobookshelf contract-capture fixture | `ghcr.io/advplyr/audiobookshelf:latest` | ↔️ Intentionally dynamic contract fixture. If reproducible historical captures become necessary, pin a digest/version in a dedicated contract-fixture change. | 2026-09-15 |
-| Android Platform Tools install | `sdkmanager "platform-tools"` | ↔️ Moving SDK package; latest resolved upstream revision is recorded in the Android toolchain table above. | 2026-09-15 |
+| Forgejo self-hosted runner | `runs-on: linux-amd64` | ↔️ Runner host/runtime is managed outside this repository. Android-heavy jobs reduce that drift by running inside the immutable BookWave CI image; runner-engine changes still require separate infrastructure evidence. | 2026-09-19 |
+| Audiobookshelf contract-capture fixture | Default `ghcr.io/advplyr/audiobookshelf:2.36.0`; manual input may override | 🎯 Default capture is explicit rather than `:latest`, while the workflow deliberately permits a caller-selected server image for compatibility recapture. | 2026-09-19 |
+| Android Platform Tools install | `sdkmanager "platform-tools"` inside CI-image construction/Codex setup | ↔️ Moving SDK package; latest resolved upstream revision is recorded in the Android toolchain table above. | 2026-09-15 |
 
 ## Completed BW-DEP-01 update history
 
-Append to this table whenever a tracked migration slice merges. The live tables above remain the source of truth for the current version.
+Append to this table whenever a tracked migration slice merges. The live tables above remain the source of truth for the current version. Rows through 2026-09-16 predate the Forgejo migration, so their `#154`–`#169` PR numbers are historical GitHub provenance; future entries should name Forgejo PRs explicitly.
 
-| Date | PR | Component | From | To | Result |
+| Date | PR / provenance | Component | From | To | Result |
 | --- | --- | --- | --- | --- | --- |
 | 2026-09-14 | #154 | AndroidX DataStore | 1.1.7 | 1.2.1 | ✅ Latest stable reached |
 | 2026-09-14 | #155 | KSP | 2.3.11 | 2.3.12 | ✅ Latest stable reached |
@@ -179,7 +181,7 @@ Every PR that changes a tracked version should, before merge:
 2. update the matching **Current in BookWave** cell here;
 3. re-check the upstream stable release and refresh **Latest stable** + **Last checked** for that row;
 4. update **Status / next action** and phase/gate notes when the upgrade changes what is now possible;
-5. append a row to **Completed BW-DEP-01 update history** for #135 migration work; and
+5. append a row to **Completed BW-DEP-01 update history** for Forgejo #42 migration work; and
 6. update [`docs/latest-stable-upgrade-plan.md`](docs/latest-stable-upgrade-plan.md) only when sequencing, compatibility gates, validation requirements or phase ownership changes.
 
 That separation is deliberate: **this file owns live versions; the roadmap owns migration strategy.**

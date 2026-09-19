@@ -313,7 +313,7 @@ passes on JDK 21. JDK 22, 23 and 24 all prepared the same Codex environment succ
 `verifyDebug` on the then-current Gradle 8.14.3 / AGP 8.12.0 / Kotlin 2.2.0 stack. BookWave now keeps the
 Gradle 8.14 line on its latest maintenance patch, but that does not by itself promote the JDK baseline: Gradle
 8.14.x officially runs through Java 24, Java 25 requires Gradle 9.1+, and Java 26 requires Gradle 9.4+.
-BookWave still targets Java 17 bytecode, while normal GitHub CI stays on JDK 17 to exercise the minimum
+BookWave still targets Java 17 bytecode, while normal Forgejo CI stays on JDK 17 to exercise the minimum
 supported runtime. Re-probe newer JDKs after the staged build-tool migration in
 `docs/latest-stable-upgrade-plan.md`; do not infer compatibility merely because Gradle itself starts.
 
@@ -326,7 +326,7 @@ supply-chain work. Use the repository Gradle wrapper; never install or invoke a 
 variable. The secret is exposed to the setup process under that environment-variable name, and the
 bootstrap restores it to `~/.bookwave/debug.keystore`. It is optional for compilation and tests, but
 without it an APK produced in a fresh Codex environment may not upgrade the developer's existing install.
-The GitHub Actions repository secret with the same name is separate; Codex does not inherit GitHub Actions
+The Forgejo Actions repository secret with the same name is separate; Codex does not inherit Forgejo Actions
 secrets automatically. Never request or place release or Play upload signing credentials in the ordinary
 Codex environment.
 
