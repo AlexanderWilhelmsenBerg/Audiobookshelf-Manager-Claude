@@ -107,7 +107,7 @@ class RouteHeardOwnershipTest {
 
         assertEquals(budsA.id, owner.heardRoute?.outputId)
         assertEquals(
-            RouteHeardOwnership.Evidence.ListenerSelectionWhilePlaying,
+            RouteHeardEvidence.ListenerSelectionWhilePlaying,
             owner.heardRoute?.evidence,
         )
     }
