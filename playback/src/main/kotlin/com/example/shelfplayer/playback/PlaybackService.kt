@@ -1152,13 +1152,14 @@ class PlaybackService : MediaLibraryService() {
         }
         syncExplicitOutputIntent()
         val hold = routeOwnership.headsetForCar(audioOutputs.outputs.value) ?: return null
+        // Apply and settle the #11-owned preference before any #36 resume can make sound.
+        if (!audioOutputs.reassert(hold)) return null
         logger.info(
             LogCategory.Playback,
             "A car connected and the book was held in the headset",
             LogField.Public("kind", hold.substringBefore(':')),
         )
-        // Apply and settle the #11-owned preference before any #36 resume can make sound.
-        return hold.takeIf { audioOutputs.reassert(hold) }
+        return hold
     }
 
     /**
