@@ -165,6 +165,11 @@ fun SettingsRoute(
             onShakeChanged = viewModel::onShakeToRestartChanged,
             onRewindOnStopChanged = viewModel::onSleepTimerRewindChanged,
         ),
+        sleepScheduleActions = SleepScheduleSettingsActions(
+            onEnabledChanged = viewModel::onSleepScheduleEnabledChanged,
+            onStartChanged = viewModel::onSleepScheduleStartChanged,
+            onEndChanged = viewModel::onSleepScheduleEndChanged,
+        ),
         playbackActions = PlaybackSettingsActions(
             onSpeedChanged = viewModel::onDefaultSpeedChanged,
             onSkipsChanged = viewModel::onSkipIntervalsChanged,
@@ -207,6 +212,7 @@ fun SettingsScreen(
     metrics: PlaybackMetrics = PlaybackMetrics.Empty,
     appearance: AppearanceUiState = AppearanceUiState(),
     appearanceActions: AppearanceActions = AppearanceActions(),
+    sleepScheduleActions: SleepScheduleSettingsActions = SleepScheduleSettingsActions(),
     // AUTH-004 — debug only, and defaulted so `SettingsScreen` stays a pure function its tests can
     // render without a ViewModel (PRODUCT_SPEC 16.4).
     recovery: RecoveryTestInputs = RecoveryTestInputs(),
@@ -423,6 +429,10 @@ fun SettingsScreen(
                                 settings = uiState.sleepTimer,
                                 history = uiState.sleepTimerHistory,
                                 actions = sleepTimerActions,
+                            )
+                            sleepScheduleSection(
+                                settings = uiState.sleepTimer.schedule,
+                                actions = sleepScheduleActions,
                             )
                             devicesSection(devices)
                         }
@@ -840,3 +850,89 @@ data class ServerTabInputs(
     /** PRODUCT_SPEC 21 — what the last passcode write did, so a refusal is visible. */
     val lockMessage: LockSettingsMessage? = null,
 )
+
+
+/** BW-SLEEP-01 — settings writes only; playback owns eligibility and timer creation. */
+data class SleepScheduleSettingsActions(
+    val onEnabledChanged: (Boolean) -> Unit = {},
+    val onStartChanged: (java.time.LocalTime) -> Unit = {},
+    val onEndChanged: (java.time.LocalTime) -> Unit = {},
+)
+
+/**
+ * BW-SLEEP-01 — the automatic window beside the existing timer defaults.
+ *
+ * The section deliberately offers no duration: automatic arming reuses the Default length immediately
+ * above it. Compose owns no window policy and no countdown; it only projects and writes stored settings.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.sleepScheduleSection(
+    settings: com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings,
+    actions: SleepScheduleSettingsActions,
+) {
+    item(key = "sleep-schedule-toggle") {
+        androidx.compose.material3.ListItem(
+            headlineContent = { androidx.compose.material3.Text(stringResource(R.string.sleep_schedule_title)) },
+            supportingContent = {
+                androidx.compose.material3.Text(stringResource(R.string.sleep_schedule_summary))
+            },
+            trailingContent = {
+                androidx.compose.material3.Switch(
+                    checked = settings.enabled,
+                    onCheckedChange = actions.onEnabledChanged,
+                )
+            },
+        )
+    }
+    item(key = "sleep-schedule-start") {
+        SleepScheduleTimeRow(
+            title = stringResource(R.string.sleep_schedule_start),
+            time = settings.start,
+            onChanged = actions.onStartChanged,
+        )
+    }
+    item(key = "sleep-schedule-end") {
+        SleepScheduleTimeRow(
+            title = stringResource(R.string.sleep_schedule_end),
+            time = settings.end,
+            onChanged = actions.onEndChanged,
+        )
+    }
+    if (settings.start == settings.end) {
+        item(key = "sleep-schedule-empty") {
+            androidx.compose.material3.ListItem(
+                headlineContent = {
+                    androidx.compose.material3.Text(stringResource(R.string.sleep_schedule_empty_window))
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SleepScheduleTimeRow(
+    title: String,
+    time: java.time.LocalTime,
+    onChanged: (java.time.LocalTime) -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.material3.ListItem(
+        headlineContent = { androidx.compose.material3.Text(title) },
+        trailingContent = {
+            androidx.compose.material3.TextButton(
+                onClick = {
+                    android.app.TimePickerDialog(
+                        context,
+                        { _, hour, minute -> onChanged(java.time.LocalTime.of(hour, minute)) },
+                        time.hour,
+                        time.minute,
+                        android.text.format.DateFormat.is24HourFormat(context),
+                    ).show()
+                },
+            ) {
+                androidx.compose.material3.Text(
+                    text = "%02d:%02d".format(java.util.Locale.ROOT, time.hour, time.minute),
+                )
+            }
+        },
+    )
+}
