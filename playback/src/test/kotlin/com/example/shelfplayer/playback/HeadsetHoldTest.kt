@@ -170,6 +170,13 @@ class RouteHeardOwnershipTest {
             isPlaying = true,
             selectionSequence = 2,
         )
+        // A late collector replay of the older Car/Automatic event must not beat the newer Headset press.
+        owner.onExplicitSelection(
+            outputId = null,
+            outputs = listOf(budsA.copy(isActive = true), budsB),
+            isPlaying = true,
+            selectionSequence = 1,
+        )
         owner.onOutputsChanged(
             outputs = listOf(budsA.copy(isActive = true), budsB),
             isPlaying = true,
