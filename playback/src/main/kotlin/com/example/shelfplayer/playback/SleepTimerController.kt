@@ -522,6 +522,9 @@ class SleepTimerController @Inject constructor(
         val delayMillis = (boundary.toEpochMilli() - now.toEpochMilli()).coerceAtLeast(1L)
         scheduleBoundary = applicationScope.launch(mainDispatcher) {
             delay(delayMillis)
+            // This is the boundary job itself. Clear the handle before reconciliation so reconcileSchedule
+            // does not cancel its own coroutine and abort at the next suspending repository/sync call.
+            scheduleBoundary = null
             reconcileSchedule()
         }
     }
