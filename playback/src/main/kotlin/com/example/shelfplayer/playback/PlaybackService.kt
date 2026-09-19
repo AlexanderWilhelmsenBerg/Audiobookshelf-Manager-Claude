@@ -233,6 +233,11 @@ class PlaybackService : MediaLibraryService() {
      */
     private val routeOwnership = RouteHeardOwnership()
 
+    /**
+     * Issue #36 — only the measured audio-focus-loss + first-car-arrival transition may resume playback.
+     */
+    private val carArrivalResume = CarArrivalResumeGate()
+
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
 
@@ -848,14 +853,34 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("playWhenReady", playWhenReady.toString()),
                 LogField.Public("reason", playWhenReadyReason(reason)),
             )
-            if (playWhenReady) return
+            if (playWhenReady) {
+                // A newer Play makes any earlier car-arrival candidate stale, regardless of who resumed it.
+                carArrivalResume.cancel()
+                return
+            }
             // `REMOTE` cannot occur while this listener is on the local ExoPlayer (R-76); it stays in the
             // condition so the *intent* — a person asked, from wherever — survives if the player is ever
             // wrapped or replaced by a remote one, which is when the reason would start appearing.
-            autoRewind.onPaused(
-                wasUserInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
-                    reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE,
-            )
+            val userInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
+                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
+            autoRewind.onPaused(wasUserInitiated = userInitiated)
+
+            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+                // Issue #36 — the physical drive measured audioFocusLoss, not becomingNoisy. Capture it only
+                // while #11 still owns this generation in a connected headset.
+                syncExplicitOutputIntent()
+                val outputs = audioOutputs.outputs.value
+                val headset = routeOwnership.headsetForCar(outputs)
+                carArrivalResume.onAudioFocusLoss(
+                    at = clock.elapsed(),
+                    heardRoute = routeOwnership.heardRoute,
+                    headsetId = headset,
+                )
+            } else {
+                // A deliberate pause, noisy-route pause, end-of-item stop, or unknown cause is not the
+                // measured Android Auto arrival failure and must never be generalized into a resume.
+                carArrivalResume.cancel()
+            }
         }
 
         /**
@@ -871,6 +896,8 @@ class PlaybackService : MediaLibraryService() {
             if (mediaItem != null) metrics.onItemPrepared()
             // PRODUCT_SPEC PLAY-002 — route evidence belongs only to this loaded book generation.
             routeOwnership.onBookChanged(mediaItem != null)
+            // Issue #36 — a pending focus loss belongs to the same generation and dies with it.
+            carArrivalResume.cancel()
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
@@ -1117,19 +1144,54 @@ class PlaybackService : MediaLibraryService() {
      * A merely connected headset has no [RouteHeardOwnership.HeardRoute], and an emptied queue invalidates
      * the generation before any routing preference can be reasserted.
      */
-    private fun holdHeadsetAgainstCar() {
+    private suspend fun holdHeadsetAgainstCar(): String? {
         if ((player?.mediaItemCount ?: 0) == 0) {
             routeOwnership.onQueueEmptied()
-            return
+            carArrivalResume.cancel()
+            return null
         }
         syncExplicitOutputIntent()
-        val hold = routeOwnership.headsetForCar(audioOutputs.outputs.value) ?: return
+        val hold = routeOwnership.headsetForCar(audioOutputs.outputs.value) ?: return null
+        // Apply and settle the #11-owned preference before any #36 resume can make sound.
+        if (!audioOutputs.reassert(hold)) return null
         logger.info(
             LogCategory.Playback,
             "A car connected and the book was held in the headset",
             LogField.Public("kind", hold.substringBefore(':')),
         )
-        audioOutputs.reassert(hold)
+        return hold
+    }
+
+    /**
+     * Issue #36 — resume only the measured focus-loss pause paired with this first car arrival.
+     *
+     * The gate carries the pause-time book generation/output id. Re-reading #11 ownership here proves that
+     * no newer book or explicit output choice has superseded it. The route preference above was also applied
+     * and allowed to settle before play(), so the phone speaker/car are never chosen merely because the car
+     * appeared.
+     */
+    private fun resumeAfterCarArrival(heldHeadset: String?) {
+        val current = player ?: run {
+            carArrivalResume.cancel()
+            return
+        }
+        if (current.mediaItemCount == 0 || current.playWhenReady) {
+            carArrivalResume.cancel()
+            return
+        }
+
+        carArrivalResume.resumeForCarArrival(
+            at = clock.elapsed(),
+            heardRoute = routeOwnership.heardRoute,
+            headsetId = heldHeadset,
+        ) { target ->
+            logger.info(
+                LogCategory.Playback,
+                "Playback resumed after the car took audio focus",
+                LogField.Public("kind", target.substringBefore(':')),
+            )
+            current.play()
+        }
     }
 
     /**
@@ -2022,7 +2084,9 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
             if (controller.isCar()) {
+                val carWasConnected = carConnections.isConnected()
                 carConnections.onConnected()
+                val carArrived = !carWasConnected
                 logger.info(
                     LogCategory.Playback,
                     "A car connected to the media session",
@@ -2030,7 +2094,8 @@ class PlaybackService : MediaLibraryService() {
                 )
                 scope.launch {
                     audioOutputs.resettle()
-                    holdHeadsetAgainstCar()
+                    val heldHeadset = holdHeadsetAgainstCar()
+                    if (carArrived) resumeAfterCarArrival(heldHeadset)
                     republishOutputButtons()
                 }
             }
