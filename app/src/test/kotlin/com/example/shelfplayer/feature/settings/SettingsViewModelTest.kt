@@ -639,6 +639,32 @@ internal class FakeSleepTimers : SleepTimerRepository {
         return AppResult.Success(Unit)
     }
 
+    override suspend fun setScheduleEnabled(enabled: Boolean): AppResult<Unit> {
+        settings.value = settings.value.copy(schedule = settings.value.schedule.copy(enabled = enabled))
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setScheduleWindow(
+        start: java.time.LocalTime,
+        end: java.time.LocalTime,
+    ): AppResult<Unit> {
+        settings.value = settings.value.copy(schedule = settings.value.schedule.copy(start = start, end = end))
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setScheduleRuntimeState(
+        suppressedOccurrence: String?,
+        replayRequiredOccurrence: String?,
+    ): AppResult<Unit> {
+        settings.value = settings.value.copy(
+            schedule = settings.value.schedule.copy(
+                suppressedOccurrence = suppressedOccurrence,
+                replayRequiredOccurrence = replayRequiredOccurrence,
+            ),
+        )
+        return AppResult.Success(Unit)
+    }
+
     override fun observeRecentSessions(limit: Int): Flow<List<SleepTimerSession>> = sessions
 
     fun emit(recorded: List<SleepTimerSession>) {
