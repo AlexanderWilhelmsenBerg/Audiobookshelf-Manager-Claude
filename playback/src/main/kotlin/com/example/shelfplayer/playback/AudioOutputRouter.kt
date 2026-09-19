@@ -69,8 +69,8 @@ class AudioOutputRouter @Inject constructor(
     internal data class ExplicitSelection(val sequence: Long, val outputId: String?)
 
     private var nextExplicitSelectionSequence = 0L
-    private val _explicitSelection = MutableStateFlow<ExplicitSelection?>(null)
-    internal val explicitSelection: StateFlow<ExplicitSelection?> = _explicitSelection.asStateFlow()
+    private val explicitSelectionState = MutableStateFlow<ExplicitSelection?>(null)
+    internal val explicitSelection: StateFlow<ExplicitSelection?> = explicitSelectionState.asStateFlow()
 
     private var player: ExoPlayer? = null
     private var callback: AudioDeviceCallback? = null
@@ -133,7 +133,7 @@ class AudioOutputRouter @Inject constructor(
             return
         }
         if (explicit) {
-            _explicitSelection.value = ExplicitSelection(++nextExplicitSelectionSequence, id)
+            explicitSelectionState.value = ExplicitSelection(++nextExplicitSelectionSequence, id)
         }
         _selectedId.value = id
         publish()
