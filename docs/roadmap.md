@@ -2,7 +2,10 @@
 
 **Classification:** Active plan — canonical sequencing authority.
 
-This is the only document that answers **“what should BookWave work on next?”** Detailed issue bodies, accepted ADRs, architecture documents, risks, reviews and experiments supply evidence and implementation detail, but do not independently change sequence.
+This is the only document that answers **“what should BookWave work on next?”** `docs/product-decisions.md`
+records definitive owner-approved product/UX decisions but does not set sequencing. Detailed issue bodies,
+accepted ADRs, architecture documents, risks, reviews and experiments supply evidence and implementation
+detail, but do not independently change sequence.
 
 This roadmap describes work that is still open on current `main`. Completed PRs and issues are retained only as historical boundaries where they explain why an owner or experiment must not be recreated.
 
