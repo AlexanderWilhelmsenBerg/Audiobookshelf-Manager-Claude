@@ -161,29 +161,36 @@ class SleepTimerControllerTest {
     }
 
     @Test
-    fun `playback near window end receives full default duration past the end boundary`() = runTest {
+    fun `automatic timer started just before schedule end is cancelled at the boundary without expiring`() = runTest {
         val source = MutableStateFlow(
             SleepTimerSettings.Default.copy(
-                defaultLength = 30.minutes,
-                schedule = SleepTimerScheduleSettings.Default.copy(enabled = true),
+                defaultLength = 15.minutes,
+                fadeLength = Duration.ZERO,
+                schedule = SleepTimerScheduleSettings.Default.copy(
+                    enabled = true,
+                    start = java.time.LocalTime.of(22, 0),
+                    end = java.time.LocalTime.of(7, 0),
+                ),
             ),
         )
         val repository = FakeSleepTimerRepository(source)
-        val clock = TestAppClock(Instant.parse("2026-09-20T05:55:00Z"))
+        val clock = TestAppClock(Instant.parse("2026-09-20T06:46:00Z"))
         val controller = controller(repository, FakeShakeSource(), clock)
         controller.attach(player())
         runCurrent()
 
         controller.onPlaybackChanged(isPlaying = true)
         runCurrent()
-        assertEquals(30.minutes, controller.state.value.remaining)
+        assertEquals(15.minutes, controller.state.value.remaining)
 
-        clock.advanceBy(10.minutes)
-        advanceTimeBy(10.minutes.inWholeMilliseconds + 1)
+        clock.advanceBy(14.minutes)
+        advanceTimeBy(14.minutes.inWholeMilliseconds + 1)
         runCurrent()
 
-        assertTrue(controller.state.value.isActive)
-        assertEquals(20.minutes, controller.state.value.remaining)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(SleepTimerOutcome.Cancelled, repository.ended.last())
+        assertEquals(null, repository.replayRequiredOccurrence)
+        assertEquals(null, repository.suppressedOccurrence)
     }
 
     @Test
@@ -332,9 +339,6 @@ class SleepTimerControllerTest {
             repository = FakeSessionSyncRepository(),
             baseline = ResumeBaseline(),
             clock = clock,
-            zoneProvider = object : LocalZoneProvider {
-                override fun current() = java.time.ZoneOffset.UTC
-            },
             logger = NO_OP_LOGGER,
             applicationScope = backgroundScope,
             mainDispatcher = dispatcher,
@@ -345,6 +349,9 @@ class SleepTimerControllerTest {
             sessionSync = sync,
             history = FakePlaybackHistoryRepository(),
             clock = clock,
+            zoneProvider = object : LocalZoneProvider {
+                override fun current() = java.time.ZoneOffset.UTC
+            },
             logger = NO_OP_LOGGER,
             applicationScope = backgroundScope,
             mainDispatcher = dispatcher,
