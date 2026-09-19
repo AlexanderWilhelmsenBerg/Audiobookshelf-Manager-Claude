@@ -158,21 +158,17 @@ internal class RouteHeardOwnership {
         }
     }
 
-    private fun shouldKeepPreviousAgainst(
-        candidate: AudioOutput,
-        outputs: List<AudioOutput>,
-    ): Boolean {
+    private fun shouldKeepPreviousAgainst(candidate: AudioOutput, outputs: List<AudioOutput>): Boolean {
         val previous = heardRoute?.takeIf { it.generation == activeGeneration }
         val previousOutput = previous?.let { heard -> outputs.firstOrNull { it.id == heard.outputId } }
+        if (previous == null || previousOutput == null) return false
+        if (previous.outputId == candidate.id) return false
 
-        return when {
-            previous == null || previousOutput == null -> false
-            previous.outputId == candidate.id -> false
-            previous.evidence == RouteHeardEvidence.ListenerSelectionWhilePlaying -> true
-            else ->
+        return previous.evidence == RouteHeardEvidence.ListenerSelectionWhilePlaying ||
+            (
                 previousOutput.isHeadsetCandidate &&
                     (candidate.role == AudioOutputRole.Car || candidate.role == AudioOutputRole.Ambiguous)
-        }
+            )
     }
 
     /**
