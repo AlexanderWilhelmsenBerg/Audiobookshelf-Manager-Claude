@@ -164,11 +164,10 @@ internal class RouteHeardOwnership {
         if (previous == null || previousOutput == null) return false
         if (previous.outputId == candidate.id) return false
 
-        return previous.evidence == RouteHeardEvidence.ListenerSelectionWhilePlaying ||
-            (
-                previousOutput.isHeadsetCandidate &&
-                    (candidate.role == AudioOutputRole.Car || candidate.role == AudioOutputRole.Ambiguous)
-            )
+        val protectsHeadsetFromCarRace =
+            previousOutput.isHeadsetCandidate &&
+                (candidate.role == AudioOutputRole.Car || candidate.role == AudioOutputRole.Ambiguous)
+        return previous.evidence == RouteHeardEvidence.ListenerSelectionWhilePlaying || protectsHeadsetFromCarRace
     }
 
     /**
