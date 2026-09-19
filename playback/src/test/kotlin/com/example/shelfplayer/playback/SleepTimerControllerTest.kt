@@ -194,6 +194,39 @@ class SleepTimerControllerTest {
     }
 
     @Test
+    fun `manual timer replacing automatic timer survives the schedule end`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                defaultLength = 15.minutes,
+                schedule = SleepTimerScheduleSettings.Default.copy(
+                    enabled = true,
+                    start = java.time.LocalTime.of(22, 0),
+                    end = java.time.LocalTime.of(7, 0),
+                ),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-20T06:46:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertTrue(controller.state.value.isActive)
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(20.minutes)))
+        runCurrent()
+
+        clock.advanceBy(14.minutes)
+        advanceTimeBy(14.minutes.inWholeMilliseconds + 1)
+        runCurrent()
+
+        assertEquals(SleepTimerMode.Fixed(20.minutes), controller.state.value.mode)
+        assertTrue(controller.state.value.isActive)
+    }
+
+    @Test
     fun `manual timer replaces automatic timer without suppressing the window`() = runTest {
         val source = MutableStateFlow(
             SleepTimerSettings.Default.copy(
