@@ -315,9 +315,9 @@ Use the live ledger to reconcile the complete non-application tooling surface:
 - downloaded-binary checksums whenever a pinned binary changes.
 
 Keep release/upload signing secrets out of ordinary Codex environments and keep
-`BOOKWAVE_DEBUG_KEYSTORE_BASE64` as the only optional Codex signing secret. Review mutable aliases
-(`ubuntu-latest`, major action tags and SDK-manager moving packages) explicitly rather than treating them as
-exact pins.
+`BOOKWAVE_DEBUG_KEYSTORE_BASE64` as the only optional Codex signing secret. Review mutable aliases and compatibility tags
+(such as the remaining `actions/download-artifact@v3`, SDK-manager moving packages, and mutable CI-image
+build inputs) explicitly rather than treating them as exact pins.
 
 After the upgraded build stack is green, re-run the modern-JDK compatibility matrix and update
 `CODEX_ENV_JAVA_VERSION` to the highest fully passing supported stable/LTS JDK. Do not move the Codex baseline
