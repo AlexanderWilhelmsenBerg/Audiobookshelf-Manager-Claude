@@ -71,8 +71,9 @@ internal class CarArrivalResumeGate(
 
         val age = at - candidate.pausedAt
         if (age < Duration.ZERO || age > pairingWindow) return null
-        if (heardRoute?.generation != candidate.generation) return null
-        if (heardRoute.outputId != candidate.outputId) return null
+        val current = heardRoute ?: return null
+        if (current.generation != candidate.generation) return null
+        if (current.outputId != candidate.outputId) return null
         if (headsetId != candidate.outputId) return null
 
         return candidate.outputId
