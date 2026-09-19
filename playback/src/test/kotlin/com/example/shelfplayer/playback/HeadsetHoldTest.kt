@@ -162,11 +162,13 @@ class RouteHeardOwnershipTest {
             outputId = null,
             outputs = listOf(budsA.copy(isActive = true), budsB),
             isPlaying = true,
+            selectionSequence = 1,
         )
         owner.onExplicitSelection(
             outputId = budsB.id,
             outputs = listOf(budsA.copy(isActive = true), budsB),
             isPlaying = true,
+            selectionSequence = 2,
         )
         owner.onOutputsChanged(
             outputs = listOf(budsA.copy(isActive = true), budsB),
@@ -191,6 +193,19 @@ class RouteHeardOwnershipTest {
 
         assertNull(owner.heardRoute)
         assertNull(owner.headsetForCar(listOf(budsA, car)))
+    }
+
+    @Test
+    fun `replaying the same Automatic event cannot resurrect its released headset`() {
+        val owner = RouteHeardOwnership()
+        owner.onBookChanged(hasBook = true)
+        val active = listOf(budsA.copy(isActive = true))
+        owner.onPlaybackObserved(active)
+
+        owner.onExplicitSelection(null, active, isPlaying = true, selectionSequence = 1)
+        owner.onExplicitSelection(null, active, isPlaying = true, selectionSequence = 1)
+
+        assertNull(owner.heardRoute)
     }
 
     @Test
