@@ -17,9 +17,7 @@ import kotlin.time.Duration.Companion.seconds
  * reassert it, and verify the preference survived the settle interval. If Android removed/re-added the
  * device and [AudioOutputRouter] fell back to Automatic, the loop reasserts the same target again.
  */
-internal class CarArrivalRouteRecovery(
-    private val recoveryWindow: Duration = DEFAULT_RECOVERY_WINDOW,
-) {
+internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DEFAULT_RECOVERY_WINDOW) {
     suspend fun secure(
         target: CarArrivalResumeGate.Target,
         outputs: StateFlow<List<AudioOutput>>,
