@@ -20,11 +20,7 @@ import kotlin.time.Duration.Companion.seconds
  * Not thread-safe by design: PlaybackService calls it from the player/main-thread boundary.
  */
 internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAULT_PAIRING_WINDOW) {
-    internal data class Target(
-        val outputId: String,
-        val generation: Long,
-        val explicitSelectionSequence: Long,
-    )
+    internal data class Target(val outputId: String, val generation: Long, val explicitSelectionSequence: Long)
 
     private data class Pending(
         val pausedAt: Duration,
@@ -68,11 +64,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
      * binds. Holding the candidate until that exact target is secured lets the service survive that flap
      * without reconstructing ownership from live [RouteHeardOwnership.heardRoute].
      */
-    fun targetForCarArrival(
-        arrivedAt: Duration,
-        currentGeneration: Long?,
-        explicitSelectionSequence: Long,
-    ): Target? {
+    fun targetForCarArrival(arrivedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Target? {
         val candidate = pending ?: return null
         val ageAtArrival = arrivedAt - candidate.pausedAt
         val valid =
@@ -92,11 +84,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     }
 
     /** True only while the resolved target still belongs to the same pending listener/book context. */
-    fun isCurrent(
-        target: Target,
-        currentGeneration: Long?,
-        explicitSelectionSequence: Long,
-    ): Boolean {
+    fun isCurrent(target: Target, currentGeneration: Long?, explicitSelectionSequence: Long): Boolean {
         val candidate = pending ?: return false
         return candidate.outputId == target.outputId &&
             candidate.generation == target.generation &&
