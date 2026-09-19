@@ -301,18 +301,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     /** BW-SLEEP-01 — UI writes settings; playback remains the schedule policy owner. */
-    fun onSleepScheduleEnabledChanged(enabled: Boolean) {
-        viewModelScope.launch { sleepTimer.setScheduleEnabled(enabled) }
-    }
-
-    fun onSleepScheduleStartChanged(start: java.time.LocalTime) {
-        val current = uiState.value.sleepTimer.schedule
-        viewModelScope.launch { sleepTimer.setScheduleWindow(start = start, end = current.end) }
-    }
-
-    fun onSleepScheduleEndChanged(end: java.time.LocalTime) {
-        val current = uiState.value.sleepTimer.schedule
-        viewModelScope.launch { sleepTimer.setScheduleWindow(start = current.start, end = end) }
+    fun onSleepScheduleChanged(schedule: com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings) {
+        viewModelScope.launch {
+            sleepTimer.setScheduleEnabled(schedule.enabled)
+            sleepTimer.setScheduleWindow(start = schedule.start, end = schedule.end)
+        }
     }
 
     /** PRODUCT_SPEC PLAY-007 — the speed a book uses when it has no override of its own. */
