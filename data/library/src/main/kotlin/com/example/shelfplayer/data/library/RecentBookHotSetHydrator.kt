@@ -33,13 +33,13 @@ internal class RecentBookHotSetHydrator(
      * Session timestamps and positions are deliberately ignored; only the first occurrence of each item id
      * is retained. Failure is best-effort because the ordinary full refresh is still authoritative.
      */
-    suspend fun recentBookCandidates(profileId: ProfileId): List<LibraryItemId> = when (
-            val sessions = gateway.playback.listeningSessions(
-                profileId = profileId,
-                page = 0,
-                itemsPerPage = RECENT_SESSION_LIMIT,
-            )
-        ) {
+    suspend fun recentBookCandidates(profileId: ProfileId): List<LibraryItemId> {
+        val sessions = gateway.playback.listeningSessions(
+            profileId = profileId,
+            page = 0,
+            itemsPerPage = RECENT_SESSION_LIMIT,
+        )
+        return when (sessions) {
             is AppResult.Failure -> {
                 logger.warn(
                     LogCategory.Sync,
@@ -67,6 +67,7 @@ internal class RecentBookHotSetHydrator(
                 ids
             }
         }
+    }
 
     /**
      * Intersects priority hints with one catalogue batch, so a session id alone can never authorize a write.
