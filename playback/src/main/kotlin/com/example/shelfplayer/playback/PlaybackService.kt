@@ -237,6 +237,7 @@ class PlaybackService : MediaLibraryService() {
      * Issue #36 — only the measured audio-focus-loss + first-car-arrival transition may resume playback.
      */
     private val carArrivalResume = CarArrivalResumeGate()
+    private val carArrivalRouteRecovery = CarArrivalRouteRecovery()
 
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
@@ -875,6 +876,7 @@ class PlaybackService : MediaLibraryService() {
                     at = clock.elapsed(),
                     heardRoute = routeOwnership.heardRoute,
                     headsetId = headset,
+                    explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
                 )
             } else {
                 // A deliberate pause, noisy-route pause, end-of-item stop, or unknown cause is not the
@@ -1152,25 +1154,64 @@ class PlaybackService : MediaLibraryService() {
         }
         syncExplicitOutputIntent()
         val hold = routeOwnership.headsetForCar(audioOutputs.outputs.value) ?: return null
-        // Apply and settle the #11-owned preference before any #36 resume can make sound.
-        if (!audioOutputs.reassert(hold)) return null
+        val reasserted = audioOutputs.reassert(hold)
+        val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
+            output.id == hold && output.isHeadsetCandidate
+        }
+        if (!heldHeadsetIsConnected) return null
+        logHeldHeadset(hold)
+        return hold
+    }
+
+    /**
+     * #36's focus-loss path deliberately does not rediscover the target through live heard-route evidence.
+     *
+     * The target was proven while audio was actually coming out of that headset. Android Auto may then
+     * temporarily remove the device, which correctly retires live heardRoute and may also clear selectedId
+     * back to Automatic. Recover the captured target itself, reasserting it again after any such flap.
+     */
+    private suspend fun recoverFocusLossHeadsetAgainstCar(target: CarArrivalResumeGate.Target): String? {
+        val held = carArrivalRouteRecovery.secure(
+            target = target,
+            outputs = audioOutputs.outputs,
+            selectedId = audioOutputs.selectedId,
+            isStillEligible = {
+                carArrivalResume.isCurrent(
+                    target = target,
+                    currentGeneration = routeOwnership.currentGeneration,
+                    explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
+                )
+            },
+            reassert = audioOutputs::reassert,
+        )
+        if (held == null) {
+            logger.info(
+                LogCategory.Playback,
+                "Car-arrival continuity did not regain the headset",
+                LogField.Public("kind", target.outputId.substringBefore(':')),
+            )
+            return null
+        }
+        logHeldHeadset(held)
+        return held
+    }
+
+    private fun logHeldHeadset(hold: String) {
         logger.info(
             LogCategory.Playback,
             "A car connected and the book was held in the headset",
             LogField.Public("kind", hold.substringBefore(':')),
         )
-        return hold
     }
 
     /**
-     * Issue #36 — resume only the measured focus-loss pause paired with this first car arrival.
+     * Issue #36 — resume only after the captured focus-loss target has been secured again.
      *
-     * The gate carries the pause-time book generation/output id. Re-reading #11 ownership here proves that
-     * no newer book or explicit output choice has superseded it. The route preference above was also applied
-     * and allowed to settle before play(), so the phone speaker/car are never chosen merely because the car
-     * appeared.
+     * The gate carries the pause-time generation/output/explicit-intent sequence. The routing recovery above
+     * may tolerate only Android's transient disappearance of that exact output; it cannot change the target.
+     * The final gate check then proves that no book or explicit listener intent changed while routing settled.
      */
-    private fun resumeAfterCarArrival(heldHeadset: String?) {
+    private fun resumeAfterCarArrival(target: CarArrivalResumeGate.Target, heldHeadset: String?) {
         val current = player ?: run {
             carArrivalResume.cancel()
             return
@@ -1181,17 +1222,48 @@ class PlaybackService : MediaLibraryService() {
         }
 
         carArrivalResume.resumeForCarArrival(
-            at = clock.elapsed(),
-            heardRoute = routeOwnership.heardRoute,
+            target = target,
+            currentGeneration = routeOwnership.currentGeneration,
             headsetId = heldHeadset,
-        ) { target ->
+            explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
+        ) { resumeTarget ->
             logger.info(
                 LogCategory.Playback,
                 "Playback resumed after the car took audio focus",
-                LogField.Public("kind", target.substringBefore(':')),
+                LogField.Public("kind", resumeTarget.substringBefore(':')),
             )
             current.play()
         }
+    }
+
+    private fun onCarControllerConnected(controllerPackage: String) {
+        val carWasConnected = carConnections.isConnected()
+        val carArrivedAt = if (carWasConnected) null else clock.elapsed()
+        carConnections.onConnected()
+        logger.info(
+            LogCategory.Playback,
+            "A car connected to the media session",
+            LogField.Public("controller", controllerPackage),
+        )
+        scope.launch { handleCarArrival(carArrivedAt) }
+    }
+
+    private suspend fun handleCarArrival(carArrivedAt: Duration?) {
+        audioOutputs.resettle()
+        val continuityTarget = carArrivedAt?.let { arrivedAt ->
+            carArrivalResume.targetForCarArrival(
+                arrivedAt = arrivedAt,
+                currentGeneration = routeOwnership.currentGeneration,
+                explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
+            )
+        }
+        val heldHeadset = if (continuityTarget == null) {
+            holdHeadsetAgainstCar()
+        } else {
+            recoverFocusLossHeadsetAgainstCar(continuityTarget)
+        }
+        if (continuityTarget != null) resumeAfterCarArrival(continuityTarget, heldHeadset)
+        republishOutputButtons()
     }
 
     /**
@@ -2083,22 +2155,7 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
-            if (controller.isCar()) {
-                val carWasConnected = carConnections.isConnected()
-                carConnections.onConnected()
-                val carArrived = !carWasConnected
-                logger.info(
-                    LogCategory.Playback,
-                    "A car connected to the media session",
-                    LogField.Public("controller", controller.packageName),
-                )
-                scope.launch {
-                    audioOutputs.resettle()
-                    val heldHeadset = holdHeadsetAgainstCar()
-                    if (carArrived) resumeAfterCarArrival(heldHeadset)
-                    republishOutputButtons()
-                }
-            }
+            if (controller.isCar()) onCarControllerConnected(controller.packageName)
             val access = session.accessFor(controller)
             val commands = when (access) {
                 ControllerAccess.LibraryAndPlayback ->
