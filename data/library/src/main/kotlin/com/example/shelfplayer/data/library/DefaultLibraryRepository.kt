@@ -31,7 +31,6 @@ import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibrarySnapshot
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
-import com.example.shelfplayer.core.network.gateway.CachedLibrary
 import com.example.shelfplayer.data.library.mapper.EntityMappers
 import com.example.shelfplayer.data.library.mapper.ProgressMappers
 import com.example.shelfplayer.data.library.mapper.toDomain
@@ -51,10 +50,10 @@ import javax.inject.Singleton
 /**
  * PRODUCT_SPEC LIB-001 — the Room-backed library repository.
  *
- * Reads come from Room only. [refresh] pulls from the gateway and writes into Room in a single
- * transaction, so a partially applied sync can never be observed. A refresh failure leaves the last
- * cached content untouched and is recorded in the sync state instead of surfacing as an empty
- * library.
+ * Reads come from Room only. [refresh] writes additive catalogue/expanded batches as they arrive so
+ * useful cached state can improve during a long sync, then performs one authoritative final visibility
+ * and reconciliation pass. A refresh failure leaves already-cached content usable and is recorded in
+ * the sync state instead of surfacing as an empty library.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
@@ -69,6 +68,8 @@ class DefaultLibraryRepository @Inject constructor(
     private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : LibraryRepository {
+
+    private val recentBookHydrator = RecentBookHotSetHydrator(gateway, writer, logger)
 
     override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> =
         scopeFlow(profileId).flatMapLatest { scope ->
@@ -208,7 +209,7 @@ class DefaultLibraryRepository @Inject constructor(
      * fully materialised result is written. That is what makes "a failed sync leaves cached content
      * on screen" true rather than aspirational.
      */
-    @Suppress("LongMethod") // One orchestration boundary keeps the all-or-nothing refresh order visible.
+    @Suppress("LongMethod") // One orchestration boundary keeps the refresh order and fallback visible.
     override suspend fun refresh(profileId: ProfileId): AppResult<Int> = withContext(ioDispatcher) {
         markSyncing(profileId)
 
@@ -225,10 +226,19 @@ class DefaultLibraryRepository @Inject constructor(
             }
 
             is AppResult.Success -> {
+                // Issue #41 — one already-captured, bounded history page supplies priority hints only.
+                // The session order is preserved, but its positions/timestamps never become progress.
+                val recentBookIds = recentBookHydrator.recentBookCandidates(profileId)
+                val attemptedRecentBooks = mutableSetOf<LibraryItemId>()
                 val snapshots = mutableMapOf<LibraryId, LibrarySnapshot>()
                 var authorDecorationsWritten = 0
                 var authorDecorationFailures = 0
                 for (library in libraries.value) {
+                    // PRODUCT_SPEC LIB-001 / LIB-002 — what the cache already holds, read once per
+                    // library rather than once per item. The same mutable view is handed to the network
+                    // sweep so a successful hot-set hydration can prove that item current when ordinary
+                    // bulk expansion reaches it later in this refresh.
+                    val cached = cachedLibrary(profileId, library)
                     val onExpandedBatch: suspend (List<BookSnapshot>) -> Unit = { batch ->
                         // PRODUCT_SPEC LIB-001 — partial content on screen while the sync continues.
                         //
@@ -239,14 +249,20 @@ class DefaultLibraryRepository @Inject constructor(
                         writer.writeBooks(profileId, library, batch)
                     }
                     val onCatalogueBatch: suspend (List<BookSnapshot>) -> Unit = { batch ->
-                        // Minified catalogue rows are previews. They make new books browsable after one
-                        // response, but must not replace an existing expanded book with empty relations.
+                        // The catalogue is the active profile's item/tag visibility evidence. Persist it
+                        // first, then intersect recent-session hints with exactly this admitted batch.
+                        // A listening-session id by itself is never permission evidence.
                         writer.writeCatalogueBooks(profileId, library, batch)
+                        recentBookHydrator.hydrateBatch(
+                            profileId = profileId,
+                            library = library,
+                            catalogueBatch = batch,
+                            recentBookIds = recentBookIds,
+                            attempted = attemptedRecentBooks,
+                            cached = cached,
+                            writeProgress = { progress -> writeProgress(profileId, progress) },
+                        )
                     }
-                    // PRODUCT_SPEC LIB-001 / LIB-002 — what the cache already holds, read once per
-                    // library rather than once per item. Two queries decide the whole shape of the
-                    // sweep: what can be skipped, and what is worth fetching first.
-                    val cached = cachedLibrary(profileId, library)
                     val books = gateway.library.listBooks(
                         profileId = profileId,
                         libraryId = library.id,
@@ -375,19 +391,13 @@ class DefaultLibraryRepository @Inject constructor(
      *
      * **What to fetch first**: the books on the *Continue listening* shelf.
      */
-    private suspend fun cachedLibrary(profileId: ProfileId, library: Library): CachedLibrary {
+    private suspend fun cachedLibrary(profileId: ProfileId, library: Library): LibraryRefreshCache {
         val libraryKey = EntityKey.of(library.serverId.value, library.id.value)
         val expanded = libraryDao.expandedBookStamps(profileId.value, libraryKey)
             .associate { it.remoteId to it.remoteUpdatedAt }
+            .toMutableMap()
         val inProgress = libraryDao.inProgressBookIds(profileId.value, libraryKey).toSet()
-        return object : CachedLibrary {
-            override fun isUpToDate(id: LibraryItemId, updatedAt: Long?): Boolean {
-                val stored = expanded[id.value]
-                return stored != null && updatedAt != null && stored == updatedAt
-            }
-
-            override fun isInProgress(id: LibraryItemId): Boolean = id.value in inProgress
-        }
+        return LibraryRefreshCache(expanded, inProgress)
     }
 
     /**
