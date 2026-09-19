@@ -179,6 +179,7 @@ class DownloadsViewModel @Inject constructor(
         viewModelScope.launch {
             val result = when (action) {
                 DownloadRecoveryAction.Pause -> pauseDownload(bookId)
+
                 DownloadRecoveryAction.Resume,
                 DownloadRecoveryAction.Retry,
                 -> downloadBook(bookId)
@@ -248,8 +249,11 @@ internal enum class DownloadRecoveryAction {
  */
 internal fun DownloadRecoveryState.rowAction(): DownloadRecoveryAction? = when (this) {
     DownloadRecoveryState.Running -> DownloadRecoveryAction.Pause
+
     DownloadRecoveryState.Paused -> DownloadRecoveryAction.Resume
+
     DownloadRecoveryState.Failed -> DownloadRecoveryAction.Retry
+
     DownloadRecoveryState.Complete,
     DownloadRecoveryState.Queued,
     DownloadRecoveryState.Waiting,
