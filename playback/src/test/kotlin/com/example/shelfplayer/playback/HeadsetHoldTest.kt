@@ -218,11 +218,30 @@ class RouteHeardOwnershipTest {
         assertNull(owner.headsetForCar(listOf(car)))
     }
 
+    private fun output(
+        id: String,
+        name: String,
+        kind: DeviceKind = DeviceKind.Bluetooth,
+        role: AudioOutputRole = AudioOutputRole.Ambiguous,
+    ) = AudioOutput(id = id, displayName = name, kind = kind, role = role)
+}
+
+
+private class RouteHeardOwnershipGenerationTest {
+    private val buds = output("bluetooth:buds", "Buds")
+    private val wired = output(
+        id = "wired",
+        name = "Wired headphones",
+        kind = DeviceKind.Wired,
+        role = AudioOutputRole.Headset,
+    )
+    private val car = output("car", "Car audio", DeviceKind.Car, AudioOutputRole.Car)
+
     @Test
     fun `route evidence is bound to the loaded book generation`() {
         val owner = RouteHeardOwnership()
         owner.onBookChanged(hasBook = true)
-        owner.onPlaybackObserved(listOf(budsA.copy(isActive = true)))
+        owner.onPlaybackObserved(listOf(buds.copy(isActive = true)))
         val firstGeneration = owner.heardRoute?.generation
 
         owner.onBookChanged(hasBook = true)
@@ -237,26 +256,27 @@ class RouteHeardOwnershipTest {
     fun `old book route evidence cannot influence the next book`() {
         val owner = RouteHeardOwnership()
         owner.onBookChanged(hasBook = true)
-        owner.onPlaybackObserved(listOf(budsA.copy(isActive = true)))
-        assertEquals(budsA.id, owner.headsetForCar(listOf(budsA, car)))
+        owner.onPlaybackObserved(listOf(buds.copy(isActive = true)))
+        assertEquals(buds.id, owner.headsetForCar(listOf(buds, car)))
 
         owner.onBookChanged(hasBook = true)
 
         assertNull(owner.heardRoute)
-        assertNull(owner.headsetForCar(listOf(budsA, car)))
+        assertNull(owner.headsetForCar(listOf(buds, car)))
     }
 
     @Test
     fun `emptying the queue invalidates route evidence`() {
         val owner = RouteHeardOwnership()
         owner.onBookChanged(hasBook = true)
-        owner.onPlaybackObserved(listOf(budsA.copy(isActive = true)))
+        owner.onPlaybackObserved(listOf(buds.copy(isActive = true)))
 
         owner.onQueueEmptied()
 
         assertNull(owner.heardRoute)
-        assertNull(owner.headsetForCar(listOf(budsA, car)))
+        assertNull(owner.headsetForCar(listOf(buds, car)))
     }
+
 
     private fun output(
         id: String,
