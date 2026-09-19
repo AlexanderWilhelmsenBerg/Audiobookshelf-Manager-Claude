@@ -84,7 +84,7 @@ internal object NotificationButtons {
     const val ACTION_CYCLE_HEADSET_OUTPUT = "com.example.shelfplayer.playback.CYCLE_HEADSET_OUTPUT"
 
     /**
-     * The active sleep timer's overflow action, or no action while the timer is idle.
+     * The active sleep timer's media action, or no action while the timer is idle.
      *
      * Media3 1.11 requires a [CommandButton] to carry exactly one session or player command. Keeping the
      * binding next to the active-state guard makes it impossible to publish a visible timer button that has
@@ -94,7 +94,8 @@ internal object NotificationButtons {
     @OptIn(UnstableApi::class)
     fun sleepTimerButton(timer: SleepTimerState, displayName: (Duration) -> CharSequence): CommandButton? {
         if (!timer.isActive) return null
-        return CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
+        return CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+            .setIconResId(R.drawable.ic_sleep_timer)
             .setDisplayName(displayName(timer.remaining))
             .setSessionCommand(SessionCommand(ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
             .setSlots(CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW)
