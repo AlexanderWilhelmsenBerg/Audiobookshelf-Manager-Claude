@@ -438,7 +438,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - A notification action extends the same timer by the configured amount.
 - Optional shake-to-extend requires explicit opt-in and must not run motion sensing continuously when no timer is active.
 - An optional local-time schedule defines **eligibility**, not a timer deadline: playback starting inside the window, or already-active playback crossing its start, requests the ordinary configured default timer from the same owner.
-- The schedule end prevents only new automatic timers. It never shortens or cancels a timer that is already running, including one that extends past the end of the window.
+- The schedule end cancels a still-running **automatic** timer without pausing playback. A manual timer is independent of the schedule end.
+- Example: with a 22:00–07:00 schedule and a 15-minute default, playback beginning at 06:46 starts the ordinary 15-minute timer, but the automatic timer is cancelled at 07:00 and playback continues.
 - Manual timer creation retains the ordinary timer's precedence. Manually cancelling an automatically-created timer suppresses rearming for that civil window occurrence, including across playback-service/process recreation; the next distinct occurrence is eligible again.
 - Natural automatic expiry is not manual cancellation. A deliberate Play inside the same eligible occurrence may arm another default timer, while passive lifecycle restoration or automatic resume must not manufacture that intent.
 - Same-day and overnight windows use local wall-clock semantics. Timezone and manual wall-clock changes are reconciled while playback is owned, and DST gap/overlap resolution is deterministic and tested.
