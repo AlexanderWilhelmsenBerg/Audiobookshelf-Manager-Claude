@@ -97,7 +97,7 @@ internal object NotificationButtons {
         return CommandButton.Builder(CommandButton.ICON_PLUS_CIRCLE_FILLED)
             .setDisplayName(displayName(timer.remaining))
             .setSessionCommand(SessionCommand(ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
-            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setSlots(CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW)
             .setEnabled(true)
             .build()
     }
