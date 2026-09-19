@@ -123,17 +123,34 @@ Both conclusions were reasoning about the wrong layer. Android Auto is served by
 
 Two properties are asserted rather than reasoned about: the state-dependent ordering is run through Media3's real conversion, and the back slot is occupied in every binding/action-visibility combination. If it is ever vacated, Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS`, nothing in this app intercepts it, and a head unit's *previous* reaches `Player.seekToPrevious` and restarts the book.
 
-### 9. A car arriving still leaves the book paused, and that is recorded rather than fixed here
+### 9. Car-arrival continuity is tied to measured focus-loss evidence
 
-The same run reported it: *"when listening to something when android auto is connecting, it pauses the audio. If listening on a headset, it should not stop."*
+The original device report was: *"when listening to something when android auto is connecting, it pauses the audio. If listening on a headset, it should not stop."*
 
-Nothing in this app pauses on car arrival. The platform does, by one of two routes — `ACTION_AUDIO_BECOMING_NOISY`, which Android broadcasts when an A2DP sink is deactivated and a car taking the active A2DP slot does exactly that, or a permanent audio-focus loss while the projection host starts. Media3 pauses for both and offers a resume for neither, which is why the book stays stopped rather than dipping.
+The earlier `CarArrivalContinuity` experiment was deliberately removed after repeated review exposed unsafe inference, including a path that could resume onto the phone speaker. That implementation remains historical evidence only.
 
-**A resume was implemented and then lifted back out of this PR at the owner's decision.** Five review rounds found seven defects in it, and their shape is what makes this a decision rather than a setback: the mechanism has to infer *"a car took the audio"* from proxies — a pause reason, a binding count, an `isActive` flag, a route the platform reports late or not at all — and each round removed one inference that had looked sound in a comment. Four of the seven were resumes that should not have happened, including one that could have started an audiobook aloud on the phone speaker.
+A physical drive on **2026-09-19**, after #11 replaced `HeadsetHold` with generation-bound route-heard ownership, supplied the missing measurement:
 
-The judgement is therefore that this cannot be finished without a car. Two facts it depends on are unmeasured and unmeasurable here: whether a real host's controller binds close enough to the pause to be paired with it, and how long the held-headset preference takes to become the live route on a platform that announces neither. The implementation is preserved at commit `26f65f0` on this branch's history and returns as its own PR once one drive has answered R-106.
+- playback was continuously advancing through the headset;
+- at **15:37:25** Media3 logged `playWhenReady=false reason=audioFocusLoss`;
+- at **15:37:27** the first Android Auto controller bound;
+- #11 immediately reported that the current-generation book was held in the Bluetooth headset;
+- the owner physically confirmed that Android Auto connection no longer moved the audiobook out of the headset.
 
-For this **car-arrival pause problem**, #78 deliberately ships no inferred auto-resume. The routing actions, lit-state presentation and other settled Android Auto improvements remain independent of that deferred continuity experiment.
+The pause mechanism is therefore **audio-focus loss on this tested setup**, with a measured pause-to-first-bind interval of two seconds. The implementation for #36 deliberately does not generalize that result to `AUDIO_BECOMING_NOISY` or to every system pause.
+
+The continuity decision is now narrow:
+
+1. capture only an `AUDIO_FOCUS_LOSS` while #11 currently owns this book generation in a connected headset;
+2. discard the candidate on any newer Play, any other pause reason, a book/queue change, or a newer explicit output choice;
+3. let only the first 0→1 car-controller binding consume it, within a bounded six-second pairing window;
+4. require the exact same #11 generation/output ownership at consumption time;
+5. apply and settle that owned headset preference before calling `play()`.
+
+A car appearing is never itself a destination. The phone speaker is never a continuity destination. A second controller binding during the same drive is not another arrival.
+
+The same drive also recorded `audioFocusLoss` when stopping the car at 15:43:37. Because that event has no new car-arrival binding in the capture, it is evidence for a separate departure/lifecycle case and is not folded into #36's arrival policy.
+
 
 ## Consequences
 
