@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.model.playback
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import java.time.Instant
+import java.time.LocalTime
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -97,6 +98,36 @@ data class SleepTimerSession(
 }
 
 /**
+ * BW-SLEEP-01 — the automatic schedule around the ordinary sleep timer.
+ *
+ * The two wall-clock times define eligibility only. They never become a second countdown and never
+ * shorten a timer that was already started. Runtime markers live here because they are persisted beside
+ * the schedule: they are policy memory, not timer state.
+ *
+ * [suppressedOccurrence] records a manual cancellation of an automatically-created timer.
+ * [replayRequiredOccurrence] records an automatic expiry; the same occurrence may arm again only after
+ * an explicit Play request. Both values are opaque occurrence ids produced by the playback-owned schedule
+ * policy and are intentionally not interpreted by UI or storage.
+ */
+data class SleepTimerScheduleSettings(
+    val enabled: Boolean,
+    val start: LocalTime,
+    val end: LocalTime,
+    val suppressedOccurrence: String?,
+    val replayRequiredOccurrence: String?,
+) {
+    companion object {
+        val Default = SleepTimerScheduleSettings(
+            enabled = false,
+            start = LocalTime.of(22, 0),
+            end = LocalTime.of(6, 0),
+            suppressedOccurrence = null,
+            replayRequiredOccurrence = null,
+        )
+    }
+}
+
+/**
  * PRODUCT_SPEC SET-002 (Playback: "sleep timer defaults; fade duration; shake-to-extend").
  *
  * Device-wide rather than per profile, unlike the view preferences. A sleep timer is a property of how
@@ -121,6 +152,8 @@ data class SleepTimerSettings(
      * minutes, where auto-rewind's are seconds. The two are separate settings for that reason.
      */
     val rewindOnStop: Duration,
+    /** BW-SLEEP-01 — device-wide automatic eligibility around this same timer owner. */
+    val schedule: SleepTimerScheduleSettings = SleepTimerScheduleSettings.Default,
 ) {
     /** Whether a fade happens at all. PLAY-008 calls the fade "optional", and zero is how it is declined. */
     val isFadeEnabled: Boolean get() = fadeLength > Duration.ZERO
@@ -160,6 +193,7 @@ data class SleepTimerSettings(
             fadeLength = 10.seconds,
             shakeToRestart = false,
             rewindOnStop = Duration.ZERO,
+            schedule = SleepTimerScheduleSettings.Default,
         )
     }
 }
