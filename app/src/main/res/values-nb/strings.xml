@@ -346,6 +346,7 @@
     <string name="downloads_paused">Satt på pause</string>
     <string name="downloads_pause">Sett nedlastingen på pause</string>
     <string name="downloads_resume">Fortsett nedlastingen</string>
+    <string name="downloads_retry">Prøv nedlastingen på nytt</string>
     <string name="downloads_pin">Behold denne, aldri slett den automatisk</string>
     <string name="downloads_unpin">Slutt å beholde denne</string>
     <string name="downloads_remove">Fjern denne nedlastingen</string>
