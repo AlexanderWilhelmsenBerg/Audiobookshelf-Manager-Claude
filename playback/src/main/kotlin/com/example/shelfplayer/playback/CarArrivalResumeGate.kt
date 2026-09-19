@@ -19,25 +19,15 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Not thread-safe by design: PlaybackService calls it from the player/main-thread boundary.
  */
-internal class CarArrivalResumeGate(
-    private val pairingWindow: Duration = DEFAULT_PAIRING_WINDOW,
-) {
-    private data class Pending(
-        val pausedAt: Duration,
-        val generation: Long,
-        val outputId: String,
-    )
+internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAULT_PAIRING_WINDOW) {
+    private data class Pending(val pausedAt: Duration, val generation: Long, val outputId: String)
 
     private var pending: Pending? = null
 
     /**
      * Records an AUDIO_FOCUS_LOSS only when #11 says the current book was actually heard in this headset.
      */
-    fun onAudioFocusLoss(
-        at: Duration,
-        heardRoute: RouteHeardOwnership.HeardRoute?,
-        headsetId: String?,
-    ) {
+    fun onAudioFocusLoss(at: Duration, heardRoute: RouteHeardOwnership.HeardRoute?, headsetId: String?) {
         pending = heardRoute
             ?.takeIf { heard -> headsetId != null && heard.outputId == headsetId }
             ?.let { heard ->
@@ -77,17 +67,18 @@ internal class CarArrivalResumeGate(
         heardRoute: RouteHeardOwnership.HeardRoute?,
         headsetId: String?,
     ): String? {
-        val candidate = pending ?: return null
+        val candidate = pending
         pending = null
+        if (candidate == null) return null
 
         val age = at - candidate.pausedAt
-        if (age < Duration.ZERO || age > pairingWindow) return null
-        val current = heardRoute ?: return null
-        if (current.generation != candidate.generation) return null
-        if (current.outputId != candidate.outputId) return null
-        if (headsetId != candidate.outputId) return null
-
-        return candidate.outputId
+        val stillOwned =
+            heardRoute?.generation == candidate.generation &&
+                heardRoute.outputId == candidate.outputId &&
+                headsetId == candidate.outputId
+        return candidate.outputId.takeIf {
+            age >= Duration.ZERO && age <= pairingWindow && stillOwned
+        }
     }
 
     private companion object {
