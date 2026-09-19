@@ -94,6 +94,9 @@ class BookChangesServerEvidenceTest {
             sessionSync = sync,
             history = history,
             clock = clock,
+            zoneProvider = object : LocalZoneProvider {
+                override fun current() = java.time.ZoneOffset.UTC
+            },
             logger = NO_OP_LOGGER,
             applicationScope = backgroundScope,
             mainDispatcher = dispatcher,
