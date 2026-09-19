@@ -633,8 +633,7 @@ class PlaybackService : MediaLibraryService() {
         if (!requestedPlay) sleepTimer.onPlayRequest(explicit = false)
     }
 
-    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan): Boolean =
-        when (val decision = plan.decision) {
+    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan): Boolean = when (val decision = plan.decision) {
             is ResumeFreshnessDecision.Current ->
                 resumeFreshness.withCurrentPlan(plan) {
                     recordFreshnessCheck(plan)
