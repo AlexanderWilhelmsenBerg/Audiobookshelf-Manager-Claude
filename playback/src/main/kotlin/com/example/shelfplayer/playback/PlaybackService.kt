@@ -1170,9 +1170,7 @@ class PlaybackService : MediaLibraryService() {
      * temporarily remove the device, which correctly retires live heardRoute and may also clear selectedId
      * back to Automatic. Recover the captured target itself, reasserting it again after any such flap.
      */
-    private suspend fun recoverFocusLossHeadsetAgainstCar(
-        target: CarArrivalResumeGate.Target,
-    ): String? {
+    private suspend fun recoverFocusLossHeadsetAgainstCar(target: CarArrivalResumeGate.Target): String? {
         val held = carArrivalRouteRecovery.secure(
             target = target,
             outputs = audioOutputs.outputs,
@@ -1213,10 +1211,7 @@ class PlaybackService : MediaLibraryService() {
      * may tolerate only Android's transient disappearance of that exact output; it cannot change the target.
      * The final gate check then proves that no book or explicit listener intent changed while routing settled.
      */
-    private fun resumeAfterCarArrival(
-        target: CarArrivalResumeGate.Target,
-        heldHeadset: String?,
-    ) {
+    private fun resumeAfterCarArrival(target: CarArrivalResumeGate.Target, heldHeadset: String?) {
         val current = player ?: run {
             carArrivalResume.cancel()
             return
@@ -1239,6 +1234,36 @@ class PlaybackService : MediaLibraryService() {
             )
             current.play()
         }
+    }
+
+    private fun onCarControllerConnected(controllerPackage: String) {
+        val carWasConnected = carConnections.isConnected()
+        val carArrivedAt = if (carWasConnected) null else clock.elapsed()
+        carConnections.onConnected()
+        logger.info(
+            LogCategory.Playback,
+            "A car connected to the media session",
+            LogField.Public("controller", controllerPackage),
+        )
+        scope.launch { handleCarArrival(carArrivedAt) }
+    }
+
+    private suspend fun handleCarArrival(carArrivedAt: Duration?) {
+        audioOutputs.resettle()
+        val continuityTarget = carArrivedAt?.let { arrivedAt ->
+            carArrivalResume.targetForCarArrival(
+                arrivedAt = arrivedAt,
+                currentGeneration = routeOwnership.currentGeneration,
+                explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
+            )
+        }
+        val heldHeadset = if (continuityTarget == null) {
+            holdHeadsetAgainstCar()
+        } else {
+            recoverFocusLossHeadsetAgainstCar(continuityTarget)
+        }
+        if (continuityTarget != null) resumeAfterCarArrival(continuityTarget, heldHeadset)
+        republishOutputButtons()
     }
 
     /**
@@ -2130,35 +2155,7 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
-            if (controller.isCar()) {
-                val carWasConnected = carConnections.isConnected()
-                val carArrivedAt = if (carWasConnected) null else clock.elapsed()
-                carConnections.onConnected()
-                logger.info(
-                    LogCategory.Playback,
-                    "A car connected to the media session",
-                    LogField.Public("controller", controller.packageName),
-                )
-                scope.launch {
-                    audioOutputs.resettle()
-                    val continuityTarget = carArrivedAt?.let { arrivedAt ->
-                        carArrivalResume.targetForCarArrival(
-                            arrivedAt = arrivedAt,
-                            currentGeneration = routeOwnership.currentGeneration,
-                            explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
-                        )
-                    }
-                    val heldHeadset = if (continuityTarget == null) {
-                        holdHeadsetAgainstCar()
-                    } else {
-                        recoverFocusLossHeadsetAgainstCar(continuityTarget)
-                    }
-                    if (continuityTarget != null) {
-                        resumeAfterCarArrival(continuityTarget, heldHeadset)
-                    }
-                    republishOutputButtons()
-                }
-            }
+            if (controller.isCar()) onCarControllerConnected(controller.packageName)
             val access = session.accessFor(controller)
             val commands = when (access) {
                 ControllerAccess.LibraryAndPlayback ->
