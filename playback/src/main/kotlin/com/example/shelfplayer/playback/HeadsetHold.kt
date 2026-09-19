@@ -163,13 +163,16 @@ internal class RouteHeardOwnership {
         candidate: AudioOutput,
         outputs: List<AudioOutput>,
     ): Boolean {
-        val previous = heardRoute?.takeIf { it.generation == activeGeneration } ?: return false
-        if (previous.outputId == candidate.id) return false
-        val previousOutput = outputs.firstOrNull { it.id == previous.outputId } ?: return false
+        val previous = heardRoute?.takeIf { it.generation == activeGeneration }
+        val previousOutput = previous?.let { heard -> outputs.firstOrNull { it.id == heard.outputId } }
 
-        if (previous.evidence == RouteHeardEvidence.ListenerSelectionWhilePlaying) return true
-        return previousOutput.isHeadsetCandidate &&
-            (candidate.role == AudioOutputRole.Car || candidate.role == AudioOutputRole.Ambiguous)
+        return when {
+            previous == null || previousOutput == null -> false
+            previous.outputId == candidate.id -> false
+            previous.evidence == RouteHeardEvidence.ListenerSelectionWhilePlaying -> true
+            else -> previousOutput.isHeadsetCandidate &&
+                (candidate.role == AudioOutputRole.Car || candidate.role == AudioOutputRole.Ambiguous)
+        }
     }
 
     /**
