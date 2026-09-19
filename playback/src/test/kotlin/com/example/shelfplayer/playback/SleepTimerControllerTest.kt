@@ -13,8 +13,8 @@ import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
-import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings
+import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncOutcome
@@ -217,8 +217,7 @@ class SleepTimerControllerTest {
     }
 
     @Test
-    fun `manual cancellation of automatic timer suppresses current occurrence across recreation and resets next night`() =
-        runTest {
+    fun `manual cancellation survives recreation and resets next night`() = runTest {
             val source = MutableStateFlow(
                 SleepTimerSettings.Default.copy(
                     schedule = SleepTimerScheduleSettings.Default.copy(enabled = true),
