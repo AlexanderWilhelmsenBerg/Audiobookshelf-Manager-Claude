@@ -119,8 +119,19 @@ class AudioOutputRouter @Inject constructor(
      * This is BookWave policy applying existing [RouteHeardOwnership] evidence, not a new listener choice, so
      * it intentionally does not emit through [explicitSelection].
      */
-    internal fun reassert(id: String) {
-        choose(id, explicit = false)
+    internal suspend fun reassert(id: String): Boolean {
+        if (id !in live) {
+            logger.info(
+                LogCategory.Playback,
+                "An owned audio output was no longer connected",
+                LogField.Public("kind", kindOf(id)),
+            )
+            return false
+        }
+        _selectedId.value = id
+        publish()
+        apply(id)
+        return true
     }
 
     private fun choose(id: String?, explicit: Boolean) {
