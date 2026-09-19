@@ -25,17 +25,9 @@ import javax.inject.Singleton
  * never an undocumented 24-hour schedule.
  */
 internal object SleepSchedulePolicy {
-    data class Occurrence(
-        val id: String,
-        val start: Instant,
-        val end: Instant,
-    )
+    data class Occurrence(val id: String, val start: Instant, val end: Instant)
 
-    fun currentOccurrence(
-        now: Instant,
-        zone: ZoneId,
-        settings: SleepTimerScheduleSettings,
-    ): Occurrence? {
+    fun currentOccurrence(now: Instant, zone: ZoneId, settings: SleepTimerScheduleSettings): Occurrence? {
         if (!settings.enabled || settings.start == settings.end) return null
         val localDate = now.atZone(zone).toLocalDate()
         return sequenceOf(localDate.minusDays(1), localDate)
@@ -43,11 +35,7 @@ internal object SleepSchedulePolicy {
             .firstOrNull { !now.isBefore(it.start) && now.isBefore(it.end) }
     }
 
-    fun nextStart(
-        now: Instant,
-        zone: ZoneId,
-        settings: SleepTimerScheduleSettings,
-    ): Instant? {
+    fun nextStart(now: Instant, zone: ZoneId, settings: SleepTimerScheduleSettings): Instant? {
         if (!settings.enabled || settings.start == settings.end) return null
         val localDate = now.atZone(zone).toLocalDate()
         return (0L..3L)
@@ -57,11 +45,7 @@ internal object SleepSchedulePolicy {
             .firstOrNull { it.isAfter(now) }
     }
 
-    private fun occurrence(
-        startDate: LocalDate,
-        zone: ZoneId,
-        settings: SleepTimerScheduleSettings,
-    ): Occurrence? {
+    private fun occurrence(startDate: LocalDate, zone: ZoneId, settings: SleepTimerScheduleSettings): Occurrence? {
         val endDate = if (settings.start < settings.end) startDate else startDate.plusDays(1)
         val start = resolve(startDate, settings.start, zone, Boundary.Start).toInstant()
         val end = resolve(endDate, settings.end, zone, Boundary.End).toInstant()
@@ -73,8 +57,7 @@ internal object SleepSchedulePolicy {
         )
     }
 
-    private fun occurrenceId(startDate: LocalDate, settings: SleepTimerScheduleSettings): String =
-        buildString {
+    private fun occurrenceId(startDate: LocalDate, settings: SleepTimerScheduleSettings): String = buildString {
             append(startDate)
             append('|')
             append(settings.start.toSecondOfDay() / SECONDS_PER_MINUTE)
@@ -82,12 +65,7 @@ internal object SleepSchedulePolicy {
             append(settings.end.toSecondOfDay() / SECONDS_PER_MINUTE)
         }
 
-    private fun resolve(
-        date: LocalDate,
-        time: java.time.LocalTime,
-        zone: ZoneId,
-        boundary: Boundary,
-    ): ZonedDateTime {
+    private fun resolve(date: LocalDate, time: java.time.LocalTime, zone: ZoneId, boundary: Boundary): ZonedDateTime {
         val local = LocalDateTime.of(date, time)
         val rules = zone.rules
         val offsets = rules.getValidOffsets(local)
@@ -116,7 +94,7 @@ internal object SleepSchedulePolicy {
     private const val SECONDS_PER_MINUTE = 60
 }
 
-internal interface LocalZoneProvider {
+interface LocalZoneProvider {
     fun current(): ZoneId
 }
 
