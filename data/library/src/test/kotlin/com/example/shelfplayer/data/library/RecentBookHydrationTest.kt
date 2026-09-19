@@ -28,9 +28,8 @@ import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -54,7 +53,6 @@ import kotlin.time.Duration.Companion.seconds
  * These are repository/Room tests rather than UI tests because the contract under test is exactly that
  * Room becomes useful early while the same full refresh remains authoritative afterwards.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class RecentBookHydrationTest {
@@ -74,7 +72,7 @@ class RecentBookHydrationTest {
             .allowMainThreadQueries()
             .build()
 
-        val dispatcher = UnconfinedTestDispatcher()
+        val dispatcher = Dispatchers.Unconfined
         val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
         baseGateway = FakeAudiobookshelfGateway(
             loader = FixtureLibraryLoader(),
@@ -350,6 +348,7 @@ class RecentBookHydrationTest {
         override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> =
             when (val result = delegate.listLibraries(profileId)) {
                 is AppResult.Failure -> result
+
                 is AppResult.Success -> AppResult.Success(
                     result.value.filter { library -> listedLibraryIds?.contains(library.id) ?: true },
                 )
