@@ -1174,19 +1174,23 @@ class PlaybackService : MediaLibraryService() {
             carArrivalResume.cancel()
             return
         }
-        val target = carArrivalResume.takeForCarArrival(
+        if (current.mediaItemCount == 0 || current.playWhenReady) {
+            carArrivalResume.cancel()
+            return
+        }
+
+        carArrivalResume.resumeForCarArrival(
             at = clock.elapsed(),
             heardRoute = routeOwnership.heardRoute,
             headsetId = heldHeadset,
-        ) ?: return
-        if (current.mediaItemCount == 0 || current.playWhenReady) return
-
-        logger.info(
-            LogCategory.Playback,
-            "Playback resumed after the car took audio focus",
-            LogField.Public("kind", target.substringBefore(':')),
-        )
-        current.play()
+        ) { target ->
+            logger.info(
+                LogCategory.Playback,
+                "Playback resumed after the car took audio focus",
+                LogField.Public("kind", target.substringBefore(':')),
+            )
+            current.play()
+        }
     }
 
     /**
