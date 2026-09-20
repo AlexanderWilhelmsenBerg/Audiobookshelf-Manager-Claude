@@ -29,6 +29,8 @@
     <string name="car_profile_use">Use profile</string>
     <string name="car_profile_switched">Profile switched</string>
     <string name="car_profile_unlock_phone">Unlock this profile in BookWave on your phone, then try again.</string>
+    <string name="car_profile_unavailable">That profile is no longer available.</string>
+    <string name="car_profile_switch_failed">BookWave could not switch profiles.</string>
     <string name="car_tab_downloads">Downloads</string>
     <string name="car_tab_recent">Recently added</string>
     <string name="car_tab_again">Listen again</string>
