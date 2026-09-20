@@ -369,7 +369,7 @@ class AppSettingsDataSource @Inject constructor(
                 ),
                 suppressedOccurrence = stored.sleepScheduleSuppressedOccurrence.takeIf(String::isNotBlank),
                 replayRequiredOccurrence =
-                    stored.sleepScheduleReplayRequiredOccurrence.takeIf(String::isNotBlank),
+                stored.sleepScheduleReplayRequiredOccurrence.takeIf(String::isNotBlank),
             ),
         )
     }
