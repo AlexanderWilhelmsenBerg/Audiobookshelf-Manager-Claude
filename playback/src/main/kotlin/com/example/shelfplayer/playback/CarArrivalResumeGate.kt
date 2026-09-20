@@ -21,9 +21,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Not thread-safe by design: [PlaybackService] calls it from the player/session main-thread boundary.
  */
-internal class CarLifecycleContinuityGate(
-    private val pairingWindow: Duration = DEFAULT_PAIRING_WINDOW,
-) {
+internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAULT_PAIRING_WINDOW) {
     internal enum class Phase {
         Arrival,
         Departure,
@@ -57,29 +55,13 @@ internal class CarLifecycleContinuityGate(
         val phase: Phase,
     )
 
-    internal data class Decision(
-        val phase: Phase,
-        val status: Status,
-        val reason: Reason,
-        val target: Target? = null,
-    )
+    internal data class Decision(val phase: Phase, val status: Status, val reason: Reason, val target: Target? = null)
 
-    internal data class ConsumeResult(
-        val accepted: Boolean,
-        val reason: Reason,
-    )
+    internal data class ConsumeResult(val accepted: Boolean, val reason: Reason)
 
-    private data class Identity(
-        val outputId: String,
-        val generation: Long,
-        val explicitSelectionSequence: Long,
-    )
+    private data class Identity(val outputId: String, val generation: Long, val explicitSelectionSequence: Long)
 
-    private data class FocusCandidate(
-        val at: Duration,
-        val phase: Phase,
-        val identity: Identity,
-    )
+    private data class FocusCandidate(val at: Duration, val phase: Phase, val identity: Identity)
 
     private var focusCandidate: FocusCandidate? = null
     private var activeRecovery: Target? = null
@@ -166,11 +148,7 @@ internal class CarLifecycleContinuityGate(
     }
 
     /** Pairs only an arrival-phase focus loss with the first 0→1 car-controller binding. */
-    fun onCarArrival(
-        arrivedAt: Duration,
-        currentGeneration: Long?,
-        explicitSelectionSequence: Long,
-    ): Decision {
+    fun onCarArrival(arrivedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
         val candidate = focusCandidate
             ?: return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
         if (candidate.phase != Phase.Arrival) {
@@ -210,11 +188,7 @@ internal class CarLifecycleContinuityGate(
      * is part of the car transition; guessing across that boundary could turn an unrelated later focus loss
      * into automatic playback.
      */
-    fun onCarDeparture(
-        departedAt: Duration,
-        currentGeneration: Long?,
-        explicitSelectionSequence: Long,
-    ): Decision {
+    fun onCarDeparture(departedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
         val candidate = focusCandidate
             ?: return Decision(Phase.Departure, Status.Rejected, Reason.NoPendingFocusLoss)
         if (candidate.phase != Phase.Departure) {
@@ -246,12 +220,9 @@ internal class CarLifecycleContinuityGate(
     }
 
     /** True only while the resolved target remains the single active lifecycle recovery. */
-    fun isCurrent(
-        target: Target,
-        currentGeneration: Long?,
-        explicitSelectionSequence: Long,
-    ): Boolean = activeRecovery == target &&
-        eligibilityReason(target, currentGeneration, explicitSelectionSequence) == null
+    fun isCurrent(target: Target, currentGeneration: Long?, explicitSelectionSequence: Long): Boolean =
+        activeRecovery == target &&
+            eligibilityReason(target, currentGeneration, explicitSelectionSequence) == null
 
     /**
      * Final one-shot check after routing has secured the exact captured headset.
@@ -286,13 +257,11 @@ internal class CarLifecycleContinuityGate(
         connectedPlayback = null
     }
 
-    private fun currentConnectedPlayback(
-        currentGeneration: Long?,
-        explicitSelectionSequence: Long,
-    ): Identity? = connectedPlayback?.takeIf { identity ->
-        identity.generation == currentGeneration &&
-            identity.explicitSelectionSequence == explicitSelectionSequence
-    }
+    private fun currentConnectedPlayback(currentGeneration: Long?, explicitSelectionSequence: Long): Identity? =
+        connectedPlayback?.takeIf { identity ->
+            identity.generation == currentGeneration &&
+                identity.explicitSelectionSequence == explicitSelectionSequence
+        }
 
     private fun identityOf(
         heardRoute: RouteHeardOwnership.HeardRoute?,
@@ -325,11 +294,8 @@ internal class CarLifecycleContinuityGate(
         else -> null
     }
 
-    private fun eligibilityReason(
-        target: Target,
-        currentGeneration: Long?,
-        explicitSelectionSequence: Long,
-    ): Reason? = when {
+    private fun eligibilityReason(target: Target, currentGeneration: Long?, explicitSelectionSequence: Long): Reason? =
+        when {
         target.generation != currentGeneration -> Reason.GenerationChanged
         target.explicitSelectionSequence != explicitSelectionSequence -> Reason.ExplicitSelectionChanged
         else -> null
