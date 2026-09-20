@@ -1,5 +1,7 @@
 name: Pull request
 
+run-name: "PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
+
 # Forgejo-native BookWave pull-request gate.
 #
 # Keep the repository's GitHub quality contract while adapting execution to the
@@ -24,6 +26,10 @@ name: Pull request
 on:
   workflow_dispatch:
     inputs:
+      pr_number:
+        description: 'Forgejo PR number being verified'
+        required: true
+        type: string
       force_rerun:
         description: 'Force --rerun-tasks even when the diff does not affect the build/classpath'
         type: boolean
@@ -46,7 +52,7 @@ env:
 
 jobs:
   policy:
-    name: PR policy and change classification
+    name: "PR #${{ inputs.pr_number }} · PR policy and change classification"
     runs-on: linux-amd64
     timeout-minutes: 10
     outputs:
@@ -60,6 +66,8 @@ jobs:
 
       - name: Require current main and classify changes
         id: classify
+        env:
+          REQUESTED_PR: ${{ inputs.pr_number }}
         run: |
           set -euo pipefail
 
@@ -69,6 +77,28 @@ jobs:
               ;;
             workflow_dispatch)
               base_ref="main"
+
+              requested_pr="$REQUESTED_PR"
+              if ! [[ "$requested_pr" =~ ^[1-9][0-9]*$ ]]; then
+                echo "::error::PR number must be a positive integer: $requested_pr"
+                exit 1
+              fi
+
+              pr_head="$(git ls-remote "$FORGEJO_SERVER_URL/$FORGEJO_REPOSITORY.git" "refs/pull/$requested_pr/head" | awk 'NR == 1 { print $1 }')"
+              if [ -z "$pr_head" ]; then
+                echo "::error::Forgejo PR #$requested_pr does not expose a readable head ref."
+                exit 1
+              fi
+
+              checked_out_head="$(git rev-parse HEAD)"
+              if [ "$pr_head" != "$checked_out_head" ]; then
+                echo "::error::PR #$requested_pr does not match the selected branch/ref."
+                echo "pr_head=$pr_head"
+                echo "checked_out_head=$checked_out_head"
+                exit 1
+              fi
+
+              echo "Validated PR #$requested_pr -> $FORGEJO_REF_NAME @ ${checked_out_head:0:8}."
               ;;
             *)
               echo "::error::Unsupported event for PR verification: $FORGEJO_EVENT_NAME"
@@ -120,7 +150,7 @@ jobs:
           echo "verification_mode=$([ "$classpath_changed" = true ] && echo rerun || echo normal)"
 
   wrapper_validation:
-    name: Gradle wrapper validation
+    name: "PR #${{ inputs.pr_number }} · Gradle wrapper validation"
     runs-on: linux-amd64
     timeout-minutes: 10
     steps:
@@ -155,7 +185,7 @@ jobs:
           echo "Gradle distribution is SHA-pinned: $distribution_sha"
 
   secret_scan:
-    name: Secret scan
+    name: "PR #${{ inputs.pr_number }} · Secret scan"
     runs-on: linux-amd64
     timeout-minutes: 10
     steps:
@@ -185,7 +215,7 @@ jobs:
         run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN gitleaks detect --source . --redact --verbose --no-banner
 
   schema_immutability:
-    name: Committed Room schemas are immutable
+    name: "PR #${{ inputs.pr_number }} · Committed Room schemas are immutable"
     runs-on: linux-amd64
     timeout-minutes: 10
     steps:
@@ -216,7 +246,7 @@ jobs:
           echo "No committed Room schema was modified."
 
   verify:
-    name: verifyDebug
+    name: "PR #${{ inputs.pr_number }} · verifyDebug"
     runs-on: linux-amd64
     container:
       image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
