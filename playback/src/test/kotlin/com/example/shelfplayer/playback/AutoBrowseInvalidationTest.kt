@@ -3,8 +3,8 @@ package com.example.shelfplayer.playback
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Book
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -301,10 +301,8 @@ class AutoBrowseInvalidationTest {
         assertFalse(current.childrenByParent.values.flatten().any { it == "tab/profiles" })
     }
 
-    private fun changedParents(
-        before: AutoBrowseSnapshot,
-        after: AutoBrowseSnapshot,
-    ): Set<String> = plan(before, after).notifications.mapTo(linkedSetOf()) { it.parentId }
+    private fun changedParents(before: AutoBrowseSnapshot, after: AutoBrowseSnapshot): Set<String> =
+        plan(before, after).notifications.mapTo(linkedSetOf()) { it.parentId }
 
     private fun plan(
         before: AutoBrowseSnapshot,
