@@ -36,8 +36,7 @@ internal object FakeAutoDownloads : DownloadRepository {
         serverId: ServerId,
         itemId: LibraryItemId,
         coverUri: String?,
-    ): AppResult<OfflineBook> =
-        error("Not used by Android Auto browse tests")
+    ): AppResult<OfflineBook> = error("Not used by Android Auto browse tests")
 
     override suspend fun markFailed(serverId: ServerId, itemId: LibraryItemId, summary: String): AppResult<Unit> =
         error("Not used by Android Auto browse tests")
