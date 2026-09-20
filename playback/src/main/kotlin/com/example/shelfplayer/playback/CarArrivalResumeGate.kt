@@ -237,6 +237,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     ): ConsumeResult {
         val reason = when {
             activeRecovery != target -> Reason.CandidateInvalidated
+
             else -> eligibilityReason(target, currentGeneration, explicitSelectionSequence)
                 ?: if (headsetId != target.outputId) Reason.WrongHeadset else null
         }
@@ -296,10 +297,10 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
 
     private fun eligibilityReason(target: Target, currentGeneration: Long?, explicitSelectionSequence: Long): Reason? =
         when {
-        target.generation != currentGeneration -> Reason.GenerationChanged
-        target.explicitSelectionSequence != explicitSelectionSequence -> Reason.ExplicitSelectionChanged
-        else -> null
-    }
+            target.generation != currentGeneration -> Reason.GenerationChanged
+            target.explicitSelectionSequence != explicitSelectionSequence -> Reason.ExplicitSelectionChanged
+            else -> null
+        }
 
     private fun Identity.target(phase: Phase) = Target(
         outputId = outputId,
