@@ -1274,76 +1274,147 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * #36's focus-loss path deliberately does not rediscover the target through live heard-route evidence.
+     * #36 — route recovery never rediscovers a destination from Android's live list.
      *
-     * The target was proven while audio was actually coming out of that headset. Android Auto may then
-     * temporarily remove the device, which correctly retires live heardRoute and may also clear selectedId
-     * back to Automatic. Recover the captured target itself, reasserting it again after any such flap.
+     * The lifecycle gate has already captured one exact headset. Android may temporarily omit it or clear the
+     * preferred route to Automatic; the recovery may wait for and reassert only that same target.
      */
-    private suspend fun recoverFocusLossHeadsetAgainstCar(target: CarArrivalResumeGate.Target): String? {
-        val held = carArrivalRouteRecovery.secure(
+    private suspend fun recoverCarContinuityHeadset(target: CarLifecycleContinuityGate.Target): String? {
+        val held = carContinuityRouteRecovery.secure(
             target = target,
             outputs = audioOutputs.outputs,
             selectedId = audioOutputs.selectedId,
             isStillEligible = {
-                carArrivalResume.isCurrent(
+                carContinuity.isCurrent(
                     target = target,
                     currentGeneration = routeOwnership.currentGeneration,
-                    explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
+                    explicitSelectionSequence = currentExplicitSelectionSequence(),
                 )
             },
+            onEvent = { event -> logCarContinuityRouteEvent(target, event) },
             reassert = audioOutputs::reassert,
         )
         if (held == null) {
             logger.info(
                 LogCategory.Playback,
-                "Car-arrival continuity did not regain the headset",
+                "Car lifecycle continuity did not secure the headset",
+                LogField.Public("phase", target.phase.name),
                 LogField.Public("kind", target.outputId.substringBefore(':')),
+                LogField.Public("reason", currentContinuityInvalidation(target)),
             )
+            carContinuity.cancelPending()
             return null
         }
-        logHeldHeadset(held)
+        logHeldHeadset(held, target.phase)
         return held
     }
 
-    private fun logHeldHeadset(hold: String) {
+    private fun logHeldHeadset(hold: String, phase: CarLifecycleContinuityGate.Phase) {
         logger.info(
             LogCategory.Playback,
-            "A car connected and the book was held in the headset",
+            "Car lifecycle continuity secured the headset",
+            LogField.Public("phase", phase.name),
             LogField.Public("kind", hold.substringBefore(':')),
         )
     }
 
+    private fun logCarContinuityRouteEvent(
+        target: CarLifecycleContinuityGate.Target,
+        event: CarLifecycleRouteRecovery.Event,
+    ) {
+        logger.info(
+            LogCategory.Playback,
+            "Car lifecycle route recovery changed",
+            LogField.Public("phase", target.phase.name),
+            LogField.Public("event", event.name),
+            LogField.Public("kind", target.outputId.substringBefore(':')),
+        )
+    }
+
+    private fun currentContinuityInvalidation(target: CarLifecycleContinuityGate.Target): String = when {
+        routeOwnership.currentGeneration != target.generation -> "generation-changed"
+        currentExplicitSelectionSequence() != target.explicitSelectionSequence -> "explicit-selection-changed"
+        else -> "target-unavailable-or-candidate-invalidated"
+    }
+
+    private suspend fun recoverAndResumeCarContinuity(target: CarLifecycleContinuityGate.Target) {
+        val heldHeadset = recoverCarContinuityHeadset(target)
+        resumeAfterCarContinuity(target, heldHeadset)
+    }
+
     /**
-     * Issue #36 — resume only after the captured focus-loss target has been secured again.
+     * Issues one Play only after the exact target is secured and the final generation/intent guard passes.
      *
-     * The gate carries the pause-time generation/output/explicit-intent sequence. The routing recovery above
-     * may tolerate only Android's transient disappearance of that exact output; it cannot change the target.
-     * The final gate check then proves that no book or explicit listener intent changed while routing settled.
+     * The log says Play was issued rather than claiming playback resumed. Actual audio movement is logged from
+     * onIsPlayingChanged, which is the first service callback that can truthfully make that claim.
      */
-    private fun resumeAfterCarArrival(target: CarArrivalResumeGate.Target, heldHeadset: String?) {
+    private fun resumeAfterCarContinuity(
+        target: CarLifecycleContinuityGate.Target,
+        heldHeadset: String?,
+    ) {
         val current = player ?: run {
-            carArrivalResume.cancel()
+            carContinuity.cancelPending()
+            continuityPlayAwaiting = null
             return
         }
-        if (current.mediaItemCount == 0 || current.playWhenReady) {
-            carArrivalResume.cancel()
+        if (current.mediaItemCount == 0) {
+            carContinuity.cancelAll()
+            continuityPlayAwaiting = null
+            return
+        }
+        if (current.playWhenReady) {
+            carContinuity.cancelPending()
+            continuityPlayAwaiting = null
+            logger.info(
+                LogCategory.Playback,
+                "Car lifecycle continuity skipped Play because playback intent was already active",
+                LogField.Public("phase", target.phase.name),
+            )
             return
         }
 
-        carArrivalResume.resumeForCarArrival(
+        val result = carContinuity.consumeRecovery(
             target = target,
             currentGeneration = routeOwnership.currentGeneration,
             headsetId = heldHeadset,
-            explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
-        ) { resumeTarget ->
-            logger.info(
-                LogCategory.Playback,
-                "Playback resumed after the car took audio focus",
-                LogField.Public("kind", resumeTarget.substringBefore(':')),
-            )
-            current.play()
+            explicitSelectionSequence = currentExplicitSelectionSequence(),
+        )
+        logger.info(
+            LogCategory.Playback,
+            "Car lifecycle continuity final eligibility checked",
+            LogField.Public("phase", target.phase.name),
+            LogField.Public("eligible", result.accepted.toString()),
+            LogField.Public("reason", result.reason.name),
+            LogField.Public("kind", target.outputId.substringBefore(':')),
+        )
+        if (!result.accepted) {
+            continuityPlayAwaiting = null
+            return
         }
+
+        continuityPlayAwaiting = target
+        logger.info(
+            LogCategory.Playback,
+            "Car lifecycle continuity issued Play",
+            LogField.Public("phase", target.phase.name),
+            LogField.Public("kind", target.outputId.substringBefore(':')),
+        )
+        current.play()
+    }
+
+    private fun logCarContinuityDecision(
+        source: String,
+        decision: CarLifecycleContinuityGate.Decision,
+    ) {
+        logger.info(
+            LogCategory.Playback,
+            "Car lifecycle continuity decision",
+            LogField.Public("source", source),
+            LogField.Public("phase", decision.phase.name),
+            LogField.Public("status", decision.status.name),
+            LogField.Public("reason", decision.reason.name),
+            LogField.Public("kind", decision.target?.outputId?.substringBefore(':') ?: "none"),
+        )
     }
 
     private fun onCarControllerConnected(controllerPackage: String) {
@@ -1354,26 +1425,76 @@ class PlaybackService : MediaLibraryService() {
             LogCategory.Playback,
             "A car connected to the media session",
             LogField.Public("controller", controllerPackage),
+            LogField.Public("firstArrival", (!carWasConnected).toString()),
         )
+        if (carWasConnected) {
+            logger.info(
+                LogCategory.Playback,
+                "A later car controller bind was ignored as a new arrival",
+                LogField.Public("controller", controllerPackage),
+            )
+        }
         scope.launch { handleCarArrival(carArrivedAt) }
     }
 
     private suspend fun handleCarArrival(carArrivedAt: Duration?) {
         audioOutputs.resettle()
-        val continuityTarget = carArrivedAt?.let { arrivedAt ->
-            carArrivalResume.targetForCarArrival(
-                arrivedAt = arrivedAt,
-                currentGeneration = routeOwnership.currentGeneration,
-                explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
-            )
+        if (carArrivedAt == null) {
+            holdHeadsetAgainstCar()
+            republishOutputButtons()
+            return
         }
-        val heldHeadset = if (continuityTarget == null) {
+
+        val decision = carContinuity.onCarArrival(
+            arrivedAt = carArrivedAt,
+            currentGeneration = routeOwnership.currentGeneration,
+            explicitSelectionSequence = currentExplicitSelectionSequence(),
+        )
+        logCarContinuityDecision("first-car-bind", decision)
+        val target = decision.target?.takeIf {
+            decision.status == CarLifecycleContinuityGate.Status.Ready
+        }
+        if (target == null) {
             holdHeadsetAgainstCar()
         } else {
-            recoverFocusLossHeadsetAgainstCar(continuityTarget)
+            recoverAndResumeCarContinuity(target)
         }
-        if (continuityTarget != null) resumeAfterCarArrival(continuityTarget, heldHeadset)
         republishOutputButtons()
+    }
+
+    private fun onCarControllerDisconnected(controllerPackage: String) {
+        val carWasConnected = carConnections.isConnected()
+        carConnections.onDisconnected()
+        val carStillConnected = carConnections.isConnected()
+        val finalDeparture = carWasConnected && !carStillConnected
+        logger.info(
+            LogCategory.Playback,
+            "A car controller disconnected from the media session",
+            LogField.Public("controller", controllerPackage),
+            LogField.Public("finalDeparture", finalDeparture.toString()),
+            LogField.Public("carStillConnected", carStillConnected.toString()),
+        )
+
+        if (!finalDeparture) {
+            scope.launch { republishOutputButtons() }
+            return
+        }
+
+        val current = player
+        val decision = carContinuity.onCarDeparture(
+            departedAt = clock.elapsed(),
+            currentGeneration = routeOwnership.currentGeneration,
+            explicitSelectionSequence = currentExplicitSelectionSequence(),
+            playbackActive = current?.isPlaying == true && current.playWhenReady,
+        )
+        logCarContinuityDecision("final-car-disconnect", decision)
+        scope.launch {
+            audioOutputs.resettle()
+            decision.target
+                ?.takeIf { decision.status == CarLifecycleContinuityGate.Status.Ready }
+                ?.let { target -> recoverAndResumeCarContinuity(target) }
+            republishOutputButtons()
+        }
     }
 
     /**
@@ -2318,8 +2439,7 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
             if (!controller.isCar()) return
-            carConnections.onDisconnected()
-            scope.launch { republishOutputButtons() }
+            onCarControllerDisconnected(controller.packageName)
         }
 
         /**
