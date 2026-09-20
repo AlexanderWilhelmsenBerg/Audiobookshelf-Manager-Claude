@@ -29,20 +29,29 @@ class AndroidAutoArtwork @Inject constructor(
     private val profiles: ProfileRepository,
 ) : AutoArtwork {
 
-    override suspend fun book(book: Book, serverBaseUrls: Map<ServerId, String>): Uri? {
+    override suspend fun book(
+        book: Book,
+        serverBaseUrls: Map<ServerId, String>,
+        offlineCoverUri: String?,
+    ): Uri? {
         val profileId = profiles.activeProfileId() ?: return null
-        val source = coverUrlsFor(serverBaseUrls).forBook(book) ?: return null
-        return AutoArtworkRegistry.register(context, profileId, listOf(source))
+        val sources = listOfNotNull(
+            offlineCoverUri,
+            coverUrlsFor(serverBaseUrls).forBook(book),
+        )
+        return AutoArtworkRegistry.register(context, profileId, sources)
     }
 
     override suspend fun author(
         author: Author,
         representativeCover: Book?,
         serverBaseUrls: Map<ServerId, String>,
+        representativeOfflineCoverUri: String?,
     ): Uri? {
         val profileId = profiles.activeProfileId() ?: return null
         val sources = buildList {
             authorUrlsFor(serverBaseUrls).forAuthor(author)?.let(::add)
+            representativeOfflineCoverUri?.let(::add)
             representativeCover?.let { book -> coverUrlsFor(serverBaseUrls).forBook(book) }?.let(::add)
         }.distinct()
         return AutoArtworkRegistry.register(context, profileId, sources)
