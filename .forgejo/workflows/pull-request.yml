@@ -52,7 +52,7 @@ env:
 
 jobs:
   policy:
-    name: PR policy and change classification
+    name: "PR #${{ inputs.pr_number }} · PR policy and change classification"
     runs-on: linux-amd64
     timeout-minutes: 10
     outputs:
@@ -150,7 +150,7 @@ jobs:
           echo "verification_mode=$([ "$classpath_changed" = true ] && echo rerun || echo normal)"
 
   wrapper_validation:
-    name: Gradle wrapper validation
+    name: "PR #${{ inputs.pr_number }} · Gradle wrapper validation"
     runs-on: linux-amd64
     timeout-minutes: 10
     steps:
@@ -185,7 +185,7 @@ jobs:
           echo "Gradle distribution is SHA-pinned: $distribution_sha"
 
   secret_scan:
-    name: Secret scan
+    name: "PR #${{ inputs.pr_number }} · Secret scan"
     runs-on: linux-amd64
     timeout-minutes: 10
     steps:
@@ -215,7 +215,7 @@ jobs:
         run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN gitleaks detect --source . --redact --verbose --no-banner
 
   schema_immutability:
-    name: Committed Room schemas are immutable
+    name: "PR #${{ inputs.pr_number }} · Committed Room schemas are immutable"
     runs-on: linux-amd64
     timeout-minutes: 10
     steps:
@@ -246,7 +246,7 @@ jobs:
           echo "No committed Room schema was modified."
 
   verify:
-    name: verifyDebug
+    name: "PR #${{ inputs.pr_number }} · verifyDebug"
     runs-on: linux-amd64
     container:
       image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
