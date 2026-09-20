@@ -12,13 +12,11 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Secures #36's already-proven exact headset across Android Auto lifecycle route churn.
  *
- * [CarLifecycleContinuityGate] owns whether an arrival/departure recovery is allowed and which exact headset
+ * [CarArrivalResumeGate] owns whether an arrival/departure recovery is allowed and which exact headset
  * it may use. This class only performs that route operation: wait briefly for the captured output, reassert
  * it, and verify the preference survived the settle interval. It can never discover or substitute a target.
  */
-internal class CarLifecycleRouteRecovery(
-    private val recoveryWindow: Duration = DEFAULT_RECOVERY_WINDOW,
-) {
+internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DEFAULT_RECOVERY_WINDOW) {
     internal enum class Event {
         TargetAbsent,
         TargetReturned,
@@ -30,7 +28,7 @@ internal class CarLifecycleRouteRecovery(
     }
 
     suspend fun secure(
-        target: CarLifecycleContinuityGate.Target,
+        target: CarArrivalResumeGate.Target,
         outputs: StateFlow<List<AudioOutput>>,
         selectedId: StateFlow<String?>,
         isStillEligible: () -> Boolean,
