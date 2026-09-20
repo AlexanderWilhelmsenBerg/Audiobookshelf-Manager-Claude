@@ -28,6 +28,8 @@
     <string name="car_profile_use">Bruk profil</string>
     <string name="car_profile_switched">Profil byttet</string>
     <string name="car_profile_unlock_phone">Lås opp denne profilen i BookWave på telefonen, og prøv igjen.</string>
+    <string name="car_profile_unavailable">Den profilen er ikke lenger tilgjengelig.</string>
+    <string name="car_profile_switch_failed">BookWave kunne ikke bytte profil.</string>
     <string name="car_tab_downloads">Nedlastinger</string>
     <string name="car_tab_recent">Nylig lagt til</string>
     <string name="car_tab_again">Hør på nytt</string>
