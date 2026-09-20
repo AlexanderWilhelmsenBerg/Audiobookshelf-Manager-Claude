@@ -15,10 +15,6 @@
 
     <string name="car_app_name" translatable="false">BookWave</string>
     <string name="car_tab_continue">Continue</string>
-    <string name="car_nothing_playing">Nothing is playing yet</string>
-    <string name="car_tab_chapters">Chapters</string>
-    <string name="car_tab_history">History</string>
-    <string name="car_tab_library">Library</string>
     <string name="car_tab_series">Series</string>
     <string name="car_tab_authors">Authors</string>
     <string name="car_tab_profiles">Profiles</string>
@@ -27,22 +23,10 @@
     <string name="car_profile_locked">Locked — unlock on your phone</string>
     <string name="car_profile_sign_in">Sign in again on your phone</string>
     <string name="car_profile_use">Use profile</string>
-    <string name="car_profile_switched">Profile switched</string>
     <string name="car_profile_unlock_phone">Unlock this profile in BookWave on your phone, then try again.</string>
     <string name="car_profile_unavailable">That profile is no longer available.</string>
     <string name="car_profile_switch_failed">BookWave could not switch profiles.</string>
-    <string name="car_tab_downloads">Downloads</string>
-    <string name="car_tab_recent">Recently added</string>
-    <string name="car_tab_again">Listen again</string>
-    <string name="car_tab_discover">Discover</string>
-    <string name="car_tab_output">Audio output</string>
 
-    <string name="car_output_automatic">Automatic</string>
-    <string name="car_output_automatic_now">Playing wherever the system chooses</string>
-    <string name="car_output_playing_here">%1$s \u2014 playing here</string>
-    <string name="car_output_chosen_unused">%1$s \u2014 chosen, but not in use</string>
-    <string name="car_output_chosen">Chose %1$s</string>
-    <string name="car_output_none">No selectable audio outputs found</string>
 
     <!-- Car is an action. The headset text is state when the route is confirmed. -->
     <string name="player_car_action">Play in car</string>
@@ -50,32 +34,8 @@
     <string name="player_headset_action">Playing on %1$s</string>
     <string name="player_headset_action_unknown">Headset</string>
 
-    <string name="car_empty_title">No books yet</string>
-    <string name="car_empty_subtitle">Open %1$s on your phone to sign in or sync your library.</string>
 
-    <string name="car_chapter_untitled">Chapter %1$d</string>
-    <string name="car_progress_fraction">%1$d%% of the book</string>
-    <string name="car_progress_position">%1$s of %2$s</string>
-    <string name="car_progress_chapter">chapter %1$d of %2$d</string>
-    <string name="car_chapter_elapsed">%1$s of %2$s</string>
 
-    <string name="car_event_seek">Seek</string>
-    <string name="car_event_skip">Skip</string>
-    <string name="car_event_chapter">Chapter</string>
-    <string name="car_event_auto_rewind">Rewound after a pause</string>
-    <string name="car_event_resume">Started listening</string>
-    <string name="car_event_play">Played</string>
-    <string name="car_event_pause">Paused</string>
-    <string name="car_event_timer_started">Sleep timer set</string>
-    <string name="car_event_timer_extended">Sleep timer extended</string>
-    <string name="car_event_timer_expired">Sleep timer ended</string>
-    <string name="car_event_timer_rewind">Rewound after the sleep timer</string>
-    <string name="car_event_remote_progress">Moved on another device</string>
-    <string name="car_event_remote_finished">Finished on another device</string>
-    <string name="car_event_server_session">Listened on another device</string>
-    <string name="car_event_check_ahead">Server had newer activity</string>
-    <string name="car_event_check_current">Position confirmed</string>
-    <string name="car_event_check_unavailable">Server not reached</string>
 
     <!--
       PRODUCT_SPEC PLAY-001 — what the car's player screen says when a book will not start.
