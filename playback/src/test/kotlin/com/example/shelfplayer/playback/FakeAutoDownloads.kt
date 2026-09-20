@@ -30,9 +30,7 @@ internal object FakeAutoDownloads : DownloadRepository {
     ): AppResult<OfflineBook> =
         error("Not used by Android Auto browse tests")
 
-    override suspend fun updateFile(
-        serverId: ServerId, itemId: LibraryItemId, file: OfflineFile,
-    ): AppResult<Unit> =
+    override suspend fun updateFile(serverId: ServerId, itemId: LibraryItemId, file: OfflineFile): AppResult<Unit> =
         error("Not used by Android Auto browse tests")
 
     override suspend fun markComplete(
@@ -42,9 +40,7 @@ internal object FakeAutoDownloads : DownloadRepository {
     ): AppResult<OfflineBook> =
         error("Not used by Android Auto browse tests")
 
-    override suspend fun markFailed(
-        serverId: ServerId, itemId: LibraryItemId, summary: String,
-    ): AppResult<Unit> =
+    override suspend fun markFailed(serverId: ServerId, itemId: LibraryItemId, summary: String): AppResult<Unit> =
         error("Not used by Android Auto browse tests")
 
     override suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> =
@@ -62,7 +58,9 @@ internal object FakeAutoDownloads : DownloadRepository {
         error("Not used by Android Auto browse tests")
 
     override suspend fun release(
-        serverId: ServerId, itemId: LibraryItemId, profileId: ProfileId,
+        serverId: ServerId,
+        itemId: LibraryItemId,
+        profileId: ProfileId,
     ): AppResult<Boolean> =
         error("Not used by Android Auto browse tests")
 
