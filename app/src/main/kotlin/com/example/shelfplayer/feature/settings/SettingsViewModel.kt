@@ -21,6 +21,7 @@ import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SkipIntervals
+import com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.StartupMode
@@ -301,7 +302,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     /** BW-SLEEP-01 — UI writes settings; playback remains the schedule policy owner. */
-    fun onSleepScheduleChanged(schedule: com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings) {
+    val onSleepScheduleChanged: (SleepTimerScheduleSettings) -> Unit = { schedule ->
         viewModelScope.launch {
             sleepTimer.setScheduleEnabled(schedule.enabled)
             sleepTimer.setScheduleWindow(start = schedule.start, end = schedule.end)
