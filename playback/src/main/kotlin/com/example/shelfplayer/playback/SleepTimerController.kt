@@ -505,10 +505,7 @@ class SleepTimerController @Inject constructor(
         }
     }
 
-    private fun shouldArmAutomaticTimer(
-        occurrence: SleepSchedulePolicy.Occurrence,
-        explicitPlay: Boolean,
-    ): Boolean {
+    private fun shouldArmAutomaticTimer(occurrence: SleepSchedulePolicy.Occurrence, explicitPlay: Boolean): Boolean {
         val schedule = settings.schedule
         val suppressed = schedule.suppressedOccurrence == occurrence.id
         val replayRequired = schedule.replayRequiredOccurrence == occurrence.id
