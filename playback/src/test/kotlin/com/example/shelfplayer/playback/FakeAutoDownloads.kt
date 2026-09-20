@@ -57,11 +57,7 @@ internal object FakeAutoDownloads : DownloadRepository {
     ): AppResult<Unit> =
         error("Not used by Android Auto browse tests")
 
-    override suspend fun release(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        profileId: ProfileId,
-    ): AppResult<Boolean> =
+    override suspend fun release(serverId: ServerId, itemId: LibraryItemId, profileId: ProfileId): AppResult<Boolean> =
         error("Not used by Android Auto browse tests")
 
     override suspend fun unreferenced(): AppResult<List<OfflineBook>> = error("Not used by Android Auto browse tests")
