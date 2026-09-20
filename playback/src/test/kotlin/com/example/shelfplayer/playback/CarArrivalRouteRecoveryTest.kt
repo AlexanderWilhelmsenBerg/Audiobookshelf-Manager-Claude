@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -88,6 +89,11 @@ class CarArrivalRouteRecoveryTest {
         val selected = MutableStateFlow<String?>(null)
         val events = mutableListOf<CarLifecycleRouteRecovery.Event>()
 
+        val reappearance = launch {
+            // This models Android publishing the same A2DP endpoint again during the bounded platform settle.
+            delay(10)
+            outputs.value = listOf(buds)
+        }
         val held = CarLifecycleRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
@@ -98,10 +104,12 @@ class CarArrivalRouteRecoveryTest {
             selected.value = id
             true
         }
+        reappearance.join()
 
-        // The emission is the platform event being modelled, not a correctness delay.
-        delay(10)
-        assertNull(held)
+        assertEquals(buds.id, held)
+        assertTrue(CarLifecycleRouteRecovery.Event.TargetAbsent in events)
+        assertTrue(CarLifecycleRouteRecovery.Event.TargetReturned in events)
+        assertTrue(CarLifecycleRouteRecovery.Event.Secured in events)
     }
 
     @Test
