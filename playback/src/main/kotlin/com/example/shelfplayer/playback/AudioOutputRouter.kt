@@ -38,7 +38,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * explicit request is the best available fallback.
  *
  * The complete output flow deliberately still contains the phone speaker so routing safety can observe it.
- * The [AutoLibrary.Outputs] view excludes speakers: BookWave never offers the built-in speaker as a manual
+ * The retired Android Auto browse output list excluded speakers: BookWave never offers the built-in speaker as a manual
  * destination even though Android's own system output switcher may still do so.
  */
 @OptIn(UnstableApi::class)
@@ -48,7 +48,7 @@ class AudioOutputRouter @Inject constructor(
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
-) : AutoLibrary.Outputs {
+) {
 
     private val _outputs = MutableStateFlow<List<AudioOutput>>(emptyList())
 
@@ -119,7 +119,7 @@ class AudioOutputRouter @Inject constructor(
      * the phone's own chooser, which lists every connected output — including the speaker — and left that
      * row silently doing nothing.
      */
-    override fun select(id: String?) {
+    fun select(id: String?) {
         choose(
             id = id,
             destination = if (id == null) ExplicitDestination.Automatic else ExplicitDestination.Output,
@@ -283,9 +283,9 @@ class AudioOutputRouter @Inject constructor(
      * The selectable list exposed to the car browse tree. Speakers remain in [outputs] above but are absent
      * here by construction.
      */
-    override fun available(): List<AudioOutput> = _outputs.value.filterNot(AudioOutput::isSpeaker)
+    fun available(): List<AudioOutput> = _outputs.value.filterNot(AudioOutput::isSpeaker)
 
-    override fun selected(): String? = _selectedId.value
+    fun selected(): String? = _selectedId.value
 
     /** Kind half only; product names never reach logs. */
     private fun kindOf(id: String): String = id.substringBefore(':')
