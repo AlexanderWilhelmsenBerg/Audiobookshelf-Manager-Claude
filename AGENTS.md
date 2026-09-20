@@ -14,6 +14,8 @@ and permission boundaries above implementation speed.
 This file is both the shared working agreement for every BookWave agent and the roster of specialist roles.
 The roles are ownership and review lenses, not new Gradle modules or independent architecture layers. The
 repository and `docs/architecture/module-boundaries.md` remain the authority for technical boundaries.
+`docs/product-decisions.md` is the canonical ledger for definitive owner-approved product/UX decisions;
+agents must not silently reopen or contradict an accepted entry.
 
 ### Invoking a role
 

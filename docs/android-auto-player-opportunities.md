@@ -2,6 +2,8 @@
 
 Written 2026-09-07, after the device run that produced ADR-0029 §8 and R-106/R-107.
 
+> **Historical survey note:** `docs/product-decisions.md` PD-001 (2026-09-19) is now authoritative for the Android Auto browse information architecture. It removes History from the car browse library, replaces the old Library destination with Profiles, and makes safe cached browse artwork a product target. Keep this survey for platform evidence; do not use its older History/Library recommendations to reopen PD-001.
+
 This began as a **survey and a set of recommendations**, not a decision. Items 1, 2 and 3 have since been
 built at the owner's request — see *What has since been built* — and the rest stand as recommendations.
 Each item says what the platform documents, what BookWave does today, and what it would cost; where the

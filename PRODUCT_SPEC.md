@@ -1669,10 +1669,17 @@ CHANGELOG.md
 config/detekt/detekt.yml
 docs/architecture/
 docs/adr/
+docs/product-decisions.md
 docs/api-compatibility.md
 docs/testing.md
 docs/release.md
 ```
+
+`docs/product-decisions.md` is the canonical ledger for definitive owner-approved product/UX decisions made
+after this baseline. It does not replace requirement IDs in this specification: when a decision changes or
+narrows an existing requirement, the same documentation change must reconcile the affected requirement.
+Accepted ADRs may explain implementation architecture but must not silently contradict an accepted product
+decision.
 
 `README.md` must include:
 - purpose;

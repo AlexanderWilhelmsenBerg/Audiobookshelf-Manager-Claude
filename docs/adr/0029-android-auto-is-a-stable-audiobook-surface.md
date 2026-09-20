@@ -2,7 +2,8 @@
 
 **Status:** Accepted 2026-09-05  
 **Requirements:** PLAY-001, PLAY-002, PLAY-003, ROUTE-002, LIB-002, LIB-003  
-**Supersedes:** the routing and browse conclusions of ADR-0027's third amendment where they differ from this decision.
+**Supersedes:** the routing and browse conclusions of ADR-0027's third amendment where they differ from this decision.  
+**Partially superseded:** `docs/product-decisions.md` PD-001 (2026-09-19) replaces this ADR's Android Auto browse-home/History target with **Continue → Series → Authors → Profiles**, removes History from the car browse library, and makes safe cached browse artwork a product target. The routing, playback, media-control and host-behavior decisions in this ADR remain accepted unless separately superseded.
 
 ## Context
 
