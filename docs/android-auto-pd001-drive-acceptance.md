@@ -19,9 +19,12 @@ profiles if practical: one unlocked and one passcode-protected.
 
 - Open BookWave. The root shows **exactly Continue, Series, Authors, Profiles**, in that order. There is no
   Library or History destination.
-- Open Continue, Series and Authors. Book rows have covers where BookWave has them; Series has a representative
-  cover; an Author with a portrait uses it and another Author can fall back to a representative cover. Missing
-  art is an ordinary host placeholder, not a broken/credential URL.
+- Open Continue, Series and Authors. Confirm the projected host renders the requested artwork-first grid/card
+  presentation for those browse surfaces, while Profiles remains text-first/list-like. Exact card chrome is
+  host-owned; note whether the host also honours BookWave's teal platform accent.
+- Book rows have covers where BookWave has them; Series has a representative cover; an Author with a portrait
+  uses it and another Author can fall back to a representative cover. Missing art is an ordinary host
+  placeholder, not a broken/credential URL.
 - Series with recent listening activity appear before untouched Series; among comparable rows the order is
   stable/alphabetical. Open one Series and confirm its books still follow the expected series sequence.
 - Make or observe a browse-tree mutation covered by #10 (for example Continue membership/order or a Series/
