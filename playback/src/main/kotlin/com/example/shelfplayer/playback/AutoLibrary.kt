@@ -109,13 +109,13 @@ class AutoLibrary @Inject constructor(
      * to accessible books once for the active profile and every invalidation decision for that sweep is
      * derived from the same immutable list.
      */
-    fun browseSnapshots(): Flow<AutoBrowseSnapshot> = AutoBrowseSnapshotSource(
+    internal fun browseSnapshots(): Flow<AutoBrowseSnapshot> = AutoBrowseSnapshotSource(
         activeProfiles = profiles.observeActiveProfile().map { profile -> profile?.id },
         accessibleBooks = library::observeAccessibleBooks,
         build = CurrentAutoBrowseSnapshotBuilder::build,
     ).snapshots()
 
-    fun emittedDynamicParents(): Set<String> = emittedNodes.toSet()
+    internal fun emittedDynamicParents(): Set<String> = emittedNodes.toSet()
 
     /**
      * A fixed destination first, then the three id families, then nothing.
@@ -373,7 +373,7 @@ class AutoLibrary @Inject constructor(
      * read only their own narrow repositories. This keeps a profile switch exact without returning to the old
      * one-full-library-read-per-parent fan-out.
      */
-    suspend fun profileBoundaryCounts(
+    internal suspend fun profileBoundaryCounts(
         snapshot: AutoBrowseSnapshot,
         now: NowPlaying?,
         parentIds: Set<String>,
