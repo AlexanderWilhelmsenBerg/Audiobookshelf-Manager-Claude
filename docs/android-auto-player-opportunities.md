@@ -115,33 +115,22 @@ pretending the head unit can fix connectivity.
 This remains device-host behaviour: the mapping and session call exist in the implementation, while the
 exact way a particular Android Auto host renders the sentence/action must be checked in the car.
 
-## 4. Metadata the player can draw and BookWave does not send
+## 4. Metadata links the player can draw
 
 `androidx.car.app.mediaextensions.MetadataExtras` carries several keys the player screen honours:
 
-- **`KEY_DESCRIPTION_LINK_MEDIA_ID` — shipped.** `MediaItems.queueFor` writes it on the playing item,
-  pointing at `tab/history`, with a label on `MediaMetadata.description` for it to attach to. It is the
-  nearest reachable thing to the owner's request that the queue button open History (item 5 explains why
-  the queue itself cannot), and whether a head unit renders it is #127's device check. Note the asymmetry
-  in the documentation: AOSP's customisation guide says Automotive OS OEMs **must** render these as
-  tappable, while `developer.android.com` hedges for projected Android Auto with *"if the car supports
-  this feature"*.
-- **`KEY_SUBTITLE_LINK_MEDIA_ID` — not shipped**, and the untaken alternative rather than a second
-  opportunity: the subtitle already carries `Author • Series #N`, so linking *it* to the series node would
-  turn the byline into navigation, but the description was the free line and History was what was asked for.
+- **`KEY_DESCRIPTION_LINK_MEDIA_ID` / `KEY_SUBTITLE_LINK_MEDIA_ID` — tested and retired for History.**
+  BookWave tried the documented player-to-browse metadata links, but the owner's projected Android Auto host
+  rendered neither one in the 2026-09-19 physical test. The owner later dropped the History-on-player
+  requirement, so #35 removes that metadata instead of carrying an invisible compatibility fallback.
 - **`KEY_CONTENT_FORMAT_TINTABLE_LARGE_ICON_URI` / `..._SMALL_...`** — a format badge beside the title.
 - **`KEY_IMMERSIVE_AUDIO`** — an indicator; not applicable to Audiobookshelf content.
 
-**Do not schedule any *further* keys from this family before the shipped one is tested.** The Media3 half of
-the old question here is now answered: disassembling `LegacyConversions.convertToMediaMetadataCompat` shows
-it iterates `MediaMetadata.extras` and forwards String entries, so the extra does reach the legacy
-`MediaMetadataCompat`. What stays open is only whether the **host** reads it — androidx/media#2127 remains
-open with no maintainer answer, and the note that its documentation "still uses legacy code". BookWave now
-has two bets in this family, and the description link above is the one that will be looked at first because
-the owner asked for it. The other:
-`EXTRAS_KEY_COMPLETION_PERCENTAGE` on browse rows, which R-10 records as unverified for the same reason.
-The honest sequencing is to verify the mechanism once, on a head unit, with the completion percentage that
-is already there — and only then decide whether to add more.
+The Media3 forwarding half of this experiment was valid: disassembly of
+`LegacyConversions.convertToMediaMetadataCompat` showed String extras reaching the legacy
+`MediaMetadataCompat`. The physical host result is what retired the History-link use case. Other metadata
+keys remain independent host-rendering questions; `EXTRAS_KEY_COMPLETION_PERCENTAGE` on browse rows is still
+tracked by R-10 and should not inherit an assumption from this failed player-link experiment.
 
 ## 5. Chapters as the media session queue — the one real restructuring
 
@@ -155,8 +144,8 @@ Library.
 **And the queue cannot be repurposed for anything else.** The owner asked for History there. A queue row's
 only meaning to a car is *play this now* — `onSkipToQueueItem` resolves to `seekToDefaultPosition(index)` —
 so a History row tapped in the queue would interrupt the book (priority 1) and make every position writer
-name the wrong one (priority 2). `docs/risks.md` R-110 records that, and the description link shipped in its
-place.
+name the wrong one (priority 2). `docs/risks.md` R-110 records that. The temporary metadata-link fallback was later retired after the
+physical host did not render it and the owner dropped the History-on-player requirement.
 
 **This is a genuine trade against ADR-0016, and should not be done casually.** Media3 derives the legacy
 queue from the player's timeline, so a chapter queue means one media item per chapter rather than one per
@@ -203,31 +192,26 @@ Two answers to the owner's follow-up questions, both checked against the API rat
   repeated calls; once per chapter is infrequent enough to accept, but the fixed version should be checked.
 - **Chapter-relative *progress* is not.** The progress bar is the timeline, and the timeline is the book
   (ADR-0016).
-- **History cannot go in the queue slot.** Not a trade-off — `MediaSession` has no queue API at all in
-  Media3, and the legacy queue is derived from the player's timeline, so nothing that is not a timeline
-  window can be put there — and a queue row's only meaning to a car is *play this now*, since
-  `onSkipToQueueItem` resolves to `seekToDefaultPosition(index)`, so a History row tapped there would
-  interrupt the book. **What shipped is `KEY_DESCRIPTION_LINK_MEDIA_ID`**, set on the playing item and
-  pointing at `tab/history`; `MediaItems.queueFor` writes that key and no other. `KEY_SUBTITLE_LINK_MEDIA_ID`
-  is the untaken alternative — the subtitle already carries `Author • Series #N`. Inspect the
-  **description** field when validating this on a head unit (#127).
+- **History does not go in the queue slot.** The legacy queue is derived from the player's timeline and a
+  queue row is a playback target. BookWave keeps its one-book playback timeline intact. After the physical
+  metadata-link test failed, the owner dropped the History-on-player requirement entirely; #35 now suppresses
+  the standard Queue rather than replacing it with another affordance.
 
 ## Still open
 
-Item 4 is **partly shipped**: `KEY_DESCRIPTION_LINK_MEDIA_ID` is on the playing item and awaiting a device
-check (#127). The remaining keys stay a **measurement before they are features** — the Media3 forwarding
-half is now settled by disassembly, so what is left to verify is host rendering, and the shipped link is the
-cheapest thing to verify it with. Item 5 is **closed as impossible** in the form asked for: the queue cannot
-carry History, because `onSkipToQueueItem` resolves to `seekToDefaultPosition(index)` and a row tapped there
-would interrupt the book. Chapters-as-queue remains theoretically open but needs evidence that drivers reach
-for the queue button, and reopening ADR-0016 deliberately if they do.
+Item 4's History-link experiment is **retired**: the owner's projected host rendered neither documented
+link and History is no longer wanted on the player. #35 suppresses the standard Android Auto Queue by
+withholding `COMMAND_GET_TIMELINE` from Media3's media-notification/platform-session proxy, without changing
+BookWave's real timeline. Item 5 remains closed for History: do not reshape the playback timeline into a
+History list. Chapters-as-queue is a separate theoretical design and is not part of #35.
 
 ## What this survey does not claim
 
-The API readings above do not prove a particular head unit's rendering. Items 1 and 3 are implemented and
-item 4 partly so, item 2 was reverted as measured dead code, and item 5 is closed as impossible — but the
-primary-slot takeover, the lit output glyphs, the description link and the error presentation have all yet
-to be accepted on a head unit. #126 and #127 track the two the owner has already reported back on. This project's own record is that the car keeps finding what the documents do not say —
+The API readings above do not prove a particular head unit's rendering. The 2026-09-19 physical re-test did:
+this projected host rendered neither History metadata link and still showed the standard queue, while the
+Car action still failed to show selected after a Car press. PR #61 now treats those as two separate platform
+adaptations: preserve and republish explicit Car intent for #34, and suppress the unsupported queue surface
+for #35. #34 and #35 remain open until that new behavior is re-tested on the same head unit. This project's own record is that the car keeps finding what the documents do not say —
 R-10 covers exactly that gap, and ADR-0029 §8's original "nothing else on the player can show it" conclusion
 was itself drawn from a partial reading of an API. Treat capacity numbers and slot rendering as the host's to
 confirm.
