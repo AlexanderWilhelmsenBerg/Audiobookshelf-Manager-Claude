@@ -13,7 +13,7 @@ import com.example.shelfplayer.core.model.library.Book
  * represented by null so the host can draw its ordinary placeholder.
  */
 interface AutoArtwork {
-    suspend fun book(book: Book, serverBaseUrls: Map<ServerId, String>): Uri?
+    suspend fun book(book: Book, serverBaseUrls: Map<ServerId, String>, offlineCoverUri: String? = null): Uri?
 
     /**
      * A confirmed author portrait is preferred; [representativeCover] is LIB-002's fallback.
@@ -23,16 +23,22 @@ interface AutoArtwork {
         author: Author,
         representativeCover: Book?,
         serverBaseUrls: Map<ServerId, String>,
+        representativeOfflineCoverUri: String? = null,
     ): Uri?
 
     companion object {
         val None = object : AutoArtwork {
-            override suspend fun book(book: Book, serverBaseUrls: Map<ServerId, String>): Uri? = null
+            override suspend fun book(
+                book: Book,
+                serverBaseUrls: Map<ServerId, String>,
+                offlineCoverUri: String?,
+            ): Uri? = null
 
             override suspend fun author(
                 author: Author,
                 representativeCover: Book?,
                 serverBaseUrls: Map<ServerId, String>,
+                representativeOfflineCoverUri: String?,
             ): Uri? = null
         }
     }
