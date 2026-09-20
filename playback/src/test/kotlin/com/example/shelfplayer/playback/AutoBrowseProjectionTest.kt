@@ -42,11 +42,11 @@ class AutoBrowseProjectionTest {
         val books = listOf(
             book("2", "Second", series = "zeta"),
             book("1", "First", series = "Alpha"),
-            book("3", "Third", series = "alpha"),
+            book("3", "Third", series = "beta"),
         )
 
         assertEquals(
-            listOf("Alpha", "alpha", "zeta"),
+            listOf("Alpha", "beta", "zeta"),
             autoSeriesNodes(books).map { node -> node.membership.series.name },
         )
     }
