@@ -204,9 +204,7 @@ class AutoChapterProgressTest {
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
     }
 
-    private class StubLibrary(
-        private val books: MutableStateFlow<List<Book>>,
-    ) : LibraryRepository {
+    private class StubLibrary(private val books: MutableStateFlow<List<Book>>) : LibraryRepository {
         override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = flowOf(emptyList())
 
         override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> = flowOf(null)
