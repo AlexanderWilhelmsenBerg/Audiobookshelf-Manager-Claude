@@ -138,14 +138,20 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `Profiles is a real non-playable destination rather than a fake book`() = runTest {
-        val row = auto().children(AutoLibrary.TAB_PROFILES, now = null).single()
+    fun `Profiles exposes every saved profile as browsable non-playable rows`() = runTest {
+        val rows = auto(StubProfiles(includeSecond = true))
+            .children(AutoLibrary.TAB_PROFILES, now = null)
 
-        assertEquals("profile/profile-1", row.mediaId)
-        assertEquals("Demo listener", row.mediaMetadata.title)
-        assertFalse(row.mediaMetadata.isPlayable == true)
-        assertFalse(row.mediaMetadata.isBrowsable == true)
-        assertTrue(row.mediaMetadata.subtitle?.toString().orEmpty().contains("Active profile"))
+        assertEquals(listOf("profile/profile-1", "profile/profile-2"), rows.map { item -> item.mediaId })
+        assertEquals(listOf("Demo listener", "Other listener"), rows.titles())
+        assertTrue(rows.all { item -> item.mediaMetadata.isBrowsable == true })
+        assertTrue(rows.none { item -> item.mediaMetadata.isPlayable == true })
+        assertTrue(rows.first().mediaMetadata.subtitle?.toString().orEmpty().contains("Active profile"))
+        assertTrue(rows.first().mediaMetadata.supportedCommands.isEmpty())
+        assertEquals(
+            listOf(AutoLibrary.ACTION_SWITCH_PROFILE),
+            rows.last().mediaMetadata.supportedCommands,
+        )
     }
 
     @Test
@@ -228,8 +234,7 @@ class AutoBrowseTreeTest {
     private fun List<androidx.media3.common.MediaItem>.titles(): List<String> =
         mapNotNull { item -> item.mediaMetadata.title?.toString() }
 
-    private fun auto(): AutoLibrary {
-        val profiles = StubProfiles()
+    private fun auto(profiles: ProfileRepository = StubProfiles()): AutoLibrary {
         val library = StubLibrary(books)
         return AutoLibrary(
             context = ApplicationProvider.getApplicationContext(),
@@ -299,8 +304,8 @@ class AutoBrowseTreeTest {
         localAvailability = local,
     )
 
-    private class StubProfiles : ProfileRepository {
-        private val profile = Profile(
+    private class StubProfiles(includeSecond: Boolean = false) : ProfileRepository {
+        private val active = Profile(
             id = PROFILE,
             serverId = SERVER,
             username = "demo",
@@ -310,12 +315,29 @@ class AutoBrowseTreeTest {
             lastUsedAt = null,
             isFixture = false,
         )
+        private val saved = buildList {
+            add(active)
+            if (includeSecond) {
+                add(
+                    Profile(
+                        id = ProfileId("profile-2"),
+                        serverId = SERVER,
+                        username = "other",
+                        displayName = "Other listener",
+                        role = ProfileRole.Listener,
+                        requiresReauthentication = false,
+                        lastUsedAt = null,
+                        isFixture = false,
+                    ),
+                )
+            }
+        }
 
-        override fun observeProfiles(): Flow<List<Profile>> = flowOf(listOf(profile))
+        override fun observeProfiles(): Flow<List<Profile>> = flowOf(saved)
 
         override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
 
-        override fun observeActiveProfile(): Flow<Profile?> = flowOf(profile)
+        override fun observeActiveProfile(): Flow<Profile?> = flowOf(active)
 
         override suspend fun activeProfileId(): ProfileId = PROFILE
 
