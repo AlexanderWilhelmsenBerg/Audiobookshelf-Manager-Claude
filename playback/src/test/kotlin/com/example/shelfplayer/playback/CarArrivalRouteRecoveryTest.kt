@@ -21,21 +21,21 @@ class CarArrivalRouteRecoveryTest {
         kind = DeviceKind.Bluetooth,
         role = AudioOutputRole.Ambiguous,
     )
-    private val target = CarLifecycleContinuityGate.Target(
+    private val target = CarArrivalResumeGate.Target(
         outputId = buds.id,
         generation = 7,
         explicitSelectionSequence = 3,
-        phase = CarLifecycleContinuityGate.Phase.Arrival,
+        phase = CarArrivalResumeGate.Phase.Arrival,
     )
 
     @Test
     fun `transient Automatic fallback is followed by a second reassert of captured headset`() = runBlocking {
         val outputs = MutableStateFlow(listOf(buds))
         val selected = MutableStateFlow<String?>(null)
-        val events = mutableListOf<CarLifecycleRouteRecovery.Event>()
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
         var attempts = 0
 
-        val held = CarLifecycleRouteRecovery(200.milliseconds).secure(
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
             selectedId = selected,
@@ -55,18 +55,18 @@ class CarArrivalRouteRecoveryTest {
         assertEquals(buds.id, held)
         assertEquals(2, attempts)
         assertEquals(buds.id, selected.value)
-        assertTrue(CarLifecycleRouteRecovery.Event.PreferenceLost in events)
-        assertTrue(CarLifecycleRouteRecovery.Event.Secured in events)
+        assertTrue(CarArrivalRouteRecovery.Event.PreferenceLost in events)
+        assertTrue(CarArrivalRouteRecovery.Event.Secured in events)
     }
 
     @Test
     fun `headset that never returns cannot become a resume route`() = runBlocking {
         val outputs = MutableStateFlow<List<AudioOutput>>(emptyList())
         val selected = MutableStateFlow<String?>(null)
-        val events = mutableListOf<CarLifecycleRouteRecovery.Event>()
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
         var attempts = 0
 
-        val held = CarLifecycleRouteRecovery(50.milliseconds).secure(
+        val held = CarArrivalRouteRecovery(50.milliseconds).secure(
             target = target,
             outputs = outputs,
             selectedId = selected,
@@ -79,22 +79,22 @@ class CarArrivalRouteRecoveryTest {
 
         assertNull(held)
         assertEquals(0, attempts)
-        assertTrue(CarLifecycleRouteRecovery.Event.TargetAbsent in events)
-        assertTrue(CarLifecycleRouteRecovery.Event.TimedOut in events)
+        assertTrue(CarArrivalRouteRecovery.Event.TargetAbsent in events)
+        assertTrue(CarArrivalRouteRecovery.Event.TimedOut in events)
     }
 
     @Test
     fun `target reappearance is diagnosed before exact headset is secured`() = runBlocking {
         val outputs = MutableStateFlow<List<AudioOutput>>(emptyList())
         val selected = MutableStateFlow<String?>(null)
-        val events = mutableListOf<CarLifecycleRouteRecovery.Event>()
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
 
         val reappearance = launch {
             // This models Android publishing the same A2DP endpoint again during the bounded platform settle.
             delay(10)
             outputs.value = listOf(buds)
         }
-        val held = CarLifecycleRouteRecovery(200.milliseconds).secure(
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
             selectedId = selected,
@@ -107,20 +107,20 @@ class CarArrivalRouteRecoveryTest {
         reappearance.join()
 
         assertEquals(buds.id, held)
-        assertTrue(CarLifecycleRouteRecovery.Event.TargetAbsent in events)
-        assertTrue(CarLifecycleRouteRecovery.Event.TargetReturned in events)
-        assertTrue(CarLifecycleRouteRecovery.Event.Secured in events)
+        assertTrue(CarArrivalRouteRecovery.Event.TargetAbsent in events)
+        assertTrue(CarArrivalRouteRecovery.Event.TargetReturned in events)
+        assertTrue(CarArrivalRouteRecovery.Event.Secured in events)
     }
 
     @Test
     fun `newer listener intent during settle prevents retry and resume`() = runBlocking {
         val outputs = MutableStateFlow(listOf(buds))
         val selected = MutableStateFlow<String?>(null)
-        val events = mutableListOf<CarLifecycleRouteRecovery.Event>()
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
         var eligible = true
         var attempts = 0
 
-        val held = CarLifecycleRouteRecovery(100.milliseconds).secure(
+        val held = CarArrivalRouteRecovery(100.milliseconds).secure(
             target = target,
             outputs = outputs,
             selectedId = selected,
@@ -135,6 +135,6 @@ class CarArrivalRouteRecoveryTest {
 
         assertNull(held)
         assertEquals(1, attempts)
-        assertTrue(CarLifecycleRouteRecovery.Event.EligibilityLost in events)
+        assertTrue(CarArrivalRouteRecovery.Event.EligibilityLost in events)
     }
 }
