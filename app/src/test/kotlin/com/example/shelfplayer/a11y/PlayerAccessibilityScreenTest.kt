@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryId
@@ -30,6 +33,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
+import kotlin.test.assertEquals
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -93,10 +97,28 @@ class PlayerAccessibilityScreenTest {
      * comes back empty when the formatting path has a hole in it.
      */
     @Test
-    fun `the sleep timer control still announces itself while it is running`() {
-        renderFullPlayer(timer = SleepTimerState(SleepTimerMode.Fixed(30.minutes), 12.minutes, isFading = false))
+    fun `the sleep timer control projects remaining time and keeps the same action`() {
+        var opens = 0
+        renderFullPlayer(
+            timer = SleepTimerState(SleepTimerMode.Fixed(30.minutes), 12.minutes, isFading = false),
+            onOpenSleepTimer = { opens += 1 },
+        )
 
         composeRule.assertEveryControlIsLabelled()
+        composeRule.onNodeWithText("12:00").assertExists()
+        composeRule
+            .onNodeWithContentDescription("Sleep timer: 12 min left")
+            .assertExists()
+            .performClick()
+        assertEquals(1, opens)
+    }
+
+    @Test
+    fun `an already active owner timer is projected immediately`() {
+        renderFullPlayer(timer = SleepTimerState(SleepTimerMode.Fixed(30.minutes), 7.minutes, isFading = false))
+
+        composeRule.onNodeWithText("7:00").assertExists()
+        composeRule.onNodeWithContentDescription("Sleep timer: 7 min left").assertExists()
     }
 
     /**
@@ -154,6 +176,7 @@ class PlayerAccessibilityScreenTest {
         hasFailed: Boolean = false,
         timer: SleepTimerState = SleepTimerState.Idle,
         fontScale: Float = 1f,
+        onOpenSleepTimer: () -> Unit = {},
     ) {
         composeRule.setContent {
             AtFontScale(fontScale) {
@@ -164,7 +187,7 @@ class PlayerAccessibilityScreenTest {
                         onTogglePlayPause = {},
                         onSeekTo = {},
                         onOpenSpeed = {},
-                        onOpenSleepTimer = {},
+                        onOpenSleepTimer = onOpenSleepTimer,
                         onOpenChapters = {},
                         onCollapse = {},
                     ),
