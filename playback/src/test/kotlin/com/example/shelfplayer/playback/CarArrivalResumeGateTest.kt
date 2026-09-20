@@ -224,7 +224,6 @@ class CarArrivalResumeGateTest {
             departedAt = 22.seconds,
             currentGeneration = owner.currentGeneration,
             explicitSelectionSequence = 0,
-            playbackActive = false,
         )
         val target = requireNotNull(departure.target)
         assertEquals(CarLifecycleContinuityGate.Status.Ready, departure.status)
@@ -233,7 +232,7 @@ class CarArrivalResumeGateTest {
     }
 
     @Test
-    fun `last disconnect before focus loss pairs in the reverse callback order`() {
+    fun `last disconnect before focus loss stays silent until physical ordering is known`() {
         val owner = heardOnBuds()
         val gate = connectedOnBuds(owner)
 
@@ -241,37 +240,23 @@ class CarArrivalResumeGateTest {
             departedAt = 20.seconds,
             currentGeneration = owner.currentGeneration,
             explicitSelectionSequence = 0,
-            playbackActive = true,
         )
-        assertEquals(CarLifecycleContinuityGate.Status.Armed, departure.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.BoundaryWaitingForFocusLoss, departure.reason)
+        assertEquals(CarLifecycleContinuityGate.Status.Rejected, departure.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.NoPendingFocusLoss, departure.reason)
 
-        owner.onOutputsChanged(emptyList(), isPlaying = true)
-        assertNull(owner.heardRoute)
-        // PlaybackService can receive this route emission after final disconnect but before focus loss.
-        // It must retire connected-session evidence without deleting the already-armed departure boundary.
-        gate.observePlayingHeadset(
-            heardRoute = owner.heardRoute,
-            headsetId = null,
-            currentGeneration = owner.currentGeneration,
-            explicitSelectionSequence = 0,
-            carConnected = false,
-        )
-
+        // A later focus loss is not retroactively labelled a departure event. With no car connected it can
+        // only become a possible future-arrival candidate, and cannot authorize Play by itself.
         val focus = gate.onAudioFocusLoss(
             at = 22.seconds,
             heardRoute = owner.heardRoute,
-            headsetId = null,
+            headsetId = owner.headsetForCar(listOf(buds)),
             currentGeneration = owner.currentGeneration,
             explicitSelectionSequence = 0,
             carConnected = false,
         )
-        val target = requireNotNull(focus.target)
 
-        assertEquals(CarLifecycleContinuityGate.Status.Ready, focus.status)
-        assertEquals(CarLifecycleContinuityGate.Phase.Departure, focus.phase)
-        assertEquals(buds.id, target.outputId)
-        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
+        assertEquals(CarLifecycleContinuityGate.Phase.Arrival, focus.phase)
+        assertEquals(CarLifecycleContinuityGate.Status.Armed, focus.status)
     }
 
     @Test
@@ -307,11 +292,10 @@ class CarArrivalResumeGateTest {
             departedAt = 20.seconds,
             currentGeneration = owner.currentGeneration,
             explicitSelectionSequence = 0,
-            playbackActive = false,
         )
 
         assertEquals(CarLifecycleContinuityGate.Status.Rejected, departure.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.NoPlayingCarHeadset, departure.reason)
+        assertEquals(CarLifecycleContinuityGate.Reason.NoPendingFocusLoss, departure.reason)
     }
 
     @Test
@@ -350,7 +334,6 @@ class CarArrivalResumeGateTest {
             departedAt = 27.seconds,
             currentGeneration = owner.currentGeneration,
             explicitSelectionSequence = 0,
-            playbackActive = false,
         )
 
         assertEquals(CarLifecycleContinuityGate.Status.Rejected, departure.status)
