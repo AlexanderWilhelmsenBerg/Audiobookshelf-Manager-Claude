@@ -1428,6 +1428,11 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
         carConnections.onConnected()
+        if (player?.isPlaying == true) {
+            // A car can bind without changing isPlaying or emitting a new device list. Seed departure
+            // continuity immediately from the route evidence that was already positively heard.
+            observeCarContinuityHeadset(audioOutputs.outputs.value)
+        }
         logger.info(
             LogCategory.Playback,
             "A car connected to the media session",
