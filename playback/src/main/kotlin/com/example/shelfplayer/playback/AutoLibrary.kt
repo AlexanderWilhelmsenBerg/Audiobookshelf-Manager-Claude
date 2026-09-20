@@ -160,8 +160,8 @@ class AutoLibrary @Inject constructor(
         val all = books()
         val node = autoAuthorNodes(all).firstOrNull { candidate -> candidate.author.id.value == authorId }
             ?: return emptyList()
-        val bases = serverBaseUrls()
-        return node.books.map { book -> bookItem(book, bases) }
+        val sources = artworkSources()
+        return node.books.map { book -> bookItem(book, sources) }
     }
 
     /**
@@ -393,11 +393,14 @@ class AutoLibrary @Inject constructor(
     private fun tab(id: String, @StringRes titleRes: Int): MediaItem {
         val extras = when (id) {
             TAB_CONTINUE -> contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM)
+
             TAB_SERIES, TAB_AUTHORS -> contentStyle(browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM)
+
             TAB_PROFILES -> contentStyle(
                 browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
                 playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             )
+
             else -> null
         }
         return browsableNode(id, string(titleRes), extras = extras)
@@ -499,8 +502,8 @@ data class NowPlaying(val bookId: LibraryItemId, val position: Duration)
 @OptIn(UnstableApi::class)
 private fun browsableNode(id: String, title: String, artworkUri: Uri? = null, extras: Bundle? = null): MediaItem =
     MediaItem.Builder()
-    .setMediaId(id)
-    .setMediaMetadata(
+        .setMediaId(id)
+        .setMediaMetadata(
         MediaMetadata.Builder()
             .setTitle(title)
             .setArtworkUri(artworkUri)
@@ -509,5 +512,5 @@ private fun browsableNode(id: String, title: String, artworkUri: Uri? = null, ex
             .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
             .apply { extras?.let(::setExtras) }
             .build(),
-    )
-    .build()
+        )
+        .build()
