@@ -20,6 +20,14 @@
     <string name="car_tab_library">Bibliotek</string>
     <string name="car_tab_series">Serier</string>
     <string name="car_tab_authors">Forfattere</string>
+    <string name="car_tab_profiles">Profiler</string>
+    <string name="car_profile_active">Aktiv profil</string>
+    <string name="car_profile_available">Tilgjengelig</string>
+    <string name="car_profile_locked">Låst — lås opp på telefonen</string>
+    <string name="car_profile_sign_in">Logg inn på nytt på telefonen</string>
+    <string name="car_profile_use">Bruk profil</string>
+    <string name="car_profile_switched">Profil byttet</string>
+    <string name="car_profile_unlock_phone">Lås opp denne profilen i BookWave på telefonen, og prøv igjen.</string>
     <string name="car_tab_downloads">Nedlastinger</string>
     <string name="car_tab_recent">Nylig lagt til</string>
     <string name="car_tab_again">Hør på nytt</string>
