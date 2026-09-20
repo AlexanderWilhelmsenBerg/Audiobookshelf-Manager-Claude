@@ -7,14 +7,17 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.core.graphics.drawable.toBitmap
 import coil.ImageLoader
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import com.example.shelfplayer.core.common.dispatcher.Dispatcher
+import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
@@ -41,30 +44,32 @@ class AutoArtworkContentProvider : ContentProvider() {
         val appContext = context?.applicationContext ?: throw FileNotFoundException("No application context")
         val graph = EntryPointAccessors.fromApplication(appContext, AutoArtworkEntryPoint::class.java)
 
-        val active = runBlocking(Dispatchers.IO) { graph.profiles().activeProfileId() }
+        val active = runBlocking(graph.ioDispatcher()) { graph.profiles().activeProfileId() }
         if (active != entry.profileId) throw FileNotFoundException("Artwork belongs to another profile")
 
         val directory = File(appContext.cacheDir, CACHE_DIRECTORY).apply { mkdirs() }
         val target = File(directory, "$token.png")
         if (!target.isFile || target.length() == 0L) {
-            materialize(graph.imageLoader(), appContext, entry.sources, target)
+            materialize(graph.imageLoader(), graph.ioDispatcher(), appContext, entry.sources, target)
         }
         return ParcelFileDescriptor.open(target, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
     private fun materialize(
         imageLoader: ImageLoader,
+        ioDispatcher: CoroutineDispatcher,
         context: android.content.Context,
         sources: List<String>,
         target: File,
     ) {
-        val success = runBlocking(Dispatchers.IO) {
+        val success = runBlocking(ioDispatcher) {
             sources.firstNotNullOfOrNull { source ->
                 val result = imageLoader.execute(
                     ImageRequest.Builder(context)
                         .data(source)
                         .size(MAX_ARTWORK_PIXELS)
                         .allowHardware(false)
+                        .networkCachePolicy(CachePolicy.DISABLED)
                         .build(),
                 )
                 (result as? SuccessResult)?.drawable
@@ -108,7 +113,11 @@ class AutoArtworkContentProvider : ContentProvider() {
     @InstallIn(SingletonComponent::class)
     internal interface AutoArtworkEntryPoint {
         fun imageLoader(): ImageLoader
+
         fun profiles(): ProfileRepository
+
+        @Dispatcher(ShelfDispatcher.Io)
+        fun ioDispatcher(): CoroutineDispatcher
     }
 
     private companion object {
