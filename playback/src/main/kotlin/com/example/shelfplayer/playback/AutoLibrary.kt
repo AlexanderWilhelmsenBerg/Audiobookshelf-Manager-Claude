@@ -10,17 +10,17 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaConstants
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.Profile
+import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Book
-import com.example.shelfplayer.core.model.library.Chapter
-import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.SeriesMembership
-import com.example.shelfplayer.core.model.playback.AudioOutput
-import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.domain.library.HomeShelves
-import com.example.shelfplayer.domain.library.booksInSeriesOrder
 import com.example.shelfplayer.domain.library.rememberedBook
+import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.LibraryRepository
-import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
@@ -35,16 +35,11 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * PRODUCT_SPEC PLAY-001 / 11.1 — the audiobook-first tree Android Auto sees.
+ * PD-001 / PRODUCT_SPEC PLAY-001 — the audiobook-first tree Android Auto sees.
  *
- * Android Auto owns the drawing. BookWave owns the information architecture and media metadata. The root is
- * intentionally limited to four stable destinations a driver can learn: Continue, Series, Authors and
- * Library. Four is the platform's documented root-children limit rather than a preference, so the set is at
- * its ceiling and any change to it is a swap.
- *
- * Chapters and History used to hold two of those positions and now lead the Library list instead — the
- * owner's call after driving with it. Neither was deleted: both are still destinations, and History is
- * separately wanted from the player.
+ * The root has exactly four stable destinations: Continue, Series, Authors and Profiles. Library, History,
+ * Chapters and Audio output are deliberately not alternate paths. Old ids remain understood only as stale ids
+ * that resolve to no children, so a host caching a pre-PD-001 tree cannot resurrect the retired hierarchy.
  */
 @OptIn(UnstableApi::class)
 @Singleton
@@ -53,18 +48,10 @@ class AutoLibrary @Inject constructor(
     private val profiles: ProfileRepository,
     private val library: LibraryRepository,
     private val rememberedBooks: RememberedBookRepository,
-    private val history: PlaybackHistoryRepository,
     private val homeShelves: ObserveHomeShelvesUseCase,
-    private val audioOutputs: Outputs,
+    private val activation: ProfileActivationGuard,
+    private val artwork: AutoArtwork,
 ) {
-
-    /** Narrow seam around the live router so the entire car tree remains JVM-testable. */
-    interface Outputs {
-        fun available(): List<AudioOutput>
-        fun selected(): String?
-        fun select(id: String?)
-    }
-
     fun root(): MediaItem = browsableNode(
         id = ROOT,
         title = string(R.string.car_app_name),
@@ -91,268 +78,198 @@ class AutoLibrary @Inject constructor(
         },
     )
 
-    /**
-     * Dynamic parent ids actually handed to a head unit.
-     *
-     * They stay remembered across profile generations because Media3 exposes no API for asking which browse
-     * nodes a host still has subscribed. A profile boundary therefore has to assume every emitted dynamic
-     * parent can still be cached and evict it explicitly.
-     */
     private val emittedNodes = ConcurrentHashMap.newKeySet<String>()
 
     private fun remember(id: String): String = id.also(emittedNodes::add)
 
-    /**
-     * One profile-bound, library-derived browse snapshot per Room emission.
-     *
-     * Current hierarchy knowledge is confined to [CurrentAutoBrowseSnapshotBuilder]. The source subscribes
-     * to accessible books once for the active profile and every invalidation decision for that sweep is
-     * derived from the same immutable list.
-     */
+    /** #10 — one library snapshot plus profile presentation facts feed one invalidation stream. */
     internal fun browseSnapshots(): Flow<AutoBrowseSnapshot> = AutoBrowseSnapshotSource(
         activeProfiles = profiles.observeActiveProfile().map { profile -> profile?.id },
+        savedProfiles = profiles.observeProfiles(),
+        savedServers = profiles.observeServers(),
         accessibleBooks = library::observeAccessibleBooks,
-        build = CurrentAutoBrowseSnapshotBuilder::build,
+        build = AutoBrowseSnapshotBuilder::build,
     ).snapshots()
 
     internal fun emittedDynamicParents(): Set<String> = emittedNodes.toSet()
 
-    /**
-     * A fixed destination first, then the three id families, then nothing.
-     *
-     * Split in two because the whole tree in one `when` exceeds detekt's branch budget. The exact-id half
-     * returns `null` for "not mine" rather than the two halves being reordered: a tab id and a prefixed id
-     * are disjoint today, and a split that relied on that would break quietly the day one of them is not.
-     */
-    suspend fun children(parentId: String, now: NowPlaying?): List<MediaItem> =
-        fixedDestination(parentId, now) ?: idFamily(parentId)
-
-    private suspend fun fixedDestination(parentId: String, now: NowPlaying?): List<MediaItem>? = when (parentId) {
-        ROOT -> rootTabs()
-        RECENT_ROOT -> resumeRow()
-        TAB_CONTINUE, TAB_RECENT, TAB_DISCOVER, TAB_AGAIN -> shelfBooks(parentId)
-        TAB_CHAPTERS -> chaptersOf(now)
-        TAB_HISTORY -> historyOf(now?.bookId)
-        TAB_LIBRARY -> librarySections()
-        TAB_SERIES -> seriesNodes()
-        TAB_AUTHORS -> authorNodes()
-        TAB_DOWNLOADS -> downloadedBooks()
-        TAB_OUTPUT -> outputRows()
-        else -> null
-    }
-
-    /**
-     * The four rows that are a home shelf shown as a list.
-     *
-     * One branch in [fixedDestination] rather than four, because four identical shapes are what pushed it
-     * over detekt's complexity budget, and because this reads the shelves once instead of once per tab.
-     */
-    private suspend fun shelfBooks(tabId: String): List<MediaItem> {
-        val shelves = shelves()
-        return when (tabId) {
-            TAB_RECENT -> shelves.recentlyAdded
-            TAB_DISCOVER -> shelves.discover
-            TAB_AGAIN -> shelves.listenAgain
-            else -> shelves.continueListening
-        }.map(::bookItem)
-    }
-
-    /** Only what is playable with no network. Its own function to keep [fixedDestination] one call per row. */
-    private suspend fun downloadedBooks(): List<MediaItem> =
-        books().filter { it.localAvailability == LocalAvailability.Complete }.map(::bookItem)
+    suspend fun children(parentId: String, @Suppress("UNUSED_PARAMETER") now: NowPlaying?): List<MediaItem> =
+        when (parentId) {
+            ROOT -> rootTabs()
+            RECENT_ROOT -> resumeRow()
+            TAB_CONTINUE -> continueRows()
+            TAB_SERIES -> seriesRows()
+            TAB_AUTHORS -> authorRows()
+            TAB_PROFILES -> profileRows()
+            else -> idFamily(parentId)
+        }
 
     private suspend fun idFamily(parentId: String): List<MediaItem> = when {
         parentId.startsWith(SERIES_PREFIX) -> booksForSeries(parentId.removePrefix(SERIES_PREFIX))
         parentId.startsWith(AUTHOR_PREFIX) -> booksForAuthor(parentId.removePrefix(AUTHOR_PREFIX))
-        parentId.startsWith(OUT_PREFIX) -> chooseOutput(parentId)
         else -> emptyList()
     }
 
-    /**
-     * Four stable top-level destinations; empty libraries still explain themselves instead of showing shells.
-     *
-     * **Four is the platform's number, not this app's taste.** Android Auto sends a root-children limit as a
-     * browser root hint and the documentation says to expect four, so this set is at the ceiling: changing
-     * it is a swap, never an addition. Nothing in Media3 enforces the hint, which makes it the app's job.
-     *
-     * The owner replaced Chapters and History here after a device run — *"Chapter and history can be removed
-     * from library view. Have series and author instead."* Both remain reachable one level down rather than
-     * being deleted; History in particular is still wanted, and [librarySections] now leads with them.
-     */
-    private suspend fun rootTabs(): List<MediaItem> {
-        if (books().isEmpty()) return listOf(emptyNotice())
-        return listOf(
-            tab(TAB_CONTINUE, R.string.car_tab_continue),
-            tab(TAB_SERIES, R.string.car_tab_series),
-            tab(TAB_AUTHORS, R.string.car_tab_authors),
-            tab(TAB_LIBRARY, R.string.car_tab_library),
-        )
+    /** PD-001 — exact order, even for an empty library so Profiles is never hidden behind an empty notice. */
+    private fun rootTabs(): List<MediaItem> = listOf(
+        tab(TAB_CONTINUE, R.string.car_tab_continue),
+        tab(TAB_SERIES, R.string.car_tab_series),
+        tab(TAB_AUTHORS, R.string.car_tab_authors),
+        tab(TAB_PROFILES, R.string.car_tab_profiles),
+    )
+
+    private suspend fun continueRows(): List<MediaItem> {
+        val bases = serverBaseUrls()
+        return shelves().continueListening.map { book -> bookItem(book, bases) }
     }
 
-    /**
-     * Everything that is not one of the four learned root destinations.
-     *
-     * Chapters and History lead, unconditionally. They left the root by the owner's decision but are still
-     * wanted — History especially — and they are the two entries here that describe *what is playing* rather
-     * than the library, so they sit at the top where a driver already looking for "where was I" will find
-     * them. Unconditional because both answer honestly when there is no book: `chaptersOf(null)` and
-     * `historyOf(null)` already return a notice row rather than an empty shell.
-     *
-     * Series and Authors are **not** listed here any more; they are root tabs now, and listing them twice
-     * would make the tree describe itself inconsistently.
-     */
-    private suspend fun librarySections(): List<MediaItem> {
+    private suspend fun seriesRows(): List<MediaItem> {
         val all = books()
-        val shelves = shelves()
-        return buildList {
-            add(tab(TAB_CHAPTERS, R.string.car_tab_chapters))
-            add(tab(TAB_HISTORY, R.string.car_tab_history))
-            if (all.any { it.localAvailability == LocalAvailability.Complete }) {
-                add(tab(TAB_DOWNLOADS, R.string.car_tab_downloads))
-            }
-            if (shelves.recentlyAdded.isNotEmpty()) add(tab(TAB_RECENT, R.string.car_tab_recent))
-            if (shelves.listenAgain.isNotEmpty()) add(tab(TAB_AGAIN, R.string.car_tab_again))
-            if (shelves.discover.isNotEmpty()) add(tab(TAB_DISCOVER, R.string.car_tab_discover))
-            // Manual output choice is retained for parked/browse use, but the quick path is the Car/Headset
-            // actions on the player. The real router already removes the phone speaker from this list.
-            add(tab(TAB_OUTPUT, R.string.car_tab_output))
-        }
-    }
-
-    private suspend fun seriesNodes(): List<MediaItem> = books()
-        .flatMap(Book::seriesMemberships)
-        .distinctBy { it.series.id }
-        .sortedBy { it.series.name.lowercase() }
-        .map { membership ->
-            browsableNode(remember("$SERIES_PREFIX${membership.series.id.value}"), membership.series.name)
-        }
-
-    private suspend fun booksForSeries(seriesId: String): List<MediaItem> {
-        val all = books()
-        val membership = all.asSequence()
-            .flatMap { it.seriesMemberships.asSequence() }
-            .firstOrNull { it.series.id.value == seriesId }
-            ?: return emptyList()
-        return booksInSeriesOrder(all, membership).map(::bookItem)
-    }
-
-    private suspend fun authorNodes(): List<MediaItem> = books()
-        .flatMap(Book::authors)
-        .distinctBy { it.id }
-        .sortedBy { it.name.lowercase() }
-        .map { author -> browsableNode(remember("$AUTHOR_PREFIX${author.id.value}"), author.name) }
-
-    private suspend fun booksForAuthor(authorId: String): List<MediaItem> = books()
-        .filter { book -> book.authors.any { it.id.value == authorId } }
-        .sortedBy { it.title.lowercase() }
-        .map(::bookItem)
-
-    /** The browse output list is a second safety boundary: even a fake/stale router cannot surface a speaker. */
-    private fun outputRows(): List<MediaItem> {
-        val outputs = audioOutputs.available().filterNot(AudioOutput::isSpeaker)
-        val chosen = audioOutputs.selected()
-        // **Automatic is listed even when nothing else is**, and a review is why. A projected car often
-        // exposes no separate audio bus, so the platform reports the built-in speaker and nothing more;
-        // filtering speakers then emptied the list and the early return took Automatic with it. A driver
-        // who had once chosen the speaker from the phone's own chooser was left with no row that could
-        // clear it — while `chooseOutput` supported exactly that. Handing routing back to Android is the
-        // one operation that must never be unreachable from here.
-        val automatic = browsableNode("$OUT_PREFIX$AUTOMATIC_OUTPUT", string(R.string.car_output_automatic))
-        if (outputs.isEmpty()) return listOf(automatic, noticeRow(string(R.string.car_output_none)))
-        return listOf(automatic) + outputs.map { output ->
+        val bases = serverBaseUrls()
+        return autoSeriesNodes(all).map { node ->
             browsableNode(
-                id = "$OUT_PREFIX${output.id}",
-                title = when {
-                    output.isActive -> string(R.string.car_output_playing_here, output.displayName)
-                    output.id == chosen -> string(R.string.car_output_chosen_unused, output.displayName)
-                    else -> output.displayName
-                },
+                id = remember("$SERIES_PREFIX${node.membership.series.id.value}"),
+                title = node.membership.series.name,
+                artworkUri = node.representativeCover?.let { book -> artwork.book(book, bases) },
             )
         }
     }
 
-    /** A stale speaker row from an old cached tree is refused rather than becoming a hidden back door. */
-    private fun chooseOutput(mediaId: String): List<MediaItem> {
-        val id = mediaId.removePrefix(OUT_PREFIX)
-        if (id == AUTOMATIC_OUTPUT) {
-            audioOutputs.select(null)
-            return listOf(noticeRow(string(R.string.car_output_automatic_now)))
-        }
-        val target = audioOutputs.available().firstOrNull { it.id == id && !it.isSpeaker }
-            ?: return listOf(noticeRow(string(R.string.car_output_none)))
-        audioOutputs.select(target.id)
-        return listOf(noticeRow(string(R.string.car_output_chosen, target.displayName)))
+    private suspend fun booksForSeries(seriesId: String): List<MediaItem> {
+        val all = books()
+        val node = autoSeriesNodes(all).firstOrNull { candidate -> candidate.membership.series.id.value == seriesId }
+            ?: return emptyList()
+        val bases = serverBaseUrls()
+        return node.books.map { book -> bookItem(book, bases) }
     }
 
-    private fun noticeRow(title: String): MediaItem = MediaItem.Builder()
-        .setMediaId(NOTICE_OUTPUT)
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(title)
-                .setIsBrowsable(false)
-                .setIsPlayable(false)
-                .build(),
-        )
-        .build()
+    /** LIB-002 — confirmed portrait when available, otherwise the representative cached-cover route. */
+    private suspend fun authorRows(): List<MediaItem> {
+        val all = books()
+        val bases = serverBaseUrls()
+        return autoAuthorNodes(all).map { node ->
+            browsableNode(
+                id = remember("$AUTHOR_PREFIX${node.author.id.value}"),
+                title = node.author.name,
+                artworkUri = artwork.author(node.author, node.representativeCover, bases),
+            )
+        }
+    }
+
+    private suspend fun booksForAuthor(authorId: String): List<MediaItem> {
+        val all = books()
+        val node = autoAuthorNodes(all).firstOrNull { candidate -> candidate.author.id.value == authorId }
+            ?: return emptyList()
+        val bases = serverBaseUrls()
+        return node.books.map { book -> bookItem(book, bases) }
+    }
+
+    /**
+     * AUTH-002 / AUTH-005 — Profiles is navigation plus a media-item command, never a playable fake book.
+     *
+     * Lock eligibility is point-read here rather than cached in #10's snapshot. The switch command repeats
+     * the authoritative check inside SwitchProfileUseCase, so a stale host can never turn presentation state
+     * into a lock bypass.
+     */
+    private suspend fun profileRows(): List<MediaItem> {
+        val saved = profiles.observeProfiles().first()
+        val servers = profiles.observeServers().first().associateBy(Server::id)
+        val active = profiles.activeProfileId()
+        return saved.map { profile ->
+            val isActive = profile.id == active
+            val canActivate = isActive || activation.mayActivate(profile.id)
+            profileItem(
+                profile = profile,
+                server = servers[profile.serverId],
+                isActive = isActive,
+                canActivate = canActivate,
+            )
+        }
+    }
+
+    private fun profileItem(profile: Profile, server: Server?, isActive: Boolean, canActivate: Boolean): MediaItem {
+        val status = when {
+            isActive -> string(R.string.car_profile_active)
+            !canActivate -> string(R.string.car_profile_locked)
+            profile.requiresReauthentication -> string(R.string.car_profile_sign_in)
+            else -> string(R.string.car_profile_available)
+        }
+        val identity = listOfNotNull(
+            profile.username.takeIf { username -> username.isNotBlank() },
+            server?.displayName?.takeIf { name -> name.isNotBlank() },
+            profile.role.name,
+            status,
+        ).joinToString(PART_SEPARATOR)
+
+        return MediaItem.Builder()
+            .setMediaId("$PROFILE_PREFIX${profile.id.value}")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(profile.displayName)
+                    .setSubtitle(identity)
+                    .setIsBrowsable(false)
+                    .setIsPlayable(false)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                    .apply {
+                        if (!isActive) setSupportedCommands(listOf(ACTION_SWITCH_PROFILE))
+                    }
+                    .build(),
+            )
+            .build()
+    }
 
     private suspend fun resumeRow(): List<MediaItem> {
         val book = lastPlayed() ?: return emptyList()
+        val bases = serverBaseUrls()
         val progress = book.progress
         return listOf(
             playable(
                 id = resumeId(book.id, progress?.position),
                 title = book.title,
                 subtitle = bookSubtitle(book),
-                extras = progress?.let { completionExtras(it.fractionComplete.toDouble()) },
+                artworkUri = artwork.book(book, bases),
+                extras = progress?.let(::completionExtras),
             ),
         )
     }
 
     suspend fun resumeItem(): MediaItem? = resumeRow().firstOrNull()
 
-    private suspend fun shelves(): HomeShelves = homeShelves().first()
-
-    private fun emptyNotice(): MediaItem = MediaItem.Builder()
-        .setMediaId(NOTICE_EMPTY)
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(string(R.string.car_empty_title))
-                .setSubtitle(string(R.string.car_empty_subtitle, string(R.string.car_app_name)))
-                .setIsBrowsable(false)
-                .setIsPlayable(false)
-                .build(),
-        )
-        .build()
-
-    suspend fun item(mediaId: String, now: NowPlaying?): MediaItem? = when {
+    suspend fun item(mediaId: String, @Suppress("UNUSED_PARAMETER") now: NowPlaying?): MediaItem? = when {
         mediaId == ROOT -> root()
-
         mediaId == RECENT_ROOT -> recentRoot()
-
-        mediaId.startsWith(TAB_PREFIX) ->
-            (children(ROOT, now) + children(TAB_LIBRARY, now)).firstOrNull { it.mediaId == mediaId }
-
-        mediaId.startsWith(SERIES_PREFIX) -> seriesNodes().firstOrNull { it.mediaId == mediaId }
-
-        mediaId.startsWith(AUTHOR_PREFIX) -> authorNodes().firstOrNull { it.mediaId == mediaId }
-
-        else -> resolve(mediaId)?.let { target -> books().firstOrNull { it.id == target.bookId }?.let(::bookItem) }
+        mediaId.startsWith(TAB_PREFIX) -> rootTabs().firstOrNull { item -> item.mediaId == mediaId }
+        mediaId.startsWith(SERIES_PREFIX) -> seriesRows().firstOrNull { item -> item.mediaId == mediaId }
+        mediaId.startsWith(AUTHOR_PREFIX) -> authorRows().firstOrNull { item -> item.mediaId == mediaId }
+        mediaId.startsWith(PROFILE_PREFIX) -> profileRows().firstOrNull { item -> item.mediaId == mediaId }
+        else -> resolve(mediaId)?.let { target ->
+            val book = books().firstOrNull { candidate -> candidate.id == target.bookId } ?: return@let null
+            bookItem(book, serverBaseUrls())
+        }
     }
 
-    /** Voice search includes series in addition to title, author and narrator. */
+    /** Voice search remains book-only and profile-scoped; PD-001 changes browse IA, not spoken-play semantics. */
     suspend fun search(query: String): List<MediaItem> {
         val needle = query.trim().lowercase()
-        if (needle.isEmpty()) return shelves().continueListening.map(::bookItem)
-        return books()
-            .filter { it.matches(needle) }
-            .sortedByDescending { it.progress?.updatedAt }
-            .map(::bookItem)
+        val matches = if (needle.isEmpty()) {
+            shelves().continueListening
+        } else {
+            books()
+                .filter { book -> book.matches(needle) }
+                .sortedWith(
+                    compareByDescending<Book> { book -> book.progress?.updatedAt }
+                        .thenBy { book -> book.title.lowercase() }
+                        .thenBy { book -> book.id.value },
+                )
+        }
+        val bases = serverBaseUrls()
+        return matches.map { book -> bookItem(book, bases) }
     }
 
     private fun Book.matches(needle: String): Boolean = title.lowercase().contains(needle) ||
-        authors.any { it.name.lowercase().contains(needle) } ||
-        narrators.any { it.lowercase().contains(needle) } ||
-        seriesMemberships.any { it.series.name.lowercase().contains(needle) }
+        authors.any { author -> author.name.lowercase().contains(needle) } ||
+        narrators.any { narrator -> narrator.lowercase().contains(needle) } ||
+        seriesMemberships.any { membership -> membership.series.name.lowercase().contains(needle) }
 
     suspend fun lastPlayed(): Book? {
         val profileId = profiles.activeProfileId() ?: return null
@@ -365,213 +282,25 @@ class AutoLibrary @Inject constructor(
         return library.observeAccessibleBooks(profileId).first()
     }
 
-    /**
-     * Resolves the few profile-bound parent counts that are not library-shape facts.
-     *
-     * The complete accessible-book set is never re-read here. [snapshot] already says which opaque book ids
-     * belong to the new profile, so Chapters/History can validate the current-or-remembered target and then
-     * read only their own narrow repositories. This keeps a profile switch exact without returning to the old
-     * one-full-library-read-per-parent fan-out.
-     */
+    private suspend fun shelves(): HomeShelves = homeShelves().first()
+
+    private suspend fun serverBaseUrls(): Map<ServerId, String> =
+        profiles.observeServers().first().associate { server -> server.id to server.baseUrl }
+
     internal suspend fun profileBoundaryCounts(
         snapshot: AutoBrowseSnapshot,
-        now: NowPlaying?,
+        @Suppress("UNUSED_PARAMETER") now: NowPlaying?,
         parentIds: Set<String>,
     ): Map<String, Int> {
-        val requested = parentIds intersect snapshot.deferredProfileCounts
-        if (requested.isEmpty()) return emptyMap()
-
+        if (RECENT_ROOT !in parentIds || RECENT_ROOT !in snapshot.deferredProfileCounts) return emptyMap()
         val profileId = snapshot.scope.profileId
         val rememberedId = profileId
             ?.let { id -> rememberedBooks.rememberedBook(id) }
             ?.takeIf(snapshot.accessibleBookIds::contains)
-        val targetId = now?.bookId
-            ?.takeIf(snapshot.accessibleBookIds::contains)
-            ?: if (now == null) rememberedId else null
-        val emptyTargetCount = if (now == null) 1 else 0
-
-        return buildMap {
-            if (RECENT_ROOT in requested) {
-                put(RECENT_ROOT, if (rememberedId == null) 0 else 1)
-            }
-            if (TAB_CHAPTERS in requested) {
-                val count = if (profileId == null || targetId == null) {
-                    emptyTargetCount
-                } else {
-                    1 + library.observeChapters(profileId, targetId).first().size
-                }
-                put(TAB_CHAPTERS, count)
-            }
-            if (TAB_HISTORY in requested) {
-                val count = if (profileId == null || targetId == null) {
-                    emptyTargetCount
-                } else {
-                    history.observe(targetId, limit = CAR_HISTORY_READ).first()
-                        .filter { entry -> entry.event.isUsefulInCarHistory }
-                        .distinctBy { entry -> entry.event to entry.returnTo.inWholeSeconds }
-                        .take(CAR_HISTORY_LIMIT)
-                        .size
-                }
-                put(TAB_HISTORY, count)
-            }
-        }
+        return mapOf(RECENT_ROOT to if (rememberedId == null) 0 else 1)
     }
 
-    private suspend fun bookFor(bookId: LibraryItemId?): Book? {
-        val target = bookId ?: lastPlayed()?.id ?: return null
-        return books().firstOrNull { it.id == target }
-    }
-
-    private suspend fun chaptersOf(now: NowPlaying?): List<MediaItem> {
-        // `bookFor(null)` falls back to the last-played book, so a missing book here means one of two very
-        // different things and conflating them would cross a profile boundary. **An id that did not
-        // resolve** is a book this profile was not granted, and must still show nothing at all (priority 4).
-        // **No id and no last-played book** is a genuinely empty state, and deserves a sentence: this is a
-        // listed row now rather than a root tab, and a blank screen in a car reads as a broken one.
-        val book = bookFor(now?.bookId)
-            ?: return if (now?.bookId == null) listOf(noticeRow(string(R.string.car_nothing_playing))) else emptyList()
-        val profileId = profiles.activeProfileId() ?: return emptyList()
-        val chapters = library.observeChapters(profileId, book.id).first()
-        val position = positionIn(book, now)
-        return listOf(bookProgressRow(book, chapters, position)) +
-            chapters.mapIndexed { index, chapter -> chapterRow(book.id, chapter, index, position) }
-    }
-
-    private fun positionIn(book: Book, now: NowPlaying?): Duration = when (book.id) {
-        now?.bookId -> now.position
-        else -> book.progress?.position ?: Duration.ZERO
-    }
-
-    private fun chapterRow(bookId: LibraryItemId, chapter: Chapter, index: Int, position: Duration): MediaItem {
-        val length = chapter.end - chapter.start
-        val elapsed = position - chapter.start
-        val fraction = when {
-            length <= Duration.ZERO -> null
-            position >= chapter.end -> FULLY_PLAYED
-            position > chapter.start -> elapsed / length
-            else -> null
-        }
-        return playable(
-            id = "$AT_PREFIX${bookId.value}/${chapter.start.inWholeMilliseconds}",
-            title = chapter.title.ifBlank { string(R.string.car_chapter_untitled, index + 1) },
-            subtitle = if (fraction != null && fraction < FULLY_PLAYED) {
-                string(R.string.car_chapter_elapsed, elapsed.asClock(), length.asClock())
-            } else {
-                length.asClock()
-            },
-            extras = completionExtras(fraction),
-        )
-    }
-
-    private fun bookProgressRow(book: Book, chapters: List<Chapter>, position: Duration): MediaItem {
-        val duration = book.progress?.duration?.takeIf { it > Duration.ZERO } ?: chapters.lastOrNull()?.end
-        val fraction = duration?.takeIf { it > Duration.ZERO }?.let { total -> position / total }
-        val index = chapters.indexOfLast { chapter -> position >= chapter.start }
-        val subtitle = buildList {
-            if (fraction != null) add(string(R.string.car_progress_fraction, (fraction * PERCENT).toInt()))
-            if (duration != null) add(string(R.string.car_progress_position, position.asClock(), duration.asClock()))
-            if (index >= 0 && chapters.isNotEmpty()) {
-                add(string(R.string.car_progress_chapter, index + 1, chapters.size))
-            }
-        }.joinToString(PART_SEPARATOR)
-        return playable(
-            id = "$AT_PREFIX${book.id.value}/${position.inWholeMilliseconds}",
-            title = book.title,
-            subtitle = subtitle.takeIf(String::isNotBlank),
-            extras = completionExtras(fraction),
-        )
-    }
-
-    private fun completionExtras(fraction: Double?): Bundle = Bundle().apply {
-        when {
-            fraction == null -> putInt(
-                MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
-                MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_NOT_PLAYED,
-            )
-
-            fraction >= FULLY_PLAYED -> putInt(
-                MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
-                MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_FULLY_PLAYED,
-            )
-
-            else -> {
-                putInt(
-                    MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
-                    MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_PARTIALLY_PLAYED,
-                )
-                putDouble(MediaConstants.EXTRAS_KEY_COMPLETION_PERCENTAGE, fraction)
-            }
-        }
-    }
-
-    /**
-     * History is navigation in the car, not an audit log. Sleep-timer and server-check bookkeeping are
-     * deliberately absent; meaningful position decisions and remote-device movement remain tappable.
-     */
-    private suspend fun historyOf(currentBookId: LibraryItemId?): List<MediaItem> {
-        // The same two cases kept apart as in `chaptersOf`, for the same reason.
-        val book = bookFor(currentBookId)
-            ?: return if (currentBookId ==
-                null
-            ) {
-                listOf(noticeRow(string(R.string.car_nothing_playing)))
-            } else {
-                emptyList()
-            }
-        val profileId = profiles.activeProfileId() ?: return emptyList()
-        val chapters = library.observeChapters(profileId, book.id).first()
-        // Read deeper than the row budget and cap afterwards. The DAO's limit is SQL, so it applies before
-        // this filter, and the events the car drops — Play, the sleep-timer set, the server checks — are the
-        // frequent ones. Fifteen rows of those left History empty while navigable seeks sat just below them.
-        return history.observe(book.id, limit = CAR_HISTORY_READ).first()
-            .filter { it.event.isUsefulInCarHistory }
-            .distinctBy { it.event to it.returnTo.inWholeSeconds }
-            .take(CAR_HISTORY_LIMIT)
-            .map { entry ->
-                val chapterIndex = chapters.indexOfLast { chapter -> entry.returnTo >= chapter.start }
-                val chapter = chapters.getOrNull(chapterIndex)
-                    ?.takeIf { entry.returnTo <= it.end || it.end <= it.start }
-                val title = if (chapter == null) {
-                    entry.returnTo.asClock()
-                } else {
-                    val name = chapter.title.ifBlank { string(R.string.car_chapter_untitled, chapterIndex + 1) }
-                    "$name$PART_SEPARATOR${(entry.returnTo - chapter.start).asClock()}"
-                }
-                playable(
-                    id = "$AT_PREFIX${book.id.value}/${entry.returnTo.inWholeMilliseconds}",
-                    title = title,
-                    subtitle = entry.event.carLabel(),
-                )
-            }
-    }
-
-    private val PlaybackEvent.isUsefulInCarHistory: Boolean
-        get() = when (this) {
-            PlaybackEvent.Play,
-            PlaybackEvent.SleepTimerStarted,
-            PlaybackEvent.SleepTimerExtended,
-            PlaybackEvent.SleepTimerExpired,
-            PlaybackEvent.SleepTimerRewind,
-            PlaybackEvent.ServerCheckAhead,
-            PlaybackEvent.ServerCheckCurrent,
-            PlaybackEvent.ServerCheckUnavailable,
-            -> false
-
-            // Listed rather than an `else`, so an event added to the enum has to be classified here
-            // instead of silently appearing in the car's history.
-            PlaybackEvent.Seek,
-            PlaybackEvent.Skip,
-            PlaybackEvent.Chapter,
-            PlaybackEvent.AutoRewind,
-            PlaybackEvent.Resume,
-            PlaybackEvent.Pause,
-            PlaybackEvent.RemoteProgress,
-            PlaybackEvent.RemoteFinished,
-            PlaybackEvent.ServerSession,
-            -> true
-        }
-
-    private fun bookItem(book: Book): MediaItem {
+    private fun bookItem(book: Book, bases: Map<ServerId, String>): MediaItem {
         val progress = book.progress
         val fraction = when {
             progress == null -> null
@@ -582,28 +311,51 @@ class AutoLibrary @Inject constructor(
             id = "$BOOK_PREFIX${book.id.value}",
             title = book.title,
             subtitle = bookSubtitle(book),
+            artworkUri = artwork.book(book, bases),
             extras = completionExtras(fraction),
         )
     }
 
     /** Author first, then the primary/first series and its server-provided sequence. */
     private fun bookSubtitle(book: Book): String? = buildList {
-        book.authors.joinToString { it.name }.takeIf(String::isNotBlank)?.let(::add)
+        book.authors.joinToString { author -> author.name }.takeIf(String::isNotBlank)?.let(::add)
         book.seriesMemberships
             .firstOrNull(SeriesMembership::isPrimary)
-            .let { it ?: book.seriesMemberships.firstOrNull() }
+            .let { membership -> membership ?: book.seriesMemberships.firstOrNull() }
             ?.let { membership ->
-                // `SeriesSequence.Absent.raw` is empty, and "Foundation #" is worse than "Foundation".
                 val sequence = membership.sequence.raw.takeIf(String::isNotBlank)
                 add(if (sequence == null) membership.series.name else "${membership.series.name} #$sequence")
             }
     }.joinToString(PART_SEPARATOR).takeIf(String::isNotBlank)
 
+    private fun completionExtras(progress: MediaProgress): Bundle =
+        completionExtras(if (progress.isFinished) FULLY_PLAYED else progress.fractionComplete.toDouble())
+
+    private fun completionExtras(fraction: Double?): Bundle = Bundle().apply {
+        when {
+            fraction == null -> putInt(
+                MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
+                MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_NOT_PLAYED,
+            )
+            fraction >= FULLY_PLAYED -> putInt(
+                MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
+                MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_FULLY_PLAYED,
+            )
+            else -> {
+                putInt(
+                    MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
+                    MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_PARTIALLY_PLAYED,
+                )
+                putDouble(MediaConstants.EXTRAS_KEY_COMPLETION_PERCENTAGE, fraction)
+            }
+        }
+    }
+
     private fun playable(
         id: String,
         title: String,
         subtitle: String? = null,
-        artworkUri: String? = null,
+        artworkUri: Uri? = null,
         extras: Bundle? = null,
     ): MediaItem = MediaItem.Builder()
         .setMediaId(id)
@@ -612,7 +364,7 @@ class AutoLibrary @Inject constructor(
                 .setTitle(title)
                 .setSubtitle(subtitle)
                 .setArtist(subtitle)
-                .setArtworkUri(artworkUri?.let(Uri::parse))
+                .setArtworkUri(artworkUri)
                 .setIsBrowsable(false)
                 .setIsPlayable(true)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
@@ -621,42 +373,8 @@ class AutoLibrary @Inject constructor(
         )
         .build()
 
-    private fun Duration.asClock(): String {
-        val total = inWholeSeconds.coerceAtLeast(0)
-        val hours = total / SECONDS_PER_HOUR
-        val minutes = (total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE
-        val seconds = total % SECONDS_PER_MINUTE
-        return if (hours > 0) {
-            "%d:%02d:%02d".format(hours, minutes, seconds)
-        } else {
-            "%d:%02d".format(minutes, seconds)
-        }
-    }
-
-    @Suppress("CyclomaticComplexMethod")
-    private fun PlaybackEvent.carLabel(): String = string(
-        when (this) {
-            PlaybackEvent.Seek -> R.string.car_event_seek
-            PlaybackEvent.Skip -> R.string.car_event_skip
-            PlaybackEvent.Chapter -> R.string.car_event_chapter
-            PlaybackEvent.AutoRewind -> R.string.car_event_auto_rewind
-            PlaybackEvent.Resume -> R.string.car_event_resume
-            PlaybackEvent.Play -> R.string.car_event_play
-            PlaybackEvent.Pause -> R.string.car_event_pause
-            PlaybackEvent.SleepTimerStarted -> R.string.car_event_timer_started
-            PlaybackEvent.SleepTimerExtended -> R.string.car_event_timer_extended
-            PlaybackEvent.SleepTimerExpired -> R.string.car_event_timer_expired
-            PlaybackEvent.SleepTimerRewind -> R.string.car_event_timer_rewind
-            PlaybackEvent.RemoteProgress -> R.string.car_event_remote_progress
-            PlaybackEvent.RemoteFinished -> R.string.car_event_remote_finished
-            PlaybackEvent.ServerSession -> R.string.car_event_server_session
-            PlaybackEvent.ServerCheckAhead -> R.string.car_event_check_ahead
-            PlaybackEvent.ServerCheckCurrent -> R.string.car_event_check_current
-            PlaybackEvent.ServerCheckUnavailable -> R.string.car_event_check_unavailable
-        },
-    )
-
     private fun string(@StringRes id: Int, vararg formatArgs: Any): String = context.getString(id, *formatArgs)
+
     private fun tab(id: String, @StringRes titleRes: Int): MediaItem = browsableNode(id, string(titleRes))
 
     companion object {
@@ -666,16 +384,20 @@ class AutoLibrary @Inject constructor(
             position?.let { "$AT_PREFIX${bookId.value}/${it.inWholeMilliseconds}" }
                 ?: "$BOOK_PREFIX${bookId.value}"
 
+        internal fun profileIdOf(mediaId: String?): ProfileId? = mediaId
+            ?.takeIf { id -> id.startsWith(PROFILE_PREFIX) }
+            ?.removePrefix(PROFILE_PREFIX)
+            ?.takeIf(String::isNotBlank)
+            ?.let(::ProfileId)
+
         fun resolve(mediaId: String): Target? = when {
             mediaId.startsWith(BOOK_PREFIX) -> Target(LibraryItemId(mediaId.removePrefix(BOOK_PREFIX)), null)
-
             mediaId.startsWith(AT_PREFIX) -> {
                 val rest = mediaId.removePrefix(AT_PREFIX)
                 val cut = rest.lastIndexOf('/')
                 val millis = rest.substring(cut + 1).toLongOrNull()
                 if (cut <= 0 || millis == null) null else Target(LibraryItemId(rest.take(cut)), millis.milliseconds)
             }
-
             else -> null
         }
 
@@ -684,6 +406,7 @@ class AutoLibrary @Inject constructor(
             mediaId.startsWith(AT_PREFIX) -> "at"
             mediaId.startsWith(TAB_PREFIX) -> "tab"
             mediaId == ROOT -> "root"
+            mediaId.startsWith(PROFILE_PREFIX) -> "profile"
             mediaId.startsWith(OUT_PREFIX) -> "out"
             mediaId.startsWith(SERIES_PREFIX) -> "series"
             mediaId.startsWith(AUTHOR_PREFIX) -> "author"
@@ -697,21 +420,27 @@ class AutoLibrary @Inject constructor(
 
         private const val TAB_PREFIX = "tab/"
         const val TAB_CONTINUE = "${TAB_PREFIX}continue"
+        const val TAB_SERIES = "${TAB_PREFIX}series"
+        const val TAB_AUTHORS = "${TAB_PREFIX}authors"
+        const val TAB_PROFILES = "${TAB_PREFIX}profiles"
+
+        // Retained only as stale protocol identities so #10 can evict a cached pre-PD-001 tree.
         const val TAB_CHAPTERS = "${TAB_PREFIX}chapters"
         const val TAB_HISTORY = "${TAB_PREFIX}history"
         const val TAB_LIBRARY = "${TAB_PREFIX}library"
-        const val TAB_SERIES = "${TAB_PREFIX}series"
-        const val TAB_AUTHORS = "${TAB_PREFIX}authors"
         const val TAB_DOWNLOADS = "${TAB_PREFIX}downloads"
         const val TAB_RECENT = "${TAB_PREFIX}recent"
         const val TAB_DISCOVER = "${TAB_PREFIX}discover"
         const val TAB_AGAIN = "${TAB_PREFIX}again"
         const val TAB_OUTPUT = "${TAB_PREFIX}output"
 
-        const val OUT_PREFIX = "out/"
-        const val AUTOMATIC_OUTPUT = "automatic"
         internal const val SERIES_PREFIX = "series/"
         internal const val AUTHOR_PREFIX = "author/"
+        internal const val PROFILE_PREFIX = "profile/"
+        internal const val ACTION_SWITCH_PROFILE = "com.example.shelfplayer.action.SWITCH_PROFILE"
+
+        const val OUT_PREFIX = "out/"
+        const val AUTOMATIC_OUTPUT = "automatic"
 
         private const val NOTICE_PREFIX = "notice/"
         const val NOTICE_EMPTY = "${NOTICE_PREFIX}empty"
@@ -720,26 +449,25 @@ class AutoLibrary @Inject constructor(
         private const val BOOK_PREFIX = "book/"
         private const val AT_PREFIX = "at/"
 
-        private const val CAR_HISTORY_LIMIT = 15
-
-        /** Rows read so that [CAR_HISTORY_LIMIT] survivable ones can exist below the frequent noise. */
-        private const val CAR_HISTORY_READ = CAR_HISTORY_LIMIT * 8
-        private const val SECONDS_PER_HOUR = 3600L
-        private const val SECONDS_PER_MINUTE = 60L
         private const val PART_SEPARATOR = " · "
         private const val FULLY_PLAYED = 1.0
-        private const val PERCENT = 100
     }
 }
 
 data class NowPlaying(val bookId: LibraryItemId, val position: Duration)
 
 @OptIn(UnstableApi::class)
-private fun browsableNode(id: String, title: String, extras: Bundle? = null): MediaItem = MediaItem.Builder()
+private fun browsableNode(
+    id: String,
+    title: String,
+    artworkUri: Uri? = null,
+    extras: Bundle? = null,
+): MediaItem = MediaItem.Builder()
     .setMediaId(id)
     .setMediaMetadata(
         MediaMetadata.Builder()
             .setTitle(title)
+            .setArtworkUri(artworkUri)
             .setIsBrowsable(true)
             .setIsPlayable(false)
             .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
