@@ -12,7 +12,7 @@ import com.example.shelfplayer.core.model.library.Book
  * The installed app owns that Android boundary and returns only local content URIs. Missing/cold artwork is
  * represented by null so the host can draw its ordinary placeholder.
  */
-fun interface AutoArtwork {
+interface AutoArtwork {
     fun book(book: Book, serverBaseUrls: Map<ServerId, String>): Uri?
 
     /**
