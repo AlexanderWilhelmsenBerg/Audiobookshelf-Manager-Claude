@@ -129,6 +129,7 @@ class AutoChapterProgressTest {
             context = ApplicationProvider.getApplicationContext(),
             profiles = profiles,
             library = library,
+            downloads = FakeAutoDownloads,
             rememberedBooks = FakeRememberedBooks(
                 books.value.firstOrNull { book -> book.progress?.isFinished == false }?.id,
                 PROFILE,
