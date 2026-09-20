@@ -113,7 +113,8 @@ The separation is:
 - the root is exactly **Continue → Series → Authors → Profiles**; the old Library/History/Chapters/output subtree is not an alternate car path;
 - Series presentation derives recency from the active profile's existing `Book.progress.updatedAt` evidence, while books inside a Series retain LIB-003 sequence order; no second playback-history/Series-recency owner exists;
 - browse invalidation is profile-bound and snapshot-derived: one accessible-book emission produces one immutable exposed-shape snapshot, ordinary changes notify only parents whose ordered opaque child membership changed, and profile-generation changes evict all profile-scoped plus emitted dynamic parents (BW-AUTO-01);
-- browse artwork crosses the host-process boundary only through opaque local `content://` capabilities backed by BookWave's existing authenticated image/cache stack; a capability is profile-bound and an unavailable image degrades to the host placeholder;
+- browse artwork crosses the host-process boundary only through opaque local `content://` capabilities; each browse request reads the download manifest once so durable offline covers are preferred, then the bridge may reuse BookWave's existing image cache with network loading disabled. A capability is profile-bound and an unavailable image degrades to the host placeholder;
+- Continue, Series, Authors and their book children request artwork-first host grid presentation, while Profiles requests a text-first list; the automotive host still owns the exact background/card chrome, with BookWave contributing its shipped teal platform accent where supported;
 - Profiles uses the existing `SwitchProfileUseCase` for lock/flush/pause/context ownership and `RestoreProfilePlaybackUseCase` for the incoming paused remembered-book restore. The car surface never implements a separate switch transaction or credential-entry flow;
 - Android Auto uses the same playback/resume owner as every other Play surface.
 
