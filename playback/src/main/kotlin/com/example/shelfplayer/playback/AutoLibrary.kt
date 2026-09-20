@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.library.rememberedBook
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
+import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
@@ -47,6 +48,7 @@ class AutoLibrary @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val profiles: ProfileRepository,
     private val library: LibraryRepository,
+    private val downloads: DownloadRepository,
     private val rememberedBooks: RememberedBookRepository,
     private val homeShelves: ObserveHomeShelvesUseCase,
     private val activation: ProfileActivationGuard,
@@ -108,18 +110,20 @@ class AutoLibrary @Inject constructor(
     )
 
     private suspend fun continueRows(): List<MediaItem> {
-        val bases = serverBaseUrls()
-        return shelves().continueListening.map { book -> bookItem(book, bases) }
+        val sources = artworkSources()
+        return shelves().continueListening.map { book -> bookItem(book, sources) }
     }
 
     private suspend fun seriesRows(): List<MediaItem> {
         val all = books()
-        val bases = serverBaseUrls()
+        val sources = artworkSources()
         return autoSeriesNodes(all).map { node ->
             browsableNode(
                 id = remember("$SERIES_PREFIX${node.membership.series.id.value}"),
                 title = node.membership.series.name,
-                artworkUri = node.representativeCover?.let { book -> artwork.book(book, bases) },
+                artworkUri = node.representativeCover?.let { book ->
+                    artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book))
+                },
                 extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
             )
         }
@@ -129,19 +133,24 @@ class AutoLibrary @Inject constructor(
         val all = books()
         val node = autoSeriesNodes(all).firstOrNull { candidate -> candidate.membership.series.id.value == seriesId }
             ?: return emptyList()
-        val bases = serverBaseUrls()
-        return node.books.map { book -> bookItem(book, bases) }
+        val sources = artworkSources()
+        return node.books.map { book -> bookItem(book, sources) }
     }
 
     /** LIB-002 — confirmed portrait when available, otherwise the representative cached-cover route. */
     private suspend fun authorRows(): List<MediaItem> {
         val all = books()
-        val bases = serverBaseUrls()
+        val sources = artworkSources()
         return autoAuthorNodes(all).map { node ->
             browsableNode(
                 id = remember("$AUTHOR_PREFIX${node.author.id.value}"),
                 title = node.author.name,
-                artworkUri = artwork.author(node.author, node.representativeCover, bases),
+                artworkUri = artwork.author(
+                    node.author,
+                    node.representativeCover,
+                    sources.serverBaseUrls,
+                    node.representativeCover?.let(sources::offlineCover),
+                ),
                 extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
             )
         }
@@ -211,14 +220,14 @@ class AutoLibrary @Inject constructor(
 
     private suspend fun resumeRow(): List<MediaItem> {
         val book = lastPlayed() ?: return emptyList()
-        val bases = serverBaseUrls()
+        val sources = artworkSources()
         val progress = book.progress
         return listOf(
             playable(
                 id = resumeId(book.id, progress?.position),
                 title = book.title,
                 subtitle = bookSubtitle(book),
-                artworkUri = artwork.book(book, bases),
+                artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
                 extras = progress?.let(::completionExtras),
             ),
         )
@@ -241,7 +250,7 @@ class AutoLibrary @Inject constructor(
 
         else -> resolve(mediaId)?.let { target ->
             val book = books().firstOrNull { candidate -> candidate.id == target.bookId } ?: return@let null
-            bookItem(book, serverBaseUrls())
+            bookItem(book, artworkSources())
         }
     }
 
@@ -259,8 +268,8 @@ class AutoLibrary @Inject constructor(
                         .thenBy { book -> book.id.value },
                 )
         }
-        val bases = serverBaseUrls()
-        return matches.map { book -> bookItem(book, bases) }
+        val sources = artworkSources()
+        return matches.map { book -> bookItem(book, sources) }
     }
 
     private fun Book.matches(needle: String): Boolean = title.lowercase().contains(needle) ||
@@ -281,8 +290,15 @@ class AutoLibrary @Inject constructor(
 
     private suspend fun shelves(): HomeShelves = homeShelves().first()
 
-    private suspend fun serverBaseUrls(): Map<ServerId, String> =
-        profiles.observeServers().first().associate { server -> server.id to server.baseUrl }
+    private suspend fun artworkSources(): ArtworkSources {
+        val bases = profiles.observeServers().first().associate { server -> server.id to server.baseUrl }
+        val covers = downloads.observeAll().first()
+            .mapNotNull { offline ->
+                offline.coverUri?.let { uri -> (offline.serverId to offline.itemId) to uri }
+            }
+            .toMap()
+        return ArtworkSources(serverBaseUrls = bases, offlineCovers = covers)
+    }
 
     internal suspend fun profileBoundaryCounts(
         snapshot: AutoBrowseSnapshot,
@@ -297,7 +313,7 @@ class AutoLibrary @Inject constructor(
         return mapOf(RECENT_ROOT to if (rememberedId == null) 0 else 1)
     }
 
-    private suspend fun bookItem(book: Book, bases: Map<ServerId, String>): MediaItem {
+    private suspend fun bookItem(book: Book, sources: ArtworkSources): MediaItem {
         val progress = book.progress
         val fraction = when {
             progress == null -> null
@@ -308,7 +324,7 @@ class AutoLibrary @Inject constructor(
             id = "$BOOK_PREFIX${book.id.value}",
             title = book.title,
             subtitle = bookSubtitle(book),
-            artworkUri = artwork.book(book, bases),
+            artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = completionExtras(fraction),
         )
     }
@@ -390,6 +406,13 @@ class AutoLibrary @Inject constructor(
     private fun contentStyle(browsable: Int? = null, playable: Int? = null): Bundle = Bundle().apply {
         browsable?.let { value -> putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, value) }
         playable?.let { value -> putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, value) }
+    }
+
+    private data class ArtworkSources(
+        val serverBaseUrls: Map<ServerId, String>,
+        val offlineCovers: Map<Pair<ServerId, LibraryItemId>, String>,
+    ) {
+        fun offlineCover(book: Book): String? = offlineCovers[book.serverId to book.id]
     }
 
     companion object {
