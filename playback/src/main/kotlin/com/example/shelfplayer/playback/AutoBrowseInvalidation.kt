@@ -114,15 +114,15 @@ internal class AutoBrowseInvalidationTracker {
  * #10's invariant remains intact: there is one [accessibleBooks] subscription for the active profile
  * generation, and every library-backed parent decision in one emitted snapshot comes from that same immutable
  * [List]. #65 adds the saved-profile presentation facts to the same snapshot rather than creating a second
- * invalidation loop for the Profiles destination.
+ * invalidation loop for the Profiles destination. Lock eligibility is point-read when rows/actions are served so
+ * the security decision cannot be made stale by a cached presentation token.
  */
 internal class AutoBrowseSnapshotSource(
     private val activeProfiles: Flow<ProfileId?>,
     private val savedProfiles: Flow<List<Profile>>,
     private val savedServers: Flow<List<Server>>,
-    private val protectedProfiles: Flow<Set<ProfileId>>,
     private val accessibleBooks: (ProfileId) -> Flow<List<Book>>,
-    private val build: (BrowseProfileScope, List<Book>, List<Profile>, List<Server>, Set<ProfileId>) -> AutoBrowseSnapshot,
+    private val build: (BrowseProfileScope, List<Book>, List<Profile>, List<Server>) -> AutoBrowseSnapshot,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     fun snapshots(): Flow<AutoBrowseSnapshot> = activeProfiles
@@ -135,8 +135,8 @@ internal class AutoBrowseSnapshotSource(
             val books = scope.profileId
                 ?.let(accessibleBooks)
                 ?: flowOf(emptyList())
-            combine(books, savedProfiles, savedServers, protectedProfiles) { all, profiles, servers, protected ->
-                build(scope, all, profiles, servers, protected)
+            combine(books, savedProfiles, savedServers) { all, profiles, servers ->
+                build(scope, all, profiles, servers)
             }
         }
         .distinctUntilChanged()
@@ -177,7 +177,6 @@ internal object AutoBrowseSnapshotBuilder {
         books: List<Book>,
         profiles: List<Profile>,
         servers: List<Server>,
-        protectedProfiles: Set<ProfileId>,
     ): AutoBrowseSnapshot {
         val shelves = homeShelvesOf(books)
         val series = autoSeriesNodes(books)
@@ -199,7 +198,6 @@ internal object AutoBrowseSnapshotBuilder {
                     profile = profile,
                     serverName = serverNames[profile.serverId],
                     isActive = profile.id == scope.profileId,
-                    isProtected = profile.id in protectedProfiles,
                 )
             },
         )
@@ -231,7 +229,6 @@ internal object AutoBrowseSnapshotBuilder {
         profile: Profile,
         serverName: String?,
         isActive: Boolean,
-        isProtected: Boolean,
     ): String = listOf(
         profile.id.value,
         profile.displayName.hashCode(),
@@ -240,6 +237,5 @@ internal object AutoBrowseSnapshotBuilder {
         profile.role.name,
         profile.requiresReauthentication,
         isActive,
-        isProtected,
     ).joinToString(separator = ":")
 }
