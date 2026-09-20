@@ -97,11 +97,7 @@ class SleepSchedulePolicyTest {
         assertEquals(instant("2026-10-25T01:45:00Z"), first.end)
     }
 
-    private fun schedule(
-        enabled: Boolean = true,
-        start: String,
-        end: String,
-    ) = SleepTimerScheduleSettings(
+    private fun schedule(enabled: Boolean = true, start: String, end: String) = SleepTimerScheduleSettings(
         enabled = enabled,
         start = LocalTime.parse(start),
         end = LocalTime.parse(end),
