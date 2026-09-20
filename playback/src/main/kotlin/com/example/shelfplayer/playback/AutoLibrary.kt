@@ -300,7 +300,7 @@ class AutoLibrary @Inject constructor(
         return mapOf(RECENT_ROOT to if (rememberedId == null) 0 else 1)
     }
 
-    private fun bookItem(book: Book, bases: Map<ServerId, String>): MediaItem {
+    private suspend fun bookItem(book: Book, bases: Map<ServerId, String>): MediaItem {
         val progress = book.progress
         val fraction = when {
             progress == null -> null
