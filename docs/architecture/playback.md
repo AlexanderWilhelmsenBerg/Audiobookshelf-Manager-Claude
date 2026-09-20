@@ -104,17 +104,20 @@ A profile switch must not allow:
 
 ## Android Auto
 
-PR #78 is the current committed Android Auto/routing finalization and carries ADR-0029 on its branch until merge.
+ADR-0029 remains the routing/media-control architecture, while PD-001 is the current browse-home product decision.
 
-The intended long-term separation is:
+The separation is:
 
 - Android Auto owns host rendering/player chrome;
 - BookWave owns media-session semantics, browse hierarchy, metadata and allowed custom actions;
-- the stable car root/product decisions are not reopened without device/platform evidence;
+- the root is exactly **Continue → Series → Authors → Profiles**; the old Library/History/Chapters/output subtree is not an alternate car path;
+- Series presentation derives recency from the active profile's existing `Book.progress.updatedAt` evidence, while books inside a Series retain LIB-003 sequence order; no second playback-history/Series-recency owner exists;
 - browse invalidation is profile-bound and snapshot-derived: one accessible-book emission produces one immutable exposed-shape snapshot, ordinary changes notify only parents whose ordered opaque child membership changed, and profile-generation changes evict all profile-scoped plus emitted dynamic parents (BW-AUTO-01);
+- browse artwork crosses the host-process boundary only through opaque local `content://` capabilities backed by BookWave's existing authenticated image/cache stack; a capability is profile-bound and an unavailable image degrades to the host placeholder;
+- Profiles uses the existing `SwitchProfileUseCase` for lock/flush/pause/context ownership and `RestoreProfilePlaybackUseCase` for the incoming paused remembered-book restore. The car surface never implements a separate switch transaction or credential-entry flow;
 - Android Auto uses the same playback/resume owner as every other Play surface.
 
-A JVM/Robolectric test can assert browse-tree construction and metadata. It cannot prove how a real head unit renders action slots, completion metadata, icons or presentation.
+JVM/Robolectric tests can assert browse-tree construction, ordering, metadata, URI shape and delegation. They cannot prove how a real head unit renders artwork/action buttons or whether a projected host visibly redraws after `notifyChildrenChanged`; those remain DHU/physical-car acceptance.
 
 ## Audio routing
 
