@@ -644,10 +644,7 @@ internal class FakeSleepTimers : SleepTimerRepository {
         return AppResult.Success(Unit)
     }
 
-    override suspend fun setScheduleWindow(
-        start: java.time.LocalTime,
-        end: java.time.LocalTime,
-    ): AppResult<Unit> {
+    override suspend fun setScheduleWindow(start: java.time.LocalTime, end: java.time.LocalTime): AppResult<Unit> {
         settings.value = settings.value.copy(schedule = settings.value.schedule.copy(start = start, end = end))
         return AppResult.Success(Unit)
     }
