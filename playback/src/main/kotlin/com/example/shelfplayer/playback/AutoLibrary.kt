@@ -504,13 +504,13 @@ private fun browsableNode(id: String, title: String, artworkUri: Uri? = null, ex
     MediaItem.Builder()
         .setMediaId(id)
         .setMediaMetadata(
-        MediaMetadata.Builder()
-            .setTitle(title)
-            .setArtworkUri(artworkUri)
-            .setIsBrowsable(true)
-            .setIsPlayable(false)
-            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
-            .apply { extras?.let(::setExtras) }
-            .build(),
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtworkUri(artworkUri)
+                .setIsBrowsable(true)
+                .setIsPlayable(false)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+                .apply { extras?.let(::setExtras) }
+                .build(),
         )
         .build()
