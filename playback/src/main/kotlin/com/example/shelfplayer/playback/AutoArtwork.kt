@@ -20,9 +20,7 @@ interface AutoArtwork {
      * Implementations must never put credentials or reusable secrets in the returned URI.
      */
     suspend fun author(
-        author: Author,
-        representativeCover: Book?,
-        serverBaseUrls: Map<ServerId, String>,
+        author: Author, representativeCover: Book?, serverBaseUrls: Map<ServerId, String>,
         representativeOfflineCoverUri: String? = null,
     ): Uri?
 
