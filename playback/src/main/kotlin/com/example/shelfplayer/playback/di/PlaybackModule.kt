@@ -74,7 +74,6 @@ internal interface PlaybackModule {
     @Singleton
     fun bindsLocalZoneProvider(impl: SystemLocalZoneProvider): LocalZoneProvider
 
-
     companion object {
         @Provides
         @Singleton
