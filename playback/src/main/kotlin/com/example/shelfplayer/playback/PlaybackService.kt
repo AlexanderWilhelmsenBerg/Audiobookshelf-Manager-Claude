@@ -1309,11 +1309,18 @@ class PlaybackService : MediaLibraryService() {
         return held
     }
 
-    private fun logHeldHeadset(hold: String, phase: CarLifecycleContinuityGate.Phase) {
+    private fun logHeldHeadset(
+        hold: String,
+        phase: CarLifecycleContinuityGate.Phase? = null,
+    ) {
         logger.info(
             LogCategory.Playback,
-            "Car lifecycle continuity secured the headset",
-            LogField.Public("phase", phase.name),
+            if (phase == null) {
+                "A car connected and the book was held in the headset"
+            } else {
+                "Car lifecycle continuity secured the headset"
+            },
+            LogField.Public("phase", phase?.name ?: "route-hold"),
             LogField.Public("kind", hold.substringBefore(':')),
         )
     }
