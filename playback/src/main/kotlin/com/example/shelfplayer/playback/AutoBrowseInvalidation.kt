@@ -21,10 +21,7 @@ import kotlinx.coroutines.flow.scan
  * The generation changes only when active profile identity changes. Keeping it beside the opaque profile id
  * turns profile switching into an explicit hard boundary even when two profiles expose identical child counts.
  */
-internal data class BrowseProfileScope(
-    val profileId: ProfileId?,
-    val generation: Long,
-)
+internal data class BrowseProfileScope(val profileId: ProfileId?, val generation: Long)
 
 /**
  * Immutable Android Auto browse shape derived from one accessible-book emission.
@@ -44,15 +41,9 @@ internal data class AutoBrowseSnapshot(
 )
 
 /** One Media3 parent refresh. A null count is resolved without another complete library read. */
-internal data class BrowseInvalidation(
-    val parentId: String,
-    val childCount: Int?,
-)
+internal data class BrowseInvalidation(val parentId: String, val childCount: Int?)
 
-internal data class BrowseInvalidationPlan(
-    val profileBoundary: Boolean,
-    val notifications: List<BrowseInvalidation>,
-) {
+internal data class BrowseInvalidationPlan(val profileBoundary: Boolean, val notifications: List<BrowseInvalidation>) {
     companion object {
         val None = BrowseInvalidationPlan(profileBoundary = false, notifications = emptyList())
     }
@@ -67,10 +58,7 @@ internal data class BrowseInvalidationPlan(
 internal class AutoBrowseInvalidationTracker {
     private var previous: AutoBrowseSnapshot? = null
 
-    fun next(
-        current: AutoBrowseSnapshot,
-        emittedDynamicParents: Set<String>,
-    ): BrowseInvalidationPlan {
+    fun next(current: AutoBrowseSnapshot, emittedDynamicParents: Set<String>): BrowseInvalidationPlan {
         val before = previous
         previous = current
         if (before == null) return BrowseInvalidationPlan.None
@@ -129,9 +117,8 @@ internal class AutoBrowseSnapshotSource(
     private val build: (BrowseProfileScope, List<Book>) -> AutoBrowseSnapshot,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun snapshots(): Flow<AutoBrowseSnapshot> =
-        activeProfiles
-            .distinctUntilChanged()
+    fun snapshots(): Flow<AutoBrowseSnapshot> = activeProfiles
+        .distinctUntilChanged()
             .scan(BrowseProfileScope(profileId = null, generation = 0L)) { previous, profileId ->
                 BrowseProfileScope(profileId = profileId, generation = previous.generation + 1)
             }
@@ -175,10 +162,7 @@ internal object CurrentAutoBrowseSnapshotBuilder {
         AutoLibrary.TAB_HISTORY,
     )
 
-    fun build(
-        scope: BrowseProfileScope,
-        books: List<Book>,
-    ): AutoBrowseSnapshot {
+    fun build(scope: BrowseProfileScope, books: List<Book>): AutoBrowseSnapshot {
         val shelves = homeShelvesOf(books)
         val series = books
             .flatMap(Book::seriesMemberships)
