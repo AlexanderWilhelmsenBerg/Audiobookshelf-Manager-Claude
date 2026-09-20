@@ -99,12 +99,11 @@ internal object AudioOutputRoles {
         carConnected: Boolean,
         carRequested: Boolean,
         hasHeadsetRoute: Boolean,
-    ): Boolean =
-        carConnected &&
-            carRequested &&
-            selectedId == null &&
-            !hasHeadsetRoute &&
-            (current == null || current.isSpeaker)
+    ): Boolean = carConnected &&
+        carRequested &&
+        selectedId == null &&
+        !hasHeadsetRoute &&
+        (current == null || current.isSpeaker)
 
     /** What Android Auto/notification should publish right now. */
     fun buttons(
