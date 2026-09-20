@@ -31,7 +31,7 @@ class CarLifecycleContinuityIntegrationTest {
     @Test
     fun `arrival route flap still reaches one exact-headset Play authorization`() = runBlocking {
         val owner = playingOwner()
-        val gate = CarLifecycleContinuityGate()
+        val gate = CarArrivalResumeGate()
         val focus = gate.onAudioFocusLoss(
             at = 10.seconds,
             heardRoute = owner.heardRoute,
@@ -40,7 +40,7 @@ class CarLifecycleContinuityIntegrationTest {
             explicitSelectionSequence = 0,
             carConnected = false,
         )
-        assertEquals(CarLifecycleContinuityGate.Status.Armed, focus.status)
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
 
         // Android Auto begins settling and temporarily omits the A2DP endpoint before the first controller bind.
         owner.onOutputsChanged(emptyList(), isPlaying = false)
@@ -58,7 +58,7 @@ class CarLifecycleContinuityIntegrationTest {
             delay(10)
             outputs.value = listOf(buds)
         }
-        val held = CarLifecycleRouteRecovery(200.milliseconds).secure(
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
             selectedId = selected,
@@ -74,9 +74,10 @@ class CarLifecycleContinuityIntegrationTest {
     }
 
     @Test
-    fun `departure focus loss plus final disconnect survives route omission and authorizes same headset`() = runBlocking {
+    fun `departure focus loss plus final disconnect survives route omission and authorizes same headset`() =
+        runBlocking {
         val owner = playingOwner()
-        val gate = CarLifecycleContinuityGate()
+        val gate = CarArrivalResumeGate()
         gate.observePlayingHeadset(
             heardRoute = owner.heardRoute,
             headsetId = owner.headsetForCar(listOf(buds)),
@@ -93,7 +94,7 @@ class CarLifecycleContinuityIntegrationTest {
             explicitSelectionSequence = 0,
             carConnected = true,
         )
-        assertEquals(CarLifecycleContinuityGate.Phase.Departure, focus.phase)
+        assertEquals(CarArrivalResumeGate.Phase.Departure, focus.phase)
 
         owner.onOutputsChanged(emptyList(), isPlaying = false)
         val target = requireNotNull(
@@ -110,7 +111,7 @@ class CarLifecycleContinuityIntegrationTest {
             delay(10)
             outputs.value = listOf(buds)
         }
-        val held = CarLifecycleRouteRecovery(200.milliseconds).secure(
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
             selectedId = selected,
