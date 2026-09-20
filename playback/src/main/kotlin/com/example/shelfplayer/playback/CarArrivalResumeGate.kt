@@ -112,8 +112,12 @@ internal class CarLifecycleContinuityGate(
         carConnected: Boolean,
     ) {
         if (!carConnected) {
+            // The final 1→0 disconnect may have happened before Media3 reports focus loss. In that ordering
+            // onCarDeparture has already copied the stable identity into departureMarker. Route/device
+            // emissions after disconnect must retire the connected-session snapshot without erasing that
+            // bounded lifecycle marker; a newer arrival, deliberate pause/book boundary, or the focus pairing
+            // itself will consume/cancel it.
             connectedPlayback = null
-            departureMarker = null
             return
         }
         identityOf(
