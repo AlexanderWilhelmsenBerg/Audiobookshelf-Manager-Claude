@@ -267,10 +267,14 @@ class PlaybackService : MediaLibraryService() {
     private val routeOwnership = RouteHeardOwnership()
 
     /**
-     * Issue #36 — only the measured audio-focus-loss + first-car-arrival transition may resume playback.
+     * Issue #36 — one owner correlates measured audio-focus loss with car arrival or final departure.
+     *
+     * The route recovery can tolerate Android's transient device-list omission but can target only the exact
+     * headset captured by this policy. continuityPlayAwaiting is diagnostic only; it never authorizes Play.
      */
-    private val carArrivalResume = CarArrivalResumeGate()
-    private val carArrivalRouteRecovery = CarArrivalRouteRecovery()
+    private val carContinuity = CarLifecycleContinuityGate()
+    private val carContinuityRouteRecovery = CarLifecycleRouteRecovery()
+    private var continuityPlayAwaiting: CarLifecycleContinuityGate.Target? = null
 
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
@@ -842,7 +846,23 @@ class PlaybackService : MediaLibraryService() {
                 recovery.onPlaying()
                 // ROUTE-002 — real playback is the gate for creating route-heard evidence.
                 syncExplicitOutputIntent()
-                routeOwnership.onPlaybackObserved(audioOutputs.outputs.value)
+                val outputs = audioOutputs.outputs.value
+                routeOwnership.onPlaybackObserved(outputs)
+                observeCarContinuityHeadset(outputs)
+                continuityPlayAwaiting?.let { target ->
+                    val sameContext =
+                        target.generation == routeOwnership.currentGeneration &&
+                            target.explicitSelectionSequence == currentExplicitSelectionSequence()
+                    if (sameContext) {
+                        logger.info(
+                            LogCategory.Playback,
+                            "Car lifecycle continuity playback became active",
+                            LogField.Public("phase", target.phase.name),
+                            LogField.Public("kind", target.outputId.substringBefore(':')),
+                        )
+                    }
+                    continuityPlayAwaiting = null
+                }
                 // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
                 // longer a description of where this device is. See `ResumeBaseline.onLocalMove`.
                 resumeBaseline.onLocalMove()
@@ -906,8 +926,9 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("reason", playWhenReadyReason(reason)),
             )
             if (playWhenReady) {
-                // A newer Play makes any earlier car-arrival candidate stale, regardless of who resumed it.
-                carArrivalResume.cancel()
+                // Any newer Play wins over pending automatic continuity. A successful continuity Play has
+                // already consumed its one-shot target before it reaches this listener.
+                carContinuity.cancelPending()
                 return
             }
             // `REMOTE` cannot occur while this listener is on the local ExoPlayer (R-76); it stays in the
@@ -918,21 +939,28 @@ class PlaybackService : MediaLibraryService() {
             autoRewind.onPaused(wasUserInitiated = userInitiated)
 
             if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
-                // Issue #36 — the physical drive measured audioFocusLoss, not becomingNoisy. Capture it only
-                // while #11 still owns this generation in a connected headset.
+                // Issue #36 — physical drives measured audioFocusLoss on both car entry and car departure.
+                // The gate still requires a matching controller lifecycle boundary; focus loss alone can
+                // never resume playback.
                 syncExplicitOutputIntent()
                 val outputs = audioOutputs.outputs.value
-                val headset = routeOwnership.headsetForCar(outputs)
-                carArrivalResume.onAudioFocusLoss(
+                val decision = carContinuity.onAudioFocusLoss(
                     at = clock.elapsed(),
                     heardRoute = routeOwnership.heardRoute,
-                    headsetId = headset,
-                    explicitSelectionSequence = audioOutputs.explicitSelection.value?.sequence ?: 0L,
+                    headsetId = routeOwnership.headsetForCar(outputs),
+                    currentGeneration = routeOwnership.currentGeneration,
+                    explicitSelectionSequence = currentExplicitSelectionSequence(),
+                    carConnected = carConnections.isConnected(),
                 )
+                logCarContinuityDecision("audio-focus-loss", decision)
+                decision.target
+                    ?.takeIf { decision.status == CarLifecycleContinuityGate.Status.Ready }
+                    ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
             } else {
-                // A deliberate pause, noisy-route pause, end-of-item stop, or unknown cause is not the
-                // measured Android Auto arrival failure and must never be generalized into a resume.
-                carArrivalResume.cancel()
+                // Deliberate pause, becomingNoisy, end-of-item and unknown causes never inherit the measured
+                // focus-loss policy. They also invalidate a stable car-session continuity target.
+                carContinuity.cancelAll()
+                continuityPlayAwaiting = null
             }
         }
 
@@ -949,8 +977,9 @@ class PlaybackService : MediaLibraryService() {
             if (mediaItem != null) metrics.onItemPrepared()
             // PRODUCT_SPEC PLAY-002 — route evidence belongs only to this loaded book generation.
             routeOwnership.onBookChanged(mediaItem != null)
-            // Issue #36 — a pending focus loss belongs to the same generation and dies with it.
-            carArrivalResume.cancel()
+            // Issue #36 — all continuity evidence is generation-bound and dies with the loaded book.
+            carContinuity.cancelAll()
+            continuityPlayAwaiting = null
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
@@ -1111,10 +1140,13 @@ class PlaybackService : MediaLibraryService() {
             launch {
                 combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, _) ->
                     syncExplicitOutputIntent()
+                    val isPlaying = player?.isPlaying == true
                     if ((player?.mediaItemCount ?: 0) == 0) {
                         routeOwnership.onQueueEmptied()
+                        carContinuity.cancelAll()
                     } else {
-                        routeOwnership.onOutputsChanged(outputs, isPlaying = player?.isPlaying == true)
+                        routeOwnership.onOutputsChanged(outputs, isPlaying = isPlaying)
+                        if (isPlaying) observeCarContinuityHeadset(outputs)
                     }
                     republishOutputButtons()
                 }
@@ -1139,6 +1171,26 @@ class PlaybackService : MediaLibraryService() {
             outputs = audioOutputs.outputs.value,
             isPlaying = player?.isPlaying == true,
             selectionSequence = selection.sequence,
+        )
+    }
+
+    private fun currentExplicitSelectionSequence(): Long =
+        audioOutputs.explicitSelection.value?.sequence ?: 0L
+
+    /**
+     * Refreshes #36's car-session continuity target only from positive route evidence while audio is playing.
+     *
+     * A transient missing device intentionally supplies no negative evidence here: the route owner may retire
+     * its live record, while the continuity owner retains the last positively proven target until newer
+     * listener/book/playback intent makes it ineligible.
+     */
+    private fun observeCarContinuityHeadset(outputs: List<AudioOutput>) {
+        carContinuity.observePlayingHeadset(
+            heardRoute = routeOwnership.heardRoute,
+            headsetId = routeOwnership.headsetForCar(outputs),
+            currentGeneration = routeOwnership.currentGeneration,
+            explicitSelectionSequence = currentExplicitSelectionSequence(),
+            carConnected = carConnections.isConnected(),
         )
     }
 
@@ -1207,7 +1259,7 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun holdHeadsetAgainstCar(): String? {
         if ((player?.mediaItemCount ?: 0) == 0) {
             routeOwnership.onQueueEmptied()
-            carArrivalResume.cancel()
+            carContinuity.cancelAll()
             return null
         }
         syncExplicitOutputIntent()
