@@ -1,5 +1,7 @@
 name: Pull request
 
+run-name: "PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
+
 # Forgejo-native BookWave pull-request gate.
 #
 # Keep the repository's GitHub quality contract while adapting execution to the
@@ -24,6 +26,10 @@ name: Pull request
 on:
   workflow_dispatch:
     inputs:
+      pr_number:
+        description: 'Forgejo PR number being verified'
+        required: true
+        type: string
       force_rerun:
         description: 'Force --rerun-tasks even when the diff does not affect the build/classpath'
         type: boolean
@@ -69,6 +75,28 @@ jobs:
               ;;
             workflow_dispatch)
               base_ref="main"
+
+              requested_pr="${{ inputs.pr_number }}"
+              if ! [[ "$requested_pr" =~ ^[1-9][0-9]*$ ]]; then
+                echo "::error::PR number must be a positive integer: $requested_pr"
+                exit 1
+              fi
+
+              pr_head="$(git ls-remote "$FORGEJO_SERVER_URL/$FORGEJO_REPOSITORY.git" "refs/pull/$requested_pr/head" | awk 'NR == 1 { print $1 }')"
+              if [ -z "$pr_head" ]; then
+                echo "::error::Forgejo PR #$requested_pr does not expose a readable head ref."
+                exit 1
+              fi
+
+              checked_out_head="$(git rev-parse HEAD)"
+              if [ "$pr_head" != "$checked_out_head" ]; then
+                echo "::error::PR #$requested_pr does not match the selected branch/ref."
+                echo "pr_head=$pr_head"
+                echo "checked_out_head=$checked_out_head"
+                exit 1
+              fi
+
+              echo "Validated PR #$requested_pr -> $FORGEJO_REF_NAME @ ${checked_out_head:0:8}."
               ;;
             *)
               echo "::error::Unsupported event for PR verification: $FORGEJO_EVENT_NAME"
