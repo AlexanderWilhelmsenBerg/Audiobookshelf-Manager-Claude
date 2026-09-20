@@ -20,6 +20,10 @@ import com.google.common.util.concurrent.ListenableFuture
  *
  * Explicit movement invalidates before forwarding. That ordering is what stops a delayed REST answer from
  * undoing a seek, Stop, book replacement or Pause that happened after the Play request began.
+ *
+ * [onPlayWhenReadyRequest] exposes standard Play/Pause intent before delegate state changes. #36 uses that
+ * boundary because a duplicate Pause while focus already has the player paused may produce no listener
+ * callback, yet it is still newer listener intent and must cancel automatic continuity.
  */
 @OptIn(UnstableApi::class)
 internal class ResumeFreshnessPlayer(
@@ -27,9 +31,14 @@ internal class ResumeFreshnessPlayer(
     private val preparePlay: () -> ListenableFuture<*>,
     private val consumeFreshStart: () -> Boolean,
     private val invalidate: (ResumeInvalidation) -> Unit,
+    private val onPlayWhenReadyRequest: (Boolean) -> Unit,
 ) : ForwardingSimpleBasePlayer(delegate) {
 
     public override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        // This is the controller intent boundary, not an observed ExoPlayer state transition. In particular,
+        // a second Pause while focus has already made playWhenReady=false still reaches here, which lets #36
+        // invalidate stale car-continuity evidence even though the delegate may emit no listener callback.
+        onPlayWhenReadyRequest(playWhenReady)
         if (!playWhenReady) {
             invalidate(ResumeInvalidation.Pause)
             return super.handleSetPlayWhenReady(false)
