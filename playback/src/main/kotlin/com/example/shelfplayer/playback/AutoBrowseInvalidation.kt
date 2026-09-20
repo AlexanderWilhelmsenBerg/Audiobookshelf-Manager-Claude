@@ -1,13 +1,10 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.core.model.library.Author
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.library.Book
-import com.example.shelfplayer.core.model.library.LocalAvailability
-import com.example.shelfplayer.core.model.library.SeriesMembership
-import com.example.shelfplayer.domain.library.HomeShelves
-import com.example.shelfplayer.domain.library.booksInSeriesOrder
 import com.example.shelfplayer.domain.library.homeShelvesOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -32,7 +29,7 @@ internal data class BrowseProfileScope(val profileId: ProfileId?, val generation
  *
  * [childrenByParent] deliberately stores opaque ids rather than titles or other private media metadata. Order
  * is retained because reordering the same children is still an exposed host change. The current tree is built
- * by [CurrentAutoBrowseSnapshotBuilder]; the comparison engine does not know what "Library", "Downloads" or
+ * by [AutoBrowseSnapshotBuilder]; the comparison engine does not know what "Library", "Downloads" or
  * any other destination means, so issue #65 can replace the adapter without replacing invalidation policy.
  */
 internal data class AutoBrowseSnapshot(
