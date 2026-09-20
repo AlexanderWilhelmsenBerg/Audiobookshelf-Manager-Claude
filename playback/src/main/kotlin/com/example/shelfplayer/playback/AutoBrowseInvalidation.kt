@@ -2,11 +2,11 @@ package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
-import Author
+import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
-import SeriesMembership
-import HomeShelves
+import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.library.booksInSeriesOrder
 import com.example.shelfplayer.domain.library.homeShelvesOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
