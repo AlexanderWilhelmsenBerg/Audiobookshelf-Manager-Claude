@@ -55,27 +55,16 @@ class AutoLibrary @Inject constructor(
     fun root(): MediaItem = browsableNode(
         id = ROOT,
         title = string(R.string.car_app_name),
-        extras = Bundle().apply {
-            putInt(
-                MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
-                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_GRID_ITEM,
-            )
-            putInt(
-                MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
-                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            )
-        },
+        extras = contentStyle(
+            browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_GRID_ITEM,
+            playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+        ),
     )
 
     fun recentRoot(): MediaItem = browsableNode(
         id = RECENT_ROOT,
         title = string(R.string.car_tab_continue),
-        extras = Bundle().apply {
-            putInt(
-                MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
-                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            )
-        },
+        extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
     )
 
     private val emittedNodes = ConcurrentHashMap.newKeySet<String>()
@@ -131,6 +120,7 @@ class AutoLibrary @Inject constructor(
                 id = remember("$SERIES_PREFIX${node.membership.series.id.value}"),
                 title = node.membership.series.name,
                 artworkUri = node.representativeCover?.let { book -> artwork.book(book, bases) },
+                extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
             )
         }
     }
@@ -152,6 +142,7 @@ class AutoLibrary @Inject constructor(
                 id = remember("$AUTHOR_PREFIX${node.author.id.value}"),
                 title = node.author.name,
                 artworkUri = artwork.author(node.author, node.representativeCover, bases),
+                extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
             )
         }
     }
@@ -237,11 +228,17 @@ class AutoLibrary @Inject constructor(
 
     suspend fun item(mediaId: String, @Suppress("UNUSED_PARAMETER") now: NowPlaying?): MediaItem? = when {
         mediaId == ROOT -> root()
+
         mediaId == RECENT_ROOT -> recentRoot()
+
         mediaId.startsWith(TAB_PREFIX) -> rootTabs().firstOrNull { item -> item.mediaId == mediaId }
+
         mediaId.startsWith(SERIES_PREFIX) -> seriesRows().firstOrNull { item -> item.mediaId == mediaId }
+
         mediaId.startsWith(AUTHOR_PREFIX) -> authorRows().firstOrNull { item -> item.mediaId == mediaId }
+
         mediaId.startsWith(PROFILE_PREFIX) -> profileRows().firstOrNull { item -> item.mediaId == mediaId }
+
         else -> resolve(mediaId)?.let { target ->
             val book = books().firstOrNull { candidate -> candidate.id == target.bookId } ?: return@let null
             bookItem(book, serverBaseUrls())
@@ -337,10 +334,12 @@ class AutoLibrary @Inject constructor(
                 MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
                 MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_NOT_PLAYED,
             )
+
             fraction >= FULLY_PLAYED -> putInt(
                 MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
                 MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_FULLY_PLAYED,
             )
+
             else -> {
                 putInt(
                     MediaConstants.EXTRAS_KEY_COMPLETION_STATUS,
@@ -375,7 +374,23 @@ class AutoLibrary @Inject constructor(
 
     private fun string(@StringRes id: Int, vararg formatArgs: Any): String = context.getString(id, *formatArgs)
 
-    private fun tab(id: String, @StringRes titleRes: Int): MediaItem = browsableNode(id, string(titleRes))
+    private fun tab(id: String, @StringRes titleRes: Int): MediaItem {
+        val extras = when (id) {
+            TAB_CONTINUE -> contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM)
+            TAB_SERIES, TAB_AUTHORS -> contentStyle(browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM)
+            TAB_PROFILES -> contentStyle(
+                browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+                playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+            )
+            else -> null
+        }
+        return browsableNode(id, string(titleRes), extras = extras)
+    }
+
+    private fun contentStyle(browsable: Int? = null, playable: Int? = null): Bundle = Bundle().apply {
+        browsable?.let { value -> putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, value) }
+        playable?.let { value -> putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, value) }
+    }
 
     companion object {
         data class Target(val bookId: LibraryItemId, val startAt: Duration?)
@@ -392,12 +407,14 @@ class AutoLibrary @Inject constructor(
 
         fun resolve(mediaId: String): Target? = when {
             mediaId.startsWith(BOOK_PREFIX) -> Target(LibraryItemId(mediaId.removePrefix(BOOK_PREFIX)), null)
+
             mediaId.startsWith(AT_PREFIX) -> {
                 val rest = mediaId.removePrefix(AT_PREFIX)
                 val cut = rest.lastIndexOf('/')
                 val millis = rest.substring(cut + 1).toLongOrNull()
                 if (cut <= 0 || millis == null) null else Target(LibraryItemId(rest.take(cut)), millis.milliseconds)
             }
+
             else -> null
         }
 
@@ -457,12 +474,8 @@ class AutoLibrary @Inject constructor(
 data class NowPlaying(val bookId: LibraryItemId, val position: Duration)
 
 @OptIn(UnstableApi::class)
-private fun browsableNode(
-    id: String,
-    title: String,
-    artworkUri: Uri? = null,
-    extras: Bundle? = null,
-): MediaItem = MediaItem.Builder()
+private fun browsableNode(id: String, title: String, artworkUri: Uri? = null, extras: Bundle? = null): MediaItem =
+    MediaItem.Builder()
     .setMediaId(id)
     .setMediaMetadata(
         MediaMetadata.Builder()
