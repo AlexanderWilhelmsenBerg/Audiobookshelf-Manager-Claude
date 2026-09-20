@@ -27,25 +27,25 @@ internal object FakeAutoDownloads : DownloadRepository {
         itemId: LibraryItemId,
         profileId: ProfileId,
         files: List<OfflineFile>,
-    ): AppResult<OfflineBook> = error("Not used by Android Auto browse tests")
+    ): AppResult<OfflineBook> =
+        error("Not used by Android Auto browse tests")
 
     override suspend fun updateFile(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        file: OfflineFile,
-    ): AppResult<Unit> = error("Not used by Android Auto browse tests")
+        serverId: ServerId, itemId: LibraryItemId, file: OfflineFile,
+    ): AppResult<Unit> =
+        error("Not used by Android Auto browse tests")
 
     override suspend fun markComplete(
         serverId: ServerId,
         itemId: LibraryItemId,
         coverUri: String?,
-    ): AppResult<OfflineBook> = error("Not used by Android Auto browse tests")
+    ): AppResult<OfflineBook> =
+        error("Not used by Android Auto browse tests")
 
     override suspend fun markFailed(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        summary: String,
-    ): AppResult<Unit> = error("Not used by Android Auto browse tests")
+        serverId: ServerId, itemId: LibraryItemId, summary: String,
+    ): AppResult<Unit> =
+        error("Not used by Android Auto browse tests")
 
     override suspend fun markPaused(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> =
         error("Not used by Android Auto browse tests")
@@ -58,16 +58,15 @@ internal object FakeAutoDownloads : DownloadRepository {
         itemId: LibraryItemId,
         profileId: ProfileId,
         isPinned: Boolean,
-    ): AppResult<Unit> = error("Not used by Android Auto browse tests")
+    ): AppResult<Unit> =
+        error("Not used by Android Auto browse tests")
 
     override suspend fun release(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        profileId: ProfileId,
-    ): AppResult<Boolean> = error("Not used by Android Auto browse tests")
-
-    override suspend fun unreferenced(): AppResult<List<OfflineBook>> =
+        serverId: ServerId, itemId: LibraryItemId, profileId: ProfileId,
+    ): AppResult<Boolean> =
         error("Not used by Android Auto browse tests")
+
+    override suspend fun unreferenced(): AppResult<List<OfflineBook>> = error("Not used by Android Auto browse tests")
 
     override suspend fun forget(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> =
         error("Not used by Android Auto browse tests")
