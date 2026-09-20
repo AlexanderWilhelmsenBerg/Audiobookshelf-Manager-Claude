@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaConstants
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.model.AppResult
@@ -48,6 +49,7 @@ import kotlin.time.Duration.Companion.minutes
 /** PD-001 / PLAY-001 — the stable, artwork-first Android Auto browse tree. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
+@UnstableApi
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AutoBrowseTreeTest {
 
@@ -143,7 +145,7 @@ class AutoBrowseTreeTest {
         assertEquals("Demo listener", row.mediaMetadata.title)
         assertFalse(row.mediaMetadata.isPlayable == true)
         assertFalse(row.mediaMetadata.isBrowsable == true)
-        assertTrue(row.mediaMetadata.subtitle.toString().contains("Active profile"))
+        assertTrue(row.mediaMetadata.subtitle?.toString().orEmpty().contains("Active profile"))
     }
 
     @Test
@@ -320,9 +322,7 @@ class AutoBrowseTreeTest {
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
     }
 
-    private class StubLibrary(
-        private val books: MutableStateFlow<List<Book>>,
-    ) : LibraryRepository {
+    private class StubLibrary(private val books: MutableStateFlow<List<Book>>) : LibraryRepository {
         override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = flowOf(emptyList())
 
         override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> = flowOf(null)
