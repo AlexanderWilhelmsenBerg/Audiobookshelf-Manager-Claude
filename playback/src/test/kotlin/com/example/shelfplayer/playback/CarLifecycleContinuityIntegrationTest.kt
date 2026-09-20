@@ -101,7 +101,6 @@ class CarLifecycleContinuityIntegrationTest {
                 departedAt = 22.seconds,
                 currentGeneration = owner.currentGeneration,
                 explicitSelectionSequence = 0,
-                playbackActive = false,
             ).target,
         )
 
