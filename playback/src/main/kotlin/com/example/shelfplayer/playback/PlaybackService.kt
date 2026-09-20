@@ -39,6 +39,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
@@ -55,6 +56,8 @@ import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
 import com.example.shelfplayer.domain.usecase.NextInSeriesUseCase
+import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
+import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -94,7 +97,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Android Auto and Wear reach a [MediaLibraryService] through `onGetLibraryRoot`, which the default
  * implementation rejects. Wave 5 answers it: [AutoLibrary] builds four stable root destinations —
- * Continue, Series, Authors, Library — and [LibraryCallback] serves them. A car also needs the app to
+ * Continue, Series, Authors, Profiles — and [LibraryCallback] serves them. A car also needs the app to
  * *declare* itself, which is a manifest `meta-data` entry pointing at `automotive_app_desc.xml`; without
  * it the app is invisible in the dashboard no matter how good its tree is, which is exactly what a device
  * run found.
@@ -137,6 +140,15 @@ class PlaybackService : MediaLibraryService() {
 
     @Inject
     internal lateinit var auto: AutoLibrary
+
+
+    /** PD-001 / PRODUCT_SPEC 6.5 — the same switch transaction the phone profile switcher delegates to. */
+    @Inject
+    internal lateinit var switchProfile: SwitchProfileUseCase
+
+    /** PRODUCT_SPEC 6.5 step 6 — incoming remembered book is armed paused after a successful switch. */
+    @Inject
+    internal lateinit var restoreProfilePlayback: RestoreProfilePlaybackUseCase
 
     /**
      * PRODUCT_SPEC ROUTE-002 / AUTH-005 — whether the active profile is locked.
@@ -297,6 +309,7 @@ class PlaybackService : MediaLibraryService() {
         // the raw ExoPlayer so internal atomic operations cannot recursively enter the external Play gate.
         session = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
             .setBitmapLoader(players.bitmapLoader())
+            .setCommandButtonsForMediaItems(listOf(profileSwitchButton()))
             // PRODUCT_SPEC PLAY-001 — tapping the notification opens the app. Without this the media
             // notification has no `contentIntent` at all, so a tap does nothing: a listener who reaches for
             // the notification to see where they are gets no response and no explanation.
@@ -1478,6 +1491,12 @@ class PlaybackService : MediaLibraryService() {
      * action as a grey square with no explanation, and a driver cannot ask it why; one fewer button is a
      * clearer statement than a dead one.
      */
+    /** Media3 item command shown beside inactive profile rows where the host supports browse actions. */
+    private fun profileSwitchButton(): CommandButton = CommandButton.Builder(CommandButton.ICON_ARTIST)
+        .setDisplayName(getString(R.string.car_profile_use))
+        .setSessionCommand(SessionCommand(AutoLibrary.ACTION_SWITCH_PROFILE, Bundle.EMPTY))
+        .build()
+
     private fun outputCommandButtons(): List<CommandButton> = buildList {
         val state = outputButtons
         if (state.showCar) {
@@ -2217,6 +2236,7 @@ class PlaybackService : MediaLibraryService() {
                             }
                         }
                         .add(SessionCommand(NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT, Bundle.EMPTY))
+                        .add(SessionCommand(AutoLibrary.ACTION_SWITCH_PROFILE, Bundle.EMPTY))
                         .build()
 
                 ControllerAccess.PlaybackOnly -> {
@@ -2352,6 +2372,44 @@ class PlaybackService : MediaLibraryService() {
          * guard remains defense in depth: bookmark/output/sleep-timer actions should never become an escape
          * hatch around the same controller trust boundary that protects browse resolution.
          */
+        /**
+         * PD-001 / AUTH-005 — switch the profile named by a media-item command.
+         *
+         * The command carries only the opaque media id Media3 supplied for the selected row. The domain use
+         * case remains the lock/flush/pause/context owner; the car never receives a credential-entry surface.
+         */
+        private suspend fun switchProfileFromCar(args: Bundle): SessionResult {
+            val profileId = AutoLibrary.profileIdOf(args.getString(MediaConstants.EXTRA_KEY_MEDIA_ID))
+                ?: return SessionResult(
+                    SessionError(SessionError.ERROR_BAD_VALUE, getString(R.string.car_profile_unavailable)),
+                )
+
+            return when (val result = switchProfile(profileId)) {
+                is AppResult.Success -> {
+                    if (result.value == SessionStatus.Active) {
+                        // The correctness-critical flush/switch above is awaited. Step 6 remains a courtesy,
+                        // deliberately outside the 500 ms switch budget just like the phone switcher.
+                        scope.launch { restoreProfilePlayback(profileId) }
+                    }
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                }
+
+                is AppResult.Failure -> {
+                    val message = if (result.error is AppError.Security) {
+                        getString(R.string.car_profile_unlock_phone)
+                    } else {
+                        getString(R.string.car_profile_switch_failed)
+                    }
+                    val code = if (result.error is AppError.Security) {
+                        SessionError.ERROR_PERMISSION_DENIED
+                    } else {
+                        SessionError.ERROR_UNKNOWN
+                    }
+                    SessionResult(SessionError(code, message))
+                }
+            }
+        }
+
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -2383,6 +2441,8 @@ class PlaybackService : MediaLibraryService() {
                     AudioOutputRoles
                         .nextHeadset(audioOutputs.outputs.value, audioOutputs.selectedId.value)
                         ?.let(audioOutputs::select)
+
+                AutoLibrary.ACTION_SWITCH_PROFILE -> return future { switchProfileFromCar(args) }
 
                 else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
