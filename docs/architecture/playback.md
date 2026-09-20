@@ -111,7 +111,7 @@ The intended long-term separation is:
 - Android Auto owns host rendering/player chrome;
 - BookWave owns media-session semantics, browse hierarchy, metadata and allowed custom actions;
 - the stable car root/product decisions are not reopened without device/platform evidence;
-- browse invalidation remains profile-safe and will later become shape-derived/selective (BW-AUTO-01);
+- browse invalidation is profile-bound and snapshot-derived: one accessible-book emission produces one immutable exposed-shape snapshot, ordinary changes notify only parents whose ordered opaque child membership changed, and profile-generation changes evict all profile-scoped plus emitted dynamic parents (BW-AUTO-01);
 - Android Auto uses the same playback/resume owner as every other Play surface.
 
 A JVM/Robolectric test can assert browse-tree construction and metadata. It cannot prove how a real head unit renders action slots, completion metadata, icons or presentation.
