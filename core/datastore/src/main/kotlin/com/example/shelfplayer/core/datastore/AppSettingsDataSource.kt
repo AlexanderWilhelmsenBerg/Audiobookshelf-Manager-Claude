@@ -18,6 +18,7 @@ import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
+import com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.StartupMode
 import com.example.shelfplayer.core.model.settings.AccentScheme
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import java.time.Instant
+import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -357,6 +359,18 @@ class AppSettingsDataSource @Inject constructor(
             rewindOnStop = stored.sleepTimerRewindSeconds.takeIf { it > 0 }?.seconds
                 ?.coerceIn(SleepTimerSettings.RewindOnStopRange)
                 ?: Duration.ZERO,
+            schedule = SleepTimerScheduleSettings(
+                enabled = stored.sleepScheduleEnabled,
+                start = stored.sleepScheduleStartMinutePlusOne.toScheduleTime(
+                    fallback = SleepTimerScheduleSettings.Default.start,
+                ),
+                end = stored.sleepScheduleEndMinutePlusOne.toScheduleTime(
+                    fallback = SleepTimerScheduleSettings.Default.end,
+                ),
+                suppressedOccurrence = stored.sleepScheduleSuppressedOccurrence.takeIf(String::isNotBlank),
+                replayRequiredOccurrence =
+                stored.sleepScheduleReplayRequiredOccurrence.takeIf(String::isNotBlank),
+            ),
         )
     }
 
@@ -387,6 +401,43 @@ class AppSettingsDataSource @Inject constructor(
     suspend fun setSleepTimerShakeToRestart(enabled: Boolean) {
         dataStore.updateData { current -> current.toBuilder().setSleepTimerShakeToRestart(enabled).build() }
     }
+
+    /** BW-SLEEP-01 — enable/disable automatic eligibility without changing the configured window. */
+    suspend fun setSleepScheduleEnabled(enabled: Boolean) {
+        dataStore.updateData { current -> current.toBuilder().setSleepScheduleEnabled(enabled).build() }
+    }
+
+    /** BW-SLEEP-01 — update both civil boundaries atomically so observers never see a half-edited window. */
+    suspend fun setSleepScheduleWindow(start: LocalTime, end: LocalTime) {
+        dataStore.updateData { current ->
+            current.toBuilder()
+                .setSleepScheduleStartMinutePlusOne(start.toScheduleStoredMinute())
+                .setSleepScheduleEndMinutePlusOne(end.toScheduleStoredMinute())
+                .build()
+        }
+    }
+
+    /**
+     * BW-SLEEP-01 — persist only schedule policy memory, never the running timer/countdown.
+     *
+     * Both markers are written together so a cancellation cannot race an expiry marker and leave an
+     * impossible state after process recreation.
+     */
+    suspend fun setSleepScheduleRuntimeState(suppressedOccurrence: String?, replayRequiredOccurrence: String?) {
+        dataStore.updateData { current ->
+            current.toBuilder()
+                .setSleepScheduleSuppressedOccurrence(suppressedOccurrence.orEmpty())
+                .setSleepScheduleReplayRequiredOccurrence(replayRequiredOccurrence.orEmpty())
+                .build()
+        }
+    }
+
+    private fun Int.toScheduleTime(fallback: LocalTime): LocalTime {
+        if (this !in 1..MINUTES_PER_DAY) return fallback
+        return LocalTime.ofSecondOfDay((this - 1L) * SECONDS_PER_MINUTE)
+    }
+
+    private fun LocalTime.toScheduleStoredMinute(): Int = hour * MINUTES_PER_HOUR + minute + 1
 
     /**
      * PRODUCT_SPEC PLAY-006 / PLAY-007 / PLAY-009 — the playback controls.
@@ -700,6 +751,9 @@ class AppSettingsDataSource @Inject constructor(
     suspend fun current(): AppSettings = dataStore.updateData { it }
 
     private companion object {
+        const val MINUTES_PER_HOUR = 60
+        const val MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR
+        const val SECONDS_PER_MINUTE = 60L
 
         /** The speed's storage unit. One place, so the write and the read cannot disagree. */
         const val HUNDREDTHS = 100f

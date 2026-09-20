@@ -504,6 +504,12 @@
 
     <!-- PRODUCT_SPEC PLAY-008 / SET-002 — the local history. -->
     <string name="sleep_timer_history">Recent timers</string>
+    <!-- BW-SLEEP-01 — the nightly eligibility window reuses the default timer length above. -->
+    <string name="sleep_schedule_title">Automatic nightly sleep timer</string>
+    <string name="sleep_schedule_summary">While playback is active in this window, start the default sleep timer. An automatic timer still running at the window end is cancelled without pausing playback.</string>
+    <string name="sleep_schedule_start">Window starts</string>
+    <string name="sleep_schedule_end">Window ends</string>
+    <string name="sleep_schedule_empty_window">Start and end are equal, so the automatic window is empty.</string>
     <!-- %1$s is a date and time; %2$s is the mode, such as "30 min". -->
     <string name="sleep_timer_history_started">%1$s · %2$s</string>
     <string name="sleep_timer_outcome_expired">Ran down and paused the book</string>

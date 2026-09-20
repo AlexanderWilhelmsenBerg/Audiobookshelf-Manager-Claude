@@ -432,9 +432,18 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 **Acceptance criteria**
 - Timer options: 5, 10, 15, 30, 45, 60, 90 minutes; end of chapter; custom.
 - Optional fade-out occurs over 5–30 seconds.
-- Timer survives activity recreation and displays remaining time in notification and player.
-- A notification action extends the timer by the configured amount.
+- Timer survives activity recreation and displays remaining time in the full player and media notification.
+- The full player's ordinary Sleep action is replaced in place by the active remaining time; both states open the same sleep-timer interaction.
+- The active remaining timer is projected from the playback-owned timer into both expanded and compact media-notification layouts.
+- A notification action extends the same timer by the configured amount.
 - Optional shake-to-extend requires explicit opt-in and must not run motion sensing continuously when no timer is active.
+- An optional local-time schedule defines **eligibility**, not a timer deadline: playback starting inside the window, or already-active playback crossing its start, requests the ordinary configured default timer from the same owner.
+- The schedule end cancels a still-running **automatic** timer without pausing playback. A manual timer is independent of the schedule end.
+- Example: with a 22:00–07:00 schedule and a 15-minute default, playback beginning at 06:46 starts the ordinary 15-minute timer, but the automatic timer is cancelled at 07:00 and playback continues.
+- Manual timer creation retains the ordinary timer's precedence. Manually cancelling an automatically-created timer suppresses rearming for that civil window occurrence, including across playback-service/process recreation; the next distinct occurrence is eligible again.
+- Natural automatic expiry is not manual cancellation. A deliberate Play inside the same eligible occurrence may arm another default timer, while passive lifecycle restoration or automatic resume must not manufacture that intent.
+- Same-day and overnight windows use local wall-clock semantics. Timezone and manual wall-clock changes are reconciled while playback is owned, and DST gap/overlap resolution is deterministic and tested.
+- The schedule does not introduce a second countdown, exact-alarm permission, periodic worker, schedule-only service, or background wakeup while nothing is playing.
 - Timer expiration pauses, records progress, and syncs.
 - End-of-chapter handles malformed or absent chapters gracefully.
 
@@ -854,6 +863,7 @@ Settings precedence:
 - sleep timer defaults;
 - fade duration;
 - shake-to-extend;
+- automatic sleep-schedule enabled state and local start/end window;
 - restore behavior.
 
 **Streaming**

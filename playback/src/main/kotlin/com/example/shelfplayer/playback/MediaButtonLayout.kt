@@ -27,11 +27,14 @@ internal object MediaButtonLayout {
     fun inPriorityOrder(
         outputActions: List<CommandButton>,
         skipActions: List<CommandButton>,
+        activeTimerActions: List<CommandButton> = emptyList(),
         overflowActions: List<CommandButton>,
         carBound: Boolean,
-    ): List<CommandButton> = if (carBound) {
-        outputActions + skipActions + overflowActions
-    } else {
-        skipActions + outputActions + overflowActions
+    ): List<CommandButton> {
+        val surfacePriority = if (carBound) outputActions + skipActions else skipActions + outputActions
+        // BW-SLEEP-01 — while active, the timer owns its requested compact slot on every shared system
+        // surface. It asks only for SLOT_FORWARD, so SLOT_BACK remains occupied by the highest-priority
+        // car/skip action and raw Previous can never leak back in.
+        return activeTimerActions + surfacePriority + overflowActions
     }
 }

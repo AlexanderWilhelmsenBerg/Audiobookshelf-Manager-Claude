@@ -13,6 +13,7 @@ import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
+import com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerState
@@ -26,6 +27,7 @@ import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.TestScope
@@ -39,6 +41,7 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -118,6 +121,256 @@ class SleepTimerControllerTest {
     }
 
     @Test
+    fun `playback starting inside an overnight window arms the ordinary default timer`() = runTest {
+        val schedule = SleepTimerScheduleSettings.Default.copy(enabled = true)
+        val source = MutableStateFlow(SleepTimerSettings.Default.copy(schedule = schedule))
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+
+        controller.onPlayRequest(explicit = true)
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+
+        assertIs<SleepTimerMode.Fixed>(controller.state.value.mode)
+        assertEquals(SleepTimerSettings.Default.defaultLength, controller.state.value.remaining)
+        assertEquals(1, repository.started)
+    }
+
+    @Test
+    fun `active playback crossing start boundary arms while the end boundary never truncates`() = runTest {
+        val schedule = SleepTimerScheduleSettings.Default.copy(enabled = true)
+        val source = MutableStateFlow(SleepTimerSettings.Default.copy(schedule = schedule))
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-19T21:59:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+
+        clock.advanceBy(1.minutes)
+        advanceTimeBy(60_001)
+        runCurrent()
+        assertTrue(controller.state.value.isActive)
+        assertEquals(1, repository.started)
+    }
+
+    @Test
+    fun `automatic timer started just before schedule end is cancelled at the boundary without expiring`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                defaultLength = 15.minutes,
+                fadeLength = Duration.ZERO,
+                schedule = SleepTimerScheduleSettings.Default.copy(
+                    enabled = true,
+                    start = java.time.LocalTime.of(22, 0),
+                    end = java.time.LocalTime.of(7, 0),
+                ),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-20T06:46:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertEquals(15.minutes, controller.state.value.remaining)
+
+        clock.advanceBy(14.minutes)
+        advanceTimeBy(14.minutes.inWholeMilliseconds + 1)
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(SleepTimerOutcome.Cancelled, repository.ended.last())
+        assertEquals(null, repository.replayRequiredOccurrence)
+        assertEquals(null, repository.suppressedOccurrence)
+    }
+
+    @Test
+    fun `automatic timer keeps its schedule-end cancellation while playback is paused`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                defaultLength = 15.minutes,
+                fadeLength = Duration.ZERO,
+                schedule = SleepTimerScheduleSettings.Default.copy(
+                    enabled = true,
+                    start = java.time.LocalTime.of(22, 0),
+                    end = java.time.LocalTime.of(7, 0),
+                ),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-20T06:46:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertTrue(controller.state.value.isActive)
+
+        controller.onPlaybackChanged(isPlaying = false)
+        runCurrent()
+
+        clock.advanceBy(14.minutes)
+        advanceTimeBy(14.minutes.inWholeMilliseconds + 1)
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(SleepTimerOutcome.Cancelled, repository.ended.last())
+    }
+
+    @Test
+    fun `manual timer replacing automatic timer survives the schedule end`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                defaultLength = 15.minutes,
+                schedule = SleepTimerScheduleSettings.Default.copy(
+                    enabled = true,
+                    start = java.time.LocalTime.of(22, 0),
+                    end = java.time.LocalTime.of(7, 0),
+                ),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-20T06:46:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertTrue(controller.state.value.isActive)
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(20.minutes)))
+        runCurrent()
+
+        clock.advanceBy(14.minutes)
+        advanceTimeBy(14.minutes.inWholeMilliseconds + 1)
+        runCurrent()
+
+        assertEquals(SleepTimerMode.Fixed(20.minutes), controller.state.value.mode)
+        assertTrue(controller.state.value.isActive)
+    }
+
+    @Test
+    fun `manual timer replaces automatic timer without suppressing the window`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                schedule = SleepTimerScheduleSettings.Default.copy(enabled = true),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(45.minutes)))
+        runCurrent()
+
+        assertEquals(SleepTimerMode.Fixed(45.minutes), controller.state.value.mode)
+        assertEquals(null, repository.suppressedOccurrence)
+        assertEquals(2, repository.started)
+    }
+
+    @Test
+    fun `manual cancellation survives recreation and resets next night`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                schedule = SleepTimerScheduleSettings.Default.copy(enabled = true),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
+        val first = controller(repository, FakeShakeSource(), clock)
+        first.attach(player())
+        runCurrent()
+        first.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertTrue(first.state.value.isActive)
+
+        first.cancel()
+        runCurrent()
+        val suppressed = assertNotNull(repository.suppressedOccurrence)
+        assertEquals(SleepTimerState.Idle, first.state.value)
+
+        first.onWallClockChanged()
+        runCurrent()
+        assertEquals(1, repository.started, "continuing playback must not recreate the cancelled timer")
+
+        first.attach(null)
+        val recreated = controller(repository, FakeShakeSource(), clock)
+        recreated.attach(player())
+        runCurrent()
+        recreated.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertEquals(SleepTimerState.Idle, recreated.state.value)
+        assertEquals(suppressed, repository.suppressedOccurrence)
+
+        clock.setWallClock(Instant.parse("2026-09-20T23:00:00Z"))
+        recreated.onWallClockChanged()
+        runCurrent()
+        assertTrue(recreated.state.value.isActive)
+        assertEquals(2, repository.started)
+        assertEquals(null, repository.suppressedOccurrence)
+    }
+
+    @Test
+    fun `automatic expiry requires explicit replay before same occurrence can rearm`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                defaultLength = 5.minutes,
+                fadeLength = Duration.ZERO,
+                schedule = SleepTimerScheduleSettings.Default.copy(enabled = true),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+
+        clock.advanceBy(5.minutes)
+        advanceTimeBy(5.minutes.inWholeMilliseconds + 1_001)
+        runCurrent()
+        controller.onPlaybackChanged(isPlaying = false)
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertNotNull(repository.replayRequiredOccurrence)
+
+        controller.onPlayRequest(explicit = false)
+        runCurrent()
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(1, repository.started)
+
+        controller.onPlaybackChanged(isPlaying = false)
+        runCurrent()
+        controller.onPlayRequest(explicit = true)
+        runCurrent()
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+
+        assertTrue(controller.state.value.isActive)
+        assertEquals(2, repository.started)
+        assertEquals(null, repository.replayRequiredOccurrence)
+    }
+
+    @Test
     fun `cancelling the timer tears down sensing and leaves idle state`() = runTest {
         val settings = MutableSharedFlow<SleepTimerSettings>(extraBufferCapacity = 4)
         val repository = FakeSleepTimerRepository(settings)
@@ -162,6 +415,9 @@ class SleepTimerControllerTest {
             sessionSync = sync,
             history = FakePlaybackHistoryRepository(),
             clock = clock,
+            zoneProvider = object : LocalZoneProvider {
+                override fun current() = java.time.ZoneOffset.UTC
+            },
             logger = NO_OP_LOGGER,
             applicationScope = backgroundScope,
             mainDispatcher = dispatcher,
@@ -232,6 +488,10 @@ class SleepTimerControllerTest {
         var restarted = 0
             private set
         val ended = mutableListOf<SleepTimerOutcome>()
+        var suppressedOccurrence: String? = null
+            private set
+        var replayRequiredOccurrence: String? = null
+            private set
 
         override fun observeSettings(): Flow<SleepTimerSettings> = settings
 
@@ -242,6 +502,28 @@ class SleepTimerControllerTest {
         override suspend fun setShakeToRestart(enabled: Boolean): AppResult<Unit> = AppResult.Success(Unit)
 
         override suspend fun setRewindOnStop(length: Duration): AppResult<Unit> = AppResult.Success(Unit)
+
+        override suspend fun setScheduleEnabled(enabled: Boolean): AppResult<Unit> = AppResult.Success(Unit)
+
+        override suspend fun setScheduleWindow(start: java.time.LocalTime, end: java.time.LocalTime): AppResult<Unit> =
+            AppResult.Success(Unit)
+
+        override suspend fun setScheduleRuntimeState(
+            suppressedOccurrence: String?,
+            replayRequiredOccurrence: String?,
+        ): AppResult<Unit> {
+            this.suppressedOccurrence = suppressedOccurrence
+            this.replayRequiredOccurrence = replayRequiredOccurrence
+            (settings as? MutableStateFlow<SleepTimerSettings>)?.let { source ->
+                source.value = source.value.copy(
+                    schedule = source.value.schedule.copy(
+                        suppressedOccurrence = suppressedOccurrence,
+                        replayRequiredOccurrence = replayRequiredOccurrence,
+                    ),
+                )
+            }
+            return AppResult.Success(Unit)
+        }
 
         override fun observeRecentSessions(limit: Int): Flow<List<SleepTimerSession>> = flowOf(emptyList())
 

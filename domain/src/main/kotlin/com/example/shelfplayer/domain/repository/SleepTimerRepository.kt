@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalTime
 import kotlin.time.Duration
 
 /**
@@ -36,6 +37,23 @@ interface SleepTimerRepository {
      * those ask "how long was the pause", and a sleep timer's answer is always "you were asleep".
      */
     suspend fun setRewindOnStop(length: Duration): AppResult<Unit>
+
+    /** BW-SLEEP-01 — toggle automatic eligibility without changing the configured civil window. */
+    suspend fun setScheduleEnabled(enabled: Boolean): AppResult<Unit>
+
+    /** BW-SLEEP-01 — update the two local wall-clock boundaries atomically. */
+    suspend fun setScheduleWindow(start: LocalTime, end: LocalTime): AppResult<Unit>
+
+    /**
+     * BW-SLEEP-01 — persist policy memory only. Neither value is a timer deadline or countdown.
+     *
+     * [suppressedOccurrence] survives a manual cancellation of an automatic timer. [replayRequiredOccurrence]
+     * survives an automatic expiry so passive restoration cannot masquerade as an explicit replay.
+     */
+    suspend fun setScheduleRuntimeState(
+        suppressedOccurrence: String?,
+        replayRequiredOccurrence: String?,
+    ): AppResult<Unit>
 
     /**
      * The most recent [limit] timers this profile set, newest first.

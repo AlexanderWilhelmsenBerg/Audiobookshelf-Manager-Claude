@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.time.Instant
+import java.time.LocalTime
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -80,6 +81,27 @@ class DefaultSleepTimerRepository @Inject constructor(
             "The sleep timer's rewind-on-stop was changed",
             LogField.Millis("length", length.inWholeMilliseconds),
         )
+    }
+
+    override suspend fun setScheduleEnabled(enabled: Boolean): AppResult<Unit> = write {
+        settings.setSleepScheduleEnabled(enabled)
+        logger.info(
+            LogCategory.Settings,
+            "The automatic sleep schedule was changed",
+            LogField.Public("enabled", enabled),
+        )
+    }
+
+    override suspend fun setScheduleWindow(start: LocalTime, end: LocalTime): AppResult<Unit> = write {
+        settings.setSleepScheduleWindow(start, end)
+        logger.info(LogCategory.Settings, "The automatic sleep window was changed")
+    }
+
+    override suspend fun setScheduleRuntimeState(
+        suppressedOccurrence: String?,
+        replayRequiredOccurrence: String?,
+    ): AppResult<Unit> = write {
+        settings.setSleepScheduleRuntimeState(suppressedOccurrence, replayRequiredOccurrence)
     }
 
     override fun observeRecentSessions(limit: Int): Flow<List<SleepTimerSession>> =

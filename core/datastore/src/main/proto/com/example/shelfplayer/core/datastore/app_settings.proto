@@ -127,6 +127,21 @@ message AppSettings {
   // that moves a listener's position without being asked cannot acquire a non-zero default later.
   int32 sleep_timer_rewind_seconds = 24;
 
+  // BW-SLEEP-01 — automatic nightly eligibility for the ordinary sleep timer.
+  //
+  // The schedule is off by default. Start/end are minutes since midnight plus one so proto3's zero can
+  // keep meaning "never chosen" while midnight itself remains representable. The reader substitutes the
+  // product defaults (22:00–06:00) for zero.
+  bool sleep_schedule_enabled = 49;
+  int32 sleep_schedule_start_minute_plus_one = 50;
+  int32 sleep_schedule_end_minute_plus_one = 51;
+
+  // Opaque playback-policy occurrence ids. These are not timer countdown state: they remember that the
+  // current civil window was manually suppressed, or that an automatic expiry requires an explicit Play
+  // before it may arm again. Empty means no remembered occurrence.
+  string sleep_schedule_suppressed_occurrence = 52;
+  string sleep_schedule_replay_required_occurrence = 53;
+
   // PRODUCT_SPEC ROUTE-001 / ROUTE-003 — whether a car head unit connecting should start the last book.
   //
   // Off by default, and it is the only setting in this file that can cause audio to begin without anyone

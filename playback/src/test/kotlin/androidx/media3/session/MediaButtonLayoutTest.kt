@@ -3,12 +3,17 @@ package androidx.media3.session
 import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
+import com.example.shelfplayer.core.model.playback.SleepTimerMode
+import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.MediaButtonLayout
+import com.example.shelfplayer.playback.NotificationButtons
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * PRODUCT_SPEC PLAY-002 / PLAY-007 — BookWave's state-dependent button order, run through the exact
@@ -36,6 +41,84 @@ class MediaButtonLayoutTest {
         assertEquals("skipBack", named(layout, CommandButton.SLOT_BACK))
         assertEquals("skipForward", named(layout, CommandButton.SLOT_FORWARD))
         assertTrue(layout.map { it.displayName.toString() }.containsAll(listOf("car", "headset")))
+    }
+
+    @Test
+    fun `notification timer projection is absent when idle and carries authoritative remaining state when active`() {
+        assertNull(NotificationButtons.sleepTimerButton(SleepTimerState.Idle) { "unused" })
+
+        val twelve = requireNotNull(
+            NotificationButtons.sleepTimerButton(
+                SleepTimerState(
+                    mode = SleepTimerMode.Fixed(30.minutes),
+                    remaining = 12.minutes,
+                    isFading = false,
+                ),
+            ) { remaining -> "${remaining.inWholeMinutes}m" },
+        )
+        val nine = requireNotNull(
+            NotificationButtons.sleepTimerButton(
+                SleepTimerState(
+                    mode = SleepTimerMode.Fixed(30.minutes),
+                    remaining = 9.minutes,
+                    isFading = false,
+                ),
+            ) { remaining -> "${remaining.inWholeMinutes}m" },
+        )
+
+        assertEquals("12m", twelve.displayName.toString())
+        assertTrue(twelve.iconResId != 0, "compact state needs a visible sleep-timer glyph")
+        assertEquals("9m", nine.displayName.toString(), "extension/ticks must republish from the new owner state")
+        assertEquals(
+            listOf(CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW),
+            twelve.slots.asList(),
+        )
+    }
+
+    @Test
+    fun `active timer owns the phone forward compact slot while back skip remains essential`() {
+        val layout = convert(
+            MediaButtonLayout.inPriorityOrder(
+                outputActions = listOf(
+                    button("car", CommandButton.SLOT_BACK),
+                    button("headset", CommandButton.SLOT_FORWARD),
+                ),
+                skipActions = listOf(
+                    button("skipBack", CommandButton.SLOT_BACK),
+                    button("skipForward", CommandButton.SLOT_FORWARD),
+                ),
+                activeTimerActions = listOf(button("sleep 12m", CommandButton.SLOT_FORWARD)),
+                overflowActions = emptyList(),
+                carBound = false,
+            ),
+        )
+
+        assertEquals("skipBack", named(layout, CommandButton.SLOT_BACK))
+        assertEquals("sleep 12m", named(layout, CommandButton.SLOT_FORWARD))
+        assertTrue(layout.map { it.displayName.toString() }.contains("skipForward"))
+    }
+
+    @Test
+    fun `active timer keeps compact forward slot even while car outputs have priority`() {
+        val layout = convert(
+            MediaButtonLayout.inPriorityOrder(
+                outputActions = listOf(
+                    button("car", CommandButton.SLOT_BACK),
+                    button("headset", CommandButton.SLOT_FORWARD),
+                ),
+                skipActions = listOf(
+                    button("skipBack", CommandButton.SLOT_BACK),
+                    button("skipForward", CommandButton.SLOT_FORWARD),
+                ),
+                activeTimerActions = listOf(button("sleep 9m", CommandButton.SLOT_FORWARD)),
+                overflowActions = emptyList(),
+                carBound = true,
+            ),
+        )
+
+        assertEquals("car", named(layout, CommandButton.SLOT_BACK))
+        assertEquals("sleep 9m", named(layout, CommandButton.SLOT_FORWARD))
+        assertTrue(layout.map { it.displayName.toString() }.containsAll(listOf("headset", "skipBack", "skipForward")))
     }
 
     @Test
