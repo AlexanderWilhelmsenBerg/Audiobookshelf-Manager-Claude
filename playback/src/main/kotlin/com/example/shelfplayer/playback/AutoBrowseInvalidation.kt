@@ -11,6 +11,7 @@ import com.example.shelfplayer.domain.library.booksInSeriesOrder
 import com.example.shelfplayer.domain.library.homeShelvesOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flatMapLatest
@@ -108,16 +109,20 @@ internal class AutoBrowseInvalidationTracker {
 }
 
 /**
- * Converts active-profile + Room emissions into exactly one fully-derived snapshot per candidate sweep.
+ * Converts profile/library emissions into exactly one fully-derived snapshot per candidate sweep.
  *
- * There is one [accessibleBooks] subscription for the active profile generation. Every parent decision in one
- * emitted snapshot is therefore derived from the same immutable [List] instead of asking the repository again
- * for each remembered Series/Author node.
+ * #10's invariant remains intact: there is one [accessibleBooks] subscription for the active profile
+ * generation, and every library-backed parent decision in one emitted snapshot comes from that same immutable
+ * [List]. #65 adds the saved-profile presentation facts to the same snapshot rather than creating a second
+ * invalidation loop for the Profiles destination.
  */
 internal class AutoBrowseSnapshotSource(
     private val activeProfiles: Flow<ProfileId?>,
+    private val savedProfiles: Flow<List<Profile>>,
+    private val savedServers: Flow<List<Server>>,
+    private val protectedProfiles: Flow<Set<ProfileId>>,
     private val accessibleBooks: (ProfileId) -> Flow<List<Book>>,
-    private val build: (BrowseProfileScope, List<Book>) -> AutoBrowseSnapshot,
+    private val build: (BrowseProfileScope, List<Book>, List<Profile>, List<Server>, Set<ProfileId>) -> AutoBrowseSnapshot,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     fun snapshots(): Flow<AutoBrowseSnapshot> = activeProfiles
@@ -127,121 +132,114 @@ internal class AutoBrowseSnapshotSource(
         }
         .drop(1)
         .flatMapLatest { scope ->
-            scope.profileId?.let { profileId ->
-                accessibleBooks(profileId).map { books -> build(scope, books) }
-            } ?: flowOf(build(scope, emptyList()))
+            val books = scope.profileId
+                ?.let(accessibleBooks)
+                ?: flowOf(emptyList())
+            combine(books, savedProfiles, savedServers, protectedProfiles) { all, profiles, servers, protected ->
+                build(scope, all, profiles, servers, protected)
+            }
         }
         .distinctUntilChanged()
 }
 
 /**
- * Adapter from today's Android Auto information architecture to the reusable shape model.
+ * PD-001 adapter from BookWave's current profile/library state to #10's reusable shape model.
  *
- * Issue #65 is expected to replace this mapping when the visible tree becomes
- * Continue -> Series -> Authors -> Profiles. The tracker/source above should not need to change.
+ * The root is intentionally constant — even an account with no books must still be able to reach Profiles.
+ * Retired pre-PD-001 parents remain only in [profileScopedParents] so a hard profile boundary can tell a host
+ * caching an old tree that those nodes now have zero children. They are not ordinary parents and are never
+ * rendered again.
  */
-internal object CurrentAutoBrowseSnapshotBuilder {
+internal object AutoBrowseSnapshotBuilder {
     private val ordinaryParents = setOf(
         AutoLibrary.ROOT,
         AutoLibrary.TAB_CONTINUE,
-        AutoLibrary.TAB_LIBRARY,
         AutoLibrary.TAB_SERIES,
         AutoLibrary.TAB_AUTHORS,
+        AutoLibrary.TAB_PROFILES,
+    )
+
+    private val retiredProfileScopedParents = setOf(
+        AutoLibrary.TAB_LIBRARY,
+        AutoLibrary.TAB_CHAPTERS,
+        AutoLibrary.TAB_HISTORY,
         AutoLibrary.TAB_DOWNLOADS,
         AutoLibrary.TAB_RECENT,
         AutoLibrary.TAB_DISCOVER,
         AutoLibrary.TAB_AGAIN,
+        AutoLibrary.TAB_OUTPUT,
     )
 
-    private val profileScopedParents = ordinaryParents + setOf(
-        AutoLibrary.RECENT_ROOT,
-        AutoLibrary.TAB_CHAPTERS,
-        AutoLibrary.TAB_HISTORY,
-    )
+    private val profileScopedParents = ordinaryParents + retiredProfileScopedParents + AutoLibrary.RECENT_ROOT
 
-    private val deferredProfileCounts = setOf(
-        AutoLibrary.RECENT_ROOT,
-        AutoLibrary.TAB_CHAPTERS,
-        AutoLibrary.TAB_HISTORY,
-    )
-
-    fun build(scope: BrowseProfileScope, books: List<Book>): AutoBrowseSnapshot {
+    fun build(
+        scope: BrowseProfileScope,
+        books: List<Book>,
+        profiles: List<Profile>,
+        servers: List<Server>,
+        protectedProfiles: Set<ProfileId>,
+    ): AutoBrowseSnapshot {
         val shelves = homeShelvesOf(books)
-        val series = books
-            .flatMap(Book::seriesMemberships)
-            .distinctBy { membership -> membership.series.id }
-            .sortedBy { membership -> membership.series.name.lowercase() }
-        val authors = books
-            .flatMap(Book::authors)
-            .distinctBy { author -> author.id }
-            .sortedBy { author -> author.name.lowercase() }
-        val downloaded = books
-            .filter { book -> book.localAvailability == LocalAvailability.Complete }
-            .map { book -> book.id.value }
+        val series = autoSeriesNodes(books)
+        val authors = autoAuthorNodes(books)
+        val serverNames = servers.associate { server -> server.id to server.displayName }
 
-        val children = baseChildren(books, shelves, series, authors, downloaded)
-        addDynamicChildren(children, books, series, authors)
+        val children = linkedMapOf<String, List<String>>(
+            AutoLibrary.ROOT to listOf(
+                AutoLibrary.TAB_CONTINUE,
+                AutoLibrary.TAB_SERIES,
+                AutoLibrary.TAB_AUTHORS,
+                AutoLibrary.TAB_PROFILES,
+            ),
+            AutoLibrary.TAB_CONTINUE to shelves.continueListening.map { book -> book.id.value },
+            AutoLibrary.TAB_SERIES to series.map { node -> node.membership.series.id.value },
+            AutoLibrary.TAB_AUTHORS to authors.map { node -> node.author.id.value },
+            AutoLibrary.TAB_PROFILES to profiles.map { profile ->
+                profileFingerprint(
+                    profile = profile,
+                    serverName = serverNames[profile.serverId],
+                    isActive = profile.id == scope.profileId,
+                    isProtected = profile.id in protectedProfiles,
+                )
+            },
+        )
+
+        series.forEach { node ->
+            children["${AutoLibrary.SERIES_PREFIX}${node.membership.series.id.value}"] =
+                node.books.map { book -> book.id.value }
+        }
+        authors.forEach { node ->
+            children["${AutoLibrary.AUTHOR_PREFIX}${node.author.id.value}"] =
+                node.books.map { book -> book.id.value }
+        }
 
         return AutoBrowseSnapshot(
             scope = scope,
             childrenByParent = children,
             ordinaryParents = ordinaryParents,
             profileScopedParents = profileScopedParents,
-            deferredProfileCounts = deferredProfileCounts,
+            deferredProfileCounts = setOf(AutoLibrary.RECENT_ROOT),
             accessibleBookIds = books.mapTo(linkedSetOf()) { book -> book.id },
         )
     }
 
-    private fun baseChildren(
-        books: List<Book>,
-        shelves: HomeShelves,
-        series: List<SeriesMembership>,
-        authors: List<Author>,
-        downloaded: List<String>,
-    ): LinkedHashMap<String, List<String>> = linkedMapOf(
-        AutoLibrary.ROOT to if (books.isEmpty()) {
-            listOf(AutoLibrary.NOTICE_EMPTY)
-        } else {
-            listOf(
-                AutoLibrary.TAB_CONTINUE,
-                AutoLibrary.TAB_SERIES,
-                AutoLibrary.TAB_AUTHORS,
-                AutoLibrary.TAB_LIBRARY,
-            )
-        },
-        AutoLibrary.TAB_CONTINUE to shelves.continueListening.map { book -> book.id.value },
-        AutoLibrary.TAB_SERIES to series.map { membership -> membership.series.id.value },
-        AutoLibrary.TAB_AUTHORS to authors.map { author -> author.id.value },
-        AutoLibrary.TAB_LIBRARY to buildList {
-            add(AutoLibrary.TAB_CHAPTERS)
-            add(AutoLibrary.TAB_HISTORY)
-            if (downloaded.isNotEmpty()) add(AutoLibrary.TAB_DOWNLOADS)
-            if (shelves.recentlyAdded.isNotEmpty()) add(AutoLibrary.TAB_RECENT)
-            if (shelves.listenAgain.isNotEmpty()) add(AutoLibrary.TAB_AGAIN)
-            if (shelves.discover.isNotEmpty()) add(AutoLibrary.TAB_DISCOVER)
-            add(AutoLibrary.TAB_OUTPUT)
-        },
-        AutoLibrary.TAB_DOWNLOADS to downloaded,
-        AutoLibrary.TAB_RECENT to shelves.recentlyAdded.map { book -> book.id.value },
-        AutoLibrary.TAB_AGAIN to shelves.listenAgain.map { book -> book.id.value },
-        AutoLibrary.TAB_DISCOVER to shelves.discover.map { book -> book.id.value },
-    )
-
-    private fun addDynamicChildren(
-        children: MutableMap<String, List<String>>,
-        books: List<Book>,
-        series: List<SeriesMembership>,
-        authors: List<Author>,
-    ) {
-        series.forEach { membership ->
-            children["${AutoLibrary.SERIES_PREFIX}${membership.series.id.value}"] =
-                booksInSeriesOrder(books, membership).map { book -> book.id.value }
-        }
-        authors.forEach { author ->
-            children["${AutoLibrary.AUTHOR_PREFIX}${author.id.value}"] = books
-                .filter { book -> book.authors.any { candidate -> candidate.id == author.id } }
-                .sortedBy { book -> book.title.lowercase() }
-                .map { book -> book.id.value }
-        }
-    }
+    /**
+     * Opaque comparison token only. It is never logged or rendered, and deliberately excludes credentials,
+     * URLs and media titles while still making visible profile-row changes invalidate the Profiles parent.
+     */
+    private fun profileFingerprint(
+        profile: Profile,
+        serverName: String?,
+        isActive: Boolean,
+        isProtected: Boolean,
+    ): String = listOf(
+        profile.id.value,
+        profile.displayName.hashCode(),
+        profile.username.hashCode(),
+        serverName.orEmpty().hashCode(),
+        profile.role.name,
+        profile.requiresReauthentication,
+        isActive,
+        isProtected,
+    ).joinToString(separator = ":")
 }
