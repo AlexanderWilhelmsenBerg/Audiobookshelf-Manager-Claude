@@ -203,27 +203,22 @@ While a car controller is present and playback is actually active, the same cont
 **positively proven** exact headset plus generation and explicit-selection sequence. Live A2DP disappearance
 does not erase this lifecycle evidence; a deliberate pause, book/session boundary or newer output choice does.
 
-The platform may deliver the departure pair in either order:
+The only departure ordering currently eligible for recovery is:
 
 `playing exact headset + car connected`
-→ `audioFocusLoss`
+→ `audioFocusLoss while car is still connected`
 → `departure focus candidate`
 → `last car disconnect 1→0`
-→ route recovery / final check / Play / `isPlaying=true`,
-
-or:
-
-`playing exact headset + car connected`
-→ `last car disconnect 1→0`
-→ `departure boundary marker`
-→ `audioFocusLoss`
 → route recovery / final check / Play / `isPlaying=true`.
 
 Only the final 1→0 disconnect is a departure; dropping one of two Android Auto controller bindings is not.
-The reverse-order marker can be armed only while the book is still actually playing, so a deliberately paused
-book never gains departure auto-resume. The focus event must still arrive inside the same bounded controller/
-focus correlation window. Arrival and departure targets carry an explicit phase and cannot consume each
-other.
+The focus event must already have been observed while the car connection still existed and the final disconnect
+must follow inside the bounded correlation window. A **disconnect-first → later focus-loss** ordering is logged
+but deliberately stays silent: that ordering has not been physically measured, and treating any later focus
+loss as departure could turn a phone call, navigation prompt or another media app into an automatic resume.
+The next physical drive is expected to establish the actual exit ordering. If it is disconnect-first, #36 must
+remain open until a stronger car-specific signal can make that path safe. Arrival and departure targets carry
+an explicit phase and cannot consume each other.
 
 `AUDIO_BECOMING_NOISY` remains outside this policy. So do generic focus loss without a matching lifecycle
 boundary, phone-speaker playback, car output, an absent exact headset, stale generation/profile/session state,
@@ -248,4 +243,4 @@ a newer Play/Pause decision and a newer explicit Car/Headset/Automatic choice.
 
 The PR's unit/Robolectric coverage includes the four-root browse contract, series ordering, voice-series matching, speaker exclusion including stale cached rows, Car-to-Automatic routing, ambiguous-A2DP handling, headset cycling, the car-arrival preservation race, profile-scoped series enrichment and the live Media3 series byline. The final implementation also publishes active/inactive output glyphs through a tested `OutputActionIcons` mapping, gives Car and Headset the two primary bar slots with the skips relocated to overflow — asserted by running Media3's own layout conversion, including the invariant that the back slot is never left empty — and reports credential/network playback failures through the media session. The seek-slot reservations are **not** published: an earlier `setSessionExtras` call was removed as measured dead code, because Media3 recomputes both keys from the custom layout and overwrites the app's value. Under this layout it computes the intended answer on its own; the value is inherited, not asserted.
 
-The owner device-tested the Car/Headset routing on 2026-09-06: Headset appeared when connected and switched audio to the headset; Car returned audio to the car. Physical drives on 2026-09-19 measured arrival `audioFocusLoss` before the first car bind and exposed the transient A2DP remove/re-add race. The 2026-09-20 retest reported that entry now recovers only after a visible few-second interruption and that car exit stops playback. The supplied 19:34–19:38 excerpt contained no playback/focus/controller/route diagnostics, so it does not prove the exact latest ordering. §9 therefore preserves the measured safe arrival boundary, adds a distinct final-departure correlation, and expands diagnostics for the next drive. JVM coverage still cannot prove audible continuity, focus reacquisition or physical route choice; #36 remains open for a combined entry/pause-control/exit drive.
+The owner device-tested the Car/Headset routing on 2026-09-06: Headset appeared when connected and switched audio to the headset; Car returned audio to the car. Physical drives on 2026-09-19 measured arrival `audioFocusLoss` before the first car bind and exposed the transient A2DP remove/re-add race. The 2026-09-20 retest reported that entry now recovers only after a visible few-second interruption and that car exit stops playback. The supplied 19:34–19:38 excerpt contained no playback/focus/controller/route diagnostics, so it does not prove the exact latest ordering. §9 therefore preserves the measured safe arrival boundary, adds only the conservative focus-before-final-disconnect departure correlation, and expands diagnostics for the next drive. JVM coverage still cannot prove audible continuity, focus reacquisition or physical route choice; #36 remains open for a combined entry/pause-control/exit drive.
