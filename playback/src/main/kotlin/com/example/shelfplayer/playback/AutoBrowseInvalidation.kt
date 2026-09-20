@@ -2,8 +2,11 @@ package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import Author
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.LocalAvailability
+import SeriesMembership
+import HomeShelves
 import com.example.shelfplayer.domain.library.booksInSeriesOrder
 import com.example.shelfplayer.domain.library.homeShelvesOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -191,9 +194,9 @@ internal object CurrentAutoBrowseSnapshotBuilder {
 
     private fun baseChildren(
         books: List<Book>,
-        shelves: com.example.shelfplayer.domain.library.HomeShelves,
-        series: List<com.example.shelfplayer.core.model.library.SeriesMembership>,
-        authors: List<com.example.shelfplayer.core.model.library.Author>,
+        shelves: HomeShelves,
+        series: List<SeriesMembership>,
+        authors: List<Author>,
         downloaded: List<String>,
     ): LinkedHashMap<String, List<String>> = linkedMapOf(
         AutoLibrary.ROOT to if (books.isEmpty()) {
@@ -227,8 +230,8 @@ internal object CurrentAutoBrowseSnapshotBuilder {
     private fun addDynamicChildren(
         children: MutableMap<String, List<String>>,
         books: List<Book>,
-        series: List<com.example.shelfplayer.core.model.library.SeriesMembership>,
-        authors: List<com.example.shelfplayer.core.model.library.Author>,
+        series: List<SeriesMembership>,
+        authors: List<Author>,
     ) {
         series.forEach { membership ->
             children["${AutoLibrary.SERIES_PREFIX}${membership.series.id.value}"] =
