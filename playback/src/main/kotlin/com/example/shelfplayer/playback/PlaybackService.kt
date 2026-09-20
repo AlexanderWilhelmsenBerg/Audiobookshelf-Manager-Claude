@@ -244,6 +244,9 @@ class PlaybackService : MediaLibraryService() {
     /** Issue #38 — car binding changes media-button priority even when the visible output actions do not. */
     private val mediaButtonPublishing = MediaButtonPublishing.Tracker()
 
+    /** Issue #10 — compare already-published browse shape without re-reading the library parent by parent. */
+    private val browseInvalidations = AutoBrowseInvalidationTracker()
+
     /**
      * PRODUCT_SPEC PLAY-002 / ROUTE-002 — one generation-bound owner for route-heard evidence.
      *
@@ -381,25 +384,35 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * PRODUCT_SPEC 5.2 / ROUTE-001 — tells a connected car to forget the previous profile's tree.
+     * PRODUCT_SPEC 5.2 / ROUTE-001 / issue #10 — publish only meaningful Android Auto browse changes.
      *
-     * A browser fetches the browse tree once and caches it; Media3 re-asks only after
-     * `notifyChildrenChanged`. Nothing called it, so after a profile switch a head unit went on showing
-     * the account it had loaded first — **someone else's book titles, in a car with other people in it.**
-     * That is a profile boundary rather than a stale-UI annoyance, which is why it is worth a collector.
-     *
-     * The child count is read rather than guessed: Media3 passes it to the browser, and a wrong number is
-     * how a row renders with the previous account's length. `AutoLibrary.browsableParents` owns the id
-     * list so a new tab cannot be added without being invalidated too.
+     * One [AutoBrowseSnapshot] is derived from one profile-scoped accessible-book emission. Ordinary changes
+     * compare ordered opaque child membership and notify only stale parents. Profile generation changes are a
+     * harder boundary: every profile-scoped static parent and every dynamic Series/Author parent ever emitted
+     * is invalidated even when the new profile happens to expose identical counts.
      */
     private fun observeBrowseTreeInvalidation() {
         scope.launch {
-            auto.invalidations().collect {
+            auto.browseSnapshots().collect { snapshot ->
                 val current = session ?: return@collect
-                auto.browsableParents().forEach { parentId ->
-                    current.notifyChildrenChanged(parentId, auto.children(parentId, nowPlaying()).size, null)
+                val plan = browseInvalidations.next(snapshot, auto.emittedDynamicParents())
+                if (plan.notifications.isEmpty()) return@collect
+
+                val deferredParents = plan.notifications
+                    .filter { invalidation -> invalidation.childCount == null }
+                    .mapTo(linkedSetOf()) { invalidation -> invalidation.parentId }
+                val deferredCounts = auto.profileBoundaryCounts(snapshot, nowPlaying(), deferredParents)
+
+                plan.notifications.forEach { invalidation ->
+                    val count = invalidation.childCount ?: deferredCounts.getValue(invalidation.parentId)
+                    current.notifyChildrenChanged(invalidation.parentId, count, null)
                 }
-                logger.info(LogCategory.Playback, "The active account changed; the car browse tree was invalidated")
+                logger.info(
+                    LogCategory.Playback,
+                    "The Android Auto browse tree was invalidated",
+                    LogField.Public("reason", if (plan.profileBoundary) "profile-boundary" else "shape-change"),
+                    LogField.Count("parents", plan.notifications.size),
+                )
             }
         }
     }
