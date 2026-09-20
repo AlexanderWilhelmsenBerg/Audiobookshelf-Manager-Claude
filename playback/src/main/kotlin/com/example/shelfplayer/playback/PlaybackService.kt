@@ -2131,16 +2131,14 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             isForPlayback: Boolean,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
-            if (isForPlayback) {
-                passiveResumptionPlayPending = true
-                resumeForPlayback()
-            } else {
-                describeResumable()
-            }
+            if (isForPlayback) resumeForPlayback() else describeResumable()
         }
 
         /** The `isForPlayback = true` half: open the book and hand back a queue Media3 immediately plays. */
         private suspend fun resumeForPlayback(): MediaSession.MediaItemsWithStartPosition {
+            // BW-SLEEP-01 — Media3 is restoring playback, not reporting a fresh explicit Play to the
+            // already-loaded player. Mark that origin before the returned item is installed and played.
+            passiveResumptionPlayPending = true
             val book = auto.lastPlayed()
             val queue = book?.let {
                 openQueue(it.id, startAt = null)
