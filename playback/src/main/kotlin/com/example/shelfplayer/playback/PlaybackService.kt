@@ -307,6 +307,17 @@ class PlaybackService : MediaLibraryService() {
             preparePlay = { future { handleFreshnessPlay() } },
             consumeFreshStart = resumeFreshness::consumeFreshStart,
             invalidate = resumeFreshness::invalidate,
+            onPlayWhenReadyRequest = { requestedPlay ->
+                // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
+                // state and therefore emits no onPlayWhenReadyChanged callback. Automatic continuity uses the
+                // raw ExoPlayer and bypasses this forwarding boundary, so it cannot cancel itself here.
+                if (requestedPlay) {
+                    carContinuity.cancelPending()
+                } else {
+                    carContinuity.cancelAll()
+                }
+                continuityPlayAwaiting = null
+            },
         )
         // Issue #91 — controllers see the forwarding player; service-owned timers/sync/routing below keep
         // the raw ExoPlayer so internal atomic operations cannot recursively enter the external Play gate.
