@@ -207,7 +207,11 @@ class AutoLibrary @Inject constructor(
                 MediaMetadata.Builder()
                     .setTitle(profile.displayName)
                     .setSubtitle(identity)
-                    .setIsBrowsable(false)
+                    // Android Auto's media hierarchy requires a row to be browsable, playable, or both.
+                    // A profile is not audio, so keep it non-playable and use the supported browse action for
+                    // switching. Marking the row browsable keeps every saved profile visible to car hosts;
+                    // selecting the row itself exposes no profile library and therefore returns no children.
+                    .setIsBrowsable(true)
                     .setIsPlayable(false)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
                     .apply {
