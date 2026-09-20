@@ -1,5 +1,7 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaConstants
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.AuthorId
@@ -22,11 +24,8 @@ import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
-import com.example.shelfplayer.core.model.playback.DeviceKind
-import com.example.shelfplayer.core.model.playback.PlaybackEvent
-import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
+import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.LibraryRepository
-import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
 import kotlinx.coroutines.flow.Flow
@@ -42,23 +41,22 @@ import org.robolectric.annotation.Config
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 
-/** PRODUCT_SPEC PLAY-001 / 11.1 — the stable, audiobook-first tree Android Auto receives. */
+/** PD-001 / PLAY-001 — the stable, artwork-first Android Auto browse tree. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
+@UnstableApi
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AutoBrowseTreeTest {
 
     private val books = MutableStateFlow<List<Book>>(emptyList())
-    private val chapters = MutableStateFlow<List<Chapter>>(emptyList())
 
     @Test
-    fun `a non-empty library always exposes exactly four learned root destinations`() = runTest {
+    fun `root always exposes exactly Continue Series Authors Profiles`() = runTest {
         books.value = listOf(book("book-1", "The Salt Harbour"))
 
         val root = auto().children(AutoLibrary.ROOT, now = null)
@@ -68,84 +66,92 @@ class AutoBrowseTreeTest {
                 AutoLibrary.TAB_CONTINUE,
                 AutoLibrary.TAB_SERIES,
                 AutoLibrary.TAB_AUTHORS,
-                AutoLibrary.TAB_LIBRARY,
+                AutoLibrary.TAB_PROFILES,
             ),
-            root.map { it.mediaId },
+            root.map { item -> item.mediaId },
         )
-        assertEquals(listOf("Continue", "Series", "Authors", "Library"), root.titles())
+        assertEquals(listOf("Continue", "Series", "Authors", "Profiles"), root.titles())
     }
 
     @Test
-    fun `continue remains a stable root even before the first book is started`() = runTest {
-        books.value = listOf(book("book-1", "The Salt Harbour"))
-
+    fun `empty library keeps the four roots so Profiles remains reachable`() = runTest {
         val root = auto().children(AutoLibrary.ROOT, now = null)
 
-        assertTrue(root.any { it.mediaId == AutoLibrary.TAB_CONTINUE })
+        assertEquals(
+            listOf(
+                AutoLibrary.TAB_CONTINUE,
+                AutoLibrary.TAB_SERIES,
+                AutoLibrary.TAB_AUTHORS,
+                AutoLibrary.TAB_PROFILES,
+            ),
+            root.map { item -> item.mediaId },
+        )
         assertTrue(auto().children(AutoLibrary.TAB_CONTINUE, now = null).isEmpty())
     }
 
     @Test
-    fun `an empty library explains itself instead of exposing four empty tabs`() = runTest {
-        val rows = auto().children(AutoLibrary.ROOT, now = null)
+    fun `browse destinations request artwork grids while Profiles remains list oriented`() = runTest {
+        val auto = auto()
+        val root = auto.root()
+        val tabs = auto.children(AutoLibrary.ROOT, now = null).associateBy { item -> item.mediaId }
 
-        assertEquals(1, rows.size)
-        assertEquals(AutoLibrary.NOTICE_EMPTY, rows.single().mediaId)
-        assertFalse(rows.single().mediaMetadata.isPlayable == true)
-        assertEquals("No books yet", rows.single().mediaMetadata.title?.toString())
-    }
-
-    /**
-     * The owner's browse axes are at the root and everything else is one level down — *"Chapter and history
-     * can be removed from library view. Have series and author instead."*
-     */
-    @Test
-    fun `the root spends its four positions on the axes the owner browses by`() = runTest {
-        books.value = listOf(
-            book(
-                id = "book-1",
-                title = "The Salt Harbour",
-                series = membership("series-1", "Tidewatch", "1"),
-                local = LocalAvailability.Complete,
-            ),
+        assertEquals(
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_GRID_ITEM,
+            root.mediaMetadata.extras?.getInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE),
         )
-
-        val rootIds = auto().children(AutoLibrary.ROOT, now = null).map { it.mediaId }
-        val libraryIds = auto().children(AutoLibrary.TAB_LIBRARY, now = null).map { it.mediaId }
-
-        assertTrue(AutoLibrary.TAB_SERIES in rootIds)
-        assertTrue(AutoLibrary.TAB_AUTHORS in rootIds)
-        assertTrue(AutoLibrary.TAB_DOWNLOADS in libraryIds)
-        assertTrue(AutoLibrary.TAB_DISCOVER in libraryIds)
-        assertTrue(AutoLibrary.TAB_OUTPUT in libraryIds)
-        assertFalse(AutoLibrary.TAB_DISCOVER in rootIds)
-        assertFalse(AutoLibrary.TAB_OUTPUT in rootIds)
-        // Listed once each. Leaving them in both places would make the tree describe itself inconsistently.
-        assertFalse(AutoLibrary.TAB_SERIES in libraryIds)
-        assertFalse(AutoLibrary.TAB_AUTHORS in libraryIds)
+        assertEquals(
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            tabs.getValue(AutoLibrary.TAB_CONTINUE).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
+        )
+        assertEquals(
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            tabs.getValue(AutoLibrary.TAB_SERIES).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE),
+        )
+        assertEquals(
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            tabs.getValue(AutoLibrary.TAB_AUTHORS).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE),
+        )
+        assertEquals(
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+            tabs.getValue(AutoLibrary.TAB_PROFILES).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
+        )
     }
 
-    /**
-     * Chapters and History left the root but were **not** deleted. History especially is still wanted, so
-     * this pins that both are reachable and that they lead the list rather than being buried under
-     * discovery rows a driver has to scroll past.
-     */
     @Test
-    fun `chapters and history stay reachable at the top of library`() = runTest {
-        books.value = listOf(book("book-1", "The Salt Harbour"))
+    fun `series and author parents request grid cards for their books`() = runTest {
+        books.value = listOf(
+            book("book-1", "The Salt Harbour", series = membership("series-1", "Tidewatch", "1")),
+        )
+        val auto = auto()
 
-        val libraryIds = auto().children(AutoLibrary.TAB_LIBRARY, now = null).map { it.mediaId }
+        val series = auto.children(AutoLibrary.TAB_SERIES, now = null).single()
+        val author = auto.children(AutoLibrary.TAB_AUTHORS, now = null).single()
 
-        assertEquals(listOf(AutoLibrary.TAB_CHAPTERS, AutoLibrary.TAB_HISTORY), libraryIds.take(2))
+        assertEquals(
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            series.style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
+        )
+        assertEquals(
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            author.style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
+        )
     }
 
-    /** Both answer honestly with no book playing, which is why they are listed unconditionally. */
     @Test
-    fun `chapters and history resolve with nothing playing`() = runTest {
-        books.value = listOf(book("book-1", "The Salt Harbour"))
+    fun `Profiles exposes every saved profile as browsable non-playable rows`() = runTest {
+        val rows = auto(StubProfiles(includeSecond = true))
+            .children(AutoLibrary.TAB_PROFILES, now = null)
 
-        assertTrue(auto().children(AutoLibrary.TAB_CHAPTERS, now = null).isNotEmpty())
-        assertTrue(auto().children(AutoLibrary.TAB_HISTORY, now = null).isNotEmpty())
+        assertEquals(listOf("profile/profile-1", "profile/profile-2"), rows.map { item -> item.mediaId })
+        assertEquals(listOf("Demo listener", "Other listener"), rows.titles())
+        assertTrue(rows.all { item -> item.mediaMetadata.isBrowsable == true })
+        assertTrue(rows.none { item -> item.mediaMetadata.isPlayable == true })
+        assertTrue(rows.first().mediaMetadata.subtitle?.toString().orEmpty().contains("Active profile"))
+        assertTrue(rows.first().mediaMetadata.supportedCommands.isEmpty())
+        assertEquals(
+            listOf(AutoLibrary.ACTION_SWITCH_PROFILE),
+            rows.last().mediaMetadata.supportedCommands,
+        )
     }
 
     @Test
@@ -174,86 +180,6 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `the output browse node never exposes the phone speaker`() = runTest {
-        books.value = listOf(book("book-1", "The Salt Harbour"))
-        val outputs = FakeAutoOutputs.of(
-            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
-            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
-        )
-
-        val rows = auto(outputs).children(AutoLibrary.TAB_OUTPUT, now = null)
-
-        assertEquals(listOf("Automatic", "Buds"), rows.titles())
-        assertTrue(rows.none { it.mediaId.contains("speaker:phone") })
-    }
-
-    /**
-     * PRODUCT_SPEC PLAY-002 — **Automatic survives a speaker-only device**, and a review found it did not.
-     *
-     * A projected car often exposes no separate audio bus, so the platform reports the built-in speaker and
-     * nothing else. Filtering speakers then emptied the list and the early return took the Automatic row
-     * with it — leaving a driver who had once chosen the speaker from the phone's own chooser with no row
-     * that could clear it, while `chooseOutput` supported exactly that. Handing routing back to Android is
-     * the one operation that must never be unreachable from this node.
-     */
-    @Test
-    fun `Automatic stays listed when only the phone speaker is reported`() = runTest {
-        books.value = listOf(book("book-1", "The Salt Harbour"))
-        val outputs = FakeAutoOutputs.of(
-            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
-            selected = "speaker:phone",
-        )
-
-        val rows = auto(outputs).children(AutoLibrary.TAB_OUTPUT, now = null)
-
-        assertEquals(listOf("Automatic", "No selectable audio outputs found"), rows.titles())
-    }
-
-    /** And it still selects: the row has to work, not merely be drawn. */
-    @Test
-    fun `Automatic can be chosen on a speaker-only device`() = runTest {
-        books.value = listOf(book("book-1", "The Salt Harbour"))
-        val outputs = FakeAutoOutputs.of(
-            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
-            selected = "speaker:phone",
-        )
-
-        auto(outputs).children("${AutoLibrary.OUT_PREFIX}${AutoLibrary.AUTOMATIC_OUTPUT}", now = null)
-
-        assertEquals(listOf<String?>(null), outputs.chosen)
-        assertNull(outputs.selected())
-    }
-
-    @Test
-    fun `a stale cached phone-speaker row is refused`() = runTest {
-        books.value = listOf(book("book-1", "The Salt Harbour"))
-        val outputs = FakeAutoOutputs.of(
-            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
-            FakeAutoOutputs.output("speaker:phone", "Phone speaker", DeviceKind.Speaker),
-        )
-
-        val rows = auto(outputs).children("${AutoLibrary.OUT_PREFIX}speaker:phone", now = null)
-
-        assertTrue(outputs.chosen.isEmpty())
-        assertNull(outputs.selected())
-        assertEquals(listOf("No selectable audio outputs found"), rows.titles())
-    }
-
-    @Test
-    fun `the automatic row releases the preferred route`() = runTest {
-        books.value = listOf(book("book-1", "The Salt Harbour"))
-        val outputs = FakeAutoOutputs.of(
-            FakeAutoOutputs.output("bluetooth:buds", "Buds"),
-            selected = "bluetooth:buds",
-        )
-
-        auto(outputs).children("${AutoLibrary.OUT_PREFIX}${AutoLibrary.AUTOMATIC_OUTPUT}", now = null)
-
-        assertEquals(listOf<String?>(null), outputs.chosen)
-        assertNull(outputs.selected())
-    }
-
-    @Test
     fun `the resumable item keeps the stored position and richer author-series subtitle`() = runTest {
         books.value = listOf(
             book(
@@ -270,14 +196,6 @@ class AutoBrowseTreeTest {
         assertEquals("Marisol Holt · Tidewatch #2", item?.mediaMetadata?.subtitle?.toString())
     }
 
-    /**
-     * The nodes a car reaches by drilling in are parents too, and Media3 does not invalidate descendants.
-     *
-     * Notifying only the fixed tabs left a head unit that had opened a series or an author still showing
-     * the **previous profile's** books after a switch — a profile boundary, not stale UI. Asserted from the
-     * ids the tree actually emitted rather than a literal, so a node kind added to `seriesNodes`/
-     * `authorNodes` without being remembered fails here.
-     */
     @Test
     fun `series and author nodes handed to the car are invalidated too`() = runTest {
         books.value = listOf(
@@ -286,20 +204,18 @@ class AutoBrowseTreeTest {
         val auto = auto()
 
         assertFalse(
-            auto.emittedDynamicParents().any { it.startsWith("series/") || it.startsWith("author/") },
+            auto.emittedDynamicParents().any { id -> id.startsWith("series/") || id.startsWith("author/") },
             "nothing has been handed out yet",
         )
 
         val emitted = (auto.children(AutoLibrary.TAB_SERIES, null) + auto.children(AutoLibrary.TAB_AUTHORS, null))
-            .map { it.mediaId }
+            .map { item -> item.mediaId }
         val remembered = auto.emittedDynamicParents()
 
-        assertTrue("series/series-1" in emitted && "author/author-1" in emitted, "the tree offered both nodes")
-        emitted.forEach { id -> assertTrue(id in remembered, "$id was handed to the car and must be invalidated") }
-        assertEquals(remembered.size, remembered.distinct().size, "a parent must not be remembered twice")
+        assertTrue("series/series-1" in emitted && "author/author-1" in emitted)
+        emitted.forEach { id -> assertTrue(id in remembered, "$id must be invalidated after a profile switch") }
     }
 
-    /** `SeriesSequence.Absent.raw` is empty, and a bare "#" reads as missing data rather than no sequence. */
     @Test
     fun `a series with no sequence is named without a dangling marker`() = runTest {
         books.value = listOf(
@@ -313,23 +229,25 @@ class AutoBrowseTreeTest {
         assertEquals("Marisol Holt · Tidewatch", subtitle)
     }
 
-    private fun List<androidx.media3.common.MediaItem>.titles(): List<String> =
-        mapNotNull { it.mediaMetadata.title?.toString() }
+    private fun androidx.media3.common.MediaItem.style(key: String): Int? = mediaMetadata.extras?.getInt(key)
 
-    private fun auto(outputs: AutoLibrary.Outputs = FakeAutoOutputs()): AutoLibrary {
-        val profiles = StubProfiles()
-        val library = StubLibrary(books, chapters)
+    private fun List<androidx.media3.common.MediaItem>.titles(): List<String> =
+        mapNotNull { item -> item.mediaMetadata.title?.toString() }
+
+    private fun auto(profiles: ProfileRepository = StubProfiles()): AutoLibrary {
+        val library = StubLibrary(books)
         return AutoLibrary(
             context = ApplicationProvider.getApplicationContext(),
             profiles = profiles,
             library = library,
+            downloads = FakeAutoDownloads,
             rememberedBooks = FakeRememberedBooks(
-                books.value.firstOrNull { it.progress?.isFinished == false }?.id,
+                books.value.firstOrNull { book -> book.progress?.isFinished == false }?.id,
                 PROFILE,
             ),
-            history = StubHistory(),
             homeShelves = ObserveHomeShelvesUseCase(profiles, library, UnconfinedTestDispatcher()),
-            audioOutputs = outputs,
+            activation = ProfileActivationGuard { true },
+            artwork = AutoArtwork.None,
         )
     }
 
@@ -386,8 +304,8 @@ class AutoBrowseTreeTest {
         localAvailability = local,
     )
 
-    private class StubProfiles : ProfileRepository {
-        private val profile = Profile(
+    private class StubProfiles(includeSecond: Boolean = false) : ProfileRepository {
+        private val active = Profile(
             id = PROFILE,
             serverId = SERVER,
             username = "demo",
@@ -397,45 +315,58 @@ class AutoBrowseTreeTest {
             lastUsedAt = null,
             isFixture = false,
         )
+        private val saved = buildList {
+            add(active)
+            if (includeSecond) {
+                add(
+                    Profile(
+                        id = ProfileId("profile-2"),
+                        serverId = SERVER,
+                        username = "other",
+                        displayName = "Other listener",
+                        role = ProfileRole.Listener,
+                        requiresReauthentication = false,
+                        lastUsedAt = null,
+                        isFixture = false,
+                    ),
+                )
+            }
+        }
 
-        override fun observeProfiles(): Flow<List<Profile>> = flowOf(listOf(profile))
+        override fun observeProfiles(): Flow<List<Profile>> = flowOf(saved)
+
         override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
-        override fun observeActiveProfile(): Flow<Profile?> = flowOf(profile)
+
+        override fun observeActiveProfile(): Flow<Profile?> = flowOf(active)
+
         override suspend fun activeProfileId(): ProfileId = PROFILE
+
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
     }
 
-    private class StubLibrary(
-        private val books: MutableStateFlow<List<Book>>,
-        private val chapters: MutableStateFlow<List<Chapter>>,
-    ) : LibraryRepository {
+    private class StubLibrary(private val books: MutableStateFlow<List<Book>>) : LibraryRepository {
         override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = flowOf(emptyList())
+
         override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> = flowOf(null)
+
         override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> = books
+
         override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = books
+
         override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> =
-            flowOf(books.value.firstOrNull { it.id == bookId })
-        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId): Flow<List<Chapter>> = chapters
+            flowOf(books.value.firstOrNull { book -> book.id == bookId })
+
+        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId): Flow<List<Chapter>> =
+            flowOf(emptyList())
+
         override fun observeSyncState(profileId: ProfileId): Flow<SyncState> = emptyFlow()
+
         override suspend fun refresh(profileId: ProfileId): AppResult<Int> = AppResult.Success(0)
+
         override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> =
             AppResult.Success(0)
-        override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> = AppResult.Success(0)
-    }
 
-    private class StubHistory : PlaybackHistoryRepository {
-        override fun observe(bookId: LibraryItemId, limit: Int): Flow<List<PlaybackHistoryEntry>> = flowOf(emptyList())
-        override suspend fun record(
-            bookId: LibraryItemId,
-            event: PlaybackEvent,
-            from: Duration?,
-            to: Duration,
-            detail: Duration?,
-            at: Instant?,
-            owner: ProfileId?,
-        ) = Unit
-        override suspend fun refreshServerSessions(bookId: LibraryItemId) = Unit
-        override suspend fun clear(bookId: LibraryItemId) = Unit
+        override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> = AppResult.Success(0)
     }
 
     private companion object {

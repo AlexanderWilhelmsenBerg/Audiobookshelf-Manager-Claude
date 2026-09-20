@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -81,6 +82,20 @@ class AutoLibraryTest {
         assertNull(AutoLibrary.resolve(AutoLibrary.TAB_HISTORY))
     }
 
+    @Test
+    fun `profile media id resolves only opaque profile identity`() {
+        assertEquals(ProfileId("prf_ada"), AutoLibrary.profileIdOf("profile/prf_ada"))
+        assertNull(AutoLibrary.profileIdOf("profile/"))
+        assertNull(AutoLibrary.profileIdOf("book/prf_ada"))
+    }
+
+    @Test
+    fun `retired browse destinations stay non-playable protocol ids`() {
+        assertNull(AutoLibrary.resolve(AutoLibrary.TAB_LIBRARY))
+        assertNull(AutoLibrary.resolve(AutoLibrary.TAB_HISTORY))
+        assertNull(AutoLibrary.resolve(AutoLibrary.TAB_OUTPUT))
+    }
+
     /** A malformed id is nothing, not a book at position zero. */
     @Test
     fun `an id's kind names its shape and never its value`() {
@@ -90,6 +105,7 @@ class AutoLibraryTest {
         assertEquals("book", AutoLibrary.kindOf("book/tidewatch"))
         assertEquals("at", AutoLibrary.kindOf("at/tidewatch/600000"))
         assertEquals("tab", AutoLibrary.kindOf(AutoLibrary.TAB_CONTINUE))
+        assertEquals("profile", AutoLibrary.kindOf("profile/prf_ada"))
         assertEquals("root", AutoLibrary.kindOf(AutoLibrary.ROOT))
         assertEquals("notice", AutoLibrary.kindOf(AutoLibrary.NOTICE_EMPTY))
         assertEquals("empty", AutoLibrary.kindOf(""))

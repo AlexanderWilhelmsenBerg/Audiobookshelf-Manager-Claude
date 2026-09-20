@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="window_background">#101414</color>
+    <color name="bookwave_accent">#9ACACC</color>
 </resources>

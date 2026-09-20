@@ -83,6 +83,22 @@
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
+
+        <!--
+          PD-001 / PRODUCT_SPEC 14.5 — Android Auto artwork crosses a process boundary through an opaque
+          content URI, never through an authenticated HTTP URL or an app-private file URI.
+
+          The provider is exported because the projected media host is a different process. It exposes no
+          query/write/list surface; openFile accepts only BookWave-minted SHA-256 capability tokens, and the
+          provider refuses a token after its originating profile stops being active.
+        -->
+        <provider
+            android:name=".auto.AutoArtworkContentProvider"
+            android:authorities="${applicationId}.autoart"
+            android:exported="true"
+            android:grantUriPermissions="false"
+            tools:ignore="ExportedContentProvider" />
+
         <!--
           SET-003 — preserves an explicitly chosen legacy Indigo icon when BookWave becomes default.
           `IndigoAlias` intentionally keeps the old component name while rendering BookWave, so an

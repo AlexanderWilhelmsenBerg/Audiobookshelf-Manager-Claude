@@ -69,6 +69,12 @@ Android Auto browse surfaces should show artwork from BookWave's safe cached dat
 - authors follow LIB-002's existing portrait/representative-cover policy;
 - missing or unavailable artwork falls back cleanly to the host placeholder.
 
+BookWave requests an artwork-first grid/card presentation for Continue, Series, Authors and the book rows reached
+through Series/Authors. Profiles stays a text-first list so active/locked/account state remains legible. The
+Android Auto/automotive host still owns the exact background, card chrome, spacing and typography; BookWave
+supplies its shipped teal accent to platform media surfaces where the host honours the app accent rather than
+attempting to draw a custom car background.
+
 **Profiles** is a first-class Android Auto destination. Switching profile from the car uses the same profile
 boundary as the rest of BookWave: active progress is preserved/flushed, playback pauses by default, the
 profile context changes atomically, and the car browse tree is invalidated before the new profile's content

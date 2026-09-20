@@ -1,7 +1,9 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.library.Book
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -12,18 +14,12 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * Issue #10 — pure proof of BookWave's browse-shape publication contract.
- *
- * These tests intentionally stop at the Media3 notification plan. Whether a DHU or physical head unit redraws
- * after that notification is a separate platform acceptance boundary.
- */
+/** #10 + PD-001 — pure proof of BookWave's published browse shape. */
 class AutoBrowseInvalidationTest {
 
     @Test
-    fun `empty to non-empty and back invalidates root`() {
-        val empty = snapshot(mapOf(AutoLibrary.ROOT to listOf(AutoLibrary.NOTICE_EMPTY)))
-        val populated = snapshot(
+    fun `root membership and order changes invalidate root`() {
+        val old = snapshot(
             mapOf(
                 AutoLibrary.ROOT to listOf(
                     AutoLibrary.TAB_CONTINUE,
@@ -33,56 +29,32 @@ class AutoBrowseInvalidationTest {
                 ),
             ),
         )
-
-        assertEquals(setOf(AutoLibrary.ROOT), changedParents(empty, populated))
-        assertEquals(setOf(AutoLibrary.ROOT), changedParents(populated, empty))
-    }
-
-    @Test
-    fun `first and last optional destination invalidate the library parent and destination`() {
-        val withoutDownload = mapOf(
-            AutoLibrary.TAB_LIBRARY to listOf(
-                AutoLibrary.TAB_CHAPTERS,
-                AutoLibrary.TAB_HISTORY,
-                AutoLibrary.TAB_OUTPUT,
+        val pd001 = snapshot(
+            mapOf(
+                AutoLibrary.ROOT to listOf(
+                    AutoLibrary.TAB_CONTINUE,
+                    AutoLibrary.TAB_SERIES,
+                    AutoLibrary.TAB_AUTHORS,
+                    AutoLibrary.TAB_PROFILES,
+                ),
             ),
-            AutoLibrary.TAB_DOWNLOADS to emptyList(),
         )
-        val withDownload = mapOf(
-            AutoLibrary.TAB_LIBRARY to listOf(
-                AutoLibrary.TAB_CHAPTERS,
-                AutoLibrary.TAB_HISTORY,
-                AutoLibrary.TAB_DOWNLOADS,
-                AutoLibrary.TAB_OUTPUT,
+        assertEquals(setOf(AutoLibrary.ROOT), changedParents(old, pd001))
+    }
+
+    @Test
+    fun `Series reorder with identical membership invalidates Series`() {
+        assertEquals(
+            setOf(AutoLibrary.TAB_SERIES),
+            changedParents(
+                snapshot(mapOf(AutoLibrary.TAB_SERIES to listOf("series-a", "series-b"))),
+                snapshot(mapOf(AutoLibrary.TAB_SERIES to listOf("series-b", "series-a"))),
             ),
-            AutoLibrary.TAB_DOWNLOADS to listOf("book-a"),
         )
-        val affected = setOf(AutoLibrary.TAB_LIBRARY, AutoLibrary.TAB_DOWNLOADS)
-
-        assertEquals(affected, changedParents(snapshot(withoutDownload), snapshot(withDownload)))
-        assertEquals(affected, changedParents(snapshot(withDownload), snapshot(withoutDownload)))
     }
 
     @Test
-    fun `series addition and removal invalidate Series`() {
-        val one = snapshot(mapOf(AutoLibrary.TAB_SERIES to listOf("series-a")))
-        val two = snapshot(mapOf(AutoLibrary.TAB_SERIES to listOf("series-a", "series-b")))
-
-        assertEquals(setOf(AutoLibrary.TAB_SERIES), changedParents(one, two))
-        assertEquals(setOf(AutoLibrary.TAB_SERIES), changedParents(two, one))
-    }
-
-    @Test
-    fun `author addition and removal invalidate Authors`() {
-        val one = snapshot(mapOf(AutoLibrary.TAB_AUTHORS to listOf("author-a")))
-        val two = snapshot(mapOf(AutoLibrary.TAB_AUTHORS to listOf("author-a", "author-b")))
-
-        assertEquals(setOf(AutoLibrary.TAB_AUTHORS), changedParents(one, two))
-        assertEquals(setOf(AutoLibrary.TAB_AUTHORS), changedParents(two, one))
-    }
-
-    @Test
-    fun `same-count different Series membership invalidates`() {
+    fun `same-count different Series and Author membership invalidates`() {
         assertEquals(
             setOf(AutoLibrary.TAB_SERIES),
             changedParents(
@@ -90,10 +62,6 @@ class AutoBrowseInvalidationTest {
                 snapshot(mapOf(AutoLibrary.TAB_SERIES to listOf("series-b"))),
             ),
         )
-    }
-
-    @Test
-    fun `same-count different Author membership invalidates`() {
         assertEquals(
             setOf(AutoLibrary.TAB_AUTHORS),
             changedParents(
@@ -115,30 +83,36 @@ class AutoBrowseInvalidationTest {
     }
 
     @Test
-    fun `data mutation that leaves exposed shape unchanged causes no invalidation`() {
-        val children = mapOf(AutoLibrary.TAB_SERIES to listOf("series-a"))
-        val before = snapshot(
-            children = children,
-            accessibleBookIds = setOf(LibraryItemId("book-a")),
+    fun `same-count profile presentation change invalidates Profiles`() {
+        assertEquals(
+            setOf(AutoLibrary.TAB_PROFILES),
+            changedParents(
+                snapshot(mapOf(AutoLibrary.TAB_PROFILES to listOf("profile-a:old"))),
+                snapshot(mapOf(AutoLibrary.TAB_PROFILES to listOf("profile-a:new"))),
+            ),
         )
-        val after = snapshot(
-            children = children,
-            accessibleBookIds = setOf(LibraryItemId("book-a"), LibraryItemId("book-not-exposed")),
-        )
+    }
 
+    @Test
+    fun `data mutation outside exposed shape causes no invalidation`() {
+        val children = mapOf(AutoLibrary.TAB_SERIES to listOf("series-a"))
+        val before = snapshot(children, accessibleBookIds = setOf(LibraryItemId("book-a")))
+        val after = snapshot(children, accessibleBookIds = setOf(LibraryItemId("book-a"), LibraryItemId("not-exposed")))
         assertTrue(plan(before, after).notifications.isEmpty())
     }
 
     @Test
-    fun `one candidate sweep uses one complete accessible-library subscription for many parents`() = runTest {
+    fun `one candidate sweep uses one complete accessible-library subscription`() = runTest {
         var completeReads = 0
         val source = AutoBrowseSnapshotSource(
             activeProfiles = flowOf(ProfileId("profile-a")),
+            savedProfiles = flowOf(emptyList<Profile>()),
+            savedServers = flowOf(emptyList<Server>()),
             accessibleBooks = {
                 completeReads += 1
                 flowOf(emptyList<Book>())
             },
-            build = { scope, _ ->
+            build = { scope, _, _, _ ->
                 val children = (1..200).associate { index -> "parent-$index" to listOf("child-$index") }
                 AutoBrowseSnapshot(
                     scope = scope,
@@ -150,105 +124,78 @@ class AutoBrowseInvalidationTest {
                 )
             },
         )
-
         val result = source.snapshots().first()
-
         assertEquals(1, completeReads)
         assertEquals(200, result.childrenByParent.size)
     }
 
     @Test
-    fun `same active profile id does not create a new profile generation`() = runTest {
+    fun `same active profile id does not create a new generation`() = runTest {
         val scopes = mutableListOf<BrowseProfileScope>()
         val source = AutoBrowseSnapshotSource(
-            activeProfiles = flowOf(
-                ProfileId("profile-a"),
-                ProfileId("profile-a"),
-            ),
+            activeProfiles = flowOf(ProfileId("profile-a"), ProfileId("profile-a")),
+            savedProfiles = flowOf(emptyList<Profile>()),
+            savedServers = flowOf(emptyList<Server>()),
             accessibleBooks = { flowOf(emptyList()) },
-            build = { scope, _ ->
+            build = { scope, _, _, _ ->
                 scopes += scope
-                snapshot(
-                    children = emptyMap(),
-                    profileId = scope.profileId?.value,
-                    generation = scope.generation,
-                )
+                snapshot(emptyMap(), profileId = scope.profileId?.value, generation = scope.generation)
             },
         )
-
         source.snapshots().first()
-
         assertEquals(1, scopes.size)
     }
 
     @Test
-    fun `profile A to B invalidates every profile-scoped parent and emitted dynamic parent`() {
-        val staticParents = setOf(
+    fun `profile boundary evicts PD-001 parents retired parents and emitted dynamic nodes`() {
+        val currentParents = setOf(
             AutoLibrary.ROOT,
             AutoLibrary.RECENT_ROOT,
             AutoLibrary.TAB_CONTINUE,
-            AutoLibrary.TAB_CHAPTERS,
-            AutoLibrary.TAB_HISTORY,
-            AutoLibrary.TAB_LIBRARY,
             AutoLibrary.TAB_SERIES,
             AutoLibrary.TAB_AUTHORS,
+            AutoLibrary.TAB_PROFILES,
+        )
+        val retired = setOf(
+            AutoLibrary.TAB_LIBRARY,
+            AutoLibrary.TAB_CHAPTERS,
+            AutoLibrary.TAB_HISTORY,
             AutoLibrary.TAB_DOWNLOADS,
             AutoLibrary.TAB_RECENT,
             AutoLibrary.TAB_DISCOVER,
             AutoLibrary.TAB_AGAIN,
+            AutoLibrary.TAB_OUTPUT,
         )
+        val scoped = currentParents + retired
         val emitted = setOf(
             "${AutoLibrary.SERIES_PREFIX}old-series",
             "${AutoLibrary.AUTHOR_PREFIX}old-author",
         )
         val before = snapshot(
-            children = staticParents.associateWith { listOf("a") },
+            children = scoped.associateWith { listOf("a") },
             profileId = "profile-a",
             generation = 1,
-            profileScopedParents = staticParents,
-            deferredProfileCounts = deferredParents,
+            profileScopedParents = scoped,
+            deferredProfileCounts = setOf(AutoLibrary.RECENT_ROOT),
         )
         val after = snapshot(
-            children = staticParents.associateWith { listOf("b") },
+            children = currentParents.associateWith { listOf("b") },
             profileId = "profile-b",
             generation = 2,
-            profileScopedParents = staticParents,
-            deferredProfileCounts = deferredParents,
+            profileScopedParents = scoped,
+            deferredProfileCounts = setOf(AutoLibrary.RECENT_ROOT),
         )
-
         val boundary = plan(before, after, emitted)
-
         assertTrue(boundary.profileBoundary)
-        assertEquals(staticParents + emitted, boundary.notifications.mapTo(linkedSetOf()) { it.parentId })
-        deferredParents.forEach { parentId ->
-            assertNull(boundary.notifications.first { it.parentId == parentId }.childCount)
+        assertEquals(scoped + emitted, boundary.notifications.mapTo(linkedSetOf()) { it.parentId })
+        assertNull(boundary.notifications.first { it.parentId == AutoLibrary.RECENT_ROOT }.childCount)
+        retired.forEach { parent ->
+            assertEquals(0, boundary.notifications.first { it.parentId == parent }.childCount)
         }
     }
 
     @Test
-    fun `equal counts across profile boundary cannot suppress invalidation`() {
-        val parent = AutoLibrary.TAB_SERIES
-        val boundary = plan(
-            before = snapshot(
-                children = mapOf(parent to listOf("series-a")),
-                profileId = "profile-a",
-                generation = 1,
-                profileScopedParents = setOf(parent),
-            ),
-            after = snapshot(
-                children = mapOf(parent to listOf("series-b")),
-                profileId = "profile-b",
-                generation = 2,
-                profileScopedParents = setOf(parent),
-            ),
-        )
-
-        assertTrue(boundary.profileBoundary)
-        assertEquals(listOf(BrowseInvalidation(parent, 1)), boundary.notifications)
-    }
-
-    @Test
-    fun `old emitted dynamic parent is evicted even when absent from the new snapshot`() {
+    fun `old emitted dynamic parent is evicted when absent in new profile`() {
         val oldParent = "${AutoLibrary.SERIES_PREFIX}old-series"
         val boundary = plan(
             before = snapshot(
@@ -265,22 +212,14 @@ class AutoBrowseInvalidationTest {
             ),
             emitted = setOf(oldParent),
         )
-
         assertEquals(0, boundary.notifications.first { it.parentId == oldParent }.childCount)
     }
 
     @Test
-    fun `ordinary dynamic parent refreshes only after it has actually been emitted`() {
+    fun `ordinary dynamic parent refreshes only after it was emitted`() {
         val dynamic = "${AutoLibrary.AUTHOR_PREFIX}author-a"
-        val before = snapshot(
-            children = mapOf(dynamic to listOf("book-a")),
-            ordinaryParents = emptySet(),
-        )
-        val after = snapshot(
-            children = mapOf(dynamic to listOf("book-b")),
-            ordinaryParents = emptySet(),
-        )
-
+        val before = snapshot(mapOf(dynamic to listOf("book-a")), ordinaryParents = emptySet())
+        val after = snapshot(mapOf(dynamic to listOf("book-b")), ordinaryParents = emptySet())
         assertTrue(plan(before, after).notifications.isEmpty())
         assertEquals(
             setOf(dynamic),
@@ -289,22 +228,24 @@ class AutoBrowseInvalidationTest {
     }
 
     @Test
-    fun `current adapter keeps issue 65 hierarchy out of this change`() {
-        val current = CurrentAutoBrowseSnapshotBuilder.build(
-            BrowseProfileScope(ProfileId("profile-a"), generation = 1),
+    fun `PD-001 adapter exposes exactly four root destinations even with no books`() {
+        val current = AutoBrowseSnapshotBuilder.build(
+            scope = BrowseProfileScope(ProfileId("profile-a"), generation = 1),
             books = emptyList(),
+            profiles = emptyList(),
+            servers = emptyList(),
         )
-
-        assertEquals(listOf(AutoLibrary.NOTICE_EMPTY), current.childrenByParent[AutoLibrary.ROOT])
         assertEquals(
             listOf(
-                AutoLibrary.TAB_CHAPTERS,
-                AutoLibrary.TAB_HISTORY,
-                AutoLibrary.TAB_OUTPUT,
+                AutoLibrary.TAB_CONTINUE,
+                AutoLibrary.TAB_SERIES,
+                AutoLibrary.TAB_AUTHORS,
+                AutoLibrary.TAB_PROFILES,
             ),
-            current.childrenByParent[AutoLibrary.TAB_LIBRARY],
+            current.childrenByParent[AutoLibrary.ROOT],
         )
-        assertFalse(current.childrenByParent.values.flatten().any { it == "tab/profiles" })
+        assertFalse(current.childrenByParent.containsKey(AutoLibrary.TAB_LIBRARY))
+        assertFalse(current.childrenByParent.containsKey(AutoLibrary.TAB_HISTORY))
     }
 
     private fun changedParents(before: AutoBrowseSnapshot, after: AutoBrowseSnapshot): Set<String> =
@@ -336,12 +277,4 @@ class AutoBrowseInvalidationTest {
         deferredProfileCounts = deferredProfileCounts,
         accessibleBookIds = accessibleBookIds,
     )
-
-    private companion object {
-        val deferredParents = setOf(
-            AutoLibrary.RECENT_ROOT,
-            AutoLibrary.TAB_CHAPTERS,
-            AutoLibrary.TAB_HISTORY,
-        )
-    }
 }
