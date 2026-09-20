@@ -74,7 +74,6 @@ internal object NotificationButtons {
      */
     const val ACTION_SELECT_CAR_OUTPUT = "com.example.shelfplayer.playback.SELECT_CAR_OUTPUT"
 
-
     /**
      * The same Car command while the route is positively known to be the car.
      *
