@@ -141,7 +141,6 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var auto: AutoLibrary
 
-
     /** PD-001 / PRODUCT_SPEC 6.5 — the same switch transaction the phone profile switcher delegates to. */
     @Inject
     internal lateinit var switchProfile: SwitchProfileUseCase
@@ -1473,6 +1472,12 @@ class PlaybackService : MediaLibraryService() {
             getString(R.string.player_sleep_remaining, remaining.asMinutesLabel())
         }
 
+    /** Media3 item command shown beside inactive profile rows where the host supports browse actions. */
+    private fun profileSwitchButton(): CommandButton = CommandButton.Builder(CommandButton.ICON_ARTIST)
+        .setDisplayName(getString(R.string.car_profile_use))
+        .setSessionCommand(SessionCommand(AutoLibrary.ACTION_SWITCH_PROFILE, Bundle.EMPTY))
+        .build()
+
     /**
      * PRODUCT_SPEC PLAY-002 — the car button and the headset button, or as many of them as apply.
      *
@@ -1491,12 +1496,6 @@ class PlaybackService : MediaLibraryService() {
      * action as a grey square with no explanation, and a driver cannot ask it why; one fewer button is a
      * clearer statement than a dead one.
      */
-    /** Media3 item command shown beside inactive profile rows where the host supports browse actions. */
-    private fun profileSwitchButton(): CommandButton = CommandButton.Builder(CommandButton.ICON_ARTIST)
-        .setDisplayName(getString(R.string.car_profile_use))
-        .setSessionCommand(SessionCommand(AutoLibrary.ACTION_SWITCH_PROFILE, Bundle.EMPTY))
-        .build()
-
     private fun outputCommandButtons(): List<CommandButton> = buildList {
         val state = outputButtons
         if (state.showCar) {
@@ -2368,11 +2367,6 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * Executes only commands already granted to library-capable controllers in [onConnect]. The explicit
-         * guard remains defense in depth: bookmark/output/sleep-timer actions should never become an escape
-         * hatch around the same controller trust boundary that protects browse resolution.
-         */
-        /**
          * PD-001 / AUTH-005 — switch the profile named by a media-item command.
          *
          * The command carries only the opaque media id Media3 supplied for the selected row. The domain use
@@ -2410,6 +2404,11 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
+        /**
+         * Executes only commands already granted to library-capable controllers in [onConnect]. The explicit
+         * guard remains defense in depth: bookmark/output/sleep-timer actions should never become an escape
+         * hatch around the same controller trust boundary that protects browse resolution.
+         */
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
