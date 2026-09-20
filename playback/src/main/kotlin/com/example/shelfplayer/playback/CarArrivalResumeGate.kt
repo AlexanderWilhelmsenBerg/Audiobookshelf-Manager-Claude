@@ -9,7 +9,8 @@ import kotlin.time.Duration.Companion.seconds
  * Arrival and departure deliberately remain distinct phases:
  *
  * - an arrival focus loss is captured before the first 0→1 car-controller bind;
- * - a departure focus loss is paired with the last 1→0 controller disconnect, in either callback order.
+ * - a departure focus loss is paired only when it was observed while the car was still connected and the
+ *   last 1→0 controller disconnect follows it.
  *
  * The exact headset is captured only from route-heard evidence while playback was real. During a connected
  * car session [observePlayingHeadset] keeps the last positively proven headset as stable continuity evidence,
@@ -36,7 +37,6 @@ internal class CarLifecycleContinuityGate(
 
     internal enum class Reason {
         FocusLossWaitingForBoundary,
-        BoundaryWaitingForFocusLoss,
         BoundaryMatchedFocusLoss,
         NoQualifyingHeadset,
         NoPendingFocusLoss,
@@ -81,13 +81,7 @@ internal class CarLifecycleContinuityGate(
         val identity: Identity,
     )
 
-    private data class DepartureMarker(
-        val at: Duration,
-        val identity: Identity,
-    )
-
     private var focusCandidate: FocusCandidate? = null
-    private var departureMarker: DepartureMarker? = null
     private var activeRecovery: Target? = null
 
     /**
@@ -112,11 +106,6 @@ internal class CarLifecycleContinuityGate(
         carConnected: Boolean,
     ) {
         if (!carConnected) {
-            // The final 1→0 disconnect may have happened before Media3 reports focus loss. In that ordering
-            // onCarDeparture has already copied the stable identity into departureMarker. Route/device
-            // emissions after disconnect must retire the connected-session snapshot without erasing that
-            // bounded lifecycle marker; a newer arrival, deliberate pause/book boundary, or the focus pairing
-            // itself will consume/cancel it.
             connectedPlayback = null
             return
         }
@@ -131,8 +120,9 @@ internal class CarLifecycleContinuityGate(
     /**
      * Records the measured Media3 AUDIO_FOCUS_LOSS.
      *
-     * When the car is already connected the event belongs to the departure side. When the last disconnect
-     * happened first, the stored departure marker lets this callback complete that pair immediately.
+     * When the car is already connected the event belongs to the departure side. A focus loss first observed
+     * after the final disconnect is intentionally not treated as departure evidence: that callback order has
+     * not been measured physically and could be an unrelated call/navigation/media focus event.
      */
     fun onAudioFocusLoss(
         at: Duration,
@@ -142,14 +132,6 @@ internal class CarLifecycleContinuityGate(
         explicitSelectionSequence: Long,
         carConnected: Boolean,
     ): Decision {
-        if (!carConnected) {
-            resolveDepartureAfterBoundary(
-                focusAt = at,
-                currentGeneration = currentGeneration,
-                explicitSelectionSequence = explicitSelectionSequence,
-            )?.let { return it }
-        }
-
         val phase = if (carConnected) Phase.Departure else Phase.Arrival
         val liveIdentity = identityOf(
             heardRoute = heardRoute,
@@ -189,9 +171,6 @@ internal class CarLifecycleContinuityGate(
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
     ): Decision {
-        // A new 0→1 binding cancels any unconsumed departure marker from an earlier 1→0 transition.
-        departureMarker = null
-
         val candidate = focusCandidate
             ?: return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
         if (candidate.phase != Phase.Arrival) {
@@ -226,63 +205,43 @@ internal class CarLifecycleContinuityGate(
     /**
      * Handles only the last 1→0 car-controller disconnect.
      *
-     * If Media3 already reported focus loss, the departure is ready immediately. If the controller boundary
-     * arrives first while headset playback is still active, remember that boundary and let the later measured
-     * focus loss complete the pair. A paused book never creates that marker.
+     * Recovery is allowed only when Media3 already reported a departure-phase audio-focus loss while the car
+     * was still connected. The opposite callback order is diagnostic-only until a physical capture proves it
+     * is part of the car transition; guessing across that boundary could turn an unrelated later focus loss
+     * into automatic playback.
      */
     fun onCarDeparture(
         departedAt: Duration,
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
-        playbackActive: Boolean,
     ): Decision {
         val candidate = focusCandidate
-        var candidateRejection: Reason? = null
-        if (candidate != null && candidate.phase == Phase.Departure) {
-            val invalid = invalidReason(
-                identity = candidate.identity,
-                currentGeneration = currentGeneration,
-                explicitSelectionSequence = explicitSelectionSequence,
-                interval = departedAt - candidate.at,
-            )
-            if (invalid == null) {
-                val target = candidate.identity.target(Phase.Departure)
-                focusCandidate = null
-                departureMarker = null
-                activeRecovery = target
-                return Decision(
-                    phase = Phase.Departure,
-                    status = Status.Ready,
-                    reason = Reason.BoundaryMatchedFocusLoss,
-                    target = target,
-                )
-            }
-            candidateRejection = invalid
+            ?: return Decision(Phase.Departure, Status.Rejected, Reason.NoPendingFocusLoss)
+        if (candidate.phase != Phase.Departure) {
             focusCandidate = null
             activeRecovery = null
-        } else if (candidate != null) {
-            focusCandidate = null
+            return Decision(Phase.Departure, Status.Rejected, Reason.WrongLifecyclePhase)
+        }
+
+        val invalid = invalidReason(
+            identity = candidate.identity,
+            currentGeneration = currentGeneration,
+            explicitSelectionSequence = explicitSelectionSequence,
+            interval = departedAt - candidate.at,
+        )
+        focusCandidate = null
+        if (invalid != null) {
             activeRecovery = null
+            return Decision(Phase.Departure, Status.Rejected, invalid)
         }
 
-        if (!playbackActive) {
-            departureMarker = null
-            return Decision(
-                phase = Phase.Departure,
-                status = Status.Rejected,
-                reason = candidateRejection ?: Reason.NoPlayingCarHeadset,
-            )
-        }
-
-        val identity = currentConnectedPlayback(currentGeneration, explicitSelectionSequence)
-            ?: return Decision(Phase.Departure, Status.Rejected, Reason.NoPlayingCarHeadset)
-
-        departureMarker = DepartureMarker(at = departedAt, identity = identity)
+        val target = candidate.identity.target(Phase.Departure)
+        activeRecovery = target
         return Decision(
             phase = Phase.Departure,
-            status = Status.Armed,
-            reason = Reason.BoundaryWaitingForFocusLoss,
-            target = identity.target(Phase.Departure),
+            status = Status.Ready,
+            reason = Reason.BoundaryMatchedFocusLoss,
+            target = target,
         )
     }
 
@@ -311,7 +270,6 @@ internal class CarLifecycleContinuityGate(
                 ?: if (headsetId != target.outputId) Reason.WrongHeadset else null
         }
         activeRecovery = null
-        departureMarker = null
         if (reason != null) return ConsumeResult(accepted = false, reason = reason)
         return ConsumeResult(accepted = true, reason = Reason.Eligible)
     }
@@ -319,7 +277,6 @@ internal class CarLifecycleContinuityGate(
     /** A newer Play supersedes pending automatic recovery but does not rewrite route-heard ownership. */
     fun cancelPending() {
         focusCandidate = null
-        departureMarker = null
         activeRecovery = null
     }
 
@@ -327,35 +284,6 @@ internal class CarLifecycleContinuityGate(
     fun cancelAll() {
         cancelPending()
         connectedPlayback = null
-    }
-
-    private fun resolveDepartureAfterBoundary(
-        focusAt: Duration,
-        currentGeneration: Long?,
-        explicitSelectionSequence: Long,
-    ): Decision? {
-        val marker = departureMarker ?: return null
-        val invalid = invalidReason(
-            identity = marker.identity,
-            currentGeneration = currentGeneration,
-            explicitSelectionSequence = explicitSelectionSequence,
-            interval = focusAt - marker.at,
-        )
-        departureMarker = null
-        if (invalid != null) {
-            connectedPlayback = null
-            return null
-        }
-
-        val target = marker.identity.target(Phase.Departure)
-        focusCandidate = null
-        activeRecovery = target
-        return Decision(
-            phase = Phase.Departure,
-            status = Status.Ready,
-            reason = Reason.BoundaryMatchedFocusLoss,
-            target = target,
-        )
     }
 
     private fun currentConnectedPlayback(
@@ -416,8 +344,9 @@ internal class CarLifecycleContinuityGate(
 
     private companion object {
         /**
-         * Arrival was measured at two and four seconds. Departure uses the same controller/focus lifecycle
-         * correlation bound until the next physical capture establishes a narrower ordering.
+         * Arrival was measured at two and four seconds. Departure is permitted only when focus loss is already
+         * observed while the car remains connected; this same conservative bound limits how long that evidence
+         * may wait for the final 1→0 disconnect. The opposite ordering remains diagnostic-only.
          */
         val DEFAULT_PAIRING_WINDOW: Duration = 6.seconds
     }
