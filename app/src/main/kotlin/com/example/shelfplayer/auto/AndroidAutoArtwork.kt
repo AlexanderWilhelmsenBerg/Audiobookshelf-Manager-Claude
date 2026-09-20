@@ -75,7 +75,7 @@ internal object AutoArtworkRegistry {
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(profileId.value.toByteArray(Charsets.UTF_8))
         sources.forEach { source ->
-            digest.update(0)
+            digest.update(0.toByte())
             digest.update(source.toByteArray(Charsets.UTF_8))
         }
         return digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
