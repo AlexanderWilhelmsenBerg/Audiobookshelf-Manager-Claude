@@ -463,7 +463,7 @@ class SleepTimerController @Inject constructor(
         // With no such timer, inactive playback is never a reason to create or schedule one.
         if (!playbackActive && automatic == null) return
         if (!schedule.enabled || schedule.start == schedule.end) {
-            if (automatic != null) finish(SleepTimerOutcome.Cancelled)
+            cancelAutomaticTimerIfRunning(automatic)
             return
         }
 
@@ -472,29 +472,58 @@ class SleepTimerController @Inject constructor(
         val occurrence = SleepSchedulePolicy.currentOccurrence(now, zone, schedule)
 
         if (automatic != null) {
-            if (occurrence?.id != automatic) {
-                finish(SleepTimerOutcome.Cancelled)
-            } else {
-                scheduleScheduleBoundary(now = now, zone = zone)
-            }
+            reconcileRunningAutomaticTimer(
+                automaticOccurrence = automatic,
+                currentOccurrence = occurrence,
+                now = now,
+                zone = zone,
+            )
             return
         }
 
-        if (running == null && occurrence != null) {
-            val suppressed = schedule.suppressedOccurrence == occurrence.id
-            val replayRequired = schedule.replayRequiredOccurrence == occurrence.id
-            if (!suppressed && (!replayRequired || explicitPlay)) {
-                if (schedule.suppressedOccurrence != null || schedule.replayRequiredOccurrence != null) {
-                    rememberScheduleRuntime(suppressedOccurrence = null, replayRequiredOccurrence = null)
-                }
-                startTimer(
-                    mode = SleepTimerMode.Fixed(settings.defaultLength),
-                    automaticOccurrence = occurrence.id,
-                )
-                return
-            }
+        if (running == null && occurrence != null && shouldArmAutomaticTimer(occurrence, explicitPlay)) {
+            armAutomaticTimer(occurrence)
+            return
         }
         scheduleScheduleBoundary(now = now, zone = zone)
+    }
+
+    private suspend fun cancelAutomaticTimerIfRunning(automaticOccurrence: String?) {
+        if (automaticOccurrence != null) finish(SleepTimerOutcome.Cancelled)
+    }
+
+    private suspend fun reconcileRunningAutomaticTimer(
+        automaticOccurrence: String,
+        currentOccurrence: SleepSchedulePolicy.Occurrence?,
+        now: java.time.Instant,
+        zone: java.time.ZoneId,
+    ) {
+        if (currentOccurrence?.id != automaticOccurrence) {
+            finish(SleepTimerOutcome.Cancelled)
+        } else {
+            scheduleScheduleBoundary(now = now, zone = zone)
+        }
+    }
+
+    private fun shouldArmAutomaticTimer(
+        occurrence: SleepSchedulePolicy.Occurrence,
+        explicitPlay: Boolean,
+    ): Boolean {
+        val schedule = settings.schedule
+        val suppressed = schedule.suppressedOccurrence == occurrence.id
+        val replayRequired = schedule.replayRequiredOccurrence == occurrence.id
+        return !suppressed && (!replayRequired || explicitPlay)
+    }
+
+    private suspend fun armAutomaticTimer(occurrence: SleepSchedulePolicy.Occurrence) {
+        val schedule = settings.schedule
+        if (schedule.suppressedOccurrence != null || schedule.replayRequiredOccurrence != null) {
+            rememberScheduleRuntime(suppressedOccurrence = null, replayRequiredOccurrence = null)
+        }
+        startTimer(
+            mode = SleepTimerMode.Fixed(settings.defaultLength),
+            automaticOccurrence = occurrence.id,
+        )
     }
 
     /**
