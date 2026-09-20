@@ -203,7 +203,7 @@ branch updates do not spend runner time before a change is ready for acceptance.
 the wrapper, scans secrets and protects committed Room schemas. The expensive Android gate runs exactly once:
 ordinary changes use `verifyDebug`; build/classpath changes use `verifyDebug --rerun-tasks` for R-31. The
 dependency/licence report is generated in that same warmed job instead of bootstrapping a second Android job.
-The manual form also has a force-rerun switch when a reviewer wants the strongest path regardless of the diff.
+Dispatch it from Forgejo → **Actions** → **Pull request** → *Run workflow*: select the PR branch/ref, enter the required Forgejo **PR number**, and optionally enable **force_rerun** when a reviewer wants the strongest path regardless of the diff. The Actions entry is named `PR #<number> — <branch>`, and the workflow rejects a PR number whose Forgejo head ref does not match the selected branch/ref. PR numbers, repository run numbers and Forgejo's internal run IDs remain independent counters.
 
 `.forgejo/workflows/main.yml` runs the release-side checks after a fast-forward merge: release lint, SBOM,
 vulnerability scan and an unsigned release assembly. Scheduled/manual main runs also execute `verifyDebug`
