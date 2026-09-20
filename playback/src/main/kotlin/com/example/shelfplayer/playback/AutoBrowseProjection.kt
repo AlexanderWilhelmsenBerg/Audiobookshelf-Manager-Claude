@@ -23,10 +23,7 @@ internal data class AutoSeriesNode(
         get() = books.firstOrNull { book -> book.coverPath != null }
 }
 
-internal data class AutoAuthorNode(
-    val author: Author,
-    val books: List<Book>,
-) {
+internal data class AutoAuthorNode(val author: Author, val books: List<Book>) {
     /** LIB-002 fallback when no confirmed/cached author portrait is usable. */
     val representativeCover: Book?
         get() = books.firstOrNull { book -> book.coverPath != null }
