@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
@@ -42,7 +43,7 @@ class FullPlayerSleepTimerTest {
 
         composeRule.setContent {
             FullPlayer(
-                state = PlaybackUiState.Idle,
+                state = playback(),
                 timer = timer,
                 actions = actions(onOpenSleepTimer = { opens += 1 }),
             )
@@ -76,7 +77,7 @@ class FullPlayerSleepTimerTest {
     fun `recreated player projects an already active owner timer without inventing local state`() {
         composeRule.setContent {
             FullPlayer(
-                state = PlaybackUiState.Idle,
+                state = playback(),
                 timer = active(7),
                 actions = actions(),
             )
@@ -95,6 +96,17 @@ class FullPlayerSleepTimerTest {
         onOpenSleepTimer = onOpenSleepTimer,
         onOpenChapters = {},
         onCollapse = {},
+    )
+
+    private fun playback() = PlaybackUiState(
+        bookId = LibraryItemId("book-1"),
+        title = "The Salt Harbour",
+        author = "Marisol Holt",
+        artworkUri = null,
+        isPlaying = true,
+        isLoading = false,
+        position = 10.minutes,
+        duration = 60.minutes,
     )
 
     private fun active(minutes: Int) = SleepTimerState(
