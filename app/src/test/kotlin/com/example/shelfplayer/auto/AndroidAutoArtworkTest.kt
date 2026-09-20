@@ -1,0 +1,53 @@
+package com.example.shelfplayer.auto
+
+import com.example.shelfplayer.core.model.ProfileId
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+@RunWith(RobolectricTestRunner::class)
+class AndroidAutoArtworkTest {
+
+    @Test
+    fun `artwork URI is opaque local content and contains no source credential material`() {
+        val context = RuntimeEnvironment.getApplication()
+        val source = "https://private.example/api/items/book-secret/cover?token=DO-NOT-LEAK"
+
+        val uri = assertNotNull(AutoArtworkRegistry.register(context, ProfileId("profile-secret"), listOf(source)))
+
+        assertEquals("content", uri.scheme)
+        assertEquals(context.packageName + ".autoart", uri.authority)
+        assertTrue(AutoArtworkRegistry.isToken(assertNotNull(uri.lastPathSegment)))
+        assertFalse(uri.toString().contains("private.example"))
+        assertFalse(uri.toString().contains("book-secret"))
+        assertFalse(uri.toString().contains("DO-NOT-LEAK"))
+        assertFalse(uri.toString().contains("token"))
+    }
+
+    @Test
+    fun `capability retains profile ownership internally and changes across profiles`() {
+        val context = RuntimeEnvironment.getApplication()
+        val source = "https://books.example/api/items/book/cover"
+        val first = assertNotNull(AutoArtworkRegistry.register(context, ProfileId("a"), listOf(source)))
+        val second = assertNotNull(AutoArtworkRegistry.register(context, ProfileId("b"), listOf(source)))
+
+        assertNotEquals(first, second)
+        assertEquals(ProfileId("a"), AutoArtworkRegistry.resolve(assertNotNull(first.lastPathSegment))?.profileId)
+        assertEquals(ProfileId("b"), AutoArtworkRegistry.resolve(assertNotNull(second.lastPathSegment))?.profileId)
+    }
+
+    @Test
+    fun `missing artwork produces no URI so the host owns the placeholder`() {
+        val context = RuntimeEnvironment.getApplication()
+
+        assertNull(AutoArtworkRegistry.register(context, ProfileId("a"), emptyList()))
+        assertNull(AutoArtworkRegistry.register(context, ProfileId("a"), listOf("")))
+    }
+}
