@@ -66,6 +66,8 @@ jobs:
 
       - name: Require current main and classify changes
         id: classify
+        env:
+          REQUESTED_PR: ${{ inputs.pr_number }}
         run: |
           set -euo pipefail
 
@@ -76,7 +78,7 @@ jobs:
             workflow_dispatch)
               base_ref="main"
 
-              requested_pr="${{ inputs.pr_number }}"
+              requested_pr="$REQUESTED_PR"
               if ! [[ "$requested_pr" =~ ^[1-9][0-9]*$ ]]; then
                 echo "::error::PR number must be a positive integer: $requested_pr"
                 exit 1
