@@ -188,6 +188,11 @@ is the first matching 0→1 car-controller bind.
   captured id.
 - During every suspension, book generation and explicit-selection sequence remain guards. A newer listener
   choice is authority; a transient live device omission is not.
+- Standard Play/Pause intent is observed at the session-facing `ResumeFreshnessPlayer` boundary before it is
+  forwarded to ExoPlayer. This matters for a duplicate Pause after focus has already made
+  `playWhenReady=false`: even if ExoPlayer emits no second state-change callback, that newer listener intent
+  still cancels the old continuity candidate. Service-owned automatic recovery uses the raw ExoPlayer and
+  therefore does not invalidate itself through this boundary.
 - The final check requires the same generation/selection sequence and the exact captured headset. Speaker,
   car, Automatic and another headset cannot substitute.
 - The `Play issued` diagnostic is deliberately separate from the later `isPlaying=true` confirmation.
