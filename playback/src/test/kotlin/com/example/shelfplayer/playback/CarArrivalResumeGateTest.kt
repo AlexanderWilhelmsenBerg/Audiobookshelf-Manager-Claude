@@ -248,6 +248,15 @@ class CarArrivalResumeGateTest {
 
         owner.onOutputsChanged(emptyList(), isPlaying = true)
         assertNull(owner.heardRoute)
+        // PlaybackService can receive this route emission after final disconnect but before focus loss.
+        // It must retire connected-session evidence without deleting the already-armed departure boundary.
+        gate.observePlayingHeadset(
+            heardRoute = owner.heardRoute,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
 
         val focus = gate.onAudioFocusLoss(
             at = 22.seconds,
