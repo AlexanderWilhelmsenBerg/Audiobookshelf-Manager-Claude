@@ -199,10 +199,14 @@ verifies v2, and an explicit `enableV1Signing = true` was tried, observed to be 
 ## The pipeline today
 
 Forgejo is the active CI path. `.forgejo/workflows/pull-request.yml` is deliberately **manual-only** so
-branch updates do not spend runner time before a change is ready for acceptance. Its preflight still validates
-the wrapper, scans secrets and protects committed Room schemas. The expensive Android gate runs exactly once:
-ordinary changes use `verifyDebug`; build/classpath changes use `verifyDebug --rerun-tasks` for R-31. The
-dependency/licence report is generated in that same warmed job instead of bootstrapping a second Android job.
+branch updates do not spend runner time before a change is ready for acceptance. The shared Forgejo runner
+stays at capacity 1: BookWave reduces queue/startup overhead inside its own workflow rather than increasing
+global runner concurrency. One `PR #<number> · Preflight` job performs the current-main/change classification,
+Gradle-wrapper verification, pinned gitleaks scan and committed Room-schema immutability checks as separately
+named steps over one full-history checkout. The expensive Android gate remains a separate
+`PR #<number> · verifyDebug` job and runs exactly once: ordinary changes use `verifyDebug`; build/classpath
+changes use `verifyDebug --rerun-tasks` for R-31. The dependency/licence report is generated in that same
+warmed Android job instead of bootstrapping a second Android job.
 Dispatch it from Forgejo → **Actions** → **Pull request** → *Run workflow*: select the PR branch/ref, enter the required Forgejo **PR number**, and optionally enable **force_rerun** when a reviewer wants the strongest path regardless of the diff. The workflow declares the preferred run name `PR #<number> — <branch>` and prefixes every check/job with `PR #<number>`. Forgejo 16.0.4 currently keeps the top-level Actions run title as `Pull request` even when `run-name` is present, so the check/job prefix is the live-instance fallback until Forgejo surfaces `run-name` as the run title. The workflow rejects a PR number whose Forgejo head ref does not match the selected branch/ref. PR numbers, repository run numbers and Forgejo's internal run IDs remain independent counters.
 
 `.forgejo/workflows/main.yml` runs the release-side checks after a fast-forward merge: release lint, SBOM,

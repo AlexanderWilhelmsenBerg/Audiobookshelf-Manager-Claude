@@ -51,21 +51,25 @@ env:
   GITLEAKS_LINUX_X64_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 
 jobs:
-  policy:
-    name: "PR #${{ inputs.pr_number }} · PR policy and change classification"
+  preflight:
+    name: "PR #${{ inputs.pr_number }} · Preflight"
     runs-on: linux-amd64
     timeout-minutes: 10
     outputs:
       classpath_changed: ${{ steps.classify.outputs.classpath_changed }}
     steps:
+      # One full-history checkout serves all cheap prerequisite checks. On the capacity-1 shared runner,
+      # separate jobs only repeated container/network/checkout startup without adding isolation: none of
+      # these checks receives secrets or privileged credentials.
       - name: Check out BookWave
         uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Require current main and classify changes
+      - name: PR policy and change classification
         id: classify
+        continue-on-error: true
         env:
           REQUESTED_PR: ${{ inputs.pr_number }}
         run: |
@@ -149,17 +153,9 @@ jobs:
           echo "classpath_changed=$classpath_changed" >> "$GITHUB_OUTPUT"
           echo "verification_mode=$([ "$classpath_changed" = true ] && echo rerun || echo normal)"
 
-  wrapper_validation:
-    name: "PR #${{ inputs.pr_number }} · Gradle wrapper validation"
-    runs-on: linux-amd64
-    timeout-minutes: 10
-    steps:
-      - name: Check out BookWave
-        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          persist-credentials: false
-
-      - name: Validate pinned Gradle wrapper
+      - name: Gradle wrapper validation
+        id: wrapper_check
+        continue-on-error: true
         run: |
           set -euo pipefail
 
@@ -184,18 +180,9 @@ jobs:
           echo "Gradle wrapper JAR verified: $actual"
           echo "Gradle distribution is SHA-pinned: $distribution_sha"
 
-  secret_scan:
-    name: "PR #${{ inputs.pr_number }} · Secret scan"
-    runs-on: linux-amd64
-    timeout-minutes: 10
-    steps:
-      - name: Check out BookWave
-        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Install pinned gitleaks
+      - name: Secret scan
+        id: secret_scan
+        continue-on-error: true
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
@@ -210,22 +197,11 @@ jobs:
           tar -xzf "$archive" -C "$tmp" gitleaks
           install -m 0755 "$tmp/gitleaks" /usr/local/bin/gitleaks
           gitleaks version
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN gitleaks detect --source . --redact --verbose --no-banner
 
-      - name: Scan working tree and history
-        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN gitleaks detect --source . --redact --verbose --no-banner
-
-  schema_immutability:
-    name: "PR #${{ inputs.pr_number }} · Committed Room schemas are immutable"
-    runs-on: linux-amd64
-    timeout-minutes: 10
-    steps:
-      - name: Check out BookWave
-        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: No committed schema may be modified
+      - name: Committed Room schemas are immutable
+        id: schema_check
+        continue-on-error: true
         run: |
           set -euo pipefail
           base_ref="${FORGEJO_BASE_REF:-main}"
@@ -245,12 +221,36 @@ jobs:
           fi
           echo "No committed Room schema was modified."
 
+      - name: Require every preflight check to pass
+        if: ${{ always() }}
+        env:
+          POLICY_OUTCOME: ${{ steps.classify.outcome }}
+          WRAPPER_OUTCOME: ${{ steps.wrapper_check.outcome }}
+          SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
+          SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for result in \
+            "PR policy/change classification:$POLICY_OUTCOME" \
+            "Gradle wrapper validation:$WRAPPER_OUTCOME" \
+            "Secret scan:$SECRET_SCAN_OUTCOME" \
+            "Room schema immutability:$SCHEMA_OUTCOME"; do
+            name="${result%%:*}"
+            outcome="${result#*:}"
+            if [ "$outcome" != "success" ]; then
+              echo "::error::Preflight check failed: $name ($outcome)"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
   verify:
     name: "PR #${{ inputs.pr_number }} · verifyDebug"
     runs-on: linux-amd64
     container:
       image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
-    needs: [policy, wrapper_validation, secret_scan, schema_immutability]
+    needs: preflight
     timeout-minutes: 90
     steps:
       - name: Report runner capacity
@@ -310,7 +310,7 @@ jobs:
 
       - name: Verify debug once
         env:
-          CLASSPATH_CHANGED: ${{ needs.policy.outputs.classpath_changed }}
+          CLASSPATH_CHANGED: ${{ needs.preflight.outputs.classpath_changed }}
         run: |
           set -euo pipefail
           extra_args=()
