@@ -1,254 +1,347 @@
 package com.example.shelfplayer.playback
 
-import androidx.test.core.app.ApplicationProvider
-import app.cash.turbine.test
-import com.example.shelfplayer.core.model.AppResult
-import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
-import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.core.model.ProfileRole
-import com.example.shelfplayer.core.model.Server
-import com.example.shelfplayer.core.model.ServerId
-import com.example.shelfplayer.core.model.SyncState
-import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.library.Book
-import com.example.shelfplayer.core.model.library.Chapter
-import com.example.shelfplayer.core.model.library.Library
-import com.example.shelfplayer.core.model.playback.PlaybackEvent
-import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
-import com.example.shelfplayer.domain.repository.LibraryRepository
-import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
-import com.example.shelfplayer.domain.repository.ProfileRepository
-import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
-import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration
 
 /**
- * PRODUCT_SPEC 5.2 / ROUTE-001 — the car must be told when the tree it cached belongs to another account.
+ * Issue #10 — pure proof of BookWave's browse-shape publication contract.
  *
- * ### The defect
- *
- * `onGetChildren` builds the browse tree on demand, which made it look self-updating. It is not. A browser
- * fetches once and caches; Media3 re-asks only after `notifyChildrenChanged`, and nothing called it. A head
- * unit therefore kept whatever it had loaded first — **including the previous profile's book titles after a
- * switch**, in front of whoever else is in the car. That is a profile boundary rather than stale UI.
- *
- * ### What this covers, and what it cannot
- *
- * It covers the signal: that changing the active profile produces exactly one invalidation, and that
- * ordinary re-emissions of the *same* profile produce none — a notification per library write would spend
- * the car's binder on nothing.
- *
- * It cannot cover the delivery. `MediaLibrarySession.notifyChildrenChanged` needs a real session and a real
- * connected browser, which is `:playback`'s absent instrumented tier and, past that, the Desktop Head Unit.
- * `AutoBrowseInvalidationTest` proving the flow and a DHU run proving the car acts on it are two different
- * jobs; only the first one runs here.
+ * These tests intentionally stop at the Media3 notification plan. Whether a DHU or physical head unit redraws
+ * after that notification is a separate platform acceptance boundary.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
 class AutoBrowseInvalidationTest {
 
-    private val profiles = SwitchableProfiles()
-
     @Test
-    fun `switching the active profile invalidates the tree exactly once`() = runTest {
-        auto().invalidations().test {
-            profiles.switchTo(OTHER)
+    fun `empty to non-empty and back invalidates root`() {
+        val empty = snapshot(mapOf(AutoLibrary.ROOT to listOf(AutoLibrary.NOTICE_EMPTY)))
+        val populated = snapshot(
+            mapOf(
+                AutoLibrary.ROOT to listOf(
+                    AutoLibrary.TAB_CONTINUE,
+                    AutoLibrary.TAB_SERIES,
+                    AutoLibrary.TAB_AUTHORS,
+                    AutoLibrary.TAB_LIBRARY,
+                ),
+            ),
+        )
 
-            awaitItem()
-            expectNoEvents()
-        }
-    }
-
-    /**
-     * **The first emission is not a change.**
-     *
-     * `observeActiveProfile` replays the current profile to every new subscriber. Treating that as an
-     * invalidation would make the service notify a browser that has not fetched anything yet, spending a
-     * binder round trip over the car's link to tell it nothing.
-     */
-    @Test
-    fun `the profile already active when the service starts is not an invalidation`() = runTest {
-        auto().invalidations().test {
-            expectNoEvents()
-        }
-    }
-
-    /** A profile re-emitting unchanged — a permission refresh, a `lastUsedAt` touch — is not a switch. */
-    @Test
-    fun `re-emitting the same profile does not invalidate`() = runTest {
-        auto().invalidations().test {
-            profiles.touch()
-            profiles.touch()
-
-            expectNoEvents()
-        }
+        assertEquals(setOf(AutoLibrary.ROOT), changedParents(empty, populated))
+        assertEquals(setOf(AutoLibrary.ROOT), changedParents(populated, empty))
     }
 
     @Test
-    fun `switching away and back invalidates twice`() = runTest {
-        auto().invalidations().test {
-            profiles.switchTo(OTHER)
-            awaitItem()
+    fun `first and last optional destination invalidate the library parent and destination`() {
+        val withoutDownload = mapOf(
+            AutoLibrary.TAB_LIBRARY to listOf(
+                AutoLibrary.TAB_CHAPTERS,
+                AutoLibrary.TAB_HISTORY,
+                AutoLibrary.TAB_OUTPUT,
+            ),
+            AutoLibrary.TAB_DOWNLOADS to emptyList(),
+        )
+        val withDownload = mapOf(
+            AutoLibrary.TAB_LIBRARY to listOf(
+                AutoLibrary.TAB_CHAPTERS,
+                AutoLibrary.TAB_HISTORY,
+                AutoLibrary.TAB_DOWNLOADS,
+                AutoLibrary.TAB_OUTPUT,
+            ),
+            AutoLibrary.TAB_DOWNLOADS to listOf("book-a"),
+        )
+        val affected = setOf(AutoLibrary.TAB_LIBRARY, AutoLibrary.TAB_DOWNLOADS)
 
-            profiles.switchTo(PROFILE)
-            awaitItem()
-
-            expectNoEvents()
-        }
+        assertEquals(affected, changedParents(snapshot(withoutDownload), snapshot(withDownload)))
+        assertEquals(affected, changedParents(snapshot(withDownload), snapshot(withoutDownload)))
     }
 
-    /** Signing out entirely is a change too: the tree must not keep serving the account that left. */
     @Test
-    fun `losing the active profile invalidates`() = runTest {
-        auto().invalidations().test {
-            profiles.signOut()
+    fun `series addition and removal invalidate Series`() {
+        val one = snapshot(mapOf(AutoLibrary.TAB_SERIES to listOf("series-a")))
+        val two = snapshot(mapOf(AutoLibrary.TAB_SERIES to listOf("series-a", "series-b")))
 
-            awaitItem()
-            expectNoEvents()
-        }
+        assertEquals(setOf(AutoLibrary.TAB_SERIES), changedParents(one, two))
+        assertEquals(setOf(AutoLibrary.TAB_SERIES), changedParents(two, one))
     }
 
-    /**
-     * Every parent a browser can subscribe to is named, or the ones left out keep serving the old account.
-     *
-     * Asserted against the tree's own root and tab ids rather than a copied list, so a tab added to
-     * `rootTabs` without being added to `browsableParents` fails here instead of on somebody's dashboard.
-     */
     @Test
-    fun `every browsable parent is invalidated`() {
-        val parents = auto().browsableParents()
+    fun `author addition and removal invalidate Authors`() {
+        val one = snapshot(mapOf(AutoLibrary.TAB_AUTHORS to listOf("author-a")))
+        val two = snapshot(mapOf(AutoLibrary.TAB_AUTHORS to listOf("author-a", "author-b")))
 
-        assertEquals(parents.size, parents.distinct().size, "a parent must not be notified twice")
-        assertTrue(AutoLibrary.ROOT in parents, "the browse root")
-        assertTrue(AutoLibrary.RECENT_ROOT in parents, "the resume tile's root, which is a separate node")
-        listOf(
+        assertEquals(setOf(AutoLibrary.TAB_AUTHORS), changedParents(one, two))
+        assertEquals(setOf(AutoLibrary.TAB_AUTHORS), changedParents(two, one))
+    }
+
+    @Test
+    fun `same-count different Series membership invalidates`() {
+        assertEquals(
+            setOf(AutoLibrary.TAB_SERIES),
+            changedParents(
+                snapshot(mapOf(AutoLibrary.TAB_SERIES to listOf("series-a"))),
+                snapshot(mapOf(AutoLibrary.TAB_SERIES to listOf("series-b"))),
+            ),
+        )
+    }
+
+    @Test
+    fun `same-count different Author membership invalidates`() {
+        assertEquals(
+            setOf(AutoLibrary.TAB_AUTHORS),
+            changedParents(
+                snapshot(mapOf(AutoLibrary.TAB_AUTHORS to listOf("author-a"))),
+                snapshot(mapOf(AutoLibrary.TAB_AUTHORS to listOf("author-b"))),
+            ),
+        )
+    }
+
+    @Test
+    fun `Continue meaningful membership or ordering change invalidates Continue`() {
+        assertEquals(
+            setOf(AutoLibrary.TAB_CONTINUE),
+            changedParents(
+                snapshot(mapOf(AutoLibrary.TAB_CONTINUE to listOf("book-a", "book-b"))),
+                snapshot(mapOf(AutoLibrary.TAB_CONTINUE to listOf("book-b", "book-a"))),
+            ),
+        )
+    }
+
+    @Test
+    fun `data mutation that leaves exposed shape unchanged causes no invalidation`() {
+        val children = mapOf(AutoLibrary.TAB_SERIES to listOf("series-a"))
+        val before = snapshot(
+            children = children,
+            accessibleBookIds = setOf(LibraryItemId("book-a")),
+        )
+        val after = snapshot(
+            children = children,
+            accessibleBookIds = setOf(LibraryItemId("book-a"), LibraryItemId("book-not-exposed")),
+        )
+
+        assertTrue(plan(before, after).notifications.isEmpty())
+    }
+
+    @Test
+    fun `one candidate sweep uses one complete accessible-library subscription for many parents`() = runTest {
+        var completeReads = 0
+        val source = AutoBrowseSnapshotSource(
+            activeProfiles = flowOf(ProfileId("profile-a")),
+            accessibleBooks = {
+                completeReads += 1
+                flowOf(emptyList<Book>())
+            },
+            build = { scope, _ ->
+                val children = (1..200).associate { index -> "parent-$index" to listOf("child-$index") }
+                AutoBrowseSnapshot(
+                    scope = scope,
+                    childrenByParent = children,
+                    ordinaryParents = children.keys,
+                    profileScopedParents = children.keys,
+                    deferredProfileCounts = emptySet(),
+                    accessibleBookIds = emptySet(),
+                )
+            },
+        )
+
+        val result = source.snapshots().first()
+
+        assertEquals(1, completeReads)
+        assertEquals(200, result.childrenByParent.size)
+    }
+
+    @Test
+    fun `same active profile id does not create a new profile generation`() = runTest {
+        val scopes = mutableListOf<BrowseProfileScope>()
+        val source = AutoBrowseSnapshotSource(
+            activeProfiles = flowOf(
+                ProfileId("profile-a"),
+                ProfileId("profile-a"),
+            ),
+            accessibleBooks = { flowOf(emptyList()) },
+            build = { scope, _ ->
+                scopes += scope
+                snapshot(
+                    children = emptyMap(),
+                    profileId = scope.profileId?.value,
+                    generation = scope.generation,
+                )
+            },
+        )
+
+        source.snapshots().first()
+
+        assertEquals(1, scopes.size)
+    }
+
+    @Test
+    fun `profile A to B invalidates every profile-scoped parent and emitted dynamic parent`() {
+        val staticParents = setOf(
+            AutoLibrary.ROOT,
+            AutoLibrary.RECENT_ROOT,
             AutoLibrary.TAB_CONTINUE,
+            AutoLibrary.TAB_CHAPTERS,
+            AutoLibrary.TAB_HISTORY,
+            AutoLibrary.TAB_LIBRARY,
+            AutoLibrary.TAB_SERIES,
+            AutoLibrary.TAB_AUTHORS,
+            AutoLibrary.TAB_DOWNLOADS,
             AutoLibrary.TAB_RECENT,
             AutoLibrary.TAB_DISCOVER,
             AutoLibrary.TAB_AGAIN,
-            AutoLibrary.TAB_CHAPTERS,
-            AutoLibrary.TAB_HISTORY,
-        ).forEach { tab -> assertTrue(tab in parents, "$tab is browsable and must be invalidated") }
+        )
+        val emitted = setOf(
+            "${AutoLibrary.SERIES_PREFIX}old-series",
+            "${AutoLibrary.AUTHOR_PREFIX}old-author",
+        )
+        val before = snapshot(
+            children = staticParents.associateWith { listOf("a") },
+            profileId = "profile-a",
+            generation = 1,
+            profileScopedParents = staticParents,
+            deferredProfileCounts = deferredParents,
+        )
+        val after = snapshot(
+            children = staticParents.associateWith { listOf("b") },
+            profileId = "profile-b",
+            generation = 2,
+            profileScopedParents = staticParents,
+            deferredProfileCounts = deferredParents,
+        )
+
+        val boundary = plan(before, after, emitted)
+
+        assertTrue(boundary.profileBoundary)
+        assertEquals(staticParents + emitted, boundary.notifications.mapTo(linkedSetOf()) { it.parentId })
+        deferredParents.forEach { parentId ->
+            assertNull(boundary.notifications.first { it.parentId == parentId }.childCount)
+        }
     }
 
-    private fun auto(): AutoLibrary = AutoLibrary(
-        context = ApplicationProvider.getApplicationContext(),
-        profiles = profiles,
-        library = EmptyLibrary,
-        rememberedBooks = FakeRememberedBooks(),
-        history = NoHistory,
-        homeShelves = ObserveHomeShelvesUseCase(profiles, EmptyLibrary, UnconfinedTestDispatcher()),
-        audioOutputs = FakeAutoOutputs(),
+    @Test
+    fun `equal counts across profile boundary cannot suppress invalidation`() {
+        val parent = AutoLibrary.TAB_SERIES
+        val boundary = plan(
+            before = snapshot(
+                children = mapOf(parent to listOf("series-a")),
+                profileId = "profile-a",
+                generation = 1,
+                profileScopedParents = setOf(parent),
+            ),
+            after = snapshot(
+                children = mapOf(parent to listOf("series-b")),
+                profileId = "profile-b",
+                generation = 2,
+                profileScopedParents = setOf(parent),
+            ),
+        )
+
+        assertTrue(boundary.profileBoundary)
+        assertEquals(listOf(BrowseInvalidation(parent, 1)), boundary.notifications)
+    }
+
+    @Test
+    fun `old emitted dynamic parent is evicted even when absent from the new snapshot`() {
+        val oldParent = "${AutoLibrary.SERIES_PREFIX}old-series"
+        val boundary = plan(
+            before = snapshot(
+                children = mapOf(oldParent to listOf("book-a")),
+                profileId = "profile-a",
+                generation = 1,
+                profileScopedParents = setOf(AutoLibrary.TAB_SERIES),
+            ),
+            after = snapshot(
+                children = mapOf(AutoLibrary.TAB_SERIES to emptyList()),
+                profileId = "profile-b",
+                generation = 2,
+                profileScopedParents = setOf(AutoLibrary.TAB_SERIES),
+            ),
+            emitted = setOf(oldParent),
+        )
+
+        assertEquals(0, boundary.notifications.first { it.parentId == oldParent }.childCount)
+    }
+
+    @Test
+    fun `ordinary dynamic parent refreshes only after it has actually been emitted`() {
+        val dynamic = "${AutoLibrary.AUTHOR_PREFIX}author-a"
+        val before = snapshot(
+            children = mapOf(dynamic to listOf("book-a")),
+            ordinaryParents = emptySet(),
+        )
+        val after = snapshot(
+            children = mapOf(dynamic to listOf("book-b")),
+            ordinaryParents = emptySet(),
+        )
+
+        assertTrue(plan(before, after).notifications.isEmpty())
+        assertEquals(
+            setOf(dynamic),
+            plan(before, after, emitted = setOf(dynamic)).notifications.mapTo(linkedSetOf()) { it.parentId },
+        )
+    }
+
+    @Test
+    fun `current adapter keeps issue 65 hierarchy out of this change`() {
+        val current = CurrentAutoBrowseSnapshotBuilder.build(
+            BrowseProfileScope(ProfileId("profile-a"), generation = 1),
+            books = emptyList(),
+        )
+
+        assertEquals(listOf(AutoLibrary.NOTICE_EMPTY), current.childrenByParent[AutoLibrary.ROOT])
+        assertEquals(
+            listOf(
+                AutoLibrary.TAB_CHAPTERS,
+                AutoLibrary.TAB_HISTORY,
+                AutoLibrary.TAB_OUTPUT,
+            ),
+            current.childrenByParent[AutoLibrary.TAB_LIBRARY],
+        )
+        assertFalse(current.childrenByParent.values.flatten().any { it == "tab/profiles" })
+    }
+
+    private fun changedParents(before: AutoBrowseSnapshot, after: AutoBrowseSnapshot): Set<String> =
+        plan(before, after).notifications.mapTo(linkedSetOf()) { it.parentId }
+
+    private fun plan(
+        before: AutoBrowseSnapshot,
+        after: AutoBrowseSnapshot,
+        emitted: Set<String> = emptySet(),
+    ): BrowseInvalidationPlan {
+        val tracker = AutoBrowseInvalidationTracker()
+        assertEquals(BrowseInvalidationPlan.None, tracker.next(before, emitted))
+        return tracker.next(after, emitted)
+    }
+
+    private fun snapshot(
+        children: Map<String, List<String>>,
+        profileId: String? = "profile-a",
+        generation: Long = 1,
+        ordinaryParents: Set<String> = children.keys,
+        profileScopedParents: Set<String> = ordinaryParents,
+        deferredProfileCounts: Set<String> = emptySet(),
+        accessibleBookIds: Set<LibraryItemId> = emptySet(),
+    ): AutoBrowseSnapshot = AutoBrowseSnapshot(
+        scope = BrowseProfileScope(profileId?.let(::ProfileId), generation),
+        childrenByParent = children,
+        ordinaryParents = ordinaryParents,
+        profileScopedParents = profileScopedParents,
+        deferredProfileCounts = deferredProfileCounts,
+        accessibleBookIds = accessibleBookIds,
     )
 
-    private object NoHistory : PlaybackHistoryRepository {
-        override fun observe(bookId: LibraryItemId, limit: Int): Flow<List<PlaybackHistoryEntry>> = flowOf(emptyList())
-
-        override suspend fun record(
-            bookId: LibraryItemId,
-            event: PlaybackEvent,
-            from: Duration?,
-            to: Duration,
-            detail: Duration?,
-            at: Instant?,
-            owner: ProfileId?,
-        ) = Unit
-
-        /**
-         * PRODUCT_SPEC PLAY-003 — a no-op, because the car browse tree reads history and never
-         * refreshes it. The pane that does is on the phone; a head unit showing a stale row is a
-         * smaller problem than a car making a network call while somebody is driving.
-         */
-        override suspend fun refreshServerSessions(bookId: LibraryItemId) = Unit
-
-        override suspend fun clear(bookId: LibraryItemId) = Unit
-    }
-
-    /** A profile repository whose active profile the test moves. */
-    private class SwitchableProfiles : ProfileRepository {
-        private val active = MutableStateFlow<Profile?>(profileOf(PROFILE))
-
-        fun switchTo(id: ProfileId) {
-            active.value = profileOf(id)
-        }
-
-        /** Re-emits the same profile with a different unrelated field, as a permission refresh would. */
-        fun touch() {
-            val current = active.value ?: return
-            active.value = current.copy(lastUsedAt = Instant.ofEpochMilli(1_000))
-        }
-
-        fun signOut() {
-            active.value = null
-        }
-
-        override fun observeProfiles(): Flow<List<Profile>> = flowOf(emptyList())
-
-        override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
-
-        override fun observeActiveProfile(): Flow<Profile?> = active
-
-        override suspend fun activeProfileId(): ProfileId? = active.value?.id
-
-        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
-
-        companion object {
-            fun profileOf(id: ProfileId) = Profile(
-                id = id,
-                serverId = SERVER,
-                username = "demo",
-                displayName = "Demo listener",
-                role = ProfileRole.Listener,
-                requiresReauthentication = false,
-                lastUsedAt = null,
-                isFixture = false,
-            )
-        }
-    }
-
-    private object EmptyLibrary : LibraryRepository {
-        override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> = flowOf(emptyList())
-
-        override fun observeLibrary(profileId: ProfileId, libraryId: LibraryId): Flow<Library?> = flowOf(null)
-
-        override fun observeBooks(profileId: ProfileId, libraryId: LibraryId): Flow<List<Book>> = flowOf(emptyList())
-
-        override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = flowOf(emptyList())
-
-        override fun observeChapters(profileId: ProfileId, bookId: LibraryItemId): Flow<List<Chapter>> =
-            flowOf(emptyList())
-
-        override fun observeBook(profileId: ProfileId, bookId: LibraryItemId): Flow<Book?> = flowOf(null)
-
-        override fun observeSyncState(profileId: ProfileId): Flow<SyncState> = emptyFlow()
-
-        override suspend fun refresh(profileId: ProfileId): AppResult<Int> = AppResult.Success(0)
-
-        override suspend fun searchServer(profileId: ProfileId, query: String): AppResult<Int> = AppResult.Success(0)
-
-        override suspend fun writeProgress(profileId: ProfileId, progress: List<AccountProgress>): AppResult<Int> =
-            AppResult.Success(0)
-    }
-
     private companion object {
-        val SERVER = ServerId("srv_books")
-        val PROFILE = ProfileId("prf_ada")
-        val OTHER = ProfileId("prf_grace")
+        val deferredParents = setOf(
+            AutoLibrary.RECENT_ROOT,
+            AutoLibrary.TAB_CHAPTERS,
+            AutoLibrary.TAB_HISTORY,
+        )
     }
 }

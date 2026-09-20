@@ -26,8 +26,6 @@ import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.util.concurrent.ConcurrentHashMap
@@ -94,48 +92,30 @@ class AutoLibrary @Inject constructor(
     )
 
     /**
-     * The `series/` and `author/` ids handed to a head unit, so a profile switch can invalidate them.
+     * Dynamic parent ids actually handed to a head unit.
      *
-     * Never cleared: an id dropped here is a car still showing another account's books, while a stale entry
-     * only costs one no-op `notifyChildrenChanged`. Concurrent because the browse tree is built off the
-     * service's scope while the invalidation loop reads it.
+     * They stay remembered across profile generations because Media3 exposes no API for asking which browse
+     * nodes a host still has subscribed. A profile boundary therefore has to assume every emitted dynamic
+     * parent can still be cached and evict it explicitly.
      */
     private val emittedNodes = ConcurrentHashMap.newKeySet<String>()
 
     private fun remember(id: String): String = id.also(emittedNodes::add)
 
-    fun invalidations(): Flow<Unit> = profiles.observeActiveProfile()
-        .map { profile -> profile?.id }
-        .distinctUntilChanged()
-        .drop(1)
-        .map { }
-
     /**
-     * Every parent a head unit may be subscribed to, static rows plus the `series/` and `author/` nodes
-     * this process has actually handed out.
+     * One profile-bound, library-derived browse snapshot per Room emission.
      *
-     * Media3 does not invalidate descendants when a parent changes, so notifying only the fixed tabs left a
-     * car that had drilled into a series or an author still showing the **previous profile's** books
-     * (product priority 4). The dynamic ids are remembered as they are emitted because there is no API to
-     * ask the session what it is subscribed to.
+     * Current hierarchy knowledge is confined to [CurrentAutoBrowseSnapshotBuilder]. The source subscribes
+     * to accessible books once for the active profile and every invalidation decision for that sweep is
+     * derived from the same immutable list.
      */
-    fun browsableParents(): List<String> = staticParents() + emittedNodes.toList()
+    internal fun browseSnapshots(): Flow<AutoBrowseSnapshot> = AutoBrowseSnapshotSource(
+        activeProfiles = profiles.observeActiveProfile().map { profile -> profile?.id },
+        accessibleBooks = library::observeAccessibleBooks,
+        build = CurrentAutoBrowseSnapshotBuilder::build,
+    ).snapshots()
 
-    private fun staticParents(): List<String> = listOf(
-        ROOT,
-        RECENT_ROOT,
-        TAB_CONTINUE,
-        TAB_CHAPTERS,
-        TAB_HISTORY,
-        TAB_LIBRARY,
-        TAB_SERIES,
-        TAB_AUTHORS,
-        TAB_DOWNLOADS,
-        TAB_RECENT,
-        TAB_DISCOVER,
-        TAB_AGAIN,
-        TAB_OUTPUT,
-    )
+    internal fun emittedDynamicParents(): Set<String> = emittedNodes.toSet()
 
     /**
      * A fixed destination first, then the three id families, then nothing.
@@ -383,6 +363,58 @@ class AutoLibrary @Inject constructor(
     private suspend fun books(): List<Book> {
         val profileId = profiles.activeProfileId() ?: return emptyList()
         return library.observeAccessibleBooks(profileId).first()
+    }
+
+    /**
+     * Resolves the few profile-bound parent counts that are not library-shape facts.
+     *
+     * The complete accessible-book set is never re-read here. [snapshot] already says which opaque book ids
+     * belong to the new profile, so Chapters/History can validate the current-or-remembered target and then
+     * read only their own narrow repositories. This keeps a profile switch exact without returning to the old
+     * one-full-library-read-per-parent fan-out.
+     */
+    internal suspend fun profileBoundaryCounts(
+        snapshot: AutoBrowseSnapshot,
+        now: NowPlaying?,
+        parentIds: Set<String>,
+    ): Map<String, Int> {
+        val requested = parentIds intersect snapshot.deferredProfileCounts
+        if (requested.isEmpty()) return emptyMap()
+
+        val profileId = snapshot.scope.profileId
+        val rememberedId = profileId
+            ?.let { id -> rememberedBooks.rememberedBook(id) }
+            ?.takeIf(snapshot.accessibleBookIds::contains)
+        val targetId = now?.bookId
+            ?.takeIf(snapshot.accessibleBookIds::contains)
+            ?: if (now == null) rememberedId else null
+        val emptyTargetCount = if (now == null) 1 else 0
+
+        return buildMap {
+            if (RECENT_ROOT in requested) {
+                put(RECENT_ROOT, if (rememberedId == null) 0 else 1)
+            }
+            if (TAB_CHAPTERS in requested) {
+                val count = if (profileId == null || targetId == null) {
+                    emptyTargetCount
+                } else {
+                    1 + library.observeChapters(profileId, targetId).first().size
+                }
+                put(TAB_CHAPTERS, count)
+            }
+            if (TAB_HISTORY in requested) {
+                val count = if (profileId == null || targetId == null) {
+                    emptyTargetCount
+                } else {
+                    history.observe(targetId, limit = CAR_HISTORY_READ).first()
+                        .filter { entry -> entry.event.isUsefulInCarHistory }
+                        .distinctBy { entry -> entry.event to entry.returnTo.inWholeSeconds }
+                        .take(CAR_HISTORY_LIMIT)
+                        .size
+                }
+                put(TAB_HISTORY, count)
+            }
+        }
     }
 
     private suspend fun bookFor(bookId: LibraryItemId?): Book? {
@@ -678,8 +710,8 @@ class AutoLibrary @Inject constructor(
 
         const val OUT_PREFIX = "out/"
         const val AUTOMATIC_OUTPUT = "automatic"
-        private const val SERIES_PREFIX = "series/"
-        private const val AUTHOR_PREFIX = "author/"
+        internal const val SERIES_PREFIX = "series/"
+        internal const val AUTHOR_PREFIX = "author/"
 
         private const val NOTICE_PREFIX = "notice/"
         const val NOTICE_EMPTY = "${NOTICE_PREFIX}empty"

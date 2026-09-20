@@ -286,17 +286,17 @@ class AutoBrowseTreeTest {
         val auto = auto()
 
         assertFalse(
-            auto.browsableParents().any { it.startsWith("series/") || it.startsWith("author/") },
+            auto.emittedDynamicParents().any { it.startsWith("series/") || it.startsWith("author/") },
             "nothing has been handed out yet",
         )
 
         val emitted = (auto.children(AutoLibrary.TAB_SERIES, null) + auto.children(AutoLibrary.TAB_AUTHORS, null))
             .map { it.mediaId }
-        val parents = auto.browsableParents()
+        val remembered = auto.emittedDynamicParents()
 
         assertTrue("series/series-1" in emitted && "author/author-1" in emitted, "the tree offered both nodes")
-        emitted.forEach { id -> assertTrue(id in parents, "$id was handed to the car and must be invalidated") }
-        assertEquals(parents.size, parents.distinct().size, "a parent must not be notified twice")
+        emitted.forEach { id -> assertTrue(id in remembered, "$id was handed to the car and must be invalidated") }
+        assertEquals(remembered.size, remembered.distinct().size, "a parent must not be remembered twice")
     }
 
     /** `SeriesSequence.Absent.raw` is empty, and a bare "#" reads as missing data rather than no sequence. */
