@@ -272,9 +272,9 @@ class PlaybackService : MediaLibraryService() {
      * The route recovery can tolerate Android's transient device-list omission but can target only the exact
      * headset captured by this policy. continuityPlayAwaiting is diagnostic only; it never authorizes Play.
      */
-    private val carContinuity = CarLifecycleContinuityGate()
-    private val carContinuityRouteRecovery = CarLifecycleRouteRecovery()
-    private var continuityPlayAwaiting: CarLifecycleContinuityGate.Target? = null
+    private val carContinuity = CarArrivalResumeGate()
+    private val carContinuityRouteRecovery = CarArrivalRouteRecovery()
+    private var continuityPlayAwaiting: CarArrivalResumeGate.Target? = null
 
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
@@ -965,7 +965,7 @@ class PlaybackService : MediaLibraryService() {
                 )
                 logCarContinuityDecision("audio-focus-loss", decision)
                 decision.target
-                    ?.takeIf { decision.status == CarLifecycleContinuityGate.Status.Ready }
+                    ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
                     ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
             } else {
                 // Deliberate pause, becomingNoisy, end-of-item and unknown causes never inherit the measured
@@ -1185,8 +1185,7 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
-    private fun currentExplicitSelectionSequence(): Long =
-        audioOutputs.explicitSelection.value?.sequence ?: 0L
+    private fun currentExplicitSelectionSequence(): Long = audioOutputs.explicitSelection.value?.sequence ?: 0L
 
     /**
      * Refreshes #36's car-session continuity target only from positive route evidence while audio is playing.
@@ -1290,7 +1289,7 @@ class PlaybackService : MediaLibraryService() {
      * The lifecycle gate has already captured one exact headset. Android may temporarily omit it or clear the
      * preferred route to Automatic; the recovery may wait for and reassert only that same target.
      */
-    private suspend fun recoverCarContinuityHeadset(target: CarLifecycleContinuityGate.Target): String? {
+    private suspend fun recoverCarContinuityHeadset(target: CarArrivalResumeGate.Target): String? {
         val held = carContinuityRouteRecovery.secure(
             target = target,
             outputs = audioOutputs.outputs,
@@ -1320,10 +1319,7 @@ class PlaybackService : MediaLibraryService() {
         return held
     }
 
-    private fun logHeldHeadset(
-        hold: String,
-        phase: CarLifecycleContinuityGate.Phase? = null,
-    ) {
+    private fun logHeldHeadset(hold: String, phase: CarArrivalResumeGate.Phase? = null) {
         logger.info(
             LogCategory.Playback,
             if (phase == null) {
@@ -1337,8 +1333,8 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun logCarContinuityRouteEvent(
-        target: CarLifecycleContinuityGate.Target,
-        event: CarLifecycleRouteRecovery.Event,
+        target: CarArrivalResumeGate.Target,
+        event: CarArrivalRouteRecovery.Event,
     ) {
         logger.info(
             LogCategory.Playback,
@@ -1349,13 +1345,13 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
-    private fun currentContinuityInvalidation(target: CarLifecycleContinuityGate.Target): String = when {
+    private fun currentContinuityInvalidation(target: CarArrivalResumeGate.Target): String = when {
         routeOwnership.currentGeneration != target.generation -> "generation-changed"
         currentExplicitSelectionSequence() != target.explicitSelectionSequence -> "explicit-selection-changed"
         else -> "target-unavailable-or-candidate-invalidated"
     }
 
-    private suspend fun recoverAndResumeCarContinuity(target: CarLifecycleContinuityGate.Target) {
+    private suspend fun recoverAndResumeCarContinuity(target: CarArrivalResumeGate.Target) {
         val heldHeadset = recoverCarContinuityHeadset(target)
         resumeAfterCarContinuity(target, heldHeadset)
     }
@@ -1366,10 +1362,7 @@ class PlaybackService : MediaLibraryService() {
      * The log says Play was issued rather than claiming playback resumed. Actual audio movement is logged from
      * onIsPlayingChanged, which is the first service callback that can truthfully make that claim.
      */
-    private fun resumeAfterCarContinuity(
-        target: CarLifecycleContinuityGate.Target,
-        heldHeadset: String?,
-    ) {
+    private fun resumeAfterCarContinuity(target: CarArrivalResumeGate.Target, heldHeadset: String?) {
         val current = player ?: run {
             carContinuity.cancelPending()
             continuityPlayAwaiting = null
@@ -1420,10 +1413,7 @@ class PlaybackService : MediaLibraryService() {
         current.play()
     }
 
-    private fun logCarContinuityDecision(
-        source: String,
-        decision: CarLifecycleContinuityGate.Decision,
-    ) {
+    private fun logCarContinuityDecision(source: String, decision: CarArrivalResumeGate.Decision) {
         logger.info(
             LogCategory.Playback,
             "Car lifecycle continuity decision",
@@ -1475,7 +1465,7 @@ class PlaybackService : MediaLibraryService() {
         )
         logCarContinuityDecision("first-car-bind", decision)
         val target = decision.target?.takeIf {
-            decision.status == CarLifecycleContinuityGate.Status.Ready
+            decision.status == CarArrivalResumeGate.Status.Ready
         }
         if (target == null) {
             holdHeadsetAgainstCar()
@@ -1512,7 +1502,7 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             audioOutputs.resettle()
             decision.target
-                ?.takeIf { decision.status == CarLifecycleContinuityGate.Status.Ready }
+                ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
                 ?.let { target -> recoverAndResumeCarContinuity(target) }
             republishOutputButtons()
         }
