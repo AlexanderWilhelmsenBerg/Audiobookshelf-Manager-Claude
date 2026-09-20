@@ -237,6 +237,7 @@ internal class CarLifecycleContinuityGate(
         playbackActive: Boolean,
     ): Decision {
         val candidate = focusCandidate
+        var candidateRejection: Reason? = null
         if (candidate != null && candidate.phase == Phase.Departure) {
             val invalid = invalidReason(
                 identity = candidate.identity,
@@ -256,11 +257,9 @@ internal class CarLifecycleContinuityGate(
                     target = target,
                 )
             }
+            candidateRejection = invalid
             focusCandidate = null
             activeRecovery = null
-            if (!playbackActive) {
-                return Decision(Phase.Departure, Status.Rejected, invalid)
-            }
         } else if (candidate != null) {
             focusCandidate = null
             activeRecovery = null
@@ -268,7 +267,11 @@ internal class CarLifecycleContinuityGate(
 
         if (!playbackActive) {
             departureMarker = null
-            return Decision(Phase.Departure, Status.Rejected, Reason.NoPlayingCarHeadset)
+            return Decision(
+                phase = Phase.Departure,
+                status = Status.Rejected,
+                reason = candidateRejection ?: Reason.NoPlayingCarHeadset,
+            )
         }
 
         val identity = currentConnectedPlayback(currentGeneration, explicitSelectionSequence)
