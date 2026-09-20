@@ -29,7 +29,7 @@ class CarArrivalResumeGateTest {
     @Test
     fun `measured focus loss followed by first car bind resumes only the pause-time headset`() {
         val owner = heardOnBuds()
-        val gate = CarLifecycleContinuityGate()
+        val gate = CarArrivalResumeGate()
         val focus = gate.onAudioFocusLoss(
             at = 10.seconds,
             heardRoute = owner.heardRoute,
@@ -39,12 +39,12 @@ class CarArrivalResumeGateTest {
             carConnected = false,
         )
 
-        assertEquals(CarLifecycleContinuityGate.Status.Armed, focus.status)
-        assertEquals(CarLifecycleContinuityGate.Phase.Arrival, focus.phase)
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+        assertEquals(CarArrivalResumeGate.Phase.Arrival, focus.phase)
 
         val bind = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
         val target = requireNotNull(bind.target)
-        assertEquals(CarLifecycleContinuityGate.Status.Ready, bind.status)
+        assertEquals(CarArrivalResumeGate.Status.Ready, bind.status)
         assertEquals(buds.id, target.outputId)
 
         val consumed = gate.consumeRecovery(
@@ -66,7 +66,7 @@ class CarArrivalResumeGateTest {
 
         val bind = gate.onCarArrival(14.seconds, owner.currentGeneration, 0)
 
-        assertEquals(CarLifecycleContinuityGate.Status.Ready, bind.status)
+        assertEquals(CarArrivalResumeGate.Status.Ready, bind.status)
         assertEquals(buds.id, bind.target?.outputId)
     }
 
@@ -78,8 +78,8 @@ class CarArrivalResumeGateTest {
         gate.cancelAll()
 
         val bind = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
-        assertEquals(CarLifecycleContinuityGate.Status.Rejected, bind.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.NoPendingFocusLoss, bind.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, bind.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoPendingFocusLoss, bind.reason)
     }
 
     @Test
@@ -90,7 +90,7 @@ class CarArrivalResumeGateTest {
         gate.cancelPending()
 
         assertEquals(
-            CarLifecycleContinuityGate.Reason.NoPendingFocusLoss,
+            CarArrivalResumeGate.Reason.NoPendingFocusLoss,
             gate.onCarArrival(12.seconds, owner.currentGeneration, 0).reason,
         )
     }
@@ -102,8 +102,8 @@ class CarArrivalResumeGateTest {
 
         val bind = gate.onCarArrival(12.seconds, owner.currentGeneration, 1)
 
-        assertEquals(CarLifecycleContinuityGate.Status.Rejected, bind.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.ExplicitSelectionChanged, bind.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, bind.status)
+        assertEquals(CarArrivalResumeGate.Reason.ExplicitSelectionChanged, bind.reason)
     }
 
     @Test
@@ -116,7 +116,7 @@ class CarArrivalResumeGateTest {
         val consumed = gate.consumeRecovery(target, owner.currentGeneration, buds.id, 1)
 
         assertFalse(consumed.accepted)
-        assertEquals(CarLifecycleContinuityGate.Reason.ExplicitSelectionChanged, consumed.reason)
+        assertEquals(CarArrivalResumeGate.Reason.ExplicitSelectionChanged, consumed.reason)
     }
 
     @Test
@@ -127,8 +127,8 @@ class CarArrivalResumeGateTest {
         owner.onBookChanged(hasBook = true)
 
         val bind = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
-        assertEquals(CarLifecycleContinuityGate.Status.Rejected, bind.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.GenerationChanged, bind.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, bind.status)
+        assertEquals(CarArrivalResumeGate.Reason.GenerationChanged, bind.reason)
     }
 
     @Test
@@ -141,7 +141,7 @@ class CarArrivalResumeGateTest {
 
         assertFalse(gate.isCurrent(target, owner.currentGeneration, 0))
         assertEquals(
-            CarLifecycleContinuityGate.Reason.GenerationChanged,
+            CarArrivalResumeGate.Reason.GenerationChanged,
             gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).reason,
         )
     }
@@ -153,8 +153,8 @@ class CarArrivalResumeGateTest {
 
         val bind = gate.onCarArrival(17.seconds, owner.currentGeneration, 0)
 
-        assertEquals(CarLifecycleContinuityGate.Status.Rejected, bind.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.OutsidePairingWindow, bind.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, bind.status)
+        assertEquals(CarArrivalResumeGate.Reason.OutsidePairingWindow, bind.reason)
     }
 
     @Test
@@ -167,13 +167,13 @@ class CarArrivalResumeGateTest {
         assertTrue(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
 
         val second = gate.onCarArrival(13.seconds, owner.currentGeneration, 0)
-        assertEquals(CarLifecycleContinuityGate.Status.Rejected, second.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.NoPendingFocusLoss, second.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, second.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoPendingFocusLoss, second.reason)
     }
 
     @Test
     fun `speaker or car evidence never creates arrival continuity`() {
-        val gate = CarLifecycleContinuityGate()
+        val gate = CarArrivalResumeGate()
         val speakerOwner = RouteHeardOwnership().apply {
             onBookChanged(hasBook = true)
             onPlaybackObserved(listOf(speaker.copy(isActive = true)))
@@ -187,7 +187,7 @@ class CarArrivalResumeGateTest {
             explicitSelectionSequence = 0,
             carConnected = false,
         )
-        assertEquals(CarLifecycleContinuityGate.Reason.NoQualifyingHeadset, speakerFocus.reason)
+        assertEquals(CarArrivalResumeGate.Reason.NoQualifyingHeadset, speakerFocus.reason)
 
         val carOwner = RouteHeardOwnership().apply {
             onBookChanged(hasBook = true)
@@ -201,7 +201,7 @@ class CarArrivalResumeGateTest {
             explicitSelectionSequence = 0,
             carConnected = false,
         )
-        assertEquals(CarLifecycleContinuityGate.Reason.NoQualifyingHeadset, carFocus.reason)
+        assertEquals(CarArrivalResumeGate.Reason.NoQualifyingHeadset, carFocus.reason)
     }
 
     @Test
@@ -217,8 +217,8 @@ class CarArrivalResumeGateTest {
             explicitSelectionSequence = 0,
             carConnected = true,
         )
-        assertEquals(CarLifecycleContinuityGate.Phase.Departure, focus.phase)
-        assertEquals(CarLifecycleContinuityGate.Status.Armed, focus.status)
+        assertEquals(CarArrivalResumeGate.Phase.Departure, focus.phase)
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
 
         val departure = gate.onCarDeparture(
             departedAt = 22.seconds,
@@ -226,8 +226,8 @@ class CarArrivalResumeGateTest {
             explicitSelectionSequence = 0,
         )
         val target = requireNotNull(departure.target)
-        assertEquals(CarLifecycleContinuityGate.Status.Ready, departure.status)
-        assertEquals(CarLifecycleContinuityGate.Phase.Departure, target.phase)
+        assertEquals(CarArrivalResumeGate.Status.Ready, departure.status)
+        assertEquals(CarArrivalResumeGate.Phase.Departure, target.phase)
         assertTrue(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
     }
 
@@ -241,8 +241,8 @@ class CarArrivalResumeGateTest {
             currentGeneration = owner.currentGeneration,
             explicitSelectionSequence = 0,
         )
-        assertEquals(CarLifecycleContinuityGate.Status.Rejected, departure.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.NoPendingFocusLoss, departure.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, departure.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoPendingFocusLoss, departure.reason)
 
         // A later focus loss is not retroactively labelled a departure event. With no car connected it can
         // only become a possible future-arrival candidate, and cannot authorize Play by itself.
@@ -255,8 +255,8 @@ class CarArrivalResumeGateTest {
             carConnected = false,
         )
 
-        assertEquals(CarLifecycleContinuityGate.Phase.Arrival, focus.phase)
-        assertEquals(CarLifecycleContinuityGate.Status.Armed, focus.status)
+        assertEquals(CarArrivalResumeGate.Phase.Arrival, focus.phase)
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
     }
 
     @Test
@@ -276,8 +276,8 @@ class CarArrivalResumeGateTest {
             carConnected = true,
         )
 
-        assertEquals(CarLifecycleContinuityGate.Status.Armed, focus.status)
-        assertEquals(CarLifecycleContinuityGate.Phase.Departure, focus.phase)
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+        assertEquals(CarArrivalResumeGate.Phase.Departure, focus.phase)
         assertEquals(buds.id, focus.target?.outputId)
     }
 
@@ -294,8 +294,8 @@ class CarArrivalResumeGateTest {
             explicitSelectionSequence = 0,
         )
 
-        assertEquals(CarLifecycleContinuityGate.Status.Rejected, departure.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.NoPendingFocusLoss, departure.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, departure.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoPendingFocusLoss, departure.reason)
     }
 
     @Test
@@ -312,8 +312,8 @@ class CarArrivalResumeGateTest {
             carConnected = true,
         )
 
-        assertEquals(CarLifecycleContinuityGate.Status.Rejected, focus.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.NoQualifyingHeadset, focus.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, focus.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoQualifyingHeadset, focus.reason)
     }
 
     @Test
@@ -336,8 +336,8 @@ class CarArrivalResumeGateTest {
             explicitSelectionSequence = 0,
         )
 
-        assertEquals(CarLifecycleContinuityGate.Status.Rejected, departure.status)
-        assertEquals(CarLifecycleContinuityGate.Reason.OutsidePairingWindow, departure.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, departure.status)
+        assertEquals(CarArrivalResumeGate.Reason.OutsidePairingWindow, departure.reason)
     }
 
     @Test
@@ -349,7 +349,7 @@ class CarArrivalResumeGateTest {
         val consumed = gate.consumeRecovery(target, owner.currentGeneration, other.id, 0)
 
         assertFalse(consumed.accepted)
-        assertEquals(CarLifecycleContinuityGate.Reason.WrongHeadset, consumed.reason)
+        assertEquals(CarArrivalResumeGate.Reason.WrongHeadset, consumed.reason)
     }
 
     @Test
@@ -360,13 +360,13 @@ class CarArrivalResumeGateTest {
         gate.cancelAll()
 
         assertEquals(
-            CarLifecycleContinuityGate.Reason.NoPendingFocusLoss,
+            CarArrivalResumeGate.Reason.NoPendingFocusLoss,
             gate.onCarArrival(12.seconds, owner.currentGeneration, 0).reason,
         )
     }
 
-    private fun armedArrival(owner: RouteHeardOwnership): CarLifecycleContinuityGate =
-        CarLifecycleContinuityGate().also { gate ->
+    private fun armedArrival(owner: RouteHeardOwnership): CarArrivalResumeGate =
+        CarArrivalResumeGate().also { gate ->
             gate.onAudioFocusLoss(
                 at = 10.seconds,
                 heardRoute = owner.heardRoute,
@@ -377,8 +377,8 @@ class CarArrivalResumeGateTest {
             )
         }
 
-    private fun connectedOnBuds(owner: RouteHeardOwnership): CarLifecycleContinuityGate =
-        CarLifecycleContinuityGate().also { gate ->
+    private fun connectedOnBuds(owner: RouteHeardOwnership): CarArrivalResumeGate =
+        CarArrivalResumeGate().also { gate ->
             gate.observePlayingHeadset(
                 heardRoute = owner.heardRoute,
                 headsetId = owner.headsetForCar(listOf(buds, car)),
