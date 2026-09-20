@@ -19,12 +19,26 @@ class AutoBrowseInvalidationTest {
 
     @Test
     fun `root membership and order changes invalidate root`() {
-        val old = snapshot(mapOf(AutoLibrary.ROOT to listOf(
-            AutoLibrary.TAB_CONTINUE, AutoLibrary.TAB_SERIES, AutoLibrary.TAB_AUTHORS, AutoLibrary.TAB_LIBRARY,
-        )))
-        val pd001 = snapshot(mapOf(AutoLibrary.ROOT to listOf(
-            AutoLibrary.TAB_CONTINUE, AutoLibrary.TAB_SERIES, AutoLibrary.TAB_AUTHORS, AutoLibrary.TAB_PROFILES,
-        )))
+        val old = snapshot(
+            mapOf(
+                AutoLibrary.ROOT to listOf(
+                    AutoLibrary.TAB_CONTINUE,
+                    AutoLibrary.TAB_SERIES,
+                    AutoLibrary.TAB_AUTHORS,
+                    AutoLibrary.TAB_LIBRARY,
+                ),
+            ),
+        )
+        val pd001 = snapshot(
+            mapOf(
+                AutoLibrary.ROOT to listOf(
+                    AutoLibrary.TAB_CONTINUE,
+                    AutoLibrary.TAB_SERIES,
+                    AutoLibrary.TAB_AUTHORS,
+                    AutoLibrary.TAB_PROFILES,
+                ),
+            ),
+        )
         assertEquals(setOf(AutoLibrary.ROOT), changedParents(old, pd001))
     }
 
@@ -135,13 +149,22 @@ class AutoBrowseInvalidationTest {
     @Test
     fun `profile boundary evicts PD-001 parents retired parents and emitted dynamic nodes`() {
         val currentParents = setOf(
-            AutoLibrary.ROOT, AutoLibrary.RECENT_ROOT, AutoLibrary.TAB_CONTINUE,
-            AutoLibrary.TAB_SERIES, AutoLibrary.TAB_AUTHORS, AutoLibrary.TAB_PROFILES,
+            AutoLibrary.ROOT,
+            AutoLibrary.RECENT_ROOT,
+            AutoLibrary.TAB_CONTINUE,
+            AutoLibrary.TAB_SERIES,
+            AutoLibrary.TAB_AUTHORS,
+            AutoLibrary.TAB_PROFILES,
         )
         val retired = setOf(
-            AutoLibrary.TAB_LIBRARY, AutoLibrary.TAB_CHAPTERS, AutoLibrary.TAB_HISTORY,
-            AutoLibrary.TAB_DOWNLOADS, AutoLibrary.TAB_RECENT, AutoLibrary.TAB_DISCOVER,
-            AutoLibrary.TAB_AGAIN, AutoLibrary.TAB_OUTPUT,
+            AutoLibrary.TAB_LIBRARY,
+            AutoLibrary.TAB_CHAPTERS,
+            AutoLibrary.TAB_HISTORY,
+            AutoLibrary.TAB_DOWNLOADS,
+            AutoLibrary.TAB_RECENT,
+            AutoLibrary.TAB_DISCOVER,
+            AutoLibrary.TAB_AGAIN,
+            AutoLibrary.TAB_OUTPUT,
         )
         val scoped = currentParents + retired
         val emitted = setOf(
