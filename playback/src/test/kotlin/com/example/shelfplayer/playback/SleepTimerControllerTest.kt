@@ -505,10 +505,9 @@ class SleepTimerControllerTest {
 
         override suspend fun setScheduleEnabled(enabled: Boolean): AppResult<Unit> = AppResult.Success(Unit)
 
-        override suspend fun setScheduleWindow(
-            start: java.time.LocalTime,
-            end: java.time.LocalTime,
-        ): AppResult<Unit> = AppResult.Success(Unit)
+        override suspend fun setScheduleWindow(start: java.time.LocalTime, end: java.time.LocalTime): AppResult<Unit> {
+            return AppResult.Success(Unit)
+        }
 
         override suspend fun setScheduleRuntimeState(
             suppressedOccurrence: String?,
