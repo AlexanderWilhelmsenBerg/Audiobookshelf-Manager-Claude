@@ -106,7 +106,6 @@ interface AppModule {
     @Singleton
     fun bindsLauncherIcons(impl: AndroidLauncherIcons): LauncherIcons
 
-
     /** PD-001 — external car artwork is served through the app-owned, profile-bound content provider. */
     @Binds
     @Singleton
