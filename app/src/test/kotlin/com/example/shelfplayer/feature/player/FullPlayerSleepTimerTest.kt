@@ -82,9 +82,9 @@ class FullPlayerSleepTimerTest {
             )
         }
 
-        composeRule.onNodeWithText("07:00").assertExists()
+        composeRule.onNodeWithText("7:00").assertExists()
         composeRule
-            .onNode(hasClickAction() and hasText("07:00") and hasContentDescription("Sleep timer:", substring = true))
+            .onNode(hasClickAction() and hasText("7:00") and hasContentDescription("Sleep timer:", substring = true))
             .assertExists()
     }
 
