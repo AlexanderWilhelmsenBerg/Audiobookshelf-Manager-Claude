@@ -66,7 +66,17 @@ class AudioOutputRouter @Inject constructor(
      * This is deliberately separate from [selectedId]: a repeated Car/Automatic press is still newer intent
      * even when the value stays `null`, while a policy reassertion must not masquerade as listener intent.
      */
-    internal data class ExplicitSelection(val sequence: Long, val outputId: String?)
+    internal enum class ExplicitDestination {
+        Automatic,
+        Car,
+        Output,
+    }
+
+    internal data class ExplicitSelection(
+        val sequence: Long,
+        val outputId: String?,
+        val destination: ExplicitDestination,
+    )
 
     private var nextExplicitSelectionSequence = 0L
     private val explicitSelectionState = MutableStateFlow<ExplicitSelection?>(null)
@@ -110,7 +120,21 @@ class AudioOutputRouter @Inject constructor(
      * row silently doing nothing.
      */
     override fun select(id: String?) {
-        choose(id, explicit = true)
+        choose(
+            id = id,
+            destination = if (id == null) ExplicitDestination.Automatic else ExplicitDestination.Output,
+        )
+    }
+
+    /**
+     * The player-screen Car action is semantically stronger than generic Automatic.
+     *
+     * Both clear ExoPlayer's preferred device, but only this call says the listener explicitly chose the car.
+     * Projected Android Auto may not expose a phone-side route that can prove that fact, so #34 keeps this
+     * intent separate from [selectedId] instead of collapsing both choices to null.
+     */
+    fun selectCar() {
+        choose(id = null, destination = ExplicitDestination.Car)
     }
 
     /**
@@ -134,7 +158,7 @@ class AudioOutputRouter @Inject constructor(
         return true
     }
 
-    private fun choose(id: String?, explicit: Boolean) {
+    private fun choose(id: String?, destination: ExplicitDestination) {
         if (id != null && id !in live) {
             logger.info(
                 LogCategory.Playback,
@@ -143,9 +167,11 @@ class AudioOutputRouter @Inject constructor(
             )
             return
         }
-        if (explicit) {
-            explicitSelectionState.value = ExplicitSelection(++nextExplicitSelectionSequence, id)
-        }
+        explicitSelectionState.value = ExplicitSelection(
+            sequence = ++nextExplicitSelectionSequence,
+            outputId = id,
+            destination = destination,
+        )
         _selectedId.value = id
         publish()
         applicationScope.launch { apply(id) }
