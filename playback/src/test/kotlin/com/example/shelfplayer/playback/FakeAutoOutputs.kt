@@ -6,4 +6,4 @@ package com.example.shelfplayer.playback
  * Audio routing remains covered at the PlaybackService/AudioOutputRouter boundary; this marker keeps the old
  * test-file path harmless until repository cleanup can remove it with a file-delete capable client.
  */
-internal object RetiredAutoOutputsTestFixture
+internal object FakeAutoOutputs
