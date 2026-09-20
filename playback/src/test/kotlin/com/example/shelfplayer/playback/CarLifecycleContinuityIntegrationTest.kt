@@ -74,56 +74,58 @@ class CarLifecycleContinuityIntegrationTest {
     }
 
     @Test
-    fun `departure focus loss plus final disconnect survives route omission and authorizes same headset`() =
+    fun `departure focus loss plus final disconnect survives route omission and authorizes same headset`() {
         runBlocking {
-        val owner = playingOwner()
-        val gate = CarArrivalResumeGate()
-        gate.observePlayingHeadset(
-            heardRoute = owner.heardRoute,
-            headsetId = owner.headsetForCar(listOf(buds)),
-            currentGeneration = owner.currentGeneration,
-            explicitSelectionSequence = 0,
-            carConnected = true,
-        )
-
-        val focus = gate.onAudioFocusLoss(
-            at = 20.seconds,
-            heardRoute = owner.heardRoute,
-            headsetId = buds.id,
-            currentGeneration = owner.currentGeneration,
-            explicitSelectionSequence = 0,
-            carConnected = true,
-        )
-        assertEquals(CarArrivalResumeGate.Phase.Departure, focus.phase)
-
-        owner.onOutputsChanged(emptyList(), isPlaying = false)
-        val target = requireNotNull(
-            gate.onCarDeparture(
-                departedAt = 22.seconds,
+            val owner = playingOwner()
+            val gate = CarArrivalResumeGate()
+            gate.observePlayingHeadset(
+                heardRoute = owner.heardRoute,
+                headsetId = owner.headsetForCar(listOf(buds)),
                 currentGeneration = owner.currentGeneration,
                 explicitSelectionSequence = 0,
-            ).target,
-        )
+                carConnected = true,
+            )
 
-        val outputs = MutableStateFlow<List<AudioOutput>>(emptyList())
-        val selected = MutableStateFlow<String?>(null)
-        val returns = launch {
-            delay(10)
-            outputs.value = listOf(buds)
-        }
-        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
-            target = target,
-            outputs = outputs,
-            selectedId = selected,
-            isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
-        ) { id ->
-            selected.value = id
-            true
-        }
-        returns.join()
+            val focus = gate.onAudioFocusLoss(
+                at = 20.seconds,
+                heardRoute = owner.heardRoute,
+                headsetId = buds.id,
+                currentGeneration = owner.currentGeneration,
+                explicitSelectionSequence = 0,
+                carConnected = true,
+            )
+            assertEquals(CarArrivalResumeGate.Phase.Departure, focus.phase)
 
-        assertEquals(buds.id, held)
-        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, held, 0).accepted)
+            owner.onOutputsChanged(emptyList(), isPlaying = false)
+            val target = requireNotNull(
+                gate.onCarDeparture(
+                    departedAt = 22.seconds,
+                    currentGeneration = owner.currentGeneration,
+                    explicitSelectionSequence = 0,
+                ).target,
+            )
+
+            val outputs = MutableStateFlow<List<AudioOutput>>(emptyList())
+            val selected = MutableStateFlow<String?>(null)
+            val returns = launch {
+                delay(10)
+                outputs.value = listOf(buds)
+            }
+            val held = CarArrivalRouteRecovery(200.milliseconds).secure(
+                target = target,
+                outputs = outputs,
+                selectedId = selected,
+                isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
+            ) { id ->
+                selected.value = id
+                true
+            }
+            returns.join()
+
+            assertEquals(buds.id, held)
+            assertTrue(gate.consumeRecovery(target, owner.currentGeneration, held, 0).accepted)
+        
+        }
     }
 
     private fun playingOwner(): RouteHeardOwnership = RouteHeardOwnership().apply {
