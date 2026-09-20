@@ -1,6 +1,7 @@
 package com.example.shelfplayer.di
 
 import com.example.shelfplayer.BuildConfig
+import com.example.shelfplayer.auto.AndroidAutoArtwork
 import com.example.shelfplayer.connectivity.AndroidNetworkMonitor
 import com.example.shelfplayer.core.common.AppBuild
 import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
@@ -22,6 +23,7 @@ import com.example.shelfplayer.feature.lock.PlatformBiometricGateway
 import com.example.shelfplayer.launcher.AndroidLauncherIcons
 import com.example.shelfplayer.launcher.LauncherIcons
 import com.example.shelfplayer.log.FanOutLogSink
+import com.example.shelfplayer.playback.AutoArtwork
 import com.example.shelfplayer.playback.PlaybackController
 import com.example.shelfplayer.sync.WorkManagerBackgroundSync
 import dagger.Binds
@@ -103,6 +105,12 @@ interface AppModule {
     @Binds
     @Singleton
     fun bindsLauncherIcons(impl: AndroidLauncherIcons): LauncherIcons
+
+
+    /** PD-001 — external car artwork is served through the app-owned, profile-bound content provider. */
+    @Binds
+    @Singleton
+    fun bindsAutoArtwork(impl: AndroidAutoArtwork): AutoArtwork
 
     // PRODUCT_SPEC AUTH-003: the TokenProvider binding moved to `:data:auth`. It is not final wiring —
     // it is the credential store answering the HTTP layer, and both ends of that seam are inside that
