@@ -14,7 +14,6 @@
     </plurals>
 
     <string name="car_tab_continue">Fortsett</string>
-    <string name="car_player_history_link">Hvor jeg har vært i denne boken</string>
     <string name="car_nothing_playing">Ingenting spilles av ennå</string>
     <string name="car_tab_chapters">Kapitler</string>
     <string name="car_tab_history">Historikk</string>
@@ -35,6 +34,7 @@
     <string name="car_output_none">Fant ingen valgbare lydutganger</string>
 
     <string name="player_car_action">Spill i bilen</string>
+    <string name="player_car_action_active">Spilles i bilen</string>
     <string name="player_headset_action">Spilles på %1$s</string>
     <string name="player_headset_action_unknown">Hodetelefoner</string>
 
