@@ -365,8 +365,7 @@ class CarArrivalResumeGateTest {
         )
     }
 
-    private fun armedArrival(owner: RouteHeardOwnership): CarArrivalResumeGate =
-        CarArrivalResumeGate().also { gate ->
+    private fun armedArrival(owner: RouteHeardOwnership): CarArrivalResumeGate = CarArrivalResumeGate().also { gate ->
             gate.onAudioFocusLoss(
                 at = 10.seconds,
                 heardRoute = owner.heardRoute,
