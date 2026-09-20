@@ -10,9 +10,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
-/** Issue #36 — one measured focus loss may resume only its pause-time headset on the first car arrival. */
+/**
+ * Issue #36 — arrival and departure are separate correlations inside one exact-headset continuity owner.
+ *
+ * The historical filename is retained because Forgejo's constrained file API cannot rename in place.
+ */
 class CarArrivalResumeGateTest {
     private val buds = output("bluetooth:buds", "Buds")
+    private val other = output("wired:headset", "Wired", DeviceKind.Wired, AudioOutputRole.Headset)
     private val speaker = output(
         id = "speaker:phone",
         name = "Phone speaker",
@@ -22,170 +27,374 @@ class CarArrivalResumeGateTest {
     private val car = output("car", "Car", DeviceKind.Car, AudioOutputRole.Car)
 
     @Test
-    fun `measured focus loss resolves and resumes the pause-time headset`() {
+    fun `measured focus loss followed by first car bind resumes only the pause-time headset`() {
         val owner = heardOnBuds()
-        val gate = armed(owner)
-        var resumed: String? = null
-
-        val target = gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0)
-        assertEquals(buds.id, target?.outputId)
-
-        assertTrue(
-            gate.resumeForCarArrival(
-                target = requireNotNull(target),
-                currentGeneration = owner.currentGeneration,
-                headsetId = buds.id,
-                explicitSelectionSequence = 0,
-            ) { resumed = it },
+        val gate = CarLifecycleContinuityGate()
+        val focus = gate.onAudioFocusLoss(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds, car)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
         )
-        assertEquals(buds.id, resumed)
+
+        assertEquals(CarLifecycleContinuityGate.Status.Armed, focus.status)
+        assertEquals(CarLifecycleContinuityGate.Phase.Arrival, focus.phase)
+
+        val bind = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
+        val target = requireNotNull(bind.target)
+        assertEquals(CarLifecycleContinuityGate.Status.Ready, bind.status)
+        assertEquals(buds.id, target.outputId)
+
+        val consumed = gate.consumeRecovery(
+            target = target,
+            currentGeneration = owner.currentGeneration,
+            headsetId = buds.id,
+            explicitSelectionSequence = 0,
+        )
+        assertTrue(consumed.accepted)
     }
 
     @Test
-    fun `transient route evidence loss does not erase the captured target`() {
+    fun `arrival target survives transient live route evidence loss`() {
         val owner = heardOnBuds()
-        val gate = armed(owner)
+        val gate = armedArrival(owner)
 
         owner.onOutputsChanged(listOf(speaker), isPlaying = false)
         assertNull(owner.heardRoute)
 
-        val target = gate.targetForCarArrival(14.seconds, owner.currentGeneration, 0)
-        assertEquals(buds.id, target?.outputId)
-        assertTrue(gate.isCurrent(requireNotNull(target), owner.currentGeneration, 0))
+        val bind = gate.onCarArrival(14.seconds, owner.currentGeneration, 0)
+
+        assertEquals(CarLifecycleContinuityGate.Status.Ready, bind.status)
+        assertEquals(buds.id, bind.target?.outputId)
     }
 
     @Test
-    fun `a deliberate pause or play invalidation cancels continuity`() {
+    fun `deliberate pause after arrival focus loss cancels continuity`() {
         val owner = heardOnBuds()
-        val gate = armed(owner)
-        gate.cancel()
+        val gate = armedArrival(owner)
 
-        assertNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
+        gate.cancelAll()
+
+        val bind = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
+        assertEquals(CarLifecycleContinuityGate.Status.Rejected, bind.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.NoPendingFocusLoss, bind.reason)
     }
 
     @Test
-    fun `newer explicit destination prevents even resolving the old target`() {
+    fun `newer explicit play after focus loss cancels pending recovery`() {
         val owner = heardOnBuds()
-        val gate = armed(owner)
+        val gate = armedArrival(owner)
 
-        assertNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 1))
-    }
+        gate.cancelPending()
 
-    @Test
-    fun `newer explicit choice after target resolution prevents resume`() {
-        val owner = heardOnBuds()
-        val gate = armed(owner)
-        val target = requireNotNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
-
-        assertFalse(
-            gate.resumeForCarArrival(
-                target = target,
-                currentGeneration = owner.currentGeneration,
-                headsetId = buds.id,
-                explicitSelectionSequence = 1,
-            ) { error("must not resume") },
+        assertEquals(
+            CarLifecycleContinuityGate.Reason.NoPendingFocusLoss,
+            gate.onCarArrival(12.seconds, owner.currentGeneration, 0).reason,
         )
     }
 
     @Test
-    fun `another book generation cannot resolve the old target`() {
+    fun `newer output choice before first bind rejects old arrival target`() {
         val owner = heardOnBuds()
-        val gate = armed(owner)
+        val gate = armedArrival(owner)
+
+        val bind = gate.onCarArrival(12.seconds, owner.currentGeneration, 1)
+
+        assertEquals(CarLifecycleContinuityGate.Status.Rejected, bind.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.ExplicitSelectionChanged, bind.reason)
+    }
+
+    @Test
+    fun `newer output choice during arrival recovery prevents final consume`() {
+        val owner = heardOnBuds()
+        val gate = armedArrival(owner)
+        val target = requireNotNull(gate.onCarArrival(12.seconds, owner.currentGeneration, 0).target)
+
+        assertFalse(gate.isCurrent(target, owner.currentGeneration, 1))
+        val consumed = gate.consumeRecovery(target, owner.currentGeneration, buds.id, 1)
+
+        assertFalse(consumed.accepted)
+        assertEquals(CarLifecycleContinuityGate.Reason.ExplicitSelectionChanged, consumed.reason)
+    }
+
+    @Test
+    fun `book generation change before arrival bind rejects old target`() {
+        val owner = heardOnBuds()
+        val gate = armedArrival(owner)
+
         owner.onBookChanged(hasBook = true)
 
-        assertNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
+        val bind = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
+        assertEquals(CarLifecycleContinuityGate.Status.Rejected, bind.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.GenerationChanged, bind.reason)
     }
 
     @Test
-    fun `wrong secured headset cannot consume a valid target`() {
+    fun `book generation change during recovery invalidates resolved target`() {
         val owner = heardOnBuds()
-        val gate = armed(owner)
-        val target = requireNotNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
+        val gate = armedArrival(owner)
+        val target = requireNotNull(gate.onCarArrival(12.seconds, owner.currentGeneration, 0).target)
 
-        assertFalse(
-            gate.resumeForCarArrival(
-                target = target,
-                currentGeneration = owner.currentGeneration,
-                headsetId = speaker.id,
-                explicitSelectionSequence = 0,
-            ) { error("must not resume") },
+        owner.onBookChanged(hasBook = true)
+
+        assertFalse(gate.isCurrent(target, owner.currentGeneration, 0))
+        assertEquals(
+            CarLifecycleContinuityGate.Reason.GenerationChanged,
+            gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).reason,
         )
     }
 
     @Test
-    fun `pairing window is measured at first bind and not later route completion`() {
+    fun `focus loss outside arrival pairing window cannot match a later car`() {
         val owner = heardOnBuds()
-        val gate = armed(owner)
-        var resumed: String? = null
+        val gate = armedArrival(owner)
 
-        val target = requireNotNull(gate.targetForCarArrival(15.seconds, owner.currentGeneration, 0))
-        assertTrue(
-            gate.resumeForCarArrival(
-                target = target,
-                currentGeneration = owner.currentGeneration,
-                headsetId = buds.id,
-                explicitSelectionSequence = 0,
-            ) { resumed = it },
-        )
-        assertEquals(buds.id, resumed)
+        val bind = gate.onCarArrival(17.seconds, owner.currentGeneration, 0)
+
+        assertEquals(CarLifecycleContinuityGate.Status.Rejected, bind.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.OutsidePairingWindow, bind.reason)
     }
 
     @Test
-    fun `focus loss outside the first-bind window is discarded`() {
+    fun `a second controller bind cannot create another arrival recovery`() {
         val owner = heardOnBuds()
-        val gate = armed(owner)
+        val gate = armedArrival(owner)
+        val first = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
+        val target = requireNotNull(first.target)
 
-        assertNull(gate.targetForCarArrival(17.seconds, owner.currentGeneration, 0))
+        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
+
+        val second = gate.onCarArrival(13.seconds, owner.currentGeneration, 0)
+        assertEquals(CarLifecycleContinuityGate.Status.Rejected, second.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.NoPendingFocusLoss, second.reason)
     }
 
     @Test
-    fun `focus loss without heard headset ownership creates no target`() {
-        val owner = RouteHeardOwnership().apply { onBookChanged(hasBook = true) }
-        val gate = CarArrivalResumeGate()
-        gate.onAudioFocusLoss(
-            10.seconds,
-            owner.heardRoute,
-            owner.headsetForCar(listOf(buds, car)),
+    fun `speaker or car evidence never creates arrival continuity`() {
+        val gate = CarLifecycleContinuityGate()
+        val speakerOwner = RouteHeardOwnership().apply {
+            onBookChanged(hasBook = true)
+            onPlaybackObserved(listOf(speaker.copy(isActive = true)))
+        }
+
+        val speakerFocus = gate.onAudioFocusLoss(
+            at = 10.seconds,
+            heardRoute = speakerOwner.heardRoute,
+            headsetId = speakerOwner.headsetForCar(listOf(speaker, car)),
+            currentGeneration = speakerOwner.currentGeneration,
             explicitSelectionSequence = 0,
+            carConnected = false,
         )
+        assertEquals(CarLifecycleContinuityGate.Reason.NoQualifyingHeadset, speakerFocus.reason)
 
-        assertNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
+        val carOwner = RouteHeardOwnership().apply {
+            onBookChanged(hasBook = true)
+            onPlaybackObserved(listOf(car.copy(isActive = true)))
+        }
+        val carFocus = gate.onAudioFocusLoss(
+            at = 11.seconds,
+            heardRoute = carOwner.heardRoute,
+            headsetId = carOwner.headsetForCar(listOf(car)),
+            currentGeneration = carOwner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        assertEquals(CarLifecycleContinuityGate.Reason.NoQualifyingHeadset, carFocus.reason)
     }
 
     @Test
-    fun `one focus loss can resume only once`() {
+    fun `departure focus loss before last disconnect resumes same playing headset`() {
         val owner = heardOnBuds()
-        val gate = armed(owner)
-        var resumes = 0
-        val target = requireNotNull(gate.targetForCarArrival(12.seconds, owner.currentGeneration, 0))
+        val gate = connectedOnBuds(owner)
 
-        assertTrue(
-            gate.resumeForCarArrival(
-                target = target,
-                currentGeneration = owner.currentGeneration,
-                headsetId = buds.id,
-                explicitSelectionSequence = 0,
-            ) { resumes += 1 },
-        )
-        assertFalse(
-            gate.resumeForCarArrival(
-                target = target,
-                currentGeneration = owner.currentGeneration,
-                headsetId = buds.id,
-                explicitSelectionSequence = 0,
-            ) { resumes += 1 },
-        )
-        assertEquals(1, resumes)
-    }
-
-    private fun armed(owner: RouteHeardOwnership): CarArrivalResumeGate = CarArrivalResumeGate().also { gate ->
-        gate.onAudioFocusLoss(
-            10.seconds,
-            owner.heardRoute,
-            owner.headsetForCar(listOf(buds, car)),
+        val focus = gate.onAudioFocusLoss(
+            at = 20.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds, car)),
+            currentGeneration = owner.currentGeneration,
             explicitSelectionSequence = 0,
+            carConnected = true,
+        )
+        assertEquals(CarLifecycleContinuityGate.Phase.Departure, focus.phase)
+        assertEquals(CarLifecycleContinuityGate.Status.Armed, focus.status)
+
+        val departure = gate.onCarDeparture(
+            departedAt = 22.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            playbackActive = false,
+        )
+        val target = requireNotNull(departure.target)
+        assertEquals(CarLifecycleContinuityGate.Status.Ready, departure.status)
+        assertEquals(CarLifecycleContinuityGate.Phase.Departure, target.phase)
+        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
+    }
+
+    @Test
+    fun `last disconnect before focus loss pairs in the reverse callback order`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+
+        val departure = gate.onCarDeparture(
+            departedAt = 20.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            playbackActive = true,
+        )
+        assertEquals(CarLifecycleContinuityGate.Status.Armed, departure.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.BoundaryWaitingForFocusLoss, departure.reason)
+
+        owner.onOutputsChanged(emptyList(), isPlaying = true)
+        assertNull(owner.heardRoute)
+
+        val focus = gate.onAudioFocusLoss(
+            at = 22.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        val target = requireNotNull(focus.target)
+
+        assertEquals(CarLifecycleContinuityGate.Status.Ready, focus.status)
+        assertEquals(CarLifecycleContinuityGate.Phase.Departure, focus.phase)
+        assertEquals(buds.id, target.outputId)
+        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
+    }
+
+    @Test
+    fun `departure focus loss survives transient headset omission while car is still connected`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+
+        owner.onOutputsChanged(emptyList(), isPlaying = true)
+        assertNull(owner.heardRoute)
+
+        val focus = gate.onAudioFocusLoss(
+            at = 20.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = true,
+        )
+
+        assertEquals(CarLifecycleContinuityGate.Status.Armed, focus.status)
+        assertEquals(CarLifecycleContinuityGate.Phase.Departure, focus.phase)
+        assertEquals(buds.id, focus.target?.outputId)
+    }
+
+    @Test
+    fun `deliberately paused book cannot arm departure continuity`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+
+        gate.cancelAll()
+
+        val departure = gate.onCarDeparture(
+            departedAt = 20.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            playbackActive = false,
+        )
+
+        assertEquals(CarLifecycleContinuityGate.Status.Rejected, departure.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.NoPlayingCarHeadset, departure.reason)
+    }
+
+    @Test
+    fun `newer output selection defeats stable car-session evidence`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+
+        val focus = gate.onAudioFocusLoss(
+            at = 20.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 1,
+            carConnected = true,
+        )
+
+        assertEquals(CarLifecycleContinuityGate.Status.Rejected, focus.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.NoQualifyingHeadset, focus.reason)
+    }
+
+    @Test
+    fun `departure pair outside bounded window does not resume`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+
+        gate.onAudioFocusLoss(
+            at = 20.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = buds.id,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = true,
+        )
+
+        val departure = gate.onCarDeparture(
+            departedAt = 27.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            playbackActive = false,
+        )
+
+        assertEquals(CarLifecycleContinuityGate.Status.Rejected, departure.status)
+        assertEquals(CarLifecycleContinuityGate.Reason.OutsidePairingWindow, departure.reason)
+    }
+
+    @Test
+    fun `wrong secured headset cannot consume either lifecycle phase`() {
+        val owner = heardOnBuds()
+        val gate = armedArrival(owner)
+        val target = requireNotNull(gate.onCarArrival(12.seconds, owner.currentGeneration, 0).target)
+
+        val consumed = gate.consumeRecovery(target, owner.currentGeneration, other.id, 0)
+
+        assertFalse(consumed.accepted)
+        assertEquals(CarLifecycleContinuityGate.Reason.WrongHeadset, consumed.reason)
+    }
+
+    @Test
+    fun `non-focus pause path cannot silently inherit focus-loss policy`() {
+        val owner = heardOnBuds()
+        val gate = armedArrival(owner)
+
+        gate.cancelAll()
+
+        assertEquals(
+            CarLifecycleContinuityGate.Reason.NoPendingFocusLoss,
+            gate.onCarArrival(12.seconds, owner.currentGeneration, 0).reason,
         )
     }
+
+    private fun armedArrival(owner: RouteHeardOwnership): CarLifecycleContinuityGate =
+        CarLifecycleContinuityGate().also { gate ->
+            gate.onAudioFocusLoss(
+                at = 10.seconds,
+                heardRoute = owner.heardRoute,
+                headsetId = owner.headsetForCar(listOf(buds, car)),
+                currentGeneration = owner.currentGeneration,
+                explicitSelectionSequence = 0,
+                carConnected = false,
+            )
+        }
+
+    private fun connectedOnBuds(owner: RouteHeardOwnership): CarLifecycleContinuityGate =
+        CarLifecycleContinuityGate().also { gate ->
+            gate.observePlayingHeadset(
+                heardRoute = owner.heardRoute,
+                headsetId = owner.headsetForCar(listOf(buds, car)),
+                currentGeneration = owner.currentGeneration,
+                explicitSelectionSequence = 0,
+                carConnected = true,
+            )
+        }
 
     private fun heardOnBuds(): RouteHeardOwnership = RouteHeardOwnership().apply {
         onBookChanged(hasBook = true)
