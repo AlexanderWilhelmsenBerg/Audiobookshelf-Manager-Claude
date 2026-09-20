@@ -272,8 +272,14 @@ class AutoBrowseInvalidationTest {
     @Test
     fun `ordinary dynamic parent refreshes only after it has actually been emitted`() {
         val dynamic = "${AutoLibrary.AUTHOR_PREFIX}author-a"
-        val before = snapshot(mapOf(dynamic to listOf("book-a")))
-        val after = snapshot(mapOf(dynamic to listOf("book-b")))
+        val before = snapshot(
+            children = mapOf(dynamic to listOf("book-a")),
+            ordinaryParents = emptySet(),
+        )
+        val after = snapshot(
+            children = mapOf(dynamic to listOf("book-b")),
+            ordinaryParents = emptySet(),
+        )
 
         assertTrue(plan(before, after).notifications.isEmpty())
         assertEquals(
