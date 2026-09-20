@@ -29,11 +29,7 @@ class AndroidAutoArtwork @Inject constructor(
     private val profiles: ProfileRepository,
 ) : AutoArtwork {
 
-    override suspend fun book(
-        book: Book,
-        serverBaseUrls: Map<ServerId, String>,
-        offlineCoverUri: String?,
-    ): Uri? {
+    override suspend fun book(book: Book, serverBaseUrls: Map<ServerId, String>, offlineCoverUri: String?): Uri? {
         val profileId = profiles.activeProfileId() ?: return null
         val sources = listOfNotNull(
             offlineCoverUri,
