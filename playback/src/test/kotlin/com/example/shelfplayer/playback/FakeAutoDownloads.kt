@@ -27,8 +27,7 @@ internal object FakeAutoDownloads : DownloadRepository {
         itemId: LibraryItemId,
         profileId: ProfileId,
         files: List<OfflineFile>,
-    ): AppResult<OfflineBook> =
-        error("Not used by Android Auto browse tests")
+    ): AppResult<OfflineBook> = error("Not used by Android Auto browse tests")
 
     override suspend fun updateFile(serverId: ServerId, itemId: LibraryItemId, file: OfflineFile): AppResult<Unit> =
         error("Not used by Android Auto browse tests")
@@ -54,8 +53,7 @@ internal object FakeAutoDownloads : DownloadRepository {
         itemId: LibraryItemId,
         profileId: ProfileId,
         isPinned: Boolean,
-    ): AppResult<Unit> =
-        error("Not used by Android Auto browse tests")
+    ): AppResult<Unit> = error("Not used by Android Auto browse tests")
 
     override suspend fun release(serverId: ServerId, itemId: LibraryItemId, profileId: ProfileId): AppResult<Boolean> =
         error("Not used by Android Auto browse tests")
