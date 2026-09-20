@@ -119,16 +119,16 @@ internal class AutoBrowseSnapshotSource(
     @OptIn(ExperimentalCoroutinesApi::class)
     fun snapshots(): Flow<AutoBrowseSnapshot> = activeProfiles
         .distinctUntilChanged()
-            .scan(BrowseProfileScope(profileId = null, generation = 0L)) { previous, profileId ->
-                BrowseProfileScope(profileId = profileId, generation = previous.generation + 1)
-            }
-            .drop(1)
-            .flatMapLatest { scope ->
-                scope.profileId?.let { profileId ->
-                    accessibleBooks(profileId).map { books -> build(scope, books) }
-                } ?: flowOf(build(scope, emptyList()))
-            }
-            .distinctUntilChanged()
+        .scan(BrowseProfileScope(profileId = null, generation = 0L)) { previous, profileId ->
+            BrowseProfileScope(profileId = profileId, generation = previous.generation + 1)
+        }
+        .drop(1)
+        .flatMapLatest { scope ->
+            scope.profileId?.let { profileId ->
+                accessibleBooks(profileId).map { books -> build(scope, books) }
+            } ?: flowOf(build(scope, emptyList()))
+        }
+        .distinctUntilChanged()
 }
 
 /**
@@ -172,40 +172,64 @@ internal object CurrentAutoBrowseSnapshotBuilder {
             .flatMap(Book::authors)
             .distinctBy { author -> author.id }
             .sortedBy { author -> author.name.lowercase() }
-
         val downloaded = books
             .filter { book -> book.localAvailability == LocalAvailability.Complete }
             .map { book -> book.id.value }
 
-        val children = linkedMapOf<String, List<String>>(
-            AutoLibrary.ROOT to if (books.isEmpty()) {
-                listOf(AutoLibrary.NOTICE_EMPTY)
-            } else {
-                listOf(
-                    AutoLibrary.TAB_CONTINUE,
-                    AutoLibrary.TAB_SERIES,
-                    AutoLibrary.TAB_AUTHORS,
-                    AutoLibrary.TAB_LIBRARY,
-                )
-            },
-            AutoLibrary.TAB_CONTINUE to shelves.continueListening.map { book -> book.id.value },
-            AutoLibrary.TAB_SERIES to series.map { membership -> membership.series.id.value },
-            AutoLibrary.TAB_AUTHORS to authors.map { author -> author.id.value },
-            AutoLibrary.TAB_LIBRARY to buildList {
-                add(AutoLibrary.TAB_CHAPTERS)
-                add(AutoLibrary.TAB_HISTORY)
-                if (downloaded.isNotEmpty()) add(AutoLibrary.TAB_DOWNLOADS)
-                if (shelves.recentlyAdded.isNotEmpty()) add(AutoLibrary.TAB_RECENT)
-                if (shelves.listenAgain.isNotEmpty()) add(AutoLibrary.TAB_AGAIN)
-                if (shelves.discover.isNotEmpty()) add(AutoLibrary.TAB_DISCOVER)
-                add(AutoLibrary.TAB_OUTPUT)
-            },
-            AutoLibrary.TAB_DOWNLOADS to downloaded,
-            AutoLibrary.TAB_RECENT to shelves.recentlyAdded.map { book -> book.id.value },
-            AutoLibrary.TAB_AGAIN to shelves.listenAgain.map { book -> book.id.value },
-            AutoLibrary.TAB_DISCOVER to shelves.discover.map { book -> book.id.value },
-        )
+        val children = baseChildren(books, shelves, series, authors, downloaded)
+        addDynamicChildren(children, books, series, authors)
 
+        return AutoBrowseSnapshot(
+            scope = scope,
+            childrenByParent = children,
+            ordinaryParents = ordinaryParents,
+            profileScopedParents = profileScopedParents,
+            deferredProfileCounts = deferredProfileCounts,
+            accessibleBookIds = books.mapTo(linkedSetOf()) { book -> book.id },
+        )
+    }
+
+    private fun baseChildren(
+        books: List<Book>,
+        shelves: com.example.shelfplayer.domain.library.HomeShelves,
+        series: List<com.example.shelfplayer.core.model.library.SeriesMembership>,
+        authors: List<com.example.shelfplayer.core.model.library.Author>,
+        downloaded: List<String>,
+    ): LinkedHashMap<String, List<String>> = linkedMapOf(
+        AutoLibrary.ROOT to if (books.isEmpty()) {
+            listOf(AutoLibrary.NOTICE_EMPTY)
+        } else {
+            listOf(
+                AutoLibrary.TAB_CONTINUE,
+                AutoLibrary.TAB_SERIES,
+                AutoLibrary.TAB_AUTHORS,
+                AutoLibrary.TAB_LIBRARY,
+            )
+        },
+        AutoLibrary.TAB_CONTINUE to shelves.continueListening.map { book -> book.id.value },
+        AutoLibrary.TAB_SERIES to series.map { membership -> membership.series.id.value },
+        AutoLibrary.TAB_AUTHORS to authors.map { author -> author.id.value },
+        AutoLibrary.TAB_LIBRARY to buildList {
+            add(AutoLibrary.TAB_CHAPTERS)
+            add(AutoLibrary.TAB_HISTORY)
+            if (downloaded.isNotEmpty()) add(AutoLibrary.TAB_DOWNLOADS)
+            if (shelves.recentlyAdded.isNotEmpty()) add(AutoLibrary.TAB_RECENT)
+            if (shelves.listenAgain.isNotEmpty()) add(AutoLibrary.TAB_AGAIN)
+            if (shelves.discover.isNotEmpty()) add(AutoLibrary.TAB_DISCOVER)
+            add(AutoLibrary.TAB_OUTPUT)
+        },
+        AutoLibrary.TAB_DOWNLOADS to downloaded,
+        AutoLibrary.TAB_RECENT to shelves.recentlyAdded.map { book -> book.id.value },
+        AutoLibrary.TAB_AGAIN to shelves.listenAgain.map { book -> book.id.value },
+        AutoLibrary.TAB_DISCOVER to shelves.discover.map { book -> book.id.value },
+    )
+
+    private fun addDynamicChildren(
+        children: MutableMap<String, List<String>>,
+        books: List<Book>,
+        series: List<com.example.shelfplayer.core.model.library.SeriesMembership>,
+        authors: List<com.example.shelfplayer.core.model.library.Author>,
+    ) {
         series.forEach { membership ->
             children["${AutoLibrary.SERIES_PREFIX}${membership.series.id.value}"] =
                 booksInSeriesOrder(books, membership).map { book -> book.id.value }
@@ -216,14 +240,5 @@ internal object CurrentAutoBrowseSnapshotBuilder {
                 .sortedBy { book -> book.title.lowercase() }
                 .map { book -> book.id.value }
         }
-
-        return AutoBrowseSnapshot(
-            scope = scope,
-            childrenByParent = children,
-            ordinaryParents = ordinaryParents,
-            profileScopedParents = profileScopedParents,
-            deferredProfileCounts = deferredProfileCounts,
-            accessibleBookIds = books.mapTo(linkedSetOf()) { book -> book.id },
-        )
     }
 }
