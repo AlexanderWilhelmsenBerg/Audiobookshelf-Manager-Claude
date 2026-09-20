@@ -87,6 +87,14 @@ The live Media3 item keeps the title unchanged. Its visible artist/byline become
 
 Android Auto decides how that metadata is laid out. BookWave cannot make the car player inherit the phone's background theme, place a custom shadow behind the cover, or draw a bespoke metadata panel beside it. Those are host-rendered surfaces.
 
+**#35 outcome.** The owner's projected Android Auto host was physically verified on 2026-09-19 to keep
+the standard queue button and to render neither attempted History metadata link. The owner subsequently
+dropped the History-on-player requirement. BookWave removes the player-side History navigation metadata and
+withholds `COMMAND_GET_TIMELINE` from Media3's media-notification controller instead. Media3 uses that
+controller as the platform-session proxy and, by design, does not publish a framework queue when that command
+is absent, so Android Auto has no queue button. The real one-book timeline and BookWave's in-app Media3
+controller remain unchanged.
+
 ### 7. One shared layout follows actual car-controller binding
 
 Media3's compatibility state is shared by Android Auto and modern system media controls, so BookWave still
@@ -113,6 +121,16 @@ What the host draws on the player is the title, the byline and these two icons. 
 **The byline is deliberately not used.** It is built once in `MediaItems.queueFor` from the session, so making it name the live route would mean replacing the `MediaItem` on every route change — rebuilding the media source of a playing book for a cosmetic gain, against product priority 1. A lit icon costs a republish of the button preferences, which the service already does when the route moves — **though the republish alone never reached the car, and then the route behind it turned out to be stale**, and a third device run is what found it. `MediaSession.setMediaButtonPreferences(List)` updates Media3's internal layout and dispatches to Media3 controllers, but never calls `updateLegacySessionPlaybackState`, and the legacy `PlaybackStateCompat` is where a car reads custom actions from. So the correct icon sat in the session until an unrelated player event rebuilt the state. `MediaButtonPublishing` now also publishes through `getMediaNotificationControllerInfo()`, the one public path that forces that refresh. A third device run then reported the icon still dark, and two more app-side causes came out of it: nothing re-read the *route* when a car bound — Android Auto activating an already-connected A2DP link fires no `AudioDeviceCallback`, so the decision was made from a pre-drive route — and a reported speaker could mask a reported dashboard, because `current()` took the first active output in the platform's enumeration order. `AudioOutputRouter.resettle` and a speaker-demoting `current()` fix those, and `republishOutputButtons` now logs the inputs to the decision so the next drive is conclusive rather than suggestive.
 
 The lesson is the one §8 keeps learning, three times over: each step was true and none of them was sufficient. *The republish happens* was true; *the car sees it* did not follow. *The car sees it* became true; *the state behind it is current* did not follow.
+
+**#34 selected-state fallback.** A 2026-09-19 physical re-test proved that changing icon, label and action
+identity was still insufficient. The missing state was inside BookWave: both **Car** and generic
+**Automatic** were represented as `selectedId=null`. A Car press could therefore leave the selected-id flow
+unchanged and never republish the newly selected presentation. Car is now a distinct explicit semantic
+destination even though both choices still clear ExoPlayer's preferred device. Explicit-intent changes
+republish immediately. While a car controller is bound, that Car intent may bridge only the projected
+no-route/built-in-speaker observation gap; a definite headset or known Other route vetoes it, so a dock,
+USB or HDMI route cannot borrow the car glyph. #11/#36 route ownership remains authoritative for a held
+headset. The separate active command id remains for host cache busting.
 
 The minimised control bar has now been wrong in this section **three times**, and the answer is a test rather than a paragraph. The first version called the missing actions an unavoidable layout limit, reasoning from the three slots this code happened to use. The second corrected that to six — `CommandButton` does declare `SLOT_BACK_SECONDARY` and `SLOT_FORWARD_SECONDARY` — and concluded that requesting them, with `SLOT_OVERFLOW` as a fallback, put the actions in the bar on any host that would place them, leaving the rest a host contract. A device run then reported the compact player unchanged.
 

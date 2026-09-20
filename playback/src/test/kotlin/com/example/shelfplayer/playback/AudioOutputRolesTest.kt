@@ -183,6 +183,51 @@ class AudioOutputRolesTest {
     }
 
     /**
+     * Issue #34 — projected Android Auto may own the audible path while the phone reports only its speaker.
+     * A direct Car press is positive listener intent and must therefore survive that observation gap.
+     */
+    @Test
+    fun `an explicit Car request lights Car when the projected route looks like the phone speaker`() {
+        val state = AudioOutputRoles.buttons(
+            outputs = listOf(speaker.copy(isActive = true)),
+            selectedId = null,
+            carConnected = true,
+            carRequested = true,
+        )
+
+        assertFalse(state.onHeadset)
+        assertTrue(state.onCar)
+    }
+
+    /** A direct Car press must not paint a definite dock/USB/HDMI-style route as the car. */
+    @Test
+    fun `an explicit Car request does not override a confirmed other route`() {
+        val state = AudioOutputRoles.buttons(
+            outputs = listOf(dock.copy(isActive = true)),
+            selectedId = null,
+            carConnected = true,
+            carRequested = true,
+        )
+
+        assertFalse(state.onHeadset)
+        assertFalse(state.onCar)
+    }
+
+    /** A direct Car press must not claim success while Android still reports a definite headset route. */
+    @Test
+    fun `an explicit Car request does not override a confirmed headset route`() {
+        val state = AudioOutputRoles.buttons(
+            outputs = listOf(wired.copy(isActive = true)),
+            selectedId = null,
+            carConnected = true,
+            carRequested = true,
+        )
+
+        assertTrue(state.onHeadset)
+        assertFalse(state.onCar)
+    }
+
+    /**
      * The dashboard case. An ambiguous A2DP route nobody selected, with a car bound, is not a headset —
      * ADR-0029 §4 — and it is not a speaker either, so the car is what lights up.
      */

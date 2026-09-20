@@ -75,6 +75,21 @@ internal object NotificationButtons {
     const val ACTION_SELECT_CAR_OUTPUT = "com.example.shelfplayer.playback.SELECT_CAR_OUTPUT"
 
     /**
+     * The same Car command while the route is positively known to be the car.
+     *
+     * Issue #34: some Android Auto hosts appear to cache a custom action's icon under its action id. The
+     * inactive id above remains the long-lived compatibility id; the active id gives the host a new identity
+     * to render when the selected-state glyph changes. Both ids are always granted and handled so a cached
+     * host can safely send either one.
+     */
+    const val ACTION_SELECT_CAR_OUTPUT_ACTIVE = "com.example.shelfplayer.playback.SELECT_CAR_OUTPUT_ACTIVE"
+
+    fun carAction(onCar: Boolean): String = if (onCar) ACTION_SELECT_CAR_OUTPUT_ACTIVE else ACTION_SELECT_CAR_OUTPUT
+
+    /** Every Car identity a host may legitimately send, including a cached inactive layout. */
+    val carOutputActions: Set<String> = setOf(ACTION_SELECT_CAR_OUTPUT, ACTION_SELECT_CAR_OUTPUT_ACTIVE)
+
+    /**
      * PRODUCT_SPEC PLAY-002 — *put the book back in my ears*, and step between headsets if there are two.
      *
      * A cycle rather than a list for the reason a custom action always is: it sends a session command and

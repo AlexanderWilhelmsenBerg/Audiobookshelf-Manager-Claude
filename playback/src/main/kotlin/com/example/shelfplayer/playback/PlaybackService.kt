@@ -1096,7 +1096,12 @@ class PlaybackService : MediaLibraryService() {
             }
             launch {
                 audioOutputs.explicitSelection.collect { selection ->
-                    if (selection != null) syncExplicitOutputIntent()
+                    if (selection != null) {
+                        syncExplicitOutputIntent()
+                        // #34 — Car and generic Automatic both have selectedId=null, so the selected-id flow
+                        // cannot announce that semantic transition. Explicit intent must republish directly.
+                        republishOutputButtons()
+                    }
                 }
             }
         }
@@ -1125,6 +1130,8 @@ class PlaybackService : MediaLibraryService() {
             outputs = outputs,
             selectedId = audioOutputs.selectedId.value,
             carConnected = carBound,
+            carRequested = audioOutputs.explicitSelection.value?.destination ==
+                AudioOutputRouter.ExplicitDestination.Car,
         )
         if (!mediaButtonPublishing.needsPublish(next, carBound)) {
             outputButtons = next
@@ -1464,8 +1471,10 @@ class PlaybackService : MediaLibraryService() {
             add(
                 outputButton(
                     icon = OutputActionIcons.car(state),
-                    action = NotificationButtons.ACTION_SELECT_CAR_OUTPUT,
-                    label = getString(R.string.player_car_action),
+                    action = NotificationButtons.carAction(state.onCar),
+                    label = getString(
+                        if (state.onCar) R.string.player_car_action_active else R.string.player_car_action,
+                    ),
                     slot = CommandButton.SLOT_BACK,
                 ),
             )
@@ -1731,13 +1740,7 @@ class PlaybackService : MediaLibraryService() {
             is AppResult.Success -> {
                 val playbackSession = opened.value
                 bookChanges.onBookOpened(playbackSession)
-                val queue = MediaItems.queueFor(
-                    session = playbackSession,
-                    historyLink = MediaItems.HistoryLink(
-                        label = getString(R.string.car_player_history_link),
-                        historyMediaId = AutoLibrary.TAB_HISTORY,
-                    ),
-                )
+                val queue = MediaItems.queueFor(playbackSession)
                 if (startAt == null) {
                     queue
                 } else {
@@ -2195,7 +2198,11 @@ class PlaybackService : MediaLibraryService() {
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_BACK, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
-                        .add(SessionCommand(NotificationButtons.ACTION_SELECT_CAR_OUTPUT, Bundle.EMPTY))
+                        .apply {
+                            NotificationButtons.carOutputActions.forEach { action ->
+                                add(SessionCommand(action, Bundle.EMPTY))
+                            }
+                        }
                         .add(SessionCommand(NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT, Bundle.EMPTY))
                         .build()
 
@@ -2210,7 +2217,12 @@ class PlaybackService : MediaLibraryService() {
             }
             val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
                 .buildUpon()
-                .apply { ControllerTrust.withheldPlayerCommands(access).forEach(::remove) }
+                .apply {
+                    ControllerTrust.withheldPlayerCommands(access).forEach(::remove)
+                    MediaButtonPublishing.platformPlayerCommandsToWithhold(
+                        isMediaNotificationController = session.isMediaNotificationController(controller),
+                    ).forEach(::remove)
+                }
                 .build()
 
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
@@ -2346,8 +2358,13 @@ class PlaybackService : MediaLibraryService() {
 
                 NotificationButtons.ACTION_ADD_BOOKMARK -> bookmarkHere()
 
-                NotificationButtons.ACTION_SELECT_CAR_OUTPUT ->
-                    audioOutputs.select(AudioOutputRoles.carTarget(audioOutputs.outputs.value))
+                // #34 — accept both identities forever. A host may send the inactive id from a cached
+                // layout after BookWave has already published the active one.
+                in NotificationButtons.carOutputActions -> {
+                    // Car is Automatic at the ExoPlayer layer, but it is not generic Automatic at the UI
+                    // layer: preserving that semantic intent is what lets projected Auto show #34's state.
+                    audioOutputs.selectCar()
+                }
 
                 NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT ->
                     AudioOutputRoles

@@ -89,8 +89,29 @@ internal object AudioOutputRoles {
         return candidates[(index + 1) % candidates.size].id
     }
 
+    /**
+     * #34 — projected Auto can own the audible car path while the phone reports no route or its speaker.
+     * Listener intent bridges only that observation gap; a definite headset or known Other route vetoes it.
+     */
+    private fun explicitlyRequestedCar(
+        current: AudioOutput?,
+        selectedId: String?,
+        carConnected: Boolean,
+        carRequested: Boolean,
+        hasHeadsetRoute: Boolean,
+    ): Boolean = carConnected &&
+        carRequested &&
+        selectedId == null &&
+        !hasHeadsetRoute &&
+        (current == null || current.isSpeaker)
+
     /** What Android Auto/notification should publish right now. */
-    fun buttons(outputs: List<AudioOutput>, selectedId: String?, carConnected: Boolean): OutputButtons {
+    fun buttons(
+        outputs: List<AudioOutput>,
+        selectedId: String?,
+        carConnected: Boolean,
+        carRequested: Boolean = false,
+    ): OutputButtons {
         val candidates = headsets(outputs)
         val current = current(outputs, selectedId)
         val activeLooksLikeCar = carConnected &&
@@ -105,6 +126,13 @@ internal object AudioOutputRoles {
             output.isHeadset ||
                 (output.role == AudioOutputRole.Ambiguous && (!carConnected || output.id == selectedId))
         }
+        val explicitlyRequestedCar = explicitlyRequestedCar(
+            current = current,
+            selectedId = selectedId,
+            carConnected = carConnected,
+            carRequested = carRequested,
+            hasHeadsetRoute = headsetRoute != null,
+        )
         return OutputButtons(
             showCar = carConnected || car(outputs) != null,
             showHeadset = availableHeadsets.isNotEmpty(),
@@ -116,13 +144,13 @@ internal object AudioOutputRoles {
             // non-car* route — `OutputDevices.roleOf` sends USB devices, USB accessories, docks and HDMI to
             // `Other` through its `else`, so a DAC or a dock carrying the book drew a confident car glyph.
             //
-            // Only two things are evidence. A `TYPE_BUS` route **is** the car's own audio bus, whether or
-            // not a controller is bound. And the dashboard case: an ambiguous A2DP route nobody selected
-            // while a car is bound, which ADR-0029 §4 already refuses to call a headset.
-            //
-            // Everything else leaves both glyphs dark, which the [OutputButtons] KDoc explains is a
-            // legitimate state — an indicator that is sometimes silent beats one that is sometimes wrong.
-            onCar = current?.role == AudioOutputRole.Car || activeLooksLikeCar,
+            // Three things are evidence. A `TYPE_BUS` route **is** the car's own audio bus. An ambiguous
+            // unselected A2DP route while a car is bound is the projected-dashboard case. Finally, #34 adds
+            // a direct listener Car request while the car is bound, but only across the projected-Auto
+            // observation gap: no reported current route, or the phone still reporting its built-in speaker.
+            // A definite headset or known Other route contradicts that fallback. Everything else leaves both
+            // glyphs dark.
+            onCar = current?.role == AudioOutputRole.Car || activeLooksLikeCar || explicitlyRequestedCar,
         )
     }
 }
@@ -140,10 +168,13 @@ internal object AudioOutputRoles {
  * `AudioOutputRouter.select` accepts so the phone's own chooser works, and including a route the platform
  * had not reported at all. Excluding those two still left every *known non-car* route lighting the car: a
  * USB DAC, a dock and an HDMI sink all reach `AudioOutputRole.Other` through `roleOf`'s `else`. Each round
- * drew a confident car glyph over something that was not the car, so [onCar] now asks for evidence *of a
- * car* — the `TYPE_BUS` bus, or the ambiguous dashboard — rather than for the failure of other tests.
+ * drew a confident car glyph over something that was not the car. [onCar] therefore needs positive support:
+ * the `TYPE_BUS` bus, the ambiguous projected-dashboard case, or a direct listener Car request while a car
+ * controller is bound and the phone reports only its speaker/no route. A definite headset or known Other
+ * route vetoes that intent fallback.
  *
- * So **neither being lit is a legitimate state**: the speaker carries the audio, or the route is unknown.
+ * So **neither being lit is a legitimate state**: a known non-car route carries the audio, or the route is
+ * unknown without a direct Car request.
  * An indicator that is sometimes silent is worth more than one that is always sure and sometimes wrong.
  */
 internal data class OutputButtons(

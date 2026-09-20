@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import android.os.Bundle
 import androidx.annotation.OptIn
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
 import androidx.media3.session.SessionCommand
@@ -9,6 +10,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 
 /**
  * PRODUCT_SPEC PLAY-002 — a button set has to reach the **car**, not just the session.
@@ -64,6 +66,50 @@ class MediaButtonPublishingTest {
         )
 
         assertEquals(listOf(buttons, buttons), seen)
+    }
+
+    /**
+     * Issue #34 — changing only the icon was not enough on the reported host. The active state therefore
+     * changes action identity as well, while the old id remains valid for cached layouts.
+     */
+    @Test
+    fun `Car action identity changes with selected state`() {
+        assertNotEquals(
+            NotificationButtons.ACTION_SELECT_CAR_OUTPUT,
+            NotificationButtons.ACTION_SELECT_CAR_OUTPUT_ACTIVE,
+        )
+        assertEquals(
+            NotificationButtons.ACTION_SELECT_CAR_OUTPUT,
+            NotificationButtons.carAction(onCar = false),
+        )
+        assertEquals(
+            NotificationButtons.ACTION_SELECT_CAR_OUTPUT_ACTIVE,
+            NotificationButtons.carAction(onCar = true),
+        )
+        assertEquals(
+            setOf(
+                NotificationButtons.ACTION_SELECT_CAR_OUTPUT,
+                NotificationButtons.ACTION_SELECT_CAR_OUTPUT_ACTIVE,
+            ),
+            NotificationButtons.carOutputActions,
+        )
+    }
+
+    /**
+     * Issue #35 — Media3 mirrors the media-notification controller into the legacy/platform session that
+     * Android Auto reads. Removing timeline read capability there is the supported switch that omits the
+     * framework queue and therefore the car's queue button.
+     */
+    @Test
+    fun `the platform session withholds timeline so Android Auto has no queue button`() {
+        assertEquals(
+            setOf(Player.COMMAND_GET_TIMELINE),
+            MediaButtonPublishing.platformPlayerCommandsToWithhold(isMediaNotificationController = true),
+        )
+        assertEquals(
+            emptySet<Int>(),
+            MediaButtonPublishing.platformPlayerCommandsToWithhold(isMediaNotificationController = false),
+        )
     }
 
     @Test

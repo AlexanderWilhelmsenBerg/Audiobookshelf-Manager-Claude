@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.Player
 import androidx.media3.session.CommandButton
 
 /**
@@ -33,6 +34,19 @@ import androidx.media3.session.CommandButton
  * same reason, after two `if`s vanished in a revert with nothing failing (`docs/risks.md` R-100).
  */
 internal object MediaButtonPublishing {
+
+    /**
+     * Player commands withheld from Media3's media-notification controller so the mirrored platform session
+     * exposes the Android Auto surface BookWave actually wants.
+     *
+     * Media3 intentionally does not publish a framework queue when this controller lacks
+     * [Player.COMMAND_GET_TIMELINE]. Android Auto reads that framework session, so this removes the queue
+     * button from the car player without changing BookWave's real one-item timeline or the in-app controller.
+     * The platform/legacy session is shared with system media controls, so this is deliberately a platform-
+     * session choice rather than a per-car fiction. Issue #35.
+     */
+    fun platformPlayerCommandsToWithhold(isMediaNotificationController: Boolean): Set<Int> =
+        if (isMediaNotificationController) setOf(Player.COMMAND_GET_TIMELINE) else emptySet()
 
     /**
      * Tracks the last output/car-binding state that was actually published.
