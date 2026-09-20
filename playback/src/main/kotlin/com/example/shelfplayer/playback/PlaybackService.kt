@@ -1332,10 +1332,7 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
-    private fun logCarContinuityRouteEvent(
-        target: CarArrivalResumeGate.Target,
-        event: CarArrivalRouteRecovery.Event,
-    ) {
+    private fun logCarContinuityRouteEvent(target: CarArrivalResumeGate.Target, event: CarArrivalRouteRecovery.Event) {
         logger.info(
             LogCategory.Playback,
             "Car lifecycle route recovery changed",
