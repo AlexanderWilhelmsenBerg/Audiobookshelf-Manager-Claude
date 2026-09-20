@@ -222,11 +222,7 @@ internal object AutoBrowseSnapshotBuilder {
      * Opaque comparison token only. It is never logged or rendered, and deliberately excludes credentials,
      * URLs and media titles while still making visible profile-row changes invalidate the Profiles parent.
      */
-    private fun profileFingerprint(
-        profile: Profile,
-        serverName: String?,
-        isActive: Boolean,
-    ): String = listOf(
+    private fun profileFingerprint(profile: Profile, serverName: String?, isActive: Boolean): String = listOf(
         profile.id.value,
         profile.displayName.hashCode(),
         profile.username.hashCode(),
