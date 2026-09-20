@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import android.net.Uri
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
@@ -13,19 +14,25 @@ import com.example.shelfplayer.core.model.library.Book
  * represented by null so the host can draw its ordinary placeholder.
  */
 interface AutoArtwork {
-    fun book(book: Book, serverBaseUrls: Map<ServerId, String>): Uri?
+    fun book(profileId: ProfileId, book: Book, serverBaseUrls: Map<ServerId, String>): Uri?
 
     /**
      * A confirmed author portrait is preferred; [representativeCover] is LIB-002's fallback.
      * Implementations must never put credentials or reusable secrets in the returned URI.
      */
-    fun author(author: Author, representativeCover: Book?, serverBaseUrls: Map<ServerId, String>): Uri?
+    fun author(
+        profileId: ProfileId,
+        author: Author,
+        representativeCover: Book?,
+        serverBaseUrls: Map<ServerId, String>,
+    ): Uri?
 
     companion object {
         val None = object : AutoArtwork {
-            override fun book(book: Book, serverBaseUrls: Map<ServerId, String>): Uri? = null
+            override fun book(profileId: ProfileId, book: Book, serverBaseUrls: Map<ServerId, String>): Uri? = null
 
             override fun author(
+                profileId: ProfileId,
                 author: Author,
                 representativeCover: Book?,
                 serverBaseUrls: Map<ServerId, String>,
