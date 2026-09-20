@@ -1503,12 +1503,10 @@ class PlaybackService : MediaLibraryService() {
             return
         }
 
-        val current = player
         val decision = carContinuity.onCarDeparture(
             departedAt = clock.elapsed(),
             currentGeneration = routeOwnership.currentGeneration,
             explicitSelectionSequence = currentExplicitSelectionSequence(),
-            playbackActive = current?.isPlaying == true && current.playWhenReady,
         )
         logCarContinuityDecision("final-car-disconnect", decision)
         scope.launch {
