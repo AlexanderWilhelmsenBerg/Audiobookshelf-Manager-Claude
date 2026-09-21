@@ -124,7 +124,6 @@ class CarLifecycleContinuityIntegrationTest {
 
             assertEquals(buds.id, held)
             assertTrue(gate.consumeRecovery(target, owner.currentGeneration, held, 0).accepted)
-        
         }
     }
 
