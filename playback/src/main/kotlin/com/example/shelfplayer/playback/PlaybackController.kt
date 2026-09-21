@@ -454,6 +454,25 @@ class PlaybackController @Inject constructor(
     }
 
     /**
+     * Issue #75 — projects an already-live service session back into the phone UI without starting one.
+     *
+     * Activity recreation, a notification tap, Android Auto and media-button resumption can all leave the
+     * service owning a loaded MediaSession while this singleton still has no MediaController. This method is
+     * the foreground reconciliation seam: it uses only [SessionConnector.connectExisting], which returns
+     * `null` when no direct live-session token exists and therefore cannot manufacture playback on an idle
+     * launcher start.
+     *
+     * Connecting is observation only. No media item is replaced and no Play/prepare/seek command is issued.
+     */
+    suspend fun attachToExistingSession() {
+        withContext(mainDispatcher) {
+            if (controller != null) return@withContext
+            val built = connector.connectExisting() ?: return@withContext
+            adopt(built)
+        }
+    }
+
+    /**
      * Connects to the session, building the controller on first use.
      *
      * Lazily rather than at construction: building a controller starts the service, and a service that
@@ -462,6 +481,21 @@ class PlaybackController @Inject constructor(
     private suspend fun connect(): MediaController? {
         controller?.let { return it }
         val built = connector.connect() ?: return null
+        return adopt(built)
+    }
+
+    /**
+     * Installs one controller as the UI projection of the session.
+     *
+     * A foreground attach and an explicit playback command may both be awaiting Media3 at the same time.
+     * The first completed controller wins; the duplicate is released rather than replacing the controller
+     * whose listeners/ticker are already publishing state.
+     */
+    private fun adopt(built: MediaController): MediaController {
+        controller?.let { existing ->
+            built.release()
+            return existing
+        }
         built.addListener(ControllerEvents())
         controller = built
         publish(built)
