@@ -32,6 +32,7 @@ import kotlin.coroutines.resume
 class SessionConnector @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val logger: Logger,
+    private val liveSession: LivePlaybackSession,
 ) {
 
     /**
@@ -42,9 +43,23 @@ class SessionConnector @Inject constructor(
      * failed session build arrives as; `InterruptedException` is the executor being torn down, and the
      * interrupt is reasserted rather than eaten.
      */
-    suspend fun connect(): MediaController? {
-        val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        return suspendCancellableCoroutine { continuation ->
+    suspend fun connect(): MediaController? =
+        connect(SessionToken(context, ComponentName(context, PlaybackService::class.java)))
+
+    /**
+     * Issue #75 — attaches only when [PlaybackService] has already published a live direct-session token.
+     *
+     * A component/service token is deliberately not used here: Media3 is allowed to instantiate the target
+     * service for that token, which would turn an ordinary idle app launch into playback-service startup.
+     * A direct session token names only the session that already exists and becomes unusable when it closes.
+     */
+    internal suspend fun connectExisting(): MediaController? {
+        val token = liveSession.currentToken() ?: return null
+        return connect(token)
+    }
+
+    private suspend fun connect(token: SessionToken): MediaController? =
+        suspendCancellableCoroutine { continuation ->
             val future = MediaController.Builder(context, token).buildAsync()
             future.addListener(
                 {
