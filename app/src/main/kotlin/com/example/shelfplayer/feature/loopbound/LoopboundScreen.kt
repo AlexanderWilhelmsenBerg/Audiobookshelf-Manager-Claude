@@ -2,7 +2,9 @@ package com.example.shelfplayer.feature.loopbound
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
@@ -40,11 +42,14 @@ import java.io.ByteArrayInputStream
 private const val LOOPBOUND_ASSET_DIRECTORY = "loopbound"
 private const val LOOPBOUND_ENTRY_FILE = "index.html"
 private const val LOOPBOUND_ENTRY_PATH = "$LOOPBOUND_ASSET_DIRECTORY/$LOOPBOUND_ENTRY_FILE"
+private const val LOOPBOUND_VERSION_FILE = "BOOKWAVE_LOOPBOUND_VERSION"
+private const val LOOPBOUND_VERSION_PATH = "$LOOPBOUND_ASSET_DIRECTORY/$LOOPBOUND_VERSION_FILE"
 private const val APP_ASSET_HOST = "appassets.androidplatform.net"
 private const val LOOPBOUND_URL = "https://$APP_ASSET_HOST/assets/$LOOPBOUND_ENTRY_PATH"
 private const val LOOPBOUND_URL_PATH_PREFIX = "/assets/$LOOPBOUND_ASSET_DIRECTORY/"
 private const val HTTP_STATUS_FORBIDDEN = 403
 private const val HTTP_STATUS_NOT_FOUND = 404
+private const val LOOPBOUND_DIAGNOSTIC_TAG = "BookWaveLoopbound"
 private val LOOPBOUND_TOP_BAR_HEIGHT = 48.dp
 
 /**
@@ -148,6 +153,15 @@ internal fun createLoopboundWebView(context: Context): WebView = WebView(context
     WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
 
+    val provider = WebView.getCurrentWebViewPackage()
+    Log.i(
+        LOOPBOUND_DIAGNOSTIC_TAG,
+        "host-created provider=${provider?.packageName ?: "unavailable"} " +
+            "providerVersion=${provider?.versionName ?: "unavailable"} " +
+            "loopboundVersion=${context.loopboundBundleVersion()} " +
+            "layerType=$layerType",
+    )
+
     settings.javaScriptEnabled = true
     settings.domStorageEnabled = true
     settings.allowFileAccess = false
@@ -157,6 +171,37 @@ internal fun createLoopboundWebView(context: Context): WebView = WebView(context
     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
     webViewClient = object : WebViewClient() {
+        var pageStarts = 0
+        var pageFinishes = 0
+        var pageCommits = 0
+
+        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+            pageStarts += 1
+            Log.i(
+                LOOPBOUND_DIAGNOSTIC_TAG,
+                "page-start count=$pageStarts location=${url.loopboundDiagnosticLocation()} " +
+                    "hardwareAccelerated=${view?.isHardwareAccelerated} layerType=${view?.layerType}",
+            )
+        }
+
+        override fun onPageCommitVisible(view: WebView?, url: String?) {
+            pageCommits += 1
+            Log.i(
+                LOOPBOUND_DIAGNOSTIC_TAG,
+                "page-commit-visible count=$pageCommits location=${url.loopboundDiagnosticLocation()} " +
+                    "hardwareAccelerated=${view?.isHardwareAccelerated} layerType=${view?.layerType}",
+            )
+        }
+
+        override fun onPageFinished(view: WebView?, url: String?) {
+            pageFinishes += 1
+            Log.i(
+                LOOPBOUND_DIAGNOSTIC_TAG,
+                "page-finish count=$pageFinishes location=${url.loopboundDiagnosticLocation()} " +
+                    "starts=$pageStarts commits=$pageCommits",
+            )
+        }
+
         override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse =
             context.loadLoopboundAsset(request.url)
 
@@ -164,6 +209,12 @@ internal fun createLoopboundWebView(context: Context): WebView = WebView(context
             !request.url.isLoopboundAssetUrl()
 
         override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+            Log.e(
+                LOOPBOUND_DIAGNOSTIC_TAG,
+                "render-process-gone didCrash=${detail?.didCrash()} " +
+                    "priorityAtExit=${detail?.rendererPriorityAtExit} " +
+                    "starts=$pageStarts commits=$pageCommits finishes=$pageFinishes",
+            )
             view?.destroy()
             return true
         }
@@ -196,6 +247,18 @@ private fun Uri.toLoopboundAssetPath(): String? {
 
 private fun Uri.isLoopboundAssetUrl(): Boolean =
     scheme == "https" && host == APP_ASSET_HOST && path.orEmpty().startsWith(LOOPBOUND_URL_PATH_PREFIX)
+
+private fun Context.loopboundBundleVersion(): String = runCatching {
+    assets.open(LOOPBOUND_VERSION_PATH).bufferedReader().use { reader ->
+        reader.readLine().orEmpty().trim().ifEmpty { "empty" }
+    }
+}.getOrElse { "unavailable" }
+
+private fun String?.loopboundDiagnosticLocation(): String {
+    if (this == null) return "null"
+    val uri = runCatching { Uri.parse(this) }.getOrNull() ?: return "invalid"
+    return if (uri.isLoopboundAssetUrl()) uri.path.orEmpty() else "non-loopbound"
+}
 
 private fun Context.hasLoopboundBundle(): Boolean = runCatching {
     assets.open(LOOPBOUND_ENTRY_PATH).use { Unit }
