@@ -365,17 +365,16 @@ class CarArrivalResumeGateTest {
         )
     }
 
-    private fun armedArrival(owner: RouteHeardOwnership): CarArrivalResumeGate =
-        CarArrivalResumeGate().also { gate ->
-            gate.onAudioFocusLoss(
-                at = 10.seconds,
-                heardRoute = owner.heardRoute,
-                headsetId = owner.headsetForCar(listOf(buds, car)),
-                currentGeneration = owner.currentGeneration,
-                explicitSelectionSequence = 0,
-                carConnected = false,
-            )
-        }
+    private fun armedArrival(owner: RouteHeardOwnership): CarArrivalResumeGate = CarArrivalResumeGate().also { gate ->
+        gate.onAudioFocusLoss(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds, car)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+    }
 
     private fun connectedOnBuds(owner: RouteHeardOwnership): CarArrivalResumeGate =
         CarArrivalResumeGate().also { gate ->
