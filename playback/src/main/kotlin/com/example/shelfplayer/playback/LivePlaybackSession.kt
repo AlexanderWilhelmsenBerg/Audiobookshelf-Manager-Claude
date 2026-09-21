@@ -20,7 +20,7 @@ import javax.inject.Singleton
  * flag, exported intent extra, or second playback repository is needed.
  */
 @Singleton
-internal class LivePlaybackSession @Inject constructor() {
+class LivePlaybackSession @Inject constructor() {
     private val lock = Any()
     private var token: SessionToken? = null
 
