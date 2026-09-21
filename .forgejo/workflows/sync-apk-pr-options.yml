@@ -1,8 +1,8 @@
 name: Sync APK PR picker (retired)
 
 # Retained temporarily because the current Forgejo gateway cannot delete repository files.
-# The static APK pull-request dropdown was retired: Build APK now accepts an optional PR number
-# and resolves that PR live through the Forgejo API at dispatch time.
+# The old APK pull-request picker is retired. Build APK now uses Forgejo's native
+# workflow-dispatch branch dropdown as the only BookWave source selector.
 #
 # This workflow is intentionally manual-only and performs no repository mutation. It can be deleted
 # in a later cleanup commit once a file-delete path is available.
@@ -19,5 +19,5 @@ jobs:
       - name: Explain retired workflow
         run: |
           echo "The APK PR picker synchronizer is retired."
-          echo "Use Build APK and enter an optional PR number instead."
+          echo "Use Build APK and select the BookWave branch in Forgejo's branch dropdown."
           echo "No branch or pull request will be created."
