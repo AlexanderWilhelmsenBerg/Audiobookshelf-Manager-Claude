@@ -32,15 +32,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import com.example.shelfplayer.BuildConfig
-import com.example.shelfplayer.ShelfPlayerApplication
 import com.example.shelfplayer.R
-import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
+import com.example.shelfplayer.ShelfPlayerApplication
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.error
 import com.example.shelfplayer.core.common.log.info
+import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import java.io.ByteArrayInputStream
 
@@ -277,7 +278,7 @@ private fun Context.loopboundBundleVersion(): String = runCatching {
 
 private fun String?.loopboundDiagnosticLocation(): String {
     if (this == null) return "null"
-    val uri = runCatching { Uri.parse(this) }.getOrNull() ?: return "invalid"
+    val uri = toUri()
     return if (uri.isLoopboundAssetUrl()) uri.path.orEmpty() else "non-loopbound"
 }
 
