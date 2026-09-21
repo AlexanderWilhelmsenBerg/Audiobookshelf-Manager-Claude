@@ -267,8 +267,7 @@ private fun Uri.toLoopboundAssetPath(): String? {
 private fun Uri.isLoopboundAssetUrl(): Boolean =
     scheme == "https" && host == APP_ASSET_HOST && path.orEmpty().startsWith(LOOPBOUND_URL_PATH_PREFIX)
 
-private fun Context.bookWaveLoggerOrNull(): Logger? =
-    (applicationContext as? ShelfPlayerApplication)?.logger
+private fun Context.bookWaveLoggerOrNull(): Logger? = (applicationContext as? ShelfPlayerApplication)?.logger
 
 private fun Context.loopboundBundleVersion(): String = runCatching {
     assets.open(LOOPBOUND_VERSION_PATH).bufferedReader().use { reader ->
