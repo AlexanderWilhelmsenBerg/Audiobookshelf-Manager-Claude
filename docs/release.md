@@ -46,7 +46,7 @@ that encodes nothing:
 | --- | --- |
 | **`versionName`** | `0.10.6.1`. The product version, hand-bumped for the Forgejo migration while preserving the existing suffix. It carries no per-build fact, so there is nothing in it to go stale. |
 | **`versionCode`** | `BASE_VERSION_CODE` (2000) **+ the workflow run number**. `apk.yml` passes `BOOKWAVE_RUN_NUMBER`; Forgejo increments it on every run of that workflow. The floor was raised during the Forgejo migration because the new CI system starts a fresh run-number sequence. |
-| **Which pull request** | `BOOKWAVE_PR` and `BOOKWAVE_BRANCH`, shown as the **Source** row in Settings → About: `PR 67 · fix/playback-session-renewal`. Also in the artefact's name and in the debug console's pasted report. |
+| **Which source branch** | `BOOKWAVE_BRANCH`, shown as the **Source** row in Settings → About. The Forgejo APK workflow resolves the selected branch to an exact commit before checkout. |
 | **The commit** | `BOOKWAVE_COMMIT`, shown as the **Build** row beside the build type. |
 | **A local build** | No run number, so code `2000` and branch `local`. It will not install over a later CI build; `-Pbookwave.versionCode=N` is the way round that. |
 
@@ -267,9 +267,9 @@ The cache namespace enforces a trust boundary:
   that exact key is missing, it runs one normal `verifyDebug` to seed trusted debug outputs before the
   release checks finish and the cache is saved; ordinary source-only merges with an exact hit keep skipping
   the duplicate PR verification;
-- the signing-capable APK job is restore-only and may read the trusted namespace only when the workflow
-  itself is dispatched from `main`, before signing secrets are staged. A feature-branch dispatch builds
-  cold; to build a PR with cache, dispatch **Build APK** from `main` and enter that PR number.
+- the signing-capable APK job is restore-only and may read the trusted namespace only when the selected
+  **BookWave branch** is `main`, before signing secrets are staged. Selecting any feature branch builds
+  cold even though the workflow definition itself is dispatched from `main`.
 
 This separation follows Gradle's default CI recommendation that non-default branches read shared cache state
 without writing their own entries. It prevents repository-controlled PR code from creating a cache later
@@ -293,17 +293,23 @@ R-31.
 
 Forgejo → **Actions** → **Build APK** → *Run workflow*.
 
-- Leave **PR number** blank to build the branch/ref selected in Forgejo's workflow runner.
-- Enter an open same-repository PR number such as `52` (or `#52`) to build that PR's exact current head SHA.
+- Leave Forgejo's native **Use workflow from** ref on `main`. On the current Forgejo UI this is a free-text
+  ref control; it selects the trusted workflow definition, not the BookWave source to compile.
+- Choose the source from the real **BookWave branch** dropdown.
 - Choose `debug` or `release`.
 - `run_checks` optionally runs `verifyDebug` before assembly and is off by default so a quick device build
   stays quick.
 - `include_loopbound` embeds a freshly built Loopbound bundle when enabled.
 
-The PR input is intentionally **not a dropdown**. Forgejo workflow-dispatch choices are static YAML, and
-keeping a generated PR list current required a bot branch and housekeeping pull request every time the set
-of open PRs changed. The workflow now resolves the entered PR number live through the Forgejo API instead.
-It refuses closed PRs and fork sources before privileged signing secrets are used.
+Forgejo only renders a dropdown for `workflow_dispatch` inputs declared as `type: choice`, and those
+options are static YAML. The BookWave branch picker therefore stores a generated snapshot of repository
+branches in `.forgejo/workflows/apk.yml`. If a newly created branch is missing, run
+**Refresh APK branch dropdown** once from `main`; it rewrites only that generated option block. Because
+refreshing the snapshot commits the workflow file, it moves `main` and may make existing PRs require a
+rebase, so the refresh is deliberately manual rather than automatic.
+
+The selected branch is resolved through the Forgejo API to an exact commit SHA before checkout. A stale
+choice for a deleted branch fails before Gradle or signing starts.
 
 Both Forgejo APK variants use the protected BookWave signing identity described above, and the workflow
 verifies the certificate fingerprint from the completed APK before uploading it. The release run also
