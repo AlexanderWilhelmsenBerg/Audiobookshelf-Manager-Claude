@@ -1,11 +1,11 @@
 name: Build APK
 
-run-name: "${{ inputs.pull_request != '' && format('Build {0} APK · PR #{1}', inputs.variant, inputs.pull_request) || format('Build {0} APK · {1}', inputs.variant, forgejo.ref_name) }}"
+run-name: "Build ${{ inputs.variant }} APK · ${{ forgejo.ref_name }}"
 
 # Forgejo-native on-demand APK workflow. The GitHub workflow remains untouched as fallback.
 #
-# Pull requests are resolved through the Forgejo API to an immutable head SHA before checkout.
-# Same-repository source is required because this manual workflow can use signing secrets.
+# Select the BookWave source with Forgejo's native workflow-dispatch branch dropdown.
+# The selected branch is pinned to its dispatch SHA before checkout.
 #
 # Loopbound is cloned from Forgejo only. While alexander/Loopbound is public, no token is needed.
 # If Loopbound becomes private, set LOOPBOUND_READ_TOKEN to a Forgejo token/Authorized Integration
@@ -19,11 +19,6 @@ run-name: "${{ inputs.pull_request != '' && format('Build {0} APK · PR #{1}', i
 on:
   workflow_dispatch:
     inputs:
-      pull_request:
-        description: 'PR number to build; leave blank to use the selected branch/ref'
-        type: string
-        required: false
-        default: ''
       variant:
         description: 'Which build to produce'
         type: choice
@@ -47,7 +42,7 @@ on:
         default: 'main'
 
 concurrency:
-  group: ${{ forgejo.workflow }}-${{ inputs.pull_request == '' && forgejo.ref || format('pr-{0}', inputs.pull_request) }}-${{ inputs.variant }}
+  group: ${{ forgejo.workflow }}-${{ forgejo.ref }}-${{ inputs.variant }}
   cancel-in-progress: true
 
 env:
@@ -131,60 +126,10 @@ jobs:
       image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
     timeout-minutes: 60
     steps:
-      - name: Resolve build source
-        id: source
-        env:
-          REQUESTED_PR: ${{ inputs.pull_request }}
-        run: |
-          set -euo pipefail
-
-          requested="${REQUESTED_PR//[[:space:]]/}"
-          if [ -n "$requested" ]; then
-            requested_number="${requested#\#}"
-            if ! [[ "$requested_number" =~ ^[1-9][0-9]*$ ]]; then
-              echo "::error::PR number must be a positive integer (for example 52 or #52): $REQUESTED_PR"
-              exit 1
-            fi
-
-            pr_json="$(curl -fsS \
-              -H "Authorization: token $FORGEJO_TOKEN" \
-              -H 'Accept: application/json' \
-              "$FORGEJO_API_URL/repos/$FORGEJO_REPOSITORY/pulls/$requested_number")"
-
-            number="$(jq -r '.number // .index // empty' <<<"$pr_json")"
-            state="$(jq -r '.state // empty' <<<"$pr_json")"
-            branch="$(jq -r '.head.ref // empty' <<<"$pr_json")"
-            sha="$(jq -r '.head.sha // empty' <<<"$pr_json")"
-            head_repo="$(jq -r '.head.repo.full_name // empty' <<<"$pr_json")"
-
-            if [ -z "$number" ] || [ -z "$branch" ] || [ -z "$sha" ]; then
-              echo "::error::Forgejo did not return complete source information for PR #$requested_number."
-              exit 1
-            fi
-            if [ "$state" != "open" ]; then
-              echo "::error::PR #$number is not open (state: $state)."
-              exit 1
-            fi
-            if [ "$head_repo" != "$FORGEJO_REPOSITORY" ]; then
-              echo "::error::PR #$number comes from $head_repo, not $FORGEJO_REPOSITORY. Refusing privileged fork source."
-              exit 1
-            fi
-
-            echo "pr=$number" >> "$FORGEJO_OUTPUT"
-            echo "branch=$branch" >> "$FORGEJO_OUTPUT"
-            echo "sha=$sha" >> "$FORGEJO_OUTPUT"
-            echo "Resolved Forgejo PR #$number -> $branch @ ${sha:0:8}."
-          else
-            echo "pr=" >> "$FORGEJO_OUTPUT"
-            echo "branch=$FORGEJO_REF_NAME" >> "$FORGEJO_OUTPUT"
-            echo "sha=$FORGEJO_SHA" >> "$FORGEJO_OUTPUT"
-            echo "Using selected Forgejo ref $FORGEJO_REF_NAME @ ${FORGEJO_SHA:0:8}."
-          fi
-
       - name: Check out exact BookWave source
         uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ steps.source.outputs.sha }}
+          ref: ${{ forgejo.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -337,9 +282,8 @@ jobs:
         run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --max-workers=4 -Pshelfplayer.warningsAsErrors=true
       - name: Assemble requested APK
         env:
-          BOOKWAVE_PR: ${{ steps.source.outputs.pr }}
-          BOOKWAVE_COMMIT: ${{ steps.source.outputs.sha }}
-          BOOKWAVE_BRANCH: ${{ steps.source.outputs.branch }}
+          BOOKWAVE_COMMIT: ${{ forgejo.sha }}
+          BOOKWAVE_BRANCH: ${{ forgejo.ref_name }}
           BOOKWAVE_RUN_NUMBER: ${{ forgejo.run_number }}
           BOOKWAVE_SIGNING_STORE_FILE: ${{ steps.keystore.outputs.path }}
           BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
@@ -360,9 +304,8 @@ jobs:
       - name: Identify and verify built APK
         id: version
         env:
-          PR_NUMBER: ${{ steps.source.outputs.pr }}
-          SOURCE_SHA: ${{ steps.source.outputs.sha }}
-          SOURCE_BRANCH: ${{ steps.source.outputs.branch }}
+          SOURCE_SHA: ${{ forgejo.sha }}
+          SOURCE_BRANCH: ${{ forgejo.ref_name }}
           EXPECTED_SIGNER: ${{ steps.keystore.outputs.signer }}
         run: |
           set -euo pipefail
@@ -390,7 +333,7 @@ jobs:
             exit 1
           }
 
-          label="$NAME-$CODE${PR_NUMBER:+-pr$PR_NUMBER}"
+          label="$NAME-$CODE"
           echo "apk=$APK" >> "$FORGEJO_OUTPUT"
           echo "label=$label" >> "$FORGEJO_OUTPUT"
           echo "package=$PKG" >> "$FORGEJO_OUTPUT"
