@@ -228,7 +228,7 @@ internal fun createLoopboundWebView(context: Context, logger: Logger? = null): W
                 LogCategory.App,
                 "Loopbound WebView render process exited",
                 LogField.Public("didCrash", detail?.didCrash() ?: false),
-                LogField.Public("priorityAtExit", detail?.rendererPriorityAtExit ?: -1),
+                LogField.Public("priorityAtExit", detail?.rendererPriorityAtExit() ?: -1),
                 LogField.Count("starts", pageStarts),
                 LogField.Count("commits", pageCommits),
                 LogField.Count("finishes", pageFinishes),
