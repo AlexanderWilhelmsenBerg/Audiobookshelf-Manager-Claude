@@ -32,6 +32,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.feature.browse.LocalAuthorUrls
@@ -57,6 +58,7 @@ import com.example.shelfplayer.feature.player.SleepTimerSheet
 import com.example.shelfplayer.feature.player.SpeedSheet
 import com.example.shelfplayer.feature.settings.resolvedColor
 import com.example.shelfplayer.navigation.ShelfDestinations
+import com.example.shelfplayer.playback.PlaybackController
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
 import com.example.shelfplayer.ui.glass.BackdropArtwork
 import com.example.shelfplayer.ui.glass.BackdropScroll
@@ -71,6 +73,8 @@ import com.example.shelfplayer.ui.glass.toColorScheme
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * PRODUCT_SPEC 4 — adaptive, never orientation-locked.
@@ -81,6 +85,24 @@ import dev.chrisbanes.haze.hazeSource
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var playbackController: PlaybackController
+
+    /**
+     * Issue #75 — every foreground entry gets one chance to observe a MediaSession that already exists.
+     *
+     * This is intentionally `onStart`, not unconditional controller construction in Compose. A notification
+     * tap, a warm return and Activity recreation all cross this lifecycle boundary, while an ordinary idle
+     * launcher start finds no live direct-session token and returns without starting PlaybackService.
+     */
+    override fun onStart() {
+        super.onStart()
+        lifecycleScope.launch {
+            playbackController.attachToExistingSession()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         /*
