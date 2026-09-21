@@ -109,6 +109,14 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var players: PlayerFactory
 
+    /**
+     * Issue #75 — the in-process handle the phone UI may use to attach only to this already-live session.
+     *
+     * It carries no book or playback metadata; Media3 remains the source of every rendered playback fact.
+     */
+    @Inject
+    internal lateinit var liveSession: LivePlaybackSession
+
     /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
     @Inject
     internal lateinit var audioOutputs: AudioOutputRouter
@@ -321,7 +329,7 @@ class PlaybackService : MediaLibraryService() {
         )
         // Issue #91 — controllers see the forwarding player; service-owned timers/sync/routing below keep
         // the raw ExoPlayer so internal atomic operations cannot recursively enter the external Play gate.
-        session = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
+        val mediaSession = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
             .setBitmapLoader(players.bitmapLoader())
             .setCommandButtonsForMediaItems(listOf(profileSwitchButton()))
             // PRODUCT_SPEC PLAY-001 — tapping the notification opens the app. Without this the media
@@ -329,6 +337,10 @@ class PlaybackService : MediaLibraryService() {
             // the notification to see where they are gets no response and no explanation.
             .apply { launchIntent()?.let(::setSessionActivity) }
             .build()
+        session = mediaSession
+        // Issue #75 — publish only after the real MediaSession exists. A direct session token lets a
+        // recreated Activity attach to this exact session without using the service token that can start us.
+        liveSession.publish(mediaSession.token)
         // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
         // singleton in this process, so it is the same object the app's UI drives.
         sleepTimer.attach(exoPlayer)
@@ -479,7 +491,12 @@ class PlaybackService : MediaLibraryService() {
         sleepTimerWatch?.cancel()
         skipWatch?.cancel()
         outputWatch?.cancel()
-        session?.release()
+        session?.let { mediaSession ->
+            // Clear the attach handle before release so an Activity entering at the same moment cannot pick
+            // up a token whose session is already on its way out.
+            liveSession.clear(mediaSession.token)
+            mediaSession.release()
+        }
         session = null
         player?.release()
         player = null
