@@ -521,30 +521,10 @@ class PlaybackController @Inject constructor(
     }
 
     private fun publish(media: MediaController) {
-        val item: MediaItem? = media.currentMediaItem
-        val position = if (item == null) Duration.ZERO else media.bookPosition()
-        val chapter = if (item == null) null else GlobalTimeline.chapterAt(chapters, position)
-        if (hasCrossedInto(chapter)) bookChanges.onChapterCrossed()
-        lastChapter = chapter
-        _state.value = PlaybackUiState(
-            bookId = item?.let(MediaItems::bookIdOf),
-            title = item?.mediaMetadata?.title?.toString().orEmpty(),
-            author = item?.mediaMetadata?.artist?.toString(),
-            artworkUri = item?.mediaMetadata?.artworkUri?.toString(),
-            isPlaying = media.isPlaying,
-            isLoading = media.playbackState == Player.STATE_BUFFERING,
-            position = position,
-            duration = if (item == null) Duration.ZERO else media.bookDuration(),
-            chapters = if (item == null) emptyList() else GlobalTimeline.ordered(chapters),
-            currentChapter = chapter,
-            // Read from the player rather than from the settings, so the state always reports what is
-            // actually happening — including a speed something else set through the media session.
-            speed = PlaybackSpeed.of(media.playbackParameters.speed),
-            // PRODUCT_SPEC PLAY-001 — a stopped book says so. The service retries a transient error a few
-            // times first (`PlaybackRecovery`); by the time this is non-null it has given up, and the only
-            // thing left is to tell the listener and offer the button.
-            hasFailed = media.playerError != null,
-        )
+        val next = media.playbackUiState(chapters)
+        if (hasCrossedInto(next.currentChapter)) bookChanges.onChapterCrossed()
+        lastChapter = next.currentChapter
+        _state.value = next
     }
 
     /**
@@ -577,6 +557,38 @@ class PlaybackController @Inject constructor(
     private companion object {
         const val TICK_MS = 500L
     }
+}
+
+/**
+ * The UI projection of one Media3 player snapshot.
+ *
+ * Issue #75 makes this boundary explicit because attaching a fresh [MediaController] to an already-live
+ * service must immediately produce the same [PlaybackUiState] as a controller that started the book itself.
+ * The source remains the session: this function stores nothing and issues no player command.
+ */
+internal fun Player.playbackUiState(chapters: List<Chapter> = emptyList()): PlaybackUiState {
+    val item: MediaItem? = currentMediaItem
+    val position = if (item == null) Duration.ZERO else bookPosition()
+    val chapter = if (item == null) null else GlobalTimeline.chapterAt(chapters, position)
+    return PlaybackUiState(
+        bookId = item?.let(MediaItems::bookIdOf),
+        title = item?.mediaMetadata?.title?.toString().orEmpty(),
+        author = item?.mediaMetadata?.artist?.toString(),
+        artworkUri = item?.mediaMetadata?.artworkUri?.toString(),
+        isPlaying = isPlaying,
+        isLoading = playbackState == Player.STATE_BUFFERING,
+        position = position,
+        duration = if (item == null) Duration.ZERO else bookDuration(),
+        chapters = if (item == null) emptyList() else GlobalTimeline.ordered(chapters),
+        currentChapter = chapter,
+        // Read from the player rather than from the settings, so the state always reports what is
+        // actually happening — including a speed something else set through the media session.
+        speed = PlaybackSpeed.of(playbackParameters.speed),
+        // PRODUCT_SPEC PLAY-001 — a stopped book says so. The service retries a transient error a few
+        // times first (`PlaybackRecovery`); by the time this is non-null it has given up, and the only
+        // thing left is to tell the listener and offer the button.
+        hasFailed = playerError != null,
+    )
 }
 
 /**
