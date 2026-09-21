@@ -308,7 +308,7 @@ branches in `.forgejo/workflows/apk.yml`. If a newly created branch is missing, 
 refreshing the snapshot commits the workflow file, it moves `main` and may make existing PRs require a
 rebase, so the refresh is deliberately manual rather than automatic.
 
-The selected branch is resolved through the Forgejo API to an exact commit SHA before checkout. A stale
+The selected branch is resolved through Forgejo Git to an exact commit SHA before checkout. A stale
 choice for a deleted branch fails before Gradle or signing starts.
 
 Both Forgejo APK variants use the protected BookWave signing identity described above, and the workflow
