@@ -130,9 +130,13 @@ Issue #11 replaces the inference-heavy `HeadsetHold` / `heardAudio` / release-st
 
 The owner distinguishes explicit BookWave listener intent from weaker Android route-policy observation. Every explicit phone/Android Auto output choice enters through `AudioOutputRouter.select`; framework policy from `getAudioDevicesForAttributes` is considered only while BookWave playback is observed as running and is never described as proof of the exact AudioTrack sink. An explicit listener choice therefore outranks enumeration/order disagreement, and multiple ambiguous classic-A2DP routes never become ownership merely because one was listed first.
 
-Car-arrival preservation consumes only that generation-bound evidence. A policy reassertion is deliberately separate from a listener selection so preserving an already-heard headset cannot manufacture newer intent. Car still releases BookWave's preference to Automatic, Headset still targets only headset candidates, and classic A2DP remains semantically `Ambiguous`.
+Issue #36 adds one service-owned `CarArrivalResumeGate` beside, not above, route-heard ownership. Its scope is narrow: correlate Media3's measured audio-focus loss with either the first 0→1 Android Auto controller bind or, on departure, a final 1→0 disconnect that follows a focus loss already observed while the car was still connected. It may snapshot only an exact headset that `RouteHeardOwnership` positively proved while the current generation was playing, together with the explicit output-selection sequence that was current at that moment.
 
-JVM tests prove BookWave's ownership, generation and precedence rules. They do not prove Android's route observation corresponds to the exact BookWave track; physical headset/car/speaker acceptance remains required for that platform boundary.
+Arrival captures that snapshot at focus loss because live route evidence may flap immediately afterward. While a car is connected, departure additionally retains the last positively proven playing headset so a transient A2DP omission cannot erase stable listener intent before a final disconnect. A disconnect-first/later-focus-loss order is diagnostic-only until physical evidence establishes that it is part of the same car transition. That retained snapshot is not a second route authority: it cannot discover an output, cannot replace a newer explicit Car/Headset/Automatic selection, cannot cross a generation/profile/session boundary and cannot make speaker or car output eligible. A policy reassertion remains separate from listener selection.
+
+The exact captured id is passed to `CarArrivalRouteRecovery`, which may wait for and reassert only that same headset. Live Android device enumeration is therefore observation used to prove presence, not authority to choose a replacement. Car still releases BookWave's preference to Automatic, Headset still targets only headset candidates, and classic A2DP remains semantically `Ambiguous`.
+
+BookWave continues to delegate audio-focus ownership to ExoPlayer/Media3. On the measured setup, arrival focus loss precedes the first trustworthy car-controller bind by two to four seconds, so there is no safe app signal that can guarantee zero-gap entry without generalising focus-loss resume. JVM tests prove BookWave's ownership, generation, lifecycle-correlation and precedence rules; they do not prove audible continuity, focus reacquisition or the exact physical sink. Headset/car/speaker acceptance remains a device boundary.
 
 ## Sleep timer and future automatic schedule
 
@@ -163,7 +167,7 @@ Playback correctness should be proven at the lowest level that can actually prov
 - **Robolectric/Media3 tests:** session/controller integration and metadata/browse construction where platform shadows are meaningful;
 - **connected device:** process death, real AndroidKeyStore/storage/audio/service lifecycle where applicable;
 - **DHU / real car:** Android Auto rendering/controller behavior;
-- **real audio routes:** headset/car/speaker routing and arrival races.
+- **real audio routes:** headset/car/speaker routing plus Android Auto arrival and departure races.
 
 Never upgrade a lower-level test into evidence about a host/device behavior it cannot observe.
 

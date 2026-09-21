@@ -71,6 +71,37 @@ class ResumeFreshnessPlayerTest {
     }
 
     @Test
+    fun `duplicate Pause still exposes newer listener intent before forwarding`() {
+        val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = false)
+        val player = forwarding(
+            delegate = delegate,
+            onPlayWhenReadyRequest = { requested -> delegate.events += "intent:$requested" },
+            invalidate = { origin -> delegate.events += "invalidate:$origin" },
+        )
+
+        await(player.handleSetPlayWhenReady(false))
+
+        assertEquals(
+            listOf("intent:false", "invalidate:Pause", "delegate:play=false"),
+            delegate.events,
+        )
+    }
+
+    @Test
+    fun `Play exposes newer listener intent before freshness preparation`() {
+        val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = false)
+        val player = forwarding(
+            delegate = delegate,
+            onPlayWhenReadyRequest = { requested -> delegate.events += "intent:$requested" },
+            prepare = { delegate.events += "prepare" },
+        )
+
+        await(player.handleSetPlayWhenReady(true))
+
+        assertEquals(listOf("intent:true", "prepare"), delegate.events)
+    }
+
+    @Test
     fun `seek media replacement and Stop invalidate before forwarding`() {
         val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = false)
         val player = forwarding(
@@ -152,6 +183,7 @@ class ResumeFreshnessPlayerTest {
         prepare: () -> Unit = {},
         consumeFreshStart: () -> Boolean = { false },
         invalidate: (ResumeInvalidation) -> Unit = {},
+        onPlayWhenReadyRequest: (Boolean) -> Unit = {},
     ) = ResumeFreshnessPlayer(
         delegate = delegate.player,
         preparePlay = {
@@ -160,6 +192,7 @@ class ResumeFreshnessPlayerTest {
         },
         consumeFreshStart = consumeFreshStart,
         invalidate = invalidate,
+        onPlayWhenReadyRequest = onPlayWhenReadyRequest,
     )
 
     private fun await(future: ListenableFuture<*>) {
