@@ -1,6 +1,6 @@
 name: Pull request
 
-run-name: "PR #${{ inputs.pr_number }} — ${{ inputs.bookwave_branch }}"
+run-name: "PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
 
 # Forgejo-native BookWave pull-request gate.
 #
@@ -22,23 +22,10 @@ run-name: "PR #${{ inputs.pr_number }} — ${{ inputs.bookwave_branch }}"
 #   matching docs/risks.md R-31 without verifying the same commit twice.
 
 # Forgejo PR verification is intentionally manual. Branch updates stay cheap while work is
-# in progress. On main, select the PR source branch explicitly below. When testing an unmerged\n# workflow revision whose new inputs are not rendered by Forgejo, the default safely uses "Use workflow from".
+# in progress; run this workflow on the PR branch once the change is ready for acceptance.
 on:
   workflow_dispatch:
     inputs:
-      bookwave_branch:
-        description: 'BookWave PR source branch to verify'
-        type: choice
-        required: true
-        default: "__use_workflow_from__"
-        options:
-          # BEGIN GENERATED PR SOURCE BRANCH OPTIONS
-          - "__use_workflow_from__"
-          - "mcp/issue-36-car-arrival-route-flap"
-          - "mcp/issue-75-mini-player-session-attach"
-          - "mcp/issue-77-sleep-timer-grace"
-          - "mcp/pr-workflow-branch-picker"
-          # END GENERATED PR SOURCE BRANCH OPTIONS
       pr_number:
         description: 'Forgejo PR number being verified'
         required: true
@@ -49,7 +36,7 @@ on:
         default: false
 
 concurrency:
-  group: ${{ forgejo.workflow }}-${{ inputs.bookwave_branch }}-${{ forgejo.ref }}
+  group: ${{ forgejo.workflow }}-${{ forgejo.ref }}
   # A second manual click should queue, not kill an already-expensive Gradle run. This also avoids
   # exercising the runner/container cancellation path unnecessarily.
   cancel-in-progress: false
@@ -71,36 +58,13 @@ jobs:
     outputs:
       classpath_changed: ${{ steps.classify.outputs.classpath_changed }}
       checked_head: ${{ steps.classify.outputs.checked_head }}
-      resolved_branch: ${{ steps.source.outputs.branch }}
     steps:
-      - name: Resolve PR source branch
-        id: source
-        env:
-          REQUESTED_BRANCH: ${{ inputs.bookwave_branch }}
-        run: |
-          set -euo pipefail
-          selected="$REQUESTED_BRANCH"
-
-          if [ -z "$selected" ] || [ "$selected" = "__use_workflow_from__" ]; then
-            selected="$FORGEJO_REF_NAME"
-            echo "PR source input unavailable/defaulted; using Use workflow from: $selected"
-          fi
-
-          if [ "$selected" = "main" ]; then
-            echo "::error::Select the pull request source branch. When running the merged workflow from main, use the BookWave PR source branch dropdown."
-            exit 1
-          fi
-
-          echo "branch=$selected" >> "$GITHUB_OUTPUT"
-          echo "Selected PR source branch: $selected"
-
       # One full-history checkout serves all cheap prerequisite checks. On the capacity-1 shared runner,
       # separate jobs only repeated container/network/checkout startup without adding isolation: none of
       # these checks receives secrets or privileged credentials.
       - name: Check out BookWave
         uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ steps.source.outputs.branch }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -109,7 +73,7 @@ jobs:
         continue-on-error: true
         env:
           REQUESTED_PR: ${{ inputs.pr_number }}
-          SELECTED_BRANCH: ${{ steps.source.outputs.branch }}
+          SELECTED_BRANCH: ${{ forgejo.ref_name }}
         run: |
           set -euo pipefail
 
@@ -441,7 +405,7 @@ jobs:
       - name: Publish PR verification status
         env:
           REQUESTED_PR: ${{ inputs.pr_number }}
-          SELECTED_BRANCH: ${{ needs.preflight.outputs.resolved_branch }}
+          SELECTED_BRANCH: ${{ forgejo.ref_name }}
           CHECKED_HEAD: ${{ needs.preflight.outputs.checked_head }}
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           VERIFY_RESULT: ${{ needs.verify.result }}
