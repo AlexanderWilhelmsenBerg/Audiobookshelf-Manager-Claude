@@ -97,7 +97,7 @@ jobs:
               names,
           )
 
-          pr_names = ["__select_pr_branch__", *[name for name in names if name != "main"]]
+          pr_names = ["__use_workflow_from__", *[name for name in names if name != "main"]]
           replace_block(
               Path(".forgejo/workflows/pull-request.yml"),
               "          # BEGIN GENERATED PR SOURCE BRANCH OPTIONS",
@@ -115,7 +115,7 @@ jobs:
           grep -Fq "# END GENERATED BOOKWAVE BRANCH OPTIONS" .forgejo/workflows/apk.yml
 
           grep -Fq "bookwave_branch:" .forgejo/workflows/pull-request.yml
-          grep -Fq "default: \"__select_pr_branch__\"" .forgejo/workflows/pull-request.yml
+          grep -Fq "default: \"__use_workflow_from__\"" .forgejo/workflows/pull-request.yml
           grep -Fq "# BEGIN GENERATED PR SOURCE BRANCH OPTIONS" .forgejo/workflows/pull-request.yml
           grep -Fq "# END GENERATED PR SOURCE BRANCH OPTIONS" .forgejo/workflows/pull-request.yml
           if grep -A200 -F "# BEGIN GENERATED PR SOURCE BRANCH OPTIONS" .forgejo/workflows/pull-request.yml \
