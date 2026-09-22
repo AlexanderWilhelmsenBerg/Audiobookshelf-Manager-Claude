@@ -52,7 +52,7 @@ env:
 
 jobs:
   preflight:
-    name: "PR #${{ inputs.pr_number }} · Preflight"
+    name: "CI · PR #${{ inputs.pr_number }} · Preflight"
     runs-on: linux-amd64
     timeout-minutes: 10
     outputs:
@@ -249,7 +249,7 @@ jobs:
           exit "$failed"
 
   verify:
-    name: "PR #${{ inputs.pr_number }} · verifyDebug"
+    name: "CI · PR #${{ inputs.pr_number }} · verifyDebug"
     runs-on: linux-amd64
     container:
       image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
@@ -394,7 +394,7 @@ jobs:
           retention-days: 7
 
   pr-status:
-    name: "PR #${{ inputs.pr_number }} · publish check"
+    name: "CI · PR #${{ inputs.pr_number }} · publish check"
     runs-on: linux-amd64
     needs:
       - preflight
