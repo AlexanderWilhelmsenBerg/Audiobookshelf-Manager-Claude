@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Build a compact PR verification summary from Gradle/Android reports."""
 
 from __future__ import annotations
@@ -7,7 +6,6 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
 
 ROOT = Path(".")
 DIAG = Path("ci-diagnostics")
