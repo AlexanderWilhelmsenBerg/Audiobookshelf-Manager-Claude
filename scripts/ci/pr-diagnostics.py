@@ -176,7 +176,7 @@ def main() -> int:
     schema = os.environ.get("SCHEMA_OUTCOME", "")
     dependencies = os.environ.get("DEPENDENCY_OUTCOME", "")
     apk = os.environ.get("APK_OUTCOME", "")
-    pr = os.environ.get("REQUESTED_PR", "?")
+    target_label = os.environ.get("TARGET_LABEL") or "branch verification"
 
     test_state = state_for_reports(
         failures=bool(failed_tests or test_failures or test_errors),
@@ -243,7 +243,7 @@ def main() -> int:
     ]
 
     lines = [
-        f"## CI · PR #{pr} · consolidated diagnostics",
+        f"## CI · {target_label} · consolidated diagnostics",
         "",
         "| Check | Result | Details |",
         "| --- | --- | --- |",
