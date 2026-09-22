@@ -65,10 +65,6 @@ jobs:
           import sys
           from pathlib import Path
 
-          workflows = [
-              Path(".forgejo/workflows/apk.yml"),
-              Path(".forgejo/workflows/pull-request.yml"),
-          ]
           branches = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           names = sorted(
               {
@@ -83,30 +79,51 @@ jobs:
           if not names:
               raise SystemExit("Forgejo returned no repository branches")
 
-          begin = "          # BEGIN GENERATED BOOKWAVE BRANCH OPTIONS"
-          end = "          # END GENERATED BOOKWAVE BRANCH OPTIONS"
-          options = "\n".join(f"          - {json.dumps(name)}" for name in names)
-          replacement = f"{begin}\n{options}\n{end}"
-
-          pattern = rf"(?ms)^{re.escape(begin)}$.*?^{re.escape(end)}$"
-          for workflow in workflows:
+          def replace_block(workflow, begin, end, values):
+              options = "\n".join(f"          - {json.dumps(name)}" for name in values)
+              replacement = f"{begin}\n{options}\n{end}"
               text = workflow.read_text(encoding="utf-8")
+              pattern = rf"(?ms)^{re.escape(begin)}$.*?^{re.escape(end)}$"
               updated, count = re.subn(pattern, replacement, text, count=1)
               if count != 1:
                   raise SystemExit(f"{workflow}: expected one generated branch block, found {count}")
               workflow.write_text(updated, encoding="utf-8")
-              print(f"{workflow}: generated {len(names)} branch choices.")
+              print(f"{workflow}: generated {len(values)} branch choices.")
+
+          replace_block(
+              Path(".forgejo/workflows/apk.yml"),
+              "          # BEGIN GENERATED BOOKWAVE BRANCH OPTIONS",
+              "          # END GENERATED BOOKWAVE BRANCH OPTIONS",
+              names,
+          )
+
+          pr_names = ["__select_pr_branch__", *[name for name in names if name != "main"]]
+          replace_block(
+              Path(".forgejo/workflows/pull-request.yml"),
+              "          # BEGIN GENERATED PR SOURCE BRANCH OPTIONS",
+              "          # END GENERATED PR SOURCE BRANCH OPTIONS",
+              pr_names,
+          )
           PY
 
-      - name: Validate generated workflow
+      - name: Validate generated workflows
         run: |
           set -euo pipefail
-          for workflow in .forgejo/workflows/apk.yml .forgejo/workflows/pull-request.yml; do
-            grep -Fq "bookwave_branch:" "$workflow"
-            grep -Fq "type: choice" "$workflow"
-            grep -Fq "# BEGIN GENERATED BOOKWAVE BRANCH OPTIONS" "$workflow"
-            grep -Fq "# END GENERATED BOOKWAVE BRANCH OPTIONS" "$workflow"
-          done
+          grep -Fq "bookwave_branch:" .forgejo/workflows/apk.yml
+          grep -Fq "type: choice" .forgejo/workflows/apk.yml
+          grep -Fq "# BEGIN GENERATED BOOKWAVE BRANCH OPTIONS" .forgejo/workflows/apk.yml
+          grep -Fq "# END GENERATED BOOKWAVE BRANCH OPTIONS" .forgejo/workflows/apk.yml
+
+          grep -Fq "bookwave_branch:" .forgejo/workflows/pull-request.yml
+          grep -Fq "default: \"__select_pr_branch__\"" .forgejo/workflows/pull-request.yml
+          grep -Fq "# BEGIN GENERATED PR SOURCE BRANCH OPTIONS" .forgejo/workflows/pull-request.yml
+          grep -Fq "# END GENERATED PR SOURCE BRANCH OPTIONS" .forgejo/workflows/pull-request.yml
+          if grep -A200 -F "# BEGIN GENERATED PR SOURCE BRANCH OPTIONS" .forgejo/workflows/pull-request.yml \
+              | sed -n '1,/END GENERATED PR SOURCE BRANCH OPTIONS/p' \
+              | grep -Fxq '          - "main"'; then
+            echo "::error::main must not be offered as a PR source branch."
+            exit 1
+          fi
 
       - name: Commit refreshed choices
         run: |
