@@ -122,7 +122,7 @@ jobs:
           echo "Resolved CI target: $display_label"
 
   preflight:
-    name: "CI · ${{ needs.identity.outputs.display_label }} · Preflight"
+    name: "CI · ${{ needs.identity.outputs.display_label }} · Preflight · wf:${{ forgejo.ref_name }}"
     needs: identity
     runs-on: linux-amd64
     timeout-minutes: 10
@@ -295,6 +295,7 @@ jobs:
         if: ${{ always() }}
         env:
           TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
+          WORKFLOW_SOURCE: ${{ forgejo.ref_name }}
           POLICY_OUTCOME: ${{ steps.classify.outcome }}
           WRAPPER_OUTCOME: ${{ steps.wrapper_check.outcome }}
           SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
@@ -316,7 +317,7 @@ jobs:
           }
 
           {
-            echo "## CI · $TARGET_LABEL · Preflight"
+            echo "## CI · $TARGET_LABEL · Preflight · wf:$WORKFLOW_SOURCE"
             echo
             echo "| Check | Result |"
             echo "| --- | --- |"
@@ -365,7 +366,7 @@ jobs:
           exit "$failed"
 
   verify:
-    name: "CI · ${{ needs.identity.outputs.display_label }} · verification"
+    name: "CI · ${{ needs.identity.outputs.display_label }} · verification · wf:${{ forgejo.ref_name }}"
     runs-on: linux-amd64
     container:
       image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
@@ -522,6 +523,7 @@ jobs:
         if: ${{ always() }}
         env:
           TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
+          WORKFLOW_SOURCE: ${{ forgejo.ref_name }}
           SETUP_OUTCOME: ${{ steps.setup.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
           VERIFY_EXIT: ${{ steps.verify_debug.outputs.exit_code }}
@@ -644,7 +646,7 @@ jobs:
           exit "$failed"
 
   pr-status:
-    name: "CI · ${{ needs.identity.outputs.display_label }} · publish check"
+    name: "CI · ${{ needs.identity.outputs.display_label }} · publish check · wf:${{ forgejo.ref_name }}"
     runs-on: linux-amd64
     needs:
       - identity
