@@ -266,17 +266,24 @@ def main() -> int:
     append_section(lines, "Android Lint findings", lint_findings, 20)
     append_section(lines, "Compiler / build errors", compile_errors, 20)
 
-    lines.extend(
-        [
-            "",
-            "### Artifacts",
-            "- ci-diagnostics: this summary plus the full verifyDebug and dependency-resolution logs.",
-            "- quality-reports: ktlint, detekt, Android Lint, HTML test reports and raw test-result XML.",
-            "- room-schemas: exported Room schemas.",
-            "- dependency-report: resolved debug runtime dependency tree when available.",
-            "- app-debug: debug APK when the build produced one.",
-        ]
-    )
+    if failed_labels:
+        lines.extend(
+            [
+                "",
+                "### Failure diagnostics",
+                "- ci-diagnostics: summary plus full verifyDebug/dependency logs.",
+                "- quality-reports: packaged ktlint, detekt, Android Lint and test reports when verifyDebug fails.",
+                "- room-schemas: uploaded only when the Room schema check fails.",
+                "- dependency-report: uploaded only when dependency resolution fails.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "All required checks passed. No diagnostic artifacts are uploaded for successful PR verification.",
+            ]
+        )
 
     summary = "\n".join(lines) + "\n"
     SUMMARY.write_text(summary, encoding="utf-8")
