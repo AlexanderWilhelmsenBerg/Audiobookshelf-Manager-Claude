@@ -58,6 +58,7 @@ jobs:
     outputs:
       classpath_changed: ${{ steps.classify.outputs.classpath_changed }}
       checked_head: ${{ steps.classify.outputs.checked_head }}
+      status_description: ${{ steps.preflight_summary.outputs.status_description }}
     steps:
       # One full-history checkout serves all cheap prerequisite checks. On the capacity-1 shared runner,
       # separate jobs only repeated container/network/checkout startup without adding isolation: none of
@@ -224,6 +225,56 @@ jobs:
           fi
           echo "No committed Room schema was modified."
 
+      - name: Summarize preflight
+        id: preflight_summary
+        if: ${{ always() }}
+        env:
+          REQUESTED_PR: ${{ inputs.pr_number }}
+          POLICY_OUTCOME: ${{ steps.classify.outcome }}
+          WRAPPER_OUTCOME: ${{ steps.wrapper_check.outcome }}
+          SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
+          SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+        run: |
+          set -euo pipefail
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+          failed=()
+
+          render() {
+            local name="$1"
+            local outcome="$2"
+            local icon="✅"
+            if [ "$outcome" != "success" ]; then
+              icon="❌"
+              failed+=("$name")
+            fi
+            printf '| %s | %s %s |\n' "$name" "$icon" "$outcome"
+          }
+
+          {
+            echo "## CI · PR #$REQUESTED_PR · Preflight"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            render "PR / branch policy" "$POLICY_OUTCOME"
+            render "Gradle wrapper integrity" "$WRAPPER_OUTCOME"
+            render "Secret scan" "$SECRET_SCAN_OUTCOME"
+            render "Committed Room schemas" "$SCHEMA_OUTCOME"
+            echo
+          } > /tmp/bookwave-preflight-summary.md
+
+          cat /tmp/bookwave-preflight-summary.md
+          if [ -n "$summary" ]; then
+            cat /tmp/bookwave-preflight-summary.md >> "$summary"
+          fi
+
+          if [ "${#failed[@]}" -eq 0 ]; then
+            description="BookWave preflight passed"
+          else
+            joined="$(IFS=', '; echo "${failed[*]}")"
+            description="Preflight failed: $joined"
+          fi
+          echo "status_description=${description:0:220}" >> "$GITHUB_OUTPUT"
+
       - name: Require every preflight check to pass
         if: ${{ always() }}
         env:
@@ -249,12 +300,14 @@ jobs:
           exit "$failed"
 
   verify:
-    name: "CI · PR #${{ inputs.pr_number }} · verifyDebug"
+    name: "CI · PR #${{ inputs.pr_number }} · verification"
     runs-on: linux-amd64
     container:
       image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
     needs: preflight
     timeout-minutes: 90
+    outputs:
+      status_description: ${{ steps.diagnostics.outputs.status_description }}
     steps:
       - name: Report runner capacity
         run: |
@@ -265,7 +318,7 @@ jobs:
           printf 'cgroup_cpu_max='; cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo unavailable
           df -h / || true
 
-      - name: Check out BookWave
+      - name: Check out validated PR HEAD
         uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ needs.preflight.outputs.checked_head }}
@@ -277,10 +330,9 @@ jobs:
           set -euo pipefail
           echo "hash=$(bash scripts/ci/gradle-cache-key.sh)" >> "$FORGEJO_OUTPUT"
 
-      # Pull-request jobs are cache read-only. Forgejo exposes default-branch caches to
-      # feature branches, so PRs can benefit from Main without publishing branch-controlled state.
       - name: Restore trusted Gradle cache
         id: gradle_cache
+        continue-on-error: true
         uses: https://data.forgejo.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
@@ -291,11 +343,14 @@ jobs:
             bookwave-gradle-trusted-v1-
 
       - name: Report Gradle cache restore
+        if: ${{ always() }}
         run: |
+          echo "gradle_cache_step=${{ steps.gradle_cache.outcome }}"
           echo "gradle_cache_hit=${{ steps.gradle_cache.outputs.cache-hit }}"
           echo "gradle_cache_matched_key=${{ steps.gradle_cache.outputs.cache-matched-key }}"
 
       - name: Prepare BookWave Android environment
+        id: setup
         env:
           BOOKWAVE_CODEX_PREWARM: none
           BOOKWAVE_ANDROID_SDK_MODE: preinstalled
@@ -312,11 +367,15 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
-      - name: Verify debug once
+      - name: Verify debug once and capture full log
+        id: verify_debug
+        if: ${{ steps.setup.outcome == 'success' }}
+        continue-on-error: true
         env:
           CLASSPATH_CHANGED: ${{ needs.preflight.outputs.classpath_changed }}
         run: |
           set -euo pipefail
+          mkdir -p ci-diagnostics
           extra_args=()
           if [ "$CLASSPATH_CHANGED" = "true" ]; then
             extra_args+=(--rerun-tasks)
@@ -325,45 +384,364 @@ jobs:
             echo "Verification mode: normal."
           fi
 
+          set +e
           env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
             ./gradlew verifyDebug --continue "${extra_args[@]}" --max-workers=4 \
-              -Pshelfplayer.warningsAsErrors=true
+              -Pshelfplayer.warningsAsErrors=true 2>&1 \
+            | tee ci-diagnostics/gradle-verify.log
+          status="${PIPESTATUS[0]}"
+          set -e
 
-      - name: Print lint reports
-        if: failure()
-        run: |
-          found=0
-          while IFS= read -r report; do
-            found=1
-            echo "===== $report ====="
-            cat "$report"
-          done < <(find . -path '*/build/reports/lint-results-*.txt' -print)
-          [ "$found" -eq 1 ] || echo "No lint text reports were produced."
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
 
       - name: Room schema is committed and current
+        id: schema_check
+        if: ${{ always() }}
+        continue-on-error: true
         run: |
+          set -euo pipefail
           changes="$(git status --porcelain -- core/database/schemas)"
           if [ -n "$changes" ]; then
             echo "::error::Room exported a schema that is not committed, or differs from the committed one."
             echo "$changes"
             echo "Run ./gradlew :core:database:kspDebugKotlin and commit core/database/schemas."
-            echo "--- exported schema ---"
-            find core/database/schemas -name '*.json' -print -exec cat {} \;
+            exit 1
+          fi
+          echo "Room schemas are committed and current."
+
+      - name: Resolve dependencies for the debug variant
+        id: dependencies
+        if: ${{ always() && steps.setup.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+          set +e
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
+            ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=4 \
+              > dependency-report.txt 2> ci-diagnostics/dependency-resolution.log
+          status="$?"
+          set -e
+          if [ -s ci-diagnostics/dependency-resolution.log ]; then
+            cat ci-diagnostics/dependency-resolution.log
+          fi
+          exit "$status"
+
+      - name: Check debug APK output
+        id: apk_check
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+          if [ "${#apks[@]}" -gt 0 ]; then
+            printf 'Debug APK: %s\n' "${apks[@]}"
+            exit 0
+          fi
+
+          if [ "$VERIFY_OUTCOME" = "success" ]; then
+            echo "::error::verifyDebug passed but no debug APK was produced."
             exit 1
           fi
 
-      - name: Resolve dependencies for the debug variant
-        run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=4 > dependency-report.txt
+          echo "No debug APK produced because verification did not complete successfully; not counted as a separate failure."
+
+      - name: Build consolidated diagnostics
+        id: diagnostics
+        if: ${{ always() }}
+        env:
+          REQUESTED_PR: ${{ inputs.pr_number }}
+          SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
+          VERIFY_EXIT: ${{ steps.verify_debug.outputs.exit_code }}
+          SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+          DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
+          APK_OUTCOME: ${{ steps.apk_check.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+          python3 <<'PY'
+          import os
+          import re
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          root = Path(".")
+          diag = Path("ci-diagnostics")
+          gradle_log_path = diag / "gradle-verify.log"
+          gradle_log = gradle_log_path.read_text(encoding="utf-8", errors="replace") if gradle_log_path.exists() else ""
+
+          def icon(outcome):
+              if outcome == "success":
+                  return "✅"
+              if outcome in {"", "skipped", "reported"}:
+                  return "⚪"
+              return "❌"
+
+          def unique(items):
+              seen = set()
+              out = []
+              for item in items:
+                  if item not in seen:
+                      seen.add(item)
+                      out.append(item)
+              return out
+
+          failed_tasks = unique(re.findall(r"Execution failed for task '([^']+)'", gradle_log))
+          failed_task_lines = unique(re.findall(r"^> Task (.+?) FAILED$", gradle_log, flags=re.MULTILINE))
+          failed_task_text = " ".join(failed_tasks + failed_task_lines).lower()
+
+          compile_errors = []
+          for line in gradle_log.splitlines():
+              stripped = line.strip()
+              if re.search(r"(^|\s)(e: |error: )", stripped, flags=re.IGNORECASE):
+                  compile_errors.append(stripped)
+          compile_errors = unique(compile_errors)[:20]
+
+          test_total = 0
+          test_failures = 0
+          test_errors = 0
+          failed_tests = []
+          test_xmls = list(root.glob("**/build/test-results/**/*.xml"))
+          for path in test_xmls:
+              try:
+                  tree = ET.parse(path)
+              except (ET.ParseError, OSError):
+                  continue
+              suite = tree.getroot()
+              if suite.tag == "testsuite":
+                  test_total += int(float(suite.attrib.get("tests", "0") or 0))
+                  test_failures += int(float(suite.attrib.get("failures", "0") or 0))
+                  test_errors += int(float(suite.attrib.get("errors", "0") or 0))
+              for case in suite.iter("testcase"):
+                  if case.find("failure") is not None or case.find("error") is not None:
+                      cls = case.attrib.get("classname", "")
+                      name = case.attrib.get("name", "unknown test")
+                      failed_tests.append((cls + "." + name).strip("."))
+          failed_tests = unique(failed_tests)
+
+          ktlint_lines = []
+          ktlint_report_count = 0
+          for path in root.glob("**/build/reports/ktlint/**/*.txt"):
+              try:
+                  text = path.read_text(encoding="utf-8", errors="replace").strip()
+              except OSError:
+                  continue
+              ktlint_report_count += 1
+              if text:
+                  for line in text.splitlines():
+                      if line.strip():
+                          ktlint_lines.append(line.strip())
+          ktlint_lines = unique(ktlint_lines)
+
+          lint_errors = 0
+          lint_warnings = 0
+          lint_hints = 0
+          lint_findings = []
+          lint_reports = list(root.glob("**/build/reports/lint-results-*.txt"))
+          summary_re = re.compile(r"(\d+) errors?, (\d+) warnings?(?:, (\d+) hints?)?", re.IGNORECASE)
+          for path in lint_reports:
+              try:
+                  text = path.read_text(encoding="utf-8", errors="replace")
+              except OSError:
+                  continue
+              match = summary_re.search(text)
+              if match:
+                  lint_errors += int(match.group(1))
+                  lint_warnings += int(match.group(2))
+                  lint_hints += int(match.group(3) or 0)
+              for line in text.splitlines():
+                  if ": Error:" in line or ": Warning:" in line:
+                      lint_findings.append(line.strip())
+          lint_findings = unique(lint_findings)
+
+          detekt_findings = []
+          detekt_reports = list(root.glob("**/build/reports/detekt/*.xml"))
+          for path in detekt_reports:
+              try:
+                  tree = ET.parse(path)
+              except (ET.ParseError, OSError):
+                  continue
+              for err in tree.getroot().iter("error"):
+                  source = err.attrib.get("source", "detekt")
+                  message = err.attrib.get("message", "")
+                  detekt_findings.append((source + ": " + message).strip())
+          detekt_findings = unique(detekt_findings)
+
+          setup = os.environ.get("SETUP_OUTCOME", "")
+          verify = os.environ.get("VERIFY_OUTCOME", "")
+          verify_exit = os.environ.get("VERIFY_EXIT", "")
+          schema = os.environ.get("SCHEMA_OUTCOME", "")
+          dependencies = os.environ.get("DEPENDENCY_OUTCOME", "")
+          apk = os.environ.get("APK_OUTCOME", "")
+          pr = os.environ.get("REQUESTED_PR", "?")
+
+          failed_labels = []
+          if setup != "success":
+              failed_labels.append("environment setup")
+          if ktlint_lines or "ktlint" in failed_task_text:
+              failed_labels.append("ktlint")
+          if failed_tests or test_failures or test_errors or re.search(r":test\w*", failed_task_text):
+              failed_labels.append("tests")
+          if detekt_findings or "detekt" in failed_task_text:
+              failed_labels.append("detekt")
+          if lint_errors or "lint" in failed_task_text:
+              failed_labels.append("Android Lint")
+          if compile_errors or "compile" in failed_task_text:
+              failed_labels.append("compile")
+          if verify not in {"success", ""} and not failed_labels:
+              failed_labels.append("verifyDebug")
+          if schema != "success":
+              failed_labels.append("Room schema")
+          if dependencies not in {"success", ""}:
+              failed_labels.append("dependencies")
+          if apk not in {"success", ""}:
+              failed_labels.append("debug APK")
+          failed_labels = unique(failed_labels)
+
+          if failed_tests or test_failures or test_errors:
+              test_state = "failure"
+          elif test_xmls and verify == "success":
+              test_state = "success"
+          elif test_xmls:
+              test_state = "reported"
+          else:
+              test_state = "skipped"
+
+          if ktlint_lines:
+              ktlint_state = "failure"
+          elif ktlint_report_count and verify == "success":
+              ktlint_state = "success"
+          elif ktlint_report_count:
+              ktlint_state = "reported"
+          else:
+              ktlint_state = "skipped"
+
+          if detekt_findings:
+              detekt_state = "failure"
+          elif detekt_reports and verify == "success":
+              detekt_state = "success"
+          elif detekt_reports:
+              detekt_state = "reported"
+          else:
+              detekt_state = "skipped"
+
+          if lint_errors:
+              lint_state = "failure"
+          elif lint_reports and verify == "success":
+              lint_state = "success"
+          elif lint_reports:
+              lint_state = "reported"
+          else:
+              lint_state = "skipped"
+
+          rows = [
+              ("Android environment", setup, "scripts/codex/setup.sh"),
+              ("verifyDebug", verify, "exit " + (verify_exit or "n/a")),
+              ("Unit tests", test_state, f"{test_total} tests; {test_failures + test_errors} failed"),
+              ("ktlint", ktlint_state, f"{len(ktlint_lines)} finding(s)"),
+              ("detekt", detekt_state, f"{len(detekt_findings)} finding(s)"),
+              ("Android Lint", lint_state, f"{lint_errors} error(s), {lint_warnings} warning(s), {lint_hints} hint(s)"),
+              ("Room schema", schema, "working tree matches committed schemas"),
+              ("Dependency resolution", dependencies, "debugRuntimeClasspath"),
+              ("Debug APK", apk, "required when verifyDebug succeeds"),
+          ]
+
+          lines = [
+              f"## CI · PR #{pr} · consolidated diagnostics",
+              "",
+              "| Check | Result | Details |",
+              "| --- | --- | --- |",
+          ]
+          for name, outcome, details in rows:
+              lines.append(f"| {name} | {icon(outcome)} {outcome or 'not run'} | {details} |")
+
+          if failed_tasks or failed_task_lines:
+              lines += ["", "### Failed Gradle tasks"]
+              for task in unique(failed_tasks + failed_task_lines)[:30]:
+                  lines.append("- " + task)
+
+          if failed_tests:
+              lines += ["", "### Failed tests"]
+              for test in failed_tests[:30]:
+                  lines.append("- " + test)
+              if len(failed_tests) > 30:
+                  lines.append(f"- …and {len(failed_tests) - 30} more")
+
+          if ktlint_lines:
+              lines += ["", "### ktlint findings"]
+              for finding in ktlint_lines[:30]:
+                  lines.append("- " + finding)
+              if len(ktlint_lines) > 30:
+                  lines.append(f"- …and {len(ktlint_lines) - 30} more")
+
+          if detekt_findings:
+              lines += ["", "### detekt findings"]
+              for finding in detekt_findings[:20]:
+                  lines.append("- " + finding)
+
+          if lint_findings:
+              lines += ["", "### Android Lint findings"]
+              for finding in lint_findings[:20]:
+                  lines.append("- " + finding)
+
+          if compile_errors:
+              lines += ["", "### Compiler / build errors"]
+              for finding in compile_errors[:20]:
+                  lines.append("- " + finding)
+
+          lines += [
+              "",
+              "### Artifacts",
+              "- ci-diagnostics: this summary plus the full verifyDebug and dependency-resolution logs.",
+              "- quality-reports: ktlint, detekt, Android Lint, HTML test reports and raw test-result XML.",
+              "- room-schemas: exported Room schemas.",
+              "- dependency-report: resolved debug runtime dependency tree when available.",
+              "- app-debug: debug APK when the build produced one.",
+          ]
+
+          summary = "\n".join(lines) + "\n"
+          (diag / "summary.md").write_text(summary, encoding="utf-8")
+          print(summary)
+
+          if failed_labels:
+              description = "Failed: " + ", ".join(failed_labels)
+          else:
+              description = "BookWave PR verification passed"
+          description = description[:220]
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write("status_description=" + description + "\n")
+          PY
+
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+          if [ -n "$summary" ]; then
+            cat ci-diagnostics/summary.md >> "$summary"
+          fi
+
+      - name: Upload CI diagnostics
+        if: ${{ always() }}
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: ci-diagnostics
+          path: ci-diagnostics/**
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload dependency report
+        if: ${{ always() }}
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: dependency-report
           path: dependency-report.txt
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Upload Room schemas
-        if: always()
+        if: ${{ always() }}
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: room-schemas
@@ -371,27 +749,56 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload lint and detekt reports
-        if: always()
+      - name: Upload quality reports
+        if: ${{ always() }}
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: quality-reports
           path: |
+            **/build/reports/ktlint/**
             **/build/reports/detekt/**
             **/build/reports/lint-results-*.html
             **/build/reports/lint-results-*.sarif
             **/build/reports/lint-results-*.txt
             **/build/reports/tests/**
+            **/build/test-results/**
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Upload debug APK
+      - name: Upload debug APK when available
+        if: ${{ always() }}
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 7
+
+      - name: Final verification gate
+        if: ${{ always() }}
+        env:
+          SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
+          SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+          DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
+          APK_OUTCOME: ${{ steps.apk_check.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for result in \
+            "Android environment:$SETUP_OUTCOME" \
+            "verifyDebug:$VERIFY_OUTCOME" \
+            "Room schema:$SCHEMA_OUTCOME" \
+            "Dependency resolution:$DEPENDENCY_OUTCOME" \
+            "Debug APK:$APK_OUTCOME"; do
+            name="${result%%:*}"
+            outcome="${result#*:}"
+            if [ "$outcome" != "success" ]; then
+              echo "::error::$name failed or was skipped ($outcome). See the consolidated diagnostics above."
+              failed=1
+            fi
+          done
+          exit "$failed"
 
   pr-status:
     name: "CI · PR #${{ inputs.pr_number }} · publish check"
@@ -408,7 +815,9 @@ jobs:
           SELECTED_BRANCH: ${{ forgejo.ref_name }}
           CHECKED_HEAD: ${{ needs.preflight.outputs.checked_head }}
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          PREFLIGHT_DESCRIPTION: ${{ needs.preflight.outputs.status_description }}
           VERIFY_RESULT: ${{ needs.verify.result }}
+          VERIFY_DESCRIPTION: ${{ needs.verify.outputs.status_description }}
         run: |
           set -euo pipefail
 
@@ -439,27 +848,25 @@ jobs:
           fi
 
           state=failure
+          status_sha="$pr_head"
           description="BookWave PR verification failed"
 
-          if [ -z "$SELECTED_BRANCH" ]; then
-            status_sha="$pr_head"
-            description="PR source branch could not be resolved"
-          elif [ "$SELECTED_BRANCH" != "$pr_branch" ]; then
-            status_sha="$pr_head"
+          if [ "$SELECTED_BRANCH" != "$pr_branch" ]; then
             description="Selected branch does not match PR #$REQUESTED_PR"
-          elif [ -n "$CHECKED_HEAD" ]; then
+          elif [ -n "$CHECKED_HEAD" ] && [ "$CHECKED_HEAD" != "$pr_head" ]; then
             status_sha="$CHECKED_HEAD"
-            if [ "$CHECKED_HEAD" != "$pr_head" ]; then
-              description="PR head changed during verification; rerun checks"
-            elif [ "$PREFLIGHT_RESULT" = "success" ] && [ "$VERIFY_RESULT" = "success" ]; then
-              state=success
-              description="BookWave PR verification passed"
-            fi
+            description="PR head changed during verification; rerun checks"
+          elif [ "$PREFLIGHT_RESULT" != "success" ]; then
+            description="${PREFLIGHT_DESCRIPTION:-BookWave preflight failed}"
+          elif [ "$VERIFY_RESULT" != "success" ]; then
+            description="${VERIFY_DESCRIPTION:-BookWave verification failed}"
           else
-            status_sha="$pr_head"
-            description="BookWave PR verification failed before checkout validation"
+            status_sha="$CHECKED_HEAD"
+            state=success
+            description="BookWave PR verification passed"
           fi
 
+          description="${description:0:220}"
           payload="$(STATUS_STATE="$state" STATUS_DESCRIPTION="$description" node -e '
             process.stdout.write(JSON.stringify({
               state: process.env.STATUS_STATE,
@@ -475,4 +882,4 @@ jobs:
             -d "$payload" \
             "$FORGEJO_API_URL/repos/$FORGEJO_REPOSITORY/statuses/$status_sha"
 
-          echo "Published $state status for PR #$REQUESTED_PR at $status_sha."
+          echo "Published $state status for PR #$REQUESTED_PR at $status_sha: $description"
