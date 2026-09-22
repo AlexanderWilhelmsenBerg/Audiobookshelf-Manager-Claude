@@ -538,8 +538,38 @@ jobs:
             cat ci-diagnostics/summary.md >> "$summary"
           fi
 
+      - name: Package quality reports
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+
+          mapfile -d '' reports < <(
+            find . -type f \
+              \( -path '*/build/reports/ktlint/*' \
+                 -o -path '*/build/reports/detekt/*' \
+                 -o -path '*/build/reports/lint-results-*.html' \
+                 -o -path '*/build/reports/lint-results-*.sarif' \
+                 -o -path '*/build/reports/lint-results-*.txt' \
+                 -o -path '*/build/reports/tests/*' \
+                 -o -path '*/build/test-results/*' \) \
+              -print0
+          )
+
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "No quality-report files were produced."
+            exit 0
+          fi
+
+          printf '%s\0' "${reports[@]}" \
+            | tar --null --files-from=- -czf ci-artifacts/quality-reports.tar.gz
+
+          echo "Packaged ${#reports[@]} quality-report files into one archive."
+          ls -lh ci-artifacts/quality-reports.tar.gz
+
       - name: Upload CI diagnostics
         if: ${{ always() }}
+        continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: ci-diagnostics
@@ -549,6 +579,7 @@ jobs:
 
       - name: Upload dependency report
         if: ${{ always() }}
+        continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: dependency-report
@@ -558,6 +589,7 @@ jobs:
 
       - name: Upload Room schemas
         if: ${{ always() }}
+        continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: room-schemas
@@ -565,24 +597,19 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload quality reports
+      - name: Upload packaged quality reports
         if: ${{ always() }}
+        continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: quality-reports
-          path: |
-            **/build/reports/ktlint/**
-            **/build/reports/detekt/**
-            **/build/reports/lint-results-*.html
-            **/build/reports/lint-results-*.sarif
-            **/build/reports/lint-results-*.txt
-            **/build/reports/tests/**
-            **/build/test-results/**
+          path: ci-artifacts/quality-reports.tar.gz
           if-no-files-found: ignore
           retention-days: 7
 
       - name: Upload debug APK when available
         if: ${{ always() }}
+        continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: app-debug
