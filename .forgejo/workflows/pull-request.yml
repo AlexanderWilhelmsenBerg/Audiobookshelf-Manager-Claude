@@ -30,18 +30,15 @@ on:
         description: 'BookWave PR source branch to verify'
         type: choice
         required: true
-        default: main
+        default: "__select_pr_branch__"
         options:
-          # BEGIN GENERATED BOOKWAVE BRANCH OPTIONS
-          - "main"
-          - "mcp/issue-33-end-boundary-mutation"
+          # BEGIN GENERATED PR SOURCE BRANCH OPTIONS
+          - "__select_pr_branch__"
           - "mcp/issue-36-car-arrival-route-flap"
-          - "mcp/issue-73-ktlint-probe"
           - "mcp/issue-75-mini-player-session-attach"
           - "mcp/issue-77-sleep-timer-grace"
-          - "mcp/issues-34-35-auto-evidence"
           - "mcp/pr-workflow-branch-picker"
-          # END GENERATED BOOKWAVE BRANCH OPTIONS
+          # END GENERATED PR SOURCE BRANCH OPTIONS
       pr_number:
         description: 'Forgejo PR number being verified'
         required: true
@@ -74,6 +71,17 @@ jobs:
     outputs:
       classpath_changed: ${{ steps.classify.outputs.classpath_changed }}
     steps:
+      - name: Require PR source branch selection
+        env:
+          SELECTED_BRANCH: ${{ inputs.bookwave_branch }}
+        run: |
+          set -euo pipefail
+          if [ "$SELECTED_BRANCH" = "__select_pr_branch__" ] || [ "$SELECTED_BRANCH" = "main" ]; then
+            echo "::error::Select the pull request source branch from the BookWave PR source branch dropdown."
+            exit 1
+          fi
+          echo "Selected PR source branch: $SELECTED_BRANCH"
+
       # One full-history checkout serves all cheap prerequisite checks. On the capacity-1 shared runner,
       # separate jobs only repeated container/network/checkout startup without adding isolation: none of
       # these checks receives secrets or privileged credentials.
