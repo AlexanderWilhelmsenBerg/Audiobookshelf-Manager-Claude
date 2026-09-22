@@ -1,8 +1,8 @@
-name: Refresh APK branch dropdown
+name: Refresh workflow branch dropdowns
 
 # Forgejo renders workflow_dispatch choice inputs from static YAML; it does not populate them dynamically.
-# Run this helper only when the Build APK branch list is stale. It snapshots the repository's current
-# branches into apk.yml and commits that generated list to main.
+# Run this helper when either the Build APK or Pull request branch list is stale. It snapshots the
+# repository's current branches into both workflow dropdowns and commits the generated lists to main.
 #
 # This intentionally does NOT run automatically when branches change: every generated update moves main,
 # which can make unrelated open PRs need a rebase. The user decides when refreshing the picker is worth it.
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: refresh-apk-branch-dropdown
+  group: refresh-workflow-branch-dropdowns
   cancel-in-progress: true
 
 jobs:
@@ -65,7 +65,10 @@ jobs:
           import sys
           from pathlib import Path
 
-          workflow = Path(".forgejo/workflows/apk.yml")
+          workflows = [
+              Path(".forgejo/workflows/apk.yml"),
+              Path(".forgejo/workflows/pull-request.yml"),
+          ]
           branches = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           names = sorted(
               {
@@ -85,44 +88,46 @@ jobs:
           options = "\n".join(f"          - {json.dumps(name)}" for name in names)
           replacement = f"{begin}\n{options}\n{end}"
 
-          text = workflow.read_text(encoding="utf-8")
           pattern = rf"(?ms)^{re.escape(begin)}$.*?^{re.escape(end)}$"
-          updated, count = re.subn(pattern, replacement, text, count=1)
-          if count != 1:
-              raise SystemExit(f"expected one generated branch block, found {count}")
-
-          workflow.write_text(updated, encoding="utf-8")
-          print(f"Generated {len(names)} branch choices.")
+          for workflow in workflows:
+              text = workflow.read_text(encoding="utf-8")
+              updated, count = re.subn(pattern, replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit(f"{workflow}: expected one generated branch block, found {count}")
+              workflow.write_text(updated, encoding="utf-8")
+              print(f"{workflow}: generated {len(names)} branch choices.")
           PY
 
       - name: Validate generated workflow
         run: |
           set -euo pipefail
-          grep -Fq "bookwave_branch:" .forgejo/workflows/apk.yml
-          grep -Fq "type: choice" .forgejo/workflows/apk.yml
-          grep -Fq "# BEGIN GENERATED BOOKWAVE BRANCH OPTIONS" .forgejo/workflows/apk.yml
-          grep -Fq "# END GENERATED BOOKWAVE BRANCH OPTIONS" .forgejo/workflows/apk.yml
+          for workflow in .forgejo/workflows/apk.yml .forgejo/workflows/pull-request.yml; do
+            grep -Fq "bookwave_branch:" "$workflow"
+            grep -Fq "type: choice" "$workflow"
+            grep -Fq "# BEGIN GENERATED BOOKWAVE BRANCH OPTIONS" "$workflow"
+            grep -Fq "# END GENERATED BOOKWAVE BRANCH OPTIONS" "$workflow"
+          done
 
       - name: Commit refreshed choices
         run: |
           set -euo pipefail
-          if git diff --quiet -- .forgejo/workflows/apk.yml; then
-            echo "APK branch dropdown is already current."
+          if git diff --quiet -- .forgejo/workflows/apk.yml .forgejo/workflows/pull-request.yml; then
+            echo "Workflow branch dropdowns are already current."
             exit 0
           fi
 
           git config user.name 'forgejo-actions[bot]'
           git config user.email 'forgejo-actions@localhost'
-          git add .forgejo/workflows/apk.yml
-          git commit -m 'Refresh APK branch choices [skip ci]'
+          git add .forgejo/workflows/apk.yml .forgejo/workflows/pull-request.yml
+          git commit -m 'Refresh workflow branch choices [skip ci]'
           git push origin HEAD:main
 
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
           if [ -n "$summary" ]; then
             {
-              echo "### APK branch dropdown refreshed"
+              echo "### Workflow branch dropdowns refreshed"
               echo
-              echo "The branch choices in .forgejo/workflows/apk.yml now match the repository."
+              echo "The branch choices in Build APK and Pull request now match the repository."
               echo
               echo "Note: this moved main; open PRs may now need a rebase."
             } >> "$summary"
