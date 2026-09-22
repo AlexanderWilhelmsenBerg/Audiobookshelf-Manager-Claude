@@ -1,6 +1,6 @@
 name: Pull request
 
-run-name: "PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
+run-name: "PR #${{ inputs.pr_number }} — ${{ inputs.bookwave_branch }}"
 
 # Forgejo-native BookWave pull-request gate.
 #
@@ -22,10 +22,26 @@ run-name: "PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
 #   matching docs/risks.md R-31 without verifying the same commit twice.
 
 # Forgejo PR verification is intentionally manual. Branch updates stay cheap while work is
-# in progress; run this workflow on the PR branch once the change is ready for acceptance.
+# in progress. Keep "Use workflow from" on main; select the PR source branch explicitly below.
 on:
   workflow_dispatch:
     inputs:
+      bookwave_branch:
+        description: 'BookWave PR source branch to verify'
+        type: choice
+        required: true
+        default: main
+        options:
+          # BEGIN GENERATED BOOKWAVE BRANCH OPTIONS
+          - "main"
+          - "mcp/issue-33-end-boundary-mutation"
+          - "mcp/issue-36-car-arrival-route-flap"
+          - "mcp/issue-73-ktlint-probe"
+          - "mcp/issue-75-mini-player-session-attach"
+          - "mcp/issue-77-sleep-timer-grace"
+          - "mcp/issues-34-35-auto-evidence"
+          - "mcp/pr-workflow-branch-picker"
+          # END GENERATED BOOKWAVE BRANCH OPTIONS
       pr_number:
         description: 'Forgejo PR number being verified'
         required: true
@@ -36,7 +52,7 @@ on:
         default: false
 
 concurrency:
-  group: ${{ forgejo.workflow }}-${{ forgejo.ref }}
+  group: ${{ forgejo.workflow }}-${{ inputs.bookwave_branch }}
   # A second manual click should queue, not kill an already-expensive Gradle run. This also avoids
   # exercising the runner/container cancellation path unnecessarily.
   cancel-in-progress: false
@@ -64,6 +80,7 @@ jobs:
       - name: Check out BookWave
         uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: ${{ inputs.bookwave_branch }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -72,6 +89,7 @@ jobs:
         continue-on-error: true
         env:
           REQUESTED_PR: ${{ inputs.pr_number }}
+          SELECTED_BRANCH: ${{ inputs.bookwave_branch }}
         run: |
           set -euo pipefail
 
@@ -102,7 +120,7 @@ jobs:
                 exit 1
               fi
 
-              echo "Validated PR #$requested_pr -> $FORGEJO_REF_NAME @ ${checked_out_head:0:8}."
+              echo "Validated PR #$requested_pr -> $SELECTED_BRANCH @ ${checked_out_head:0:8}."
               ;;
             *)
               echo "::error::Unsupported event for PR verification: $FORGEJO_EVENT_NAME"
@@ -265,6 +283,7 @@ jobs:
       - name: Check out BookWave
         uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: ${{ inputs.bookwave_branch }}
           persist-credentials: false
 
       - name: Compute Gradle cache key
