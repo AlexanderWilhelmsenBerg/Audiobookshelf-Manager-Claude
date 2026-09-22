@@ -1,6 +1,6 @@
-name: Pull request
+name: CI · PR verification
 
-run-name: "PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
+run-name: "CI · PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
 
 # Forgejo-native BookWave pull-request gate.
 #
