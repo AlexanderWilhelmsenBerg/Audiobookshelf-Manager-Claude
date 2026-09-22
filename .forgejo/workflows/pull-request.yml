@@ -22,7 +22,7 @@ run-name: "PR #${{ inputs.pr_number }} — ${{ inputs.bookwave_branch }}"
 #   matching docs/risks.md R-31 without verifying the same commit twice.
 
 # Forgejo PR verification is intentionally manual. Branch updates stay cheap while work is
-# in progress. Keep "Use workflow from" on main; select the PR source branch explicitly below.
+# in progress. On main, select the PR source branch explicitly below. When testing an unmerged\n# workflow revision whose new inputs are not rendered by Forgejo, the default safely uses "Use workflow from".
 on:
   workflow_dispatch:
     inputs:
@@ -30,10 +30,10 @@ on:
         description: 'BookWave PR source branch to verify'
         type: choice
         required: true
-        default: "__select_pr_branch__"
+        default: "__use_workflow_from__"
         options:
           # BEGIN GENERATED PR SOURCE BRANCH OPTIONS
-          - "__select_pr_branch__"
+          - "__use_workflow_from__"
           - "mcp/issue-36-car-arrival-route-flap"
           - "mcp/issue-75-mini-player-session-attach"
           - "mcp/issue-77-sleep-timer-grace"
@@ -49,7 +49,7 @@ on:
         default: false
 
 concurrency:
-  group: ${{ forgejo.workflow }}-${{ inputs.bookwave_branch }}
+  group: ${{ forgejo.workflow }}-${{ inputs.bookwave_branch }}-${{ forgejo.ref }}
   # A second manual click should queue, not kill an already-expensive Gradle run. This also avoids
   # exercising the runner/container cancellation path unnecessarily.
   cancel-in-progress: false
@@ -71,17 +71,28 @@ jobs:
     outputs:
       classpath_changed: ${{ steps.classify.outputs.classpath_changed }}
       checked_head: ${{ steps.classify.outputs.checked_head }}
+      resolved_branch: ${{ steps.source.outputs.branch }}
     steps:
-      - name: Require PR source branch selection
+      - name: Resolve PR source branch
+        id: source
         env:
-          SELECTED_BRANCH: ${{ inputs.bookwave_branch }}
+          REQUESTED_BRANCH: ${{ inputs.bookwave_branch }}
         run: |
           set -euo pipefail
-          if [ "$SELECTED_BRANCH" = "__select_pr_branch__" ] || [ "$SELECTED_BRANCH" = "main" ]; then
-            echo "::error::Select the pull request source branch from the BookWave PR source branch dropdown."
+          selected="$REQUESTED_BRANCH"
+
+          if [ -z "$selected" ] || [ "$selected" = "__use_workflow_from__" ]; then
+            selected="$FORGEJO_REF_NAME"
+            echo "PR source input unavailable/defaulted; using Use workflow from: $selected"
+          fi
+
+          if [ "$selected" = "main" ]; then
+            echo "::error::Select the pull request source branch. When running the merged workflow from main, use the BookWave PR source branch dropdown."
             exit 1
           fi
-          echo "Selected PR source branch: $SELECTED_BRANCH"
+
+          echo "branch=$selected" >> "$GITHUB_OUTPUT"
+          echo "Selected PR source branch: $selected"
 
       # One full-history checkout serves all cheap prerequisite checks. On the capacity-1 shared runner,
       # separate jobs only repeated container/network/checkout startup without adding isolation: none of
@@ -89,7 +100,7 @@ jobs:
       - name: Check out BookWave
         uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ inputs.bookwave_branch }}
+          ref: ${{ steps.source.outputs.branch }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -98,7 +109,7 @@ jobs:
         continue-on-error: true
         env:
           REQUESTED_PR: ${{ inputs.pr_number }}
-          SELECTED_BRANCH: ${{ inputs.bookwave_branch }}
+          SELECTED_BRANCH: ${{ steps.source.outputs.branch }}
         run: |
           set -euo pipefail
 
@@ -430,7 +441,7 @@ jobs:
       - name: Publish PR verification status
         env:
           REQUESTED_PR: ${{ inputs.pr_number }}
-          SELECTED_BRANCH: ${{ inputs.bookwave_branch }}
+          SELECTED_BRANCH: ${{ needs.preflight.outputs.resolved_branch }}
           CHECKED_HEAD: ${{ needs.preflight.outputs.checked_head }}
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           VERIFY_RESULT: ${{ needs.verify.result }}
@@ -447,8 +458,17 @@ jobs:
             -H 'Accept: application/json' \
             "$FORGEJO_API_URL/repos/$FORGEJO_REPOSITORY/pulls/$REQUESTED_PR")"
 
-          pr_head="$(jq -r '.head.sha // empty' <<<"$pr_json")"
-          pr_branch="$(jq -r '.head.ref // empty' <<<"$pr_json")"
+          pr_values="$(printf '%s' "$pr_json" | node -e '
+            let raw = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const pr = JSON.parse(raw);
+              process.stdout.write((pr.head?.sha || "") + "\t" + (pr.head?.ref || ""));
+            });
+          ')"
+          IFS=$'\t' read -r pr_head pr_branch <<<"$pr_values"
+
           if [ -z "$pr_head" ] || [ -z "$pr_branch" ]; then
             echo "::error::Forgejo did not return a usable head for PR #$REQUESTED_PR."
             exit 1
@@ -457,7 +477,10 @@ jobs:
           state=failure
           description="BookWave PR verification failed"
 
-          if [ "$SELECTED_BRANCH" != "$pr_branch" ]; then
+          if [ -z "$SELECTED_BRANCH" ]; then
+            status_sha="$pr_head"
+            description="PR source branch could not be resolved"
+          elif [ "$SELECTED_BRANCH" != "$pr_branch" ]; then
             status_sha="$pr_head"
             description="Selected branch does not match PR #$REQUESTED_PR"
           elif [ -n "$CHECKED_HEAD" ]; then
@@ -473,11 +496,13 @@ jobs:
             description="BookWave PR verification failed before checkout validation"
           fi
 
-          payload="$(jq -n \
-            --arg state "$state" \
-            --arg context "BookWave / PR verification" \
-            --arg description "$description" \
-            '{state: $state, context: $context, description: $description}')"
+          payload="$(STATUS_STATE="$state" STATUS_DESCRIPTION="$description" node -e '
+            process.stdout.write(JSON.stringify({
+              state: process.env.STATUS_STATE,
+              context: "BookWave / PR verification",
+              description: process.env.STATUS_DESCRIPTION
+            }));
+          ')"
 
           curl -fsS \
             -X POST \
