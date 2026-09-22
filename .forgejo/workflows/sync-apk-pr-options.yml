@@ -1,8 +1,8 @@
-name: Refresh workflow branch dropdowns
+name: Refresh APK branch dropdown
 
 # Forgejo renders workflow_dispatch choice inputs from static YAML; it does not populate them dynamically.
-# Run this helper when either the Build APK or Pull request branch list is stale. It snapshots the
-# repository's current branches into both workflow dropdowns and commits the generated lists to main.
+# Run this helper only when the Build APK branch list is stale. It snapshots the repository's current
+# branches into apk.yml and commits that generated list to main.
 #
 # This intentionally does NOT run automatically when branches change: every generated update moves main,
 # which can make unrelated open PRs need a rebase. The user decides when refreshing the picker is worth it.
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: refresh-workflow-branch-dropdowns
+  group: refresh-apk-branch-dropdown
   cancel-in-progress: true
 
 jobs:
@@ -65,6 +65,7 @@ jobs:
           import sys
           from pathlib import Path
 
+          workflow = Path(".forgejo/workflows/apk.yml")
           branches = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           names = sorted(
               {
@@ -79,34 +80,22 @@ jobs:
           if not names:
               raise SystemExit("Forgejo returned no repository branches")
 
-          def replace_block(workflow, begin, end, values):
-              options = "\n".join(f"          - {json.dumps(name)}" for name in values)
-              replacement = f"{begin}\n{options}\n{end}"
-              text = workflow.read_text(encoding="utf-8")
-              pattern = rf"(?ms)^{re.escape(begin)}$.*?^{re.escape(end)}$"
-              updated, count = re.subn(pattern, replacement, text, count=1)
-              if count != 1:
-                  raise SystemExit(f"{workflow}: expected one generated branch block, found {count}")
-              workflow.write_text(updated, encoding="utf-8")
-              print(f"{workflow}: generated {len(values)} branch choices.")
+          begin = "          # BEGIN GENERATED BOOKWAVE BRANCH OPTIONS"
+          end = "          # END GENERATED BOOKWAVE BRANCH OPTIONS"
+          options = "\n".join(f"          - {json.dumps(name)}" for name in names)
+          replacement = f"{begin}\n{options}\n{end}"
 
-          replace_block(
-              Path(".forgejo/workflows/apk.yml"),
-              "          # BEGIN GENERATED BOOKWAVE BRANCH OPTIONS",
-              "          # END GENERATED BOOKWAVE BRANCH OPTIONS",
-              names,
-          )
+          text = workflow.read_text(encoding="utf-8")
+          pattern = rf"(?ms)^{re.escape(begin)}$.*?^{re.escape(end)}$"
+          updated, count = re.subn(pattern, replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"expected one generated branch block, found {count}")
 
-          pr_names = ["__use_workflow_from__", *[name for name in names if name != "main"]]
-          replace_block(
-              Path(".forgejo/workflows/pull-request.yml"),
-              "          # BEGIN GENERATED PR SOURCE BRANCH OPTIONS",
-              "          # END GENERATED PR SOURCE BRANCH OPTIONS",
-              pr_names,
-          )
+          workflow.write_text(updated, encoding="utf-8")
+          print(f"Generated {len(names)} branch choices.")
           PY
 
-      - name: Validate generated workflows
+      - name: Validate generated workflow
         run: |
           set -euo pipefail
           grep -Fq "bookwave_branch:" .forgejo/workflows/apk.yml
@@ -114,37 +103,26 @@ jobs:
           grep -Fq "# BEGIN GENERATED BOOKWAVE BRANCH OPTIONS" .forgejo/workflows/apk.yml
           grep -Fq "# END GENERATED BOOKWAVE BRANCH OPTIONS" .forgejo/workflows/apk.yml
 
-          grep -Fq "bookwave_branch:" .forgejo/workflows/pull-request.yml
-          grep -Fq "default: \"__use_workflow_from__\"" .forgejo/workflows/pull-request.yml
-          grep -Fq "# BEGIN GENERATED PR SOURCE BRANCH OPTIONS" .forgejo/workflows/pull-request.yml
-          grep -Fq "# END GENERATED PR SOURCE BRANCH OPTIONS" .forgejo/workflows/pull-request.yml
-          if grep -A200 -F "# BEGIN GENERATED PR SOURCE BRANCH OPTIONS" .forgejo/workflows/pull-request.yml \
-              | sed -n '1,/END GENERATED PR SOURCE BRANCH OPTIONS/p' \
-              | grep -Fxq '          - "main"'; then
-            echo "::error::main must not be offered as a PR source branch."
-            exit 1
-          fi
-
       - name: Commit refreshed choices
         run: |
           set -euo pipefail
-          if git diff --quiet -- .forgejo/workflows/apk.yml .forgejo/workflows/pull-request.yml; then
-            echo "Workflow branch dropdowns are already current."
+          if git diff --quiet -- .forgejo/workflows/apk.yml; then
+            echo "APK branch dropdown is already current."
             exit 0
           fi
 
           git config user.name 'forgejo-actions[bot]'
           git config user.email 'forgejo-actions@localhost'
-          git add .forgejo/workflows/apk.yml .forgejo/workflows/pull-request.yml
-          git commit -m 'Refresh workflow branch choices [skip ci]'
+          git add .forgejo/workflows/apk.yml
+          git commit -m 'Refresh APK branch choices [skip ci]'
           git push origin HEAD:main
 
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
           if [ -n "$summary" ]; then
             {
-              echo "### Workflow branch dropdowns refreshed"
+              echo "### APK branch dropdown refreshed"
               echo
-              echo "The branch choices in Build APK and Pull request now match the repository."
+              echo "The branch choices in .forgejo/workflows/apk.yml now match the repository."
               echo
               echo "Note: this moved main; open PRs may now need a rebase."
             } >> "$summary"
