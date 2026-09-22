@@ -1,23 +1,129 @@
-name: Sync APK PR picker (retired)
+name: Refresh APK branch dropdown
 
-# Retained temporarily because the current Forgejo gateway cannot delete repository files.
-# The old APK pull-request picker is retired. Build APK now uses Forgejo's native
-# workflow-dispatch branch dropdown as the only BookWave source selector.
+# Forgejo renders workflow_dispatch choice inputs from static YAML; it does not populate them dynamically.
+# Run this helper only when the Build APK branch list is stale. It snapshots the repository's current
+# branches into apk.yml and commits that generated list to main.
 #
-# This workflow is intentionally manual-only and performs no repository mutation. It can be deleted
-# in a later cleanup commit once a file-delete path is available.
+# This intentionally does NOT run automatically when branches change: every generated update moves main,
+# which can make unrelated open PRs need a rebase. The user decides when refreshing the picker is worth it.
 
 on:
   workflow_dispatch:
 
+concurrency:
+  group: refresh-apk-branch-dropdown
+  cancel-in-progress: true
+
 jobs:
-  retired:
-    name: APK picker synchronizer retired
+  refresh:
+    name: Refresh branch choices
     runs-on: linux-amd64
-    timeout-minutes: 2
+    container:
+      image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
+    timeout-minutes: 5
     steps:
-      - name: Explain retired workflow
+      - name: Check out main
+        uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Read current repository branches
         run: |
-          echo "The APK PR picker synchronizer is retired."
-          echo "Use Build APK and select the BookWave branch in Forgejo's branch dropdown."
-          echo "No branch or pull request will be created."
+          set -euo pipefail
+          pages="$RUNNER_TEMP/bookwave-branches.ndjson"
+          payload="$RUNNER_TEMP/bookwave-branches.json"
+          : > "$pages"
+
+          page=1
+          while :; do
+            page_json="$(curl -fsS \
+              -H "Authorization: token $FORGEJO_TOKEN" \
+              -H 'Accept: application/json' \
+              "$FORGEJO_API_URL/repos/$FORGEJO_REPOSITORY/branches?limit=100&page=$page")"
+            count="$(jq 'length' <<<"$page_json")"
+            if [ "$count" -eq 0 ]; then
+              break
+            fi
+            jq -c '.[]' <<<"$page_json" >> "$pages"
+            if [ "$count" -lt 100 ]; then
+              break
+            fi
+            page=$((page + 1))
+          done
+
+          jq -s '.' "$pages" > "$payload"
+          echo "BRANCH_PAYLOAD=$payload" >> "$FORGEJO_ENV"
+
+      - name: Regenerate branch choices
+        run: |
+          set -euo pipefail
+          python3 - "$BRANCH_PAYLOAD" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          workflow = Path(".forgejo/workflows/apk.yml")
+          branches = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          names = sorted(
+              {
+                  item.get("name")
+                  for item in branches
+                  if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"]
+              }
+          )
+          if "main" in names:
+              names.remove("main")
+              names.insert(0, "main")
+          if not names:
+              raise SystemExit("Forgejo returned no repository branches")
+
+          begin = "          # BEGIN GENERATED BOOKWAVE BRANCH OPTIONS"
+          end = "          # END GENERATED BOOKWAVE BRANCH OPTIONS"
+          options = "\n".join(f"          - {json.dumps(name)}" for name in names)
+          replacement = f"{begin}\n{options}\n{end}"
+
+          text = workflow.read_text(encoding="utf-8")
+          pattern = rf"(?ms)^{re.escape(begin)}$.*?^{re.escape(end)}$"
+          updated, count = re.subn(pattern, replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"expected one generated branch block, found {count}")
+
+          workflow.write_text(updated, encoding="utf-8")
+          print(f"Generated {len(names)} branch choices.")
+          PY
+
+      - name: Validate generated workflow
+        run: |
+          set -euo pipefail
+          grep -Fq "bookwave_branch:" .forgejo/workflows/apk.yml
+          grep -Fq "type: choice" .forgejo/workflows/apk.yml
+          grep -Fq "# BEGIN GENERATED BOOKWAVE BRANCH OPTIONS" .forgejo/workflows/apk.yml
+          grep -Fq "# END GENERATED BOOKWAVE BRANCH OPTIONS" .forgejo/workflows/apk.yml
+
+      - name: Commit refreshed choices
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- .forgejo/workflows/apk.yml; then
+            echo "APK branch dropdown is already current."
+            exit 0
+          fi
+
+          git config user.name 'forgejo-actions[bot]'
+          git config user.email 'forgejo-actions@localhost'
+          git add .forgejo/workflows/apk.yml
+          git commit -m 'Refresh APK branch choices [skip ci]'
+          git push origin HEAD:main
+
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+          if [ -n "$summary" ]; then
+            {
+              echo "### APK branch dropdown refreshed"
+              echo
+              echo "The branch choices in .forgejo/workflows/apk.yml now match the repository."
+              echo
+              echo "Note: this moved main; open PRs may now need a rebase."
+            } >> "$summary"
+          fi

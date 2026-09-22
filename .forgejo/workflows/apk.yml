@@ -1,11 +1,13 @@
 name: Build APK
 
-run-name: "Build ${{ inputs.variant }} APK · ${{ forgejo.ref_name }}"
+run-name: "Build ${{ inputs.variant }} APK · ${{ inputs.bookwave_branch }}"
 
 # Forgejo-native on-demand APK workflow. The GitHub workflow remains untouched as fallback.
 #
-# Select the BookWave source with Forgejo's native workflow-dispatch branch dropdown.
-# The selected branch is pinned to its dispatch SHA before checkout.
+# Forgejo's native "Use workflow from" control is a free-text ref field on this instance.
+# Leave it on main. The explicit BookWave branch choice below is the actual APK source selector.
+# Choice options are a repository-branch snapshot and can be refreshed with the companion
+# "Refresh APK branch dropdown" workflow.
 #
 # Loopbound is cloned from Forgejo only. While alexander/Loopbound is public, no token is needed.
 # If Loopbound becomes private, set LOOPBOUND_READ_TOKEN to a Forgejo token/Authorized Integration
@@ -19,6 +21,22 @@ run-name: "Build ${{ inputs.variant }} APK · ${{ forgejo.ref_name }}"
 on:
   workflow_dispatch:
     inputs:
+      bookwave_branch:
+        description: 'BookWave branch to build'
+        type: choice
+        required: true
+        default: main
+        options:
+          # BEGIN GENERATED BOOKWAVE BRANCH OPTIONS
+          - main
+          - mcp/issue-77-sleep-timer-grace
+          - mcp/issue-75-mini-player-session-attach
+          - mcp/issue-73-webview-diagnostics
+          - mcp/issue-73-ktlint-probe
+          - mcp/issues-34-35-auto-evidence
+          - mcp/issue-36-car-arrival-route-flap
+          - mcp/issue-33-end-boundary-mutation
+          # END GENERATED BOOKWAVE BRANCH OPTIONS
       variant:
         description: 'Which build to produce'
         type: choice
@@ -42,7 +60,7 @@ on:
         default: 'main'
 
 concurrency:
-  group: ${{ forgejo.workflow }}-${{ forgejo.ref }}-${{ inputs.variant }}
+  group: ${{ forgejo.workflow }}-${{ inputs.bookwave_branch }}-${{ inputs.variant }}
   cancel-in-progress: true
 
 env:
@@ -126,10 +144,32 @@ jobs:
       image: forgejo.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
     timeout-minutes: 60
     steps:
+      - name: Resolve selected BookWave branch
+        id: source
+        env:
+          REQUESTED_BRANCH: ${{ inputs.bookwave_branch }}
+        run: |
+          set -euo pipefail
+          repo_url="$FORGEJO_SERVER_URL/$FORGEJO_REPOSITORY.git"
+          requested_ref="refs/heads/$REQUESTED_BRANCH"
+          sha="$(git -c "http.extraHeader=Authorization: token $FORGEJO_TOKEN" \
+            ls-remote "$repo_url" "$requested_ref" \
+            | awk -v expected="$requested_ref" '$2 == expected { print $1; exit }')"
+
+          if ! [[ "$sha" =~ ^[0-9a-fA-F]{40,64}$ ]]; then
+            echo "::error::Could not resolve BookWave branch '$REQUESTED_BRANCH' to an exact commit."
+            echo "::error::If the branch list changed, run 'Refresh APK branch dropdown' first."
+            exit 1
+          fi
+
+          echo "branch=$REQUESTED_BRANCH" >> "$FORGEJO_OUTPUT"
+          echo "sha=$sha" >> "$FORGEJO_OUTPUT"
+          echo "Resolved $REQUESTED_BRANCH @ ${sha:0:8}."
+
       - name: Check out exact BookWave source
         uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ forgejo.sha }}
+          ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -187,7 +227,7 @@ jobs:
       # Signing workflows are restore-only. They never consume PR-written caches and never publish
       # a cache after repository-controlled code has run with signing material available.
       - name: Restore trusted Gradle cache
-        if: ${{ forgejo.ref == 'refs/heads/main' }}
+        if: ${{ steps.source.outputs.branch == 'main' }}
         id: gradle_cache
         uses: https://data.forgejo.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
@@ -199,7 +239,7 @@ jobs:
             bookwave-gradle-trusted-v1-
 
       - name: Report Gradle cache restore
-        if: ${{ forgejo.ref == 'refs/heads/main' }}
+        if: ${{ steps.source.outputs.branch == 'main' }}
         run: |
           echo "gradle_cache_hit=${{ steps.gradle_cache.outputs.cache-hit }}"
           echo "gradle_cache_matched_key=${{ steps.gradle_cache.outputs.cache-matched-key }}"
@@ -282,8 +322,8 @@ jobs:
         run: env -u FORGEJO_TOKEN -u GITHUB_TOKEN ./gradlew verifyDebug --max-workers=4 -Pshelfplayer.warningsAsErrors=true
       - name: Assemble requested APK
         env:
-          BOOKWAVE_COMMIT: ${{ forgejo.sha }}
-          BOOKWAVE_BRANCH: ${{ forgejo.ref_name }}
+          BOOKWAVE_COMMIT: ${{ steps.source.outputs.sha }}
+          BOOKWAVE_BRANCH: ${{ steps.source.outputs.branch }}
           BOOKWAVE_RUN_NUMBER: ${{ forgejo.run_number }}
           BOOKWAVE_SIGNING_STORE_FILE: ${{ steps.keystore.outputs.path }}
           BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
@@ -304,8 +344,8 @@ jobs:
       - name: Identify and verify built APK
         id: version
         env:
-          SOURCE_SHA: ${{ forgejo.sha }}
-          SOURCE_BRANCH: ${{ forgejo.ref_name }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SOURCE_BRANCH: ${{ steps.source.outputs.branch }}
           EXPECTED_SIGNER: ${{ steps.keystore.outputs.signer }}
         run: |
           set -euo pipefail
