@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.loopbound
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -31,8 +32,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.R
+import com.example.shelfplayer.ShelfPlayerApplication
+import com.example.shelfplayer.core.common.log.LogCategory
+import com.example.shelfplayer.core.common.log.LogField
+import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.log.error
+import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import java.io.ByteArrayInputStream
@@ -40,6 +48,8 @@ import java.io.ByteArrayInputStream
 private const val LOOPBOUND_ASSET_DIRECTORY = "loopbound"
 private const val LOOPBOUND_ENTRY_FILE = "index.html"
 private const val LOOPBOUND_ENTRY_PATH = "$LOOPBOUND_ASSET_DIRECTORY/$LOOPBOUND_ENTRY_FILE"
+private const val LOOPBOUND_VERSION_FILE = "BOOKWAVE_LOOPBOUND_VERSION"
+private const val LOOPBOUND_VERSION_PATH = "$LOOPBOUND_ASSET_DIRECTORY/$LOOPBOUND_VERSION_FILE"
 private const val APP_ASSET_HOST = "appassets.androidplatform.net"
 private const val LOOPBOUND_URL = "https://$APP_ASSET_HOST/assets/$LOOPBOUND_ENTRY_PATH"
 private const val LOOPBOUND_URL_PATH_PREFIX = "/assets/$LOOPBOUND_ASSET_DIRECTORY/"
@@ -109,7 +119,8 @@ internal fun LoopboundScreen(onNavigateUp: () -> Unit, modifier: Modifier = Modi
 @Composable
 private fun LoopboundWebView(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val webView = remember(context) { createLoopboundWebView(context) }
+    val logger = remember(context) { context.bookWaveLoggerOrNull() }
+    val webView = remember(context, logger) { createLoopboundWebView(context, logger) }
 
     DisposableEffect(webView) {
         onDispose {
@@ -134,7 +145,7 @@ private fun LoopboundWebView(modifier: Modifier = Modifier) {
 }
 
 @SuppressLint("SetJavaScriptEnabled") // Required by the bundled game; all non-game requests are blocked below.
-internal fun createLoopboundWebView(context: Context): WebView = WebView(context).apply {
+internal fun createLoopboundWebView(context: Context, logger: Logger? = null): WebView = WebView(context).apply {
     // AndroidView measures the platform view from Compose, but the WebView also uses its own Android layout
     // bounds when establishing the CSS viewport and hit-test area. Make the host contract explicit instead
     // of leaving the newly-created view at its default params: Loopbound's 100%-height root must receive the
@@ -148,6 +159,16 @@ internal fun createLoopboundWebView(context: Context): WebView = WebView(context
     WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
 
+    val provider = WebView.getCurrentWebViewPackage()
+    logger?.info(
+        LogCategory.App,
+        "Loopbound WebView host created",
+        LogField.Public("provider", provider?.packageName ?: "unavailable"),
+        LogField.Public("providerVersion", provider?.versionName ?: "unavailable"),
+        LogField.Public("loopboundVersion", context.loopboundBundleVersion()),
+        LogField.Public("layerType", layerType),
+    )
+
     settings.javaScriptEnabled = true
     settings.domStorageEnabled = true
     settings.allowFileAccess = false
@@ -157,6 +178,46 @@ internal fun createLoopboundWebView(context: Context): WebView = WebView(context
     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
     webViewClient = object : WebViewClient() {
+        var pageStarts = 0
+        var pageFinishes = 0
+        var pageCommits = 0
+
+        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+            pageStarts += 1
+            logger?.info(
+                LogCategory.App,
+                "Loopbound WebView page started",
+                LogField.Count("count", pageStarts),
+                LogField.Public("location", url.loopboundDiagnosticLocation()),
+                LogField.Public("hardwareAccelerated", view?.isHardwareAccelerated ?: false),
+                LogField.Public("layerType", view?.layerType ?: -1),
+            )
+        }
+
+        override fun onPageCommitVisible(view: WebView?, url: String?) {
+            pageCommits += 1
+            logger?.info(
+                LogCategory.App,
+                "Loopbound WebView page became visible",
+                LogField.Count("count", pageCommits),
+                LogField.Public("location", url.loopboundDiagnosticLocation()),
+                LogField.Public("hardwareAccelerated", view?.isHardwareAccelerated ?: false),
+                LogField.Public("layerType", view?.layerType ?: -1),
+            )
+        }
+
+        override fun onPageFinished(view: WebView?, url: String?) {
+            pageFinishes += 1
+            logger?.info(
+                LogCategory.App,
+                "Loopbound WebView page finished",
+                LogField.Count("count", pageFinishes),
+                LogField.Public("location", url.loopboundDiagnosticLocation()),
+                LogField.Count("starts", pageStarts),
+                LogField.Count("commits", pageCommits),
+            )
+        }
+
         override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse =
             context.loadLoopboundAsset(request.url)
 
@@ -164,6 +225,15 @@ internal fun createLoopboundWebView(context: Context): WebView = WebView(context
             !request.url.isLoopboundAssetUrl()
 
         override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+            logger?.error(
+                LogCategory.App,
+                "Loopbound WebView render process exited",
+                LogField.Public("didCrash", detail?.didCrash() ?: false),
+                LogField.Public("priorityAtExit", detail?.rendererPriorityAtExit() ?: -1),
+                LogField.Count("starts", pageStarts),
+                LogField.Count("commits", pageCommits),
+                LogField.Count("finishes", pageFinishes),
+            )
             view?.destroy()
             return true
         }
@@ -196,6 +266,20 @@ private fun Uri.toLoopboundAssetPath(): String? {
 
 private fun Uri.isLoopboundAssetUrl(): Boolean =
     scheme == "https" && host == APP_ASSET_HOST && path.orEmpty().startsWith(LOOPBOUND_URL_PATH_PREFIX)
+
+private fun Context.bookWaveLoggerOrNull(): Logger? = (applicationContext as? ShelfPlayerApplication)?.logger
+
+private fun Context.loopboundBundleVersion(): String = runCatching {
+    assets.open(LOOPBOUND_VERSION_PATH).bufferedReader().use { reader ->
+        reader.readLine().orEmpty().trim().ifEmpty { "empty" }
+    }
+}.getOrElse { "unavailable" }
+
+private fun String?.loopboundDiagnosticLocation(): String {
+    if (this == null) return "null"
+    val uri = toUri()
+    return if (uri.isLoopboundAssetUrl()) uri.path.orEmpty() else "non-loopbound"
+}
 
 private fun Context.hasLoopboundBundle(): Boolean = runCatching {
     assets.open(LOOPBOUND_ENTRY_PATH).use { Unit }
