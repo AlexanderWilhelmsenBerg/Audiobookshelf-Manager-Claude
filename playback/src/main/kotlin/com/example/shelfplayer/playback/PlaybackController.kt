@@ -4,6 +4,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
@@ -32,8 +33,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -60,6 +64,7 @@ import kotlin.time.Duration
 @Singleton
 class PlaybackController @Inject constructor(
     private val connector: SessionConnector,
+    private val liveSession: LivePlaybackSession,
     private val playbackRepository: PlaybackRepository,
     private val openPlaybackSession: OpenPlaybackSessionUseCase,
     private val bookChanges: BookChanges,
@@ -96,8 +101,27 @@ class PlaybackController @Inject constructor(
     /** PRODUCT_SPEC PLAY-002 — chooses an output, or `null` for *Automatic*. Not remembered (ADR-0027). */
     fun selectOutput(id: String?) = audioOutputs.select(id)
 
+    private val connectionMutex = Mutex()
+    private var connectionGeneration = 0L
     private var controller: MediaController? = null
+    private var controllerToken: SessionToken? = null
     private var ticker: Job? = null
+
+    /**
+     * Media3 owns connection liveness; a non-null Kotlin reference is not proof that its session still exists.
+     *
+     * The callback is installed before each controller is built so a dead/replaced session cannot leave a
+     * stale controller blocking the next foreground attachment.
+     */
+    private val sessionListener = object : MediaController.Listener {
+        override fun onDisconnected(disconnected: MediaController) {
+            applicationScope.launch(mainDispatcher) {
+                if (controller !== disconnected) return@launch
+                connectionGeneration += 1
+                releaseCurrentController()
+            }
+        }
+    }
 
     /**
      * PRODUCT_SPEC PLAY-003 — the current book's chapters.
@@ -445,62 +469,107 @@ class PlaybackController @Inject constructor(
      * session — can drop the connection deliberately.
      */
     fun release() {
-        ticker?.cancel()
-        controller?.release()
-        controller = null
-        chapters = emptyList()
-        lastChapter = null
-        _state.value = PlaybackUiState.Idle
+        connectionGeneration += 1
+        releaseCurrentController()
     }
 
     /**
-     * Issue #75 — projects an already-live service session back into the phone UI without starting one.
+     * Issue #75 — observes only the direct token of a MediaSession that already exists.
      *
-     * Activity recreation, a notification tap, Android Auto and media-button resumption can all leave the
-     * service owning a loaded MediaSession while this singleton still has no MediaController. This method is
-     * the foreground reconciliation seam: it uses only [SessionConnector.connectExisting], which returns
-     * `null` when no direct live-session token exists and therefore cannot manufacture playback on an idle
-     * launcher start.
-     *
-     * Connecting is observation only. No media item is replaced and no Play/prepare/seek command is issued.
+     * A STARTED Activity collects this flow. The current token is replayed on every foreground entry, while a
+     * later publish/replacement is delivered without polling. A null token cancels an in-flight attachment but
+     * never falls back to the service-component token, so an ordinary idle launch remains completely lazy.
      */
-    suspend fun attachToExistingSession() {
-        withContext(mainDispatcher) {
-            if (controller != null) return@withContext
-            val built = connector.connectExisting() ?: return@withContext
-            adopt(built)
+    suspend fun observeExistingSessions() {
+        liveSession.token.collectLatest { token ->
+            if (token != null) attachToExistingSession(token)
         }
     }
 
     /**
-     * Connects to the session, building the controller on first use.
+     * Projects one already-live service session back into the phone UI without starting one.
      *
-     * Lazily rather than at construction: building a controller starts the service, and a service that
-     * starts when the app launches would show a media notification to a user who has not pressed play.
+     * Connecting is observation only. No media item is replaced and no Play/prepare/seek command is issued.
      */
-    private suspend fun connect(): MediaController? {
-        controller?.let { return it }
-        val built = connector.connect() ?: return null
-        return adopt(built)
+    private suspend fun attachToExistingSession(token: SessionToken) {
+        withContext(mainDispatcher) {
+            connectionMutex.withLock {
+                if (controller != null && controllerToken == token) return@withLock
+
+                // A different direct token means the service replaced its MediaSession. Drop the old client
+                // before attaching to the replacement so stale state cannot win the next publish.
+                if (controller != null) {
+                    connectionGeneration += 1
+                    releaseCurrentController()
+                }
+
+                val generation = connectionGeneration
+                val built = connector.connectExisting(token, sessionListener) ?: return@withLock
+                if (generation != connectionGeneration) {
+                    built.release()
+                    return@withLock
+                }
+                adopt(built, token)
+            }
+        }
+    }
+
+    /**
+     * Connects to the session, building the controller on first explicit playback use.
+     *
+     * Lazily rather than at construction: building this service-component controller may start the service.
+     * The mutex shares ownership with foreground attachment so explicit Play and Activity reconciliation
+     * cannot install two competing controllers.
+     */
+    private suspend fun connect(): MediaController? = withContext(mainDispatcher) {
+        connectionMutex.withLock {
+            controller?.let { return@withLock it }
+
+            val generation = connectionGeneration
+            val built = connector.connect(sessionListener) ?: return@withLock null
+            if (generation != connectionGeneration) {
+                built.release()
+                return@withLock null
+            }
+            adopt(built, liveSession.currentToken())
+        }
     }
 
     /**
      * Installs one controller as the UI projection of the session.
      *
-     * A foreground attach and an explicit playback command may both be awaiting Media3 at the same time.
-     * The first completed controller wins; the duplicate is released rather than replacing the controller
-     * whose listeners/ticker are already publishing state.
+     * This is called only while [connectionMutex] is held. The fallback duplicate guard protects against a
+     * callback/release race and releases the unowned client rather than replacing established UI state.
      */
-    private fun adopt(built: MediaController): MediaController {
+    private fun adopt(
+        built: MediaController,
+        token: SessionToken?,
+    ): MediaController {
         controller?.let { existing ->
             built.release()
             return existing
         }
         built.addListener(ControllerEvents())
         controller = built
+        controllerToken = token
         publish(built)
         startTicker()
         return built
+    }
+
+    /**
+     * Clears only UI-side controller ownership. Releasing a MediaController does not stop the service/player.
+     */
+    private fun releaseCurrentController() {
+        val held = controller
+        controller = null
+        controllerToken = null
+        ticker?.cancel()
+        ticker = null
+        chapters = emptyList()
+        lastChapter = null
+        _state.value = PlaybackUiState.Idle
+        held?.release()
     }
 
     /**
