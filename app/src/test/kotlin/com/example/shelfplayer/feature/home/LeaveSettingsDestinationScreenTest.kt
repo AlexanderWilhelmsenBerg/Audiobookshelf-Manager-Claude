@@ -73,6 +73,8 @@ class LeaveSettingsDestinationScreenTest {
                             onDefaultChanged = {},
                             onFadeChanged = {},
                             onShakeChanged = {},
+                            onShakeGraceChanged = {},
+                            onShakeSensitivityChanged = {},
                             onRewindOnStopChanged = {},
                         ),
                         playbackActions = PlaybackSettingsActions(
