@@ -33,6 +33,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.feature.browse.LocalAuthorUrls
@@ -89,20 +90,6 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var playbackController: PlaybackController
 
-    /**
-     * Issue #75 — every foreground entry gets one chance to observe a MediaSession that already exists.
-     *
-     * This is intentionally `onStart`, not unconditional controller construction in Compose. A notification
-     * tap, a warm return and Activity recreation all cross this lifecycle boundary, while an ordinary idle
-     * launcher start finds no live direct-session token and returns without starting PlaybackService.
-     */
-    override fun onStart() {
-        super.onStart()
-        lifecycleScope.launch {
-            playbackController.attachToExistingSession()
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         /*
@@ -118,6 +105,18 @@ class MainActivity : ComponentActivity() {
             setRecentsScreenshotEnabled(false)
         }
         super.onCreate(savedInstanceState)
+        /*
+         * Issue #75 — observe direct live-session availability only while this UI is STARTED.
+         *
+         * StateFlow replays the current direct token on every foreground entry and reports replacement while
+         * the Activity remains visible. A null token is a no-op, so an ordinary idle launcher start still
+         * cannot instantiate PlaybackService merely to discover whether a mini player should exist.
+         */
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                playbackController.observeExistingSessions()
+            }
+        }
         setContent {
             val viewModel: AppViewModel = hiltViewModel()
             val appState by viewModel.state.collectAsStateWithLifecycle()
