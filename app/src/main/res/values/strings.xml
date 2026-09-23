@@ -501,6 +501,11 @@
     <!-- PRODUCT_SPEC PLAY-008 / PLAY-009 — how far back to go when the timer stops the book. -->
     <string name="sleep_timer_rewind">Rewind when the timer stops playback</string>
     <string name="sleep_timer_shake">Shake to restart the timer</string>
+    <string name="sleep_timer_shake_grace">Grace period after timer ends</string>
+    <string name="sleep_timer_shake_sensitivity">Shake sensitivity</string>
+    <string name="sleep_timer_shake_sensitivity_low">Low</string>
+    <string name="sleep_timer_shake_sensitivity_normal">Normal</string>
+    <string name="sleep_timer_shake_sensitivity_high">High</string>
 
     <!-- PRODUCT_SPEC PLAY-008 / SET-002 — the local history. -->
     <string name="sleep_timer_history">Recent timers</string>
