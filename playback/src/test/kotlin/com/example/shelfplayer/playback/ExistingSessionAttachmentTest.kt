@@ -21,7 +21,6 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import java.util.concurrent.FutureTask
-import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -200,8 +199,8 @@ class ExistingSessionAttachmentTest {
      */
     private fun awaitMainLooper(message: String, condition: () -> Boolean) {
         val mainLooper = shadowOf(Looper.getMainLooper())
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-        while (!condition() && System.nanoTime() < deadline) {
+        for (attempt in 0 until MAX_MAIN_LOOPER_PUMPS) {
+            if (condition()) return
             mainLooper.idle()
             Thread.yield()
         }
@@ -218,8 +217,8 @@ class ExistingSessionAttachmentTest {
         }
 
         val mainLooper = shadowOf(Looper.getMainLooper())
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-        while (!task.isDone && System.nanoTime() < deadline) {
+        for (attempt in 0 until MAX_MAIN_LOOPER_PUMPS) {
+            if (task.isDone) break
             mainLooper.idle()
             Thread.yield()
         }
@@ -243,6 +242,7 @@ class ExistingSessionAttachmentTest {
         .build()
 
     private companion object {
+        const val MAX_MAIN_LOOPER_PUMPS = 10_000
         val BOOK = LibraryItemId("tidewatch")
     }
 }
