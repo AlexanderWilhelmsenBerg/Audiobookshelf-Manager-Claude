@@ -163,6 +163,8 @@ fun SettingsRoute(
             onDefaultChanged = viewModel::onSleepTimerDefaultChanged,
             onFadeChanged = viewModel::onSleepTimerFadeChanged,
             onShakeChanged = viewModel::onShakeToRestartChanged,
+            onShakeGraceChanged = viewModel.onShakeGraceChanged,
+            onShakeSensitivityChanged = viewModel.onShakeSensitivityChanged,
             onRewindOnStopChanged = viewModel::onSleepTimerRewindChanged,
         ),
         sleepScheduleActions = SleepScheduleSettingsActions(
