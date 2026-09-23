@@ -1,7 +1,7 @@
 # Device acceptance — issue #75 mini-player session reattachment
 
 **Scope:** Android notification/session entry and Activity lifecycle only.  
-**Automated proof:** `:playback` Media3/Robolectric existing-session attachment plus `:app` lifecycle reachability.  
+**Automated proof:** `:playback` Media3/Robolectric existing-session attachment and stale-token rejection plus `:app` STARTED-lifecycle reachability.  
 **Still physical:** notification content intent, task/Activity recreation, real service lifetime and OEM media surfaces.
 
 ## Notification entry
@@ -55,6 +55,8 @@ With a loaded book and visible mini player:
 ## System-owned origin
 
 Where practical, start or resume playback while the phone UI is absent using a headset/media button or Android Auto. Then open the phone app and confirm the mini player projects that live session without issuing Play again.
+
+Also repeat with BookWave already foreground: cause a legitimate system-owned/session start without leaving the Activity and confirm the STARTED lifecycle observer projects the newly published live session without restarting playback.
 
 ## Pass condition
 
