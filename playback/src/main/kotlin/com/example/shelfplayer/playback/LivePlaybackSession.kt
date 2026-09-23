@@ -1,6 +1,9 @@
 package com.example.shelfplayer.playback
 
 import androidx.media3.session.SessionToken
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,15 +25,23 @@ import javax.inject.Singleton
 @Singleton
 class LivePlaybackSession @Inject constructor() {
     private val lock = Any()
-    private var token: SessionToken? = null
+    private val _token = MutableStateFlow<SessionToken?>(null)
+
+    /**
+     * Session availability, not playback state.
+     *
+     * A STARTED UI may observe this so a session that appears or is replaced while the Activity is already
+     * foreground can be attached without polling or using the service-component token.
+     */
+    val token: StateFlow<SessionToken?> = _token.asStateFlow()
 
     /** Publishes the exact session the service just built. */
     fun publish(sessionToken: SessionToken) = synchronized(lock) {
-        token = sessionToken
+        _token.value = sessionToken
     }
 
     /** Returns a direct token only when this process currently owns a live session. */
-    fun currentToken(): SessionToken? = synchronized(lock) { token }
+    fun currentToken(): SessionToken? = _token.value
 
     /**
      * Clears only the session being destroyed.
@@ -39,6 +50,6 @@ class LivePlaybackSession @Inject constructor() {
      * must not erase the newer session's attach handle.
      */
     fun clear(sessionToken: SessionToken) = synchronized(lock) {
-        if (token == sessionToken) token = null
+        if (_token.value == sessionToken) _token.value = null
     }
 }
