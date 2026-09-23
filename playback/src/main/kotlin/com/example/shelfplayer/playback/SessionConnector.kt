@@ -43,11 +43,10 @@ class SessionConnector @Inject constructor(
      * failed session build arrives as; `InterruptedException` is the executor being torn down, and the
      * interrupt is reasserted rather than eaten.
      */
-    suspend fun connect(listener: MediaController.Listener): MediaController? =
-        connect(
-            token = SessionToken(context, ComponentName(context, PlaybackService::class.java)),
-            listener = listener,
-        )
+    suspend fun connect(listener: MediaController.Listener): MediaController? = connect(
+        token = SessionToken(context, ComponentName(context, PlaybackService::class.java)),
+        listener = listener,
+    )
 
     /**
      * Issue #75 — attaches only when [PlaybackService] has already published a live direct-session token.
@@ -61,18 +60,12 @@ class SessionConnector @Inject constructor(
         return connectExisting(token, listener)
     }
 
-    internal suspend fun connectExisting(
-        token: SessionToken,
-        listener: MediaController.Listener,
-    ): MediaController? {
+    internal suspend fun connectExisting(token: SessionToken, listener: MediaController.Listener): MediaController? {
         if (liveSession.currentToken() != token) return null
         return connect(token, listener)
     }
 
-    private suspend fun connect(
-        token: SessionToken,
-        listener: MediaController.Listener,
-    ): MediaController? =
+    private suspend fun connect(token: SessionToken, listener: MediaController.Listener): MediaController? =
         suspendCancellableCoroutine { continuation ->
             val future = MediaController.Builder(context, token)
                 .setListener(listener)
