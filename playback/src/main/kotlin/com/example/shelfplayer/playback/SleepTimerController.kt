@@ -404,25 +404,25 @@ class SleepTimerController @Inject constructor(
         }
 
         val sessionId = claim.bookId?.let { recordStarted(it, mode) }
-        if (!isStartClaimCurrent(claim)) {
+        return if (!isStartClaimCurrent(claim)) {
             closeUncommittedSession(sessionId)
-            return startSuperseded()
+            startSuperseded()
+        } else {
+            val started = TimerRun(
+                sessionId = sessionId,
+                mode = mode,
+                deadlineElapsedMs = deadlineFor(mode),
+                chapterSkip = 0,
+                automaticOccurrence = automaticOccurrence,
+            )
+            phase = TimerPhase.Running(started)
+            record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(started))
+            reconcileSensing()
+            startTicking()
+            publish()
+            scheduleScheduleBoundary()
+            AppResult.Success(Unit)
         }
-
-        val started = TimerRun(
-            sessionId = sessionId,
-            mode = mode,
-            deadlineElapsedMs = deadlineFor(mode),
-            chapterSkip = 0,
-            automaticOccurrence = automaticOccurrence,
-        )
-        phase = TimerPhase.Running(started)
-        record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(started))
-        reconcileSensing()
-        startTicking()
-        publish()
-        scheduleScheduleBoundary()
-        AppResult.Success(Unit)
     }
 
     /**
