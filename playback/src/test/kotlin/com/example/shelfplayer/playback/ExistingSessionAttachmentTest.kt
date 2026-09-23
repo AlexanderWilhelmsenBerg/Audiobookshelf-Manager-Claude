@@ -115,7 +115,7 @@ class ExistingSessionAttachmentTest {
         try {
             player.setMediaItem(book())
             live.publish(session.token)
-            controller = assertNotNull(SessionConnector(context, logger, live).connectExisting(listener))
+            controller = assertNotNull(connectExisting(SessionConnector(context, logger, live)))
             assertEquals(BOOK, controller.playbackUiState().bookId)
 
             player.clearMediaItems()
