@@ -53,6 +53,12 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
+/*
+ * This regression suite intentionally keeps the timer state-machine races in one fixture so every test shares
+ * the same fake clock, persistence, player, and suspension gates. Splitting it only to satisfy a line threshold
+ * would duplicate those fixtures and make cross-transition coverage harder to audit.
+ */
+@Suppress("LargeClass")
 @OptIn(ExperimentalCoroutinesApi::class)
 class SleepTimerControllerTest {
 
@@ -265,8 +271,7 @@ class SleepTimerControllerTest {
     }
 
     @Test
-    fun `service recreation invalidates a claimed grace restart and cannot transfer it to the new player`() =
-        runTest {
+    fun `service recreation invalidates a claimed grace restart and cannot transfer it to the new player`() = runTest {
             val source = MutableStateFlow(
                 SleepTimerSettings.Default.copy(
                     shakeToRestart = true,
@@ -1143,8 +1148,7 @@ class SleepTimerControllerTest {
         )
     }
 
-    private fun resumeOwner(onResume: () -> Unit = {}): SleepTimerResumeOwner =
-        object : SleepTimerResumeOwner {
+    private fun resumeOwner(onResume: () -> Unit = {}): SleepTimerResumeOwner = object : SleepTimerResumeOwner {
             override suspend fun resume(stillAuthorized: () -> Boolean): Boolean {
                 if (!stillAuthorized()) return false
                 onResume()
@@ -1168,10 +1172,7 @@ class SleepTimerControllerTest {
         }
     }
 
-    private fun player(
-        onPlay: (() -> Unit)? = null,
-        position: () -> Duration = { 10.minutes },
-    ): Player {
+    private fun player(onPlay: (() -> Unit)? = null, position: () -> Duration = { 10.minutes }): Player {
         val item = MediaItem.Builder().setMediaId("book-a").build()
         return Proxy.newProxyInstance(
             Player::class.java.classLoader,
