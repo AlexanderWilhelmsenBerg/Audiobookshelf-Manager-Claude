@@ -541,10 +541,7 @@ class PlaybackController @Inject constructor(
      * This is called only while [connectionMutex] is held. The fallback duplicate guard protects against a
      * callback/release race and releases the unowned client rather than replacing established UI state.
      */
-    private fun adopt(
-        built: MediaController,
-        token: SessionToken?,
-    ): MediaController {
+    private fun adopt(built: MediaController, token: SessionToken?): MediaController {
         controller?.let { existing ->
             built.release()
             return existing
