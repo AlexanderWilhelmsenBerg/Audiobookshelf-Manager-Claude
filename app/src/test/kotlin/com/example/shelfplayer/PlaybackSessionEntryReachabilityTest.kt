@@ -1,7 +1,7 @@
 package com.example.shelfplayer
 
-import java.io.File
 import org.junit.Test
+import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -14,17 +14,17 @@ import kotlin.test.assertTrue
 class PlaybackSessionEntryReachabilityTest {
 
     @Test
-    fun `every Activity foreground entry asks to attach to an existing session`() {
+    fun `every started Activity observes existing and replacement sessions`() {
         val source = File("src/main/kotlin/com/example/shelfplayer/MainActivity.kt").readText()
-        val onStart = source
-            .substringAfter("override fun onStart()")
-            .substringBefore("override fun onCreate")
+        val onCreate = source
+            .substringAfter("override fun onCreate")
+            .substringBefore("setContent {")
 
-        assertTrue("super.onStart()" in onStart)
+        assertTrue("repeatOnLifecycle(Lifecycle.State.STARTED)" in onCreate)
         assertEquals(
             1,
-            onStart.split("playbackController.attachToExistingSession()").size - 1,
-            "notification entry, warm return and Activity recreation must all cross the existing-session seam",
+            onCreate.split("playbackController.observeExistingSessions()").size - 1,
+            "notification entry, warm return, recreation and live replacement must share one lifecycle seam",
         )
     }
 
