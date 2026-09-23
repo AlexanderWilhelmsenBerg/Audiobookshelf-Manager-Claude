@@ -115,12 +115,18 @@ class ExistingSessionAttachmentTest {
         try {
             player.setMediaItem(book())
             live.publish(session.token)
-            controller = assertNotNull(connectExisting(SessionConnector(context, logger, live)))
-            assertEquals(BOOK, controller.playbackUiState().bookId)
+            val attached = assertNotNull(connectExisting(SessionConnector(context, logger, live)))
+            controller = attached
+            assertEquals(BOOK, attached.playbackUiState().bookId)
 
             player.clearMediaItems()
+            awaitMainLooper(
+                message = "the attached controller must observe the cleared session timeline",
+            ) {
+                attached.currentMediaItem == null
+            }
 
-            assertNull(controller.playbackUiState().bookId)
+            assertNull(attached.playbackUiState().bookId)
         } finally {
             controller?.release()
             session.release()
@@ -192,6 +198,16 @@ class ExistingSessionAttachmentTest {
      * call off the test thread while this thread pumps the main looper. The bounded wait turns a broken
      * connection into a normal test failure instead of wedging the entire Gradle test worker.
      */
+    private fun awaitMainLooper(message: String, condition: () -> Boolean) {
+        val mainLooper = shadowOf(Looper.getMainLooper())
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (!condition() && System.nanoTime() < deadline) {
+            mainLooper.idle()
+            Thread.yield()
+        }
+        if (!condition()) throw AssertionError(message)
+    }
+
     private fun <T> runMedia3Connection(block: suspend () -> T): T {
         val task = FutureTask<T> {
             runBlocking { block() }
