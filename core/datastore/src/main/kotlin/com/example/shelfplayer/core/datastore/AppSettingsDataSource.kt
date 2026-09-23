@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
+import com.example.shelfplayer.core.model.playback.ShakeSensitivity
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
@@ -354,6 +355,16 @@ class AppSettingsDataSource @Inject constructor(
                 else -> SleepTimerSettings.Default.fadeLength
             },
             shakeToRestart = stored.sleepTimerShakeToRestart,
+            shakeGracePeriod = stored.sleepTimerShakeGraceSecondsPlusOne
+                .takeIf { it > 0 }
+                ?.minus(1)
+                ?.seconds
+                ?.coerceIn(SleepTimerSettings.ShakeGraceRange)
+                ?: SleepTimerSettings.Default.shakeGracePeriod,
+            shakeSensitivity = stored.sleepTimerShakeSensitivity
+                .takeIf(String::isNotBlank)
+                ?.let { name -> ShakeSensitivity.entries.firstOrNull { it.name == name } }
+                ?: SleepTimerSettings.Default.shakeSensitivity,
             // Zero is off *and* never-chosen, which are the same thing here and always will be — the app
             // does not acquire a default that moves a position nobody asked it to move.
             rewindOnStop = stored.sleepTimerRewindSeconds.takeIf { it > 0 }?.seconds
@@ -400,6 +411,19 @@ class AppSettingsDataSource @Inject constructor(
 
     suspend fun setSleepTimerShakeToRestart(enabled: Boolean) {
         dataStore.updateData { current -> current.toBuilder().setSleepTimerShakeToRestart(enabled).build() }
+    }
+
+    suspend fun setSleepTimerShakeGracePeriod(length: Duration) {
+        val seconds = length.coerceIn(SleepTimerSettings.ShakeGraceRange).inWholeSeconds.toInt()
+        dataStore.updateData { current ->
+            current.toBuilder().setSleepTimerShakeGraceSecondsPlusOne(seconds + 1).build()
+        }
+    }
+
+    suspend fun setSleepTimerShakeSensitivity(sensitivity: ShakeSensitivity) {
+        dataStore.updateData { current ->
+            current.toBuilder().setSleepTimerShakeSensitivity(sensitivity.name).build()
+        }
     }
 
     /** BW-SLEEP-01 — enable/disable automatic eligibility without changing the configured window. */
