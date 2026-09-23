@@ -272,47 +272,47 @@ class SleepTimerControllerTest {
 
     @Test
     fun `service recreation invalidates a claimed grace restart and cannot transfer it to the new player`() = runTest {
-            val source = MutableStateFlow(
-                SleepTimerSettings.Default.copy(
-                    shakeToRestart = true,
-                    shakeGracePeriod = 10.seconds,
-                    fadeLength = Duration.ZERO,
-                ),
-            )
-            val repository = FakeSleepTimerRepository(source)
-            val shakes = FakeShakeSource()
-            val clock = TestAppClock()
-            val blockedResume = BlockingResumeOwner()
-            var oldRawPlay = 0
-            var replacementRawPlay = 0
-            var replacementResumes = 0
-            val controller = controller(repository, shakes, clock)
-            controller.attach(player(onPlay = { oldRawPlay += 1 }), blockedResume)
-            runCurrent()
-            assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
-            clock.advanceBy(1.seconds)
-            advanceTimeBy(1_001)
-            runCurrent()
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        val blockedResume = BlockingResumeOwner()
+        var oldRawPlay = 0
+        var replacementRawPlay = 0
+        var replacementResumes = 0
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(onPlay = { oldRawPlay += 1 }), blockedResume)
+        runCurrent()
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
 
-            shakes.fire()
-            blockedResume.gate.awaitEntered()
-            assertEquals(1, blockedResume.calls)
+        shakes.fire()
+        blockedResume.gate.awaitEntered()
+        assertEquals(1, blockedResume.calls)
 
-            controller.attach(null)
-            controller.attach(
-                player(onPlay = { replacementRawPlay += 1 }),
-                resumeOwner { replacementResumes += 1 },
-            )
-            blockedResume.gate.resume()
-            runCurrent()
+        controller.attach(null)
+        controller.attach(
+            player(onPlay = { replacementRawPlay += 1 }),
+            resumeOwner { replacementResumes += 1 },
+        )
+        blockedResume.gate.resume()
+        runCurrent()
 
-            assertEquals(SleepTimerState.Idle, controller.state.value)
-            assertEquals(0, blockedResume.resumes)
-            assertEquals(0, replacementResumes)
-            assertEquals(0, oldRawPlay)
-            assertEquals(0, replacementRawPlay)
-            assertTrue(("timer-2" to SleepTimerOutcome.PlaybackStopped) in repository.endedSessions)
-            assertFalse(shakes.isSensing)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(0, blockedResume.resumes)
+        assertEquals(0, replacementResumes)
+        assertEquals(0, oldRawPlay)
+        assertEquals(0, replacementRawPlay)
+        assertTrue(("timer-2" to SleepTimerOutcome.PlaybackStopped) in repository.endedSessions)
+        assertFalse(shakes.isSensing)
         }
 
     @Test
@@ -1149,11 +1149,11 @@ class SleepTimerControllerTest {
     }
 
     private fun resumeOwner(onResume: () -> Unit = {}): SleepTimerResumeOwner = object : SleepTimerResumeOwner {
-            override suspend fun resume(stillAuthorized: () -> Boolean): Boolean {
-                if (!stillAuthorized()) return false
-                onResume()
-                return true
-            }
+        override suspend fun resume(stillAuthorized: () -> Boolean): Boolean {
+            if (!stillAuthorized()) return false
+            onResume()
+            return true
+        }
         }
 
     private class BlockingResumeOwner : SleepTimerResumeOwner {
