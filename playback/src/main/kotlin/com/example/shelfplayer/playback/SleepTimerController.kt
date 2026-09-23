@@ -79,6 +79,13 @@ internal interface SleepTimerResumeOwner {
  * [reconcileSensing] derives registration from both the active timer and persisted opt-in. It keeps the
  * accelerometer off with no timer while handling asynchronous settings delivery and active-timer changes.
  */
+/*
+ * Detekt LargeClass is suppressed deliberately here: this type is the single lifecycle authority for sleep-timer
+ * transitions, including persistence claims, expiry, grace ownership, sensing, and schedule reconciliation.
+ * Splitting those state transitions across multiple owners would weaken the generation/token invariants this
+ * controller exists to enforce. Revisit only as an explicit architecture change with equivalent race coverage.
+ */
+@Suppress("LargeClass")
 @Singleton
 class SleepTimerController @Inject constructor(
     private val repository: SleepTimerRepository,
@@ -311,7 +318,9 @@ class SleepTimerController @Inject constructor(
                     // The transition owner will publish/reconcile after its suspension-safe commit.
                 }
 
-                else -> reconcileSchedule(explicitPlay = explicit)
+                TimerPhase.Idle,
+                is TimerPhase.Running,
+                -> reconcileSchedule(explicitPlay = explicit)
             }
         }
     }
@@ -413,7 +422,7 @@ class SleepTimerController @Inject constructor(
         startTicking()
         publish()
         scheduleScheduleBoundary()
-        return AppResult.Success(Unit)
+        AppResult.Success(Unit)
     }
 
     /**
@@ -647,7 +656,10 @@ class SleepTimerController @Inject constructor(
                 scheduleScheduleBoundary()
             }
 
-            else -> Unit
+            TimerPhase.Idle,
+            is TimerPhase.Starting,
+            is TimerPhase.Running,
+            -> Unit
         }
     }
 
@@ -985,11 +997,12 @@ class SleepTimerController @Inject constructor(
 
     private fun isStartClaimCurrent(claim: StartClaim): Boolean {
         val current = phase as? TimerPhase.Starting ?: return false
-        if (current.claim.token != claim.token) return false
-        if (player !== claim.player || playbackGeneration != claim.playbackGeneration) return false
-        if (claim.player.currentMediaItem?.let(MediaItems::bookIdOf) != claim.bookId) return false
-        val occurrence = claim.automaticOccurrence ?: return true
-        return currentOccurrenceId() == occurrence
+        val occurrenceCurrent = claim.automaticOccurrence?.let { currentOccurrenceId() == it } ?: true
+        return current.claim.token == claim.token &&
+            player === claim.player &&
+            playbackGeneration == claim.playbackGeneration &&
+            claim.player.currentMediaItem?.let(MediaItems::bookIdOf) == claim.bookId &&
+            occurrenceCurrent
     }
 
     private fun isGraceAvailable(grace: ShakeGrace): Boolean =
@@ -1000,8 +1013,8 @@ class SleepTimerController @Inject constructor(
         clock.elapsed().inWholeMilliseconds < grace.expiresElapsedMs
 
     private fun isGracePlaybackOwnerCurrent(grace: ShakeGrace): Boolean = player === grace.player &&
-            playbackGeneration == grace.playbackGeneration &&
-            grace.player.currentMediaItem?.let(MediaItems::bookIdOf) == grace.bookId
+        playbackGeneration == grace.playbackGeneration &&
+        grace.player.currentMediaItem?.let(MediaItems::bookIdOf) == grace.bookId
 
     private fun isOccurrenceCurrent(grace: ShakeGrace): Boolean =
         grace.automaticOccurrence == null || currentOccurrenceId() == grace.automaticOccurrence
@@ -1050,7 +1063,9 @@ class SleepTimerController @Inject constructor(
                 publish()
             }
 
-            else -> Unit
+            TimerPhase.Idle,
+            is TimerPhase.Running,
+            -> Unit
         }
     }
 
