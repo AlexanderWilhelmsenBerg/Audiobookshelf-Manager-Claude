@@ -829,7 +829,7 @@ class PlaybackService : MediaLibraryService() {
             LogField.Public("outcome", outcome.name),
         )
         outcome
-        }
+    }
 
     /**
      * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.
