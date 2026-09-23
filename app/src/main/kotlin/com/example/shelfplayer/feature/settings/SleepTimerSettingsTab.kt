@@ -12,6 +12,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.model.playback.ShakeSensitivity
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.feature.player.label
@@ -59,6 +60,22 @@ internal fun LazyListScope.sleepTimerTab(
                 checked = settings.shakeToRestart,
                 onCheckedChange = actions.onShakeChanged,
             )
+            if (settings.shakeToRestart) {
+                InlineChoiceRow(
+                    label = stringResource(R.string.sleep_timer_shake_grace),
+                    options = SleepTimerSettings.ShakeGracePresets,
+                    selected = settings.shakeGracePeriod,
+                    labelOf = { duration -> secondsOrOffLabel(duration) },
+                    onSelected = actions.onShakeGraceChanged,
+                )
+                InlineChoiceRow(
+                    label = stringResource(R.string.sleep_timer_shake_sensitivity),
+                    options = ShakeSensitivity.entries,
+                    selected = settings.shakeSensitivity,
+                    labelOf = { sensitivity -> sensitivity.label() },
+                    onSelected = actions.onShakeSensitivityChanged,
+                )
+            }
             if (history.isNotEmpty()) {
                 ExpandableSettingsRow(
                     label = stringResource(R.string.sleep_timer_history),
@@ -92,6 +109,15 @@ private fun secondsOrOffLabel(duration: Duration): String = if (duration <= Dura
 } else {
     stringResource(R.string.sleep_timer_seconds, duration.inWholeSeconds.toInt())
 }
+
+@Composable
+private fun ShakeSensitivity.label(): String = stringResource(
+    when (this) {
+        ShakeSensitivity.Low -> R.string.sleep_timer_shake_sensitivity_low
+        ShakeSensitivity.Normal -> R.string.sleep_timer_shake_sensitivity_normal
+        ShakeSensitivity.High -> R.string.sleep_timer_shake_sensitivity_high
+    },
+)
 
 @Composable
 private fun historyCountLabel(count: Int): String = pluralStringResource(
@@ -166,5 +192,7 @@ data class SleepTimerSettingsActions(
     val onDefaultChanged: (Duration) -> Unit,
     val onFadeChanged: (Duration) -> Unit,
     val onShakeChanged: (Boolean) -> Unit,
+    val onShakeGraceChanged: (Duration) -> Unit,
+    val onShakeSensitivityChanged: (ShakeSensitivity) -> Unit,
     val onRewindOnStopChanged: (Duration) -> Unit,
 )
