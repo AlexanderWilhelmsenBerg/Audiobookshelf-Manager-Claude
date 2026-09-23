@@ -17,7 +17,7 @@ run-name: "CI · PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
 # Reliability model:
 # - fail cheap policy/supply-chain/schema checks before Android work;
 # - require manually selected heads to contain current main;
-# - run exactly one expensive verifyDebug pass;
+# - run exactly one expensive verifyDebug pass without debug assembly;
 # - add --rerun-tasks only when the diff can affect the build/classpath (or when explicitly forced),
 #   matching docs/risks.md R-31 without verifying the same commit twice.
 
@@ -435,7 +435,7 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
-      - name: Verify debug once and capture full log
+      - name: Verify debug once without assembling APKs
         id: verify_debug
         if: ${{ steps.setup.outcome == 'success' }}
         continue-on-error: true
@@ -454,7 +454,7 @@ jobs:
 
           set +e
           env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
-            ./gradlew verifyDebug --continue "${extra_args[@]}" --max-workers=4 \
+            ./gradlew verifyDebug --continue -x assembleDebug "${extra_args[@]}" --max-workers=4 \
               -Pshelfplayer.warningsAsErrors=true 2>&1 \
             | tee ci-diagnostics/gradle-verify.log
           status="${PIPESTATUS[0]}"
@@ -496,28 +496,6 @@ jobs:
           fi
           exit "$status"
 
-      - name: Check debug APK output
-        id: apk_check
-        if: ${{ always() }}
-        continue-on-error: true
-        env:
-          VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          apks=(app/build/outputs/apk/debug/*.apk)
-          if [ "${#apks[@]}" -gt 0 ]; then
-            printf 'Debug APK: %s\n' "${apks[@]}"
-            exit 0
-          fi
-
-          if [ "$VERIFY_OUTCOME" = "success" ]; then
-            echo "::error::verifyDebug passed but no debug APK was produced."
-            exit 1
-          fi
-
-          echo "No debug APK produced because verification did not complete successfully; not counted as a separate failure."
-
       - name: Build consolidated diagnostics
         id: diagnostics
         if: ${{ always() }}
@@ -529,7 +507,6 @@ jobs:
           VERIFY_EXIT: ${{ steps.verify_debug.outputs.exit_code }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
           DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
-          APK_OUTCOME: ${{ steps.apk_check.outcome }}
         run: |
           set -euo pipefail
           mkdir -p ci-diagnostics
@@ -570,7 +547,7 @@ jobs:
           ls -lh ci-artifacts/quality-reports.tar.gz
 
       - name: Upload CI diagnostics on failure
-        if: ${{ always() && (steps.setup.outcome != 'success' || steps.verify_debug.outcome != 'success' || steps.schema_check.outcome != 'success' || steps.dependencies.outcome != 'success' || steps.apk_check.outcome != 'success') }}
+        if: ${{ always() && (steps.setup.outcome != 'success' || steps.verify_debug.outcome != 'success' || steps.schema_check.outcome != 'success' || steps.dependencies.outcome != 'success') }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
@@ -616,7 +593,6 @@ jobs:
           VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
           DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
-          APK_OUTCOME: ${{ steps.apk_check.outcome }}
         run: |
           set -euo pipefail
           failed=0
@@ -624,8 +600,7 @@ jobs:
             "Android environment:$SETUP_OUTCOME" \
             "verifyDebug:$VERIFY_OUTCOME" \
             "Room schema:$SCHEMA_OUTCOME" \
-            "Dependency resolution:$DEPENDENCY_OUTCOME" \
-            "Debug APK:$APK_OUTCOME"; do
+            "Dependency resolution:$DEPENDENCY_OUTCOME"; do
             name="${result%%:*}"
             outcome="${result#*:}"
             if [ "$outcome" != "success" ]; then

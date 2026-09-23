@@ -32,6 +32,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.feature.browse.LocalAuthorUrls
@@ -58,6 +60,7 @@ import com.example.shelfplayer.feature.player.SpeedSheet
 import com.example.shelfplayer.feature.settings.resolvedColor
 import com.example.shelfplayer.navigation.ShelfDestinations
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
+import com.example.shelfplayer.playback.PlaybackController
 import com.example.shelfplayer.ui.glass.BackdropArtwork
 import com.example.shelfplayer.ui.glass.BackdropScroll
 import com.example.shelfplayer.ui.glass.GlassPreferences
@@ -71,6 +74,8 @@ import com.example.shelfplayer.ui.glass.toColorScheme
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * PRODUCT_SPEC 4 — adaptive, never orientation-locked.
@@ -81,6 +86,10 @@ import dev.chrisbanes.haze.hazeSource
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var playbackController: PlaybackController
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         /*
@@ -96,6 +105,18 @@ class MainActivity : ComponentActivity() {
             setRecentsScreenshotEnabled(false)
         }
         super.onCreate(savedInstanceState)
+        /*
+         * Issue #75 — observe direct live-session availability only while this UI is STARTED.
+         *
+         * StateFlow replays the current direct token on every foreground entry and reports replacement while
+         * the Activity remains visible. A null token is a no-op, so an ordinary idle launcher start still
+         * cannot instantiate PlaybackService merely to discover whether a mini player should exist.
+         */
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                playbackController.observeExistingSessions()
+            }
+        }
         setContent {
             val viewModel: AppViewModel = hiltViewModel()
             val appState by viewModel.state.collectAsStateWithLifecycle()
