@@ -56,6 +56,11 @@ class SessionConnector @Inject constructor(
      * service for that token, which would turn an ordinary idle app launch into playback-service startup.
      * A direct session token names only the session that already exists and becomes unusable when it closes.
      */
+    internal suspend fun connectExisting(listener: MediaController.Listener): MediaController? {
+        val token = liveSession.currentToken() ?: return null
+        return connectExisting(token, listener)
+    }
+
     internal suspend fun connectExisting(
         token: SessionToken,
         listener: MediaController.Listener,
