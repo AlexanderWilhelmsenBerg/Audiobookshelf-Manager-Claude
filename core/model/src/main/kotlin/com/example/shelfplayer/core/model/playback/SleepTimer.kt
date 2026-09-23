@@ -128,22 +128,32 @@ data class SleepTimerScheduleSettings(
 }
 
 /**
- * PRODUCT_SPEC SET-002 (Playback: "sleep timer defaults; fade duration; shake-to-extend").
+ * PRODUCT_SPEC SET-002 / PLAY-008 — sleep timer defaults, fade, and shake-to-restart behavior.
  *
  * Device-wide rather than per profile, unlike the view preferences. A sleep timer is a property of how
  * someone uses their phone at night; it does not belong to whichever account is signed in, and moving
  * it per profile would silently reset it on a profile switch.
  */
+enum class ShakeSensitivity {
+    Low,
+    Normal,
+    High,
+}
+
 data class SleepTimerSettings(
     val defaultLength: Duration,
     val fadeLength: Duration,
     /**
-     * PRODUCT_SPEC PLAY-008 — "optional shake-to-extend requires explicit opt-in".
+     * PRODUCT_SPEC PLAY-008 — shake-to-restart requires explicit opt-in.
      *
-     * Off by default, and the sensor is registered only while a timer is running. Both halves are the
-     * requirement: an opt-in that then polls the accelerometer all day is not what was asked for.
+     * Off by default. When enabled, sensing is bounded to an active timer or its configured post-expiry
+     * grace window; an opt-in must never become an all-day accelerometer listener.
      */
     val shakeToRestart: Boolean,
+    /** How long a post-expiry shake may still restart the timer. Zero disables the grace window. */
+    val shakeGracePeriod: Duration,
+    /** How deliberate the movement must be before it counts as a shake. */
+    val shakeSensitivity: ShakeSensitivity,
     /**
      * PRODUCT_SPEC PLAY-008 / PLAY-009 — how far to rewind when the timer stops the book.
      *
@@ -163,6 +173,12 @@ data class SleepTimerSettings(
     companion object {
         /** PLAY-008's option list. `null` in the UI's custom slot. */
         val Presets: List<Duration> = listOf(5, 10, 15, 30, 45, 60, 90).map { it.minutes }
+
+        /** Owner-approved post-expiry window. Off, five seconds, or the ten-second maximum. */
+        val ShakeGracePresets: List<Duration> = listOf(Duration.ZERO, 5.seconds, 10.seconds)
+
+        /** A grace period longer than ten seconds would keep motion sensing alive beyond the requested bound. */
+        val ShakeGraceRange: ClosedRange<Duration> = Duration.ZERO..10.seconds
 
         /**
          * PLAY-008: "**optional** fade-out occurs over 5–30 seconds".
@@ -192,6 +208,8 @@ data class SleepTimerSettings(
             defaultLength = 30.minutes,
             fadeLength = 10.seconds,
             shakeToRestart = false,
+            shakeGracePeriod = 10.seconds,
+            shakeSensitivity = ShakeSensitivity.Normal,
             rewindOnStop = Duration.ZERO,
             schedule = SleepTimerScheduleSettings.Default,
         )
