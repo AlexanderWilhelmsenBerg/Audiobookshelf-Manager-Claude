@@ -142,6 +142,14 @@ message AppSettings {
   string sleep_schedule_suppressed_occurrence = 52;
   string sleep_schedule_replay_required_occurrence = 53;
 
+  // BW-SLEEP-02 — post-expiry shake tuning. Plus-one preserves proto3's zero as "never chosen" while
+  // still allowing an explicit zero-second grace period (stored as 1) to mean Off.
+  int32 sleep_timer_shake_grace_seconds_plus_one = 54;
+
+  // Empty means the product default. Stored by stable name so adding another sensitivity later cannot
+  // renumber an enum value already persisted on a listener's device.
+  string sleep_timer_shake_sensitivity = 55;
+
   // PRODUCT_SPEC ROUTE-001 / ROUTE-003 — whether a car head unit connecting should start the last book.
   //
   // Off by default, and it is the only setting in this file that can cause audio to begin without anyone
