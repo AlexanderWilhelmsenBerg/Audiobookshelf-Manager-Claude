@@ -137,12 +137,21 @@ class ExistingSessionAttachmentTest {
         val live = LivePlaybackSession()
         val firstPlayer = ExoPlayer.Builder(context).build()
         val replacementPlayer = ExoPlayer.Builder(context).build()
-        val firstSession = MediaSession.Builder(context, firstPlayer).build()
-        val replacementSession = MediaSession.Builder(context, replacementPlayer).build()
+        var firstSession: MediaSession? = null
+        var replacementSession: MediaSession? = null
         try {
-            live.publish(firstSession.token)
-            val stale = firstSession.token
-            live.publish(replacementSession.token)
+            val first = MediaSession.Builder(context, firstPlayer)
+                .setId("issue-75-stale")
+                .build()
+                .also { firstSession = it }
+            val replacement = MediaSession.Builder(context, replacementPlayer)
+                .setId("issue-75-replacement")
+                .build()
+                .also { replacementSession = it }
+
+            live.publish(first.token)
+            val stale = first.token
+            live.publish(replacement.token)
 
             val connector = SessionConnector(context, logger, live)
 
@@ -150,10 +159,10 @@ class ExistingSessionAttachmentTest {
                 connector.connectExisting(stale, listener),
                 "an Activity callback for an older session must not reconnect after replacement",
             )
-            assertEquals(replacementSession.token, live.currentToken())
+            assertEquals(replacement.token, live.currentToken())
         } finally {
-            replacementSession.release()
-            firstSession.release()
+            replacementSession?.release()
+            firstSession?.release()
             replacementPlayer.release()
             firstPlayer.release()
         }
