@@ -43,8 +43,11 @@ class SessionConnector @Inject constructor(
      * failed session build arrives as; `InterruptedException` is the executor being torn down, and the
      * interrupt is reasserted rather than eaten.
      */
-    suspend fun connect(): MediaController? =
-        connect(SessionToken(context, ComponentName(context, PlaybackService::class.java)))
+    suspend fun connect(listener: MediaController.Listener): MediaController? =
+        connect(
+            token = SessionToken(context, ComponentName(context, PlaybackService::class.java)),
+            listener = listener,
+        )
 
     /**
      * Issue #75 — attaches only when [PlaybackService] has already published a live direct-session token.
@@ -53,14 +56,22 @@ class SessionConnector @Inject constructor(
      * service for that token, which would turn an ordinary idle app launch into playback-service startup.
      * A direct session token names only the session that already exists and becomes unusable when it closes.
      */
-    internal suspend fun connectExisting(): MediaController? {
-        val token = liveSession.currentToken() ?: return null
-        return connect(token)
+    internal suspend fun connectExisting(
+        token: SessionToken,
+        listener: MediaController.Listener,
+    ): MediaController? {
+        if (liveSession.currentToken() != token) return null
+        return connect(token, listener)
     }
 
-    private suspend fun connect(token: SessionToken): MediaController? =
+    private suspend fun connect(
+        token: SessionToken,
+        listener: MediaController.Listener,
+    ): MediaController? =
         suspendCancellableCoroutine { continuation ->
-            val future = MediaController.Builder(context, token).buildAsync()
+            val future = MediaController.Builder(context, token)
+                .setListener(listener)
+                .buildAsync()
             future.addListener(
                 {
                     val media = try {
@@ -78,18 +89,16 @@ class SessionConnector @Inject constructor(
                 MoreExecutors.directExecutor(),
             )
             continuation.invokeOnCancellation {
-                // The returned flag says whether the build was still in flight. Either answer is fine —
-                // the continuation is already gone and nothing is waiting for a controller — but it is
-                // worth a debug line when a connection is abandoned this way.
-                val wasPending = future.cancel(true)
+                // Media3 owns the future/controller hand-off. Releasing through its helper covers both
+                // cases: a controller that already completed and one that completes after this requester
+                // disappeared. That closes the Activity-destruction race without leaking an orphan client.
+                MediaController.releaseFuture(future)
                 logger.debug(
                     LogCategory.Playback,
-                    "Abandoned a pending session connection",
-                    LogField.Public("wasPending", wasPending),
+                    "Released a session connection after its requester was cancelled",
                 )
             }
         }
-    }
 
     private fun connectionFailed(failure: Throwable) {
         // The cause's class, not its message: a session-build failure can carry a component name and a
