@@ -436,10 +436,13 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
-      # This is intentionally not the acceptance gate. It is a focused first pass over the failure classes
-      # most commonly introduced while repairing a PR: production/test compilation, ktlint and type-resolving
-      # Detekt. The following verifyDebug still runs with --continue even when this step fails, so independent
-      # lint/test/schema failures remain visible in the same workflow run.
+      # This is intentionally not a second quality contract. Start from the canonical verifyDebug graph and
+      # remove only its expensive runtime/reporting work. That preserves the exact source sets selected by the
+      # repository quality convention (debug/main plus their unit tests) without accidentally pulling in
+      # Release, Benchmark or AndroidTest Detekt tasks through broad root task-name selectors.
+      #
+      # The following full verifyDebug still runs with --continue even when this focused pass fails, so every
+      # independent acceptance check that can execute remains visible in the same workflow run.
       - name: Fast Kotlin and static validation
         id: fast_gate
         if: ${{ steps.setup.outcome == 'success' }}
@@ -450,11 +453,12 @@ jobs:
 
           set +e
           env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
-            ./gradlew \
-              compileKotlin compileTestKotlin \
-              compileDebugKotlin compileDebugUnitTestKotlin compileReleaseKotlin \
-              ktlintCheck detektMain detektTest detektDebug detektDebugUnitTest \
-              --continue --max-workers=4 -Pshelfplayer.warningsAsErrors=true 2>&1 \
+            ./gradlew verifyDebug --continue \
+              -x lintDebug \
+              -x testDebugUnitTest \
+              -x assembleDebug \
+              -x koverVerify \
+              --max-workers=4 -Pshelfplayer.warningsAsErrors=true 2>&1 \
             | tee ci-diagnostics/gradle-fast-gate.log
           status="${PIPESTATUS[0]}"
           set -e
