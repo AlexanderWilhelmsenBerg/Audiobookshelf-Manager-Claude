@@ -9,8 +9,10 @@ from pathlib import Path
 
 ROOT = Path(".")
 DIAG = Path("ci-diagnostics")
+FAST_LOG = DIAG / "gradle-fast-gate.log"
 GRADLE_LOG = DIAG / "gradle-verify.log"
 SUMMARY = DIAG / "summary.md"
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def unique(items: list[str]) -> list[str]:
@@ -26,6 +28,8 @@ def unique(items: list[str]) -> list[str]:
 def icon(outcome: str) -> str:
     if outcome == "success":
         return "✅"
+    if outcome == "partial":
+        return "⚠️"
     if outcome in {"", "skipped", "reported"}:
         return "⚪"
     return "❌"
@@ -73,9 +77,12 @@ def collect_ktlint() -> tuple[list[str], int]:
     reports = 0
     for path in ROOT.glob("**/build/reports/ktlint/**/*.txt"):
         reports += 1
-        text = read_text(path).strip()
-        if text:
-            findings.extend(line.strip() for line in text.splitlines() if line.strip())
+        for raw_line in read_text(path).splitlines():
+            line = ANSI_ESCAPE.sub("", raw_line).strip()
+            # Plain ktlint reports append per-rule summary lines after the real
+            # path:line:column findings. Count/report only concrete locations.
+            if re.search(r"\.kt:\d+:\d+:", line):
+                findings.append(line)
     return unique(findings), reports
 
 
@@ -110,10 +117,27 @@ def collect_detekt() -> tuple[list[str], int]:
             tree = ET.parse(path)
         except (ET.ParseError, OSError):
             continue
-        for error in tree.getroot().iter("error"):
-            source = error.attrib.get("source", "detekt")
-            message = error.attrib.get("message", "")
-            findings.append((source + ": " + message).strip())
+
+        root = tree.getroot()
+        located = False
+        for file_node in root.iter("file"):
+            file_name = file_node.attrib.get("name", "unknown")
+            for error in file_node.findall("error"):
+                located = True
+                line = error.attrib.get("line", "?")
+                column = error.attrib.get("column", "?")
+                source = error.attrib.get("source", "detekt")
+                message = error.attrib.get("message", "")
+                findings.append(
+                    f"{file_name}:{line}:{column}: {source}: {message}".strip()
+                )
+
+        # Defensive fallback for a non-Checkstyle Detekt XML shape.
+        if not located:
+            for error in root.iter("error"):
+                source = error.attrib.get("source", "detekt")
+                message = error.attrib.get("message", "")
+                findings.append((source + ": " + message).strip())
     return unique(findings), reports
 
 
@@ -147,7 +171,9 @@ def write_status_description(description: str) -> None:
 
 def main() -> int:
     DIAG.mkdir(parents=True, exist_ok=True)
-    gradle_log = read_text(GRADLE_LOG)
+    gradle_log = "\n".join(
+        text for text in (read_text(FAST_LOG), read_text(GRADLE_LOG)) if text
+    )
 
     failed_tasks = unique(re.findall(r"Execution failed for task '([^']+)'", gradle_log))
     failed_task_lines = unique(
@@ -171,6 +197,8 @@ def main() -> int:
     detekt_findings, detekt_reports = collect_detekt()
 
     setup = os.environ.get("SETUP_OUTCOME", "")
+    fast = os.environ.get("FAST_OUTCOME", "")
+    fast_exit = os.environ.get("FAST_EXIT", "")
     verify = os.environ.get("VERIFY_OUTCOME", "")
     verify_exit = os.environ.get("VERIFY_EXIT", "")
     schema = os.environ.get("SCHEMA_OUTCOME", "")
@@ -178,11 +206,15 @@ def main() -> int:
     target_label = os.environ.get("TARGET_LABEL") or "branch verification"
     workflow_source = os.environ.get("WORKFLOW_SOURCE") or "unknown"
 
+    compile_failed = bool(compile_errors or "compile" in failed_task_text)
+
     test_state = state_for_reports(
         failures=bool(failed_tests or test_failures or test_errors),
         reports=test_reports,
         verify=verify,
     )
+    if compile_failed and test_state == "reported":
+        test_state = "partial"
     ktlint_state = state_for_reports(
         failures=bool(ktlint_findings),
         reports=ktlint_reports,
@@ -202,6 +234,8 @@ def main() -> int:
     failed_labels: list[str] = []
     if setup != "success":
         failed_labels.append("environment setup")
+    if fast not in {"success", ""} and not failed_task_text:
+        failed_labels.append("fast Kotlin/static gate")
     if ktlint_findings or "ktlint" in failed_task_text:
         failed_labels.append("ktlint")
     if failed_tests or test_failures or test_errors or re.search(r":test\w*", failed_task_text):
@@ -210,7 +244,7 @@ def main() -> int:
         failed_labels.append("detekt")
     if lint_errors or "lint" in failed_task_text:
         failed_labels.append("Android Lint")
-    if compile_errors or "compile" in failed_task_text:
+    if compile_failed:
         failed_labels.append("compile")
     if verify not in {"success", ""} and not failed_labels:
         failed_labels.append("verifyDebug")
@@ -220,13 +254,18 @@ def main() -> int:
         failed_labels.append("dependencies")
     failed_labels = unique(failed_labels)
 
+    test_details = f"{test_total} tests; {test_failures + test_errors} failed"
+    if compile_failed and test_reports:
+        test_details += "; partial — compile failure can block downstream test tasks"
+
     rows = [
         ("Android environment", setup, "scripts/codex/setup.sh"),
+        ("Fast Kotlin/static gate", fast, "exit " + (fast_exit or "n/a")),
         ("verifyDebug", verify, "exit " + (verify_exit or "n/a")),
         (
             "Unit tests",
             test_state,
-            f"{test_total} tests; {test_failures + test_errors} failed",
+            test_details,
         ),
         ("ktlint", ktlint_state, f"{len(ktlint_findings)} finding(s)"),
         ("detekt", detekt_state, f"{len(detekt_findings)} finding(s)"),
@@ -261,6 +300,17 @@ def main() -> int:
     append_section(lines, "detekt findings", detekt_findings, 20)
     append_section(lines, "Android Lint findings", lint_findings, 20)
     append_section(lines, "Compiler / build errors", compile_errors, 20)
+
+    if compile_failed:
+        lines.extend(
+            [
+                "",
+                "### Coverage completeness",
+                "- Compilation failed, so Gradle could not execute every downstream task that depends on compiled sources.",
+                "- Test totals above are partial evidence, not proof that the complete unit-test suite ran.",
+                "- Independent ktlint, Detekt, Android Lint, schema, and dependency results are still reported when produced.",
+            ]
+        )
 
     if failed_labels:
         lines.extend(
