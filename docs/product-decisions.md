@@ -143,3 +143,4 @@ predates this setting, High is easier to trigger, and Low requires a more delibe
 - The MediaSession metadata projection is shared with Android system media surfaces; it must not create a
   second countdown owner or modify the book title/progress identity.
 
+
