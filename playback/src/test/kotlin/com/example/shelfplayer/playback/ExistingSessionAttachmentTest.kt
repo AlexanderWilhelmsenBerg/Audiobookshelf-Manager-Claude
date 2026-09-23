@@ -38,6 +38,7 @@ class ExistingSessionAttachmentTest {
     private val logger = object : Logger {
         override fun log(event: LogEvent) = Unit
     }
+    private val listener = object : MediaController.Listener {}
 
     @Test
     fun `fresh controller recovers the loaded book without issuing Play`() = runTest {
@@ -53,7 +54,7 @@ class ExistingSessionAttachmentTest {
             assertNull(PlaybackUiState.Idle.bookId)
             assertFalse(player.playWhenReady)
 
-            controller = assertNotNull(SessionConnector(context, logger, live).connectExisting())
+            controller = assertNotNull(SessionConnector(context, logger, live).connectExisting(listener))
             val recovered = controller.playbackUiState()
 
             assertEquals(BOOK, recovered.bookId)
@@ -81,12 +82,12 @@ class ExistingSessionAttachmentTest {
             live.publish(session.token)
             val connector = SessionConnector(context, logger, live)
 
-            first = assertNotNull(connector.connectExisting())
+            first = assertNotNull(connector.connectExisting(listener))
             assertEquals(BOOK, first.playbackUiState().bookId)
             first.release()
             first = null
 
-            recreated = assertNotNull(connector.connectExisting())
+            recreated = assertNotNull(connector.connectExisting(listener))
 
             assertEquals(BOOK, recreated.playbackUiState().bookId)
             assertEquals(1, player.mediaItemCount, "reattachment must not replace the loaded queue")
@@ -108,7 +109,7 @@ class ExistingSessionAttachmentTest {
         try {
             player.setMediaItem(book())
             live.publish(session.token)
-            controller = assertNotNull(SessionConnector(context, logger, live).connectExisting())
+            controller = assertNotNull(SessionConnector(context, logger, live).connectExisting(listener))
             assertEquals(BOOK, controller.playbackUiState().bookId)
 
             player.clearMediaItems()
@@ -127,8 +128,35 @@ class ExistingSessionAttachmentTest {
         val connector = SessionConnector(context, logger, live)
 
         assertNull(live.currentToken())
-        assertNull(connector.connectExisting())
+        assertNull(connector.connectExisting(listener))
         assertNull(live.currentToken())
+    }
+
+    @Test
+    fun `a stale observed token cannot attach after the service replaces its session`() = runTest {
+        val live = LivePlaybackSession()
+        val firstPlayer = ExoPlayer.Builder(context).build()
+        val replacementPlayer = ExoPlayer.Builder(context).build()
+        val firstSession = MediaSession.Builder(context, firstPlayer).build()
+        val replacementSession = MediaSession.Builder(context, replacementPlayer).build()
+        try {
+            live.publish(firstSession.token)
+            val stale = firstSession.token
+            live.publish(replacementSession.token)
+
+            val connector = SessionConnector(context, logger, live)
+
+            assertNull(
+                connector.connectExisting(stale, listener),
+                "an Activity callback for an older session must not reconnect after replacement",
+            )
+            assertEquals(replacementSession.token, live.currentToken())
+        } finally {
+            replacementSession.release()
+            firstSession.release()
+            replacementPlayer.release()
+            firstPlayer.release()
+        }
     }
 
     private fun book() = MediaItem.Builder()
