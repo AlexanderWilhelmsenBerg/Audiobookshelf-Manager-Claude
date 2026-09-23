@@ -639,6 +639,18 @@ internal class FakeSleepTimers : SleepTimerRepository {
         return AppResult.Success(Unit)
     }
 
+    override suspend fun setShakeGracePeriod(length: kotlin.time.Duration): AppResult<Unit> {
+        settings.value = settings.value.copy(shakeGracePeriod = length)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setShakeSensitivity(
+        sensitivity: com.example.shelfplayer.core.model.playback.ShakeSensitivity,
+    ): AppResult<Unit> {
+        settings.value = settings.value.copy(shakeSensitivity = sensitivity)
+        return AppResult.Success(Unit)
+    }
+
     override suspend fun setScheduleEnabled(enabled: Boolean): AppResult<Unit> {
         settings.value = settings.value.copy(schedule = settings.value.schedule.copy(enabled = enabled))
         return AppResult.Success(Unit)
