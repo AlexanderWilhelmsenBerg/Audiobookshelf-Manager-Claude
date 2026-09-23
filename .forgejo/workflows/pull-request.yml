@@ -546,8 +546,8 @@ jobs:
             cat ci-diagnostics/summary.md >> "$summary"
           fi
 
-      - name: Package quality reports on verification failure
-        if: ${{ always() && steps.verify_debug.outcome != 'success' }}
+      - name: Package quality reports on validation failure
+        if: ${{ always() && (steps.fast_gate.outcome != 'success' || steps.verify_debug.outcome != 'success') }}
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
@@ -605,8 +605,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload packaged quality reports on verification failure
-        if: ${{ always() && steps.verify_debug.outcome != 'success' }}
+      - name: Upload packaged quality reports on validation failure
+        if: ${{ always() && (steps.fast_gate.outcome != 'success' || steps.verify_debug.outcome != 'success') }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
