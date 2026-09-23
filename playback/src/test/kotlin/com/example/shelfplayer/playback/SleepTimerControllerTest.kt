@@ -313,7 +313,7 @@ class SleepTimerControllerTest {
         assertEquals(0, replacementRawPlay)
         assertTrue(("timer-2" to SleepTimerOutcome.PlaybackStopped) in repository.endedSessions)
         assertFalse(shakes.isSensing)
-        }
+    }
 
     @Test
     fun `rapid grace shakes claim one replacement session and one resume`() = runTest {
@@ -1154,7 +1154,7 @@ class SleepTimerControllerTest {
             onResume()
             return true
         }
-        }
+    }
 
     private class BlockingResumeOwner : SleepTimerResumeOwner {
         val gate = SuspendGate()
