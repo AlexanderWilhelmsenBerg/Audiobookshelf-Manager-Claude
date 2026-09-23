@@ -199,8 +199,8 @@ class ExistingSessionAttachmentTest {
      */
     private fun awaitMainLooper(message: String, condition: () -> Boolean) {
         val mainLooper = shadowOf(Looper.getMainLooper())
-        for (attempt in 0 until MAX_MAIN_LOOPER_PUMPS) {
-            if (condition()) return
+        var pumpsRemaining = MAX_MAIN_LOOPER_PUMPS
+        while (!condition() && pumpsRemaining-- > 0) {
             mainLooper.idle()
             Thread.yield()
         }
@@ -217,8 +217,8 @@ class ExistingSessionAttachmentTest {
         }
 
         val mainLooper = shadowOf(Looper.getMainLooper())
-        for (attempt in 0 until MAX_MAIN_LOOPER_PUMPS) {
-            if (task.isDone) break
+        var pumpsRemaining = MAX_MAIN_LOOPER_PUMPS
+        while (!task.isDone && pumpsRemaining-- > 0) {
             mainLooper.idle()
             Thread.yield()
         }
