@@ -318,7 +318,7 @@ def main() -> int:
                 "",
                 "### Failure diagnostics",
                 "- ci-diagnostics: summary plus full verifyDebug/dependency logs.",
-                "- quality-reports: packaged ktlint, detekt, Android Lint and test reports when verifyDebug fails.",
+                "- quality-reports: packaged ktlint, Detekt, Android Lint and test reports when either validation pass fails.",
                 "- room-schemas: uploaded only when the Room schema check fails.",
                 "- dependency-report: uploaded only when dependency resolution fails.",
             ]
