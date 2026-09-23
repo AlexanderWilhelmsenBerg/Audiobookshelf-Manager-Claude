@@ -57,6 +57,9 @@ configured default sleep-timer length with the evidence.
 - With a timer inactive, confirm the current notification control policy is unchanged.
 - Start a manual timer and an automatically scheduled timer. Each must expose the same active-timer state in
   the expanded notification and in the compact/collapsed notification.
+- On the compact/background card, verify the remaining timer is readable as text (for example
+  `Author · Sleep 12 min`), not merely represented by a timer icon. Verify the ordinary author/byline returns
+  exactly when the timer is cancelled or expires.
 - Confirm the active timer occupies the compact forward custom-action slot while the required back-side
   skip/car control and central transport remain available; unrelated action ordering must return when idle.
 - Extend the timer and confirm the notification's remaining state updates without opening the activity.
@@ -65,6 +68,22 @@ configured default sleep-timer length with the evidence.
 - Close/destroy the activity while playback continues. The notification must keep projecting the correct
   timer state because the playback service, not Compose, owns it.
 - Keep the screen off for part of a timer and re-open the notification. State must agree with the full player.
+
+## Shake grace and sensitivity
+
+- Enable shake-to-restart, set grace to 10 seconds and sensitivity to Normal. Let a short timer expire fully;
+  playback must pause. Shake within ten seconds: playback must resume and the same timer mode must start again.
+- Repeat but wait beyond the ten-second grace before shaking. Playback must remain paused and no new timer may
+  appear.
+- Set grace to Off. Let the timer expire and shake immediately afterwards; it must stay paused.
+- While a timer is active, compare High, Normal and Low sensitivity with deliberately gentler/stronger
+  movements. High should accept the gentlest gesture, Normal should match the previous BookWave behavior, and
+  Low should require the most deliberate movement. Ordinary handling/putting-down motion must not create
+  obvious false restarts.
+- Disable shake-to-restart while a timer is active and after an expiry grace window has begun. Motion sensing
+  must stop in both cases.
+- For an automatically scheduled timer close to the schedule end, verify a grace shake after the civil window
+  has ended does not revive the automatic timer.
 
 ## Wall-clock and timezone spot checks
 
