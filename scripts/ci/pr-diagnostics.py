@@ -175,7 +175,6 @@ def main() -> int:
     verify_exit = os.environ.get("VERIFY_EXIT", "")
     schema = os.environ.get("SCHEMA_OUTCOME", "")
     dependencies = os.environ.get("DEPENDENCY_OUTCOME", "")
-    apk = os.environ.get("APK_OUTCOME", "")
     target_label = os.environ.get("TARGET_LABEL") or "branch verification"
     workflow_source = os.environ.get("WORKFLOW_SOURCE") or "unknown"
 
@@ -219,8 +218,6 @@ def main() -> int:
         failed_labels.append("Room schema")
     if dependencies not in {"success", ""}:
         failed_labels.append("dependencies")
-    if apk not in {"success", ""}:
-        failed_labels.append("debug APK")
     failed_labels = unique(failed_labels)
 
     rows = [
@@ -240,7 +237,6 @@ def main() -> int:
         ),
         ("Room schema", schema, "working tree matches committed schemas"),
         ("Dependency resolution", dependencies, "debugRuntimeClasspath"),
-        ("Debug APK", apk, "required when verifyDebug succeeds"),
     ]
 
     lines = [
