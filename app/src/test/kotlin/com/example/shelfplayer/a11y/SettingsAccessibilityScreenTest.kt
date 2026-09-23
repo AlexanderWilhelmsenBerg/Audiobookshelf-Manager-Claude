@@ -72,6 +72,8 @@ class SettingsAccessibilityScreenTest {
                     onDefaultChanged = {},
                     onFadeChanged = {},
                     onShakeChanged = {},
+                    onShakeGraceChanged = {},
+                    onShakeSensitivityChanged = {},
                     onRewindOnStopChanged = {},
                 ),
                 playbackActions = PlaybackSettingsActions(
