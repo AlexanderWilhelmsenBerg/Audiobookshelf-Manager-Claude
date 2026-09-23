@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
+import com.example.shelfplayer.core.model.playback.ShakeSensitivity
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
@@ -31,12 +32,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+
+/**
+ * The playback-service seam used by post-expiry grace.
+ *
+ * Grace is listener intent, but it is not allowed to manufacture a second raw-Play path. The service therefore
+ * routes it through the same resume-freshness coordinator used by MediaSession controllers and evaluates
+ * [stillAuthorized] again at the final raw-player command.
+ */
+internal interface SleepTimerResumeOwner {
+    suspend fun resume(stillAuthorized: () -> Boolean): Boolean
+}
 
 /**
  * PRODUCT_SPEC PLAY-008 — the sleep timer.
@@ -83,9 +97,11 @@ class SleepTimerController @Inject constructor(
     val state: StateFlow<SleepTimerState> = _state.asStateFlow()
 
     private var player: Player? = null
+    private var resumeOwner: SleepTimerResumeOwner? = null
     private var chapters: List<Chapter> = emptyList()
     private var ticker: Job? = null
     private var scheduleBoundary: Job? = null
+    private var shakeGraceJob: Job? = null
 
     /** True only while this attached player is actually producing audio. Main-dispatcher confined. */
     private var playbackActive = false
@@ -97,12 +113,39 @@ class SleepTimerController @Inject constructor(
      * false, while direct service-owned starts leave it false. It matters only after an automatic timer has
      * expired; ordinary first playback in a window remains eligible regardless of source.
      */
-    private var nextPlaybackExplicit = false
+    private var playRequestGeneration = 0L
+    private var nextPlaybackIntent: PlayIntent? = null
 
-    /** The running timer's bookkeeping, or `null`. Read and written on [mainDispatcher] only. */
-    private var running: Running? = null
+    private data class PlayIntent(val token: Long, val explicit: Boolean)
 
-    private data class Running(
+    /** Monotonic identity of the attached player/book owner. Every detach/book replacement invalidates claims. */
+    private var playbackGeneration = 0L
+
+    /** Monotonic identity of one logical timer transition. A stale coroutine can never regain this token. */
+    private var transitionGeneration = 0L
+
+    /** Serializes the two persisted fields that represent one automatic-schedule runtime decision. */
+    private val scheduleRuntimeMutex = Mutex()
+
+    /**
+     * One state owner for every timer/grace transition.
+     *
+     * In particular there is no representation in which a naturally expired timer is both [TimerPhase.Running] and
+     * independently grace-actionable. Suspending storage work may outlive a phase, but it may not publish a
+     * later phase without revalidating the phase token and playback generation.
+     */
+    private sealed interface TimerPhase {
+        data object Idle : TimerPhase
+        data class Starting(val claim: StartClaim) : TimerPhase
+        data class Running(val timer: TimerRun) : TimerPhase
+        data class Expiring(val timer: TimerRun, val token: Long) : TimerPhase
+        data class GraceAvailable(val grace: ShakeGrace) : TimerPhase
+        data class GraceClaimed(val claim: GraceClaim) : TimerPhase
+    }
+
+    private var phase: TimerPhase = TimerPhase.Idle
+
+    private data class TimerRun(
         val sessionId: String?,
         val mode: SleepTimerMode,
         /** Elapsed-realtime millis at which a fixed timer fires. Unused by end-of-chapter. */
@@ -113,6 +156,32 @@ class SleepTimerController @Inject constructor(
         val automaticOccurrence: String?,
     )
 
+    private data class StartClaim(
+        val token: Long,
+        val automaticOccurrence: String?,
+        val player: Player,
+        val playbackGeneration: Long,
+        val bookId: LibraryItemId?,
+    )
+
+    private data class ShakeGrace(
+        val token: Long,
+        val mode: SleepTimerMode,
+        val automaticOccurrence: String?,
+        val expiresElapsedMs: Long,
+        val player: Player,
+        val playbackGeneration: Long,
+        val bookId: LibraryItemId?,
+    )
+
+    private data class GraceClaim(val token: Long, val grace: ShakeGrace)
+
+    private val running: TimerRun?
+        get() = (phase as? TimerPhase.Running)?.timer
+
+    /** Sensitivity used by the currently registered listener, so a live setting change can re-register it. */
+    private var sensingSensitivity: ShakeSensitivity? = null
+
     /**
      * Hands the controller the player it is allowed to stop.
      *
@@ -120,16 +189,77 @@ class SleepTimerController @Inject constructor(
      * with no player cannot fire, so releasing the player ends any running timer as
      * [SleepTimerOutcome.PlaybackStopped] rather than leaving one counting down against nothing.
      */
-    fun attach(player: Player?) {
-        this.player = player
-        if (player == null) {
+    internal fun attach(player: Player?, resumeOwner: SleepTimerResumeOwner? = null) {
+        val changed = this.player !== player
+        val detachedRun = if (changed) running else null
+        if (changed) {
+            playbackGeneration += 1
+            if (detachedRun != null) {
+                leaveRunning(detachedRun)
+            } else {
+                invalidateTransientPhase()
+            }
             playbackActive = false
-            nextPlaybackExplicit = false
+            invalidatePlayRequestNow()
             scheduleBoundary?.cancel()
             scheduleBoundary = null
-            if (running != null) {
-                applicationScope.launch(mainDispatcher) { finish(SleepTimerOutcome.PlaybackStopped) }
+        }
+        this.player = player
+        this.resumeOwner = if (player == null) null else resumeOwner
+        if (changed && detachedRun != null) {
+            applicationScope.launch(mainDispatcher) {
+                finalizeTimer(detachedRun, SleepTimerOutcome.PlaybackStopped)
             }
+        }
+    }
+
+    /**
+     * The exact MediaSession Play/Pause intent boundary.
+     *
+     * ResumeFreshnessPlayer invokes this before it forwards Pause or begins a Play freshness request. Because
+     * the service player uses the main application looper and mainDispatcher is MainImmediate, a controller
+     * command invalidates grace before any suspending freshness work can start. A duplicate Pause therefore
+     * supersedes expiry authority even when raw ExoPlayer state does not change.
+     */
+    internal fun onControllerTransportIntent() {
+        invalidateGraceAuthority()
+        invalidatePlayRequestNow()
+    }
+
+    /**
+     * Service-owned Play intent that deliberately bypasses ResumeFreshnessPlayer.
+     *
+     * Car-continuity recovery is the only existing-book raw-Play path. It is a newer playback owner just as
+     * surely as a controller Play, so it must revoke post-expiry grace before issuing the raw command.
+     */
+    internal fun onServiceResumeIntent() {
+        invalidateGraceAuthority()
+        invalidatePlayRequestNow()
+    }
+
+    /**
+     * Mirrors explicit movement invalidations owned by ResumeFreshnessCoordinator.
+     *
+     * User seeks, notification skips, Stop and media replacement supersede post-expiry resume authority. The
+     * auto-rewind hook is deliberately excluded: it can be a consequence of the same pause and is not a new
+     * transport command from the listener.
+     */
+    internal fun onResumeInvalidation(origin: ResumeInvalidation) {
+        if (origin != ResumeInvalidation.AutoRewind) invalidatePlayRequestNow()
+        when (origin) {
+            ResumeInvalidation.Pause,
+            ResumeInvalidation.Seek,
+            ResumeInvalidation.NotificationSkip,
+            -> invalidateGraceAuthority()
+
+            ResumeInvalidation.Stop,
+            ResumeInvalidation.MediaChanged,
+            -> {
+                playbackGeneration += 1
+                invalidateTransientPhase()
+            }
+
+            ResumeInvalidation.AutoRewind -> Unit
         }
     }
 
@@ -139,8 +269,15 @@ class SleepTimerController @Inject constructor(
      * Explicit means a controller/user Play. Passive Media3 playback resumption records false at the same
      * boundary, and service-owned automatic starts do not call this method at all.
      */
-    fun onPlayRequest(explicit: Boolean) {
-        applicationScope.launch(mainDispatcher) { nextPlaybackExplicit = explicit }
+    internal suspend fun onPlayRequest(explicit: Boolean): Long = withContext(mainDispatcher) {
+        playRequestGeneration += 1
+        val token = playRequestGeneration
+        nextPlaybackIntent = PlayIntent(token = token, explicit = explicit)
+        token
+    }
+
+    internal suspend fun clearPlayRequest(token: Long) = withContext(mainDispatcher) {
+        if (nextPlaybackIntent?.token == token) nextPlaybackIntent = null
     }
 
     /**
@@ -154,38 +291,60 @@ class SleepTimerController @Inject constructor(
         applicationScope.launch(mainDispatcher) {
             playbackActive = isPlaying
             if (!isPlaying) {
-                nextPlaybackExplicit = false
-                // A schedule-created timer still has an end boundary even while playback is paused.
-                // No new timer may arm until actual playback becomes active again.
+                invalidatePlayRequestNow()
                 scheduleScheduleBoundary()
                 return@launch
             }
-            val explicit = nextPlaybackExplicit
-            nextPlaybackExplicit = false
-            reconcileSchedule(explicitPlay = explicit)
+            val explicit = nextPlaybackIntent?.explicit == true
+            nextPlaybackIntent = null
+            when (phase) {
+                is TimerPhase.GraceAvailable -> {
+                    // Some service-owned path resumed without claiming grace. It now owns playback.
+                    invalidateGraceAuthority()
+                    reconcileSchedule(explicitPlay = explicit)
+                }
+
+                is TimerPhase.GraceClaimed,
+                is TimerPhase.Starting,
+                is TimerPhase.Expiring,
+                -> {
+                    // The transition owner will publish/reconcile after its suspension-safe commit.
+                }
+
+                else -> reconcileSchedule(explicitPlay = explicit)
+            }
         }
     }
 
     /** Android wall-clock/timezone observation delegates here; no platform policy leaks into this owner. */
     fun onWallClockChanged() {
-        applicationScope.launch(mainDispatcher) { reconcileSchedule() }
+        applicationScope.launch(mainDispatcher) {
+            invalidateGraceIfOccurrenceEnded()
+            reconcileSchedule()
+        }
     }
 
     /**
-     * The chapters of the book now playing, for [SleepTimerMode.EndOfChapter].
+     * The chapters of the book now playing, for SleepTimerMode.EndOfChapter.
      *
-     * Supplied by `PlaybackController` when it starts a book rather than travelling in the playlist:
-     * a forty-track book's chapter list in every `MediaItem`'s extras would be tens of kilobytes across
+     * Supplied by PlaybackController when it starts a book rather than travelling in the playlist:
+     * a forty-track book's chapter list in every MediaItem's extras would be tens of kilobytes across
      * the binder, to answer a question only this object asks.
      *
      * Changing books cancels a running timer. A timer set on one book is not a timer on the next, and
      * silently carrying it over would stop a book the listener had just chosen to start.
      */
-    fun onBookChanged(chapters: List<Chapter>) {
-        this.chapters = chapters
-        if (running != null) {
-            applicationScope.launch(mainDispatcher) { finish(SleepTimerOutcome.PlaybackStopped) }
+    internal suspend fun onBookChanged(chapters: List<Chapter>) = withContext(mainDispatcher) {
+        playbackGeneration += 1
+        invalidatePlayRequestNow()
+        val old = running
+        if (old != null) {
+            leaveRunning(old)
+        } else {
+            invalidateTransientPhase()
         }
+        this@SleepTimerController.chapters = chapters
+        if (old != null) finalizeTimer(old, SleepTimerOutcome.PlaybackStopped)
     }
 
     /**
@@ -202,33 +361,54 @@ class SleepTimerController @Inject constructor(
     /**
      * The single creation path for both manual and scheduled timers.
      *
-     * BW-SLEEP-01 deliberately lands here instead of maintaining another countdown. [automaticOccurrence]
-     * is ownership metadata only; deadline, fade, extension, rewind, history and expiry remain exactly the
-     * ordinary PLAY-008 timer.
+     * The Starting claim is installed before history persistence. If storage suspends, a book/player/service
+     * generation change can invalidate that claim and the old coroutine can no longer install a timer later.
      */
     private suspend fun startTimer(mode: SleepTimerMode, automaticOccurrence: String?): AppResult<Unit> {
-        val current = player ?: return AppResult.Failure(
-            AppError.Playback(summary = "Nothing is playing, so there is nothing to stop."),
-        )
+        val currentPlayer = player ?: return nothingToStop()
         if (mode is SleepTimerMode.EndOfChapter && remainingToChapterEnd(skip = 0) == null) {
             return AppResult.Failure(
                 AppError.Playback(summary = "This book has no chapters to stop at."),
             )
         }
-        if (running != null) finish(SleepTimerOutcome.Cancelled)
 
-        val bookId = current.currentMediaItem?.let(MediaItems::bookIdOf)
-        running = Running(
-            sessionId = bookId?.let { recordStarted(it, mode) },
+        val replaced = running
+        if (replaced != null) {
+            leaveRunning(replaced)
+        } else {
+            invalidateTransientPhase()
+        }
+        val claim = StartClaim(
+            token = nextTransitionToken(),
+            automaticOccurrence = automaticOccurrence,
+            player = currentPlayer,
+            playbackGeneration = playbackGeneration,
+            bookId = currentPlayer.currentMediaItem?.let(MediaItems::bookIdOf),
+        )
+        phase = TimerPhase.Starting(claim)
+        reconcileSensing()
+        publish()
+
+        if (replaced != null) {
+            finalizeTimer(replaced, SleepTimerOutcome.Cancelled)
+            if (!isStartClaimCurrent(claim)) return startSuperseded()
+        }
+
+        val sessionId = claim.bookId?.let { recordStarted(it, mode) }
+        if (!isStartClaimCurrent(claim)) {
+            closeUncommittedSession(sessionId)
+            return startSuperseded()
+        }
+
+        val started = TimerRun(
+            sessionId = sessionId,
             mode = mode,
             deadlineElapsedMs = deadlineFor(mode),
             chapterSkip = 0,
             automaticOccurrence = automaticOccurrence,
         )
-        // PRODUCT_SPEC PLAY-003 — the device report asked for this: a timer being set is a decision about
-        // the book, and the history is where an evening gets reconstructed. The length travels as the
-        // detail, because "sleep timer" on its own says nothing a listener can use.
-        running?.let { started -> record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(started)) }
+        phase = TimerPhase.Running(started)
+        record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(started))
         reconcileSensing()
         startTicking()
         publish()
@@ -247,7 +427,7 @@ class SleepTimerController @Inject constructor(
     /**
      * ADR-0014 — a shake puts the timer back to its full length.
      *
-     * The difference from [extend] shows on a timer nearly done: extending a thirty-minute timer with
+     * The difference from extend shows on a timer nearly done: extending a thirty-minute timer with
      * one minute left gives thirty-one minutes; restarting gives thirty. Restarting is what somebody
      * fumbling for their phone in the dark means.
      */
@@ -255,59 +435,231 @@ class SleepTimerController @Inject constructor(
 
     fun cancel() {
         applicationScope.launch(mainDispatcher) {
-            finish(SleepTimerOutcome.Cancelled, suppressAutomaticRearm = true)
+            val current = running
+            if (current != null) {
+                finish(SleepTimerOutcome.Cancelled, suppressAutomaticRearm = true)
+            } else {
+                invalidateTransientPhase()
+            }
         }
     }
 
     private fun adjust(restart: Boolean) {
         applicationScope.launch(mainDispatcher) {
-            val current = running ?: return@launch
-            val next = when (val mode = current.mode) {
-                is SleepTimerMode.Fixed -> {
-                    val base = if (restart) Duration.ZERO else remainingOf(current)
-                    current.copy(
-                        deadlineElapsedMs =
-                        clock.elapsed().inWholeMilliseconds + (base + mode.length).inWholeMilliseconds,
-                    )
-                }
-
-                SleepTimerMode.EndOfChapter -> current.copy(chapterSkip = current.chapterSkip + 1)
-            }
-            // An end-of-chapter timer at the last chapter cannot reach further. Leaving it where it is
-            // — rather than cancelling, or silently becoming a fixed timer — is the honest answer: the
-            // book ends there, and so does the timer.
-            if (next.mode == SleepTimerMode.EndOfChapter && remainingToChapterEnd(next.chapterSkip) == null) {
-                logger.info(LogCategory.Playback, "The sleep timer is already at the last chapter")
-                return@launch
-            }
-            running = next
-            restorePlayerVolume()
-            next.sessionId?.let { id -> repository.recordRestarted(id) }
-            logger.info(
-                LogCategory.Playback,
-                if (restart) "The sleep timer was restarted" else "The sleep timer was extended",
-            )
-            // PRODUCT_SPEC PLAY-003 — the device report named this one specifically: *"the shake to extend
-            // won't give an event in history"*. Both routes land here, and both are recorded, because from
-            // the listener's side they are the same event — the timer moved and they want to know when.
-            record(PlaybackEvent.SleepTimerExtended, detail = remainingOf(next))
-            publish()
+            adjustNow(restart)
         }
     }
 
+    private suspend fun adjustNow(restart: Boolean) {
+        val current = running ?: return
+        val next = when (val mode = current.mode) {
+            is SleepTimerMode.Fixed -> {
+                val base = if (restart) Duration.ZERO else remainingOf(current)
+                current.copy(
+                    deadlineElapsedMs =
+                    clock.elapsed().inWholeMilliseconds + (base + mode.length).inWholeMilliseconds,
+                )
+            }
+
+            SleepTimerMode.EndOfChapter -> current.copy(chapterSkip = current.chapterSkip + 1)
+        }
+        if (next.mode == SleepTimerMode.EndOfChapter && remainingToChapterEnd(next.chapterSkip) == null) {
+            logger.info(LogCategory.Playback, "The sleep timer is already at the last chapter")
+            return
+        }
+        phase = TimerPhase.Running(next)
+        restorePlayerVolume()
+        next.sessionId?.let { id -> repository.recordRestarted(id) }
+        if (running != next) return
+        logger.info(
+            LogCategory.Playback,
+            if (restart) "The sleep timer was restarted" else "The sleep timer was extended",
+        )
+        record(PlaybackEvent.SleepTimerExtended, detail = remainingOf(next))
+        publish()
+    }
+
     /**
-     * PRODUCT_SPEC PLAY-008 — motion sensing exists exactly while both owners require it.
+     * PRODUCT_SPEC PLAY-008 / BW-SLEEP-02 — motion sensing exists only while the active timer or its bounded
+     * post-expiry grace period needs it.
      *
      * The timer and persisted opt-in arrive independently. Previously the setting was checked once at timer
      * start, so a late first settings emission left that timer with no listener, and mid-timer setting changes
      * were ignored. Reconciliation is idempotent and main-dispatcher confined with [running].
      */
     private fun reconcileSensing() {
-        val shouldSense = running != null && settings.shakeToRestart
+        val shouldSense = settings.shakeToRestart &&
+            (phase is TimerPhase.Running || phase is TimerPhase.GraceAvailable)
+        val desired = settings.shakeSensitivity
         when {
-            shouldSense && !shakes.isSensing -> shakes.start(::restart)
-            !shouldSense && shakes.isSensing -> shakes.stop()
+            shouldSense && (!shakes.isSensing || sensingSensitivity != desired) -> {
+                if (shakes.isSensing) shakes.stop()
+                sensingSensitivity = if (shakes.start(desired, ::onShake)) desired else null
+            }
+
+            !shouldSense && shakes.isSensing -> {
+                shakes.stop()
+                sensingSensitivity = null
+            }
+
+            !shouldSense -> sensingSensitivity = null
         }
+    }
+
+    private fun onShake() {
+        applicationScope.launch(mainDispatcher) {
+            when (val current = phase) {
+                is TimerPhase.Running -> adjustNow(restart = true)
+                is TimerPhase.GraceAvailable -> claimShakeGrace(current.grace)
+                else -> Unit
+            }
+        }
+    }
+
+    /**
+     * The first qualifying shake atomically owns the grace window before any repository/freshness suspension.
+     *
+     * Queued later sensor callbacks observe GraceClaimed and are no-ops. The deadline job remains alive while
+     * the claim is in flight, so a slow persistence/freshness decision cannot commit after grace itself expired.
+     */
+    private suspend fun claimShakeGrace(grace: ShakeGrace) {
+        if (!isGraceAvailable(grace)) return
+        if (!isGraceWindowOpen(grace) || !isGracePlaybackOwnerCurrent(grace) || !isOccurrenceCurrent(grace)) {
+            invalidateGraceAuthority()
+            return
+        }
+        val claim = GraceClaim(token = nextTransitionToken(), grace = grace)
+        phase = TimerPhase.GraceClaimed(claim)
+        reconcileSensing()
+        restartFromShakeGrace(claim)
+    }
+
+    /**
+     * Natural expiry is already a completed timer session. A grace shake therefore records a fresh session,
+     * enters the service's canonical resume-freshness path, and only then publishes a new running timer.
+     */
+    private suspend fun restartFromShakeGrace(claim: GraceClaim) {
+        val grace = claim.grace
+        if (grace.mode is SleepTimerMode.EndOfChapter && remainingToChapterEnd(skip = 0) == null) {
+            abandonGraceClaim(claim)
+            return
+        }
+        val sessionId = grace.bookId?.let { recordStarted(it, grace.mode) }
+        if (!isGraceClaimCurrent(claim)) {
+            closeUncommittedSession(sessionId)
+            return
+        }
+
+        val owner = resumeOwner
+        if (owner == null) {
+            abandonGraceClaim(claim)
+            closeUncommittedSession(sessionId)
+            return
+        }
+
+        val resumed = owner.resume { isGraceClaimCurrent(claim) }
+        if (!resumed || !isGraceClaimCurrent(claim)) {
+            abandonGraceClaim(claim)
+            closeUncommittedSession(sessionId)
+            return
+        }
+
+        val restarted = TimerRun(
+            sessionId = sessionId,
+            mode = grace.mode,
+            deadlineElapsedMs = deadlineFor(grace.mode),
+            chapterSkip = 0,
+            automaticOccurrence = grace.automaticOccurrence,
+        )
+        phase = TimerPhase.Running(restarted)
+        shakeGraceJob?.cancel()
+        shakeGraceJob = null
+        record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(restarted))
+        reconcileSensing()
+        startTicking()
+        publish()
+        scheduleScheduleBoundary()
+
+        if (grace.automaticOccurrence != null) {
+            // Expiry's replay marker write may still be in flight. The mutex preserves expiry -> explicit replay
+            // order so a slow old write cannot restore the marker after this successful replacement.
+            rememberScheduleRuntime(suppressedOccurrence = null, replayRequiredOccurrence = null)
+        }
+        logger.info(LogCategory.Playback, "A grace-period shake restarted playback and the sleep timer")
+    }
+
+    private fun armShakeGrace(expired: TimerRun, expiringToken: Long) {
+        val expiring = phase as? TimerPhase.Expiring ?: return
+        if (expiring.token != expiringToken || expiring.timer != expired) return
+
+        val graceLength = settings.shakeGracePeriod
+        val currentPlayer = player
+        if (!settings.shakeToRestart || graceLength <= Duration.ZERO || currentPlayer == null) {
+            phase = TimerPhase.Idle
+            reconcileSensing()
+            publish()
+            return
+        }
+
+        val grace = ShakeGrace(
+            token = nextTransitionToken(),
+            mode = expired.mode,
+            automaticOccurrence = expired.automaticOccurrence,
+            expiresElapsedMs = clock.elapsed().inWholeMilliseconds + graceLength.inWholeMilliseconds,
+            player = currentPlayer,
+            playbackGeneration = playbackGeneration,
+            bookId = currentPlayer.currentMediaItem?.let(MediaItems::bookIdOf),
+        )
+        phase = TimerPhase.GraceAvailable(grace)
+        reconcileSensing()
+        shakeGraceJob?.cancel()
+        shakeGraceJob = applicationScope.launch(mainDispatcher) {
+            delay(graceLength.inWholeMilliseconds)
+            expireGraceIfDue(grace)
+        }
+    }
+
+    private fun expireGraceIfDue(grace: ShakeGrace) {
+        val ownsGrace = when (val current = phase) {
+            is TimerPhase.GraceAvailable -> current.grace.token == grace.token
+            is TimerPhase.GraceClaimed -> current.claim.grace.token == grace.token
+            else -> false
+        }
+        if (!ownsGrace || clock.elapsed().inWholeMilliseconds < grace.expiresElapsedMs) return
+        phase = TimerPhase.Idle
+        shakeGraceJob = null
+        reconcileSensing()
+        publish()
+        scheduleScheduleBoundary()
+    }
+
+    private fun invalidateGraceAuthority() {
+        when (phase) {
+            is TimerPhase.Expiring,
+            is TimerPhase.GraceAvailable,
+            is TimerPhase.GraceClaimed,
+            -> {
+                phase = TimerPhase.Idle
+                shakeGraceJob?.cancel()
+                shakeGraceJob = null
+                reconcileSensing()
+                publish()
+                scheduleScheduleBoundary()
+            }
+
+            else -> Unit
+        }
+    }
+
+    private fun abandonGraceClaim(claim: GraceClaim) {
+        val current = phase as? TimerPhase.GraceClaimed ?: return
+        if (current.claim.token != claim.token) return
+        phase = TimerPhase.Idle
+        shakeGraceJob?.cancel()
+        shakeGraceJob = null
+        reconcileSensing()
+        publish()
+        scheduleScheduleBoundary()
     }
 
     private fun startTicking() {
@@ -351,15 +703,35 @@ class SleepTimerController @Inject constructor(
      * 3's outbox, and until it exists this is honestly a local record only.
      */
     private suspend fun expire() {
+        val expired = running ?: return
+        val expiringToken = nextTransitionToken()
+
+        // Retire the active session before grace exists. No suspension occurs between these writes, so a
+        // shake can observe Running or GraceAvailable, never both.
+        phase = TimerPhase.Expiring(expired, expiringToken)
+        val expiredTicker = ticker
+        _state.value = SleepTimerState.Idle
+        reconcileSensing()
+
         logger.info(
             LogCategory.Playback,
             "The sleep timer expired and paused playback",
-            LogField.Public("mode", running?.mode?.let { it::class.simpleName }.orEmpty()),
+            LogField.Public("mode", expired.mode::class.simpleName.orEmpty()),
         )
         player?.pause()
         record(PlaybackEvent.SleepTimerExpired)
         rewindAfterStop()
-        finish(SleepTimerOutcome.Expired)
+        restorePlayerVolume()
+        armShakeGrace(expired, expiringToken)
+
+        // The countdown coroutine itself is not the durable-finish owner. Finish in a sibling application
+        // coroutine so retiring this ticker cannot cancel DataStore/Room work, and so the old ticker cannot
+        // later wake up and tick a replacement timer that a grace shake created.
+        applicationScope.launch(mainDispatcher) {
+            finalizeTimer(expired, SleepTimerOutcome.Expired)
+        }
+        expiredTicker?.cancel()
+        if (ticker === expiredTicker) ticker = null
     }
 
     /**
@@ -416,6 +788,32 @@ class SleepTimerController @Inject constructor(
 
     private suspend fun finish(outcome: SleepTimerOutcome, suppressAutomaticRearm: Boolean = false) {
         val current = running ?: return
+        leaveRunning(current)
+        finalizeTimer(current, outcome, suppressAutomaticRearm)
+    }
+
+    /**
+     * Removes a running timer from externally actionable state without suspending.
+     *
+     * Repository writes happen only in finalizeTimer after this transition, so Main-thread re-entry can never
+     * observe a timer that is logically finished but still restartable merely because DataStore/Room is slow.
+     */
+    private fun leaveRunning(current: TimerRun) {
+        val active = phase as? TimerPhase.Running ?: return
+        if (active.timer != current) return
+        phase = TimerPhase.Idle
+        ticker?.cancel()
+        ticker = null
+        restorePlayerVolume()
+        _state.value = SleepTimerState.Idle
+        reconcileSensing()
+    }
+
+    private suspend fun finalizeTimer(
+        current: TimerRun,
+        outcome: SleepTimerOutcome,
+        suppressAutomaticRearm: Boolean = false,
+    ) {
         if (current.automaticOccurrence != null) {
             when {
                 outcome == SleepTimerOutcome.Cancelled && suppressAutomaticRearm ->
@@ -431,16 +829,7 @@ class SleepTimerController @Inject constructor(
                     )
             }
         }
-        running = null
-        ticker?.cancel()
-        ticker = null
-        reconcileSensing()
-        restorePlayerVolume()
-        _state.value = SleepTimerState.Idle
         current.sessionId?.let { id -> repository.recordEnded(id, outcome) }
-        // PRODUCT_SPEC PLAY-004 — "sleep-timer stop" is one of the moments a position must reach the server.
-        // It is the moment that matters most of the list: a listener who fell asleep is not coming back to
-        // press anything, and the next thing this device does may be nothing at all for eight hours.
         sessionSync.request(SyncTrigger.SleepTimerStopped)
         sessionSync.drain()
         scheduleScheduleBoundary()
@@ -451,7 +840,7 @@ class SleepTimerController @Inject constructor(
      *
      * The schedule end is a cancellation boundary for an automatically-created timer, not a shortened
      * sleep deadline: reaching it clears the automatic timer and leaves playback running. A manual timer
-     * has no [Running.automaticOccurrence], so the schedule can never cancel one the listener created.
+     * has no [TimerRun.automaticOccurrence], so the schedule can never cancel one the listener created.
      */
     private suspend fun reconcileSchedule(explicitPlay: Boolean = false) {
         scheduleBoundary?.cancel()
@@ -481,7 +870,7 @@ class SleepTimerController @Inject constructor(
             return
         }
 
-        if (running == null && occurrence != null && shouldArmAutomaticTimer(occurrence, explicitPlay)) {
+        if (phase is TimerPhase.Idle && occurrence != null && shouldArmAutomaticTimer(occurrence, explicitPlay)) {
             armAutomaticTimer(occurrence)
             return
         }
@@ -513,10 +902,19 @@ class SleepTimerController @Inject constructor(
     }
 
     private suspend fun armAutomaticTimer(occurrence: SleepSchedulePolicy.Occurrence) {
+        val ownerPlayer = player ?: return
+        val ownerGeneration = playbackGeneration
         val schedule = settings.schedule
         if (schedule.suppressedOccurrence != null || schedule.replayRequiredOccurrence != null) {
             rememberScheduleRuntime(suppressedOccurrence = null, replayRequiredOccurrence = null)
         }
+        if (player !== ownerPlayer || playbackGeneration != ownerGeneration) return
+        val currentOccurrence = SleepSchedulePolicy.currentOccurrence(
+            now = clock.now(),
+            zone = zoneProvider.current(),
+            settings = settings.schedule,
+        )
+        if (currentOccurrence?.id != occurrence.id) return
         startTimer(
             mode = SleepTimerMode.Fixed(settings.defaultLength),
             automaticOccurrence = occurrence.id,
@@ -564,14 +962,109 @@ class SleepTimerController @Inject constructor(
      * slow disk write and rearm. The repository write makes the same fact survive service/process recreation.
      */
     private suspend fun rememberScheduleRuntime(suppressedOccurrence: String?, replayRequiredOccurrence: String?) {
-        settings = settings.copy(
-            schedule = settings.schedule.copy(
-                suppressedOccurrence = suppressedOccurrence,
-                replayRequiredOccurrence = replayRequiredOccurrence,
-            ),
-        )
-        repository.setScheduleRuntimeState(suppressedOccurrence, replayRequiredOccurrence)
+        scheduleRuntimeMutex.withLock {
+            settings = settings.copy(
+                schedule = settings.schedule.copy(
+                    suppressedOccurrence = suppressedOccurrence,
+                    replayRequiredOccurrence = replayRequiredOccurrence,
+                ),
+            )
+            repository.setScheduleRuntimeState(suppressedOccurrence, replayRequiredOccurrence)
+        }
     }
+
+    private fun invalidatePlayRequestNow() {
+        playRequestGeneration += 1
+        nextPlaybackIntent = null
+    }
+
+    private fun nextTransitionToken(): Long {
+        transitionGeneration += 1
+        return transitionGeneration
+    }
+
+    private fun isStartClaimCurrent(claim: StartClaim): Boolean {
+        val current = phase as? TimerPhase.Starting ?: return false
+        if (current.claim.token != claim.token) return false
+        if (player !== claim.player || playbackGeneration != claim.playbackGeneration) return false
+        if (claim.player.currentMediaItem?.let(MediaItems::bookIdOf) != claim.bookId) return false
+        val occurrence = claim.automaticOccurrence ?: return true
+        return currentOccurrenceId() == occurrence
+    }
+
+    private fun isGraceAvailable(grace: ShakeGrace): Boolean =
+        (phase as? TimerPhase.GraceAvailable)?.grace?.token == grace.token
+
+    /** BW-SLEEP-02 uses a half-open grace interval: valid exactly while elapsed < deadline. */
+    private fun isGraceWindowOpen(grace: ShakeGrace): Boolean =
+        clock.elapsed().inWholeMilliseconds < grace.expiresElapsedMs
+
+    private fun isGracePlaybackOwnerCurrent(grace: ShakeGrace): Boolean = player === grace.player &&
+            playbackGeneration == grace.playbackGeneration &&
+            grace.player.currentMediaItem?.let(MediaItems::bookIdOf) == grace.bookId
+
+    private fun isOccurrenceCurrent(grace: ShakeGrace): Boolean =
+        grace.automaticOccurrence == null || currentOccurrenceId() == grace.automaticOccurrence
+
+    private fun isGraceClaimCurrent(claim: GraceClaim): Boolean {
+        val current = phase as? TimerPhase.GraceClaimed ?: return false
+        if (current.claim.token != claim.token) return false
+        val grace = claim.grace
+        return isGraceWindowOpen(grace) &&
+            isGracePlaybackOwnerCurrent(grace) &&
+            isOccurrenceCurrent(grace)
+    }
+
+    private fun currentOccurrenceId(): String? = SleepSchedulePolicy.currentOccurrence(
+        now = clock.now(),
+        zone = zoneProvider.current(),
+        settings = settings.schedule,
+    )?.id
+
+    private fun invalidateGraceIfOccurrenceEnded() {
+        val grace = when (val current = phase) {
+            is TimerPhase.GraceAvailable -> current.grace
+            is TimerPhase.GraceClaimed -> current.claim.grace
+            else -> return
+        }
+        if (!isOccurrenceCurrent(grace)) invalidateGraceAuthority()
+    }
+
+    /**
+     * Invalidates work that has not committed a running timer.
+     *
+     * A coroutine may still return from DataStore/Room afterwards, but its token is gone and the revalidation
+     * helpers above force it to close any provisional history row instead of publishing stale playback state.
+     */
+    private fun invalidateTransientPhase() {
+        when (phase) {
+            is TimerPhase.Starting,
+            is TimerPhase.Expiring,
+            is TimerPhase.GraceAvailable,
+            is TimerPhase.GraceClaimed,
+            -> {
+                phase = TimerPhase.Idle
+                shakeGraceJob?.cancel()
+                shakeGraceJob = null
+                reconcileSensing()
+                publish()
+            }
+
+            else -> Unit
+        }
+    }
+
+    private suspend fun closeUncommittedSession(sessionId: String?) {
+        sessionId?.let { id -> repository.recordEnded(id, SleepTimerOutcome.PlaybackStopped) }
+    }
+
+    private fun nothingToStop(): AppResult<Unit> = AppResult.Failure(
+        AppError.Playback(summary = "Nothing is playing, so there is nothing to stop."),
+    )
+
+    private fun startSuperseded(): AppResult<Unit> = AppResult.Failure(
+        AppError.Playback(summary = "Playback changed before the sleep timer could start."),
+    )
 
     /**
      * Volume back to full, always, on every path out of a timer.
@@ -583,7 +1076,7 @@ class SleepTimerController @Inject constructor(
         player?.volume = FULL_VOLUME
     }
 
-    private fun remainingOf(current: Running): Duration = when (current.mode) {
+    private fun remainingOf(current: TimerRun): Duration = when (current.mode) {
         is SleepTimerMode.Fixed -> SleepTimerMath.remainingUntil(
             deadline = current.deadlineElapsedMs.milliseconds,
             elapsed = clock.elapsed(),
@@ -626,6 +1119,8 @@ class SleepTimerController @Inject constructor(
         applicationScope.launch(mainDispatcher) {
             repository.observeSettings().collect { latest ->
                 settings = latest
+                if (!latest.shakeToRestart) invalidateGraceAuthority()
+                invalidateGraceIfOccurrenceEnded()
                 reconcileSensing()
                 reconcileSchedule()
             }
