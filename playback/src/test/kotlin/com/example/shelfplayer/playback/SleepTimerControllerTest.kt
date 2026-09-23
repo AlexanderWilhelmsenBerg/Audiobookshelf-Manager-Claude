@@ -7,10 +7,13 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
+import com.example.shelfplayer.core.model.playback.ShakeSensitivity
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings
@@ -24,12 +27,14 @@ import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -44,7 +49,9 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SleepTimerControllerTest {
@@ -78,6 +85,683 @@ class SleepTimerControllerTest {
         assertEquals(30.minutes, controller.state.value.remaining)
         assertEquals(1, repository.started)
         assertEquals(1, repository.restarted)
+    }
+
+    @Test
+    fun `shake inside post-expiry grace restarts through the canonical resume owner`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        var rawPlayCalls = 0
+        var canonicalResumeCalls = 0
+        val controller = controller(repository, shakes, clock)
+        controller.attach(
+            player(onPlay = { rawPlayCalls += 1 }),
+            resumeOwner { canonicalResumeCalls += 1 },
+        )
+        runCurrent()
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertTrue(shakes.isSensing, "the sensor remains only for the configured grace window")
+
+        shakes.fire()
+        runCurrent()
+
+        assertTrue(controller.state.value.isActive)
+        assertEquals(SleepTimerMode.Fixed(1.seconds), controller.state.value.mode)
+        assertEquals(2, repository.started, "expiry closes one session and a grace shake starts another")
+        assertEquals(1, canonicalResumeCalls)
+        assertEquals(0, rawPlayCalls, "the timer must not bypass the service's resume-freshness owner")
+    }
+
+    @Test
+    fun `shake grace expires and stops sensing without restarting anything`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player())
+        runCurrent()
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertTrue(shakes.isSensing)
+
+        clock.advanceBy(10.seconds)
+        advanceTimeBy(10_001)
+        runCurrent()
+
+        assertFalse(shakes.isSensing)
+        assertEquals(1, repository.started)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+    }
+
+    @Test
+    fun `grace off stops sensing immediately when timer expires`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = Duration.ZERO,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        val controller = controller(FakeSleepTimerRepository(source), shakes, clock)
+        controller.attach(player())
+        runCurrent()
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertFalse(shakes.isSensing)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+    }
+
+    @Test
+    fun `automatic expiry persistence cannot expose the expired session as restartable`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                defaultLength = 1.seconds,
+                fadeLength = Duration.ZERO,
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                schedule = SleepTimerScheduleSettings.Default.copy(enabled = true),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
+        var resumes = 0
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(), resumeOwner { resumes += 1 })
+        runCurrent()
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertEquals(1, repository.started)
+
+        val persistence = repository.blockNextScheduleRuntimeWrite()
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+        persistence.awaitEntered()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertTrue(shakes.isSensing)
+        shakes.fire()
+        runCurrent()
+
+        assertEquals(2, repository.started)
+        assertEquals(0, repository.restarted)
+        assertTrue("timer-1" !in repository.restartedSessions)
+        assertEquals(1, resumes)
+        assertTrue(controller.state.value.isActive)
+
+        persistence.resume()
+        runCurrent()
+
+        assertTrue(("timer-1" to SleepTimerOutcome.Expired) in repository.endedSessions)
+        assertEquals(null, repository.replayRequiredOccurrence)
+        assertEquals(2, repository.startedSessions.distinct().size)
+    }
+
+    @Test
+    fun `book change invalidates a grace restart suspended in session creation`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        var resumes = 0
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(), resumeOwner { resumes += 1 })
+        runCurrent()
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        val creation = repository.blockNextRecordStarted()
+        shakes.fire()
+        creation.awaitEntered()
+        controller.onBookChanged(emptyList())
+        creation.resume()
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertFalse(shakes.isSensing)
+        assertEquals(0, resumes)
+        assertEquals(2, repository.started)
+        assertTrue(("timer-2" to SleepTimerOutcome.PlaybackStopped) in repository.endedSessions)
+        assertEquals(0, repository.restarted)
+    }
+
+    @Test
+    fun `service recreation invalidates a claimed grace restart and cannot transfer it to the new player`() =
+        runTest {
+            val source = MutableStateFlow(
+                SleepTimerSettings.Default.copy(
+                    shakeToRestart = true,
+                    shakeGracePeriod = 10.seconds,
+                    fadeLength = Duration.ZERO,
+                ),
+            )
+            val repository = FakeSleepTimerRepository(source)
+            val shakes = FakeShakeSource()
+            val clock = TestAppClock()
+            val blockedResume = BlockingResumeOwner()
+            var oldRawPlay = 0
+            var replacementRawPlay = 0
+            var replacementResumes = 0
+            val controller = controller(repository, shakes, clock)
+            controller.attach(player(onPlay = { oldRawPlay += 1 }), blockedResume)
+            runCurrent()
+            assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+            clock.advanceBy(1.seconds)
+            advanceTimeBy(1_001)
+            runCurrent()
+
+            shakes.fire()
+            blockedResume.gate.awaitEntered()
+            assertEquals(1, blockedResume.calls)
+
+            controller.attach(null)
+            controller.attach(
+                player(onPlay = { replacementRawPlay += 1 }),
+                resumeOwner { replacementResumes += 1 },
+            )
+            blockedResume.gate.resume()
+            runCurrent()
+
+            assertEquals(SleepTimerState.Idle, controller.state.value)
+            assertEquals(0, blockedResume.resumes)
+            assertEquals(0, replacementResumes)
+            assertEquals(0, oldRawPlay)
+            assertEquals(0, replacementRawPlay)
+            assertTrue(("timer-2" to SleepTimerOutcome.PlaybackStopped) in repository.endedSessions)
+            assertFalse(shakes.isSensing)
+        }
+
+    @Test
+    fun `rapid grace shakes claim one replacement session and one resume`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        var resumes = 0
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(), resumeOwner { resumes += 1 })
+        runCurrent()
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        val creation = repository.blockNextRecordStarted()
+        shakes.fire()
+        creation.awaitEntered()
+        shakes.fireQueued()
+        shakes.fireQueued()
+        runCurrent()
+        creation.resume()
+        runCurrent()
+
+        assertEquals(2, repository.started)
+        assertEquals(1, resumes)
+        assertEquals(0, repository.restarted)
+        assertTrue(controller.state.value.isActive)
+        assertEquals(3, shakes.startCalls, "active timer, grace, then replacement timer are the only registrations")
+        assertEquals(2, shakes.stopCalls, "expiry and the exclusive grace claim are the only stops")
+    }
+
+    @Test
+    fun `duplicate Pause intent after expiry revokes grace even while raw player is already paused`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        var resumes = 0
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(), resumeOwner { resumes += 1 })
+        runCurrent()
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertTrue(shakes.isSensing)
+
+        controller.onControllerTransportIntent()
+        runCurrent()
+        shakes.fireQueued()
+        runCurrent()
+
+        assertFalse(shakes.isSensing)
+        assertEquals(1, repository.started)
+        assertEquals(0, resumes)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+    }
+
+    @Test
+    fun `controller Play intent supersedes grace before a queued shake can create a resume owner`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        var graceResumes = 0
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(), resumeOwner { graceResumes += 1 })
+        runCurrent()
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        controller.onControllerTransportIntent()
+        runCurrent()
+        shakes.fireQueued()
+        runCurrent()
+
+        assertEquals(1, repository.started)
+        assertEquals(0, graceResumes)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+    }
+
+    @Test
+    fun `service owned raw resume intent revokes grace before Play`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        var graceResumes = 0
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(), resumeOwner { graceResumes += 1 })
+        runCurrent()
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertTrue(shakes.isSensing)
+
+        controller.onServiceResumeIntent()
+        shakes.fireQueued()
+        runCurrent()
+
+        assertFalse(shakes.isSensing)
+        assertEquals(1, repository.started)
+        assertEquals(0, graceResumes)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+    }
+
+    @Test
+    fun `Stop media replacement and listener seeks revoke grace authority`() = runTest {
+        suspend fun attempt(origin: ResumeInvalidation): Pair<Int, Int> {
+            val source = MutableStateFlow(
+                SleepTimerSettings.Default.copy(
+                    shakeToRestart = true,
+                    shakeGracePeriod = 10.seconds,
+                    fadeLength = Duration.ZERO,
+                ),
+            )
+            val repository = FakeSleepTimerRepository(source)
+            val shakes = FakeShakeSource()
+            val clock = TestAppClock()
+            var resumes = 0
+            val controller = controller(repository, shakes, clock)
+            controller.attach(player(), resumeOwner { resumes += 1 })
+            runCurrent()
+            assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+            clock.advanceBy(1.seconds)
+            advanceTimeBy(1_001)
+            runCurrent()
+            assertTrue(shakes.isSensing)
+
+            controller.onResumeInvalidation(origin)
+            runCurrent()
+            shakes.fireQueued()
+            runCurrent()
+            return repository.started to resumes
+        }
+
+        assertEquals(1 to 0, attempt(ResumeInvalidation.Stop))
+        assertEquals(1 to 0, attempt(ResumeInvalidation.MediaChanged))
+        assertEquals(1 to 0, attempt(ResumeInvalidation.Seek))
+        assertEquals(1 to 0, attempt(ResumeInvalidation.NotificationSkip))
+    }
+
+    @Test
+    fun `new controller Play invalidates a grace claim already suspended in freshness`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        val blockedGraceResume = BlockingResumeOwner()
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(), blockedGraceResume)
+        runCurrent()
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        shakes.fire()
+        blockedGraceResume.gate.awaitEntered()
+        assertEquals(1, blockedGraceResume.calls)
+
+        controller.onControllerTransportIntent()
+        blockedGraceResume.gate.resume()
+        runCurrent()
+
+        assertEquals(0, blockedGraceResume.resumes)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertTrue(("timer-2" to SleepTimerOutcome.PlaybackStopped) in repository.endedSessions)
+        assertFalse(shakes.isSensing)
+    }
+
+    @Test
+    fun `claimed grace expires while freshness is suspended and cannot later resume`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        val blockedResume = BlockingResumeOwner()
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(), blockedResume)
+        runCurrent()
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        shakes.fire()
+        blockedResume.gate.awaitEntered()
+        clock.advanceBy(10.seconds)
+        advanceTimeBy(10_001)
+        runCurrent()
+        blockedResume.gate.resume()
+        runCurrent()
+
+        assertEquals(0, blockedResume.resumes)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertTrue(("timer-2" to SleepTimerOutcome.PlaybackStopped) in repository.endedSessions)
+        assertFalse(shakes.isSensing)
+    }
+
+    @Test
+    fun `grace deadline is half open before equal and after`() = runTest {
+        suspend fun attempt(offset: Duration): Pair<Int, Int> {
+            val source = MutableStateFlow(
+                SleepTimerSettings.Default.copy(
+                    shakeToRestart = true,
+                    shakeGracePeriod = 10.seconds,
+                    fadeLength = Duration.ZERO,
+                ),
+            )
+            val repository = FakeSleepTimerRepository(source)
+            val shakes = FakeShakeSource()
+            val clock = TestAppClock()
+            var resumes = 0
+            val controller = controller(repository, shakes, clock)
+            controller.attach(player(), resumeOwner { resumes += 1 })
+            runCurrent()
+            assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+            clock.advanceBy(1.seconds)
+            advanceTimeBy(1_001)
+            runCurrent()
+
+            // Move only the injected monotonic clock. At equality the timeout coroutine has not been given a
+            // chance to run, so rejection proves validation itself defines the boundary.
+            clock.advanceBy(offset)
+            shakes.fire()
+            runCurrent()
+            return repository.started to resumes
+        }
+
+        assertEquals(2 to 1, attempt(9_999.milliseconds))
+        assertEquals(1 to 0, attempt(10.seconds))
+        assertEquals(1 to 0, attempt(10_001.milliseconds))
+    }
+
+    @Test
+    fun `automatic grace claimed before schedule end cannot commit after the occurrence ends`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                defaultLength = 1.seconds,
+                fadeLength = Duration.ZERO,
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                schedule = SleepTimerScheduleSettings.Default.copy(
+                    enabled = true,
+                    start = java.time.LocalTime.of(22, 0),
+                    end = java.time.LocalTime.of(7, 0),
+                ),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock(Instant.parse("2026-09-20T06:59:55Z"))
+        val blockedResume = BlockingResumeOwner()
+        val controller = controller(repository, shakes, clock)
+        controller.attach(player(), blockedResume)
+        runCurrent()
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        assertEquals(1, repository.started)
+
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+        shakes.fire()
+        blockedResume.gate.awaitEntered()
+
+        // Cross 07:00 while still inside the ten-second monotonic grace window.
+        clock.advanceBy(5.seconds)
+        blockedResume.gate.resume()
+        runCurrent()
+
+        assertEquals(0, blockedResume.resumes)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertTrue(("timer-2" to SleepTimerOutcome.PlaybackStopped) in repository.endedSessions)
+    }
+
+    @Test
+    fun `automatic grace before schedule end restarts but a shake after end does not`() = runTest {
+        suspend fun attempt(shakeAfterEnd: Boolean): Pair<Int, Int> {
+            val source = MutableStateFlow(
+                SleepTimerSettings.Default.copy(
+                    defaultLength = 1.seconds,
+                    fadeLength = Duration.ZERO,
+                    shakeToRestart = true,
+                    shakeGracePeriod = 10.seconds,
+                    schedule = SleepTimerScheduleSettings.Default.copy(
+                        enabled = true,
+                        start = java.time.LocalTime.of(22, 0),
+                        end = java.time.LocalTime.of(7, 0),
+                    ),
+                ),
+            )
+            val repository = FakeSleepTimerRepository(source)
+            val shakes = FakeShakeSource()
+            val clock = TestAppClock(Instant.parse("2026-09-20T06:59:55Z"))
+            var resumes = 0
+            val controller = controller(repository, shakes, clock)
+            controller.attach(player(), resumeOwner { resumes += 1 })
+            runCurrent()
+            controller.onPlaybackChanged(isPlaying = true)
+            runCurrent()
+            clock.advanceBy(1.seconds)
+            advanceTimeBy(1_001)
+            runCurrent()
+            if (shakeAfterEnd) clock.advanceBy(5.seconds)
+            shakes.fire()
+            runCurrent()
+            return repository.started to resumes
+        }
+
+        assertEquals(2 to 1, attempt(shakeAfterEnd = false))
+        assertEquals(1 to 0, attempt(shakeAfterEnd = true))
+    }
+
+    @Test
+    fun `a start suspended in history creation cannot install on a replacement service player`() = runTest {
+        val repository = FakeSleepTimerRepository(MutableStateFlow(SleepTimerSettings.Default))
+        val shakes = FakeShakeSource()
+        val controller = controller(repository, shakes, TestAppClock())
+        controller.attach(player())
+        runCurrent()
+        val creation = repository.blockNextRecordStarted()
+        var result: AppResult<Unit>? = null
+        val startJob = launch {
+            result = controller.start(SleepTimerMode.Fixed(30.minutes))
+        }
+        creation.awaitEntered()
+
+        controller.attach(null)
+        controller.attach(player(), resumeOwner())
+        creation.resume()
+        startJob.join()
+        runCurrent()
+
+        assertIs<AppResult.Failure>(result)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertFalse(shakes.isSensing)
+        assertTrue(("timer-1" to SleepTimerOutcome.PlaybackStopped) in repository.endedSessions)
+    }
+
+    @Test
+    fun `end of chapter grace at the last boundary does not create an immediate-expiry replacement`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val shakes = FakeShakeSource()
+        val clock = TestAppClock()
+        var position = 9.minutes
+        var resumes = 0
+        val controller = controller(repository, shakes, clock)
+        controller.attach(
+            player(position = { position }, onPlay = { resumes += 1 }),
+            resumeOwner { resumes += 1 },
+        )
+        controller.onBookChanged(
+            listOf(
+                Chapter(
+                    serverId = ServerId("chapter-1"),
+                    bookId = LibraryItemId("book-a"),
+                    index = 0,
+                    title = "Chapter",
+                    start = Duration.ZERO,
+                    end = 10.minutes,
+                ),
+            ),
+        )
+        runCurrent()
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.EndOfChapter))
+        position = 10.minutes
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertTrue(shakes.isSensing)
+
+        shakes.fire()
+        runCurrent()
+
+        assertEquals(1, repository.started)
+        assertEquals(0, resumes)
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertFalse(shakes.isSensing)
+    }
+
+    @Test
+    fun `changing shake sensitivity re-registers the active listener`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeSensitivity = ShakeSensitivity.High,
+            ),
+        )
+        val shakes = FakeShakeSource()
+        val controller = controller(FakeSleepTimerRepository(source), shakes, TestAppClock())
+        controller.attach(player())
+        runCurrent()
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+        assertEquals(ShakeSensitivity.High, shakes.sensitivity)
+        assertEquals(1, shakes.startCalls)
+
+        source.value = source.value.copy(shakeSensitivity = ShakeSensitivity.Low)
+        runCurrent()
+
+        assertEquals(ShakeSensitivity.Low, shakes.sensitivity)
+        assertEquals(2, shakes.startCalls)
+        assertEquals(1, shakes.stopCalls)
     }
 
     @Test
@@ -371,6 +1055,41 @@ class SleepTimerControllerTest {
     }
 
     @Test
+    fun `superseded Play cleanup cannot clear a newer explicit replay marker`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                defaultLength = 1.seconds,
+                fadeLength = Duration.ZERO,
+                schedule = SleepTimerScheduleSettings.Default.copy(enabled = true),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        runCurrent()
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+        controller.onPlaybackChanged(isPlaying = false)
+        runCurrent()
+        assertNotNull(repository.replayRequiredOccurrence)
+        assertEquals(1, repository.started)
+
+        val oldRequest = controller.onPlayRequest(explicit = false)
+        controller.onPlayRequest(explicit = true)
+        controller.clearPlayRequest(oldRequest)
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+
+        assertEquals(2, repository.started, "cleanup from the old Play must not erase newer explicit intent")
+        assertEquals(null, repository.replayRequiredOccurrence)
+    }
+
+    @Test
     fun `cancelling the timer tears down sensing and leaves idle state`() = runTest {
         val settings = MutableSharedFlow<SleepTimerSettings>(extraBufferCapacity = 4)
         val repository = FakeSleepTimerRepository(settings)
@@ -424,7 +1143,35 @@ class SleepTimerControllerTest {
         )
     }
 
-    private fun player(): Player {
+    private fun resumeOwner(onResume: () -> Unit = {}): SleepTimerResumeOwner =
+        object : SleepTimerResumeOwner {
+            override suspend fun resume(stillAuthorized: () -> Boolean): Boolean {
+                if (!stillAuthorized()) return false
+                onResume()
+                return true
+            }
+        }
+
+    private class BlockingResumeOwner : SleepTimerResumeOwner {
+        val gate = SuspendGate()
+        var calls = 0
+            private set
+        var resumes = 0
+            private set
+
+        override suspend fun resume(stillAuthorized: () -> Boolean): Boolean {
+            calls += 1
+            gate.block()
+            if (!stillAuthorized()) return false
+            resumes += 1
+            return true
+        }
+    }
+
+    private fun player(
+        onPlay: (() -> Unit)? = null,
+        position: () -> Duration = { 10.minutes },
+    ): Player {
         val item = MediaItem.Builder().setMediaId("book-a").build()
         return Proxy.newProxyInstance(
             Player::class.java.classLoader,
@@ -432,13 +1179,19 @@ class SleepTimerControllerTest {
         ) { _, method, _ ->
             when (method.name) {
                 "getCurrentMediaItem" -> item
-                "getCurrentPosition" -> 10.minutes.inWholeMilliseconds
+                "getCurrentPosition" -> position().inWholeMilliseconds
                 "getDuration" -> 60.minutes.inWholeMilliseconds
                 "getVolume" -> 1f
                 "isPlaying" -> true
+                "play" -> invokePlay(onPlay)
                 else -> defaultValue(method.returnType)
             }
         } as Player
+    }
+
+    private fun invokePlay(onPlay: (() -> Unit)?): Any? {
+        onPlay?.invoke()
+        return null
     }
 
     private fun defaultValue(type: Class<*>): Any? = when (type) {
@@ -460,11 +1213,16 @@ class SleepTimerControllerTest {
             private set
         var stopCalls = 0
             private set
+        var sensitivity: ShakeSensitivity? = null
+            private set
         private var callback: (() -> Unit)? = null
+        private var lastCallback: (() -> Unit)? = null
 
-        override fun start(onShake: () -> Unit): Boolean {
+        override fun start(sensitivity: ShakeSensitivity, onShake: () -> Unit): Boolean {
             startCalls += 1
+            this.sensitivity = sensitivity
             callback = onShake
+            lastCallback = onShake
             isSensing = true
             return true
         }
@@ -472,12 +1230,36 @@ class SleepTimerControllerTest {
         override fun stop() {
             if (isSensing) stopCalls += 1
             callback = null
+            sensitivity = null
             isSensing = false
         }
 
         fun fire() {
             check(isSensing)
             callback?.invoke()
+        }
+
+        /** Models a sensor callback already queued when the first shake stopped registration. */
+        fun fireQueued() {
+            lastCallback?.invoke()
+        }
+    }
+
+    private class SuspendGate {
+        val entered = CompletableDeferred<Unit>()
+        private val released = CompletableDeferred<Unit>()
+
+        suspend fun block() {
+            entered.complete(Unit)
+            released.await()
+        }
+
+        suspend fun awaitEntered() {
+            entered.await()
+        }
+
+        fun resume() {
+            released.complete(Unit)
         }
     }
 
@@ -487,7 +1269,12 @@ class SleepTimerControllerTest {
             private set
         var restarted = 0
             private set
+        val startedSessions = mutableListOf<String>()
+        val restartedSessions = mutableListOf<String>()
+        val endedSessions = mutableListOf<Pair<String, SleepTimerOutcome>>()
         val ended = mutableListOf<SleepTimerOutcome>()
+        private var nextStartedGate: SuspendGate? = null
+        private var nextScheduleGate: SuspendGate? = null
         var suppressedOccurrence: String? = null
             private set
         var replayRequiredOccurrence: String? = null
@@ -495,11 +1282,20 @@ class SleepTimerControllerTest {
 
         override fun observeSettings(): Flow<SleepTimerSettings> = settings
 
+        fun blockNextRecordStarted(): SuspendGate = SuspendGate().also { nextStartedGate = it }
+
+        fun blockNextScheduleRuntimeWrite(): SuspendGate = SuspendGate().also { nextScheduleGate = it }
+
         override suspend fun setDefaultLength(length: Duration): AppResult<Unit> = AppResult.Success(Unit)
 
         override suspend fun setFadeLength(length: Duration): AppResult<Unit> = AppResult.Success(Unit)
 
         override suspend fun setShakeToRestart(enabled: Boolean): AppResult<Unit> = AppResult.Success(Unit)
+
+        override suspend fun setShakeGracePeriod(length: Duration): AppResult<Unit> = AppResult.Success(Unit)
+
+        override suspend fun setShakeSensitivity(sensitivity: ShakeSensitivity): AppResult<Unit> =
+            AppResult.Success(Unit)
 
         override suspend fun setRewindOnStop(length: Duration): AppResult<Unit> = AppResult.Success(Unit)
 
@@ -512,6 +1308,7 @@ class SleepTimerControllerTest {
             suppressedOccurrence: String?,
             replayRequiredOccurrence: String?,
         ): AppResult<Unit> {
+            nextScheduleGate?.also { nextScheduleGate = null }?.block()
             this.suppressedOccurrence = suppressedOccurrence
             this.replayRequiredOccurrence = replayRequiredOccurrence
             (settings as? MutableStateFlow<SleepTimerSettings>)?.let { source ->
@@ -529,16 +1326,21 @@ class SleepTimerControllerTest {
 
         override suspend fun recordStarted(bookId: LibraryItemId, mode: SleepTimerMode): AppResult<String> {
             started += 1
-            return AppResult.Success("timer-$started")
+            val sessionId = "timer-$started"
+            startedSessions += sessionId
+            nextStartedGate?.also { nextStartedGate = null }?.block()
+            return AppResult.Success(sessionId)
         }
 
         override suspend fun recordRestarted(sessionId: String): AppResult<Unit> {
             restarted += 1
+            restartedSessions += sessionId
             return AppResult.Success(Unit)
         }
 
         override suspend fun recordEnded(sessionId: String, outcome: SleepTimerOutcome): AppResult<Unit> {
             ended += outcome
+            endedSessions += sessionId to outcome
             return AppResult.Success(Unit)
         }
 
