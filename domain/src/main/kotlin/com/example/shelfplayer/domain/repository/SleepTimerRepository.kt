@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.playback.ShakeSensitivity
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
@@ -29,6 +30,10 @@ interface SleepTimerRepository {
 
     /** PRODUCT_SPEC PLAY-008 — "requires explicit opt-in". This is that opt-in. */
     suspend fun setShakeToRestart(enabled: Boolean): AppResult<Unit>
+
+    suspend fun setShakeGracePeriod(length: Duration): AppResult<Unit>
+
+    suspend fun setShakeSensitivity(sensitivity: ShakeSensitivity): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC PLAY-008 / PLAY-009 — how far to rewind when the timer stops the book. Zero is off.
