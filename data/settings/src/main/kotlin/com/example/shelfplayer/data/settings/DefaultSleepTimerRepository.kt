@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.playback.ShakeSensitivity
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
@@ -71,6 +72,24 @@ class DefaultSleepTimerRepository @Inject constructor(
             LogCategory.Settings,
             "Shake to restart the sleep timer was changed",
             LogField.Public("enabled", enabled),
+        )
+    }
+
+    override suspend fun setShakeGracePeriod(length: Duration): AppResult<Unit> = write {
+        settings.setSleepTimerShakeGracePeriod(length)
+        logger.info(
+            LogCategory.Settings,
+            "The sleep timer shake grace period was changed",
+            LogField.Millis("length", length.inWholeMilliseconds),
+        )
+    }
+
+    override suspend fun setShakeSensitivity(sensitivity: ShakeSensitivity): AppResult<Unit> = write {
+        settings.setSleepTimerShakeSensitivity(sensitivity)
+        logger.info(
+            LogCategory.Settings,
+            "The sleep timer shake sensitivity was changed",
+            LogField.Public("sensitivity", sensitivity.name),
         )
     }
 
