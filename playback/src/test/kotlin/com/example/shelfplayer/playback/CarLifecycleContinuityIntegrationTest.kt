@@ -148,7 +148,7 @@ class CarLifecycleContinuityIntegrationTest {
 
         // The physical projection edge is the boundary. No MediaSession onDisconnected is involved.
         val target = requireNotNull(
-            gate.onCarDeparture(
+            gate.onProjectionDeparture(
                 departedAt = 22.seconds,
                 currentGeneration = owner.currentGeneration,
                 explicitSelectionSequence = 0,
