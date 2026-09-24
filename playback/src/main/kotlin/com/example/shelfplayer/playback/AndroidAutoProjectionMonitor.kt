@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.content.ContextCompat
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
@@ -100,21 +101,24 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
         }
     }
 
-    private fun readState(): State = try {
-        context.contentResolver.query(
+    private fun readState(): State {
+        if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) return State.Native
+        return try {
+            context.contentResolver.query(
             PROJECTION_HOST_URI,
             arrayOf(CAR_CONNECTION_STATE),
             null,
             null,
             null,
-        )?.use { cursor ->
-            val column = cursor.getColumnIndex(CAR_CONNECTION_STATE)
-            if (column < 0 || !cursor.moveToFirst()) State.Unknown else stateOf(cursor.getInt(column))
-        } ?: State.Unknown
-    } catch (_: SecurityException) {
-        State.Unknown
-    } catch (_: IllegalArgumentException) {
-        State.Unknown
+            )?.use { cursor ->
+                val column = cursor.getColumnIndex(CAR_CONNECTION_STATE)
+                if (column < 0 || !cursor.moveToFirst()) State.Unknown else stateOf(cursor.getInt(column))
+            } ?: State.Unknown
+        } catch (_: SecurityException) {
+            State.Unknown
+        } catch (_: IllegalArgumentException) {
+            State.Unknown
+        }
     }
 
     internal companion object {
