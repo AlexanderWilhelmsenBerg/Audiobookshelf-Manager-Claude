@@ -2695,21 +2695,27 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
-        ): ListenableFuture<MutableList<MediaItem>> = future {
-            val trusted = controller.isThisApplication()
-            val matches = mediaItems.mapNotNull { item -> resolvePlayable(item, trusted)?.let { item to it } }
-            val resolved = matches.map { (_, playable) -> playable }.toMutableList()
-            logSelection(
-                callback = "onAddMediaItems",
-                asked = mediaItems,
-                selection = Selection(
-                    branch = if (trusted) "passthrough" else "browse",
-                    resolved = matches.isNotEmpty(),
-                    kind = actedKind(mediaItems, matches.firstOrNull()?.first),
-                    answer = MediaSession.MediaItemsWithStartPosition(resolved.toList(), 0, 0L),
-                ),
-            )
-            resolved
+        ): ListenableFuture<MutableList<MediaItem>> {
+            val trace = autoTraceFor(controller.packageName)
+            logAutoItems(trace, "onAddMediaItems", "asked", mediaItems)
+            return future {
+                val trusted = controller.isThisApplication()
+                val matches = mediaItems.mapNotNull { item -> resolvePlayable(item, trusted)?.let { item to it } }
+                val resolved = matches.map { (_, playable) -> playable }.toMutableList()
+                logSelection(
+                    callback = "onAddMediaItems",
+                    asked = mediaItems,
+                    selection = Selection(
+                        branch = if (trusted) "passthrough" else "browse",
+                        resolved = matches.isNotEmpty(),
+                        kind = actedKind(mediaItems, matches.firstOrNull()?.first),
+                        answer = MediaSession.MediaItemsWithStartPosition(resolved.toList(), 0, 0L),
+                    ),
+                    trace = trace,
+                )
+                logAutoItems(trace, "onAddMediaItems", "returned", resolved)
+                resolved
+            }
         }
 
         /**
@@ -2726,8 +2732,21 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: MutableList<MediaItem>,
             startIndex: Int,
             startPositionMs: Long,
-        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
-            setMediaItems(session, controller, mediaItems, startIndex, startPositionMs)
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val trace = autoTraceFor(controller.packageName)
+            logAutoItems(
+                trace = trace,
+                callback = "onSetMediaItems",
+                direction = "asked",
+                items = mediaItems,
+                extraFields = listOf(
+                    LogField.Public("startIndex", startIndex),
+                    LogField.Millis("startAt", startPositionMs),
+                ),
+            )
+            return future {
+                setMediaItems(session, controller, mediaItems, startIndex, startPositionMs, trace)
+            }
         }
 
         private suspend fun setMediaItems(
@@ -2736,6 +2755,7 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: MutableList<MediaItem>,
             startIndex: Int,
             startPositionMs: Long,
+            trace: AutoTrace?,
         ): MediaSession.MediaItemsWithStartPosition {
             val spokenRequest = mediaItems
                 .firstNotNullOfOrNull { item -> item.requestMetadata.searchQuery?.let { q -> item to q } }
@@ -2782,7 +2802,17 @@ class PlaybackService : MediaLibraryService() {
                             )
                         }
             }
-            logSelection("onSetMediaItems", mediaItems, selection)
+            logSelection("onSetMediaItems", mediaItems, selection, trace)
+            logAutoItems(
+                trace = trace,
+                callback = "onSetMediaItems",
+                direction = "returned",
+                items = selection.answer.mediaItems,
+                extraFields = listOf(
+                    LogField.Public("startIndex", selection.answer.startIndex),
+                    LogField.Millis("startAt", selection.answer.startPositionMs),
+                ),
+            )
             return selection.answer
         }
 
@@ -2794,7 +2824,12 @@ class PlaybackService : MediaLibraryService() {
          * resolution status and a numeric start position. They never log a search query, title or stream URI;
          * those are private library/server data and are not needed to diagnose controller resolution.
          */
-        private fun logSelection(callback: String, asked: List<MediaItem>, selection: Selection) {
+        private fun logSelection(
+            callback: String,
+            asked: List<MediaItem>,
+            selection: Selection,
+            trace: AutoTrace? = null,
+        ) {
             logger.log(
                 LogEvent(
                     level = LogLevel.Info,
@@ -2811,6 +2846,22 @@ class PlaybackService : MediaLibraryService() {
                     },
                 ),
             )
+            if (trace != null) {
+                logAuto(
+                    "Android Auto controller selection resolved",
+                    trace,
+                    listOf(
+                        LogField.Public("callback", callback),
+                        LogField.Public("branch", selection.branch),
+                        LogField.Public("kind", selection.kind),
+                        LogField.Public("resolved", selection.resolved),
+                        LogField.Count("asked", asked.size),
+                        LogField.Count("handedBack", selection.answer.mediaItems.size),
+                        LogField.Public("startIndex", selection.answer.startIndex),
+                        LogField.Millis("startAt", selection.answer.startPositionMs),
+                    ),
+                )
+            }
         }
 
         /**
