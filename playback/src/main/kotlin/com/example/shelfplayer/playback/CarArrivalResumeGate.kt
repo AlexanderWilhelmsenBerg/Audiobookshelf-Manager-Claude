@@ -8,14 +8,14 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Arrival and departure deliberately remain distinct phases:
  *
- * - an arrival focus loss is captured before the first 0→1 car-controller bind;
- * - a departure focus loss is paired only when it was observed while the car was still connected and the
- *   last 1→0 controller disconnect follows it.
+ * - an arrival focus loss is paired with a car-specific arrival boundary;
+ * - a departure focus loss is paired with a car-specific departure boundary.
  *
- * The exact headset is captured only from route-heard evidence while playback was real. During a connected
- * car session [observePlayingHeadset] keeps the last positively proven headset as stable continuity evidence,
- * so a transient Android device-list omission cannot erase listener intent. That stable record is never
- * allowed to beat a newer book generation or explicit output-selection sequence.
+ * The exact headset is captured only from route-heard evidence while playback was real. [observePlayingHeadset]
+ * keeps the last positively proven headset as stable transition evidence before and during a car session, so
+ * Android's measured transient device-list omission cannot erase listener intent before focus loss is reported.
+ * Positive evidence of a different route clears that snapshot. The record is never allowed to beat a newer
+ * book generation or explicit output-selection sequence.
  *
  * This class decides whether recovery is safe. It never chooses another route and never calls Play.
  *
@@ -67,36 +67,31 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     private var activeRecovery: Target? = null
 
     /**
-     * Last headset positively heard while a car controller was present and playback was actually active.
+     * Last headset positively heard while playback was actually active.
      *
-     * A missing live route does not clear this record. Only newer listener/book/playback intent can make it
-     * ineligible, which is exactly what the generation and explicit-selection sequence guard below prove.
+     * A missing live route does not clear this record: Android Auto has physically been measured removing the
+     * A2DP endpoint before Media3 reports focus loss. A positive non-headset route does clear it, so a genuine
+     * route move cannot borrow stale headset authority.
      */
-    private var connectedPlayback: Identity? = null
+    private var playingHeadset: Identity? = null
 
-    /**
-     * Refreshes the stable car-session headset only from positive playback evidence.
-     *
-     * Passing no qualifying headset while the car is connected deliberately leaves the previous positive
-     * observation intact: Android Auto has already been measured temporarily omitting that device.
-     */
+    /** Refreshes stable transition evidence only from actual playing-route observations. */
     fun observePlayingHeadset(
         heardRoute: RouteHeardOwnership.HeardRoute?,
         headsetId: String?,
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
-        carConnected: Boolean,
     ) {
-        if (!carConnected) {
-            connectedPlayback = null
-            return
-        }
-        identityOf(
+        val identity = identityOf(
             heardRoute = heardRoute,
             headsetId = headsetId,
             currentGeneration = currentGeneration,
             explicitSelectionSequence = explicitSelectionSequence,
-        )?.let { connectedPlayback = it }
+        )
+        when {
+            identity != null -> playingHeadset = identity
+            heardRoute != null -> playingHeadset = null
+        }
     }
 
     /**
@@ -121,11 +116,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
             currentGeneration = currentGeneration,
             explicitSelectionSequence = explicitSelectionSequence,
         )
-        val identity = if (phase == Phase.Departure) {
-            currentConnectedPlayback(currentGeneration, explicitSelectionSequence) ?: liveIdentity
-        } else {
-            liveIdentity
-        }
+        val identity = liveIdentity ?: currentPlayingHeadset(currentGeneration, explicitSelectionSequence)
 
         if (identity == null) {
             focusCandidate = null
@@ -255,11 +246,11 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     /** A deliberate/non-focus pause or book/session boundary invalidates every continuity fact. */
     fun cancelAll() {
         cancelPending()
-        connectedPlayback = null
+        playingHeadset = null
     }
 
-    private fun currentConnectedPlayback(currentGeneration: Long?, explicitSelectionSequence: Long): Identity? =
-        connectedPlayback?.takeIf { identity ->
+    private fun currentPlayingHeadset(currentGeneration: Long?, explicitSelectionSequence: Long): Identity? =
+        playingHeadset?.takeIf { identity ->
             identity.generation == currentGeneration &&
                 identity.explicitSelectionSequence == explicitSelectionSequence
         }
@@ -311,9 +302,9 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
 
     private companion object {
         /**
-         * Arrival was measured at two and four seconds. Departure is permitted only when focus loss is already
-         * observed while the car remains connected; this same conservative bound limits how long that evidence
-         * may wait for the final 1→0 disconnect. The opposite ordering remains diagnostic-only.
+         * Arrival was measured at two to four seconds. The same conservative bound limits how long a focus
+         * event may wait for its car-specific lifecycle boundary; a generic focus event never becomes authority
+         * merely because time passed.
          */
         val DEFAULT_PAIRING_WINDOW: Duration = 6.seconds
     }
