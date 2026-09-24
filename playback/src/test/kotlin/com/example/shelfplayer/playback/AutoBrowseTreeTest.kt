@@ -225,6 +225,17 @@ class AutoBrowseTreeTest {
     }
 
     @Test
+    fun `valid cached resume state does not request a server refresh`() = runTest {
+        books.value = listOf(book("book-1", "Local", progress = progress(15.minutes, false)))
+        val auto = auto()
+        var refreshes = 0
+
+        val result = auto.lastPlayedAfter { refreshes += 1 }
+
+        assertEquals(0, refreshes)
+        assertEquals(LibraryItemId("book-1"), result?.id)
+    }
+    @Test
     fun `server refresh is requested only when cached resume state is empty`() = runTest {
         books.value = listOf(book("book-1", "Untouched"))
         val auto = auto(rememberedId = null)
