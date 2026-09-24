@@ -251,13 +251,12 @@ private fun FilterChipRow(
             FilterChip(
                 selected = option in selected,
                 onClick = { onToggle(option) },
-                label = { Text(text = option.eventLogFilterLabel()) },
+                label = { Text(text = if (option == "AndroidAuto") stringResource(R.string.event_log_filter_android_auto) else option) },
             )
         }
     }
 }
 
-private fun String.eventLogFilterLabel(): String = if (this == "AndroidAuto") "Android Auto" else this
 
 /** Adds or removes, which is what every chip in this sheet does. */
 private fun Set<String>.toggle(value: String): Set<String> = if (value in this) this - value else this + value
